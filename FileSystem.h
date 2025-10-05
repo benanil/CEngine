@@ -311,8 +311,7 @@ static inline uint64_t AFileSize(AFile file)
     if (file.file == stdin) h = GetStdHandle(STD_INPUT_HANDLE);
     else if (file.file == stdout) h = GetStdHandle(STD_OUTPUT_HANDLE);
     else if (file.file == stderr) h = GetStdHandle(STD_ERROR_HANDLE);
-    else
-        return 0; // GetStdHandle doesn't support arbitrary FILE*
+    else return 0; // GetStdHandle doesn't support arbitrary FILE*
 
     if (h == INVALID_HANDLE_VALUE)
         return 0;

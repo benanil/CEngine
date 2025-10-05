@@ -23,7 +23,9 @@
  * Windows Sockets 2.0.
  */
 #ifndef WIN32_LEAN_AND_MEAN
-#	define WIN32_LEAN_AND_MEAN
+#  define WIN32_LEAN_AND_MEAN
+#  define NOMINMAX
+#  define VC_EXTRALEAN
 #endif
 #include <windows.h>
 

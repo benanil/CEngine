@@ -1,0 +1,44 @@
+# Build outputs
+*.obj
+*.o
+*.exe
+*.lib
+*.dll
+*.exp
+
+# MSVC / Linker artifacts
+*.ilk
+*.pdb
+*.idb
+*.ipch
+*.sbr
+*.tlh
+*.tli
+
+# Intermediate / temp
+*.log
+*.tmp
+*.cache
+*.user
+*.tlog
+
+# Clang / GCC
+*.d
+*.out
+
+# Directories
+/Debug/
+/Release/
+/x64/
+/x86/
+/bin/
+/build/
+/intermediate/
+/. vs*/
+
+# Misc
+*.db
+*.opendb
+*.VC.db
+*.VC.VC.opendb
+*.rsp

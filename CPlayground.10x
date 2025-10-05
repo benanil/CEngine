@@ -47,7 +47,7 @@
 				<CleanCommand></CleanCommand>
 				<BuildWorkingDirectory></BuildWorkingDirectory>
 				<CancelBuild></CancelBuild>
-				<Exe></Exe>
+				<Exe>$(RootWorkspaceDirectory)\build\MainDebug.exe</Exe>
 				<Args></Args>
 				<WorkingDirectory></WorkingDirectory>
 				<DebugCommand></DebugCommand>

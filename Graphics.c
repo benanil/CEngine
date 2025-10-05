@@ -3,14 +3,14 @@
 
 
 //#include "Extern/sokol/sokol_gfx.h"
+// #include "FileSystem.h"
+// #include "Math/Math.h"
 #include "Extern/stb/stb_image_resize2.h"
 #include "Arena.h"
 #include "Platform.h"
 #include "Graphics.h"
-#include "FileSystem.h"
 
 #include <stdint.h>
-// #include "Math/Math.h"
 
 static const uint8_t TextureTypeToBytesPerPixelMap[_SG_PIXELFORMAT_NUM] =
 {
@@ -318,7 +318,7 @@ Texture rCreateTexture(int width, int height, void* data, sg_pixel_format format
     {
         if (!!(flags & TexFlags_Compressed))
         {
-            
+            // todo handle compressed mips
         }
         else
         {
