@@ -10,8 +10,8 @@ if %ERRORLEVEL% neq 0 (
 
 REM <<<  CLANG COMPILER  >>>
 REM clang -O3 -mavx2 -mfma -msse4.2 -mf16c -mrdseed -s -fno-rtti -fno-stack-protector -Wimplicit-function-declaration -fno-exceptions -fno-unwind-tables -static-libgcc ^
-REM Main.c  -o MainCLANG.exe -I. -ladvapi32 -ld3d11 -ldxgi -ldxguid -luser32 -lshell32 -lgdi32 -lwinmm
-REM start "" "MainCLANG.exe"
+REM Main.c  -o build/MainCLANG.exe -I. -ladvapi32 -ld3d11 -ldxgi -ldxguid -luser32 -lshell32 -lgdi32 -lwinmm
+REM start "" "build/MainCLANG.exe"
 
 REM <<<  MSVC COMPILER  >>>
 Set up the MSVC environment (adjust the path to your Visual Studio installation)
@@ -28,7 +28,7 @@ if "%1"=="Debug" (
 		echo Compilation failed!  
 		exit /b %ERRORLEVEL%      
 	)                             
-    start "" "build/MainDebug.exe"
+    rem start "" "build/MainDebug.exe"
 ) else (                          
 	REM Compile Main.c with optimizations, instruction sets, and link libraries        
 	cl.exe /O2 /arch:AVX2 /GR- /GS- /EHsc- /I. Main.c /Fe:build/MainMSVC.exe /link advapi32.lib d3d11.lib dxgi.lib dxguid.lib user32.lib shell32.lib gdi32.lib winmm.lib
@@ -36,5 +36,5 @@ if "%1"=="Debug" (
 		echo Compilation failed!
 		exit /b %ERRORLEVEL%
 	)
-	start "" "build/MainMSVC.exe"
+	rem start "" "build/MainMSVC.exe"
 )

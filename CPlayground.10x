@@ -64,7 +64,7 @@
 				<CleanCommand></CleanCommand>
 				<BuildWorkingDirectory></BuildWorkingDirectory>
 				<CancelBuild></CancelBuild>
-				<Exe>$(RootWorkspaceDirectory)\MainMSVC.exe</Exe>
+				<Exe>$(RootWorkspaceDirectory)\build\MainMSVC.exe</Exe>
 				<Args></Args>
 				<WorkingDirectory></WorkingDirectory>
 				<DebugCommand></DebugCommand>
