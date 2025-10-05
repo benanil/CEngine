@@ -3,6 +3,7 @@
 #define ALGORITHM_INCLUDED
 
 #include "Common.h"
+#include "Math/Math.h"
 
 #define XSWAP(type, x, y) do { \
     type SWAP_tmp = (x);      \
@@ -10,14 +11,14 @@
     (y) = SWAP_tmp;           \
 } while (0)
 
-purefn static bool IsNumber(char a) { return a <= '9' && a >= '0'; };
-purefn static bool IsLower(char a)  { return a >= 'a' && a <= 'z'; };
-purefn static bool IsUpper(char a)  { return a >= 'A' && a <= 'Z'; };
-purefn static bool ToLower(char a)  { return a < 'a' ? a + ('A' - 'a') : a; }
-purefn static bool ToUpper(char a)  { return a > 'Z' ? a - 'a' + 'A' : a; }
+purefn bool IsNumber(char a) { return a <= '9' && a >= '0'; };
+purefn bool IsLower(char a)  { return a >= 'a' && a <= 'z'; };
+purefn bool IsUpper(char a)  { return a >= 'A' && a <= 'Z'; };
+purefn bool ToLower(char a)  { return a < 'a' ? a + ('A' - 'a') : a; }
+purefn bool ToUpper(char a)  { return a > 'Z' ? a - 'a' + 'A' : a; }
 // is alphabetical character?
-purefn static bool IsChar(char a) { return IsUpper(a) || IsLower(a); };
-purefn static bool IsWhitespace(char c) { return c <= ' '; }
+purefn bool IsChar(char a) { return IsUpper(a) || IsLower(a); };
+purefn bool IsWhitespace(char c) { return c <= ' '; }
 
 static inline void SwapMem(void* a, void* b, size_t elemSize) 
 {
@@ -85,7 +86,7 @@ static inline int* BinarySearch(int* begin, int len, int value)
 }
 
 // String to number functions
-inline int ParseNumber(const char** ptr)
+static inline int ParseNumber(const char** ptr)
 {
     const char* curr = *ptr;
     while (*curr && (*curr != '-' && !IsNumber(*curr))) 
@@ -104,7 +105,7 @@ inline int ParseNumber(const char** ptr)
     return negative ? -val : val;
 }
 
-inline long long ParseNumberLong(const char** ptr)
+static inline long long ParseNumberLong(const char** ptr)
 {
     const char* curr = *ptr;
     while (*curr && (*curr != '-' && !IsNumber(*curr))) 
@@ -123,7 +124,7 @@ inline long long ParseNumberLong(const char** ptr)
     return negative ? -val : val;
 }
 
-inline int ParsePositiveNumber(const char** ptr)
+static inline int ParsePositiveNumber(const char** ptr)
 {
     const char* curr = *ptr;
     while (*curr && !IsNumber(*curr))
@@ -136,14 +137,14 @@ inline int ParsePositiveNumber(const char** ptr)
     return val;
 }
 
-inline bool IsParsable(const char* curr)
+static inline bool IsParsable(const char* curr)
 {   // additional checks
     if (*curr == 0 || *curr == '\n') return false;
     if (!IsNumber(*curr) || *curr != '-') return false;
     return true;
 }
 
-inline float ParseFloat(const char** text)
+static inline float ParseFloat(const char** text)
 {
     const double POWER_10_POS[20] =
     {
@@ -214,7 +215,7 @@ inline float ParseFloat(const char** text)
 
 // time complexity O(numDigits(x)), space complexity O(1), afterpoint is 0 
 // @returns number of characters added
-inline int IntToString(char* ptr, int x, int afterPoint)
+static inline int IntToString(char* ptr, int x, int afterPoint)
 {
     if (afterPoint < 0) return 0;
     int size = 0;
@@ -243,7 +244,7 @@ inline int IntToString(char* ptr, int x, int afterPoint)
     return size;
 }
 
-inline int Pow10(int x) 
+static inline int Pow10(int x) 
 {
     int res = x != 0;
     while (x-- > 0) res *= 10;
@@ -253,7 +254,7 @@ inline int Pow10(int x)
 // converts floating point to string
 // @param afterpoint num digits after friction: 4
 // @returns number of characters added
-inline int FloatToString(char* ptr, float f, int afterpoint)
+static inline int FloatToString(char* ptr, float f, int afterpoint)
 {
     int lessThanZero = f < 0.0f;
     int numChars = 0;
@@ -270,20 +271,27 @@ inline int FloatToString(char* ptr, float f, int afterpoint)
     return numChars + IntToString(ptr + numChars, (int)(fPart * power), afterpoint-1);
 }
 
-inline bool aStartsWith(const char** curr, const char* str)
+static inline bool aStartsWith(const char** curr, const char* str)
 {
     const char* currStart = *curr;
-    while (IsWhitespace(**curr)) curr++;
-    if (**curr != *str) return false;
+    while (IsWhitespace(**curr))
+        (*curr)++;
+
+    if (**curr != *str)
+        return false;
+
     while (*str && **curr == *str)
-        *curr++, str++;
+        (*curr)++, str++;
+
     bool isEqual = *str == 0;
-    if (!isEqual) *curr = currStart;
+    if (!isEqual)
+        *curr = currStart;
+
     return isEqual;
 }
 
 // fill [begin, end) with val
-inline void aFill(void* begin, void* end, const void* val, size_t elemSize) {
+static inline void aFill(void* begin, void* end, const void* val, size_t elemSize) {
     unsigned char* p = (unsigned char*)begin;
     unsigned char* e = (unsigned char*)end;
     while (p < e) {
@@ -293,10 +301,10 @@ inline void aFill(void* begin, void* end, const void* val, size_t elemSize) {
 }
 
 // fill n elements with val
-inline void aFillN(void* arr, const void* val, int n, size_t elemSize) {
+static inline void aFillN(void* arr, const void* val, int n, size_t elemSize) {
     unsigned char* p = (unsigned char*)arr;
     for (int i = 0; i < n; i++, p += elemSize)
-        memcpy(p, val, elemSize);
+        SmallMemCpy(p, val, elemSize);
 }
 
 static inline int void_ptr_compare(const void* a, const void* b)
@@ -335,17 +343,6 @@ static inline int aCountIf(const void* arr, const void* val, int n, size_t elemS
     for (int i = 0; i < n; i++, p += elemSize)
         if (cmp(p, val) == 0) count++;
     return count;
-}
-
-// copy n elements from src to dst
-static inline void aCopy(void* dst, const void* src, int n, size_t elemSize) {
-    memcpy(dst, src, n * elemSize);
-}
-
-static inline void aCopyInt32(int* dst, const int* src, int n)
-{
-    for (int i = 0; i < n; i++)
-        dst[i] = src[i];
 }
 
 #define StrCMP16(_str, _otr) StrCmp16(_str, _otr, sizeof(_otr)) 

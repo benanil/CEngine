@@ -16,13 +16,19 @@
 #define STBIR_MALLOC(size, c)       ( rpmalloc(size) )
 #define STBIR_FREE(ptr, c)          ( (void)(c), rpfree(ptr) )
 
-#ifndef NOMINMAX
-#  define NOMINMAX
-#  define WIN32_LEAN_AND_MEAN 
-#  define VC_EXTRALEAN
-#endif
+#define tlsf_assert(x) ASSERT(x)
 
-#include "Extern/rpmalloc.c"
+#include "Common.h"
+
+#include "OS.c"
+#include "Memory.h"
+
+#include "FileSystem.h"
+#include "Arena.h"
+
+tlsf_t tlsf;
+Arena global_arena;
+char app_memory[1ull * 1000ull * 1000ull * 1000ull];
 
 #include "Extern/sokol/sokol_gfx.h"
 #include "Extern/sokol/sokol_app.h"
@@ -47,6 +53,7 @@
 #include "GLTFParser.c"
 #include "Animation.c"
 #include "AssetManager.c"
+
 
 static struct {
     float rx, ry;
@@ -78,7 +85,6 @@ void Prefab_UpdateGlobalNodeTransforms(SceneBundle* bundle, int nodeIndex, Matri
         Prefab_UpdateGlobalNodeTransforms(bundle, node->children[i], nodeTransforms[nodeIndex]);
     }
 }
-
 
 void Init(void)
 {
@@ -276,29 +282,33 @@ void Frame(void)
 void Cleanup(void) {
     sg_shutdown();
     rDestroy();
-    rpfree(nodeTransforms);
-    rpmalloc_finalize();
+    
 }
 
 extern void sokol_event_callback(const sapp_event* event);
 
 void* alloc_fn(size_t size, void* user_data)
 {
-    (void*)user_data;
+    (void)user_data;
     return rpmalloc(size);
 }
 
 void free_fn(void* ptr, void* user_data)
 {
-    (void*)user_data;
+    (void)user_data;
     rpfree(ptr);
 }
 
 sapp_desc sokol_main(int argc, char* argv[]) {
     (void)argc;
     (void)argv;
-    rpmalloc_initialize(NULL);
     
+    const unsigned long long halfGig = 500ull * 1000ull * 1000ull;
+    tlsf = tlsf_create_with_pool(app_memory, halfGig);
+    global_arena.buf = app_memory + halfGig;
+    global_arena.buf_len = halfGig;
+    global_arena.curr_offset = 0;
+
     return (sapp_desc){
         .init_cb = Init,
         .frame_cb = Frame,

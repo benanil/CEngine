@@ -201,6 +201,7 @@ void AnimationController_SampleAnimationPose(AnimationController* ac, Pose* pose
         if (reverse) XSWAP(float, beginTime, endTime);
         
         float t = Clamp01f(beginTime / endTime);
+        Quaternion rot;
 
         switch (channel->targetPath)
         {
@@ -208,7 +209,7 @@ void AnimationController_SampleAnimationPose(AnimationController* ac, Pose* pose
                 pose[targetNode].translation = VecLerp(begin, end, t);
                 break;
             case AAnimTargetPath_Rotation:
-                Quaternion rot = QSlerp(begin, end, t);
+                rot = QSlerp(begin, end, t);
                 pose[targetNode].rotation = QNorm(rot); // QNormEst maybe
                 break;
         //  case AAnimTargetPath_Scale:

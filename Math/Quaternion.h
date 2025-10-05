@@ -15,7 +15,7 @@ typedef Vector4x32f Quaternion;
 #define QNormEst(q)  VecNormEst(q)
 #define MakeQuat(_x, _y, _z, _w)  VecSetR(_x, _y, _z, _w)
 
-inline Vector4x32f VECTORCALL QMul(Vector4x32f Q1, Vector4x32f Q2) 
+static inline Vector4x32f VECTORCALL QMul(Vector4x32f Q1, Vector4x32f Q2) 
 {
     const Vector4x32f ControlWZYX = { 1.0f,-1.0f, 1.0f,-1.0f };
     const Vector4x32f ControlZWXY = { 1.0f, 1.0f,-1.0f,-1.0f };
@@ -44,7 +44,7 @@ inline Vector4x32f VECTORCALL QMul(Vector4x32f Q1, Vector4x32f Q2)
 }
 
 // Angle should be between -twopi, twopi
-inline Vector4x32f QFromAxisAngle(Vec3f axis, float angle)
+static inline Vector4x32f QFromAxisAngle(Vec3f axis, float angle)
 {
     float SinV = Sin(0.5f * angle);
     float CosV = Cos(0.5f * angle);
@@ -53,19 +53,19 @@ inline Vector4x32f QFromAxisAngle(Vec3f axis, float angle)
 
 // below 3 function are same as QFromAxisAngle but with single axis, 
 // faster because no normalization and less multipication
-inline Vector4x32f QFromXAngle(float angle) {
+static inline Vector4x32f QFromXAngle(float angle) {
     return VecSetR(Sin(0.5f * angle), 0.0f, 0.0f, Cos(0.5f * angle));
 }
 
-inline Vector4x32f QFromYAngle(float angle) {
+static inline Vector4x32f QFromYAngle(float angle) {
     return VecSetR(0.0f, Sin(0.5f * angle), 0.0f, Cos(0.5f * angle));
 }
 
-inline Vector4x32f QFromZAngle(float angle) {
+static inline Vector4x32f QFromZAngle(float angle) {
     return VecSetR(0.0f, 0.0f, Sin(0.5f * angle), Cos(0.5f * angle));
 }
 
-inline Vector4x32f VECTORCALL QMulVec3V(Vector4x32f vec, Vector4x32f quat)
+static inline Vector4x32f VECTORCALL QMulVec3V(Vector4x32f vec, Vector4x32f quat)
 {
     Vector4x32f temp0 = Vec3CrossV(quat, vec);
     Vector4x32f temp1 = VecMul(vec, VecSplatZ(quat));
@@ -74,7 +74,7 @@ inline Vector4x32f VECTORCALL QMulVec3V(Vector4x32f vec, Vector4x32f quat)
     return VecAdd(vec, temp1);
 }
 
-inline Vec3f VECTORCALL QMulVec3(Vec3f vec, Quaternion quat)
+static inline Vec3f VECTORCALL QMulVec3(Vec3f vec, Quaternion quat)
 {
     Vec3f res;
     Vec3Store(&res.x, QMulVec3V(VecSetR(vec.x, vec.y, vec.z, 1.0f), quat));
@@ -111,7 +111,7 @@ purefn Vector4x32f QCalculateCoefficient(Vector4x32f vT, Vector4x32f xm1)
     return c;
 };
 
-inline Quaternion VECTORCALL QSlerp(Quaternion q0, Quaternion q1, float t)
+static inline Quaternion VECTORCALL QSlerp(Quaternion q0, Quaternion q1, float t)
 {
     const Vector4x32f one = VecSet1(1.0f);
     // from paper: "A Fast and Accurate Estimate for SLERP" by David Eberly
@@ -158,7 +158,7 @@ purefn Quaternion VECTORCALL QFromEulerVec3(Vec3f euler)
     return QFromEuler(euler.x, euler.y, euler.z);
 }
 
-inline Vec3f QToEulerAngles(Quaternion qu)
+purefn Vec3f QToEulerAngles(Quaternion qu)
 {
     xyzw q;
     VecStore(&q.x, qu);
@@ -170,7 +170,7 @@ inline Vec3f QToEulerAngles(Quaternion qu)
 }
 
 // number of columns of matrix, 3 or 4
-inline void QuaternionFromMatrix(float* Orientation, const float* m, int numCol) {
+static inline void QuaternionFromMatrix(float* Orientation, const float* m, int numCol) {
     int i, j, k = 0;
     float root, trace = m[0*numCol+0] + m[1 * numCol + 1] + m[2 * numCol + 2];
     
@@ -203,7 +203,7 @@ inline void QuaternionFromMatrix(float* Orientation, const float* m, int numCol)
 }
 
 // number of columns of matrix, 3 or 4
-inline void MatrixFromQuaternion(float* mat, Quaternion quat, int numCol)
+static inline void MatrixFromQuaternion(float* mat, Quaternion quat, int numCol)
 {
     xyzw q;
     VecStore(&q.x, quat);
@@ -263,25 +263,25 @@ purefn Quaternion VECTORCALL QInverse(Quaternion q)
     }
 }
 
-inline Vec3f VECTORCALL QGetForward(Quaternion vec) {
+static inline Vec3f VECTORCALL QGetForward(Quaternion vec) {
     Vec3f res;
     Vec3Store(&res.x, QMulVec3V(VecSetR( 0.0f, 0.0f, 1.0f, 0.0f), QConjugate(vec)));
     return res; 
 }
 
-inline Vec3f VECTORCALL QGetRight(Quaternion vec) {
+static inline Vec3f VECTORCALL QGetRight(Quaternion vec) {
     Vec3f res;
     Vec3Store(&res.x, QMulVec3V(VecSetR( 1.0f, 0.0f, 0.0f, 0.0f), QConjugate(vec)));
     return res; 
 }
 
-inline Vec3f VECTORCALL QGetLeft(Quaternion vec) {
+static inline Vec3f VECTORCALL QGetLeft(Quaternion vec) {
     Vec3f res;
     Vec3Store(&res.x, QMulVec3V(VecSetR(-1.0f, 0.0f, 0.0f, 0.0f), QConjugate(vec)));
     return res; 
 }
 
-inline Vec3f VECTORCALL QGetUp(Quaternion vec) {
+static inline Vec3f VECTORCALL QGetUp(Quaternion vec) {
     Vec3f res;
     Vec3Store(&res.x, QMulVec3V(VecSetR( 0.0f, 1.0f, 0.0f, 0.0f), QConjugate(vec)));
     return res; 

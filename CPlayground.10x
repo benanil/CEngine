@@ -22,10 +22,10 @@
 			<AdditionalIncludePath>C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.44.35207\include</AdditionalIncludePath>
 			<AdditionalIncludePath>C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\VS\include</AdditionalIncludePath>
 			<AdditionalIncludePath>C:\Program Files (x86)\Windows Kits\10\include\10.0.26100.0\ucrt</AdditionalIncludePath>
-			<AdditionalIncludePath>C:\Program Files (x86)\Windows Kits\10\\include\10.0.26100.0\\um</AdditionalIncludePath>
-			<AdditionalIncludePath>C:\Program Files (x86)\Windows Kits\10\\include\10.0.26100.0\\shared</AdditionalIncludePath>
-			<AdditionalIncludePath>C:\Program Files (x86)\Windows Kits\10\\include\10.0.26100.0\\winrt</AdditionalIncludePath>
-			<AdditionalIncludePath>C:\Program Files (x86)\Windows Kits\10\\include\10.0.26100.0\\cppwinrt</AdditionalIncludePath>
+			<AdditionalIncludePath>C:\Program Files (x86)\Windows Kits\10\include\10.0.26100.0\um</AdditionalIncludePath>
+			<AdditionalIncludePath>C:\Program Files (x86)\Windows Kits\10\include\10.0.26100.0\shared</AdditionalIncludePath>
+			<AdditionalIncludePath>C:\Program Files (x86)\Windows Kits\10\include\10.0.26100.0\winrt</AdditionalIncludePath>
+			<AdditionalIncludePath>C:\Program Files (x86)\Windows Kits\10\include\10.0.26100.0\cppwinrt</AdditionalIncludePath>
 		</AdditionalIncludePaths>
 		<Defines>
 			<Define>SOKOL_D3D11</Define>

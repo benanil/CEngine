@@ -1,7 +1,6 @@
 
 #include "Common.h"
 #include "RedBlackTree.h"
-#include "Extern/rpmalloc.h"
 
 static Node m_protect;
 

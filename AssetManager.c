@@ -18,7 +18,7 @@
 
 #include "Math/Matrix.h"
 #include "Math/Color.h"
-#include "IO.h"
+#include "FileSystem.h"
 #include "Common.h"
 
 
@@ -118,7 +118,7 @@ int LoadFBX(const char* path, SceneBundle* fbxScene, float scale)
     fbxScene->allVertices = AllocAligned(sizeof(ASkinedVertex) * totalVertices, 4);
     fbxScene->allIndices  = AllocAligned(sizeof(uint32_t) * totalIndices, 4);
     
-    if (fbxScene->numMeshes) fbxScene->meshes = rpcalloc(fbxScene->numMeshes, sizeof(AMesh));
+    if (fbxScene->numMeshes) fbxScene->meshes = (AMesh*)rpcalloc(fbxScene->numMeshes, sizeof(AMesh));
     
     uint32_t* currentIndex = (uint32_t*)fbxScene->allIndices;
     ASkinedVertex* currentVertex = (ASkinedVertex*)fbxScene->allVertices;
@@ -263,8 +263,10 @@ int LoadFBX(const char* path, SceneBundle* fbxScene, float scale)
     fbxScene->numSamplers = numTextures;
     
     if (numTextures)
-        fbxScene->textures = rpcalloc(numTextures, sizeof(ATexture));
-        fbxScene->samplers = rpcalloc(numTextures, sizeof(ASampler));
+    {
+        fbxScene->textures = (ATexture*)rpcalloc(numTextures, sizeof(ATexture));
+        fbxScene->samplers = (ASampler*)rpcalloc(numTextures, sizeof(ASampler));
+    }
     
     for (short i = 0; i < numTextures; i++)
     {
@@ -379,7 +381,7 @@ int LoadFBX(const char* path, SceneBundle* fbxScene, float scale)
     fbxScene->numNodes = numNodes;
     
     if (numNodes) {
-        fbxScene->nodes = rpcalloc(numNodes * 4, sizeof(ANode));
+        fbxScene->nodes = (ANode*)rpcalloc(numNodes * 4, sizeof(ANode));
     }
 
     for (int i = 0; i < numNodes; i++)
@@ -625,8 +627,8 @@ void CreateVerticesIndicesSkined(SceneBundle* gltf)
             for (int s = 0; s < gltf->animations[a].numSamplers; s++)
                 totalSamplerInput += gltf->animations[a].samplers[s].count;
         
-        float* currSampler = rpcalloc(totalSamplerInput, 4);
-        Vector4x32f* currOutput = rpcalloc(totalSamplerInput, sizeof(Vector4x32f));
+        float* currSampler = (float*)rpcalloc(totalSamplerInput, 4);
+        Vector4x32f* currOutput = (Vector4x32f*)rpcalloc(totalSamplerInput, sizeof(Vector4x32f));
 
         for (int a = 0; a < gltf->numAnimations; a++)
         {
@@ -1073,7 +1075,7 @@ int LoadSceneBundleBinary(const char* path, SceneBundle* gltf)
         ReadGLTFString(&material->name, file, allocator);
     }
     
-    if (gltf->numTextures > 0) gltf->textures = rpcalloc(gltf->numTextures, sizeof(ATexture));
+    if (gltf->numTextures > 0) gltf->textures = (ATexture*)rpcalloc(gltf->numTextures, sizeof(ATexture));
     for (int i = 0; i < gltf->numTextures; i++)
     {
         ATexture* texture = &gltf->textures[i];
@@ -1081,19 +1083,19 @@ int LoadSceneBundleBinary(const char* path, SceneBundle* gltf)
         AFileRead(&texture->source, sizeof(int), file, 1);
         ReadGLTFString(&texture->name, file, allocator);
     }
-    if (gltf->numImages > 0) gltf->images = rpcalloc(gltf->numImages, sizeof(AImage));
+    if (gltf->numImages > 0) gltf->images = (AImage*)rpcalloc(gltf->numImages, sizeof(AImage));
     for (int i = 0; i < gltf->numImages; i++)
     {
         ReadGLTFString(&gltf->images[i].path, file, allocator);
     }
     
-    if (gltf->numSamplers > 0) gltf->samplers = rpcalloc(gltf->numSamplers, sizeof(ASampler));
+    if (gltf->numSamplers > 0) gltf->samplers = (ASampler*)rpcalloc(gltf->numSamplers, sizeof(ASampler));
     for (int i = 0; i < gltf->numSamplers; i++)
     {
         AFileRead(&gltf->samplers[i], sizeof(ASampler), file, 1);
     }
     
-    if (gltf->numCameras > 0) gltf->cameras = rpcalloc(gltf->numCameras, sizeof(ACamera));
+    if (gltf->numCameras > 0) gltf->cameras = (ACamera*)rpcalloc(gltf->numCameras, sizeof(ACamera));
     for (int i = 0; i < gltf->numCameras; i++)
     {
         ACamera* camera = &gltf->cameras[i];
@@ -1105,7 +1107,7 @@ int LoadSceneBundleBinary(const char* path, SceneBundle* gltf)
         ReadGLTFString(&camera->name, file, allocator);
     }
     
-    if (gltf->numScenes > 0) gltf->scenes = rpcalloc(gltf->numScenes, sizeof(AScene));
+    if (gltf->numScenes > 0) gltf->scenes = (AScene*)rpcalloc(gltf->numScenes, sizeof(AScene));
     for (int i = 0; i < gltf->numScenes; i++)
     {
         AScene* scene = &gltf->scenes[i];
@@ -1115,7 +1117,7 @@ int LoadSceneBundleBinary(const char* path, SceneBundle* gltf)
         AFileRead(scene->nodes, sizeof(int) * scene->numNodes, file, 1);
     }
 
-    if (gltf->numSkins > 0) gltf->skins = rpcalloc(gltf->numSkins, sizeof(ASkin));
+    if (gltf->numSkins > 0) gltf->skins = (ASkin*)rpcalloc(gltf->numSkins, sizeof(ASkin));
     for (int i = 0; i < gltf->numSkins; i++)
     {
         ASkin* skin = &gltf->skins[i];
@@ -1133,8 +1135,8 @@ int LoadSceneBundleBinary(const char* path, SceneBundle* gltf)
     Vector4x32f* currSamplerOutput;
 
     if (totalAnimSamplerInput) {
-        currSamplerInput  = rpcalloc(totalAnimSamplerInput, sizeof(float));
-        currSamplerOutput = rpcalloc(totalAnimSamplerInput, sizeof(Vector4x32f));
+        currSamplerInput  = (float*)rpcalloc(totalAnimSamplerInput, sizeof(float));
+        currSamplerOutput = (Vector4x32f*)rpcalloc(totalAnimSamplerInput, sizeof(Vector4x32f));
         AFileRead(currSamplerInput, sizeof(float) * totalAnimSamplerInput, file, 1);
         AFileRead(currSamplerOutput, sizeof(Vector4x32f) * totalAnimSamplerInput, file, 1);
     }

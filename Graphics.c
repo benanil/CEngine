@@ -4,17 +4,13 @@
 
 //#include "Extern/sokol/sokol_gfx.h"
 #include "Extern/stb/stb_image_resize2.h"
-#include "Common.h"
+#include "Arena.h"
 #include "Platform.h"
 #include "Graphics.h"
-#include "IO.h"
+#include "FileSystem.h"
 
 #include <stdint.h>
 // #include "Math/Math.h"
-
-
-unsigned char* g_TextureLoadBuffer = NULL;
-uint64_t g_TextureLoadBufferSize = 0;
 
 static const uint8_t TextureTypeToBytesPerPixelMap[_SG_PIXELFORMAT_NUM] =
 {
@@ -88,10 +84,19 @@ static const uint8_t TextureTypeToBytesPerPixelMap[_SG_PIXELFORMAT_NUM] =
     [SG_PIXELFORMAT_ASTC_4x4_SRGBA]  = 1,
 };
 
+void rInit()
+{
+    
+}
+
+void rDestroy()
+{
+    
+}
 
 int GraphicsTypeToSize(GraphicType type)
 {
-    // BYTE, UNSIGNED_BYTE, SHORT, UNSIGNED_SHORT, INT, UNSIGNED_INT, FLOAT           
+    // BYTE, UNSIGNED_BYTE, SHORT, UNSIGNED_SHORT, INT, UNSIGNED_INT, FLOAT 
     const int TypeToSize[12] = { 1, 1, 2, 2, 4, 4, 4, 2, 4, 4, 8, 2 };
     return TypeToSize[type];
 }
@@ -106,17 +111,6 @@ uint64_t rTextureSizeBytes(Texture texture)
     return texture.width * texture.height * TextureTypeToBytesPerPixelMap[texture.format];
 }
 
-void rInit()
-{
-    g_TextureLoadBuffer = rpmalloc(g_TextureLoadBufferSize);
-    g_TextureLoadBufferSize = 1024 * 1024 * 4;
-}
-
-void rDestroy()
-{
-    rpfree(g_TextureLoadBuffer);
-}
-
 int rGetMipmapImageData(sg_image_data* img_data, void* data, int width, int height)
 {
     int numMips = (int)Log2_32((unsigned)width) >> 1; 
@@ -129,12 +123,12 @@ int rGetMipmapImageData(sg_image_data* img_data, void* data, int width, int heig
     {
         bufferSize += (width / i) * (height / i);
     }
-    uint8_t* buffer = rpmalloc(bufferSize);
+    uint8_t* buffer = arena_alloc(&global_arena, bufferSize);
+    img_data->subimage[0][0].ptr = data;
+    img_data->subimage[0][0].size = size;
 
-    for (int i = 0; i < numMips; i++)
+    for (int i = 1; i < numMips; i++)
     {
-        img_data->subimage[0][i].ptr = data;
-        img_data->subimage[0][i].size = size;
         if (i != numMips - 1)
             data = stbir_resize(data, width, height, width * 4, 
                                 buffer, width >> 1, height >> 1, (width >> 1) * 4, 
@@ -142,11 +136,14 @@ int rGetMipmapImageData(sg_image_data* img_data, void* data, int width, int heig
         width >>= 1;
         height >>= 1;
         size = width * height * 4;
+        data = buffer;
         buffer += size;
+        
+        img_data->subimage[0][i].ptr = data;
+        img_data->subimage[0][i].size = size;
     }
     return numMips;
 }
-
 
 static bool IsCompressed(const char* path, int pathLen)
 {
@@ -155,15 +152,6 @@ static bool IsCompressed(const char* path, int pathLen)
     #else
     return path[pathLen-1] == 'c' && path[pathLen-2] == 't' && path[pathLen-3] == 's' && path[pathLen-4] == 'a';
     #endif
-}
-
-
-static void rResizeTextureLoadBufferIfNecessarry(unsigned long long size)
-{
-    if (g_TextureLoadBufferSize < size)
-    {
-        g_TextureLoadBuffer = rprealloc(g_TextureLoadBuffer, size);
-    }
 }
 
 Texture rImportTexture(const char* path, TexFlags flags, const char* label)
@@ -183,16 +171,16 @@ Texture rImportTexture(const char* path, TexFlags flags, const char* label)
     AFile asset = AFileOpen(path, AOpenFlag_ReadBinary);
     uint64_t size = AFileSize(asset);
 
-    rResizeTextureLoadBufferIfNecessarry(size);
+    void* textureLoadBuffer = arena_alloc(&global_arena, size);
     
     int compressed = IsCompressed(path, StringLength(path));
     if (compressed) {
         ASSERT(0 && "not implemented");
     }
     
-    AFileRead(g_TextureLoadBuffer, size, asset, 1);
-    image = stbi_load_from_memory(g_TextureLoadBuffer, (int)size, &width, &height, &channels, 4);
-    
+    AFileRead(textureLoadBuffer, size, asset, 1);
+    image = stbi_load_from_memory(textureLoadBuffer, (int)size, &width, &height, &channels, 4);
+
     AFileClose(asset);
     
     if (image == NULL) {
@@ -211,11 +199,6 @@ Texture rImportTexture(const char* path, TexFlags flags, const char* label)
         texture.buffer = NULL;
     }
     return texture;
-}
-
-void rDeleteMipData(sg_image_data* img_data, int numMips)
-{
-    rpfree((void*)img_data->subimage[0][1].ptr);
 }
 
 typedef struct ImageInfo_
@@ -237,7 +220,8 @@ static void LoadSceneImagesGeneric(const char* texturePath, Texture* textures, i
     AFileRead(&version, sizeof(int), file, 1);
     ASSERT(version == g_AXTextureVersion); // probably using old version, find newer version of texture or reload the gltf or fbx scene
     
-    ImageInfo* imageInfos = rpmalloc(sizeof(ImageInfo) * numImages);
+    size_t arenaStart = global_arena.curr_offset;
+    ImageInfo imageInfos[512];
     
     for (int i = 0; i < numImages; i++)
     {
@@ -248,10 +232,10 @@ static void LoadSceneImagesGeneric(const char* texturePath, Texture* textures, i
     AFileRead(&decompressedSize, sizeof(uint64_t), file, 1);
     AFileRead(&compressedSize, sizeof(uint64_t), file, 1);
     
-    unsigned char* compressedBuffer = rpmalloc(compressedSize);
+    unsigned char* compressedBuffer = arena_alloc(&global_arena, compressedSize);
     AFileRead(compressedBuffer, compressedSize, file, 1);
     
-    unsigned char* decompressedBuffer = rpmalloc(decompressedSize);
+    unsigned char* decompressedBuffer = arena_alloc(&global_arena, decompressedSize);
     decompressedSize = ZSTD_decompress(decompressedBuffer, decompressedSize, compressedBuffer, compressedSize);
     ASSERT(!ZSTD_isError(decompressedSize));
     
@@ -301,7 +285,7 @@ static void LoadSceneImagesGeneric(const char* texturePath, Texture* textures, i
         #ifdef __ANDROID__
         if (!notCompressed)
         {
-            int mip = MAX((int)Log2_32((unsigned int)info.width) >> 1, 1) - 1;
+            int mip = Max32((int)Log2_32((unsigned int)info.width) >> 1, 1) - 1;
             while (mip-- > 0)
             {
                 info.width >>= 1;
@@ -311,10 +295,9 @@ static void LoadSceneImagesGeneric(const char* texturePath, Texture* textures, i
         }
         #endif
     }
+    global_arena.curr_offset = arenaStart;
     
     AFileClose(file);
-    rpfree(compressedBuffer);
-    rpfree(decompressedBuffer);
 }
 
 Texture rCreateTexture(int width, int height, void* data, sg_pixel_format format, TexFlags flags, const char* label)
@@ -325,6 +308,8 @@ Texture rCreateTexture(int width, int height, void* data, sg_pixel_format format
         .height = height,
         .label = label
     };
+    
+    size_t arenaStart = global_arena.curr_offset;
 
     if (data != NULL)
         imageDesc.data.subimage[0][0] = (sg_range){ data, width * height * rTextureTypeToBytesPerPixel(format) };
@@ -364,9 +349,9 @@ Texture rCreateTexture(int width, int height, void* data, sg_pixel_format format
         }
         else
         {
-            rDeleteMipData(&imageDesc.data, imageDesc.num_mipmaps);
         }
     }
+    global_arena.curr_offset = arenaStart;
 
     return texture;
 }

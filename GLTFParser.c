@@ -58,21 +58,32 @@ inline const char* SkipAfter(const char* curr, char character)
     return curr;
 }
 
-__private const char* CopyStringInQuotes(char** str, const char** curr, FixedPow2Allocator* stringAllocator) //, AStringAllocator& stringAllocator)
+__private const char* CopyStringInQuotes(char** str, const char** curr, FixedPow2Allocator* stringAllocator)
 {
-    while (**curr != '"') *curr++; // find quote
-    *curr++; // skip "
-    // get length in quotes
+    // skip until first quote
+    while (**curr && **curr != '"')
+        (*curr)++;
+
+    if (**curr != '"')
+        return NULL; // no opening quote
+
+    (*curr)++; // skip opening "
+
+    // find closing quote
     const char* quote = *curr;
-    while (*quote != '"') quote++;
+    while (*quote && *quote != '"')
+        quote++;
+
     int len = (int)(quote - *curr);
-    char* alloc = FixedPow2Allocator_Allocate(stringAllocator, len + 16);
+
+    char* alloc = FixedPow2Allocator_Allocate(stringAllocator, len + 1); // +1 for null
     *str = alloc;
+
     SmallMemCpy(alloc, *curr, len);
-    alloc += len;
-    *curr  += len;
-    *alloc = '\0'; // null terminate
-    return ++(*curr);// skip quote
+    alloc[len] = '\0';
+
+    *curr = (*quote == '"') ? quote + 1 : quote; // skip closing quote if found
+    return *curr;
 }
 
 __private const char* GetStringInQuotes(char* str, const char* curr)

@@ -167,4 +167,4 @@ void AnimationController_Create(SceneBundle* prefab, AnimationController* animCo
 
 void AnimationController_Clear(AnimationController* ac);
 
-#endif _ANIMATION_H
+#endif // _ANIMATION_H

@@ -154,8 +154,6 @@ int rGetMipmapImageData(sg_image_data* img_data, void* data, int width, int heig
 
 Texture rImportTexture(const char* path, TexFlags flags, const char* label);
 
-void rDeleteMipData(sg_image_data* img_data, int numMips);
-
 Texture rCreateTexture(int width, int height, void* data, sg_pixel_format format, TexFlags flags, const char* label);
 
 void rDeleteTexture(Texture texture);

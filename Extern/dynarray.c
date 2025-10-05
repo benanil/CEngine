@@ -1,6 +1,5 @@
 
 #include "dynarray.h"
-#include "rpmalloc.h"
 /*
 
 Dynamic Array

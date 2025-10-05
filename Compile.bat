@@ -8,13 +8,13 @@ if %ERRORLEVEL% neq 0 (
     exit /b %ERRORLEVEL%
 )
 
-rem REM <<<  CLANG COMPILER  >>>
-rem clang -O3 -mavx2 -mfma -msse4.2 -mf16c -mrdseed -s -fno-rtti -fno-stack-protector -Wimplicit-function-declaration -fno-exceptions -fno-unwind-tables -static-libgcc ^
-rem Main.c Extern/rpmalloc.c  -o MainCLANG.exe -I. -ladvapi32 -ld3d11 -ldxgi -ldxguid -luser32 -lshell32 -lgdi32 -lwinmm
-rem start "" "MainCLANG.exe"
+REM <<<  CLANG COMPILER  >>>
+REM clang -O3 -mavx2 -mfma -msse4.2 -mf16c -mrdseed -s -fno-rtti -fno-stack-protector -Wimplicit-function-declaration -fno-exceptions -fno-unwind-tables -static-libgcc ^
+REM Main.c  -o MainCLANG.exe -I. -ladvapi32 -ld3d11 -ldxgi -ldxguid -luser32 -lshell32 -lgdi32 -lwinmm
+REM start "" "MainCLANG.exe"
 
-rem rem REM <<<  MSVC COMPILER  >>>
-REM Set up the MSVC environment (adjust the path to your Visual Studio installation)
+REM <<<  MSVC COMPILER  >>>
+Set up the MSVC environment (adjust the path to your Visual Studio installation)
 call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvarsall.bat" x64
 if %ERRORLEVEL% neq 0 (
     echo Failed to set up MSVC environment!

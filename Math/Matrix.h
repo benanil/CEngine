@@ -53,7 +53,7 @@ purefn Vec3f Matrix3MultiplyVec3(Matrix3 m, Vec3f v)
     return Vec3Add(Vec3Add(Vec3MulF(m.r[0], v.x), Vec3MulF(m.r[1], v.y)), Vec3MulF(m.r[2], v.z));
 }
     
-static Matrix3 TBN(Vec3f normal, Vec3f tangent, Vec3f bitangent)
+static inline Matrix3 TBN(Vec3f normal, Vec3f tangent, Vec3f bitangent)
 {
     Matrix3 M;
     M.r[0] = normal;
@@ -62,7 +62,7 @@ static Matrix3 TBN(Vec3f normal, Vec3f tangent, Vec3f bitangent)
     return M;
 }
 
-static Matrix3 Identity()
+static inline Matrix3 Identity()
 {
     Matrix3 result;
     result.r[0] = (Vec3f){1.0f, 0.0f, 0.0f};
@@ -165,26 +165,26 @@ purefn Matrix4 MatrixCreateRotation(Vec3f right, Vec3f up, Vec3f forward)
 // we use Vector4x32f to represent 2x2 matrix as A = | A0  A1 |
 //                                             | A2  A3 |
 // 2x2 row major Matrix multiply A*B
-purefn static Vector4x32f VECTORCALL Mat2Mul(Vector4x32f vec1, Vector4x32f vec2)
+purefn Vector4x32f VECTORCALL Mat2Mul(Vector4x32f vec1, Vector4x32f vec2)
 {
     return VecAdd(VecMul(vec1, VecSwizzle(vec2, 0, 3, 0, 3)), 
                   VecMul(VecSwizzle(vec1, 1, 0, 3, 2), VecSwizzle(vec2, 2, 1, 2, 1)));
 }
 // 2x2 row major Matrix adjugate multiply (A#)*B
-purefn static Vector4x32f VECTORCALL Mat2AdjMul(Vector4x32f vec1, Vector4x32f vec2)
+purefn Vector4x32f VECTORCALL Mat2AdjMul(Vector4x32f vec1, Vector4x32f vec2)
 {
     return VecSub(VecMul(VecSwizzle(vec1, 3, 3, 0, 0), vec2),
                   VecMul(VecSwizzle(vec1, 1, 1, 2, 2), VecSwizzle(vec2, 2, 3, 0, 1)));
 }
 // 2x2 row major Matrix multiply adjugate A*(B#)
-purefn static Vector4x32f VECTORCALL Mat2MulAdj(Vector4x32f vec1, Vector4x32f vec2)
+purefn Vector4x32f VECTORCALL Mat2MulAdj(Vector4x32f vec1, Vector4x32f vec2)
 {
     return VecSub(VecMul(vec1, VecSwizzle(vec2, 3, 0, 3, 0)),
                   VecMul(VecSwizzle(vec1, 1, 0, 3, 2), VecSwizzle(vec2, 2, 1, 2, 1)));
 }
     
 // this will not work on camera matrix this is for only transformation matricies
-inline Matrix4 VECTORCALL InverseTransform(Matrix4 inM)
+static inline Matrix4 VECTORCALL InverseTransform(Matrix4 inM)
 {
     Matrix4 out;
     // transpose 3x3, we know m03 = m13 = m23 = 0
@@ -220,7 +220,7 @@ inline Matrix4 VECTORCALL InverseTransform(Matrix4 inM)
 }
     
 #if !defined(AX_ARM)
-inline Matrix4 VECTORCALL Matrix4Inverse(Matrix4 m)
+static inline Matrix4 VECTORCALL Matrix4Inverse(Matrix4 m)
 {
     Vector4x32f A = VecShuffle_0101(m.r[0], m.r[1]);
     Vector4x32f B = VecShuffle_2323(m.r[0], m.r[1]);
@@ -267,7 +267,7 @@ inline Matrix4 VECTORCALL Matrix4Inverse(Matrix4 m)
     return out;
 }
 #else
-inline Matrix4 VECTORCALL Matrix4Inverse(Matrix4 mat)
+static inline Matrix4 VECTORCALL Matrix4Inverse(Matrix4 mat)
 {
     float32x4_t v0, v1, v2, v3,
     t0, t1, t2, t3, t4, t5,
@@ -569,7 +569,7 @@ inline Matrix4 VECTORCALL MatrixFromQuaternionV(Quaternion q)
     #endif
 }
     
-inline Matrix4 VECTORCALL MatrixFromQuaternionF(const float* quaternion)
+static inline Matrix4 VECTORCALL MatrixFromQuaternionF(const float* quaternion)
 {
     return MatrixFromQuaternionV(MakeQuat(quaternion[0], quaternion[1], quaternion[2], quaternion[3]));
 }
@@ -625,7 +625,7 @@ purefn Vector4x32f VECTORCALL MaxPointAlongNormal(Vector4x32f min, Vector4x32f m
     return VecSelect(min, max, VecCmpGe(n, VecZero()));
 }
 
-inline bool VECTORCALL CheckAABBCulled(Vector4x32f min, Vector4x32f max, FrustumPlanes frustum, Matrix4 model)
+static inline bool VECTORCALL CheckAABBCulled(Vector4x32f min, Vector4x32f max, FrustumPlanes frustum, Matrix4 model)
 {
     for (uint32_t i = 0u; i < 5u; ++i) // make < 6 if you want far plane 
     {
@@ -636,7 +636,7 @@ inline bool VECTORCALL CheckAABBCulled(Vector4x32f min, Vector4x32f max, Frustum
     return true;
 }
 
-inline bool isPointCulled(FrustumPlanes frustum, Vec3f _point, Matrix4 matrix)
+static inline bool isPointCulled(FrustumPlanes frustum, Vec3f _point, Matrix4 matrix)
 {
     Vector4x32f point = Vector3Transform(VecLoad(&_point.x), matrix.r);
     if (VecDotf(frustum.planes[0], point) < 0.0f) return false;
@@ -647,7 +647,7 @@ inline bool isPointCulled(FrustumPlanes frustum, Vec3f _point, Matrix4 matrix)
     return true;
 }
 
-inline Vec2f WorldToNDC(Matrix4 viewProj, Vec3f worldPos)
+static inline Vec2f WorldToNDC(Matrix4 viewProj, Vec3f worldPos)
 {
     Vector4x32f pos = VecLoad(&worldPos.x);
     Vector4x32f clipCoords = Vector3Transform(pos, viewProj.r);
@@ -656,7 +656,7 @@ inline Vec2f WorldToNDC(Matrix4 viewProj, Vec3f worldPos)
     return (Vec2f){ worldPos.x, worldPos.y };
 }
 
-inline Vec2f WorldToScreenCoord(Matrix4 viewProj, Vec3f worldPos, int width, int height)
+static inline Vec2f WorldToScreenCoord(Matrix4 viewProj, Vec3f worldPos, int width, int height)
 {
     Vec2f ndc = WorldToNDC(viewProj, worldPos);
     return (Vec2f){ (width  * ndc.x), (height * ndc.y) };
