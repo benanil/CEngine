@@ -2,10 +2,6 @@
 *.obj
 *.o
 *.rdi
-*.exe
-*.lib
-*.dll
-*.exp
 
 # MSVC / Linker artifacts
 *.ilk
@@ -26,20 +22,3 @@
 # Clang / GCC
 *.d
 *.out
-
-# Directories
-/Debug/
-/Release/
-/x64/
-/x86/
-/bin/
-/build/
-/intermediate/
-/. vs*/
-
-# Misc
-*.db
-*.opendb
-*.VC.db
-*.VC.VC.opendb
-*.rsp
