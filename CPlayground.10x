@@ -41,7 +41,7 @@
 		<ConfigProperties>
 			<ConfigAndPlatform>
 				<Name>Debug:x64</Name>
-				<BuildCommand>Compile.bat $(Configuration)</BuildCommand>
+				<BuildCommand>$(RootWorkspaceDirectory)/Build/Compile.bat $(Configuration)</BuildCommand>
 				<RebuildCommand></RebuildCommand>
 				<BuildFileCommand></BuildFileCommand>
 				<CleanCommand></CleanCommand>
@@ -58,7 +58,7 @@
 			</ConfigAndPlatform>
 			<ConfigAndPlatform>
 				<Name>Release:x64</Name>
-				<BuildCommand>Compile.bat $(Configuration)</BuildCommand>
+				<BuildCommand>$(RootWorkspaceDirectory)/Build/Compile.bat $(Configuration)</BuildCommand>
 				<RebuildCommand></RebuildCommand>
 				<BuildFileCommand></BuildFileCommand>
 				<CleanCommand></CleanCommand>

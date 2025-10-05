@@ -1,15 +1,15 @@
 # Build outputs
-.obj
+*.obj
 *.o
-.rdi
+*.rdi
 *.exe
 *.lib
 *.dll
 *.exp
 
 # MSVC / Linker artifacts
-.ilk
-.pdb
+*.ilk
+*.pdb
 *.idb
 *.ipch
 *.sbr
