@@ -13,15 +13,16 @@
     *                                                                *
     *****************************************************************/
 
-#include "GLTFParser.h"
+#include "Include/Common.h"
+#include "Include/FileSystem.h"
+#include "Include/Algorithm.h"
+#include "Include/GLTFParser.h"
+#include "Include/Memory.h"
 
-#include "Extern/dynarray.h"
-
-#include "IO.h"
 #include "Math/Matrix.h"
 #include "Math/Color.h"
-#include "Common.h"
-#include "Algorithm.h"
+
+#include "Extern/dynarray.h"
 
 #define __private static
 #define __public 
@@ -76,7 +77,7 @@ __private const char* CopyStringInQuotes(char** str, const char** curr, FixedPow
 
     int len = (int)(quote - *curr);
 
-    char* alloc = FixedPow2Allocator_Allocate(stringAllocator, len + 1); // +1 for null
+    char* alloc = (char*)FixedPow2Allocator_Allocate(stringAllocator, len + 1); // +1 for null
     *str = alloc;
 
     SmallMemCpy(alloc, *curr, len);
@@ -110,6 +111,7 @@ __private uint64_t AHashString8(const char* curr)
     uint64_t h = 0ull;
     uint64_t shift = 0;
 
+    AX_NO_UNROLL
     while (*curr != '\0') 
     { 
         h |= (uint64_t)(*curr++) << shift; 
@@ -180,11 +182,11 @@ __private const char* ParseAccessors(const char* curr, GLTFAccessor** accessorAr
             uint64_t hash;
             curr = HashStringInQuotes(&hash, curr);
             
-            if (hash == AHashString8("SCALAR"))    { accessor.type = 1; break; } 
-            else if (hash == AHashString8("VEC2")) { accessor.type = 2; break; } 
-            else if (hash == AHashString8("VEC3")) { accessor.type = 3; break; } 
-            else if (hash == AHashString8("VEC4")) { accessor.type = 4; break; } 
-            else if (hash == AHashString8("MAT4")) { accessor.type = 16; break; } 
+            if (hash == AHashString8("SCALAR"))    { accessor.type = 1;  continue; } 
+            else if (hash == AHashString8("VEC2")) { accessor.type = 2;  continue; } 
+            else if (hash == AHashString8("VEC3")) { accessor.type = 3;  continue; } 
+            else if (hash == AHashString8("VEC4")) { accessor.type = 4;  continue; } 
+            else if (hash == AHashString8("MAT4")) { accessor.type = 16; continue; } 
             else ASSERT(0 && "Unknown accessor type");
         }
         else if (StrCMP16(curr, "min")) curr = SkipToNextNode(curr, '[', ']'); // skip min and max
@@ -201,10 +203,9 @@ __private const char* ParseAccessors(const char* curr, GLTFAccessor** accessorAr
 
 inline int ParsePositiveNumberSkip1(const char** ptr)
 {
-    *ptr++;
+    (*ptr)++;
     return ParsePositiveNumber(ptr);
 }
-
 
 __private const char* ParseBufferViews(const char* curr, GLTFBufferView** bufferViews)
 {
@@ -230,17 +231,17 @@ __private const char* ParseBufferViews(const char* curr, GLTFBufferView** buffer
         uint64_t hash;
         curr = HashStringInQuotes(&hash, curr);
 
-        if      (hash == AHashString8("buffer"))   { bufferView.buffer = ParsePositiveNumberSkip1(&curr); break;  } 
-        else if (hash == AHashString8("byteOffs")) { bufferView.byteOffset = ParsePositiveNumberSkip1(&curr); break;  } 
-        else if (hash == AHashString8("byteLeng")) { bufferView.byteLength = ParsePositiveNumberSkip1(&curr); break;  } 
-        else if (hash == AHashString8("byteStri")) { bufferView.byteStride = ParsePositiveNumberSkip1(&curr); break;  } 
-        else if (hash == AHashString8("target"))   { bufferView.target = ParsePositiveNumberSkip1(&curr); break; } 
+        if      (hash == AHashString8("buffer"))   { bufferView.buffer = ParsePositiveNumberSkip1(&curr); continue;  } 
+        else if (hash == AHashString8("byteOffs")) { bufferView.byteOffset = ParsePositiveNumberSkip1(&curr); continue;  } 
+        else if (hash == AHashString8("byteLeng")) { bufferView.byteLength = ParsePositiveNumberSkip1(&curr); continue;  } 
+        else if (hash == AHashString8("byteStri")) { bufferView.byteStride = ParsePositiveNumberSkip1(&curr); continue;  } 
+        else if (hash == AHashString8("target"))   { bufferView.target = ParsePositiveNumberSkip1(&curr); continue; } 
         else if (hash == AHashString8("name")) 
         {
             int numQuote = 0;
             while (numQuote < 2)
                 numQuote += *curr++ == '"';
-            break;
+            continue;
         }
         else {
             ASSERT(0 && "UNKNOWN buffer view value!");
@@ -320,8 +321,9 @@ __private const char* ParseBuffers(const char* curr, const char* path, GLTFBuffe
             }
             else
             {
+                char* fileBuffer = NULL;
                 curr = GetStringInQuotes(endOfWorkDir, curr);
-                buffer.uri = ReadAllFile(binFilePath, NULL);
+                buffer.uri = ReadAllFile(binFilePath, &fileBuffer);
                 ASSERT(buffer.uri && "uri is not exist");
                 if (!buffer.uri) return (const char*)AError_BIN_NOT_EXIST;
             }
@@ -369,7 +371,7 @@ __private const char* ParseImages(const char* curr, const char* path, AImage** i
             int uriSize = 0;
             while (curr[uriSize] != '"') uriSize++;
 
-            image.path = FixedPow2Allocator_Allocate(allocator, uriSize + pathLen + 16);
+            image.path = (char*)FixedPow2Allocator_Allocate(allocator, uriSize + pathLen + 16);
             SmallMemCpy(image.path, path, pathLen);
             SmallMemCpy(image.path + pathLen, curr, uriSize);
             image.path[uriSize + pathLen] = '\0';
@@ -494,7 +496,12 @@ __private const char* ParseMeshes(const char* curr, AMesh** meshes, FixedPow2All
             curr = SkipAfter(curr, ']');
             continue;
         }
-        else if (!StrCMP16(text, "primitives")) { 
+        else if (StrCMP16(text, "primitives"))
+        {
+            mesh.primitives = dynarray_create(APrimitive);
+        }
+        else
+        { 
             ASSERT(0 && "only primitives, name and weights allowed"); 
             return (const char*)AError_UNKNOWN_MESH_VAR; 
         }
@@ -577,7 +584,7 @@ static IntPtrPair ParseIntArray(const char** cr, FixedPow2Allocator* allocator)
         if (*curr++ == ']') break;
     }
     curr = begin;
-    result.ptr = FixedPow2Allocator_AllocateUninitialized(allocator, result.numElements * sizeof(int));
+    result.ptr = (int*)FixedPow2Allocator_AllocateUninitialized(allocator, result.numElements * sizeof(int));
     result.numElements = 0;
     
     while (*curr != ']')
@@ -778,7 +785,7 @@ __private const char* ParseScenes(const char* curr, AScene** scenes, FixedPow2Al
                 if (*curr++ == ']') break;
             }
             curr = begin;
-            scene.nodes = FixedPow2Allocator_AllocateUninitialized(allocator, scene.numNodes * sizeof(int)); 
+            scene.nodes = (int*)FixedPow2Allocator_AllocateUninitialized(allocator, scene.numNodes * sizeof(int)); 
             scene.numNodes = 0;
 
             while (*curr != ']')
@@ -1107,12 +1114,18 @@ static const char* ParseAnimations(const char* curr, AAnimation** animations, Fi
                 animation.numChannels = dynarray_length(channels);
                 animation.samplers = samplers;
                 animation.channels = channels;
-                dynarray_push(animations, animation);
+                dynarray_push(*animations, animation);
                 MemsetZero(&animation, sizeof(AAnimation));
+                channels = dynarray_create(AAnimChannel);
+                samplers = dynarray_create(AAnimSampler);
                 animation.speed = 1.0f;
             }
-            if (*curr++ == ']') 
+            if (*curr++ == ']')
+            {
+                dynarray_destroy(channels);
+                dynarray_destroy(samplers);
                 return curr; // end all nodes
+            }
         }
         ASSERTR(*curr != '\0' && "parsing animations not possible, probably forgot to close brackets!", return (const char*)AError_CloseBrackets);
         curr++; // skips the "
@@ -1148,10 +1161,10 @@ static const char* ParseAnimations(const char* curr, AAnimation** animations, Fi
                 uint64_t hash;
                 curr = HashStringInQuotes(&hash, curr);
 
-                if (hash == AHashString8("sampler")) { channel.sampler = ParsePositiveNumber(&curr);     break; } 
-                if (hash == AHashString8("node"))    { channel.targetNode = ParsePositiveNumber(&curr);  break; } 
-                if (hash == AHashString8("target"))  { curr += sizeof("target'"); parsingTarget = true; break; } 
-                if (hash == AHashString8("path"))
+                     if (hash == AHashString8("sampler")) { channel.sampler = ParsePositiveNumber(&curr);    } 
+                else if (hash == AHashString8("node"))    { channel.targetNode = ParsePositiveNumber(&curr); } 
+                else if (hash == AHashString8("target"))  { curr += sizeof("target'"); parsingTarget = true; } 
+                else if (hash == AHashString8("path"))
                 {
                     curr = SkipAfter(curr, '"');
                     switch (*curr) {
@@ -1186,9 +1199,9 @@ static const char* ParseAnimations(const char* curr, AAnimation** animations, Fi
                 uint64_t hash;
                 curr = HashStringInQuotes(&hash, curr);
 
-                if (hash == AHashString8("input"))     { sampler.input  = (float*)(size_t)ParsePositiveNumber(&curr); break; } 
-                if (hash == AHashString8("output"))    { sampler.output = (float*)(size_t)ParsePositiveNumber(&curr); break; } 
-                if (hash == AHashString8("interpol"))  // you've been searching from interpol hands up!!
+                     if (hash == AHashString8("input"))     { sampler.input  = (float*)(size_t)ParsePositiveNumber(&curr); } 
+                else if (hash == AHashString8("output"))    { sampler.output = (float*)(size_t)ParsePositiveNumber(&curr); } 
+                else if (hash == AHashString8("interpol"))  // you've been searching from interpol hands up!!
                 {
                     curr += sizeof("interpolation") - sizeof("interpol");
                     curr = SkipAfter(curr, '"');
@@ -1212,7 +1225,8 @@ __public int ParseGLTF(const char* path, SceneBundle* result, float scale)
 {
     ASSERT(result && path);
     uint64_t sourceSize = 0;
-    char* source = ReadAllFile(path, NULL);
+    char* source = NULL;
+    ReadAllFile(path, &source);
     MemsetZero(result, sizeof(SceneBundle));
 
     if (source == NULL) { result->error = AError_FILE_NOT_FOUND; ASSERT(0); return 0; }

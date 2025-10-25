@@ -1,8 +1,10 @@
 #ifndef _H_GRAPHICS_
 #define _H_GRAPHICS_
 
-#include "Math/Half.h"
+#include "../Extern/sokol/sokol_gfx.h"
+#include "../Math/Half.h"
 #include "GLTFParser.h"
+
 
 enum TexFlags_
 {
@@ -99,12 +101,12 @@ typedef struct Texture_
     void* buffer;
 } Texture;
 
-ANode* GetNodePtr(SceneBundle* prefab, int index)
+static inline ANode* GetNodePtr(SceneBundle* prefab, int index)
 {
     return &prefab->nodes[index];
 }
 
-int GetRootNodeIdx(SceneBundle* bundle)
+static inline int GetRootNodeIdx(SceneBundle* bundle)
 {
     int node = 0;
     if (bundle->numScenes > 0) {
@@ -157,6 +159,12 @@ Texture rImportTexture(const char* path, TexFlags flags, const char* label);
 Texture rCreateTexture(int width, int height, void* data, sg_pixel_format format, TexFlags flags, const char* label);
 
 void rDeleteTexture(Texture texture);
+
+void LoadSceneImagesGeneric(const char* texturePath, Texture* textures, int numImages);
+
+void rUpdateTexture(Texture texture, void* data);
+
+int GraphicsTypeToSize(GraphicType type);
 
 
 // // w value is undefined, it could be anything or trash data

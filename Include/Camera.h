@@ -1,7 +1,7 @@
 #ifndef CAMERA_DEFINED
 #define CAMERA_DEFINED
 
-#include "Math/Matrix.h"
+#include "../Math/Matrix.h"
 #include "Platform.h"
 //#include "sokol/sokol_app.h"
 

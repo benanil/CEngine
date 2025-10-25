@@ -39,7 +39,7 @@ typedef struct PlatformContext_
     float MousePosX, MousePosY;
     float MouseWheelDelta;
     float SecondsSinceLastClick;
-    float DeltaTime;
+    double DeltaTime;
     uint64_t LastClickTime;
     uint64_t StartupTime;
     

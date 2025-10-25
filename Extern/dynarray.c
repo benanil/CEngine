@@ -1,5 +1,6 @@
 
 #include "dynarray.h"
+#include "../Include/Memory.h"
 /*
 
 Dynamic Array

@@ -9,7 +9,7 @@
 // and macro's allows many more optimizations that compiler can do.
 // a bit more explanation here: https://medium.com/@anilcangulkaya7/what-is-simd-and-how-to-use-it-3d1125faac89
 
-#include "Common.h"
+#include "Math.h"
 
 #if defined(AX_SUPPORT_SSE) && !defined(AX_ARM)
 /*//////////////////////////////////////////////////////////////////////////*/

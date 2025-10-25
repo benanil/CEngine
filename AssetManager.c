@@ -7,9 +7,12 @@
 *        Anilcan Gulkaya 2024 anilcangulkaya7@gmail.com github @benanil          *
 *********************************************************************************/
 
-#include "AssetManager.h"
-#include "Platform.h"
-#include "Graphics.h"
+#include "Include/AssetManager.h"
+#include "Include/Platform.h"
+#include "Include/Graphics.h"
+#include "Include/Algorithm.h"
+#include "Include/Memory.h"
+
 // #include "Scene.h"
 
 #if !AX_GAME_BUILD
@@ -18,13 +21,15 @@
 
 #include "Math/Matrix.h"
 #include "Math/Color.h"
-// #include "FileSystem.h"
-#include "Common.h"
+#include "Include/FileSystem.h"
+#include "Include/Common.h"
 
 
-#include "Extern/zstd.h"
+#define SINFL_IMPLEMENTATION
+#define SDEFL_IMPLEMENTATION
+#include "Extern/sdefl.h"
+#include "Extern/sinfl.h"
 #include "Extern/dynarray.h"
-
 
 
 /*//////////////////////////////////////////////////////////////////////////*/
@@ -32,6 +37,16 @@
 /*//////////////////////////////////////////////////////////////////////////*/
 
 #if !AX_GAME_BUILD
+
+static int void_ptr_compare(const void* a, const void* b)
+{
+    const void* const* ptr_a = (const void* const*)a;
+    const void* const* ptr_b = (const void* const*)b;
+
+    if (*ptr_a < *ptr_b) return -1;
+    if (*ptr_a > *ptr_b) return 1;
+    return 0;
+}
 
 static short GetFBXTexture(ufbx_material* umaterial,
                     ufbx_scene* uscene, 
@@ -642,8 +657,8 @@ void CreateVerticesIndicesSkined(SceneBundle* gltf)
                 for (int i = 0; i < sampler->count; i++)
                 {
                     SmallMemCpy(currOutput + i, sampler->output + (i * sampler->numComponent), sizeof(float) * sampler->numComponent);
-                    // currOutput[i] = VecLoad(sampler.output + (i * sampler.numComponent));
-                    // if (sampler.numComponent == 3) currOutput[i] = VecSetW(currOutput[i], 0.0f);
+                    currOutput[i] = VecLoad(sampler->output + (i * sampler->numComponent));
+                    if (sampler->numComponent == 3) currOutput[i] = VecSetW(currOutput[i], 0.0f);
                 }
                 sampler->output = (float*)currOutput;
                 currOutput += sampler->count;
@@ -659,7 +674,7 @@ void CreateVerticesIndicesSkined(SceneBundle* gltf)
 /*                            Binary Save                                   */
 /*//////////////////////////////////////////////////////////////////////////*/
 
-ZSTD_CCtx* zstdCompressorCTX = NULL;
+// ZSTD_CCtx* zstdCompressorCTX = NULL;
 const int ABMMeshVersion = 42;
 
 bool IsABMLastVersion(const char* path)
@@ -729,17 +744,18 @@ int SaveGLTFBinary(SceneBundle* gltf, const char* path)
     
     // Compress and write, vertices and indices
     uint64_t compressedSize = (uint64_t)(allVertexSize * 0.9);
-    char* compressedBuffer = rpmalloc(compressedSize);
+    char* compressedBuffer = global_arena.buf + global_arena.curr_offset;
     
-    size_t afterCompSize = ZSTD_compress(compressedBuffer, compressedSize, gltf->allVertices, allVertexSize, 5);
+    struct sdefl sdfl;
+    size_t afterCompSize = zsdeflate(&sdfl, compressedBuffer, gltf->allVertices, allVertexSize, 5);
+    // ZSTD_compress(compressedBuffer, compressedSize, gltf->allVertices, allVertexSize, 5);
     AFileWrite(&afterCompSize, sizeof(uint64_t), file, 1);
     AFileWrite(compressedBuffer, afterCompSize, file, 1);
     
-    afterCompSize = ZSTD_compress(compressedBuffer, compressedSize, gltf->allIndices, allIndexSize, 5);
+    afterCompSize = zsdeflate(&sdfl, compressedBuffer, gltf->allIndices, allIndexSize, 5);
     AFileWrite(&afterCompSize, sizeof(uint64_t), file, 1);
     AFileWrite(compressedBuffer, afterCompSize, file, 1);
-
-    rpfree(compressedBuffer);
+    // rpfree(compressedBuffer);
     // Note: anim morph targets aren't saved
 
     for (int i = 0; i < gltf->numMeshes; i++)
@@ -968,18 +984,20 @@ int LoadSceneBundleBinary(const char* path, SceneBundle* gltf)
         gltf->allVertices = AllocAligned(vertexSize * gltf->totalVertices, vertexAlignment); // divide / 4 to get number of floats
         gltf->allIndices = AllocAligned(allIndexSize, 4);
         
-        char* compressedBuffer = rpmalloc(allVertexSize);
+        char* compressedBuffer = global_arena.buf + global_arena.curr_offset; //  rpmalloc(allVertexSize);
         uint64_t compressedSize;
         AFileRead(&compressedSize, sizeof(uint64_t), file, 1);
         AFileRead(compressedBuffer, compressedSize, file, 1);
-        ZSTD_decompress(gltf->allVertices, allVertexSize, compressedBuffer, compressedSize);
-        
+       
+        zsinflate(gltf->allVertices, allVertexSize, compressedBuffer, compressedSize);
+        // ZSTD_decompress(gltf->allVertices, allVertexSize, compressedBuffer, compressedSize);
 
         AFileRead(&compressedSize, sizeof(uint64_t), file, 1);
         AFileRead(compressedBuffer, compressedSize, file, 1);
-        ZSTD_decompress(gltf->allIndices, allIndexSize, compressedBuffer, compressedSize);
-        
-        rpfree(compressedBuffer);
+        zsinflate(gltf->allIndices, allIndexSize, compressedBuffer, compressedSize);
+        // ZSTD_decompress(gltf->allIndices, allIndexSize, compressedBuffer, compressedSize);
+
+        // rpfree(compressedBuffer);
     }
     
     char* currVertices = (char*)gltf->allVertices;

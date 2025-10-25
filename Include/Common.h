@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <float.h>
 #include <stddef.h>
+#include <limits.h>
 
 #define KB 1024L
 #define MB (1024L * 1024L)
@@ -34,14 +35,14 @@
 /* Intrinsics Support */
 #if (defined(AX_X64) || defined(AX_X86)) && !defined(AX_ARM)
     #if defined(_MSC_VER) && !defined(__clang__)
-        #if _MSC_VER >= 1400 && !defined(AX_NO_SSE2)   /* 2005 */
+        #if _MSC_VER >= 1400   /* 2005 */
             #define AX_SUPPORT_SSE
         #endif
         #if _MSC_VER >= 1700 && !defined(AX_NO_AVX2)   /* 2012 */
             #define AX_SUPPORT_AVX2
         #endif
     #else
-        #if defined(__SSE2__) && !defined(AX_NO_SSE2)
+        #if defined(__SSE2__) 
             #define AX_SUPPORT_SSE
         #endif
         #if defined(__AVX2__) && !defined(AX_NO_AVX2)
@@ -49,12 +50,14 @@
         #endif
     #endif
     
+    #include <intrin.h>
+
     /* If at this point we still haven't determined compiler support for the intrinsics just fall back to __has_include. */
     #if !defined(__GNUC__) && !defined(__clang__) && defined(__has_include)
-        #if !defined(AX_SUPPORT_SSE) && !defined(AX_NO_SSE2) && __has_include(<emmintrin.h>)
+        #if !defined(AX_SUPPORT_SSE) && __has_include(<emmintrin.h>)
             #define AX_SUPPORT_SSE
         #endif
-        #if !defined(AX_SUPPORT_AVX2) && !defined(AX_NO_AVX2) && __has_include(<immintrin.h>)
+        #if !defined(AX_SUPPORT_AVX2) && __has_include(<immintrin.h>)
             #define AX_SUPPORT_AVX2
         #endif
     #endif
@@ -97,7 +100,6 @@
 #endif
 
 #ifdef _MSC_VER
-    #include <intrin.h>
     #define VECTORCALL __vectorcall
 #elif __CLANG__
     #define VECTORCALL [[clang::vectorcall]] 
@@ -256,13 +258,13 @@
 //------------------------------------------------------------------------
 // Memory Operations:  memcpy, memset, unaligned load
 
-#ifdef _MSC_VER
+#ifdef AX_SUPPORT_SSE
     #define SmallMemCpy(dst, src, size) __movsb((unsigned char*)(dst), (unsigned char*)(src), size);
 #else
     #define SmallMemCpy(dst, src, size) __builtin_memcpy(dst, src, size);
 #endif
 
-#ifdef _MSC_VER
+#ifdef AX_SUPPORT_SSE
     #define SmallMemSet(dst, val, size) __stosb((unsigned char*)(dst), val, size);
 #else
     #define SmallMemSet(dst, val, size) __builtin_memset(dst, val, size);
@@ -541,188 +543,143 @@ purefn int CalculateArrayGrowth(int _size)
     }
 #endif
 
-static inline void MemSetAligned64(void* RESTRICT dst, unsigned char val, uint64_t sizeInBytes)
+static inline void MemSet(void* RESTRICT dst, unsigned char val, uint64_t sizeInBytes)
 {
-    uint64_t* dp = (uint64_t*)dst;
-    uint64_t count = sizeInBytes >> 3; // number of 64-bit words
-    uint64_t rem = sizeInBytes & 7;    // remaining bytes
-
-    uint64_t d8 = val * 0x0101010101010101ULL;
-
-    while (count >= 4)
-    {
-        dp[0] = dp[1] = dp[2] = dp[3] = d8;
-        dp += 4;
-        count -= 4;
+    #if defined(AX_SUPPORT_SSE)
+    __m128i vval = _mm_set1_epi8(val);
+    __m128i* dp = (__m128i*)dst;
+    uint64_t count = sizeInBytes >> 4; // number of 16-byte chunks
+    
+    while (count >= 4) {
+        _mm_storeu_si128(dp + 0, vval);
+        _mm_storeu_si128(dp + 1, vval);
+        _mm_storeu_si128(dp + 2, vval);
+        _mm_storeu_si128(dp + 3, vval);
+        dp += 4, count -= 4;
     }
-
+    
+    AX_NO_UNROLL 
+    while (count--) {
+        _mm_storeu_si128(dp++, vval);
+    }
+    
+    uint64_t rem = sizeInBytes & 15;
+    if (rem) SmallMemSet((unsigned char*)dp, val, rem);
+        
+    #elif defined(AX_ARM) && defined(__ARM_NEON)
+    uint8x16_t vval = vdupq_n_u8(val);
+    uint8_t* dp = (uint8_t*)dst;
+    uint64_t count = sizeInBytes >> 4;
+    
+    while (count >= 4) {
+        vst1q_u8(dp + 0, vval);
+        vst1q_u8(dp + 16, vval);
+        vst1q_u8(dp + 32, vval);
+        vst1q_u8(dp + 48, vval);
+        dp += 64, count -= 4;
+    }
+    
     AX_NO_UNROLL
-    while (count--)
-        *dp++ = d8;
-
-    if (rem)
-    {
-        unsigned char* cp = (unsigned char*)dp;
-        AX_NO_UNROLL
-        for (uint64_t i = 0; i < rem; i++)
-            cp[i] = val;
+    while (count--) {
+        vst1q_u8(dp, vval);
+        dp += 16;
     }
+    
+    uint64_t rem = sizeInBytes & 15;
+    if (rem) SmallMemSet(dp, val, rem);
+        
+    #else
+    uint64_t* dp = (uint64_t*)dst;
+    uint64_t count = sizeInBytes >> 3;
+    uint64_t d8 = val * 0x0101010101010101ULL;
+    
+    while (count >= 8) {
+        dp[0] = d8; dp[1] = d8; dp[2] = d8; dp[3] = d8; 
+        dp[4] = d8; dp[5] = d8; dp[6] = d8; dp[7] = d8;
+        dp += 8, count -= 8;
+    }
+    
+    AX_NO_UNROLL while (count--) *dp++ = d8;
+    
+    uint64_t rem = sizeInBytes & 7;
+    if (rem) SmallMemSet((unsigned char*)dp, val, rem);
+    #endif
 }
 
-static inline void MemSetAligned32(uint32_t* RESTRICT dst, unsigned char val, uint64_t sizeInBytes)
+static inline void MemCpy(void* dst, const void* RESTRICT src, uint64_t sizeInBytes)
 {
-    uint32_t* dp = dst;
-    uint64_t count = sizeInBytes >> 2; // number of 32-bit words
-    uint64_t rem = sizeInBytes & 3;    // remaining bytes
-
-    uint32_t d4 = val * 0x01010101U;
-
+    #if defined(AX_SUPPORT_SSE)
+    const __m128i* sp = (const __m128i*)src;
+    __m128i* dp = (__m128i*)dst;
+    uint64_t count = sizeInBytes >> 4; // number of 16-byte chunks
+    
     while (count >= 4)
     {
-        dp[0] = dp[1] = dp[2] = dp[3] = d4;
-        dp += 4;
-        count -= 4;
+        __m128i v0 = _mm_loadu_si128(sp + 0);
+        __m128i v1 = _mm_loadu_si128(sp + 1);
+        __m128i v2 = _mm_loadu_si128(sp + 2);
+        __m128i v3 = _mm_loadu_si128(sp + 3);
+        _mm_storeu_si128(dp + 0, v0);
+        _mm_storeu_si128(dp + 1, v1);
+        _mm_storeu_si128(dp + 2, v2);
+        _mm_storeu_si128(dp + 3, v3);
+        sp += 4, dp += 4, count -= 4;
     }
 
-    AX_NO_UNROLL while (count--) *dp++ = d4;
-
-    if (rem)
+    AX_NO_UNROLL while (count--)
     {
-        unsigned char* cp = (unsigned char*)dp;
-        AX_NO_UNROLL 
-        for (uint64_t i = 0; i < rem; i++)
-            cp[i] = val;
+        _mm_storeu_si128(dp++, _mm_loadu_si128(sp++));
     }
-}
-
-static inline void MemSet(void* dst, unsigned char val, uint64_t sizeInBytes, int alignment)
-{
-    uintptr_t uptr = (uintptr_t)dst;
-
-    if (alignment == 8 || (!(uptr & 7)))
-        MemSetAligned64(dst, val, sizeInBytes);
-    else if (alignment == 4 || (!(uptr & 3)))
-        MemSetAligned32((uint32_t*)dst, val, sizeInBytes);
-    else
+    
+    uint64_t rem = sizeInBytes & 15;
+    if (rem) SmallMemCpy((char*)dp, (const char*)sp, rem);
+    
+    #elif defined(AX_ARM) && defined(__ARM_NEON)
+    const uint8_t* sp = (const uint8_t*)src;
+    uint8_t* dp = (uint8_t*)dst;
+    uint64_t count = sizeInBytes >> 4;
+    
+    while (count >= 4)
     {
-        unsigned char* dp = (unsigned char*)dst;
-        while (sizeInBytes--)
-            *dp++ = val;
+        uint8x16_t v0 = vld1q_u8(sp + 0);
+        uint8x16_t v1 = vld1q_u8(sp + 16);
+        uint8x16_t v2 = vld1q_u8(sp + 32);
+        uint8x16_t v3 = vld1q_u8(sp + 48);
+        vst1q_u8(dp + 0, v0);
+        vst1q_u8(dp + 16, v1);
+        vst1q_u8(dp + 32, v2);
+        vst1q_u8(dp + 48, v3);
+        sp += 64, dp += 64, count -= 4;
     }
-}
-
-static inline void MemCpyAligned64(void* dst, const void* RESTRICT src, uint64_t sizeInBytes)
-{
+    
+    AX_NO_UNROLL while (count--)
+    {
+        vst1q_u8(dp, vld1q_u8(sp));
+        sp += 16;
+        dp += 16;
+    }
+    
+    uint64_t rem = sizeInBytes & 15;
+    if (rem) SmallMemCpy(dp, sp, rem);
+        
+    #else
     uint64_t* dp = (uint64_t*)dst;
     const uint64_t* sp = (const uint64_t*)src;
-    uint64_t count = sizeInBytes >> 3; // number of 64-bit words
-    uint64_t rem = sizeInBytes & 7;    // remaining bytes
-
-    while (count >= 4)
+    uint64_t count = sizeInBytes >> 3;
+    
+    while (count >= 8)
     {
-        dp[0] = sp[0];
-        dp[1] = sp[1];
-        dp[2] = sp[2];
-        dp[3] = sp[3];
-        dp += 4;
-        sp += 4;
-        count -= 4;
+        dp[0] = sp[0]; dp[1] = sp[1]; dp[2] = sp[2]; dp[3] = sp[3];
+        dp[4] = sp[4]; dp[5] = sp[5]; dp[6] = sp[6]; dp[7] = sp[7];
+        dp += 8, sp += 8, count -= 8;
     }
-
+    
     AX_NO_UNROLL
-    while (count--)
-        *dp++ = *sp++;
-
-    if (rem)
-        SmallMemCpy((char*)dp, (const char*)sp, rem);
-}
-
-static inline void MemCpyAligned32(uint32_t* dst, const uint32_t* RESTRICT src, uint64_t sizeInBytes)
-{
-    uint32_t* dp = dst;
-    const uint32_t* sp = src;
-    uint64_t count = sizeInBytes >> 2; // number of 32-bit words
-    uint64_t rem = sizeInBytes & 3;    // remaining bytes
-
-    while (count >= 4)
-    {
-        dp[0] = sp[0];
-        dp[1] = sp[1];
-        dp[2] = sp[2];
-        dp[3] = sp[3];
-        dp += 4;
-        sp += 4;
-        count -= 4;
-    }
-
-    AX_NO_UNROLL
-    while (count--)
-        *dp++ = *sp++;
-
-    switch (rem)
-    {
-        case 3: ((char*)dp)[2] = ((const char*)sp)[2]; /* fallthrough */
-        case 2: ((char*)dp)[1] = ((const char*)sp)[1]; /* fallthrough */
-        case 1: ((char*)dp)[0] = ((const char*)sp)[0]; break;
-    }
-}
-
-// use size for structs and classes such as Vector3 and Matrix4,
-// and use MemCpy for big arrays or unknown size arrays
-
-static inline void MemCpy(void* dst, const void* RESTRICT src, uint64_t sizeInBytes, int alignment)
-{
-    uintptr_t dstp = (uintptr_t)dst;
-    uintptr_t srcp = (uintptr_t)src;
-
-    // 64-bit aligned
-    if (alignment == 8 || ((!(dstp & 7)) && !(srcp & 7)))
-    {
-        MemCpyAligned64(dst, src, sizeInBytes);
-        return;
-    }
-
-    // 32-bit aligned
-    if (alignment == 4 || ((!(dstp & 3)) && !(srcp & 3)))
-    {
-        MemCpyAligned32((uint32_t*)dst, (const uint32_t*)src, sizeInBytes);
-        return;
-    }
-
-    // 16-byte aligned
-    if (alignment == 16 || ((!(dstp & 15)) && !(srcp & 15)))
-    {
-        #if defined(AX_SUPPORT_SSE)
-        const __m128* srcV = (const __m128*)src;
-        __m128* dstV = (__m128*)dst;
-        #elif defined(AX_ARM)
-        const uint32x4_t* srcV = (const uint32x4_t*)src;
-        uint32x4_t* dstV = (uint32x4_t*)dst;
-        #else
-        struct vType { uint64_t a, b; };
-        const struct vType* srcV = (const struct vType*)src;
-        struct vType* dstV = (struct vType*)dst;
-        #endif
-        while (sizeInBytes >= 16)
-        {
-            *dstV++ = *srcV++;
-            sizeInBytes -= 16;
-        }
-
-        // copy any remaining bytes
-        if (sizeInBytes)
-            SmallMemCpy((char*)dstV, (const char*)srcV, sizeInBytes);
-
-        return;
-    }
-
-    // fallback: byte-wise copy
-    const char* scp = (const char*)src;
-    const char* cend = scp + sizeInBytes;
-    char* dcp = (char*)dst;
-
-    while (scp < cend)
-        *dcp++ = *scp++;
+    while (count--) *dp++ = *sp++;
+    
+    uint64_t rem = sizeInBytes & 7;
+    if (rem) SmallMemCpy((char*)dp, (const char*)sp, rem);
+    #endif
 }
 
 purefn const char* GetFileName(const char* path)

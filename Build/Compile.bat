@@ -1,4 +1,3 @@
-
 @echo off
 
 echo Shaders compiling...
@@ -8,35 +7,61 @@ if %ERRORLEVEL% neq 0 (
     exit /b %ERRORLEVEL%
 )
 
+set SOURCE_FILES=^
+	Main.c ^
+	OS.c ^
+	Extern/dynarray.c ^
+	Extern/tlsf.c ^
+	Memory.c ^
+    Platform.c ^
+	Graphics.c ^
+	GLTFParser.c ^
+	Animation.c ^
+	AssetManager.c
+
+if not exist "Build\obj" mkdir "Build\obj"
+
 REM <<<  CLANG COMPILER  >>>
 REM clang -O3 -mavx2 -mfma -msse4.2 -mf16c -mrdseed -s -fno-rtti -fno-stack-protector -Wimplicit-function-declaration -fno-exceptions -fno-unwind-tables -static-libgcc ^
-REM Main.c  -o build/MainCLANG.exe -I. -ladvapi32 -ld3d11 -ldxgi -ldxguid -luser32 -lshell32 -lgdi32 -lwinmm
-REM start "" "build/MainCLANG.exe"
+REM %SOURCE_FILES% Extern/zstd.c Extern/ufbx.c -o Build/MainCLANG.exe -I. -ladvapi32 -ld3d11 -ldxgi -ldxguid -luser32 -lshell32 -lgdi32 -lwinmm
+REM start "" "Build/MainCLANG.exe"
+REM exit /b %ERRORLEVEL%
 
 REM <<<  MSVC COMPILER  >>>
-Set up the MSVC environment (adjust the path to your Visual Studio installation)
 call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvarsall.bat" x64
 if %ERRORLEVEL% neq 0 (
     echo Failed to set up MSVC environment!
     exit /b %ERRORLEVEL%
 )
 
+REM Incremental build for ufbx and zstd
+echo Checking extern libs...
+for %%f in (Extern\ufbx.c Extern\zstd.c) do (
+	if not exist "Build\obj\%%~nf.obj" (
+		echo Compiling %%f...
+		cl.exe /c /O2 /arch:AVX2 /GR- /GS- /EHsc- /I. /FoBuild\obj\%%~nf.obj %%f >nul
+	) else (
+		for %%a in (%%f) do for %%b in (Build\obj\%%~nf.obj) do (
+			if %%~ta GTR %%~tb (
+				echo Recompiling %%f...
+				cl.exe /c /O2 /arch:AVX2 /GR- /GS- /EHsc- /I. /FoBuild\obj\%%~nf.obj %%f >nul
+			)
+		)
+	)
+)
+
 if "%1"=="Debug" (
-	REM Compile Main.c in debug mode with AVX2, debug info, and link libraries
-	cl.exe /Od /Zi /arch:AVX2 /GR- /EHsc- /I. Main.c /Fe:build/MainDebug.exe /link advapi32.lib d3d11.lib dxgi.lib dxguid.lib user32.lib shell32.lib gdi32.lib winmm.lib
-	if %ERRORLEVEL% neq 0 (       
-		echo Compilation failed!  
-		exit /b %ERRORLEVEL%      
-	)                             
-    rem start "" "build/MainDebug.exe"
-) else (                          
-	REM Compile Main.c with optimizations, instruction sets, and link libraries        
-	cl.exe /O2 /arch:AVX2 /GR- /GS- /EHsc- /I. Main.c /Fe:build/MainMSVC.exe /link advapi32.lib d3d11.lib dxgi.lib dxguid.lib user32.lib shell32.lib gdi32.lib winmm.lib
-	if %ERRORLEVEL% neq 0 (                                                            
+	cl.exe /Od /Zi /arch:AVX2 /GR- /EHsc- /I. /FoBuild\obj\ /FdBuild\MainDebug.pdb %SOURCE_FILES% Build\obj\ufbx.obj Build\obj\zstd.obj /Fe:Build\MainDebug.exe /link advapi32.lib d3d11.lib dxgi.lib dxguid.lib user32.lib shell32.lib gdi32.lib winmm.lib
+	if %ERRORLEVEL% neq 0 (
 		echo Compilation failed!
 		exit /b %ERRORLEVEL%
 	)
-	rem start "" "build/MainMSVC.exe"
+) else (
+	cl.exe /O2 /arch:AVX2 /GR- /GS- /EHsc- /I. /FoBuild\obj\ %SOURCE_FILES% Build\obj\ufbx.obj Build\obj\zstd.obj /Fe:Build\MainMSVC.exe /link advapi32.lib d3d11.lib dxgi.lib dxguid.lib user32.lib shell32.lib gdi32.lib winmm.lib
+	if %ERRORLEVEL% neq 0 (
+		echo Compilation failed!
+		exit /b %ERRORLEVEL%
+	)
 )
-del Main.obj
-del vc140.pdb
+
+echo Build complete.

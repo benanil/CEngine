@@ -2,7 +2,7 @@
  * Dirent interface for Microsoft Visual Studio
  *
  * Copyright (C) 1998-2019 Toni Ronkko
- * This file is part of dirent.  Dirent may be freely distributed
+ * This file is part of dirent.  Dirent may be rpfreely distributed
  * under the MIT license.  For all details and documentation, see
  * https://github.com/tronkko/dirent
  */
@@ -22,19 +22,8 @@
  * Include windows.h without Windows Sockets 1.1 to prevent conflicts with
  * Windows Sockets 2.0.
  */
-#ifndef WIN32_LEAN_AND_MEAN
-#  define WIN32_LEAN_AND_MEAN
-#  define NOMINMAX
-#  define VC_EXTRALEAN
-#endif
-#include <windows.h>
-
-#include <stdio.h>
 #include <stdarg.h>
 #include <wchar.h>
-#include <string.h>
-#include <stdlib.h>
-#include <malloc.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <errno.h>
@@ -335,16 +324,6 @@ static long _wtelldir(_WDIR *dirp);
 static void seekdir(DIR *dirp, long loc);
 static void _wseekdir(_WDIR *dirp, long loc);
 
-static int scandir(const char *dirname, struct dirent ***namelist,
-	int (*filter)(const struct dirent*),
-	int (*compare)(const struct dirent**, const struct dirent**));
-
-static int alphasort(const struct dirent **a, const struct dirent **b);
-
-static int versionsort(const struct dirent **a, const struct dirent **b);
-
-static int strverscmp(const char *a, const char *b);
-
 /* For compatibility with Symbian */
 #define wdirent _wdirent
 #define WDIR _WDIR
@@ -406,7 +385,7 @@ _wopendir(const wchar_t *dirname)
 	}
 
 	/* Allocate new _WDIR structure */
-	_WDIR *dirp = (_WDIR*) malloc(sizeof(struct _WDIR));
+	_WDIR *dirp = (_WDIR*) rpmalloc(sizeof(struct _WDIR));
 	if (!dirp)
 		return NULL;
 
@@ -431,7 +410,7 @@ _wopendir(const wchar_t *dirname)
 #endif
 
 	/* Allocate room for absolute directory name and search pattern */
-	dirp->patt = (wchar_t*) malloc(sizeof(wchar_t) * n + 16);
+	dirp->patt = (wchar_t*) rpmalloc(sizeof(wchar_t) * n + 16);
 	if (dirp->patt == NULL)
 		goto exit_closedir;
 
@@ -600,13 +579,13 @@ _wclosedir(_WDIR *dirp)
 
 	/*
 	 * Release search pattern.  Note that we don't need to care if
-	 * dirp->patt is NULL or not: function free is guaranteed to act
+	 * dirp->patt is NULL or not: function rpfree is guaranteed to act
 	 * appropriately.
 	 */
-	free(dirp->patt);
+	rpfree(dirp->patt);
 
 	/* Release directory structure */
-	free(dirp);
+	rpfree(dirp);
 	return /*success*/0;
 }
 
@@ -722,7 +701,7 @@ static DIR *opendir(const char *dirname)
 	}
 
 	/* Allocate memory for DIR structure */
-	struct DIR *dirp = (DIR*) malloc(sizeof(struct DIR));
+	struct DIR *dirp = (DIR*) rpmalloc(sizeof(struct DIR));
 	if (!dirp)
 		return NULL;
 
@@ -743,7 +722,7 @@ static DIR *opendir(const char *dirname)
 
 	/* Failure */
 exit_failure:
-	free(dirp);
+	rpfree(dirp);
 	return NULL;
 }
 
@@ -867,7 +846,7 @@ closedir(DIR *dirp)
 	dirp->wdirp = NULL;
 
 	/* Release multi-byte character version */
-	free(dirp);
+	rpfree(dirp);
 	return ok;
 
 exit_failure:
@@ -990,180 +969,6 @@ seekdir(DIR *dirp, long loc)
 		return;
 
 	_wseekdir(dirp->wdirp, loc);
-}
-
-/* Scan directory for entries */
-static int
-scandir(
-	const char *dirname, struct dirent ***namelist,
-	int (*filter)(const struct dirent*),
-	int (*compare)(const struct dirent**, const struct dirent**))
-{
-	int result;
-
-	/* Open directory stream */
-	DIR *dir = opendir(dirname);
-	if (!dir) {
-		/* Cannot open directory */
-		return /*Error*/ -1;
-	}
-
-	/* Read directory entries to memory */
-	struct dirent *tmp = NULL;
-	struct dirent **files = NULL;
-	size_t size = 0;
-	size_t allocated = 0;
-	while (1) {
-		/* Allocate room for a temporary directory entry */
-		if (!tmp) {
-			tmp = (struct dirent*) malloc(sizeof(struct dirent));
-			if (!tmp)
-				goto exit_failure;
-		}
-
-		/* Read directory entry to temporary area */
-		struct dirent *entry;
-		if (readdir_r(dir, tmp, &entry) != /*OK*/0)
-			goto exit_failure;
-
-		/* Stop if we already read the last directory entry */
-		if (entry == NULL)
-			goto exit_success;
-
-		/* Determine whether to include the entry in results */
-		if (filter && !filter(tmp))
-			continue;
-
-		/* Enlarge pointer table to make room for another pointer */
-		if (size >= allocated) {
-			/* Compute number of entries in the new table */
-			size_t num_entries = size * 2 + 16;
-
-			/* Allocate new pointer table or enlarge existing */
-			void *p = realloc(files, sizeof(void*) * num_entries);
-			if (!p)
-				goto exit_failure;
-
-			/* Got the memory */
-			files = (dirent**) p;
-			allocated = num_entries;
-		}
-
-		/* Store the temporary entry to ptr table */
-		files[size++] = tmp;
-		tmp = NULL;
-	}
-
-exit_failure:
-	/* Release allocated entries */
-	for (size_t i = 0; i < size; i++) {
-		free(files[i]);
-	}
-
-	/* Release the pointer table */
-	free(files);
-	files = NULL;
-
-	/* Exit with error code */
-	result = /*error*/ -1;
-	goto exit_status;
-
-exit_success:
-	/* Sort directory entries */
-	if (size > 1 && compare) {
-		qsort(files, size, sizeof(void*),
-			(int (*) (const void*, const void*)) compare);
-	}
-
-	/* Pass pointer table to caller */
-	if (namelist)
-		*namelist = files;
-
-	/* Return the number of directory entries read */
-	result = (int) size;
-
-exit_status:
-	/* Release temporary directory entry, if we had one */
-	free(tmp);
-
-	/* Close directory stream */
-	closedir(dir);
-	return result;
-}
-
-/* Alphabetical sorting */
-static int
-alphasort(const struct dirent **a, const struct dirent **b)
-{
-	return strcoll((*a)->d_name, (*b)->d_name);
-}
-
-/* Sort versions */
-static int
-versionsort(const struct dirent **a, const struct dirent **b)
-{
-	return strverscmp((*a)->d_name, (*b)->d_name);
-}
-
-/* Compare strings */
-static int
-strverscmp(const char *a, const char *b)
-{
-	size_t i = 0;
-	size_t j;
-
-	/* Find first difference */
-	while (a[i] == b[i]) {
-		if (a[i] == '\0') {
-			/* No difference */
-			return 0;
-		}
-		++i;
-	}
-
-	/* Count backwards and find the leftmost digit */
-	j = i;
-	while (j > 0 && isdigit(a[j-1])) {
-		--j;
-	}
-
-	/* Determine mode of comparison */
-	if (a[j] == '0' || b[j] == '0') {
-		/* Find the next non-zero digit */
-		while (a[j] == '0' && a[j] == b[j]) {
-			j++;
-		}
-
-		/* String with more digits is smaller, e.g 002 < 01 */
-		if (isdigit(a[j])) {
-			if (!isdigit(b[j])) {
-				return -1;
-			}
-		} else if (isdigit(b[j])) {
-			return 1;
-		}
-	} else if (isdigit(a[j]) && isdigit(b[j])) {
-		/* Numeric comparison */
-		size_t k1 = j;
-		size_t k2 = j;
-
-		/* Compute number of digits in each string */
-		while (isdigit(a[k1])) {
-			k1++;
-		}
-		while (isdigit(b[k2])) {
-			k2++;
-		}
-
-		/* Number with more digits is bigger, e.g 999 < 1000 */
-		if (k1 < k2)
-			return -1;
-		else if (k1 > k2)
-			return 1;
-	}
-
-	/* Alphabetical comparison */
-	return (int) ((unsigned char) a[i]) - ((unsigned char) b[i]);
 }
 
 /* Convert multi-byte string to wide character string */

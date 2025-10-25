@@ -340,30 +340,30 @@ static inline Matrix4 VECTORCALL Matrix4Inverse(Matrix4 mat)
 
 purefn Matrix4 VECTORCALL Matrix4Multiply(Matrix4 in2, Matrix4 in1)
 {
-    Vector4x32f m0;
+    Vector4x32f m0, m1, m2, m3;
     m0 = VecMul(in1.r[0], VecSplatX(in2.r[0]));
     m0 = VecFmaddLane(in1.r[1], in2.r[0], m0, 1);
     m0 = VecFmaddLane(in1.r[2], in2.r[0], m0, 2); 
     m0 = VecFmaddLane(in1.r[3], in2.r[0], m0, 3); 
     in2.r[0] = m0;
         
-    m0 = VecMul(in1.r[0], VecSplatX(in2.r[1]));
-    m0 = VecFmaddLane(in1.r[1], in2.r[1], m0, 1); 
-    m0 = VecFmaddLane(in1.r[2], in2.r[1], m0, 2); 
-    m0 = VecFmaddLane(in1.r[3], in2.r[1], m0, 3); 
-    in2.r[1] = m0;
+    m1 = VecMul(in1.r[0], VecSplatX(in2.r[1]));
+    m1 = VecFmaddLane(in1.r[1], in2.r[1], m1, 1); 
+    m1 = VecFmaddLane(in1.r[2], in2.r[1], m1, 2); 
+    m1 = VecFmaddLane(in1.r[3], in2.r[1], m1, 3); 
+    in2.r[1] = m1;
         
-    m0 = VecMul(in1.r[0], VecSplatX(in2.r[2]));
-    m0 = VecFmaddLane(in1.r[1], in2.r[2], m0, 1); 
-    m0 = VecFmaddLane(in1.r[2], in2.r[2], m0, 2); 
-    m0 = VecFmaddLane(in1.r[3], in2.r[2], m0, 3); 
-    in2.r[2] = m0;
+    m2 = VecMul(in1.r[0], VecSplatX(in2.r[2]));
+    m2 = VecFmaddLane(in1.r[1], in2.r[2], m2, 1); 
+    m2 = VecFmaddLane(in1.r[2], in2.r[2], m2, 2); 
+    m2 = VecFmaddLane(in1.r[3], in2.r[2], m2, 3); 
+    in2.r[2] = m2;
         
-    m0 = VecMul(in1.r[0], VecSplatX(in2.r[3]));
-    m0 = VecFmaddLane(in1.r[1], in2.r[3], m0, 1); 
-    m0 = VecFmaddLane(in1.r[2], in2.r[3], m0, 2); 
-    m0 = VecFmaddLane(in1.r[3], in2.r[3], m0, 3); 
-    in2.r[3] = m0;
+    m3 = VecMul(in1.r[0], VecSplatX(in2.r[3]));
+    m3 = VecFmaddLane(in1.r[1], in2.r[3], m3, 1); 
+    m3 = VecFmaddLane(in1.r[2], in2.r[3], m3, 2); 
+    m3 = VecFmaddLane(in1.r[3], in2.r[3], m3, 3); 
+    in2.r[3] = m3;
     return in2;
 }
 

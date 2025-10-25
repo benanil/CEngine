@@ -2,7 +2,7 @@
 #ifndef RANDOM_INCLUDED
 #define RANDOM_INCLUDED
 
-#include "Math/Math.h"
+#include "../Math/Math.h"
 
 
 // Not WangHash actually we can say skeeto hash.

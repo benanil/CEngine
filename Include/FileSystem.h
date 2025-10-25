@@ -39,7 +39,7 @@
     #include <io.h>
     #include <direct.h> 
     #include <windows.h>
-    #include "Extern/dirent.h"
+    #include "../Extern/dirent.h"
     #define F_OK 0
 #else 
     #include <unistd.h>
@@ -255,84 +255,127 @@ static inline uint64_t AFileSize(AFile file) {
 #else
 
 typedef struct AFile_ {
+    #ifdef _MSC_VER
+    HANDLE file;
+    #else
     FILE* file;
+    #endif
 } AFile;
 
 static inline AFile AFileOpen(const char* fileName, AOpenFlag flag)
 {
-    FILE* file;
-#ifdef _MSC_VER
-    const char* modes[4] = { "rb", "wb", "rb", "wb" };
-    fopen_s(&file, fileName, modes[flag]);
-#else
-    const char* modes[4] = { "rb", "wb", "r", "w"};
-    file = fopen(fileName, modes[flag]);
-    #endif
+    AFile afile = {0};
 
-    if (flag == AOpenFlag_WriteText) {
-        // Write the UTF-8 BOM
-        unsigned char bom[] = {0xEF, 0xBB, 0xBF};
-        fwrite(bom, sizeof(char), sizeof(bom), file);
+    #ifdef _MSC_VER
+    DWORD access = GENERIC_READ, creation = OPEN_EXISTING;
+
+    switch (flag) {
+        case AOpenFlag_WriteBinary: 
+        case AOpenFlag_WriteText:
+            access = GENERIC_WRITE;
+            creation = CREATE_ALWAYS;
+        break;
     }
 
-    AFile afile;
-    afile.file = file;
+    afile.file = CreateFileA(fileName, access, FILE_SHARE_READ, NULL, creation, FILE_ATTRIBUTE_NORMAL, NULL);
+
+    if (afile.file == INVALID_HANDLE_VALUE)
+        afile.file = NULL;
+
+    #else
+    const char* modes[4] = { "rb", "wb", "r", "w" };
+    afile.file = fopen(fileName, modes[flag]);
+    #endif
+
+    unsigned char bom[] = {0xEF, 0xBB, 0xBF};
+
+    #ifndef _MSC_VER
+    if (flag == AOpenFlag_WriteText && afile.file) {
+        fwrite(bom, 1, sizeof(bom), afile.file);
+    }
+    #else
+    if (flag == AOpenFlag_WriteText && afile.file) {
+        DWORD written;
+        WriteFile(afile.file, bom, sizeof(bom), &written, NULL);
+    }
+    #endif
+
     return afile;
 }
 
 static inline void AFileRead(void* dst, uint64_t size, AFile file, int alignment) {
+    #ifndef _MSC_VER
     fread(dst, alignment, size, file.file);
+    #else
+    ReadFile(file.file, dst, (DWORD)(size * alignment), NULL, NULL);
+    #endif
 }
 
-static inline void AFileWrite(const void* src, uint64_t size, AFile file, int alignment) { 
+static inline void AFileWrite(const void* src, uint64_t size, AFile file, int alignment) {
+    #ifndef _MSC_VER
     fwrite(src, alignment, size, file.file);
+    #else
+    WriteFile(file.file, src, (DWORD)(size * alignment), NULL, NULL);
+    #endif
 }
 
 static inline void AFileSeekBegin(AFile file) {
+    #ifndef _MSC_VER
     fseek(file.file, 0, SEEK_SET);
+    #else
+    LARGE_INTEGER pos;
+    pos.QuadPart = 0;
+    SetFilePointerEx(file.file, pos, NULL, FILE_BEGIN);
+    #endif
 }
 
 static inline void AFileSeek(long offset, AFile file) {
+    #ifndef _MSC_VER
     fseek(file.file, offset, SEEK_CUR);
+    #else
+    LARGE_INTEGER pos;
+    pos.QuadPart = offset;
+    SetFilePointerEx(file.file, pos, NULL, FILE_CURRENT);
+    #endif
 }
 
 static inline void AFileClose(AFile file) {
+    #ifndef _MSC_VER
     fclose(file.file);
+    #else
+    CloseHandle(file.file);
+    #endif
 }
 
-static inline bool AFileExist(AFile file) { 
+static inline bool AFileExist(AFile file) {
+    #ifndef _MSC_VER
     return file.file != NULL;
+    #else
+    return file.file && file.file != INVALID_HANDLE_VALUE;
+    #endif
 }
 
 static inline uint64_t AFileSize(AFile file)
 {
-#ifdef _WIN32
-    HANDLE h = NULL;
-    if (file.file == stdin) h = GetStdHandle(STD_INPUT_HANDLE);
-    else if (file.file == stdout) h = GetStdHandle(STD_OUTPUT_HANDLE);
-    else if (file.file == stderr) h = GetStdHandle(STD_ERROR_HANDLE);
-    else return 0; // GetStdHandle doesn't support arbitrary FILE*
-
-    if (h == INVALID_HANDLE_VALUE)
-        return 0;
-
+    #ifdef _WIN32
     LARGE_INTEGER size;
-    if (!GetFileSizeEx(h, &size))
+    if (!GetFileSizeEx(file.file, &size))
         return 0;
-
     return (uint64_t)size.QuadPart;
-#elif defined(__ANDROID__)
+    #elif defined(__ANDROID__)
     if (file.asset == NULL) return 0;
     return AAsset_getLength(file.asset);
-#else
-    struct stat sb; stat(file.file, &sb);
-    return sb.st_size;
-#endif  
+    #else
+    struct stat sb;
+    if (stat(file.file, &sb) != 0)
+        return 0;
+    return (uint64_t)sb.st_size;
+    #endif  
 }
 
 #endif
 
-static inline char* ReadAllFile(const char* fileName, char* buffer)
+static inline char* ReadAllFile(const char* fileName, char** buffer)
 {
     AFile file = AFileOpen(fileName, AOpenFlag_ReadBinary);
     if (!AFileExist(file))
@@ -340,13 +383,13 @@ static inline char* ReadAllFile(const char* fileName, char* buffer)
 
     uint64_t fileSize = AFileSize(file);
 
-    if (buffer == NULL) {
-        buffer = rpcalloc(fileSize + 1, 1); // +1 for null terminator
+    if (buffer == NULL || *buffer == NULL) {
+        *buffer = rpcalloc(fileSize + 1, 1); // +1 for null terminator
     }
 
-    AFileRead(buffer, fileSize, file, 1);
+    AFileRead(*buffer, fileSize, file, 1);
     AFileClose(file);
-    return buffer;
+    return *buffer;
 }
 
 // don't forget to free using FreeAllText
@@ -355,7 +398,7 @@ static inline char* ReadAllFile(const char* fileName, char* buffer)
 // numCharacters : if not null returns length of the imported string
 // startText     : if its not null will be added to start of the buffer
 // note: if you define it you are responsible of deleting the buffer
-static inline char* ReadAllText(const char* fileName, char* buffer, uint64_t* numCharacters, const char* startText)
+static inline char* ReadAllText(const char* fileName, char** buffer, uint64_t* numCharacters, const char* startText)
 {
     int startTextLen = 0;
     if (startText) 
@@ -372,33 +415,33 @@ static inline char* ReadAllText(const char* fileName, char* buffer, uint64_t* nu
     uint64_t file_size = AFileSize(file);
 
     // Allocate memory to store the entire file
-    if (buffer == NULL)
-        buffer = rpcalloc(file_size + 40 + startTextLen, 1); // +1 for null terminator
+    if (buffer == NULL || *buffer == NULL)
+        *buffer = rpcalloc(file_size + 40 + startTextLen, 1); // +1 for null terminator
     
     if (file_size >= 3)
     {
-        AFileRead(buffer, 3, file, 1);
-        bool isBOM = buffer[0] == '\xEF' && buffer[1] == '\xBB' && buffer[2] == '\xBF';
+        AFileRead(*buffer, 3, file, 1);
+        bool isBOM = (*buffer)[0] == '\xEF' && (*buffer)[1] == '\xBB' && (*buffer)[2] == '\xBF';
         if (!isBOM) {
             AFileSeekBegin(file);
         }
     }
 
     if (startText) 
-        while (*startText) *buffer++ = *startText++;
+        while (*startText) *(*buffer)++ = *startText++;
     
-    if (buffer == NULL) {
+    if (buffer == NULL || *buffer == NULL) {
         AFileClose(file);
         return NULL; // Return an error code
     }
 
     // Read the entire file into the buffer
-    AFileRead(buffer, file_size, file, 1);
-    buffer[file_size] = '\0'; // Null-terminate the buffer
+    AFileRead(*buffer, file_size, file, 1);
+    (*buffer)[file_size] = '\0'; // Null-terminate the buffer
     AFileClose(file);
     if (numCharacters) 
         *numCharacters = (uint64_t)file_size + 1;
-    return buffer - startTextLen;
+    return (*buffer) - startTextLen;
 }
 
 static inline void FreeAllText(char* text)
@@ -427,7 +470,7 @@ static inline void ACopyFile(const char* source, const char* dst, char* buffer)
 {
     uint64_t sourceSize = 0;
     bool bufferProvided = buffer != 0;
-    char* sourceFile = ReadAllText(source, buffer, &sourceSize, NULL);
+    char* sourceFile = ReadAllText(source, &buffer, &sourceSize, NULL);
     
     AFile dstFile = AFileOpen(dst, AOpenFlag_WriteBinary);
     AFileWrite(sourceFile, sourceSize, dstFile, 1);

@@ -2,6 +2,8 @@
 #ifndef ASTL_GLTF_PARSER
 #define ASTL_GLTF_PARSER
 
+#include "Common.h"
+
 // Warning! order is important, dependent in functions: ParseMeshes, ParseAttributes, ParseGLTF... 
 enum AAttribType_
 {

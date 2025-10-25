@@ -3,7 +3,7 @@
 #define _ANIMATION_H
 
 #include "Graphics.h"
-#include "Math/Matrix.h"
+#include "../Math/Matrix.h"
 
 enum eAnimLocation_
 {
@@ -166,5 +166,8 @@ void AnimationController_SampleAnimationPose(AnimationController* ac, Pose* pose
 void AnimationController_Create(SceneBundle* prefab, AnimationController* animController, bool humanoid, int lowerBodyStart);
 
 void AnimationController_Clear(AnimationController* ac);
+
+int Prefab_FindAnimRootNodeIndex(SceneBundle* prefab);
+
 
 #endif // _ANIMATION_H

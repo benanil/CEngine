@@ -37,6 +37,8 @@
 			<Define>_SAPP_WIN32</Define>
 			<Define>_WIN32</Define>
 			<Define>SOKOL_APP_IMPL</Define>
+			<Define>_WIN64</Define>
+			<Define>_MSC_VER</Define>
 		</Defines>
 		<ConfigProperties>
 			<ConfigAndPlatform>

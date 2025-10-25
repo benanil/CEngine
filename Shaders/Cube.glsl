@@ -36,29 +36,32 @@ highp mat3 adjoint(in highp mat4 m)
 void main() {
     highp mat4 model = uModel;
 
-    // vBoneIdx = -1;
-    // if (uHasAnimation > 0) 
-    // {
-    //     mediump mat4 animMat = mat4(0.0);
-    //     animMat[3].w = 1.0; // last row is [0.0, 0.0, 0.0, 1.0]
-    // 
-    //     for (int i = 0; i < 4; i++)
-    //     {
-    //         int matIdx = int(aJoints[i]) * 3; // 3 because our matrix is: RGBA16f x 3
-    //         animMat[0] += texelFetch(sampler2D(uAnimTex, smp), ivec2(matIdx + 0, 0), 0) * aWeights[i];
-    //         animMat[1] += texelFetch(sampler2D(uAnimTex, smp), ivec2(matIdx + 1, 0), 0) * aWeights[i];
-    //         animMat[2] += texelFetch(sampler2D(uAnimTex, smp), ivec2(matIdx + 2, 0), 0) * aWeights[i]; 
-    //     }
-    //     // vBoneIdx = int(aJoints[0]);
-    //     model = model * transpose(animMat);
-    // }
+    int vBoneIdx = -1;
+    if (true) // (uHasAnimation > 0) 
+    {
+        mediump mat4 animMat = mat4(0.0);
+        animMat[3].w = 1.0; // last row is [0.0, 0.0, 0.0, 1.0]
+    
+        for (int i = 0; i < 4; i++)
+        {
+            int matIdx = int(aJoints[i]) * 3; // 3 because our matrix is: RGBA16f x 3
+            animMat[0] += texelFetch(sampler2D(uAnimTex, smp), ivec2(matIdx + 0, 0), 0) * aWeights[i];
+            animMat[1] += texelFetch(sampler2D(uAnimTex, smp), ivec2(matIdx + 1, 0), 0) * aWeights[i];
+            animMat[2] += texelFetch(sampler2D(uAnimTex, smp), ivec2(matIdx + 2, 0), 0) * aWeights[i]; 
+        }
+        vBoneIdx = int(aJoints[0]);
+        model = model * transpose(animMat);
+    }
 
     mediump mat3 normalMatrix = adjoint(model);
     vTBN[0] = normalize(normalMatrix * aTangent.xyz); 
     vTBN[2] = normalize(normalMatrix * aNormal);
     vTBN[1] = cross(vTBN[0], vTBN[2]) * aTangent.w;
     
+    vec3 pos = vec3(float(gl_InstanceIndex & 63), 0.0, float(gl_InstanceIndex >> 6)) * 24.0;
     highp vec4 outPos = model * vec4(aPos, 1.0);
+    outPos.xyz += pos;
+
     vTexCoords  = aTexCoords; 
     gl_Position = uViewProj * outPos;
 }

@@ -1,69 +1,35 @@
 
-#define SOKOL_APP_IMPL
-#define SOKOL_GFX_IMPL
 #define SOKOL_LOG_IMPL
 #define SOKOL_GLUE_IMPL
+
+#define SOKOL_GFX_IMPL
 #define SOKOL_D3D11
-#define SOKOL_TIME_IMPL
 
-// #define STBI_NO_JPEG
-// #define STBI_NO_PNG
-#define STBI_NO_BMP
-#define STBI_NO_PSD
-#define STBI_NO_TGA
-#define STBI_NO_GIF
-#define STBI_NO_HDR
-#define STBI_NO_PIC
-#define STBI_NO_PNM 
+#include "Include/OS.h"
+#include "Include/Memory.h"
 
-#define STB_IMAGE_IMPLEMENTATION
-#define STB_IMAGE_RESIZE_IMPLEMENTATION
-
-#define STBI_MALLOC(size)           ( rpmalloc(size) )
-#define STBI_FREE(ptr)              ( rpfree(ptr) )
-#define STBI_REALLOC(ptr, size)     ( rprealloc(ptr, size) )
-
-#define STBIR_MALLOC(size, c)       ( rpmalloc(size) )
-#define STBIR_FREE(ptr, c)          ( (void)(c), rpfree(ptr) )
-
-#define tlsf_assert(x) ASSERT(x)
-
-#include "Common.h"
-
-#include "OS.c"
-#include "Memory.h"
-
-#include "FileSystem.h"
-#include "Arena.h"
-
-tlsf_t tlsf;
-Arena global_arena;
-char app_memory[1ull * 1000ull * 1000ull * 1000ull];
+#include "Include/FileSystem.h"
+#include "Include/Arena.h"
 
 #include "Extern/sokol/sokol_gfx.h"
 #include "Extern/sokol/sokol_app.h"
 #include "Extern/sokol/sokol_log.h"
 #include "Extern/sokol/sokol_glue.h"
 #include "Extern/sokol/sokol_time.h"
+#undef SOKOL_GFX_IMPL
 
-#include "Extern/stb/stb_image.h"
+#include "Include/Camera.h"
+#include "Include/Bitset.h"
 
-#include "Extern/zstd.c"
-#include "Extern/ufbx.c"
-#include "Extern/dynarray.c"
+#include "Include/Platform.h"
+#include "Include/Graphics.h"
+#include "Include/GLTFParser.h"
+#include "Include/Animation.h"
+#include "Include/AssetManager.h"
 
 #include "Math/Matrix.h"
-#include "Camera.h"
-#include "Bitset.h"
 
 #include "Shaders/Cube.glsl.h"
-
-#include "Platform.c"
-#include "Graphics.c"
-#include "GLTFParser.c"
-#include "Animation.c"
-#include "AssetManager.c"
-
 
 static struct {
     float rx, ry;
@@ -77,18 +43,19 @@ typedef struct {
     int16_t u, v;
 } vertex_t;
 
+
 static Camera camera;
 static SceneBundle* sceneBundle;
 static Matrix4* nodeTransforms;
 static int characterRootIndex;
-static AnimationController animationController;
+static AnimationController animController;
 
 static void _sapp_setup_wave_icon(void);
 
 void Prefab_UpdateGlobalNodeTransforms(SceneBundle* bundle, int nodeIndex, Matrix4 parentMat)
 {
     ANode* node = &bundle->nodes[nodeIndex];
-    nodeTransforms[nodeIndex] = Matrix4Multiply(parentMat, PositionRotationScalePtr(node->translation, node->rotation, node->scale));
+    nodeTransforms[nodeIndex] = Matrix4Multiply(PositionRotationScalePtr(node->translation, node->rotation, node->scale), parentMat);
 
     for (int i = 0; i < node->numChildren; i++)
     {
@@ -99,9 +66,9 @@ void Prefab_UpdateGlobalNodeTransforms(SceneBundle* bundle, int nodeIndex, Matri
 void Init(void)
 {
     _sapp_setup_wave_icon();
+    stm_setup();
     PlatformInit();
     rInit();
-    stm_setup();
 
     PlatformCtx.StartupTime = stm_now();
     MemsetZero(&camera, sizeof(camera));
@@ -122,25 +89,32 @@ void Init(void)
     });
 
     sceneBundle = rpmalloc(sizeof(SceneBundle));
+
     if (!LoadSceneBundleBinary("Assets/Meshes/Paladin/Paladin.abm", sceneBundle))
+    // if (!ParseGLTF("Assets/Meshes/Paladin/Paladin.gltf", sceneBundle, 1.0f))
     {
         AX_ERROR("gltf scene load failed2");
         return;
     }
+    
+    // CreateVerticesIndicesSkined(sceneBundle);
+    // SaveGLTFBinary(sceneBundle, "Assets/Meshes/Paladin/PaladinTest.abm");
 
     nodeTransforms = rpmalloc(sizeof(Matrix4) * sceneBundle->numNodes);
     characterRootIndex = Prefab_FindAnimRootNodeIndex(sceneBundle);
-    Prefab_UpdateGlobalNodeTransforms(sceneBundle, characterRootIndex, Matrix4Identity());
 
-    AnimationController* ac = &animationController;
-    AnimationController_Create(sceneBundle, &animationController, true, 58);
-    AnimationController_SampleAnimationPose(ac, ac->mAnimPoseA, 0.0f, 0.0f);
+    AnimationController* ac = &animController;
+    AnimationController_Create(sceneBundle, &animController, true, 58);
+    Prefab_UpdateGlobalNodeTransforms(sceneBundle, characterRootIndex, Matrix4Identity());
+    AnimationController_SampleAnimationPose(ac, ac->mAnimPoseA, 1, 0.0f);
     AnimationController_UploadPose(ac, ac->mAnimPoseA);
 
     Texture textures[8];
     LoadSceneImagesGeneric("Assets/Meshes/Paladin/Paladin.dxt", textures, sceneBundle->numImages);
 
-    // Texture img = rImportTexture("Test.jpg", TexFlags_MipMap, "Test Tex");
+    // Texture img = rImportTexture("Assets/Textures/Test.jpg", TexFlags_MipMap, "Test Tex");
+    // int baseColorIndex = sceneBundle->materials[0].baseColorTexture.index;
+    // textures[baseColorIndex] = img;
 
     sg_buffer vbuf = sg_make_buffer(&(sg_buffer_desc){
         .data = (sg_range){sceneBundle->allVertices, sceneBundle->totalVertices * sizeof(ASkinedVertex)},
@@ -202,7 +176,7 @@ void Init(void)
         .samplers[0] = sampler,
         .samplers[1] = jointSampler,
         .images[0] = textures[sceneBundle->materials[0].baseColorTexture.index].handle,
-        .images[1] = animationController.mMatrixTex.handle,
+        .images[1] = animController.mMatrixTex.handle,
         .index_buffer = ibuf
     };
 }
@@ -216,15 +190,24 @@ void Frame(void)
     const float h = sapp_heightf();
     const double dt = sapp_frame_duration();
     PlatformCtx.DeltaTime = dt;
+
     Matrix4 proj = PerspectiveFovRH(60.0f * (MATH_PI / 180.0f), w, h, 0.01f, camera.farClip);
     Matrix4 view = LookAtRH((Vec3f) { 0.0f, 1.5f, 6.0f }, (Vec3f) { 0.0f, 0.0f, -1.0f }, (Vec3f) { 0.0f, 1.0f, 0.0f });
     Matrix4 view_proj = Matrix4Multiply(proj, view);
     state.rx += (float)dt;
     state.ry += (float)dt;
 
-    PlatformCtx.SecondsSinceLastClick += (float)dt;
+    static bool first = true;
+    if (!first)
+    {
+        double animTime = Fract(TimeSinceStartup() * 0.1);
+        AnimationController_SampleAnimationPose(&animController, animController.mAnimPoseA, 3, (float)animTime);
+        AnimationController_UploadPose(&animController, animController.mAnimPoseA);
+    }
+    first = false;
+
     //Matrix4 rym = Matrix4RotationY(FModf(state.ry + MATH_PI, MATH_TwoPI) - MATH_PI);
-    Matrix4 model = MatrixFromScalef(5.0f); // Matrix4Multiply(MatrixFromScalef(4.0f), rym); //(rxm, rym);
+    Matrix4 model = MatrixFromScalef(1.0f); // Matrix4Multiply(MatrixFromScalef(4.0f), rym); //(rxm, rym);
 
     CameraUpdate(&camera, (float)dt);
 
@@ -246,7 +229,6 @@ void Frame(void)
     sg_apply_pipeline(state.pip);
     sg_apply_bindings(&state.bind);
     sg_apply_uniforms(UB_vs_params, &SG_RANGE(vs_params));
-    
 
     int numNodes  = sceneBundle->numNodes;
     bool hasScene = sceneBundle->numScenes > 0;
@@ -276,7 +258,7 @@ void Frame(void)
             bool hasMaterial = sceneBundle->materials && primitive->material != UINT16_MAX;
             AMaterial material = sceneBundle->materials[primitive->material];
             
-            sg_draw(primitive->indexOffset, primitive->numIndices, 1);
+            sg_draw(primitive->indexOffset, primitive->numIndices, 4096);
         }
 
         for (int i = 0; i < node->numChildren; i++)
@@ -309,6 +291,8 @@ void free_fn(void* ptr, void* user_data)
     rpfree(ptr);
 }
 
+extern char app_memory[1 * 1000 * 1000 * 1000];
+
 sapp_desc sokol_main(int argc, char* argv[]) {
     (void)argc;
     (void)argv;
@@ -326,15 +310,14 @@ sapp_desc sokol_main(int argc, char* argv[]) {
         .allocator.alloc_fn = alloc_fn,
         .allocator.free_fn = free_fn,
         .event_cb = sokol_event_callback,
-        .width = 800,
-        .height = 600,
-        .sample_count = 4,
+        .width = 1920,
+        .height = 1080,
+        .sample_count = 1,
         .window_title = "CPlayground",
         .icon.sokol_default = true,
         .logger.func = slog_func,
     };
 }
-
 
 static void _sapp_setup_wave_icon(void)
 {

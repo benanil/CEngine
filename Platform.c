@@ -1,6 +1,18 @@
 #ifndef PLATFORM_C
 #define PLATFORM_C
 
+#define SOKOL_APP_IMPL
+#define SOKOL_TIME_IMPL
+#define SOKOL_D3D11
+
+#include "Extern/sokol/sokol_time.h"
+#include "Extern/sokol/sokol_app.h"
+#include "Include/Platform.h"
+#include "Include/Bitset.h"
+
+#define STB_SPRINTF_IMPLEMENTATION
+#include "Extern/stb/stb_sprintf.h"
+
 PlatformContext PlatformCtx = {0};
 
 // Sokol event callback
@@ -58,36 +70,43 @@ void sokol_event_callback(const sapp_event* event)
 
 void FatalError(const char* format, ...)
 {
-    char buffer[1024]; // Adjust the size according to your needs
-    // Format the error message
+    char buffer[1024];
     va_list args;
     va_start(args, format);
-    vsnprintf(buffer, sizeof(buffer), format, args);
+    stbsp_vsnprintf(buffer, sizeof(buffer), format, args);
     va_end(args);
-    puts(buffer);
-    OutputDebugString(buffer);
-    // Display the message box
+    
     #ifdef PLATFORM_WINDOWS
+    HANDLE stdout_handle = GetStdHandle(STD_OUTPUT_HANDLE);
+    DWORD chars_written;
+    WriteFile(stdout_handle, buffer, StringLength(buffer), &chars_written, NULL);
+    WriteFile(stdout_handle, "\n", 1, &chars_written, NULL);
+    
+    OutputDebugString(buffer);
     MessageBoxA(NULL, buffer, "Fatal Error", MB_ICONERROR | MB_OK);
     #elif PLATFORM_ANDROID
-    __android_log_write(ANDROID_LOG_ERROR, "ANIL", line_buf);
+    __android_log_write(ANDROID_LOG_ERROR, "ANIL", buffer);
     #endif
 }
 
 void DebugLog(const char* format, ...)
 {
-    char buffer[1024]; // Adjust the size according to your needs
-    // Format the error message
+    char buffer[1024];
     va_list args;
     va_start(args, format);
-    vsnprintf(buffer, sizeof(buffer), format, args);
+    stbsp_vsnprintf(buffer, sizeof(buffer), format, args);
     va_end(args);
-    puts(buffer);
+    
     #ifdef PLATFORM_WINDOWS
-    MessageBoxA(NULL, buffer, "DebugLog", MB_ICONWARNING | MB_OK);
+    HANDLE stdout_handle = GetStdHandle(STD_OUTPUT_HANDLE);
+    DWORD chars_written;
+    WriteFile(stdout_handle, buffer, StringLength(buffer), &chars_written, NULL);
+    WriteFile(stdout_handle, "\n", 1, &chars_written, NULL);
+    
     OutputDebugString(buffer);
+    MessageBoxA(NULL, buffer, "DebugLog", MB_ICONWARNING | MB_OK);
     #elif PLATFORM_ANDROID
-    __android_log_write(ANDROID_LOG_INFO, "ANIL", line_buf);
+    __android_log_write(ANDROID_LOG_INFO, "ANIL", buffer);
     #endif
 }
 
@@ -231,10 +250,12 @@ static uint64_t ReleasedKeys[8];
 
 void PlatformInit()
 {
+    PlatformCtx.SecondsSinceLastClick = 0.0f;
     PlatformCtx.DownKeys.bits = DownKeys;
     PlatformCtx.LastKeys.bits = LastKeys;
     PlatformCtx.PressedKeys.bits = PressedKeys;
     PlatformCtx.ReleasedKeys.bits = ReleasedKeys;
+    PlatformCtx.StartupTime = stm_now();
 }
 
 double TimeSinceStartup()

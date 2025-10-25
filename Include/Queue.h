@@ -1,4 +1,8 @@
-#include "Math/Math.h"
+#ifndef AX_QUEUE
+#define AX_QUEUE
+
+
+#include "../Math/Math.h"
 #include "Algorithm.h"
 
 typedef struct Queue_
@@ -319,3 +323,4 @@ static inline void* PQTop(PriorityQueue* pq)
 	return pq->heap[0];
 }
 
+#endif // AX_QUEUE

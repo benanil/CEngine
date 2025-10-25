@@ -1,16 +1,39 @@
 #ifndef _GRAPHICS_
 #define _GRAPHICS_
 
-
-//#include "Extern/sokol/sokol_gfx.h"
-// #include "FileSystem.h"
+// #include "Extern/sokol/sokol_gfx.h"
 // #include "Math/Math.h"
-#include "Extern/stb/stb_image_resize2.h"
-#include "Arena.h"
-#include "Platform.h"
-#include "Graphics.h"
 
-#include <stdint.h>
+#define STBI_NO_BMP
+#define STBI_NO_PSD
+#define STBI_NO_TGA
+#define STBI_NO_GIF
+#define STBI_NO_HDR
+#define STBI_NO_PIC
+#define STBI_NO_PNM 
+
+#define STB_IMAGE_IMPLEMENTATION
+#define STB_IMAGE_RESIZE_IMPLEMENTATION
+
+#define STBI_MALLOC(size)           ( rpmalloc(size) )
+#define STBI_FREE(ptr)              ( rpfree(ptr) )
+#define STBI_REALLOC(ptr, size)     ( rprealloc(ptr, size) )
+
+#define STBIR_MALLOC(size, c)       ( rpmalloc(size) )
+#define STBIR_FREE(ptr, c)          ( (void)(c), rpfree(ptr) )
+
+#include "Include/FileSystem.h"
+#include "Include/Arena.h"
+#include "Include/Platform.h"
+#include "Include/Graphics.h"
+
+#include "Extern/sinfl.h"
+
+#include "Extern/ufbx.h"
+#include "Extern/zstd.h"
+
+#include "Extern/stb/stb_image.h"
+#include "Extern/stb/stb_image_resize2.h"
 
 static const uint8_t TextureTypeToBytesPerPixelMap[_SG_PIXELFORMAT_NUM] =
 {
@@ -210,7 +233,7 @@ typedef struct ImageInfo_
 
 #define g_AXTextureVersion 12351
 
-static void LoadSceneImagesGeneric(const char* texturePath, Texture* textures, int numImages)
+void LoadSceneImagesGeneric(const char* texturePath, Texture* textures, int numImages)
 {
     if (numImages == 0) {
         return;
@@ -237,7 +260,18 @@ static void LoadSceneImagesGeneric(const char* texturePath, Texture* textures, i
     
     unsigned char* decompressedBuffer = arena_alloc(&global_arena, decompressedSize);
     decompressedSize = ZSTD_decompress(decompressedBuffer, decompressedSize, compressedBuffer, compressedSize);
-    ASSERT(!ZSTD_isError(decompressedSize));
+    // ASSERT(!ZSTD_isError(decompressedSize));
+    // decompressedSize = zsinflate(decompressedBuffer, decompressedSize, compressedBuffer, compressedSize);
+    // ufbx_inflate_input inflateInput = 
+    // {
+    //     .data = compressedBuffer,
+    //     .total_size = compressedSize
+    // };
+    // 
+    // ufbx_inflate_retain retain;
+    // decompressedSize = ufbx_inflate(decompressedBuffer, decompressedSize, &inflateInput, &retain);
+    // 
+    // ASSERT(decompressedSize != -1);
     
     unsigned char* currentImage = decompressedBuffer;
     

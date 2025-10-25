@@ -45,7 +45,7 @@
 #ifndef ADLER32_SIMD_SSSE3
 #define ADLER32_SIMD_SSSE3
 
-#include "../Common.h"
+#include "../Include/Common.h"
 /* Definitions from adler32.c: largest prime smaller than 65536 */
 #define BASE 65521U
 
@@ -313,3 +313,5 @@ static unsigned Adler32(unsigned adler32, const unsigned char *in, int in_len) {
     return (unsigned)(s2 << 16) + (unsigned)s1;
 }
 #endif  /* ADLER32_SIMD_SSSE3 */
+
+#endif // ADLER32_SIMD_SSSE3

@@ -3,7 +3,7 @@
 #define ALGORITHM_INCLUDED
 
 #include "Common.h"
-#include "Math/Math.h"
+#include "../Math/Math.h"
 
 #define XSWAP(type, x, y) do { \
     type SWAP_tmp = (x);      \
@@ -30,7 +30,7 @@ static inline void SwapMem(void* a, void* b, size_t elemSize)
 }
 
 // quicksort core
-static inline void QuickSortFn(void* arr, int left, int right, size_t elemSize,
+static inline void QuickSort(void* arr, int left, int right, size_t elemSize,
                  int (*compareFn)(const void*, const void*)) {
     unsigned char* base = (unsigned char*)arr;
     int i, j;
@@ -51,10 +51,10 @@ static inline void QuickSortFn(void* arr, int left, int right, size_t elemSize,
         SwapMem(base + i * elemSize, base + right * elemSize, elemSize);
 
         if ((i - 1 - left) <= (right - i - 1)) {
-            QuickSortFn(base, left, i - 1, elemSize, compareFn);
+            QuickSort(base, left, i - 1, elemSize, compareFn);
             left = i + 1;
         } else {
-            QuickSortFn(base, i + 1, right, elemSize, compareFn);
+            QuickSort(base, i + 1, right, elemSize, compareFn);
             right = i - 1;
         }
     }
@@ -127,12 +127,18 @@ static inline long long ParseNumberLong(const char** ptr)
 static inline int ParsePositiveNumber(const char** ptr)
 {
     const char* curr = *ptr;
+
+    // Ensure we don't go out of string bounds.
     while (*curr && !IsNumber(*curr))
-        curr++; // skip whitespace
+        curr++;
 
     int val = 0;
-    while (*curr > '\n' && IsNumber(*curr))
-        val = val * 10 + (*curr++ - '0');
+    while (*curr && IsNumber(*curr))
+    {
+        val = val * 10 + (*curr - '0');
+        curr++;
+    }
+
     *ptr = curr;
     return val;
 }
@@ -184,20 +190,16 @@ static inline float ParseFloat(const char** text)
     if (*ptr == 'e' || *ptr == 'E') // exponent
     {
         ptr++;
-        const double* powers;
+        const double* powers = POWER_10_POS;
 
         switch (*ptr)
         {
             case '+':
-                powers = POWER_10_POS;
                 ptr++;
                 break;
             case '-':
                 powers = POWER_10_NEG;
                 ptr++;
-                break;
-            default:
-                powers = POWER_10_POS;
                 break;
         }
 
@@ -307,15 +309,7 @@ static inline void aFillN(void* arr, const void* val, int n, size_t elemSize) {
         SmallMemCpy(p, val, elemSize);
 }
 
-static inline int void_ptr_compare(const void* a, const void* b)
-{
-    const void* const* ptr_a = (const void* const*)a;
-    const void* const* ptr_b = (const void* const*)b;
 
-    if (*ptr_a < *ptr_b) return -1;
-    if (*ptr_a > *ptr_b) return 1;
-    return 0;
-}
 
 // check if arr contains val
 static inline bool aContains(const void* arr, const void* val, int n, size_t elemSize, int (*cmp)(const void*, const void*)) 
@@ -345,35 +339,35 @@ static inline int aCountIf(const void* arr, const void* val, int n, size_t elemS
     return count;
 }
 
-#define StrCMP16(_str, _otr) StrCmp16(_str, _otr, sizeof(_otr)) 
- 
+#define StrCMP16(_str, _otr) StrCmp16(_str, _otr, sizeof(_otr) - 1)
+
 #if defined(AX_SUPPORT_SSE)
-static inline bool StrCmp16(const char* a, const char* b, uint64_t n)
+static inline bool StrCmp16(const char* RESTRICT a, const char* RESTRICT b, uint64_t n)
 {
     __m128i va = _mm_loadu_si128((const __m128i*)a);
     __m128i vb = _mm_loadu_si128((const __m128i*)b);
-    __m128i diff = _mm_xor_si128(va, vb);
-    int mask = _mm_movemask_epi8(_mm_cmpeq_epi8(diff, _mm_setzero_si128()));
+    __m128i cmp = _mm_cmpeq_epi8(va, vb);
+    int mask = _mm_movemask_epi8(cmp);
     int expect = (1 << n) - 1;
     return (mask & expect) == expect;
 }
 #elif defined(__ARM_NEON) || defined(__ARM_NEON__)
-static inline bool StrCmp16(const char* a, const char* b, uint64_t n)
+static inline bool StrCmp16(const char* RESTRICT a, const char* RESTRICT b, uint64_t n)
 {
     uint8x16_t va = vld1q_u8((const uint8_t*)a);
     uint8x16_t vb = vld1q_u8((const uint8_t*)b);
     uint8x16_t cmp = vceqq_u8(va, vb);
-    uint8x16_t shifted = vshrq_n_u8(cmp, 7);   // keep only LSB of each byte
-    uint64x2_t pair64  = vreinterpretq_u64_u8(shifted);
-    uint64_t mask0 = vgetq_lane_u64(pair64, 0);
-    uint64_t mask1 = vgetq_lane_u64(pair64, 1);
-    uint32_t mask = (uint32_t)mask0 | ((uint32_t)mask1 << 8);
+    uint8_t maskBytes[16];
+    vst1q_u8(maskBytes, cmp);
+    uint32_t mask = 0;
+    for (uint32_t i = 0; i < n; ++i)
+        mask |= (maskBytes[i] == 0xFF) << i;
     uint32_t expect = (1u << n) - 1u;
     return (mask & expect) == expect;
 }
 #endif
 
-static inline bool StringEqual(const char *a, const char *b, int n) 
+static inline bool StringEqual(const char* RESTRICT a, const char* RESTRICT b, int n) 
 {
     int i = 0;
     for (; i < n-16; i += 16)

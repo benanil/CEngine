@@ -12,11 +12,9 @@
 *    Anilcan Gulkaya 2024 anilcangulkaya7@gmail.com github @benanil                       *
 *******************************************************************************************/
 
-#include "Animation.h"
-// #include "Scene.h"
-// #include "SceneRenderer.h"
-#include "Platform.h"
-#include "Algorithm.h"
+#include "Include/Animation.h"
+#include "Include/Platform.h"
+#include "Include/Algorithm.h"
 #include "Math/Half.h"
 
 // <<<<<<<        prefab         >>>>>>>>>>>>
@@ -125,7 +123,7 @@ void AnimationController_RecurseBoneMatrices(AnimationController* ac, ANode* nod
         if (children == ac->mSpineNode && Absf(ac->mSpineYAngle) + Absf(ac->mSpineXAngle) > MATH_Epsilon) { RotateNode(children, ac->mSpineXAngle, ac->mSpineYAngle); }
         if (children == ac->mNeckNode && Absf(ac->mNeckYAngle) + Absf(ac->mSpineXAngle) > MATH_Epsilon) { RotateNode(children, ac->mNeckXAngle, ac->mNeckYAngle); }
 
-        ac->mBoneMatrices[childIndex] = Matrix4Multiply(parentMatrix, GetNodeMatrix(children));
+        ac->mBoneMatrices[childIndex] = Matrix4Multiply(GetNodeMatrix(children), parentMatrix);
 
         AnimationController_RecurseBoneMatrices(ac, children, ac->mBoneMatrices[childIndex]);
     }
@@ -228,7 +226,7 @@ void AnimationController_UploadBoneMatrices(AnimationController* ac)
     // give this, thousands of joints it will process it rapidly!
     for (int i = 0; i < skin->numJoints; i++)
     {
-        Matrix4 mat = Matrix4Multiply(ac->mBoneMatrices[skin->joints[i]], invMatrices[i]);
+        Matrix4 mat = Matrix4Multiply(invMatrices[i], ac->mBoneMatrices[skin->joints[i]]);
         mat = Matrix4Transpose(mat);
         // with AVX F16C this is single instruction! vcvtps2ph 
         ConvertFloat8ToHalf8(ac->mOutMatrices[i].x, &mat.m[0][0]);
@@ -247,6 +245,7 @@ void AnimationController_UploadPose(AnimationController* ac, Pose* pose)
     ac->mBoneMatrices[ac->mRootNodeIndex] = GetNodeMatrix(rootNode);
 
     AnimationController_RecurseBoneMatrices(ac, rootNode, ac->mBoneMatrices[ac->mRootNodeIndex]);
+
     AnimationController_UploadBoneMatrices(ac);
 }
 

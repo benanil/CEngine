@@ -2,7 +2,7 @@
 #define Vector_H
 
 #include "Math.h"
-#include "Common.h"
+#include "../Include/Common.h"
 
 typedef struct Vec3f_ {
     float x, y, z;

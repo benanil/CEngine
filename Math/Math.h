@@ -12,7 +12,7 @@
 // Color        : packing and unpacking rgba8 color
 // Ease         : easeIn, easeOut...
 
-#include "../Common.h"
+#include "../Include/Common.h"
 
 #define MATH_PI        (3.14159265358f)
 #define MATH_HalfPI    (MATH_PI / 2.0f)
@@ -97,6 +97,10 @@ purefn float Ceilf(float x) {
 
 purefn float Fractf(float a) {
     return a - (int)(a); 
+}
+
+purefn double Fract(double a) {
+    return a - (uint64_t)(a); 
 }
 
 // https://github.com/id-Software/DOOM-3/blob/master/neo/idlib/math/Math.h

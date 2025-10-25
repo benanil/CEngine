@@ -176,8 +176,6 @@ extern int zsdeflate(struct sdefl *s, void *o, const void *i, int n, int lvl);
 
 #ifdef SDEFL_IMPLEMENTATION
 
-#include <assert.h> /* assert */
-#include <string.h> /* memcpy */
 #include <limits.h> /* CHAR_BIT */
 #include "adler32.h"
 
@@ -223,13 +221,7 @@ sdefl_ilog2(int n) {
   #undef lt
 #endif
 }
-static unsigned
-sdefl_uload32(const void *p) {
-  /* hopefully will be optimized to an unaligned read */
-  unsigned n = 0;
-  memcpy(&n, p, sizeof(n));
-  return n;
-}
+#define sdefl_uload32(p) (*(const unsigned*)p)
 static unsigned
 sdefl_hash32(const void *p) {
   unsigned n = sdefl_uload32(p);
@@ -404,8 +396,8 @@ sdefl_precode(struct sdefl_symcnt *cnt, unsigned *freqs, unsigned *items,
     if (offlen[cnt->off - 1]) break;
 
   total = (unsigned)(cnt->lit + cnt->off);
-  memcpy(lens, litlen, sizeof(unsigned char) * (size_t)cnt->lit);
-  memcpy(lens + cnt->lit, offlen, sizeof(unsigned char) * (size_t)cnt->off);
+  MemCpy(lens, litlen, sizeof(unsigned char) * (size_t)cnt->lit);
+  MemCpy(lens + cnt->lit, offlen, sizeof(unsigned char) * (size_t)cnt->off);
   do {
     unsigned len = lens[run_start];
     unsigned run_end = run_start;
@@ -469,11 +461,11 @@ sdefl_match_codes(struct sdefl_match_codest *cod, int dist, int len) {
     27, 27, 27, 27, 27, 27, 27, 27, 27, 27, 27, 27, 27, 27, 27, 27, 27, 27,
     27, 27, 28
   };
-  assert(len <= 258);
-  assert(dist <= 32768);
+  ASSERT(len <= 258);
+  ASSERT(dist <= 32768);
   cod->ls = lslot[len];
   cod->lc = 257 + cod->ls;
-  assert(cod->lc <= 285);
+  ASSERT(cod->lc <= 285);
 
   cod->dx = sdefl_ilog2(sdefl_npow2(dist) >> 2);
   cod->dc = cod->dx ? ((cod->dx + 1) << 1) + (dist > dxmax[cod->dx]) : dist-1;
@@ -568,10 +560,10 @@ sdefl_flush(unsigned char **dst, struct sdefl *s, int is_last,
       if (s->bitcnt) {
         sdefl_put(dst, s, 0x00, 8 - s->bitcnt);
       }
-      assert(s->bitcnt == 0);
+      ASSERT(s->bitcnt == 0);
       sdefl_put16(dst, (unsigned short)amount);
       sdefl_put16(dst, ~(unsigned short)amount);
-      memcpy(*dst, in + blk_begin + i * SDEFL_RAW_BLK_SIZE, amount);
+      MemCpy(*dst, in + blk_begin + i * SDEFL_RAW_BLK_SIZE, amount);
       *dst = *dst + amount;
       blk_len -= amount;
     }
@@ -612,7 +604,7 @@ sdefl_flush(unsigned char **dst, struct sdefl *s, int is_last,
 }
 static void
 sdefl_seq(struct sdefl *s, int off, int len) {
-  assert(s->seq_cnt + 2 < SDEFL_SEQ_SIZ);
+  ASSERT(s->seq_cnt + 2 < SDEFL_SEQ_SIZ);
   s->seq[s->seq_cnt].off = off;
   s->seq[s->seq_cnt].len = len;
   s->seq_cnt++;
@@ -622,8 +614,8 @@ sdefl_reg_match(struct sdefl *s, int off, int len) {
   struct sdefl_match_codest cod;
   sdefl_match_codes(&cod, off, len);
 
-  assert(cod.lc < SDEFL_SYM_MAX);
-  assert(cod.dc < SDEFL_OFF_MAX);
+  ASSERT(cod.lc < SDEFL_SYM_MAX);
+  ASSERT(cod.dc < SDEFL_OFF_MAX);
 
   s->freq.lit[cod.lc]++;
   s->freq.off[cod.dc]++;
@@ -638,20 +630,20 @@ sdefl_fnd(struct sdefl_match *m, const struct sdefl *s, int chain_len,
   int i = s->tbl[sdefl_hash32(in + p)];
   int limit = ((p - SDEFL_WIN_SIZ) < SDEFL_NIL) ? SDEFL_NIL : (p-SDEFL_WIN_SIZ);
 
-  assert(p < e);
-  assert(p + max_match <= e);
+  ASSERT(p < e);
+  ASSERT(p + max_match <= e);
   while (i > limit) {
-    assert(i + m->len < e);
-    assert(p + m->len < e);
-    assert(i + SDEFL_MIN_MATCH < e);
-    assert(p + SDEFL_MIN_MATCH < e);
+    ASSERT(i + m->len < e);
+    ASSERT(p + m->len < e);
+    ASSERT(i + SDEFL_MIN_MATCH < e);
+    ASSERT(p + SDEFL_MIN_MATCH < e);
 
     if (in[i + m->len] == in[p + m->len] &&
       (sdefl_uload32(&in[i]) == sdefl_uload32(&in[p]))) {
       int n = SDEFL_MIN_MATCH;
       while (n < max_match && in[i + n] == in[p + n]) {
-        assert(i + n < e);
-        assert(p + n < e);
+        ASSERT(i + n < e);
+        ASSERT(p + n < e);
         n++;
       }
       if (n > m->len) {
@@ -712,11 +704,11 @@ sdefl_compr(struct sdefl *s, unsigned char *out, const unsigned char *in,
           unsigned h = sdefl_hash32(&in[i]);
           s->prv[i&SDEFL_WIN_MSK] = s->tbl[h];
           s->tbl[h] = i, i += inc;
-          assert(i <= blk_end);
+          ASSERT(i <= blk_end);
         }
       } else {
         i += run_inc;
-        assert(i <= blk_end);
+        ASSERT(i <= blk_end);
       }
     }
     if (litlen) {
@@ -728,7 +720,7 @@ sdefl_compr(struct sdefl *s, unsigned char *out, const unsigned char *in,
   if (s->bitcnt) {
     sdefl_put(&q, s, 0x00, 8 - s->bitcnt);
   }
-  assert(s->bitcnt == 0);
+  ASSERT(s->bitcnt == 0);
   return (int)(q - out);
 }
 extern int

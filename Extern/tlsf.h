@@ -65,17 +65,6 @@ void* tlsf_memalign(tlsf_t tlsf, size_t align, size_t bytes);
 void* tlsf_realloc(tlsf_t tlsf, void* ptr, size_t size);
 void tlsf_free(tlsf_t tlsf, void* ptr);
 
-/* Returns internal block size, not original request size */
-size_t tlsf_block_size(void* ptr);
-
-/* Overheads/limits of internal structures. */
-size_t tlsf_size(void);
-size_t tlsf_align_size(void);
-size_t tlsf_block_size_min(void);
-size_t tlsf_block_size_max(void);
-size_t tlsf_pool_overhead(void);
-size_t tlsf_alloc_overhead(void);
-
 /* Debugging. */
 typedef void (*tlsf_walker)(void* ptr, size_t size, int used, void* user);
 void tlsf_walk_pool(pool_t pool, tlsf_walker walker, void* user);
