@@ -15,13 +15,13 @@
 #endif
 
 size_t OSGetPageSize(void) {
-    #ifdef PLATFORM_WINDOWS
+#ifdef PLATFORM_WINDOWS
     SYSTEM_INFO si;
     GetSystemInfo(&si);
     return (size_t)si.dwPageSize;
-    #else
+#else
     return (size_t)getpagesize();
-    #endif
+#endif
 }
 
 size_t OSRoundToPage(size_t size) {
@@ -35,12 +35,12 @@ void* OSAlloc(size_t size)
         return NULL;
     }
     
-    #ifdef PLATFORM_WINDOWS
+#ifdef PLATFORM_WINDOWS
     DWORD mask = MEM_COMMIT | MEM_RESERVE | MEM_LARGE_PAGES; 
     void *ptr = VirtualAlloc(NULL, size, mask, PAGE_READWRITE);
-    #else
+#else
     void *ptr = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-    #endif
+#endif
     return ptr;
 }
 
@@ -49,12 +49,12 @@ int OSFree(void *ptr, size_t size) {
         return -1;
     }
     
-    #ifdef PLATFORM_WINDOWS
+#ifdef PLATFORM_WINDOWS
     (void)size; /* Windows doesn't need size for VirtualFree */
     if (VirtualFree(ptr, 0, MEM_RELEASE))  return 0;
     else return (int)GetLastError();
-    #else
+#else
     if (munmap(ptr, size) == 0) return 0;
     else return errno;
-    #endif
+#endif
 }

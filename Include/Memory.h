@@ -44,7 +44,7 @@ void* rpcalloc(size_t count, size_t size);
 // Shift the given address upwards if/as necessary to// ensure it is aligned to the given number of bytes.
 static inline uint64_t AlignAddress(uint64_t addr, uint64_t align)
 {
-    uint64_t mask = align - 1;
+    const uint64_t mask = align - 1;
     ASSERT((align & mask) == 0); // pwr of 2
     return (addr + mask) & ~mask;
 }
@@ -115,7 +115,7 @@ void* FixedPow2Allocator_Allocate(FixedPow2Allocator* alloc, size_t countBytes);
 
 void* FixedPow2Allocator_AllocateUninitialized(FixedPow2Allocator* alloc, size_t countBytes);
 
-void FixedPow2Allocator_Copy(FixedPow2Allocator* alloc, FixedPow2Allocator* other);
+void FixedPow2Allocator_Copy(FixedPow2Allocator* alloc, const FixedPow2Allocator* other);
 
 void* FixedPow2Allocator_TakeOwnership(FixedPow2Allocator* alloc);
 

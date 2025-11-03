@@ -84,7 +84,6 @@ static inline void CameraInit(Camera* camera)
     Camera_RecalculateProjection(camera, 800, 600);
 }
 
-
 static inline void InfiniteMouse(Vec2f point)
 {
     Vec2i monitorSize;

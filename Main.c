@@ -44,7 +44,7 @@ typedef struct {
 } vertex_t;
 
 
-static Camera camera;
+Camera globalCamera;
 static SceneBundle* sceneBundle;
 static Matrix4* nodeTransforms;
 static int characterRootIndex;
@@ -71,17 +71,17 @@ void Init(void)
     rInit();
 
     PlatformCtx.StartupTime = stm_now();
-    MemsetZero(&camera, sizeof(camera));
-    camera.pitch = 0.0f;
-    camera.yaw = -0.0f;
-    camera.senstivity = 15.0f;
-    camera.verticalFOV = 65.0f;
-    camera.nearClip = 0.1f;
-    camera.farClip = 2400.0f;
-    camera.speed = 0.4f;
-    camera.position.x -= 6;
+    MemsetZero(&globalCamera, sizeof(globalCamera));
+    globalCamera.pitch = 0.0f;
+    globalCamera.yaw = -0.0f;
+    globalCamera.senstivity = 15.0f;
+    globalCamera.verticalFOV = 65.0f;
+    globalCamera.nearClip = 0.1f;
+    globalCamera.farClip = 2400.0f;
+    globalCamera.speed = 0.4f;
+    globalCamera.position.x -= 6;
 
-    CameraInit(&camera);
+    CameraInit(&globalCamera);
 
     sg_setup(&(sg_desc) {
         .environment = sglue_environment(),
@@ -191,9 +191,6 @@ void Frame(void)
     const double dt = sapp_frame_duration();
     PlatformCtx.DeltaTime = dt;
 
-    Matrix4 proj = PerspectiveFovRH(60.0f * (MATH_PI / 180.0f), w, h, 0.01f, camera.farClip);
-    Matrix4 view = LookAtRH((Vec3f) { 0.0f, 1.5f, 6.0f }, (Vec3f) { 0.0f, 0.0f, -1.0f }, (Vec3f) { 0.0f, 1.0f, 0.0f });
-    Matrix4 view_proj = Matrix4Multiply(proj, view);
     state.rx += (float)dt;
     state.ry += (float)dt;
 
@@ -206,12 +203,11 @@ void Frame(void)
     }
     first = false;
 
-    //Matrix4 rym = Matrix4RotationY(FModf(state.ry + MATH_PI, MATH_TwoPI) - MATH_PI);
-    Matrix4 model = MatrixFromScalef(1.0f); // Matrix4Multiply(MatrixFromScalef(4.0f), rym); //(rxm, rym);
-
-    CameraUpdate(&camera, (float)dt);
-
-    view_proj = Matrix4Multiply(camera.view, camera.projection);
+    CameraUpdate(&globalCamera, (float)dt);
+    
+    const Matrix4 model = MatrixFromScalef(1.0f);
+    const Matrix4 view_proj = Matrix4Multiply(globalCamera.view, globalCamera.projection);
+    
     vs_params.mvp = Matrix4Multiply(model, view_proj);
     vs_params.uModel = model;
     // vs_params.uLightMatrix;
@@ -231,7 +227,7 @@ void Frame(void)
     sg_apply_uniforms(UB_vs_params, &SG_RANGE(vs_params));
 
     int numNodes  = sceneBundle->numNodes;
-    bool hasScene = sceneBundle->numScenes > 0;
+    const bool hasScene = sceneBundle->numScenes > 0;
     AScene defaultScene;
     if (hasScene)
     {
@@ -246,19 +242,19 @@ void Frame(void)
 
     while (stackLen > 0)
     {
-        int nodeIndex = nodeStack[--stackLen];
-        ANode* node = &sceneBundle->nodes[nodeIndex];
-        AMesh* mesh = sceneBundle->meshes + node->index;
-        Matrix4 model = nodeTransforms[nodeIndex];
+        const int nodeIndex = nodeStack[--stackLen];
+        const ANode* node = &sceneBundle->nodes[nodeIndex];
+        const AMesh* mesh = sceneBundle->meshes + node->index;
 
         if (node->type == 0 && node->index != -1)
         for (int j = 0; j < mesh->numPrimitives; ++j)
         {
-            APrimitive* primitive = &mesh->primitives[j];
-            bool hasMaterial = sceneBundle->materials && primitive->material != UINT16_MAX;
-            AMaterial material = sceneBundle->materials[primitive->material];
+            const APrimitive* primitive = &mesh->primitives[j];
+            const bool hasMaterial = sceneBundle->materials && primitive->material != UINT16_MAX;
+            const AMaterial material = sceneBundle->materials[primitive->material];
+            const Matrix4 model = nodeTransforms[nodeIndex];
             
-            sg_draw(primitive->indexOffset, primitive->numIndices, 4096);
+            sg_draw(primitive->indexOffset, primitive->numIndices, 15000);
         }
 
         for (int i = 0; i < node->numChildren; i++)
@@ -274,7 +270,6 @@ void Frame(void)
 void Cleanup(void) {
     sg_shutdown();
     rDestroy();
-    
 }
 
 extern void sokol_event_callback(const sapp_event* event);
@@ -297,7 +292,7 @@ sapp_desc sokol_main(int argc, char* argv[]) {
     (void)argc;
     (void)argv;
     
-    const unsigned long long halfGig = 500ull * 1000ull * 1000ull;
+    const uint64_t halfGig = 500ull * 1000ull * 1000ull;
     tlsf = tlsf_create_with_pool(app_memory, halfGig);
     global_arena.buf = app_memory + halfGig;
     global_arena.buf_len = halfGig;

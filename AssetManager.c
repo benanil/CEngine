@@ -48,11 +48,11 @@ static int void_ptr_compare(const void* a, const void* b)
     return 0;
 }
 
-static short GetFBXTexture(ufbx_material* umaterial,
-                    ufbx_scene* uscene, 
-                    ufbx_material_feature feature,
-                    ufbx_material_pbr_map pbr,
-                    ufbx_material_fbx_map fbx)
+static short GetFBXTexture(const ufbx_material* umaterial,
+                           const ufbx_scene* uscene, 
+                           const ufbx_material_feature feature,
+                           const ufbx_material_pbr_map pbr,
+                           const ufbx_material_fbx_map fbx)
 {
     if (umaterial->features.features[feature].enabled)
     {
@@ -709,7 +709,7 @@ static void WriteGLTFString(const char* str, AFile file)
     if (str) AFileWrite(str, nameLen + 1, file, 1);
 }
 
-int SaveGLTFBinary(SceneBundle* gltf, const char* path)
+int SaveGLTFBinary(const SceneBundle* gltf, const char* path)
 {
 #if !AX_GAME_BUILD
     AFile file = AFileOpen(path, AOpenFlag_WriteBinary);

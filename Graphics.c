@@ -196,7 +196,7 @@ Texture rImportTexture(const char* path, TexFlags flags, const char* label)
 
     void* textureLoadBuffer = arena_alloc(&global_arena, size);
     
-    int compressed = IsCompressed(path, StringLength(path));
+    const int compressed = IsCompressed(path, StringLength(path));
     if (compressed) {
         ASSERT(0 && "not implemented");
     }

@@ -20,7 +20,7 @@
 // <<<<<<<        prefab         >>>>>>>>>>>>
 
 
-int Prefab_FindAnimRootNodeIndex(SceneBundle* prefab)
+int Prefab_FindAnimRootNodeIndex(const SceneBundle* prefab)
 {
     if (prefab->skins == NULL)
         return 0;
@@ -52,7 +52,7 @@ int Prefab_FindAnimRootNodeIndex(SceneBundle* prefab)
     return skeletonNode;
 }
 
-int Prefab_FindNodeFromName(SceneBundle* prefab, const char* name)
+int Prefab_FindNodeFromName(const SceneBundle* prefab, const char* name)
 {
     int len = StringLength(name);
     for (int i = 0; i < prefab->numNodes; i++)
@@ -120,8 +120,15 @@ void AnimationController_RecurseBoneMatrices(AnimationController* ac, ANode* nod
         int childIndex = node->children[c];
         ANode* children = &ac->mPrefab->nodes[childIndex];
 
-        if (children == ac->mSpineNode && Absf(ac->mSpineYAngle) + Absf(ac->mSpineXAngle) > MATH_Epsilon) { RotateNode(children, ac->mSpineXAngle, ac->mSpineYAngle); }
-        if (children == ac->mNeckNode && Absf(ac->mNeckYAngle) + Absf(ac->mSpineXAngle) > MATH_Epsilon) { RotateNode(children, ac->mNeckXAngle, ac->mNeckYAngle); }
+        if (children == ac->mSpineNode && Absf(ac->mSpineYAngle) + Absf(ac->mSpineXAngle) > MATH_Epsilon)
+        {
+            RotateNode(children, ac->mSpineXAngle, ac->mSpineYAngle); 
+        }
+
+        if (children == ac->mNeckNode && (Absf(ac->mNeckYAngle) + Absf(ac->mSpineXAngle) > MATH_Epsilon))
+        {
+            RotateNode(children, ac->mNeckXAngle, ac->mNeckYAngle); 
+        }
 
         ac->mBoneMatrices[childIndex] = Matrix4Multiply(GetNodeMatrix(children), parentMatrix);
 
@@ -129,7 +136,7 @@ void AnimationController_RecurseBoneMatrices(AnimationController* ac, ANode* nod
     }
 }
 
-static void MergeAnims(Pose* pose0, Pose* pose1, float animBlend, int numNodes)
+static void MergeAnims(Pose* pose0, const Pose* pose1, float animBlend, int numNodes)
 {
     for (int i = 0; i < numNodes; i++)
     {
@@ -139,7 +146,7 @@ static void MergeAnims(Pose* pose0, Pose* pose1, float animBlend, int numNodes)
     }
 }
 
-static void InitNodes(ANode* nodes, Pose* pose, int begin, int numNodes)
+static void InitNodes(ANode* nodes, const Pose* pose, int begin, int numNodes)
 {
     numNodes += begin;
     for (int i = begin; i < numNodes; i++)
@@ -150,7 +157,7 @@ static void InitNodes(ANode* nodes, Pose* pose, int begin, int numNodes)
     }
 }
 
-static void InitPose(Pose* pose, ANode* nodes, int numNodes)
+static void InitPose(Pose* pose, const ANode* nodes, int numNodes)
 {
     for (int i = 0; i < numNodes; i++)
     {
@@ -220,8 +227,8 @@ void AnimationController_SampleAnimationPose(AnimationController* ac, Pose* pose
 // send matrices to GPU
 void AnimationController_UploadBoneMatrices(AnimationController* ac)
 {
-    ASkin* skin = &ac->mPrefab->skins[0];
-    Matrix4* invMatrices = (Matrix4*)skin->inverseBindMatrices;
+    const ASkin* skin = &ac->mPrefab->skins[0];
+    const Matrix4* invMatrices = (Matrix4*)skin->inverseBindMatrices;
 
     // give this, thousands of joints it will process it rapidly!
     for (int i = 0; i < skin->numJoints; i++)

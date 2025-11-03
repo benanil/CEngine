@@ -121,13 +121,13 @@ static inline void AnimationController_SetAnim(AnimationController* ac, int x, i
     else        ac->mLocomotionIndicesInv[Abs32(y-1.0f)][x] = index;
 }
 
-static inline int AnimationController_GetAnim(AnimationController* ac, int x, int y)
+static inline int AnimationController_GetAnim(const AnimationController* ac, int x, int y)
 {
     if (y >= 0) return ac->mLocomotionIndices[y][x];
     else        return ac->mLocomotionIndicesInv[Abs32(y)-1][x];
 }
     
-static inline bool AnimationController_IsTrigerred(AnimationController* ac)
+static inline bool AnimationController_IsTrigerred(const AnimationController* ac)
 {
     return (ac->mState & AnimState_TriggerMask) != 0;
 }
@@ -167,7 +167,7 @@ void AnimationController_Create(SceneBundle* prefab, AnimationController* animCo
 
 void AnimationController_Clear(AnimationController* ac);
 
-int Prefab_FindAnimRootNodeIndex(SceneBundle* prefab);
+int Prefab_FindAnimRootNodeIndex(const SceneBundle* prefab);
 
 
 #endif // _ANIMATION_H

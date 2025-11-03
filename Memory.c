@@ -60,7 +60,7 @@ void* FixedPow2Allocator_AllocateUninitialized(FixedPow2Allocator* alloc, size_t
     return ptr;
 }
 
-void FixedPow2Allocator_Copy(FixedPow2Allocator* alloc, FixedPow2Allocator* other)
+void FixedPow2Allocator_Copy(FixedPow2Allocator* alloc, const FixedPow2Allocator* other)
 {
     if (!other->base) return;
 

@@ -16,7 +16,7 @@
 
 int LoadFBX(const char* path, SceneBundle* fbxScene, float scale);
 
-int SaveGLTFBinary(SceneBundle* gltf, const char* path);
+int SaveGLTFBinary(const SceneBundle* gltf, const char* path);
 
 int LoadSceneBundleBinary(const char* path, SceneBundle* gltf);
 

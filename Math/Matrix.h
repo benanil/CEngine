@@ -338,7 +338,7 @@ static inline Matrix4 VECTORCALL Matrix4Inverse(Matrix4 mat)
 }
 #endif
 
-purefn Matrix4 VECTORCALL Matrix4Multiply(Matrix4 in2, Matrix4 in1)
+purefn Matrix4 VECTORCALL Matrix4Multiply(Matrix4 in2, const Matrix4 in1)
 {
     Vector4x32f m0, m1, m2, m3;
     m0 = VecMul(in1.r[0], VecSplatX(in2.r[0]));

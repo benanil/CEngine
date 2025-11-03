@@ -34,7 +34,7 @@ purefn float Sqrtf(float a) {
     #elif defined(__clang__)
     return __builtin_sqrt(a);
     #else
-    return SqrtD(a);
+    return Sqrt(a);
     #endif
 }
 
@@ -256,7 +256,7 @@ purefn float RepeatPI(float x) {
     return FModf(x + MATH_PI, MATH_TwoPI) - MATH_PI;
 }
 
-purefn double SqrtD(double a)
+purefn double Sqrt(double a)
 {
     const double A = 0.417319242, B = 0.5901788532;
     union { 

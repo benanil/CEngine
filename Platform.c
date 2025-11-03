@@ -9,11 +9,13 @@
 #include "Extern/sokol/sokol_app.h"
 #include "Include/Platform.h"
 #include "Include/Bitset.h"
+#include "Include/Camera.h"
 
 #define STB_SPRINTF_IMPLEMENTATION
 #include "Extern/stb/stb_sprintf.h"
 
 PlatformContext PlatformCtx = {0};
+extern Camera globalCamera;
 
 // Sokol event callback
 void sokol_event_callback(const sapp_event* event) 
@@ -59,6 +61,11 @@ void sokol_event_callback(const sapp_event* event)
             }
             break;
         }
+        case SAPP_EVENTTYPE_RESIZED:{
+            if ((event->window_width + event->window_height) != 0)
+                Camera_RecalculateProjection(&globalCamera, event->window_width, event->window_height);
+            break;
+        }
         case SAPP_EVENTTYPE_QUIT_REQUESTED:
             sapp_request_quit();
             break;
@@ -76,7 +83,7 @@ void FatalError(const char* format, ...)
     stbsp_vsnprintf(buffer, sizeof(buffer), format, args);
     va_end(args);
     
-    #ifdef PLATFORM_WINDOWS
+#ifdef PLATFORM_WINDOWS
     HANDLE stdout_handle = GetStdHandle(STD_OUTPUT_HANDLE);
     DWORD chars_written;
     WriteFile(stdout_handle, buffer, StringLength(buffer), &chars_written, NULL);
@@ -84,9 +91,9 @@ void FatalError(const char* format, ...)
     
     OutputDebugString(buffer);
     MessageBoxA(NULL, buffer, "Fatal Error", MB_ICONERROR | MB_OK);
-    #elif PLATFORM_ANDROID
+#elif PLATFORM_ANDROID
     __android_log_write(ANDROID_LOG_ERROR, "ANIL", buffer);
-    #endif
+#endif
 }
 
 void DebugLog(const char* format, ...)
@@ -97,7 +104,7 @@ void DebugLog(const char* format, ...)
     stbsp_vsnprintf(buffer, sizeof(buffer), format, args);
     va_end(args);
     
-    #ifdef PLATFORM_WINDOWS
+#ifdef PLATFORM_WINDOWS
     HANDLE stdout_handle = GetStdHandle(STD_OUTPUT_HANDLE);
     DWORD chars_written;
     WriteFile(stdout_handle, buffer, StringLength(buffer), &chars_written, NULL);
@@ -105,30 +112,30 @@ void DebugLog(const char* format, ...)
     
     OutputDebugString(buffer);
     MessageBoxA(NULL, buffer, "DebugLog", MB_ICONWARNING | MB_OK);
-    #elif PLATFORM_ANDROID
+#elif PLATFORM_ANDROID
     __android_log_write(ANDROID_LOG_INFO, "ANIL", buffer);
-    #endif
+#endif
 }
 
 void GetMousePos(float* x, float* y) {
-    #ifdef PLATFORM_WINDOWS
+#ifdef PLATFORM_WINDOWS
     //ASSERT((uint64_t)x & (uint64_t)y); // shouldn't be nullptr
     POINT point;
     GetCursorPos(&point);
     *x = (float)point.x;
     *y = (float)point.y;
-    #else
+#else
     #error "Get mouse pos is not defined"
-    #endif
+#endif
 }
 
 void SetMousePos(float x, float y)
 {
-    #ifdef PLATFORM_WINDOWS
+#ifdef PLATFORM_WINDOWS
     SetCursorPos((int)x, (int)y);
-    #elif defined(_SAPP_MACOS)
+#elif defined(_SAPP_MACOS)
     #error "monitor size is not defined"
-    #endif
+#endif
 }
 
 void wGetMouseWindowPos(float* x, float* y) {
@@ -137,15 +144,15 @@ void wGetMouseWindowPos(float* x, float* y) {
 
 void wGetMonitorSize(int* width, int* height) 
 {
-    #ifdef PLATFORM_WINDOWS
+#ifdef PLATFORM_WINDOWS
     *width  = GetSystemMetrics(SM_CXSCREEN);
     *height = GetSystemMetrics(SM_CYSCREEN);
-    #elif defined(_SAPP_MACOS)
+#elif defined(_SAPP_MACOS)
     #error "monitor size is not defined"
-    #else
+#else
     *width = sapp_width();
     *height = sapp_height();
-    #endif
+#endif
 }
 
 void SetMouseWindowPos(float x, float y)
@@ -179,12 +186,12 @@ void wSetWindowSize(int width, int height)
     #ifdef PLATFORM_WINDOWS
     PlatformCtx.WindowWidth = width; PlatformCtx.WindowHeight = height;
     SetWindowPos((void*)sapp_win32_get_hwnd(), NULL, PlatformCtx.WindowPosX, PlatformCtx.WindowPosY, width, height, 0);
-    #elif defined(_SAPP_LINUX)
+#elif defined(_SAPP_LINUX)
     XResizeWindow(sapp_x11_get_display(), sapp_x11_get_window(), (unsigned)width, (unsigned)height);
     XFlush(sapp_x11_get_display());
-    #elif defined(_SAPP_MACOS)
+#elif defined(_SAPP_MACOS)
     #error "Window get size is not defined"
-    #endif
+#endif
 }
 
 void wSetWindowPosition(int x, int y)
@@ -192,12 +199,12 @@ void wSetWindowPosition(int x, int y)
     #ifdef PLATFORM_WINDOWS
     PlatformCtx.WindowPosX = x; PlatformCtx.WindowPosY = y;
     SetWindowPos((void*)sapp_win32_get_hwnd(), NULL, x, y, PlatformCtx.WindowWidth, PlatformCtx.WindowHeight, 0);
-    #elif defined(_SAPP_LINUX)
+#elif defined(_SAPP_LINUX)
     XMoveWindow(sapp_x11_get_display(), sapp_x11_get_window(), x, y);
     XFlush(sapp_x11_get_display());
-    #elif defined(_SAPP_MACOS)
+#elif defined(_SAPP_MACOS)
     #error "Window get size is not defined"
-    #endif
+#endif
 }
 
 static void FixSeperators(char* dst, const char* src)
@@ -211,16 +218,16 @@ static void FixSeperators(char* dst, const char* src)
 
 bool wOpenFolder(const char* folderPath) 
 {
-    #ifdef PLATFORM_WINDOWS
+#ifdef PLATFORM_WINDOWS
     char copy[512] = {0};
     FixSeperators(copy, folderPath);
 
     if ((size_t)ShellExecuteA(NULL, "open", copy, NULL, NULL, SW_SHOWNORMAL) <= 32) 
         return false;
     return true;
-    #else 
+#else 
     return false;
-    #endif
+#endif
 }
 
 bool wOpenFile(const char* filePath)
@@ -232,9 +239,9 @@ bool wOpenFile(const char* filePath)
     if ((size_t)ShellExecuteA(NULL, NULL, copy, NULL, NULL, SW_SHOW) <= 32)
         return false;
     return true;
-    #else 
+#else 
     return false;
-    #endif
+#endif
 }
 
 
