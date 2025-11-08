@@ -29,6 +29,7 @@ typedef __m128i Vector4x32u;
 #define VecSetR(x, y, z, w)  _mm_setr_ps(x, y, z, w) /* -> {x, y, z, w} */
 #define VecLoad(x)           _mm_loadu_ps(x)
 #define VecLoadA(x)          _mm_load_ps(x)
+#define VecLoadI(x)          _mm_load_si128(x)
 
 // #define Vec3Load(x)         VecSetW(_mm_loadu_ps(x), 0.0f)
 
@@ -43,6 +44,7 @@ typedef __m128i Vector4x32u;
 
 #define VecCvtF32U32(x) _mm_cvtps_epi32(x)
 #define VecCvtU32F32(x) _mm_cvtepi32_ps(x)
+#define VeciCvtU32U16(x) _mm_unpacklo_epi16(x, _mm_setzero_si128())
 
 // _mm_permute_ps is avx only
 // Get Set
@@ -81,13 +83,14 @@ purefn Vector4x32f VECTORCALL Vec3Load(void const* x) {
 // a * b[l] + c
 #define VecFmaddLane(a, b, c, l) _mm_fmadd_ps(a, _mm_permute_ps(b, MakeShuffleMask(l, l, l, l)), c)
 
-#define VecFmadd(a, b, c) _mm_fmadd_ps(a, b, c)
+#define VecFmadd(a, b, c) _mm_fmadd_ps(a, b, c) /* a * b + c */
 #define VecFmsub(a, b, c) _mm_fmsub_ps(a, b, c)
 #define VecHadd(a, b) _mm_hadd_ps(a, b) /* pairwise add (aw+bz, ay+bx, aw+bz, ay+bx) */
 
 #define VecNeg(a) _mm_sub_ps(_mm_setzero_ps(), a) /* -a */
 #define VecRcp(a) _mm_rcp_ps(a) /* 1.0f / a */
 #define VecSqrt(a) _mm_sqrt_ps(a)
+#define VecRSqrt(a) _mm_rsqrt_ps(a)
 
 #define VeciNeg(a) _mm_sub_epi32(_mm_set1_epi32(0), a) /* -a */
 
@@ -219,6 +222,8 @@ typedef uint32x4_t Vector4x32u;
 #define VecSetR(x, y, z, w) ARMCreateVec(x, y, z, w) /* -> {x, y, z, w} */
 #define VecLoad(x)          vld1q_f32(x)
 #define VecLoadA(x)         vld1q_f32(x)
+#define VecLoadI(x)         vld1q_i32(x)
+
 #define Vec3Load(x)         ARMVector3Load(x)
 
 #define VecStore(ptr, x)        vst1q_f32(ptr, x)
@@ -228,6 +233,7 @@ typedef uint32x4_t Vector4x32u;
 #define VecToInt(x) vreinterpretq_u32_f32(x)
 #define VecCvtF32U32(x) vcvtq_u32_f32(x)
 #define VecCvtU32F32(x) vcvtq_f32_u32(x)
+#define VeciCvtU32U16(x) vmovl_u16(x)
 
 // Get Set
 #define VecSplatX(v)  vdupq_lane_f32(vget_low_f32(v), 0)

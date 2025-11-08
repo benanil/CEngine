@@ -52,6 +52,17 @@ int Prefab_FindAnimRootNodeIndex(const SceneBundle* prefab)
     return skeletonNode;
 }
 
+void Prefab_UpdateGlobalNodeTransforms(SceneBundle* bundle, int nodeIndex, Matrix4 parentMat)
+{
+    ANode* node = &bundle->nodes[nodeIndex];
+    nodeTransforms[nodeIndex] = Matrix4Multiply(PositionRotationScalePtr(node->translation, node->rotation, node->scale), parentMat);
+
+    for (int i = 0; i < node->numChildren; i++)
+    {
+        Prefab_UpdateGlobalNodeTransforms(bundle, node->children[i], nodeTransforms[nodeIndex]);
+    }
+}
+
 int Prefab_FindNodeFromName(const SceneBundle* prefab, const char* name)
 {
     int len = StringLength(name);

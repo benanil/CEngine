@@ -169,5 +169,7 @@ void AnimationController_Clear(AnimationController* ac);
 
 int Prefab_FindAnimRootNodeIndex(const SceneBundle* prefab);
 
+void Prefab_UpdateGlobalNodeTransforms(SceneBundle* bundle, int nodeIndex, Matrix4 parentMat);
+
 
 #endif // _ANIMATION_H

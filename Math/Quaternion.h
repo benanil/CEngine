@@ -109,7 +109,7 @@ purefn Vector4x32f QCalculateCoefficient(Vector4x32f vT, Vector4x32f xm1)
     c = VecFmaddLane(c, b0123, one, 0);
     c = VecMul(c, vT);
     return c;
-};
+}
 
 static inline Quaternion VECTORCALL QSlerp(Quaternion q0, Quaternion q1, float t)
 {

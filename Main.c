@@ -52,17 +52,6 @@ static AnimationController animController;
 
 static void _sapp_setup_wave_icon(void);
 
-void Prefab_UpdateGlobalNodeTransforms(SceneBundle* bundle, int nodeIndex, Matrix4 parentMat)
-{
-    ANode* node = &bundle->nodes[nodeIndex];
-    nodeTransforms[nodeIndex] = Matrix4Multiply(PositionRotationScalePtr(node->translation, node->rotation, node->scale), parentMat);
-
-    for (int i = 0; i < node->numChildren; i++)
-    {
-        Prefab_UpdateGlobalNodeTransforms(bundle, node->children[i], nodeTransforms[nodeIndex]);
-    }
-}
-
 void Init(void)
 {
     _sapp_setup_wave_icon();
