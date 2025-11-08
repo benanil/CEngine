@@ -136,35 +136,13 @@ static inline void VECTORCALL QInverseSoa(const Vector4x32f q[4], Vector4x32f re
     Vec4MulSoaf(res, invDot, res);
 }
 
-static inline void QFromXAngleSoa(const Vector4x32f angle, Vector4x32f resultXYZW[4]) 
+static inline void QFromAxisAngleSoa(Vector4x32f angle, int axis, Vector4x32f res[4])
 {
-    const Vector4x32f halfAngle = VecMulf(angle, 0.5f);
-    const Vector4x32f x = VecSin(halfAngle);
-    const Vector4x32f w = VecCos(halfAngle);
-    resultXYZW[0] = x;
-    resultXYZW[1] = VecZero();
-    resultXYZW[2] = VecZero();
-    resultXYZW[3] = w;
-}
-
-static inline void QFromYAngleSoa(const Vector4x32f angle, Vector4x32f resultXYZW[4]) 
-{
-    const Vector4x32f halfAngle = VecMulf(angle, 0.5f);
-    const Vector4x32f y = VecSin(halfAngle);
-    const Vector4x32f w = VecCos(halfAngle);
-    resultXYZW[0] = VecZero();
-    resultXYZW[1] = y;
-    resultXYZW[2] = VecZero();
-    resultXYZW[3] = w;
-}
-
-static inline void QFromZAngleSoa(Vector4x32f angle, Vector4x32f resultXYZW[4]) 
-{
-    const Vector4x32f halfAngle = VecMulf(angle, 0.5f);
-    const Vector4x32f z = VecSin(halfAngle);
-    const Vector4x32f w = VecCos(halfAngle);
-    resultXYZW[0] = VecZero();
-    resultXYZW[1] = VecZero();
-    resultXYZW[2] = z;
-    resultXYZW[3] = w;
+    Vector4x32f h = VecMulf(angle, 0.5f);
+    Vector4x32f s = VecSin(h);
+    Vector4x32f c = VecCos(h);
+    res[0] = (axis==0) ? s : VecZero();
+    res[1] = (axis==1) ? s : VecZero();
+    res[2] = (axis==2) ? s : VecZero();
+    res[3] = c;
 }
