@@ -73,18 +73,20 @@ static inline const char* GetFileExtension(const char* path, int size)
     return path + size;
 }
 
-static inline void ChangeExtension(char* path, int pathLen, const char* newExt)
+static inline int ChangeExtension(char* path, int pathLen, const char* newExt)
 {
-    int lastDot = pathLen - 1;
-    while (path[lastDot - 1] != '.')
-        lastDot--;
+    int lastDot = pathLen - 1, oldLen = 0;
+    while (path[lastDot - 1] != '.' && lastDot >= 0)
+        lastDot--, oldLen++;
 
-    int i = lastDot;
+    int i = lastDot, newLen = 0;
     for (; *newExt; i++)
-        path[i] = *newExt++;
+        path[i] = *newExt++, newLen++;
+    path[i++] = '\0';
     // clean the right with zeros
     while (i < pathLen)
         path[i++] = '\0';
+    return pathLen + (oldLen - newLen);
 }
 
 static inline bool FileHasExtension(const char* path, int size, const char* extension)
@@ -160,27 +162,39 @@ static inline bool FileExist(const char* file)
 
 static inline uint64_t FileSize(const char* file)
 {
-#ifdef __ANDROID__
+    #ifdef __ANDROID__
     AAsset* asset = AAssetManager_open(g_android_app->activity->assetManager, file, 0);
-    if (asset != nullptr) {
+    if (asset) {
         off64_t sz = AAsset_getLength64(asset);
         AAsset_close(asset);
-        return sz;
+        return (uint64_t)sz;
     }
     return 0;
-#elif defined(_WIN32)
-    struct stat sb;
-    if (stat(file, &sb) == 0) return 0;
-    return sb.st_size;
-#else
-    if (fseek(file.file, 0, SEEK_END) != 0) 
-        return 0; // Or handle the error as appropriate
 
-    long fileSize = ftell(file.file);
-    if (fileSize == -1) 
-        return 0; // Or handle the error as appropriate
-    return (uint64_t)fileSize;
-#endif
+    #elif defined(_WIN32)
+    struct _stat64 sb;
+    if (_stat64(file, &sb) != 0)
+        return 0;
+    return (uint64_t)sb.st_size;
+
+    #else
+    FILE* fp = fopen(file, "rb");
+    if (!fp)
+        return 0;
+
+    if (fseek(fp, 0, SEEK_END) != 0) {
+        fclose(fp);
+        return 0;
+    }
+
+    long sz = ftell(fp);
+    fclose(fp);
+
+    if (sz < 0)
+        return 0;
+
+    return (uint64_t)sz;
+    #endif
 }
 
 static inline bool RenameFile(const char* oldFile, const char* newFile)
@@ -250,6 +264,23 @@ static inline bool AFileExist(AFile file) {
 
 static inline uint64_t AFileSize(AFile file) {
     return AAsset_getLength(file.asset);
+}
+
+static inline int AFileReadLine(char* dst, int maxLen, AFile file) {
+    if (maxLen <= 0 || !dst || !file.asset) return 0;
+    
+    int i = 0;
+    char c;
+    
+    while (i < maxLen - 1) {
+        if (AAsset_read(file.asset, &c, 1) != 1)
+            break;
+        dst[i++] = c;
+        if (c == '\n') break;
+    }
+    
+    dst[i] = '\0';
+    return i;
 }
 
 #else
@@ -353,6 +384,36 @@ static inline bool AFileExist(AFile file) {
     #else
     return file.file && file.file != INVALID_HANDLE_VALUE;
     #endif
+}
+
+// Returns the number of characters read (excluding null terminator), or 0 on EOF/error
+// Line includes the newline character if present
+static inline int AFileReadLine(char* dst, int maxLen, AFile file) 
+{
+    if (maxLen <= 0 || !dst) return 0;
+    int i = 0;
+    char c;
+    
+    #ifdef _MSC_VER
+    DWORD bytesRead;
+    while (i < maxLen - 1) {
+        if (!ReadFile(file.file, &c, 1, &bytesRead, NULL) || bytesRead == 0)
+            break;
+        dst[i++] = c;
+        if (c == '\n') break;
+    }
+    #else
+    int ch;
+    while (i < maxLen - 1) {
+        ch = fgetc(file.file);
+        if (ch == EOF) break;
+        dst[i++] = (char)ch;
+        if (ch == '\n') break;
+    }
+    #endif
+    
+    dst[i] = '\0';
+    return i;
 }
 
 static inline uint64_t AFileSize(AFile file)

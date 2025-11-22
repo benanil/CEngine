@@ -26,6 +26,7 @@
 #include "Include/GLTFParser.h"
 #include "Include/Animation.h"
 #include "Include/AssetManager.h"
+#include "Include/Algorithm.h"
 
 #include "Math/Matrix.h"
 
@@ -45,15 +46,74 @@ typedef struct {
 
 
 Camera globalCamera;
+Matrix4* nodeTransforms;
 static SceneBundle* sceneBundle;
-static Matrix4* nodeTransforms;
 static int characterRootIndex;
 static AnimationController animController;
 
 static void _sapp_setup_wave_icon(void);
 
+static void SaveSceneImagesGeneric(SceneBundle* scene, const char* savePath)
+{
+    char command[2048];
+    char outputDir[2048] = { 0 };
+    
+    int pathLen = StringLength(savePath);
+    
+    // write texture description into .bdc file
+    SmallMemCpy(outputDir, savePath, pathLen);
+    ChangeExtension(outputDir, pathLen, "bdc");
+    AFile file = AFileOpen(outputDir, AOpenFlag_WriteText);
+    
+    int numDigits = IntToString(command, (int)scene->numImages, 0);
+    command[numDigits] = '\n';
+    AFileWrite(command, numDigits + 1, file, 1); // num textures 
+
+    for (int i = 0; i < scene->numImages; i++)
+    {
+        const char* path = scene->images[i].path;
+        int len = Min32((int)StringLength(path), 1022);
+        SmallMemCpy(outputDir, path, len);
+        outputDir[len] = '\n';
+        AFileWrite(outputDir, len + 1, file, 1); // write original texture path
+     
+        PathGoBackwards(outputDir, pathLen, true);
+        
+        snprintf(command, sizeof(command),
+                 "Extern\\basis_universal\\basisu.exe \"%s\" -uastc -basis -mipmap -output_path \"%s\"",
+                 path, outputDir);
+
+        // compress using basis universal
+        int result = system(command);
+    
+        if (result != 0)
+        {
+            printf("Failed to compress: %s\n", path);
+        }
+
+        int textureType = 0;
+        for (int j = 0; j < scene->numMaterials; j++)
+        {
+            textureType |= scene->textures[scene->materials[j].textures[0].index].source == i;
+            // if an normal map used as base color, unmark it. (causing problems on sponza)
+            textureType &= ~(scene->textures[scene->materials[j].baseColorTexture.index].source == i);
+            textureType |= (scene->textures[scene->materials[j].metallicRoughnessTexture.index].source == i) << 1;
+            // mixamo animations are exporting specular instead of metallic roughness, 
+            // in our engine we don't use specular but using metallic roughess with our engine specular means metallic roughness
+            textureType |= (scene->textures[scene->materials[j].specularTexture.index].source == i) << 1;
+        }
+        // write texture type as text
+        int numDigits = IntToString(outputDir, textureType, 0);
+        outputDir[numDigits] = '\n';
+        AFileWrite(outputDir, numDigits + 1, file, 1); // num textures 
+    }
+
+    AFileClose(file);
+}
+
 void Init(void)
 {
+    BasisuSetup();
     _sapp_setup_wave_icon();
     stm_setup();
     PlatformInit();
@@ -79,15 +139,16 @@ void Init(void)
 
     sceneBundle = rpmalloc(sizeof(SceneBundle));
 
-    if (!LoadSceneBundleBinary("Assets/Meshes/Paladin/Paladin.abm", sceneBundle))
-    // if (!ParseGLTF("Assets/Meshes/Paladin/Paladin.gltf", sceneBundle, 1.0f))
+    //if (!LoadSceneBundleBinary("Assets/Meshes/Paladin/Paladin.abm", sceneBundle))
+    if (!ParseGLTF("Assets/Meshes/Paladin/Paladin.gltf", sceneBundle, 1.0f))
     {
         AX_ERROR("gltf scene load failed2");
         return;
     }
     
-    // CreateVerticesIndicesSkined(sceneBundle);
-    // SaveGLTFBinary(sceneBundle, "Assets/Meshes/Paladin/PaladinTest.abm");
+    CreateVerticesIndicesSkined(sceneBundle);
+    // SaveSceneImagesGeneric(sceneBundle, "Assets/Meshes/Paladin/PaladinTest.bdc");
+    SaveGLTFBinary(sceneBundle, "Assets/Meshes/Paladin/PaladinTest.abm");
 
     nodeTransforms = rpmalloc(sizeof(Matrix4) * sceneBundle->numNodes);
     characterRootIndex = Prefab_FindAnimRootNodeIndex(sceneBundle);
@@ -99,7 +160,7 @@ void Init(void)
     AnimationController_UploadPose(ac, ac->mAnimPoseA);
 
     Texture textures[8];
-    LoadSceneImagesGeneric("Assets/Meshes/Paladin/Paladin.dxt", textures, sceneBundle->numImages);
+    LoadSceneImagesGeneric("Assets/Meshes/Paladin/PaladinTest.bdc", textures, sceneBundle->numImages);
 
     // Texture img = rImportTexture("Assets/Textures/Test.jpg", TexFlags_MipMap, "Test Tex");
     // int baseColorIndex = sceneBundle->materials[0].baseColorTexture.index;
@@ -243,7 +304,7 @@ void Frame(void)
             const AMaterial material = sceneBundle->materials[primitive->material];
             const Matrix4 model = nodeTransforms[nodeIndex];
             
-            sg_draw(primitive->indexOffset, primitive->numIndices, 15000);
+            sg_draw(primitive->indexOffset, primitive->numIndices, 1000);
         }
 
         for (int i = 0; i < node->numChildren; i++)

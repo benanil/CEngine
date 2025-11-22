@@ -6,68 +6,11 @@
 #include <float.h>
 #include <stddef.h>
 #include <limits.h>
+#include "SIMD.h"
 
 #define KB 1024L
 #define MB (1024L * 1024L)
 #define GB (1024L * 1024L * 1024L)
-
-#if defined(__x86_64__) || defined(_M_X64)
-    #define AX_X64
-#elif defined(__i386) || defined(_M_IX86)
-    #define AX_X86
-#elif defined(_M_ARM) || defined(_M_ARM64) || defined(_M_HYBRID_X86_ARM64) || defined(_M_ARM64EC) || __arm__ || __aarch64__
-    #define AX_ARM
-#endif
-
-#if defined( _M_ARM64 ) || defined( __aarch64__ ) || defined( __arm64__ ) || defined(__ARM_NEON__)
-    #define AX_SUPPORT_NEON
-    #include <arm_fp16.h>
-#endif
-
-#if defined(AX_ARM)
-    #if defined(_MSC_VER) && !defined(__clang__) && (defined(_M_ARM64) || defined(_M_HYBRID_X86_ARM64) || defined(_M_ARM64EC) || defined(__aarch64__))
-        #include <arm64_neon.h>
-    #else
-        #include <arm_neon.h>
-    #endif
-#endif
-
-/* Intrinsics Support */
-#if (defined(AX_X64) || defined(AX_X86)) && !defined(AX_ARM)
-    #if defined(_MSC_VER) && !defined(__clang__)
-        #if _MSC_VER >= 1400   /* 2005 */
-            #define AX_SUPPORT_SSE
-        #endif
-        #if _MSC_VER >= 1700 && !defined(AX_NO_AVX2)   /* 2012 */
-            #define AX_SUPPORT_AVX2
-        #endif
-    #else
-        #if defined(__SSE2__) 
-            #define AX_SUPPORT_SSE
-        #endif
-        #if defined(__AVX2__) && !defined(AX_NO_AVX2)
-            #define AX_SUPPORT_AVX2
-        #endif
-    #endif
-    
-    #include <intrin.h>
-
-    /* If at this point we still haven't determined compiler support for the intrinsics just fall back to __has_include. */
-    #if !defined(__GNUC__) && !defined(__clang__) && defined(__has_include)
-        #if !defined(AX_SUPPORT_SSE) && __has_include(<emmintrin.h>)
-            #define AX_SUPPORT_SSE
-        #endif
-        #if !defined(AX_SUPPORT_AVX2) && __has_include(<immintrin.h>)
-            #define AX_SUPPORT_AVX2
-        #endif
-    #endif
-
-    #if defined(AX_SUPPORT_AVX2) || defined(AX_SUPPORT_AVX)
-        #include <immintrin.h>
-    #elif defined(AX_SUPPORT_SSE)
-        #include <emmintrin.h>
-    #endif
-#endif
 
 #if defined(__has_builtin)
     #define AX_COMPILER_HAS_BUILTIN(x) __has_builtin(x)
@@ -81,30 +24,6 @@
     #define AX_ASSUME(x) __assume(x)
 #else
     #define AX_ASSUME(x) (void)(x)
-#endif
-
-#if defined(__clang__) || defined(__GNUC__)
-    #define purefn static inline __attribute__((pure))
-#elif defined(_MSC_VER)
-    #define purefn static __forceinline __declspec(noalias)
-#else
-    #define purefn static inline __attribute__((always_inline))
-#endif
-
-#if defined(__clang__) || defined(__GNUC__)
-    #define forceinline inline
-#elif defined(_MSC_VER)
-    #define forceinline __forceinline 
-#else
-    #define forceinline inline __attribute__((always_inline))
-#endif
-
-#ifdef _MSC_VER
-    #define VECTORCALL __vectorcall
-#elif __CLANG__
-    #define VECTORCALL [[clang::vectorcall]] 
-#elif __GNUC__
-    #define VECTORCALL  
 #endif
 
 #if defined(__cplusplus) &&  __cplusplus >= 201103L
@@ -514,37 +433,40 @@ purefn int CalculateArrayGrowth(int _size)
 #if (defined(__GNUC__) || defined(__clang__))
     #define StringLength(s) (int)__builtin_strlen(s)
 #else
-    typedef unsigned long long unsignedLongLong;
     // http://www.lrdev.com/lr/c/strlen.c
     purefn int StringLength(char const* s)
     {
         char const* p = s;
-        const unsignedLongLong m = 0x7efefefefefefeffull; 
-        const unsignedLongLong n = ~m;
+        const uint64_t m = 0x7efefefefefefeffull; 
+        const uint64_t n = ~m;
 
-        for (; (unsignedLongLong)p & (sizeof(unsignedLongLong) - 1); p++) 
+        for (; (uint64_t)p & (sizeof(uint64_t) - 1); p++) 
             if (!*p)
-                return (int)(unsignedLongLong)(p - s);
+                return (int)(uint64_t)(p - s);
 
         for (;;) 
         {
             // memory is aligned from now on
-            unsignedLongLong i = *(const unsignedLongLong*)p;
+            uint64_t i = *(const uint64_t*)p;
 
             if (!(((i + m) ^ ~i) & n)) {
-                p += sizeof(unsignedLongLong);
+                p += sizeof(uint64_t);
             }
             else
             {
-                for (i = sizeof(unsignedLongLong); i; p++, i--) 
-                    if (!*p) return (int)(unsignedLongLong)(p - s);
+                for (i = sizeof(uint64_t); i; p++, i--) 
+                    if (!*p) return (int)(uint64_t)(p - s);
             }
         }
     }
 #endif
 
+#include <string.h>
+
 static inline void MemSet(void* RESTRICT dst, unsigned char val, uint64_t sizeInBytes)
 {
+    memset(dst, val, sizeInBytes);
+    return;
     #if defined(AX_SUPPORT_SSE)
     __m128i vval = _mm_set1_epi8(val);
     __m128i* dp = (__m128i*)dst;
@@ -608,6 +530,8 @@ static inline void MemSet(void* RESTRICT dst, unsigned char val, uint64_t sizeIn
 
 static inline void MemCpy(void* dst, const void* RESTRICT src, uint64_t sizeInBytes)
 {
+    memcpy(dst, src, sizeInBytes);
+    return;
     #if defined(AX_SUPPORT_SSE)
     const __m128i* sp = (const __m128i*)src;
     __m128i* dp = (__m128i*)dst;

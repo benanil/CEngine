@@ -9,7 +9,6 @@
     *    Description:                                                               *
     *        128-bit bitset implementation for C                                    *
     *        Supports all standard bitset operations with efficient implementation  *
-    *    Author:                                                                    *
     *        Generated for high-performance bit manipulation                        *
     *********************************************************************************/
 
@@ -203,7 +202,7 @@ static inline void BitSet128_ToString(BitSet128 a, char* buffer) {
 
 static inline BitSet128 BitSet128_FromString(const char* str) {
     BitSet128 result = BitSet128_Zero();
-    int len = strlen(str);
+    int len = StringLength(str);
     for (int i = 0; i < len && i < 128; i++) {
         if (str[len - 1 - i] == '1') {
             BitSet128_Set(&result, i);

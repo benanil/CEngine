@@ -29,8 +29,4 @@ bool IsABMLastVersion(const char* path);
 
 bool IsTextureLastVersion(const char* path);
 
-// From Texture.cpp
 
-void CompressSaveSceneImages(struct Prefab* scene, char* path);
-
-void LoadSceneImages(char* path, struct Texture* textures, int numImages);

@@ -19,6 +19,7 @@
 
 // <<<<<<<        prefab         >>>>>>>>>>>>
 
+extern Matrix4* nodeTransforms;
 
 int Prefab_FindAnimRootNodeIndex(const SceneBundle* prefab)
 {

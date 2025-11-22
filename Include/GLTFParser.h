@@ -83,15 +83,15 @@ typedef struct AMaterial_
     AMaterialAlphaMode alphaMode;
     GLTFTexture textures[3];
 
-    #ifdef __cplusplus
-    const Texture& GetNormalTexture()    const { return textures[0]; }
-    const Texture& GetOcclusionTexture() const { return textures[1]; }
-    const Texture& GetEmissiveTexture()  const { return textures[2]; }
-    Texture& GetNormalTexture()    { return textures[0]; }
-    Texture& GetOcclusionTexture() { return textures[1]; }
-    Texture& GetEmissiveTexture()  { return textures[2]; }
-    
-    #endif
+    // #ifdef __cplusplus
+    // const Texture& GetNormalTexture()    const { return textures[0]; }
+    // const Texture& GetOcclusionTexture() const { return textures[1]; }
+    // const Texture& GetEmissiveTexture()  const { return textures[2]; }
+    // Texture& GetNormalTexture()    { return textures[0]; }
+    // Texture& GetOcclusionTexture() { return textures[1]; }
+    // Texture& GetEmissiveTexture()  { return textures[2]; }
+    // 
+    // #endif
 
 } AMaterial;
 
@@ -174,8 +174,8 @@ typedef struct AMesh_
 
 typedef struct ATexture_
 {
-    int   sampler;
-    int   source;
+    int   sampler; // sampler index
+    int   source; // image index
     char* name;
 } ATexture;
 

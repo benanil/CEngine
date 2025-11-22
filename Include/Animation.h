@@ -50,6 +50,17 @@ typedef struct Matrix3x4f16_
     half z[4];
 } Matrix3x4f16;
 
+typedef struct PoseSoa_
+{
+    uint16_t* rotX;
+    uint16_t* rotY;
+    uint16_t* rotZ;
+    uint16_t* rotW;
+
+    half* x;
+    half* y;
+    half* z;
+} PoseSoa;
 
 // make 192 or 256 if we use more joints
 #define MaxBonePoses  128
@@ -103,6 +114,11 @@ typedef struct AnimationController_
 
     Matrix4 mBoneMatrices[MaxBonePoses];
     Matrix3x4f16 mOutMatrices[MaxBonePoses];
+
+    PoseSoa mAnimPoseA_Soa;
+    PoseSoa mAnimPoseB_Soa;
+    PoseSoa mAnimPoseC_Soa;
+    PoseSoa mAnimPoseD_Soa;
 
     // animation indexes to blend coordinates
     // Given xy blend coordinates, we will blend animations.

@@ -26,14 +26,15 @@
 #include "Include/Arena.h"
 #include "Include/Platform.h"
 #include "Include/Graphics.h"
+#include "Include/Algorithm.h"
 
 #include "Extern/sinfl.h"
 
 #include "Extern/ufbx.h"
-#include "Extern/zstd.h"
 
 #include "Extern/stb/stb_image.h"
 #include "Extern/stb/stb_image_resize2.h"
+#include "BasisBinding.h"
 
 static const uint8_t TextureTypeToBytesPerPixelMap[_SG_PIXELFORMAT_NUM] =
 {
@@ -146,7 +147,7 @@ int rGetMipmapImageData(sg_image_data* img_data, void* data, int width, int heig
     {
         bufferSize += (width / i) * (height / i);
     }
-    uint8_t* buffer = arena_alloc(&global_arena, bufferSize);
+    uint8_t* buffer = ArenaGetCurrent(bufferSize);
     img_data->subimage[0][0].ptr = data;
     img_data->subimage[0][0].size = size;
 
@@ -224,114 +225,48 @@ Texture rImportTexture(const char* path, TexFlags flags, const char* label)
     return texture;
 }
 
-typedef struct ImageInfo_
-{
-    int width, height;
-    int numComp;
-    int isNormal;
-} ImageInfo;
-
-#define g_AXTextureVersion 12351
-
 void LoadSceneImagesGeneric(const char* texturePath, Texture* textures, int numImages)
 {
     if (numImages == 0) {
         return;
     }
+    char outputDir[2048] = { 0 };
+    char* p = outputDir;
     AFile file = AFileOpen(texturePath, AOpenFlag_ReadBinary);
-    int version = 0;
-    AFileRead(&version, sizeof(int), file, 1);
-    ASSERT(version == g_AXTextureVersion); // probably using old version, find newer version of texture or reload the gltf or fbx scene
-    
-    size_t arenaStart = global_arena.curr_offset;
-    ImageInfo imageInfos[512];
-    
-    for (int i = 0; i < numImages; i++)
-    {
-        AFileRead(&imageInfos[i], sizeof(ImageInfo), file, 1);
-    }
-    
-    uint64_t decompressedSize, compressedSize;
-    AFileRead(&decompressedSize, sizeof(uint64_t), file, 1);
-    AFileRead(&compressedSize, sizeof(uint64_t), file, 1);
-    
-    unsigned char* compressedBuffer = arena_alloc(&global_arena, compressedSize);
-    AFileRead(compressedBuffer, compressedSize, file, 1);
-    
-    unsigned char* decompressedBuffer = arena_alloc(&global_arena, decompressedSize);
-    decompressedSize = ZSTD_decompress(decompressedBuffer, decompressedSize, compressedBuffer, compressedSize);
-    // ASSERT(!ZSTD_isError(decompressedSize));
-    // decompressedSize = zsinflate(decompressedBuffer, decompressedSize, compressedBuffer, compressedSize);
-    // ufbx_inflate_input inflateInput = 
-    // {
-    //     .data = compressedBuffer,
-    //     .total_size = compressedSize
-    // };
-    // 
-    // ufbx_inflate_retain retain;
-    // decompressedSize = ufbx_inflate(decompressedBuffer, decompressedSize, &inflateInput, &retain);
-    // 
-    // ASSERT(decompressedSize != -1);
-    
-    unsigned char* currentImage = decompressedBuffer;
-    
-    for (int i = 0; i < numImages; i++)
-    {
-        ImageInfo info = imageInfos[i];
-        if (info.width == 0)
-            continue;
-        
-        int imageSize = info.width * info.height;
-        bool isBC4 = info.numComp == 1 && (IsAndroid() == false);
-        
-        sg_pixel_format textureType;
-        switch (info.numComp)
-        {
-            case 1: textureType = SG_PIXELFORMAT_BC4_R; break;
-            case 2: textureType = SG_PIXELFORMAT_BC5_RG; break;
-            case 3: case 4: textureType = SG_PIXELFORMAT_BC3_RGBA; break;
-        }
+    int numDigits = AFileReadLine(outputDir, 2048, file);
+    numImages = ParsePositiveNumber((const char**)&p);
 
-        imageSize >>= (int)isBC4; // BC4 is 0.5 byte per pixel
-        
-        TexFlags flags = TexFlags_Compressed | TexFlags_MipMap;
-        bool notCompressed = info.width <= 128 && info.height <= 128;
-        if (notCompressed)
-        {
-            imageSize = info.width * info.height * info.numComp;
-            flags = TexFlags_RawData;
-            isBC4 = false;
-            switch (info.numComp)
-            {
-                case 1: textureType = SG_PIXELFORMAT_R8;    break;
-                case 2: textureType = SG_PIXELFORMAT_RG8;   break;
-                case 3: case 4: textureType = SG_PIXELFORMAT_RGBA8; break;
-                default: 
-                    textureType = SG_PIXELFORMAT_R8; 
-                    AX_WARN("texture numComp is undefined, %i", info.numComp);
-                    break;
-            } 
-        }
-        Texture imported = rCreateTexture(info.width, info.height, currentImage, textureType, flags, "LoadSceneImagesGeneric");
-        textures[i] = imported;
-        currentImage += imageSize;
-        
-        #ifdef __ANDROID__
-        if (!notCompressed)
-        {
-            int mip = Max32((int)Log2_32((unsigned int)info.width) >> 1, 1) - 1;
-            while (mip-- > 0)
-            {
-                info.width >>= 1;
-                info.height >>= 1;
-                currentImage += info.width * info.height;
-            }
-        }
-        #endif
+    for (int i = 0; i < numImages; i++)
+    {
+        int outputLen = AFileReadLine(outputDir, 2048, file);
+        ChangeExtension(outputDir, outputLen, "basis");
+        uint64_t fileSize = FileSize(outputDir);
+        char* arena = ArenaGetCurrent(fileSize);
+        if (arena == NULL) continue;
+        void* basisFile = ReadAllFile(outputDir, &arena);
+
+        AFileReadLine(outputDir, 2048, file);
+        int textureType = ParsePositiveNumber((const char**)&p);
+        BasisuMakeImage(basisFile, fileSize, 
+                        &textures[i].width, &textures[i].height, 
+                        &textures[i].format, &textures[i].buffer, &textures[i].handle,
+                        textureType & 1, (textureType & 2) >> 1);
     }
-    global_arena.curr_offset = arenaStart;
-    
-    AFileClose(file);
+}
+
+static uint64_t CalcMipBytes(uint32_t width, uint32_t height, uint32_t bpp, uint32_t mipLevels)
+{
+    uint64_t total = 0;
+    uint64_t w = width;
+    uint64_t h = height;
+
+    for (uint32_t i = 0; i < mipLevels; ++i)
+    {
+        total += w * h * bpp;
+        w = w > 1 ? (w >> 1) : 1;
+        h = h > 1 ? (h >> 1) : 1;
+    }
+    return total;
 }
 
 Texture rCreateTexture(int width, int height, void* data, sg_pixel_format format, TexFlags flags, const char* label)
@@ -343,10 +278,10 @@ Texture rCreateTexture(int width, int height, void* data, sg_pixel_format format
         .label = label
     };
     
-    size_t arenaStart = global_arena.curr_offset;
+    uint8_t bpp = rTextureTypeToBytesPerPixel(format);
 
     if (data != NULL)
-        imageDesc.data.subimage[0][0] = (sg_range){ data, width * height * rTextureTypeToBytesPerPixel(format) };
+        imageDesc.data.subimage[0][0] = (sg_range){ data, width * height * bpp };
     
     if (!!(flags & TexFlags_MipMap))
     {
@@ -375,17 +310,10 @@ Texture rCreateTexture(int width, int height, void* data, sg_pixel_format format
         .buffer = data
     };
     
-    if ((flags & TexFlags_MipMap))
+    if ((flags & TexFlags_MipMap) && !!(flags & TexFlags_Compressed))
     {
-        if (!!(flags & TexFlags_Compressed))
-        {
-            
-        }
-        else
-        {
-        }
+
     }
-    global_arena.curr_offset = arenaStart;
 
     return texture;
 }

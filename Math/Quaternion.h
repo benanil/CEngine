@@ -2,7 +2,6 @@
 #define Quaternion_H
 
 #include "Vector.h"
-#include "SIMD.h"
 
 typedef struct xyzw_ { 
     float x, y, z, w; 

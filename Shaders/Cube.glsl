@@ -37,7 +37,7 @@ void main() {
     highp mat4 model = uModel;
 
     int vBoneIdx = -1;
-    if (true) // (uHasAnimation > 0) 
+    if (false) // (uHasAnimation > 0) 
     {
         mediump mat4 animMat = mat4(0.0);
         animMat[3].w = 1.0; // last row is [0.0, 0.0, 0.0, 1.0]

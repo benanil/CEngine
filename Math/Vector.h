@@ -2,7 +2,6 @@
 #define Vector_H
 
 #include "Math.h"
-#include "../Include/Common.h"
 
 typedef struct Vec3f_ {
     float x, y, z;
@@ -24,6 +23,9 @@ typedef struct Ray_ {
     Vec3f origin, dir;
 } Ray;
 
+typedef struct RayV_ {
+    Vector4x32f origin, dir;
+} RayV;
 
 // VECTOR32
 purefn Vec3f Vec3Add(Vec3f a, Vec3f b) { return (Vec3f){a.x + b.x, a.y + b.y, a.z + b.z}; }

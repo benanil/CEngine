@@ -160,29 +160,6 @@ purefn Matrix4 MatrixCreateRotation(Vec3f right, Vec3f up, Vec3f forward)
     return m;
 }
 
-// https://lxjk.github.io/2017/09/03/Fast-4x4-Matrix-Inverse-with-SSE-SIMD-Explained.html
-// for row major matrix
-// we use Vector4x32f to represent 2x2 matrix as A = | A0  A1 |
-//                                             | A2  A3 |
-// 2x2 row major Matrix multiply A*B
-purefn Vector4x32f VECTORCALL Mat2Mul(Vector4x32f vec1, Vector4x32f vec2)
-{
-    return VecAdd(VecMul(vec1, VecSwizzle(vec2, 0, 3, 0, 3)), 
-                  VecMul(VecSwizzle(vec1, 1, 0, 3, 2), VecSwizzle(vec2, 2, 1, 2, 1)));
-}
-// 2x2 row major Matrix adjugate multiply (A#)*B
-purefn Vector4x32f VECTORCALL Mat2AdjMul(Vector4x32f vec1, Vector4x32f vec2)
-{
-    return VecSub(VecMul(VecSwizzle(vec1, 3, 3, 0, 0), vec2),
-                  VecMul(VecSwizzle(vec1, 1, 1, 2, 2), VecSwizzle(vec2, 2, 3, 0, 1)));
-}
-// 2x2 row major Matrix multiply adjugate A*(B#)
-purefn Vector4x32f VECTORCALL Mat2MulAdj(Vector4x32f vec1, Vector4x32f vec2)
-{
-    return VecSub(VecMul(vec1, VecSwizzle(vec2, 3, 0, 3, 0)),
-                  VecMul(VecSwizzle(vec1, 1, 0, 3, 2), VecSwizzle(vec2, 2, 1, 2, 1)));
-}
-    
 // this will not work on camera matrix this is for only transformation matricies
 static inline Matrix4 VECTORCALL InverseTransform(Matrix4 inM)
 {
@@ -220,6 +197,31 @@ static inline Matrix4 VECTORCALL InverseTransform(Matrix4 inM)
 }
     
 #if !defined(AX_ARM)
+
+// https://lxjk.github.io/2017/09/03/Fast-4x4-Matrix-Inverse-with-SSE-SIMD-Explained.html
+// for row major matrix
+// we use Vector4x32f to represent 2x2 matrix as A = | A0  A1 |
+//                                             | A2  A3 |
+// 2x2 row major Matrix multiply A*B
+purefn Vector4x32f VECTORCALL Mat2Mul(Vector4x32f vec1, Vector4x32f vec2)
+{
+    return VecAdd(VecMul(vec1, VecSwizzle(vec2, 0, 3, 0, 3)), 
+                  VecMul(VecSwizzle(vec1, 1, 0, 3, 2), VecSwizzle(vec2, 2, 1, 2, 1)));
+}
+// 2x2 row major Matrix adjugate multiply (A#)*B
+purefn Vector4x32f VECTORCALL Mat2AdjMul(Vector4x32f vec1, Vector4x32f vec2)
+{
+    return VecSub(VecMul(VecSwizzle(vec1, 3, 3, 0, 0), vec2),
+                  VecMul(VecSwizzle(vec1, 1, 1, 2, 2), VecSwizzle(vec2, 2, 3, 0, 1)));
+}
+
+// 2x2 row major Matrix multiply adjugate A*(B#)
+purefn Vector4x32f VECTORCALL Mat2MulAdj(Vector4x32f vec1, Vector4x32f vec2)
+{
+    return VecSub(VecMul(vec1, VecSwizzle(vec2, 3, 0, 3, 0)),
+                  VecMul(VecSwizzle(vec1, 1, 0, 3, 2), VecSwizzle(vec2, 2, 1, 2, 1)));
+}
+
 static inline Matrix4 VECTORCALL Matrix4Inverse(Matrix4 m)
 {
     Vector4x32f A = VecShuffle_0101(m.r[0], m.r[1]);

@@ -219,6 +219,11 @@ static inline float ParseFloat(const char** text)
 // @returns number of characters added
 static inline int IntToString(char* ptr, int x, int afterPoint)
 {
+    if (x == 0 && afterPoint == 0)
+    {
+        ptr[0] = '0';
+        return 1;
+    }
     if (afterPoint < 0) return 0;
     int size = 0;
     if (x < 0) ptr[size++] = '-', x = 0-x;

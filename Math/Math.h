@@ -24,17 +24,382 @@
 #define MATH_Sqrt2     (1.414213562f)
 #define MATH_Epsilon   (0.0001f)
 
+
+purefn Vector4x32f VECTORCALL Vec3CrossV(Vector4x32f vec0, Vector4x32f vec1)
+{
+#if defined(AX_ARM)
+    float32x2_t v1xy = vget_low_f32(vec0);
+    float32x2_t v2xy = vget_low_f32(vec1);
+    float32x2_t v1yx = vrev64_f32(v1xy);
+    float32x2_t v2yx = vrev64_f32(v2xy);
+    float32x2_t v1zz = vdup_lane_f32(vget_high_f32(vec0), 0);
+    float32x2_t v2zz = vdup_lane_f32(vget_high_f32(vec1), 0);
+    uint32x4_t FlipY = ARMCreateVecI(0x00000000u, 0x80000000u, 0x00000000u, 0x00000000u);
+    Vector4x32f vResult = vmulq_f32(vcombine_f32(v1yx, v1xy), vcombine_f32(v2zz, v2yx));
+    vResult = vmlsq_f32(vResult, vcombine_f32(v1zz, v1yx), vcombine_f32(v2yx, v2xy));
+    vResult = vreinterpretq_f32_u32(veorq_u32(vreinterpretq_u32_f32(vResult), FlipY));
+    return vreinterpretq_f32_u32(vandq_u32(vreinterpretq_u32_f32(vResult), VecMask3));
+#else
+    Vector4x32f tmp0 = VecShuffleR(vec0, vec0, 3,0,2,1);
+    Vector4x32f tmp1 = VecShuffleR(vec1, vec1, 3,1,0,2);
+    Vector4x32f tmp2 = VecMul(tmp0, vec1);
+    Vector4x32f tmp3 = VecMul(tmp0, tmp1);
+    Vector4x32f tmp4 = VecShuffleR(tmp2, tmp2, 3,0,2,1);
+    return VecSub(tmp3, tmp4);
+#endif
+}
+
+purefn float VECTORCALL Min3(Vector4x32f ab)
+{
+    Vector4x32f xy = VecMin(VecSplatX(ab), VecSplatY(ab));
+    return VecGetX(VecMin(xy, VecSplatZ(ab)));
+}
+
+purefn float VECTORCALL Max3(Vector4x32f ab)
+{
+    Vector4x32f xy = VecMax(VecSplatX(ab), VecSplatY(ab));
+    return VecGetX(VecMax(xy, VecSplatZ(ab)));
+}
+
+#define VecClamp01(v) VecClamp(v, VecZero(), VecOne())
+
+purefn Vector4x32f VECTORCALL VecClamp(Vector4x32f v, Vector4x32f vmin, Vector4x32f vmax)
+{
+    v = VecSelect(v, vmax, VecCmpGt(v, vmax));
+    v = VecSelect(v, vmin, VecCmpLt(v, vmin));
+    return v;
+}
+
+static forceinline void VECTORCALL Vec3Store(float* f, Vector4x32f v)
+{
+    f[0] = VecGetX(v);
+    f[1] = VecGetY(v);
+    f[2] = VecGetZ(v);
+}
+
+purefn Vector4x32f VECTORCALL VecHSum(Vector4x32f v) {
+    v = VecHadd(v, v); // high half -> low half
+    return VecHadd(v, v);
+}
+
+#if defined(AX_ARM)
+    #define VecFabs(x) vabsq_f32(x)
+#elif defined(AX_SUPPORT_SSE)
+    #define VecFabs(x) VecAnd(x, VecFromInt1(0x7fffffff))
+#else
+    #define VecFabs(v) MakeVec4(Abs(v.x), Abs(v.y), Abs(v.z), Abs(v.w))
+#endif
+
+purefn Vector4x32f VECTORCALL VecCopySign(Vector4x32f x, Vector4x32f y)
+{
+    Vector4x32u clearedX = VeciAnd(VeciFromVec(x), VeciSet1(0x7fffffff));
+    Vector4x32u signY    = VeciAnd(VeciFromVec(y), VeciSet1(0x80000000));
+    Vector4x32u res      = VeciOr(clearedX, signY);
+    return VecFromVeci(res);
+}
+
+purefn Vector4x32f VECTORCALL VecLerp(Vector4x32f x, Vector4x32f y, float t)
+{
+    return VecFmadd(VecSub(y, x), VecSet1(t), x);
+}
+
+purefn Vector4x32f VECTORCALL VecStep(Vector4x32f edge, Vector4x32f x)
+{
+    return VecBlend(VecZero(), VecOne(), VecCmpGt(x, edge));
+}
+
+purefn Vector4x32f VECTORCALL VecFract(Vector4x32f x)
+{
+    return VecSub(x, VecFloor(x));
+}
+
+#if defined(__ARM_NEON) || defined(__ARM_NEON__)
+    #include <arm_neon.h>
+    #define VecRound(v) vrndnq_f32(v)   // round to nearest int (float output)
+#else
+    #include <xmmintrin.h>
+    #define VecRound(v) _mm_round_ps(v, _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC)
+#endif
+
+static inline Vector4x32f VecModAngles(Vector4x32f angles)
+{
+    // constants: 1 / (2*pi) and 2*pi
+    Vector4x32f twoPi       = VecSet1(2.0f * MATH_PI);
+    Vector4x32f recipTwoPi  = VecSet1(1.0f / (2.0f * MATH_PI));
+
+    // Multiply by 1/(2*pi)
+    Vector4x32f v = VecMul(angles, recipTwoPi);
+
+    // Round to nearest integer
+    v = VecRound(v); // use your VecRound macro or implement as needed
+
+    // Negative multiply-subtract: angles - v * 2*pi,equivalent to FNMADD(v, 2pi, angles)
+    Vector4x32f result = VecSub(angles, VecMul(v, twoPi));
+    return result;
+}
+
+purefn Vector4x32f VECTORCALL VecSin(Vector4x32f V)
+{
+    Vector4x32f  g_XMSinCoefficients0 = VecSetR( -0.16666667f, +0.0083333310f, -0.00019840874f, +2.7525562e-06f );
+    Vector4x32f  g_XMSinCoefficients1 = VecSetR( -2.3889859e-08f, -0.16665852f /*Est1*/, +0.0083139502f /*Est2*/, -0.00018524670f /*Est3*/ );
+    Vector4x32f  g_XMCosCoefficients0 = VecSetR( -0.5f, +0.041666638f, -0.0013888378f, +2.4760495e-05f  );
+    Vector4x32f  g_XMCosCoefficients1 = VecSetR( -2.6051615e-07f, -0.49992746f /*Est1*/, +0.041493919f /*Est2*/, -0.0012712436f /*Est3*/  );
+    #if defined(AX_ARM)
+    // Force the value within the bounds of pi
+    XMVECTOR x = XMVectorModAngles(V);
+
+    // Map in [-pi/2,pi/2] with sin(y) = sin(x).
+    uint32x4_t sign = vandq_u32(vreinterpretq_u32_f32(x), g_XMNegativeZero);
+    uint32x4_t c = vorrq_u32(g_XMPi, sign);  // pi when x >= 0, -pi when x < 0
+    float32x4_t absx = vabsq_f32(x);
+    float32x4_t rflx = vsubq_f32(vreinterpretq_f32_u32(c), x);
+    uint32x4_t comp = vcleq_f32(absx, g_XMHalfPi);
+    x = vbslq_f32(comp, x, rflx);
+
+    float32x4_t x2 = vmulq_f32(x, x);
+
+    // Compute polynomial approximation
+    const XMVECTOR SC1 = g_XMSinCoefficients1;
+    const XMVECTOR SC0 = g_XMSinCoefficients0;
+    XMVECTOR vConstants = vdupq_lane_f32(vget_high_f32(SC0), 1);
+    XMVECTOR Result = vmlaq_lane_f32(vConstants, x2, vget_low_f32(SC1), 0);
+
+    vConstants = vdupq_lane_f32(vget_high_f32(SC0), 0);
+    Result = vmlaq_f32(vConstants, Result, x2);
+
+    vConstants = vdupq_lane_f32(vget_low_f32(SC0), 1);
+    Result = vmlaq_f32(vConstants, Result, x2);
+
+    vConstants = vdupq_lane_f32(vget_low_f32(SC0), 0);
+    Result = vmlaq_f32(vConstants, Result, x2);
+
+    Result = vmlaq_f32(g_XMOne, Result, x2);
+    Result = vmulq_f32(Result, x);
+    return Result;
+    #elif defined(AX_SUPPORT_SSE)
+    // Force the value within the bounds of pi
+    Vector4x32f x = VecModAngles(V);
+
+    // Map in [-pi/2,pi/2] with sin(y) = sin(x).
+    __m128 sign = _mm_and_ps(x, _mm_set1_ps(-0.0f));
+    __m128 c = _mm_or_ps(_mm_set1_ps(3.141592654f), sign);  // pi when x >= 0, -pi when x < 0
+    __m128 absx = _mm_andnot_ps(sign, x);  // |x|
+    __m128 rflx = _mm_sub_ps(c, x);
+    __m128 comp = _mm_cmple_ps(absx, _mm_set1_ps(1.570796327f));
+    __m128 select0 = _mm_and_ps(comp, x);
+    __m128 select1 = _mm_andnot_ps(comp, rflx);
+    x = _mm_or_ps(select0, select1);
+
+    __m128 x2 = _mm_mul_ps(x, x);
+
+    // Compute polynomial approximation
+    const Vector4x32f SC1 = g_XMSinCoefficients1;
+    __m128 vConstantsB = VecSplatX(SC1);
+    const Vector4x32f SC0 = g_XMSinCoefficients0;
+    __m128 vConstants = VecSplatW(SC0);
+    __m128 Result = VecFmadd(vConstantsB, x2, vConstants);
+
+    vConstants = VecSplatZ(SC0);
+    Result = VecFmadd(Result, x2, vConstants);
+
+    vConstants = VecSplatY(SC0);
+    Result = VecFmadd(Result, x2, vConstants);
+
+    vConstants = VecSplatX(SC0);
+    Result = VecFmadd(Result, x2, vConstants);
+
+    Result = VecFmadd(Result, x2, VecOne());
+    Result = _mm_mul_ps(Result, x);
+    return Result;
+    #endif
+}
+
+//------------------------------------------------------------------------------
+
+purefn Vector4x32f VECTORCALL VecCos(Vector4x32f V)
+{
+    
+    Vector4x32f  g_XMSinCoefficients0 = VecSetR( -0.16666667f, +0.0083333310f, -0.00019840874f, +2.7525562e-06f );
+    Vector4x32f  g_XMSinCoefficients1 = VecSetR( -2.3889859e-08f, -0.16665852f /*Est1*/, +0.0083139502f /*Est2*/, -0.00018524670f /*Est3*/ );
+    Vector4x32f  g_XMCosCoefficients0 = VecSetR( -0.5f, +0.041666638f, -0.0013888378f, +2.4760495e-05f  );
+    Vector4x32f  g_XMCosCoefficients1 = VecSetR( -2.6051615e-07f, -0.49992746f /*Est1*/, +0.041493919f /*Est2*/, -0.0012712436f /*Est3*/  );
+    #if defined(AX_ARM)
+    // Map V to x in [-pi,pi].
+    XMVECTOR x = XMVectorModAngles(V);
+
+    // Map in [-pi/2,pi/2] with cos(y) = sign*cos(x).
+    uint32x4_t sign = vandq_u32(vreinterpretq_u32_f32(x), g_XMNegativeZero);
+    uint32x4_t c = vorrq_u32(g_XMPi, sign);  // pi when x >= 0, -pi when x < 0
+    float32x4_t absx = vabsq_f32(x);
+    float32x4_t rflx = vsubq_f32(vreinterpretq_f32_u32(c), x);
+    uint32x4_t comp = vcleq_f32(absx, g_XMHalfPi);
+    x = vbslq_f32(comp, x, rflx);
+    float32x4_t fsign = vbslq_f32(comp, g_XMOne, g_XMNegativeOne);
+
+    float32x4_t x2 = vmulq_f32(x, x);
+
+    // Compute polynomial approximation
+    const XMVECTOR CC1 = g_XMCosCoefficients1;
+    const XMVECTOR CC0 = g_XMCosCoefficients0;
+    XMVECTOR vConstants = vdupq_lane_f32(vget_high_f32(CC0), 1);
+    XMVECTOR Result = vmlaq_lane_f32(vConstants, x2, vget_low_f32(CC1), 0);
+
+    vConstants = vdupq_lane_f32(vget_high_f32(CC0), 0);
+    Result = vmlaq_f32(vConstants, Result, x2);
+
+    vConstants = vdupq_lane_f32(vget_low_f32(CC0), 1);
+    Result = vmlaq_f32(vConstants, Result, x2);
+
+    vConstants = vdupq_lane_f32(vget_low_f32(CC0), 0);
+    Result = vmlaq_f32(vConstants, Result, x2);
+
+    Result = vmlaq_f32(g_XMOne, Result, x2);
+    Result = vmulq_f32(Result, fsign);
+    return Result;
+    #elif defined(AX_SUPPORT_SSE)
+    // Map V to x in [-pi,pi].
+    Vector4x32f x = VecModAngles(V);
+
+    // Map in [-pi/2,pi/2] with cos(y) = sign*cos(x).
+    Vector4x32f sign = _mm_and_ps(x, _mm_set1_ps(-0.0f));
+    __m128 c = _mm_or_ps(_mm_set1_ps(3.141592654f), sign);  // pi when x >= 0, -pi when x < 0
+    __m128 absx = _mm_andnot_ps(sign, x);  // |x|
+    __m128 rflx = _mm_sub_ps(c, x);
+    __m128 comp = _mm_cmple_ps(absx, _mm_set1_ps(3.141592654f * 0.5f));
+    __m128 select0 = _mm_and_ps(comp, x);
+    __m128 select1 = _mm_andnot_ps(comp, rflx);
+    x = _mm_or_ps(select0, select1);
+    select0 = _mm_and_ps(comp, VecOne());
+    select1 = _mm_andnot_ps(comp, VecNegativeOne());
+    sign = _mm_or_ps(select0, select1);
+
+    __m128 x2 = _mm_mul_ps(x, x);
+
+    // Compute polynomial approximation
+    const Vector4x32f CC1 = g_XMCosCoefficients1;
+    __m128 vConstantsB = VecSplatX(CC1, );
+    const Vector4x32f CC0 = g_XMCosCoefficients0;
+    __m128 vConstants = VecSplatW(CC0);
+    __m128 Result = VecFmadd(vConstantsB, x2, vConstants);
+
+    vConstants = VecSplatZ(CC0);
+    Result = VecFmadd(Result, x2, vConstants);
+
+    vConstants = VecSplatY(CC0);
+    Result = VecFmadd(Result, x2, vConstants);
+
+    vConstants = VecSplatX(CC0);
+    Result = VecFmadd(Result, x2, vConstants);
+
+    Result = VecFmadd(Result, x2, VecOne());
+    Result = _mm_mul_ps(Result, sign);
+    return Result;
+    #endif
+}
+
+
+purefn Vector4x32f VECTORCALL VecAtan(Vector4x32f x)
+{
+    const float sa1 =  0.99997726f, sa3 = -0.33262347f, sa5  = 0.19354346f,
+    sa7 = -0.11643287f, sa9 =  0.05265332f, sa11 = -0.01172120f;
+      
+    const Vector4x32f xx = VecMul(x, x);
+    // (a9 + x_sq * a11
+    Vector4x32f res = VecSet1(sa11); 
+    res = VecFmadd(xx, res, VecSet1(sa9));
+    res = VecFmadd(xx, res, VecSet1(sa7));
+    res = VecFmadd(xx, res, VecSet1(sa5));
+    res = VecFmadd(xx, res, VecSet1(sa3));
+    res = VecFmadd(xx, res, VecSet1(sa1));
+    return VecMul(x, res);
+}
+
+purefn Vector4x32f VECTORCALL VecAtan2(Vector4x32f y, Vector4x32f x)
+{
+    Vector4x32f ay = VecFabs(y), ax = VecFabs(x);
+    Vector4x32i swapMask = VecCmpGt(ay, ax);
+    Vector4x32f z  = VecDiv(VecBlend(ay, ax, swapMask), VecBlend(ax, ay, swapMask));
+    Vector4x32f th = VecAtan(z);
+    th = VecSelect(th, VecSub(VecSet1(MATH_HalfPI), th), swapMask);
+    th = VecSelect(th, VecSub(VecSet1(MATH_PI), th), VecCmpLt(x, VecZero()));
+    return VecCopySign(th, y);
+}
+
+purefn Vector4x32f VECTORCALL VecSinCos(Vector4x32f* cv, Vector4x32f x)
+{
+    Vector4x32f s = VecSin(x);
+    *cv = VecCos(x);
+    return s;
+}
+
+purefn float VECTORCALL Min3v(Vector4x32f ab)
+{
+    Vector4x32f xy = VecMin(VecSplatX(ab), VecSplatY(ab));
+    return VecGetX(VecMin(xy, VecSplatZ(ab)));
+}
+
+purefn float VECTORCALL Max3v(Vector4x32f ab)
+{
+    Vector4x32f xy = VecMax(VecSplatX(ab), VecSplatY(ab));
+    return VecGetX(VecMax(xy, VecSplatZ(ab)));
+}
+
+purefn bool IsPointInsideAABB(Vector4x32f point, Vector4x32f aabbMin, Vector4x32f aabbMax)
+{
+    Vector4x32i cmpMin = VecCmpGe(point, aabbMin);
+    Vector4x32i cmpMax = VecCmpLe(point, aabbMax);
+    #if defined(AX_ARM)
+    uint32_t movemask = VecMovemask(VeciAnd(cmpMin, cmpMax));
+    #else
+    uint32_t movemask = VecMovemask(VecAnd(cmpMin, cmpMax));
+    #endif
+    return (movemask & 0b111) == 0b111;
+}
+
+purefn float VECTORCALL IntersectAABB(Vector4x32f origin, Vector4x32f invDir, Vector4x32f aabbMin, Vector4x32f aabbMax, float minSoFar)
+{
+    if (IsPointInsideAABB(origin, aabbMin, aabbMax)) return 0.1f;
+    Vector4x32f tmin = VecMul(VecSub(aabbMin, origin), invDir);
+    Vector4x32f tmax = VecMul(VecSub(aabbMax, origin), invDir);
+    float tnear = Max3v(VecMin(tmin, tmax));
+    float tfar  = Min3v(VecMax(tmin, tmax));
+    // return tnear < tfar && tnear > 0.0f && tnear < minSoFar;
+    if (tnear < tfar && tnear > 0.0f && tnear < minSoFar)
+        return tnear; else return 1e30f;
+}
+
+// calculate popcount of 4 32 bit integer concurrently
+purefn Vector4x32u VECTORCALL PopCount32_128(Vector4x32u x)
+{
+    Vector4x32u y;
+    y = VeciAnd(VeciSrl32(x, 1), VeciSet1(0x55555555));
+    x = VeciSub(x, y);
+    y = VeciAnd(VeciSrl32(x, 2), VeciSet1(0x33333333));
+    x = VeciAdd(VeciAnd(x, VeciSet1(0x33333333)), y);  
+    x = VeciAnd(VeciAdd(x, VeciSrl32(x, 4)), VeciSet1(0x0F0F0F0F));
+    return VeciSrl32(VeciMul(x, VeciSet1(0x01010101)),  24);
+}
+
+// LeadingZeroCount of 4 32 bit integer concurrently
+purefn Vector4x32u VECTORCALL LeadingZeroCount32_128(Vector4x32u x)
+{
+    x = VeciOr(x, VeciSrl32(x, 1));
+    x = VeciOr(x, VeciSrl32(x, 2));
+    x = VeciOr(x, VeciSrl32(x, 4));
+    x = VeciOr(x, VeciSrl32(x, 8));
+    x = VeciOr(x, VeciSrl32(x, 16)); 
+    return VeciSub(VeciSet1(sizeof(uint32_t) * 8), PopCount32_128(x));
+}   
+
 purefn float Sqrf(float x) {
     return x * x;
 }
 
 purefn float Sqrtf(float a) {
-    #ifdef AX_SUPPORT_SSE
-    return _mm_cvtss_f32(_mm_sqrt_ps(_mm_set_ps1(a)));
-    #elif defined(__clang__)
-    return __builtin_sqrt(a);
+    #if defined(AX_SUPPORT_SSE) || defined(AX_SUPPORT_NEON)
+    return VecGetX(VecSqrt(VecSet1(a)));
     #else
-    return Sqrt(a);
+    return __builtin_sqrt(a);
     #endif
 }
 
@@ -209,21 +574,15 @@ purefn unsigned int Log10_32(unsigned int v) {
 /*//////////////////////////////////////////////////////////////////////////*/
 
 // https://mazzo.li/posts/vectorized-atan2.html
-purefn float ATan(float x) {
-    const float x_sq = x * x;
-    const float a1 =  0.99997726f, a3 = -0.33262347f, a5  = 0.19354346f,
-    a7 = -0.11643287f, a9 =  0.05265332f, a11 = -0.01172120f;
-    return x * (a1 + x_sq * (a3 + x_sq * (a5 + x_sq * (a7 + x_sq * (a9 + x_sq * a11)))));
+purefn float ATan(float x) 
+{
+    return VecGetX(VecAtan(VecSet1(x)));
 }
 
 // Warning! if y and x is zero this will return HalfPI instead of 0.0f unlike cstdlib
 purefn float ATan2(float y, float x) {
-    // https://gist.github.com/volkansalma/2972237
-    float abs_y = Absf(y) + 1e-10f;      // kludge to prevent 0/0 condition
-    float r = (x - CopySignf(abs_y, x)) / (abs_y + Absf(x));
-    float angle = MATH_HalfPI - CopySignf(MATH_PI / 4.f, x);
-    angle += (0.1963f * r * r - 0.9817f) * r;
-    return CopySignf(angle, y);
+    
+    return VecGetX(VecAtan2(VecSet1(x), VecSet1(y)));
 }
 
 // Valid input range -1..1 output is -pi..pi
@@ -254,42 +613,6 @@ purefn float ASin(float x) {
 
 purefn float RepeatPI(float x) {
     return FModf(x + MATH_PI, MATH_TwoPI) - MATH_PI;
-}
-
-purefn double Sqrt(double a)
-{
-    const double A = 0.417319242, B = 0.5901788532;
-    union { 
-        double fp; 
-        struct { unsigned lo, hi; } parts; 
-    } x = {0};
-
-    if (a <= 0.001) return 0.0;
-
-    x.fp = a;
-
-    // grab the exponent
-    unsigned expo = (x.parts.hi >> 20u) - 0x3fe;
-    x.parts.hi &= 0x000fffffu;
-    x.parts.hi += 0x3fe00000u;
-
-    // get square root of normalized number
-    double root = A + B * x.fp;
-    root = 0.5 * (x.fp / root + root);
-    root = 0.5 * (x.fp / root + root);
-
-    // rebuild the result
-    x.fp = root;
-    bool isOdd = expo & 1;
-    expo += isOdd;
-    x.fp *= 1.0 + (isOdd * 0.414213562);
-    expo = (expo + (expo < 0u)) >> 1;
-
-    expo += 0x3feu;
-    x.parts.hi &= 0x000fffffu;
-    x.parts.hi += expo << 20u;
-
-    return x.fp;
 }
 
 // https://en.wikipedia.org/wiki/Fast_inverse_square_root
@@ -334,35 +657,13 @@ purefn float Sin0pi(float x) {
 
 purefn float Sin(float x) 
 {
-    union fi32 { float f; int i; } u = {x};
-    
-    int lz = 0, gtpi = 0;
-    lz = u.i >> 31; // get less than zero
-    u.i &= 0x7fffffff; // make positive
-    gtpi = u.f > MATH_PI;
-    
-    u.f -= gtpi * MATH_PI; // subtract pi if greater than pi
-    u.f *= 0.63655f; // constant founded using desmos
-    u.f *= 2.0f - u.f;
-    u.f *= 0.225f * u.f + 0.775f; 
-    
-    u.i |= gtpi << 31; // negate if was bigger than PI
-    u.i ^= lz << 31; // flip sign if was negative
-    return u.f; 
+    return VecGetX(VecSin(VecSet1(x)));
 }
 
 // Accepts input between -TwoPi and TwoPi, use CosR if value is bigger than this range  
-purefn float Cos(float a)
+purefn float Cos(float x)
 {
-    int lz = 0, greater = 0;
-    lz = a < 0.0f;
-    a *= -2.0f * lz + 1.0f; // make positive
-    greater = a > MATH_PI;
-    
-    a -= MATH_PI * greater;
-    a *= 0.159f;
-    a = 1.0f - 32.0f * a * a * (0.75f - a);
-    return greater ? -a : a; // sqrt(1.0f - (Sin(a)*Sin(a))); // for better approximation
+    return VecGetX(VecCos(VecSet1(x)));
 }
 
 // R suffix allows us to use with greater range than -TwoPI, TwoPI
@@ -375,7 +676,7 @@ purefn float CosR(float x) {
     return Cos(FModf(x + MATH_PI, MATH_TwoPI) - MATH_PI);
 }
 
-forceinline void SinCos(float x, float* sp, float* cp) 
+static forceinline void SinCos(float x, float* sp, float* cp) 
 {
     *sp = Sin(x);
     *cp = Cos(x);

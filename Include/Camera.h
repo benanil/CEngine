@@ -73,7 +73,7 @@ static inline RayV ScreenPointToRay(Camera* camera, Vec2f pos)
         
     RayV ray;
     ray.origin = VecLoad(&camera->position.x); 
-    ray.direction = rayDir;
+    ray.dir = rayDir;
     return ray;
 }
 
@@ -101,7 +101,7 @@ static inline void InfiniteMouse(Vec2f point)
 static inline void CameraUpdate(Camera* camera, float dt)
 {
     bool pressing = GetMouseDown(MouseButton_Right);
-    float speed = dt * (1.0f + GetKeyDown(SAPP_KEYCODE_LEFT_SHIFT) * 2.0f) * 5.0f;
+    float speed = dt * (1.0f + GetKeyDown(SAPP_KEYCODE_LEFT_SHIFT) * 2.0f) * 2.0f;
 
     if (!pressing) { camera->wasPressing = false; return; }
         

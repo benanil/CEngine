@@ -7,8 +7,8 @@
 #include "OS.h"
 #include "Extern/tlsf.h"
 
-#define ArenaStruct(arena, type)     (arena_alloc_align(arena, sizeof(type), ALIGNOF(type)))
-#define ArenaArray(arena, type, cnt) (arena_alloc_align(arena, sizeof(type) * cnt, ALIGNOF(type)))
+#define ArenaStruct(arena, type)     (ArenaAllocAlign(arena, sizeof(type), ALIGNOF(type)))
+#define ArenaArray(arena, type, cnt) (ArenaAllocAlign(arena, sizeof(type) * cnt, ALIGNOF(type)))
 #define ArenaAlloc(cnt) (arena_alloc(&global_arena, cnt))
 
 #define rpmalloc(size) tlsf_malloc(tlsf, size)
@@ -40,6 +40,31 @@ extern tlsf_t tlsf;
 extern Arena global_arena;
 
 void* rpcalloc(size_t count, size_t size);
+
+void FixedPow2Allocator_Init(FixedPow2Allocator* alloc, size_t initialSize);
+
+void FixedPow2Allocator_CheckFixGrow(FixedPow2Allocator* alloc, size_t countBytes);
+
+void* FixedPow2Allocator_Allocate(FixedPow2Allocator* alloc, size_t countBytes);
+
+void* FixedPow2Allocator_AllocateUninitialized(FixedPow2Allocator* alloc, size_t countBytes);
+
+void FixedPow2Allocator_Copy(FixedPow2Allocator* alloc, const FixedPow2Allocator* other);
+
+void* FixedPow2Allocator_TakeOwnership(FixedPow2Allocator* alloc);
+
+void FixedPow2Allocator_Destroy(FixedPow2Allocator* alloc);
+
+
+static inline void* ArenaGetCurrent(uint64_t size)
+{
+    if (global_arena.curr_offset + size > global_arena.buf_len)
+    {
+        ASSERT(0);
+        return NULL;
+    }
+    return global_arena.buf + global_arena.curr_offset;
+}
 
 // Shift the given address upwards if/as necessary to// ensure it is aligned to the given number of bytes.
 static inline uint64_t AlignAddress(uint64_t addr, uint64_t align)
@@ -80,14 +105,14 @@ static inline void FreeAligned(void* pMem)
     rpfree(pRawMem);
 }
 
-static inline void arena_init(Arena *a, size_t backing_buffer_length) {
+static inline void ArenaInit(Arena *a, size_t backing_buffer_length) {
 	size_t aligned_size = OSRoundToPage(backing_buffer_length);
     a->buf = (char*)OSAlloc(aligned_size);
 	a->buf_len = aligned_size;
 	a->curr_offset = 0;
 }
 
-static inline void *arena_alloc_align(Arena *a, size_t size, size_t align) {
+static inline void *ArenaAllocAlign(Arena *a, size_t size, size_t align) {
 	size_t curr_ptr = (size_t)a->buf + a->curr_offset;
 	size_t offset = AlignAddress(curr_ptr, align);
 	offset -= (size_t)a->buf; // Change to relative offset
@@ -99,26 +124,8 @@ static inline void *arena_alloc_align(Arena *a, size_t size, size_t align) {
 }
 
 static inline void *arena_alloc(Arena *a, size_t size) {
-	return arena_alloc_align(a, size, 2 * sizeof(void*)); // default alignment
+	return ArenaAllocAlign(a, size, 2 * sizeof(void*)); // default alignment
 }
 
-static inline void arena_destroy(Arena* a)
-{
-	OSFree(a->buf, a->buf_len);
-}
-
-void FixedPow2Allocator_Init(FixedPow2Allocator* alloc, size_t initialSize);
-
-void FixedPow2Allocator_CheckFixGrow(FixedPow2Allocator* alloc, size_t countBytes);
-
-void* FixedPow2Allocator_Allocate(FixedPow2Allocator* alloc, size_t countBytes);
-
-void* FixedPow2Allocator_AllocateUninitialized(FixedPow2Allocator* alloc, size_t countBytes);
-
-void FixedPow2Allocator_Copy(FixedPow2Allocator* alloc, const FixedPow2Allocator* other);
-
-void* FixedPow2Allocator_TakeOwnership(FixedPow2Allocator* alloc);
-
-void FixedPow2Allocator_Destroy(FixedPow2Allocator* alloc);
 
 #endif

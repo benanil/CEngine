@@ -32,6 +32,36 @@
 #include "Extern/dynarray.h"
 
 
+// https://copyprogramming.com/howto/how-to-pack-normals-into-gl-int-2-10-10-10-rev
+static inline uint32_t Pack_INT_2_10_10_10_REV(Vec3f v) {
+    const uint32_t xs = v.x < 0.0f, ys = v.y < 0.0f, zs = v.z < 0.0f;   
+    return zs << 29 | ((uint32_t)(v.z * 511 + (zs << 9)) & 511) << 20 |
+        ys << 19 | ((uint32_t)(v.y * 511 + (ys << 9)) & 511) << 10 |
+        xs << 9  | ((uint32_t)(v.x * 511 + (xs << 9)) & 511);
+}
+
+static inline uint32_t Pack_INT_2_10_10_10_REV_VEC(Vector4x32f v)
+{
+    float x = VecGetX(v), y = VecGetY(v), z = VecGetZ(v), w = VecGetW(v); 
+
+    const uint32_t xs = x < 0.0f, ys = y < 0.0f, zs = z < 0.0f, ws = w < 0.0f;
+    return ws << 31 | ((uint32_t)(w       + (ws << 1)) & 1) << 30 |
+        zs << 29 | ((uint32_t)(z * 511 + (zs << 9)) & 511) << 20 |
+        ys << 19 | ((uint32_t)(y * 511 + (ys << 9)) & 511) << 10 |
+        xs << 9  | ((uint32_t)(x * 511 + (xs << 9)) & 511);
+}
+
+static inline Vec3f Unpack_INT_2_10_10_10_REV(uint32_t p) 
+{
+    Vec3f result;
+    const uint32_t tenMask = (1 << 10)-1;
+    result.x = 255.0f / ((p >>  0) & tenMask);
+    result.y = 255.0f / ((p >> 10) & tenMask);
+    result.z = 255.0f / ((p >> 20) & tenMask);
+    return result;
+}
+
+
 /*//////////////////////////////////////////////////////////////////////////*/
 /*                              FBX LOAD                                    */
 /*//////////////////////////////////////////////////////////////////////////*/
@@ -744,7 +774,7 @@ int SaveGLTFBinary(const SceneBundle* gltf, const char* path)
     
     // Compress and write, vertices and indices
     uint64_t compressedSize = (uint64_t)(allVertexSize * 0.9);
-    char* compressedBuffer = global_arena.buf + global_arena.curr_offset;
+    char* compressedBuffer = ArenaGetCurrent(compressedSize); // global_arena.buf + global_arena.curr_offset;
     
     struct sdefl sdfl;
     size_t afterCompSize = zsdeflate(&sdfl, compressedBuffer, gltf->allVertices, allVertexSize, 5);
@@ -984,9 +1014,9 @@ int LoadSceneBundleBinary(const char* path, SceneBundle* gltf)
         gltf->allVertices = AllocAligned(vertexSize * gltf->totalVertices, vertexAlignment); // divide / 4 to get number of floats
         gltf->allIndices = AllocAligned(allIndexSize, 4);
         
-        char* compressedBuffer = global_arena.buf + global_arena.curr_offset; //  rpmalloc(allVertexSize);
         uint64_t compressedSize;
         AFileRead(&compressedSize, sizeof(uint64_t), file, 1);
+        char* compressedBuffer = ArenaGetCurrent(compressedSize); // global_arena.buf + global_arena.curr_offset; //  rpmalloc(allVertexSize);
         AFileRead(compressedBuffer, compressedSize, file, 1);
        
         zsinflate(gltf->allVertices, allVertexSize, compressedBuffer, compressedSize);

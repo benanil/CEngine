@@ -2,7 +2,6 @@
 #define MATH_COLOR
 
 #include "Vector.h"
-#include "SIMD.h"
 
 purefn uint32_t PackColorToUint(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
     return r | ((uint32_t)(g) << 8) | ((uint32_t)(b) << 16) | ((uint32_t)(a) << 24);

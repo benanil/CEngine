@@ -39,6 +39,8 @@
 			<Define>SOKOL_APP_IMPL</Define>
 			<Define>_WIN64</Define>
 			<Define>_MSC_VER</Define>
+			<Define>__SSE2__</Define>
+			<Define>__AVX2__</Define>
 		</Defines>
 		<ConfigProperties>
 			<ConfigAndPlatform>
@@ -57,6 +59,7 @@
 				<DebugSln></DebugSln>
 				<Defines></Defines>
 				<ForceIncludes></ForceIncludes>
+				<PrioritiseFiles></PrioritiseFiles>
 			</ConfigAndPlatform>
 			<ConfigAndPlatform>
 				<Name>Release:x64</Name>
@@ -74,6 +77,7 @@
 				<DebugSln></DebugSln>
 				<Defines></Defines>
 				<ForceIncludes></ForceIncludes>
+				<PrioritiseFiles></PrioritiseFiles>
 			</ConfigAndPlatform>
 			<Config>
 				<Name>Debug</Name>
