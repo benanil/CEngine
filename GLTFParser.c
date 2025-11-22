@@ -134,10 +134,12 @@ __private const char* SkipToNextNode(const char* curr, char open, char close)
     return curr;
 }
 
-__private const char* ParseFloat16(const char** curr, short* flt)
+__private const char* ParseFloat16(const char* curr, short* flt)
 {
-    *flt = (short)(ParseFloat(curr) * 400.0f);
-    return *curr;
+    float fp32;
+    curr = ParseFloat(curr, &fp32);
+    *flt = (short)(fp32 * 400.0f);
+    return curr;
 }
 
 __private const char* ParseAccessors(const char* curr, GLTFAccessor** accessorArray)
@@ -163,10 +165,10 @@ __private const char* ParseAccessors(const char* curr, GLTFAccessor** accessorAr
         }
         ASSERTR(*curr != '\0' && "parsing accessors failed probably you forget to close brackets!", return (const char*)AError_CloseBrackets);
         curr++;
-        if (StrCMP16(curr, "bufferView"))         accessor.bufferView = ParsePositiveNumber(&curr);
-        else if (StrCMP16(curr, "byteOffset"))    accessor.byteOffset = ParsePositiveNumber(&curr);
-        else if (StrCMP16(curr, "componentType")) accessor.componentType = ParsePositiveNumber(&curr) - 0x1400; // GL_BYTE 
-        else if (StrCMP16(curr, "count"))         accessor.count = ParsePositiveNumber(&curr);
+        if (StrCMP16(curr, "bufferView"))         curr = ParsePositiveNumber(curr, &accessor.bufferView);
+        else if (StrCMP16(curr, "byteOffset"))    curr = ParsePositiveNumber(curr, &accessor.byteOffset);
+        else if (StrCMP16(curr, "componentType")) curr = ParsePositiveNumber(curr, &accessor.componentType), accessor.componentType -= 0x1400; // GL_BYTE 
+        else if (StrCMP16(curr, "count"))         curr = ParsePositiveNumber(curr, &accessor.count);
         else if (StrCMP16(curr, "name"))
         {
             curr += sizeof("name'"); // we don't need accessor's name
@@ -201,10 +203,9 @@ __private const char* ParseAccessors(const char* curr, GLTFAccessor** accessorAr
     return (const char*)AError_UNKNOWN_ACCESSOR_VAR;
 }
 
-inline int ParsePositiveNumberSkip1(const char** ptr)
+inline const char* ParsePositiveNumberSkip1(const char* ptr, int* result)
 {
-    (*ptr)++;
-    return ParsePositiveNumber(ptr);
+    return ParsePositiveNumber(++ptr, result);
 }
 
 __private const char* ParseBufferViews(const char* curr, GLTFBufferView** bufferViews)
@@ -231,11 +232,11 @@ __private const char* ParseBufferViews(const char* curr, GLTFBufferView** buffer
         uint64_t hash;
         curr = HashStringInQuotes(&hash, curr);
 
-        if      (hash == AHashString8("buffer"))   { bufferView.buffer = ParsePositiveNumberSkip1(&curr); continue;  } 
-        else if (hash == AHashString8("byteOffs")) { bufferView.byteOffset = ParsePositiveNumberSkip1(&curr); continue;  } 
-        else if (hash == AHashString8("byteLeng")) { bufferView.byteLength = ParsePositiveNumberSkip1(&curr); continue;  } 
-        else if (hash == AHashString8("byteStri")) { bufferView.byteStride = ParsePositiveNumberSkip1(&curr); continue;  } 
-        else if (hash == AHashString8("target"))   { bufferView.target = ParsePositiveNumberSkip1(&curr); continue; } 
+        if      (hash == AHashString8("buffer"))   { curr = ParsePositiveNumberSkip1(curr, &bufferView.buffer); continue;  } 
+        else if (hash == AHashString8("byteOffs")) { curr = ParsePositiveNumberSkip1(curr, &bufferView.byteOffset); continue;  } 
+        else if (hash == AHashString8("byteLeng")) { curr = ParsePositiveNumberSkip1(curr, &bufferView.byteLength); continue;  } 
+        else if (hash == AHashString8("byteStri")) { curr = ParsePositiveNumberSkip1(curr, &bufferView.byteStride); continue;  } 
+        else if (hash == AHashString8("target"))   { curr = ParsePositiveNumberSkip1(curr, &bufferView.target); continue; } 
         else if (hash == AHashString8("name")) 
         {
             int numQuote = 0;
@@ -277,9 +278,9 @@ __private const char* ParseBuffers(const char* curr, const char* path, GLTFBuffe
 {
     GLTFBuffer buffer={};
     curr += sizeof("buffers'"); // skip buffers"
-    char binFilePath[256]={0};
+    char binFilePath[512]={0};
     char* endOfWorkDir = binFilePath;
-    int binPathlen = StringLength(path);
+    int binPathlen = StringLengthSafe(path, sizeof(binFilePath));
     SmallMemCpy(binFilePath, path, binPathlen);
     endOfWorkDir = binFilePath + binPathlen;
     
@@ -315,22 +316,21 @@ __private const char* ParseBuffers(const char* curr, const char* path, GLTFBuffe
                 while (curr[base64Size] != '\"') {
                     base64Size++;
                 }
-                buffer.uri = rpmalloc(base64Size);
+                buffer.uri = AllocateTLSFGlobal(base64Size);
                 DecodeBase64((char*)buffer.uri, curr, base64Size);
                 curr += base64Size + 1;
             }
             else
             {
-                char* fileBuffer = NULL;
                 curr = GetStringInQuotes(endOfWorkDir, curr);
-                buffer.uri = ReadAllFile(binFilePath, &fileBuffer);
+                buffer.uri = ReadAllFileAlloc(binFilePath);
                 ASSERT(buffer.uri && "uri is not exist");
                 if (!buffer.uri) return (const char*)AError_BIN_NOT_EXIST;
             }
         }
         else if (StrCMP16(curr, "byteLength"))
         {
-            buffer.byteLength = ParsePositiveNumberSkip1(&curr);
+            curr = ParsePositiveNumberSkip1(curr, &buffer.byteLength);
         }
         else
         {
@@ -407,11 +407,11 @@ __private const char* ParseTextures(const char* curr, ATexture** textures, Fixed
         curr++;
         if (StrCMP16(curr, "sampler")) 
         {
-            texture.sampler = ParsePositiveNumberSkip1(&curr);
+            curr = ParsePositiveNumberSkip1(curr, &texture.sampler);
         }
         else if (StrCMP16(curr, "source"))
         {
-            texture.source = ParsePositiveNumberSkip1(&curr);
+            curr = ParsePositiveNumberSkip1(curr, &texture.source);
         }
         else if (StrCMP16(curr, "name"))
         {
@@ -448,7 +448,9 @@ __private const char* ParseAttributes(const char* curr, APrimitive* primitive)
 
         // using bitmask will help us to order attributes correctly(sort) Position, Normal, TexCoord
         unsigned newIndex = TrailingZeroCount32(maskBefore ^ primitive->attributes);
-        primitive->vertexAttribs[newIndex] = (void*)(uint64_t)ParsePositiveNumber(&curr);
+        int attribOffset = 0;
+        curr = ParsePositiveNumber(curr, &attribOffset);
+        primitive->vertexAttribs[newIndex] = (void*)(uint64_t)attribOffset;
     }
 }
 
@@ -488,10 +490,10 @@ __private const char* ParseMeshes(const char* curr, AMesh** meshes, FixedPow2All
             
             curr = begin;
             mesh.numMorphWeights = numWeights;
-            mesh.morphWeights = rpmalloc(numWeights * sizeof(float));
+            mesh.morphWeights = AllocateTLSFGlobal(numWeights * sizeof(float));
             for (int i = 0; i < numWeights; i++)
             {
-                mesh.morphWeights[i] = ParseFloat(&curr);
+                curr = ParseFloat(curr, &mesh.morphWeights[i]);
             }
             curr = SkipAfter(curr, ']');
             continue;
@@ -526,9 +528,9 @@ __private const char* ParseMeshes(const char* curr, AMesh** meshes, FixedPow2All
             curr++;
             
             if      (StrCMP16(curr, "attributes")) { curr = ParseAttributes(curr, &primitive); }
-            else if (StrCMP16(curr, "indices"))    { primitive.indiceIndex = ParsePositiveNumber(&curr); }
-            else if (StrCMP16(curr, "mode"))       { primitive.mode        = ParsePositiveNumber(&curr); }
-            else if (StrCMP16(curr, "material"))   { primitive.material    = ParsePositiveNumber(&curr); }
+            else if (StrCMP16(curr, "indices"))    { curr = ParsePositiveNumberU16(curr, &primitive.indiceIndex); }
+            else if (StrCMP16(curr, "mode"))       { curr = ParsePositiveNumberU16(curr, &primitive.mode       ); }
+            else if (StrCMP16(curr, "material"))   { curr = ParsePositiveNumberU16(curr, &primitive.material   ); }
             else if (StrCMP16(curr, "targets"))    
             {
                 curr += sizeof("targets'");
@@ -555,7 +557,7 @@ __private const char* ParseMeshes(const char* curr, AMesh** meshes, FixedPow2All
                  
                     // detect changed attribute.
                     unsigned addedAttribute = TrailingZeroCount32(maskBefore ^ morphTarget.attributes);
-                    morphTarget.indexes[addedAttribute] = (short)ParsePositiveNumber(&curr);
+                    curr = ParsePositiveNumberU16(curr, morphTarget.indexes + addedAttribute);
                 }
                 end_morphs:{}
             }
@@ -591,7 +593,7 @@ static IntPtrPair ParseIntArray(const char** cr, FixedPow2Allocator* allocator)
     {
         if (IsNumber(*curr))
         {
-            result.ptr[result.numElements] = ParsePositiveNumber(&curr);
+            curr = ParsePositiveNumber(curr, result.ptr + result.numElements);
             result.numElements++;
         }
         curr++;
@@ -629,8 +631,8 @@ __private const char* ParseNodes(const char* curr, ANode** nodes, float scale, F
         curr++; // skips the "
         
         // mesh, name, children, matrix, translation, rotation, scale, skin
-        if      (StrCMP16(curr, "mesh"))   { node.type = 0; node.index = ParsePositiveNumber(&curr); continue; } // don't want to skip ] that's why continue
-        else if (StrCMP16(curr, "camera")) { node.type = 1; node.index = ParsePositiveNumber(&curr); continue; } // don't want to skip ] that's why continue
+        if      (StrCMP16(curr, "mesh"))   { node.type = 0; curr = ParsePositiveNumber(curr, &node.index); continue; } // don't want to skip ] that's why continue
+        else if (StrCMP16(curr, "camera")) { node.type = 1; curr = ParsePositiveNumber(curr, &node.index); continue; } // don't want to skip ] that's why continue
         else if (StrCMP16(curr, "children"))
         {
             IntPtrPair result = ParseIntArray(&curr, allocator);
@@ -643,7 +645,7 @@ __private const char* ParseNodes(const char* curr, ANode** nodes, float scale, F
             float* matrix = &m.m[0][0];
             
             for (int i = 0; i < 16; i++)
-                matrix[i] = ParseFloat(&curr);
+                curr = ParseFloat(curr, &matrix[i]);
             
             m = Matrix4Transpose(m);
             node.translation[0] = matrix[12];
@@ -656,22 +658,22 @@ __private const char* ParseNodes(const char* curr, ANode** nodes, float scale, F
         }
         else if (StrCMP16(curr, "translation"))
         {
-            node.translation[0] = ParseFloat(&curr);
-            node.translation[1] = ParseFloat(&curr);
-            node.translation[2] = ParseFloat(&curr);
+            curr = ParseFloat(curr, &node.translation[0]);
+            curr = ParseFloat(curr, &node.translation[1]);
+            curr = ParseFloat(curr, &node.translation[2]);
         }
         else if (StrCMP16(curr, "rotation"))
         {
-            node.rotation[0] = ParseFloat(&curr);
-            node.rotation[1] = ParseFloat(&curr);
-            node.rotation[2] = ParseFloat(&curr);
-            node.rotation[3] = ParseFloat(&curr);
+            curr = ParseFloat(curr, &node.rotation[0]);
+            curr = ParseFloat(curr, &node.rotation[1]);
+            curr = ParseFloat(curr, &node.rotation[2]);
+            curr = ParseFloat(curr, &node.rotation[3]);
         }
         else if (StrCMP16(curr, "scale"))
         {
-            node.scale[0] = ParseFloat(&curr) * scale;
-            node.scale[1] = ParseFloat(&curr) * scale;
-            node.scale[2] = ParseFloat(&curr) * scale;
+            curr = ParseFloat(curr, &node.scale[0]); node.scale[0] *= scale;
+            curr = ParseFloat(curr, &node.scale[1]); node.scale[1] *= scale;
+            curr = ParseFloat(curr, &node.scale[2]); node.scale[2] *= scale;
         }
         else if (StrCMP16(curr, "name"))
         {
@@ -681,7 +683,7 @@ __private const char* ParseNodes(const char* curr, ANode** nodes, float scale, F
         }
         else if (StrCMP16(curr, "skin"))
         {
-            node.skin = ParsePositiveNumber(&curr);
+            curr = ParsePositiveNumber(curr, &node.skin);
             continue; // continue because we don't want to skip ] and it is not exist
         }
         else
@@ -739,12 +741,12 @@ __private const char* ParseCameras(const char* curr, ACamera** cameras, FixedPow
                 if (*curr++ == '}')  goto end_properties; // this is end of camera variables
             
             curr++;
-            if      (StrCMP16(curr, "zfar"))        { camera.zFar        = ParseFloat(&curr); }
-            else if (StrCMP16(curr, "znear"))       { camera.zNear       = ParseFloat(&curr); }
-            else if (StrCMP16(curr, "aspectRatio")) { camera.aspectRatio = ParseFloat(&curr); }
-            else if (StrCMP16(curr, "yfov"))        { camera.yFov        = ParseFloat(&curr); }
-            else if (StrCMP16(curr, "xmag"))        { camera.xmag        = ParseFloat(&curr); }
-            else if (StrCMP16(curr, "ymag"))        { camera.ymag        = ParseFloat(&curr); }
+            if      (StrCMP16(curr, "zfar"))        { curr = ParseFloat(curr, &camera.zFar        ); }
+            else if (StrCMP16(curr, "znear"))       { curr = ParseFloat(curr, &camera.zNear       ); }
+            else if (StrCMP16(curr, "aspectRatio")) { curr = ParseFloat(curr, &camera.aspectRatio ); }
+            else if (StrCMP16(curr, "yfov"))        { curr = ParseFloat(curr, &camera.yFov        ); }
+            else if (StrCMP16(curr, "xmag"))        { curr = ParseFloat(curr, &camera.xmag        ); }
+            else if (StrCMP16(curr, "ymag"))        { curr = ParseFloat(curr, &camera.ymag        ); }
             else { ASSERT(0); return (const char*)AError_UNKNOWN_CAMERA_VAR; }
         }
         end_properties:{}
@@ -792,7 +794,7 @@ __private const char* ParseScenes(const char* curr, AScene** scenes, FixedPow2Al
             {
                 if (IsNumber(*curr))
                 {
-                    scene.nodes[scene.numNodes] = ParsePositiveNumber(&curr);
+                    curr = ParsePositiveNumber(curr, scene.nodes + scene.numNodes);
                     scene.numNodes++;
                 }
                 curr++;
@@ -841,10 +843,12 @@ __private const char* ParseSamplers(const char* curr, ASampler** samplers)
         ASSERTR(*curr != '\0' && "parsing nodes not possible, probably forgot to close brackets!", return (const char*)AError_CloseBrackets);
         curr++; // skips the "
 
-        if      (StrCMP16(curr, "magFilter")) sampler.magFilter = (char)(ParsePositiveNumber(&curr) - 0x2600); // GL_NEAREST 9728, GL_LINEAR 0x2601 9729
-        else if (StrCMP16(curr, "minFilter")) sampler.minFilter = (char)(ParsePositiveNumber(&curr) - 0x2600); // GL_NEAREST 9728, GL_LINEAR 0x2601 9729
-        else if (StrCMP16(curr, "wrapS"))     sampler.wrapS = (char)OGLWrapToWrap(ParsePositiveNumber(&curr));
-        else if (StrCMP16(curr, "wrapT"))     sampler.wrapT = (char)OGLWrapToWrap(ParsePositiveNumber(&curr));
+        int minFilter, magFilter, wrapS, wrapT;
+
+        if      (StrCMP16(curr, "magFilter")) curr = ParsePositiveNumber(curr, &magFilter), sampler.magFilter = (char)(magFilter - 0x2600); // GL_NEAREST 9728, GL_LINEAR 0x2601 9729
+        else if (StrCMP16(curr, "minFilter")) curr = ParsePositiveNumber(curr, &minFilter), sampler.minFilter = (char)(minFilter - 0x2600); // GL_NEAREST 9728, GL_LINEAR 0x2601 9729
+        else if (StrCMP16(curr, "wrapS"))     curr = ParsePositiveNumber(curr, &wrapS), sampler.wrapS = (char)OGLWrapToWrap(wrapS);
+        else if (StrCMP16(curr, "wrapT"))     curr = ParsePositiveNumber(curr, &wrapT), sampler.wrapT = (char)OGLWrapToWrap(wrapT);
         else { ASSERT(0 && "parse samplers failed!"); return (const char*)AError_UNKNOWN; }
     }
 }
@@ -864,17 +868,17 @@ __private const char* ParseMaterialTexture(const char* curr, GLTFTexture* textur
         curr++;
 
         if (StrCMP16(curr, "scale")) {
-            curr = ParseFloat16(&curr, &texture->scale);
+            curr = ParseFloat16(curr, &texture->scale);
         }
         else if (StrCMP16(curr, "index")) {
-            texture->index = ParsePositiveNumber(&curr);
+            curr = ParsePositiveNumberU16(curr, &texture->index);
             ASSERT(texture->index < UINT16_MAX-1);
         }
         else if (StrCMP16(curr, "texCoord")) {
-            texture->texCoord = ParsePositiveNumber(&curr);
+            curr = ParsePositiveNumberU16(curr, &texture->texCoord);
         }
         else if (StrCMP16(curr, "strength")) {
-            curr = ParseFloat16(&curr, &texture->strength);
+            curr = ParseFloat16(curr, &texture->strength);
         }
         else if (StrCMP16(curr, "extensions")) {
             curr = SkipToNextNode(curr, '{', '}'); // currently extensions are not supported 
@@ -950,18 +954,26 @@ __private const char* ParseMaterials(const char* curr, AMaterial** materials, Fi
                 else if (StrCMP16(curr, "metallicRough")) { curr = ParseMaterialTexture(curr, &material.metallicRoughnessTexture); }
                 else if (StrCMP16(curr, "baseColorFact"))
                 {
-                    float baseColorFactor[4] = { ParseFloat(&curr), ParseFloat(&curr), ParseFloat(&curr), ParseFloat(&curr)};
+                    float baseColorFactor[4];
+                    curr = ParseFloat(curr, baseColorFactor + 0); 
+                    curr = ParseFloat(curr, baseColorFactor + 1); 
+                    curr = ParseFloat(curr, baseColorFactor + 2); 
+                    curr = ParseFloat(curr, baseColorFactor + 3); 
                     material.baseColorFactor = PackColor4PtrToUint(baseColorFactor);
                     curr = SkipUntill(curr, ']');
                     curr++;
                 }
                 else if (StrCMP16(curr, "metallicFact"))
                 {
-                    material.metallicFactor = PackUnorm16(ParseFloat(&curr));
+                    float metallicFactor = 0.0f;
+                    curr = ParseFloat(curr, &metallicFactor);
+                    material.metallicFactor = PackUnorm16(metallicFactor);
                 }
                 else if (StrCMP16(curr, "roughnessFact"))
                 {
-                    material.roughnessFactor = PackUnorm16(ParseFloat(&curr));
+                    float roughnessFactor  = 0.0f;
+                    curr = ParseFloat(curr, &roughnessFactor);
+                    material.roughnessFactor  = PackUnorm16(roughnessFactor );
                 }
                 else
                 {
@@ -976,9 +988,9 @@ __private const char* ParseMaterials(const char* curr, AMaterial** materials, Fi
         else if (StrCMP16(curr, "emissiveTexture"))  texture = 2;
         else if (StrCMP16(curr, "emissiveFactor")) 
         {
-            curr = ParseFloat16(&curr, &material.emissiveFactor[0]); 
-            curr = ParseFloat16(&curr, &material.emissiveFactor[1]);
-            curr = ParseFloat16(&curr, &material.emissiveFactor[2]);
+            curr = ParseFloat16(curr, &material.emissiveFactor[0]); 
+            curr = ParseFloat16(curr, &material.emissiveFactor[1]);
+            curr = ParseFloat16(curr, &material.emissiveFactor[2]);
             curr = SkipUntill(curr, ']');
             curr++;
         }
@@ -996,16 +1008,20 @@ __private const char* ParseMaterials(const char* curr, AMaterial** materials, Fi
                     if (StrCMP16(curr, "index"))
                     {
                         curr += sizeof("index");
-                        material.specularTexture.index = ParsePositiveNumber(&curr);
+                        curr = ParsePositiveNumberU16(curr, &material.specularTexture.index);
                     }
                     else if (StrCMP16(curr, "ior"))
                     {
-                        material.ior = ParseFloat(&curr);
+                        curr = ParseFloat(curr, &material.ior);
                     }
                     else if (StrCMP16(curr, "specularColorFa"))
                     {
                         curr += sizeof("specularColorFactor");
-                        float s = (ParseFloat(&curr) + ParseFloat(&curr) + ParseFloat(&curr)) * 0.33333f;
+                        float sf[3];
+                        curr = ParseFloat(curr, sf + 0);
+                        curr = ParseFloat(curr, sf + 1);
+                        curr = ParseFloat(curr, sf + 2);
+                        float s = (sf[0] + sf[1] + sf[2]) * 0.33333f;
                         material.specularFactor = MakeFloat16(s);
                     }
                 }
@@ -1026,7 +1042,7 @@ __private const char* ParseMaterials(const char* curr, AMaterial** materials, Fi
         }
         else if (StrCMP16(curr, "alphaCutoff"))
         {
-            material.alphaCutoff = ParseFloat(&curr);
+            curr = ParseFloat(curr, &material.alphaCutoff);
         }
         else if (StrCMP16(curr, "extras"))
         {
@@ -1079,9 +1095,11 @@ static const char* ParseSkins(const char* curr, ASkin** skins, FixedPow2Allocato
         if (StrCMP16(curr, "inverseBindMatrices"))
         {
             // we will parse later, because we are not sure we are parsed accessors at this point
-            skin.inverseBindMatrices = (float*)(size_t)ParsePositiveNumber(&curr);
+            int inverseBindOffset = 0; 
+            curr = ParsePositiveNumber(curr, &inverseBindOffset);
+            skin.inverseBindMatrices = (float*)(size_t)inverseBindOffset;
         }
-        else if (StrCMP16(curr, "skeleton")) skin.skeleton = ParsePositiveNumber(&curr);
+        else if (StrCMP16(curr, "skeleton")) curr = ParsePositiveNumber(curr, &skin.skeleton);
         else if (StrCMP16(curr, "name")) { curr += 5; curr = CopyStringInQuotes(&skin.name, &curr, allocator); }
         else if (StrCMP16(curr, "joints"))
         {
@@ -1161,8 +1179,8 @@ static const char* ParseAnimations(const char* curr, AAnimation** animations, Fi
                 uint64_t hash;
                 curr = HashStringInQuotes(&hash, curr);
 
-                     if (hash == AHashString8("sampler")) { channel.sampler = ParsePositiveNumber(&curr);    } 
-                else if (hash == AHashString8("node"))    { channel.targetNode = ParsePositiveNumber(&curr); } 
+                     if (hash == AHashString8("sampler")) { curr = ParsePositiveNumber(curr, &channel.sampler); } 
+                else if (hash == AHashString8("node"))    { curr = ParsePositiveNumber(curr, &channel.targetNode); } 
                 else if (hash == AHashString8("target"))  { curr += sizeof("target'"); parsingTarget = true; } 
                 else if (hash == AHashString8("path"))
                 {
@@ -1199,8 +1217,8 @@ static const char* ParseAnimations(const char* curr, AAnimation** animations, Fi
                 uint64_t hash;
                 curr = HashStringInQuotes(&hash, curr);
 
-                     if (hash == AHashString8("input"))     { sampler.input  = (float*)(size_t)ParsePositiveNumber(&curr); } 
-                else if (hash == AHashString8("output"))    { sampler.output = (float*)(size_t)ParsePositiveNumber(&curr); } 
+                     if (hash == AHashString8("input"))     { int input  = 0; curr = ParsePositiveNumber(curr, &input); sampler.input = (float*)(size_t)input; } 
+                else if (hash == AHashString8("output"))    { int output = 0; curr = ParsePositiveNumber(curr, &output); sampler.output = (float*)(size_t)output; } 
                 else if (hash == AHashString8("interpol"))  // you've been searching from interpol hands up!!
                 {
                     curr += sizeof("interpolation") - sizeof("interpol");
@@ -1225,8 +1243,7 @@ __public int ParseGLTF(const char* path, SceneBundle* result, float scale)
 {
     ASSERT(result && path);
     uint64_t sourceSize = 0;
-    char* source = NULL;
-    ReadAllFile(path, &source);
+    char* source = ReadAllTextAlloc(path, &sourceSize, NULL);
     MemsetZero(result, sizeof(SceneBundle));
 
     if (source == NULL) { result->error = AError_FILE_NOT_FOUND; ASSERT(0); return 0; }
@@ -1239,7 +1256,7 @@ __public int ParseGLTF(const char* path, SceneBundle* result, float scale)
     GLTFBuffer*     buffers     = dynarray_create(GLTFBuffer);
     GLTFAccessor*   accessors   = dynarray_create(GLTFAccessor);
 
-    FixedPow2Allocator* allocator = rpmalloc(sizeof(FixedPow2Allocator));
+    FixedPow2Allocator* allocator = AllocateTLSFGlobal(sizeof(FixedPow2Allocator));
     FixedPow2Allocator_Init(allocator, 2048 * 2);
 
     // we can just use one arena allocator here!!
@@ -1265,7 +1282,7 @@ __public int ParseGLTF(const char* path, SceneBundle* result, float scale)
         curr++; // skips the "
         if      (StrCMP16(curr, "accessors"))    curr = ParseAccessors(curr, &accessors);
         else if (StrCMP16(curr, "scenes"))       curr = ParseScenes(curr, &scenes, allocator);
-        else if (StrCMP16(curr, "scene"))        result->defaultSceneIndex = ParsePositiveNumber(&curr);
+        else if (StrCMP16(curr, "scene"))        curr = ParsePositiveNumberU16(curr, &result->defaultSceneIndex);
         else if (StrCMP16(curr, "bufferViews"))  curr = ParseBufferViews(curr, &bufferViews);
         else if (StrCMP16(curr, "buffers"))      curr = ParseBuffers(curr, path, &buffers);     
         else if (StrCMP16(curr, "images"))       curr = ParseImages(curr, path, &images, allocator);       
@@ -1445,7 +1462,7 @@ __public void FreeSceneBundle(SceneBundle* gltf)
         dynarray_destroy(gltf->meshes[i].primitives);
 
     FixedPow2Allocator_Destroy((FixedPow2Allocator*)gltf->allocator);
-    rpfree(gltf->allocator);
+    DeAllocateTLSFGlobal(gltf->allocator);
 
     if (gltf->meshes)      dynarray_destroy(gltf->meshes);
     if (gltf->nodes)       dynarray_destroy(gltf->nodes);

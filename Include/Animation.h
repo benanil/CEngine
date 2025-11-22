@@ -5,6 +5,11 @@
 #include "Graphics.h"
 #include "../Math/Matrix.h"
 
+
+#if defined(__cplusplus)
+extern "C" {
+#endif
+
 enum eAnimLocation_
 {
     aLeft, aMiddle, aRight
@@ -188,4 +193,10 @@ int Prefab_FindAnimRootNodeIndex(const SceneBundle* prefab);
 void Prefab_UpdateGlobalNodeTransforms(SceneBundle* bundle, int nodeIndex, Matrix4 parentMat);
 
 
+#if defined(__cplusplus)
+}
+#endif
+
 #endif // _ANIMATION_H
+
+

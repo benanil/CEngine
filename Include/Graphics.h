@@ -7,6 +7,11 @@
 #include "GLTFParser.h"
 
 
+#if defined(__cplusplus)
+extern "C" {
+#endif
+
+
 enum TexFlags_
 {
     TexFlags_None        = 0,
@@ -131,9 +136,6 @@ Texture rCreateTexture(int width, int height, void* data, sg_pixel_format format
 
 void rDeleteTexture(Texture texture);
 
-void LoadSceneImagesGeneric(const char* texturePath, Texture* textures, int numImages);
-
-void rUpdateTexture(Texture texture, void* data);
 
 int GraphicsTypeToSize(GraphicType type);
 
@@ -167,5 +169,9 @@ int GraphicsTypeToSize(GraphicType type);
 //     ConvertHalf2ToFloat2(&result.x, uvPacked); // VecLoad(bytePtr);
 //     return result;
 // }
+
+#if defined(__cplusplus)
+}
+#endif
 
 #endif

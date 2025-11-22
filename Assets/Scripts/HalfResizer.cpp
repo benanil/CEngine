@@ -107,7 +107,7 @@ void HalfResize(const char* path)
 
 int main(int argc, const char* argv[])
 {
-    char currentDir[256] = {};
+    char currentDir[512] = {};
     GetCurrentDirectory(sizeof(currentDir), currentDir);
     VisitFolder(currentDir, HalfResize, nullptr);
 

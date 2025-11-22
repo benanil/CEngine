@@ -90,10 +90,10 @@ void AnimationController_Create(SceneBundle* prefab, AnimationController* result
 {
     ASkin* skin = &prefab->skins[0];
     if (skin == NULL) {
-        AX_WARN("skin is null %s", prefab->path); return;
+        AX_WARN("skin is null"); return;
     }
     if (skin->numJoints > MaxBonePoses) {
-        AX_WARN("number of joints is greater than max capacity %s", prefab->path); 
+        AX_WARN("number of joints is greater than max capacity"); 
         return; 
     }
     result->mMatrixTex = rCreateTexture(skin->numJoints * 3, 1, NULL, SG_PIXELFORMAT_RGBA16F, TexFlags_StreamUpdate, "AnimationMatrixTex");

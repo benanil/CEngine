@@ -8,6 +8,10 @@
 
 #include <stdbool.h>
 
+#if defined(__cplusplus)
+extern "C" {
+#endif
+
 // rpmalloc has 16 byte alignment, this is perfect
 typedef struct Node_
 {
@@ -66,5 +70,9 @@ Node* RBAllocateNode(void* data, Node* parent);
 	
 void RBFreeNode(Node* n, bool recursive);
 
+
+#if defined(__cplusplus)
+}
+#endif
 
 #endif /* _RB_HEADER */

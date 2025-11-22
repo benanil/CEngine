@@ -1,4 +1,3 @@
-
 #define SOKOL_LOG_IMPL
 #define SOKOL_GLUE_IMPL
 
@@ -9,7 +8,6 @@
 #include "Include/Memory.h"
 
 #include "Include/FileSystem.h"
-#include "Include/Arena.h"
 
 #include "Extern/sokol/sokol_gfx.h"
 #include "Extern/sokol/sokol_app.h"
@@ -20,7 +18,6 @@
 
 #include "Include/Camera.h"
 #include "Include/Bitset.h"
-
 #include "Include/Platform.h"
 #include "Include/Graphics.h"
 #include "Include/GLTFParser.h"
@@ -53,63 +50,7 @@ static AnimationController animController;
 
 static void _sapp_setup_wave_icon(void);
 
-static void SaveSceneImagesGeneric(SceneBundle* scene, const char* savePath)
-{
-    char command[2048];
-    char outputDir[2048] = { 0 };
-    
-    int pathLen = StringLength(savePath);
-    
-    // write texture description into .bdc file
-    SmallMemCpy(outputDir, savePath, pathLen);
-    ChangeExtension(outputDir, pathLen, "bdc");
-    AFile file = AFileOpen(outputDir, AOpenFlag_WriteText);
-    
-    int numDigits = IntToString(command, (int)scene->numImages, 0);
-    command[numDigits] = '\n';
-    AFileWrite(command, numDigits + 1, file, 1); // num textures 
-
-    for (int i = 0; i < scene->numImages; i++)
-    {
-        const char* path = scene->images[i].path;
-        int len = Min32((int)StringLength(path), 1022);
-        SmallMemCpy(outputDir, path, len);
-        outputDir[len] = '\n';
-        AFileWrite(outputDir, len + 1, file, 1); // write original texture path
-     
-        PathGoBackwards(outputDir, pathLen, true);
-        
-        snprintf(command, sizeof(command),
-                 "Extern\\basis_universal\\basisu.exe \"%s\" -uastc -basis -mipmap -output_path \"%s\"",
-                 path, outputDir);
-
-        // compress using basis universal
-        int result = system(command);
-    
-        if (result != 0)
-        {
-            printf("Failed to compress: %s\n", path);
-        }
-
-        int textureType = 0;
-        for (int j = 0; j < scene->numMaterials; j++)
-        {
-            textureType |= scene->textures[scene->materials[j].textures[0].index].source == i;
-            // if an normal map used as base color, unmark it. (causing problems on sponza)
-            textureType &= ~(scene->textures[scene->materials[j].baseColorTexture.index].source == i);
-            textureType |= (scene->textures[scene->materials[j].metallicRoughnessTexture.index].source == i) << 1;
-            // mixamo animations are exporting specular instead of metallic roughness, 
-            // in our engine we don't use specular but using metallic roughess with our engine specular means metallic roughness
-            textureType |= (scene->textures[scene->materials[j].specularTexture.index].source == i) << 1;
-        }
-        // write texture type as text
-        int numDigits = IntToString(outputDir, textureType, 0);
-        outputDir[numDigits] = '\n';
-        AFileWrite(outputDir, numDigits + 1, file, 1); // num textures 
-    }
-
-    AFileClose(file);
-}
+static const int ScreenStartWidth = 1920, ScreenStartHeight = 1080;
 
 void Init(void)
 {
@@ -130,27 +71,27 @@ void Init(void)
     globalCamera.speed = 0.4f;
     globalCamera.position.x -= 6;
 
-    CameraInit(&globalCamera);
+    CameraInit(&globalCamera, ScreenStartWidth, ScreenStartHeight);
 
     sg_setup(&(sg_desc) {
         .environment = sglue_environment(),
         .logger.func = slog_func,
     });
 
-    sceneBundle = rpmalloc(sizeof(SceneBundle));
+    sceneBundle = AllocateTLSFGlobal(sizeof(SceneBundle));
 
-    //if (!LoadSceneBundleBinary("Assets/Meshes/Paladin/Paladin.abm", sceneBundle))
-    if (!ParseGLTF("Assets/Meshes/Paladin/Paladin.gltf", sceneBundle, 1.0f))
+    if (!LoadSceneBundleBinary("Assets/Meshes/Paladin/PaladinTest.abm", sceneBundle))
+    // if (!ParseGLTF("Assets/Meshes/Paladin/Paladin.gltf", sceneBundle, 1.0f))
     {
         AX_ERROR("gltf scene load failed2");
         return;
     }
     
-    CreateVerticesIndicesSkined(sceneBundle);
-    // SaveSceneImagesGeneric(sceneBundle, "Assets/Meshes/Paladin/PaladinTest.bdc");
-    SaveGLTFBinary(sceneBundle, "Assets/Meshes/Paladin/PaladinTest.abm");
+    // CreateVerticesIndicesSkined(sceneBundle);
+    SaveSceneImages(sceneBundle, "Assets/Meshes/Paladin/PaladinTest.bdc");
+    // SaveGLTFBinary(sceneBundle, "Assets/Meshes/Paladin/PaladinTest.abm");
 
-    nodeTransforms = rpmalloc(sizeof(Matrix4) * sceneBundle->numNodes);
+    nodeTransforms = AllocateTLSFGlobal(sizeof(Matrix4) * sceneBundle->numNodes);
     characterRootIndex = Prefab_FindAnimRootNodeIndex(sceneBundle);
 
     AnimationController* ac = &animController;
@@ -160,8 +101,7 @@ void Init(void)
     AnimationController_UploadPose(ac, ac->mAnimPoseA);
 
     Texture textures[8];
-    LoadSceneImagesGeneric("Assets/Meshes/Paladin/PaladinTest.bdc", textures, sceneBundle->numImages);
-
+    LoadSceneImages("Assets/Meshes/Paladin/PaladinTest.bdc", textures, sceneBundle->numImages);
     // Texture img = rImportTexture("Assets/Textures/Test.jpg", TexFlags_MipMap, "Test Tex");
     // int baseColorIndex = sceneBundle->materials[0].baseColorTexture.index;
     // textures[baseColorIndex] = img;
@@ -304,7 +244,7 @@ void Frame(void)
             const AMaterial material = sceneBundle->materials[primitive->material];
             const Matrix4 model = nodeTransforms[nodeIndex];
             
-            sg_draw(primitive->indexOffset, primitive->numIndices, 1000);
+            sg_draw(primitive->indexOffset, primitive->numIndices, 40);
         }
 
         for (int i = 0; i < node->numChildren; i++)
@@ -327,26 +267,26 @@ extern void sokol_event_callback(const sapp_event* event);
 void* alloc_fn(size_t size, void* user_data)
 {
     (void)user_data;
-    return rpmalloc(size);
+    return AllocateTLSFGlobal(size);
 }
 
 void free_fn(void* ptr, void* user_data)
 {
     (void)user_data;
-    rpfree(ptr);
+    DeAllocateTLSFGlobal(ptr);
 }
 
-extern char app_memory[1 * 1000 * 1000 * 1000];
+extern char AppMemory[1 * 1000 * 1000 * 1000];
 
 sapp_desc sokol_main(int argc, char* argv[]) {
     (void)argc;
     (void)argv;
     
     const uint64_t halfGig = 500ull * 1000ull * 1000ull;
-    tlsf = tlsf_create_with_pool(app_memory, halfGig);
-    global_arena.buf = app_memory + halfGig;
-    global_arena.buf_len = halfGig;
-    global_arena.curr_offset = 0;
+    GlobalTLSF = TLSFCreateWithPool(AppMemory, halfGig);
+    GlobalArena.buf = AppMemory + halfGig;
+    GlobalArena.buffLen = halfGig;
+    GlobalArena.currOffset = 0;
 
     return (sapp_desc){
         .init_cb = Init,
@@ -355,8 +295,8 @@ sapp_desc sokol_main(int argc, char* argv[]) {
         .allocator.alloc_fn = alloc_fn,
         .allocator.free_fn = free_fn,
         .event_cb = sokol_event_callback,
-        .width = 1920,
-        .height = 1080,
+        .width = ScreenStartWidth,
+        .height = ScreenStartHeight,
         .sample_count = 1,
         .window_title = "CPlayground",
         .icon.sokol_default = true,

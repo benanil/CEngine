@@ -1,9 +1,12 @@
 #ifndef AX_QUEUE
 #define AX_QUEUE
 
-
 #include "../Math/Math.h"
 #include "Algorithm.h"
+
+#if defined(__cplusplus)
+extern "C" {
+#endif
 
 typedef struct Queue_
 {
@@ -53,19 +56,19 @@ static inline void QueQueueConstruct(Queue* queue)
     queue->front    = 0;
     queue->rear     = 0;
     queue->size     = 0;
-    queue->ptr      = rpmalloc(queue->capacity * sizeof(void*));
+    queue->ptr      = AllocateTLSFGlobal(queue->capacity * sizeof(void*));
 }
 
 static inline void QueQueueInit(Queue *queue, int _capacity)
 {
     queue->capacity = (NextPowerOf2_32(_capacity + 1)); 
     queue->front = (0), queue->rear = (0), queue->size = (0);
-    queue->ptr = rpmalloc(queue->capacity * sizeof(void*));
+    queue->ptr = AllocateTLSFGlobal(queue->capacity * sizeof(void*));
 }
 
 static inline void QueQueueClear(Queue *queue)
 {
-    rpfree(queue->ptr);
+    DeAllocateTLSFGlobal(queue->ptr);
     queue->ptr = 0; 
     queue->capacity = queue->front = queue->rear = queue->size = 0;
 }
@@ -170,8 +173,8 @@ static inline void QueGrowIfNecessary(Queue *queue, uint32_t _size)
     
     const int initialSize = 256;
     const uint32_t newCapacity = newSize <= initialSize ? initialSize : newSize;
-    if (queue->ptr)  queue->ptr = rprealloc(ptr, newCapacity);
-    else      queue->ptr = rpmalloc(newCapacity);
+    if (queue->ptr)  queue->ptr = ReAllocateTLSFGlobal(ptr, newCapacity);
+    else      queue->ptr = AllocateTLSFGlobal(newCapacity);
     
     // unify front and rear, if they are seperate.
     if (queue->front < queue->rear)
@@ -215,7 +218,7 @@ static inline void PriorityQueue(PriorityQueue* pq, int _size)
 {
     pq->size = (0);
     pq->capacity = CalculateArrayGrowth(_size);
-	pq->heap = rpmalloc(pq->capacity * sizeof(void*));
+	pq->heap = AllocateTLSFGlobal(pq->capacity * sizeof(void*));
 }
 
 static inline void PriorityQueueRange(PriorityQueue* pq, const void** begin, const void** end)
@@ -237,9 +240,9 @@ static inline void PQGrowIfNecessarry(PriorityQueue* pq, int adition)
 	{
 		int newCapacity = pq->size + adition <= 256 ? 256 : CalculateArrayGrowth(pq->size + adition);
 		if (heap)
-			pq->heap = rprealloc(pq->heap, pq->capacity, newCapacity);
+			pq->heap = ReAllocateTLSFGlobal(pq->heap, pq->capacity, newCapacity);
 		else
-			pq->heap = rpmalloc(newCapacity);
+			pq->heap = AllocateTLSFGlobal(newCapacity);
 		pq->capacity = newCapacity;
 	}
 }
@@ -288,7 +291,7 @@ static inline void PQClear(PriorityQueue* pq)
 {
 	if (pq->heap)
 	{
-		rpfree(pq->heap);
+		DeAllocateTLSFGlobal(pq->heap);
 		pq->heap = null;
 		pq->size  = pq->capacity = 0;
 	}
@@ -322,5 +325,10 @@ static inline void* PQTop(PriorityQueue* pq)
 	ASSERT(!PQEmpty(), return pq->heap[0]);
 	return pq->heap[0];
 }
+
+#if defined(__cplusplus)
+}
+#endif
+
 
 #endif // AX_QUEUE

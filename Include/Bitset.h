@@ -12,6 +12,10 @@
     *        Generated for high-performance bit manipulation                        *
     *********************************************************************************/
 
+#if defined(__cplusplus)
+extern "C" {
+#endif
+
 typedef struct BitSet128_ {
     uint64_t bits[2];  // 128 bits = 2 * 64-bit words
 } BitSet128;
@@ -284,5 +288,9 @@ static inline void Bitset_Xor(Bitset* res, Bitset* bitset, Bitset* other)
     for (int i = 0; i < bitset->size; i++)
         res->bits[i] = bitset->bits[i] ^ other->bits[i];
 }
+
+#if defined(__cplusplus)
+}
+#endif
 
 #endif // BITSET_H

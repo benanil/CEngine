@@ -77,7 +77,7 @@ void sokol_event_callback(const sapp_event* event)
 
 void FatalError(const char* format, ...)
 {
-    char buffer[1024];
+    char buffer[2048];
     va_list args;
     va_start(args, format);
     stbsp_vsnprintf(buffer, sizeof(buffer), format, args);
@@ -98,7 +98,7 @@ void FatalError(const char* format, ...)
 
 void DebugLog(const char* format, ...)
 {
-    char buffer[1024];
+    char buffer[2048];
     va_list args;
     va_start(args, format);
     stbsp_vsnprintf(buffer, sizeof(buffer), format, args);
@@ -207,9 +207,9 @@ void wSetWindowPosition(int x, int y)
 #endif
 }
 
-static void FixSeperators(char* dst, const char* src)
+static void FixSeperators(char* dst, uint64_t dstSize, const char* src)
 {
-    int len = StringLength(src);
+    int len = StringLengthSafe(src, dstSize);
     SmallMemCpy(dst, src, len);
     
     for (int i = 0; i < len; i++) 
@@ -219,8 +219,8 @@ static void FixSeperators(char* dst, const char* src)
 bool wOpenFolder(const char* folderPath) 
 {
 #ifdef PLATFORM_WINDOWS
-    char copy[512] = {0};
-    FixSeperators(copy, folderPath);
+    char copy[1024] = {0};
+    FixSeperators(copy, sizeof(copy), folderPath);
 
     if ((size_t)ShellExecuteA(NULL, "open", copy, NULL, NULL, SW_SHOWNORMAL) <= 32) 
         return false;
@@ -233,8 +233,8 @@ bool wOpenFolder(const char* folderPath)
 bool wOpenFile(const char* filePath)
 {
     #ifdef PLATFORM_WINDOWS
-    char copy[512] = {0};
-    FixSeperators(copy, filePath);  
+    char copy[1024] = {0};
+    FixSeperators(copy, sizeof(copy), filePath);  
 
     if ((size_t)ShellExecuteA(NULL, NULL, copy, NULL, NULL, SW_SHOW) <= 32)
         return false;

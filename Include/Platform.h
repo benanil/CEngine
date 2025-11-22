@@ -2,7 +2,7 @@
 #define PLATFORM_H
 
 // enables logging no matter what
-// #define AX_ENABLE_LOGGING
+#define AX_ENABLE_LOGGING
 
 #if defined(AX_ENABLE_LOGGING) || defined(_DEBUG) || defined(DEBUG) || defined(Debug)
 #ifdef __ANDROID__
@@ -31,6 +31,11 @@
 
 #include "Bitset.h"
 // #include "sokol_app.h"
+
+#if defined(__cplusplus)
+extern "C" {
+#endif
+
 
 // Platform context structure
 typedef struct PlatformContext_ 
@@ -103,5 +108,8 @@ void PlatformInit();
 
 extern PlatformContext PlatformCtx;
 
+#if defined(__cplusplus)
+}
+#endif
 
 #endif // PLATFORM_H

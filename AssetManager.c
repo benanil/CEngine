@@ -149,7 +149,7 @@ int LoadFBX(const char* path, SceneBundle* fbxScene, float scale)
     fbxScene->totalIndices  = 0;
     fbxScene->numScenes     = 0; // todo
     
-    FixedPow2Allocator* allocator = rpmalloc(sizeof(FixedPow2Allocator));
+    FixedPow2Allocator* allocator = AllocateTLSFGlobal(sizeof(FixedPow2Allocator));
     FixedPow2Allocator_Init(allocator, 2048);
     
     uint64_t totalIndices  = 0, totalVertices = 0;
@@ -163,7 +163,7 @@ int LoadFBX(const char* path, SceneBundle* fbxScene, float scale)
     fbxScene->allVertices = AllocAligned(sizeof(ASkinedVertex) * totalVertices, 4);
     fbxScene->allIndices  = AllocAligned(sizeof(uint32_t) * totalIndices, 4);
     
-    if (fbxScene->numMeshes) fbxScene->meshes = (AMesh*)rpcalloc(fbxScene->numMeshes, sizeof(AMesh));
+    if (fbxScene->numMeshes) fbxScene->meshes = (AMesh*)AllocZeroTLSFGlobal(fbxScene->numMeshes, sizeof(AMesh));
     
     uint32_t* currentIndex = (uint32_t*)fbxScene->allIndices;
     ASkinedVertex* currentVertex = (ASkinedVertex*)fbxScene->allVertices;
@@ -265,7 +265,7 @@ int LoadFBX(const char* path, SceneBundle* fbxScene, float scale)
     fbxScene->numSkins = numSkins;
     
     if (numSkins > 0) {
-        fbxScene->skins = rpmalloc(numSkins * sizeof(ASkin));
+        fbxScene->skins = AllocateTLSFGlobal(numSkins * sizeof(ASkin));
     }
 
     for (uint32_t d = 0; d < numSkins; d++)
@@ -275,7 +275,7 @@ int LoadFBX(const char* path, SceneBundle* fbxScene, float scale)
         uint32_t numJoints = (uint32_t)deformer->clusters.count;
         skin->numJoints = numJoints;
         skin->skeleton = 0;
-        skin->inverseBindMatrices = rpmalloc(numJoints * sizeof(Matrix4));
+        skin->inverseBindMatrices = AllocateTLSFGlobal(numJoints * sizeof(Matrix4));
         skin->joints = FixedPow2Allocator_AllocateUninitialized(allocator, (sizeof(int) + 1) * numJoints);
     
         Matrix4* matrices = (Matrix4*)skin->inverseBindMatrices;
@@ -309,8 +309,8 @@ int LoadFBX(const char* path, SceneBundle* fbxScene, float scale)
     
     if (numTextures)
     {
-        fbxScene->textures = (ATexture*)rpcalloc(numTextures, sizeof(ATexture));
-        fbxScene->samplers = (ASampler*)rpcalloc(numTextures, sizeof(ASampler));
+        fbxScene->textures = (ATexture*)AllocZeroTLSFGlobal(numTextures, sizeof(ATexture));
+        fbxScene->samplers = (ASampler*)AllocZeroTLSFGlobal(numTextures, sizeof(ASampler));
     }
     
     for (short i = 0; i < numTextures; i++)
@@ -324,9 +324,9 @@ int LoadFBX(const char* path, SceneBundle* fbxScene, float scale)
         // is this embedded
         if (utexture->content.size)
         {
-            char* buffer = FixedPow2Allocator_AllocateUninitialized(allocator, 256);
-            MemsetZero(buffer, 256);
-            int pathLen = StringLength(path);
+            char* buffer = FixedPow2Allocator_AllocateUninitialized(allocator, 512);
+            MemsetZero(buffer, 512);
+            int pathLen = StringLengthSafe(path, 512);
             SmallMemCpy(buffer, path, pathLen);
             
             char* fbxPath = PathGoBackwards(buffer, pathLen, false);
@@ -349,7 +349,7 @@ int LoadFBX(const char* path, SceneBundle* fbxScene, float scale)
     fbxScene->numMaterials = numMaterials;
     
     if (numMaterials) {
-        fbxScene->materials = rpmalloc(sizeof(AMaterial) * numMaterials);
+        fbxScene->materials = AllocateTLSFGlobal(sizeof(AMaterial) * numMaterials);
     }
 
     for (short i = 0; i < numMaterials; i++)
@@ -426,7 +426,7 @@ int LoadFBX(const char* path, SceneBundle* fbxScene, float scale)
     fbxScene->numNodes = numNodes;
     
     if (numNodes) {
-        fbxScene->nodes = (ANode*)rpcalloc(numNodes * 4, sizeof(ANode));
+        fbxScene->nodes = (ANode*)AllocZeroTLSFGlobal(numNodes * 4, sizeof(ANode));
     }
 
     for (int i = 0; i < numNodes; i++)
@@ -660,7 +660,7 @@ void CreateVerticesIndicesSkined(SceneBundle* gltf)
     for (int s = 0; s < gltf->numSkins; s++)
     {
         ASkin* skin = &gltf->skins[s];
-        Matrix4* inverseBindMatrices = rpmalloc(skin->numJoints * sizeof(Matrix4));
+        Matrix4* inverseBindMatrices = AllocateTLSFGlobal(skin->numJoints * sizeof(Matrix4));
         SmallMemCpy(inverseBindMatrices, skin->inverseBindMatrices, sizeof(Matrix4) * skin->numJoints);
         skin->inverseBindMatrices = (float*)inverseBindMatrices;
     }
@@ -672,8 +672,8 @@ void CreateVerticesIndicesSkined(SceneBundle* gltf)
             for (int s = 0; s < gltf->animations[a].numSamplers; s++)
                 totalSamplerInput += gltf->animations[a].samplers[s].count;
         
-        float* currSampler = (float*)rpcalloc(totalSamplerInput, 4);
-        Vector4x32f* currOutput = (Vector4x32f*)rpcalloc(totalSamplerInput, sizeof(Vector4x32f));
+        float* currSampler = (float*)AllocZeroTLSFGlobal(totalSamplerInput, 4);
+        Vector4x32f* currOutput = (Vector4x32f*)AllocZeroTLSFGlobal(totalSamplerInput, sizeof(Vector4x32f));
 
         for (int a = 0; a < gltf->numAnimations; a++)
         {
@@ -699,6 +699,123 @@ void CreateVerticesIndicesSkined(SceneBundle* gltf)
     FreeGLTFBuffers(gltf);
 }
 
+
+void SaveSceneImages(SceneBundle* scene, const char* savePath)
+{
+    char command[2048];
+    char outputDir[2048] = { 0 };
+    
+    int pathLen = StringLengthSafe(savePath, sizeof(outputDir));
+    
+    // write texture description into .bdc file
+    SmallMemCpy(outputDir, savePath, pathLen);
+    ChangeExtension(outputDir, pathLen, "bdc");
+    AFile file = AFileOpen(outputDir, AOpenFlag_WriteText);
+    
+    int numDigits = IntToString(command, (int)scene->numImages, 0);
+    command[numDigits] = '\n';
+    AFileWrite(command, numDigits + 1, file, 1); // num textures 
+
+    for (int i = 0; i < scene->numImages; i++)
+    {
+        const char* path = scene->images[i].path;
+        int len = (int)StringLengthSafe(path, sizeof(outputDir)-2);
+        SmallMemCpy(outputDir, path, len);
+        outputDir[len] = '\n';
+        AFileWrite(outputDir, len + 1, file, 1); // write original texture path
+     
+        PathGoBackwards(outputDir, pathLen, true);
+        
+        int textureType = 0;
+        for (int j = 0; j < scene->numMaterials; j++)
+        {
+            textureType |= scene->textures[scene->materials[j].textures[0].index].source == i;
+            // if an normal map used as base color, unmark it. (causing problems on sponza)
+            textureType &= ~(scene->textures[scene->materials[j].baseColorTexture.index].source == i);
+            textureType |= (scene->textures[scene->materials[j].metallicRoughnessTexture.index].source == i) << 1;
+            // mixamo animations are exporting specular instead of metallic roughness, 
+            // in our engine we don't use specular but using metallic roughess with our engine specular means metallic roughness
+            textureType |= (scene->textures[scene->materials[j].specularTexture.index].source == i) << 1;
+        }
+
+        int isNormal = (textureType & 1) != 0;
+        int isMetallicRoughness = (textureType & 2) != 0;
+
+        // choose compression format
+        const char* formatFlag = isMetallicRoughness ? "-etc1s" : "-uastc";
+
+        snprintf(command, sizeof(command),
+                 "Extern\\basis_universal\\basisu.exe \"%s\" %s -basis -mipmap -mip_smallest 256 %s -output_path \"%s\"",
+                 path,
+                 formatFlag,
+                 isNormal ? " -normal_map" : "",
+                 outputDir);
+
+        // compress using basis universal
+        int result = system(command);
+        if (result != 0)
+        {
+            printf("Failed to compress: %s\n", path);
+        }
+
+        // write texture type as text
+        int numDigits = IntToString(outputDir, textureType, 0);
+        outputDir[numDigits] = '\n';
+        AFileWrite(outputDir, numDigits + 1, file, 1); // num textures 
+    }
+
+    AFileClose(file);
+}
+
+
+int LoadSceneImages(const char* texturePath, Texture* textures, int numImages)
+{
+    if (numImages <= 0)
+        return 1;
+
+    AFile file = AFileOpen(texturePath, AOpenFlag_ReadBinary);
+    if (!AFileExist(file))
+        return 0;
+
+    char buffer[2048];
+
+    int result = 1;
+    int fileNumImages = AFileReadI32(buffer, sizeof(buffer), file); // First line: numImages
+    if (fileNumImages != numImages)
+    {
+        AX_WARN("basis file num images not equal to requested numImages. file: %d, requested: %d", fileNumImages, numImages);
+        numImages = fileNumImages;
+        result = 3;
+    }
+
+    for (int i = 0; i < numImages; i++)
+    {
+        int pathLen = AFileReadLine(buffer, sizeof(buffer), file);
+        ChangeExtension(buffer, pathLen, "basis");
+
+        uint64_t size = FileSize(buffer);
+        void* mem = ArenaGetMainCurrent(size);
+        
+        if (!mem || size == 0)
+        {
+            const char* reason = size == 0 ? "BasisFileNotExist" : "ArenaNotEnough";
+            textures[i] = rCreateTexture(32, 32, buffer, SG_PIXELFORMAT_R8, TexFlags_Nearest, reason); // fill with placeholder
+            AX_WARN("%s index:%d, fileSize:%d, path:%s", reason, i, size, texturePath);
+            result = 2;
+            continue;
+        }
+
+        void* basisData = ReadAllFile(buffer, mem, size);
+        int textureType = AFileReadI32(buffer, sizeof(buffer), file);
+
+        int isSRGB =  textureType & 1;
+        int isCubemap = (textureType >> 1) & 1;
+
+        BasisuMakeImage(basisData, size, &textures[i].width, &textures[i].height, &textures[i].format,
+                        &textures[i].buffer, &textures[i].handle, (bool)isSRGB, (bool)isCubemap);
+    }
+    return result;
+}
 
 /*//////////////////////////////////////////////////////////////////////////*/
 /*                            Binary Save                                   */
@@ -774,7 +891,7 @@ int SaveGLTFBinary(const SceneBundle* gltf, const char* path)
     
     // Compress and write, vertices and indices
     uint64_t compressedSize = (uint64_t)(allVertexSize * 0.9);
-    char* compressedBuffer = ArenaGetCurrent(compressedSize); // global_arena.buf + global_arena.curr_offset;
+    char* compressedBuffer = ArenaGetMainCurrent(compressedSize); // global_arena.buf + global_arena.curr_offset;
     
     struct sdefl sdfl;
     size_t afterCompSize = zsdeflate(&sdfl, compressedBuffer, gltf->allVertices, allVertexSize, 5);
@@ -785,7 +902,7 @@ int SaveGLTFBinary(const SceneBundle* gltf, const char* path)
     afterCompSize = zsdeflate(&sdfl, compressedBuffer, gltf->allIndices, allIndexSize, 5);
     AFileWrite(&afterCompSize, sizeof(uint64_t), file, 1);
     AFileWrite(compressedBuffer, afterCompSize, file, 1);
-    // rpfree(compressedBuffer);
+    // DeAllocateTLSFGlobal(compressedBuffer);
     // Note: anim morph targets aren't saved
 
     for (int i = 0; i < gltf->numMeshes; i++)
@@ -976,7 +1093,7 @@ int LoadSceneBundleBinary(const char* path, SceneBundle* gltf)
         return 0;
     }
     
-    FixedPow2Allocator* allocator = rpmalloc(sizeof(FixedPow2Allocator));
+    FixedPow2Allocator* allocator = AllocateTLSFGlobal(sizeof(FixedPow2Allocator));
     FixedPow2Allocator_Init(allocator, 1024);
 
     int version = ABMMeshVersion;
@@ -1016,7 +1133,7 @@ int LoadSceneBundleBinary(const char* path, SceneBundle* gltf)
         
         uint64_t compressedSize;
         AFileRead(&compressedSize, sizeof(uint64_t), file, 1);
-        char* compressedBuffer = ArenaGetCurrent(compressedSize); // global_arena.buf + global_arena.curr_offset; //  rpmalloc(allVertexSize);
+        char* compressedBuffer = ArenaGetMainCurrent(compressedSize); // global_arena.buf + global_arena.curr_offset; //  AllocateTLSFGlobal(allVertexSize);
         AFileRead(compressedBuffer, compressedSize, file, 1);
        
         zsinflate(gltf->allVertices, allVertexSize, compressedBuffer, compressedSize);
@@ -1027,13 +1144,13 @@ int LoadSceneBundleBinary(const char* path, SceneBundle* gltf)
         zsinflate(gltf->allIndices, allIndexSize, compressedBuffer, compressedSize);
         // ZSTD_decompress(gltf->allIndices, allIndexSize, compressedBuffer, compressedSize);
 
-        // rpfree(compressedBuffer);
+        // DeAllocateTLSFGlobal(compressedBuffer);
     }
     
     char* currVertices = (char*)gltf->allVertices;
     char* currIndices = (char*)gltf->allIndices;
     
-    if (gltf->numMeshes > 0) gltf->meshes = rpcalloc(gltf->numMeshes, sizeof(AMesh));
+    if (gltf->numMeshes > 0) gltf->meshes = AllocZeroTLSFGlobal(gltf->numMeshes, sizeof(AMesh));
     for (int i = 0; i < gltf->numMeshes; i++)
     {
         AMesh* mesh = &gltf->meshes[i];
@@ -1067,7 +1184,7 @@ int LoadSceneBundleBinary(const char* path, SceneBundle* gltf)
         }
     }
     
-    if (gltf->numNodes > 0) gltf->nodes = rpcalloc(gltf->numNodes, sizeof(ANode));
+    if (gltf->numNodes > 0) gltf->nodes = AllocZeroTLSFGlobal(gltf->numNodes, sizeof(ANode));
     
     for (int i = 0; i < gltf->numNodes; i++)
     {
@@ -1088,7 +1205,7 @@ int LoadSceneBundleBinary(const char* path, SceneBundle* gltf)
         ReadGLTFString(&node->name, file, allocator);
     }
     
-    if (gltf->numMaterials > 0) gltf->materials = rpcalloc(gltf->numMaterials, sizeof(AMaterial));
+    if (gltf->numMaterials > 0) gltf->materials = AllocZeroTLSFGlobal(gltf->numMaterials, sizeof(AMaterial));
     for (int i = 0; i < gltf->numMaterials; i++)
     {
         AMaterial* material = &gltf->materials[i];
@@ -1123,7 +1240,7 @@ int LoadSceneBundleBinary(const char* path, SceneBundle* gltf)
         ReadGLTFString(&material->name, file, allocator);
     }
     
-    if (gltf->numTextures > 0) gltf->textures = (ATexture*)rpcalloc(gltf->numTextures, sizeof(ATexture));
+    if (gltf->numTextures > 0) gltf->textures = (ATexture*)AllocZeroTLSFGlobal(gltf->numTextures, sizeof(ATexture));
     for (int i = 0; i < gltf->numTextures; i++)
     {
         ATexture* texture = &gltf->textures[i];
@@ -1131,19 +1248,19 @@ int LoadSceneBundleBinary(const char* path, SceneBundle* gltf)
         AFileRead(&texture->source, sizeof(int), file, 1);
         ReadGLTFString(&texture->name, file, allocator);
     }
-    if (gltf->numImages > 0) gltf->images = (AImage*)rpcalloc(gltf->numImages, sizeof(AImage));
+    if (gltf->numImages > 0) gltf->images = (AImage*)AllocZeroTLSFGlobal(gltf->numImages, sizeof(AImage));
     for (int i = 0; i < gltf->numImages; i++)
     {
         ReadGLTFString(&gltf->images[i].path, file, allocator);
     }
     
-    if (gltf->numSamplers > 0) gltf->samplers = (ASampler*)rpcalloc(gltf->numSamplers, sizeof(ASampler));
+    if (gltf->numSamplers > 0) gltf->samplers = (ASampler*)AllocZeroTLSFGlobal(gltf->numSamplers, sizeof(ASampler));
     for (int i = 0; i < gltf->numSamplers; i++)
     {
         AFileRead(&gltf->samplers[i], sizeof(ASampler), file, 1);
     }
     
-    if (gltf->numCameras > 0) gltf->cameras = (ACamera*)rpcalloc(gltf->numCameras, sizeof(ACamera));
+    if (gltf->numCameras > 0) gltf->cameras = (ACamera*)AllocZeroTLSFGlobal(gltf->numCameras, sizeof(ACamera));
     for (int i = 0; i < gltf->numCameras; i++)
     {
         ACamera* camera = &gltf->cameras[i];
@@ -1155,7 +1272,7 @@ int LoadSceneBundleBinary(const char* path, SceneBundle* gltf)
         ReadGLTFString(&camera->name, file, allocator);
     }
     
-    if (gltf->numScenes > 0) gltf->scenes = (AScene*)rpcalloc(gltf->numScenes, sizeof(AScene));
+    if (gltf->numScenes > 0) gltf->scenes = (AScene*)AllocZeroTLSFGlobal(gltf->numScenes, sizeof(AScene));
     for (int i = 0; i < gltf->numScenes; i++)
     {
         AScene* scene = &gltf->scenes[i];
@@ -1165,13 +1282,13 @@ int LoadSceneBundleBinary(const char* path, SceneBundle* gltf)
         AFileRead(scene->nodes, sizeof(int) * scene->numNodes, file, 1);
     }
 
-    if (gltf->numSkins > 0) gltf->skins = (ASkin*)rpcalloc(gltf->numSkins, sizeof(ASkin));
+    if (gltf->numSkins > 0) gltf->skins = (ASkin*)AllocZeroTLSFGlobal(gltf->numSkins, sizeof(ASkin));
     for (int i = 0; i < gltf->numSkins; i++)
     {
         ASkin* skin = &gltf->skins[i];
         AFileRead(&skin->skeleton, sizeof(int), file, 1);
         AFileRead(&skin->numJoints, sizeof(int), file, 1);
-        skin->inverseBindMatrices = rpmalloc(sizeof(Matrix4) * skin->numJoints);
+        skin->inverseBindMatrices = AllocateTLSFGlobal(sizeof(Matrix4) * skin->numJoints);
         skin->joints = FixedPow2Allocator_AllocateUninitialized(allocator, skin->numJoints * sizeof(int));
         AFileRead(skin->inverseBindMatrices, sizeof(Matrix4) * skin->numJoints, file, 1);
         AFileRead(skin->joints, sizeof(int) * skin->numJoints, file, 1);
@@ -1183,13 +1300,13 @@ int LoadSceneBundleBinary(const char* path, SceneBundle* gltf)
     Vector4x32f* currSamplerOutput;
 
     if (totalAnimSamplerInput) {
-        currSamplerInput  = (float*)rpcalloc(totalAnimSamplerInput, sizeof(float));
-        currSamplerOutput = (Vector4x32f*)rpcalloc(totalAnimSamplerInput, sizeof(Vector4x32f));
+        currSamplerInput  = (float*)AllocZeroTLSFGlobal(totalAnimSamplerInput, sizeof(float));
+        currSamplerOutput = (Vector4x32f*)AllocZeroTLSFGlobal(totalAnimSamplerInput, sizeof(Vector4x32f));
         AFileRead(currSamplerInput, sizeof(float) * totalAnimSamplerInput, file, 1);
         AFileRead(currSamplerOutput, sizeof(Vector4x32f) * totalAnimSamplerInput, file, 1);
     }
 
-    if (gltf->numAnimations) gltf->animations = rpcalloc(gltf->numAnimations, sizeof(AAnimation));
+    if (gltf->numAnimations) gltf->animations = AllocZeroTLSFGlobal(gltf->numAnimations, sizeof(AAnimation));
     for (int i = 0; i < gltf->numAnimations; i++)
     {
         AAnimation* animation = &gltf->animations[i];
@@ -1199,9 +1316,9 @@ int LoadSceneBundleBinary(const char* path, SceneBundle* gltf)
         AFileRead(&animation->duration, sizeof(float), file, 1);
         AFileRead(&animation->speed, sizeof(float), file, 1);
         ReadGLTFString(&animation->name, file, allocator);
-        animation->channels = rpmalloc(animation->numChannels * sizeof(AAnimChannel));
+        animation->channels = AllocateTLSFGlobal(animation->numChannels * sizeof(AAnimChannel));
         AFileRead(animation->channels, sizeof(AAnimChannel) * animation->numChannels, file, 1);
-        animation->samplers = rpmalloc(animation->numSamplers * sizeof(AAnimSampler));
+        animation->samplers = AllocateTLSFGlobal(animation->numSamplers * sizeof(AAnimSampler));
 
         for (int j = 0; j < animation->numSamplers; j++)
         {

@@ -23,7 +23,7 @@ void *_dynarray_create(size_t init_cap, size_t stride)
 {
     size_t header_size = DYNARRAY_FIELDS * sizeof(size_t);
     size_t arr_size = init_cap * stride;
-    size_t *arr = (size_t *) rpmalloc(header_size + arr_size);
+    size_t *arr = (size_t *) AllocateTLSFGlobal(header_size + arr_size);
     arr[CAPACITY] = init_cap;
     arr[LENGTH] = 0;
     arr[STRIDE] = stride;
@@ -32,7 +32,7 @@ void *_dynarray_create(size_t init_cap, size_t stride)
 
 void _dynarray_destroy(void *arr)
 {
-    rpfree((char*)arr - DYNARRAY_FIELDS * sizeof(size_t));
+    DeAllocateTLSFGlobal((char*)arr - DYNARRAY_FIELDS * sizeof(size_t));
 }
 
 // Returns the dynarray's field which is specified by passing

@@ -4,6 +4,9 @@
 
 #include "../Math/Math.h"
 
+#if defined(__cplusplus)
+extern "C" {
+#endif
 
 // Not WangHash actually we can say skeeto hash.
 // developed and highly optimized by Chris Wellons
@@ -185,4 +188,9 @@ purefn inline uint32_t PathToHash(const char* str)
 //              begin[Xoroshiro128Plus(xoro) % len]);
 //     }
 // }
+
+#if defined(__cplusplus)
+}
+#endif
+
 #endif

@@ -5,6 +5,10 @@
 #include "Platform.h"
 //#include "sokol/sokol_app.h"
 
+#if defined(__cplusplus)
+extern "C" {
+#endif
+
 typedef struct Camera_
 {
     Matrix4 projection;
@@ -77,11 +81,11 @@ static inline RayV ScreenPointToRay(Camera* camera, Vec2f pos)
     return ray;
 }
 
-static inline void CameraInit(Camera* camera)
+static inline void CameraInit(Camera* camera, int width, int height)
 {
     Camera_CalculateLook(camera);
     Camera_RecalculateView(camera);
-    Camera_RecalculateProjection(camera, 800, 600);
+    Camera_RecalculateProjection(camera, width, height);
 }
 
 static inline void InfiniteMouse(Vec2f point)
@@ -143,5 +147,9 @@ static inline void CameraUpdate(Camera* camera, float dt)
     Camera_RecalculateView(camera);
     // frustumPlanes = CreateFrustumPlanes(view * projection);
 }
+
+#if defined(__cplusplus)
+}
+#endif
 
 #endif

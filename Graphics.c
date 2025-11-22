@@ -4,6 +4,16 @@
 // #include "Extern/sokol/sokol_gfx.h"
 // #include "Math/Math.h"
 
+#include "Include/FileSystem.h"
+#include "Include/Platform.h"
+#include "Include/Graphics.h"
+#include "Include/Algorithm.h"
+#include "Include/Memory.h"
+#include "Include/BasisBinding.h"
+
+#include "Extern/sinfl.h"
+#include "Extern/ufbx.h"
+
 #define STBI_NO_BMP
 #define STBI_NO_PSD
 #define STBI_NO_TGA
@@ -15,26 +25,15 @@
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_RESIZE_IMPLEMENTATION
 
-#define STBI_MALLOC(size)           ( rpmalloc(size) )
-#define STBI_FREE(ptr)              ( rpfree(ptr) )
-#define STBI_REALLOC(ptr, size)     ( rprealloc(ptr, size) )
+#define STBI_MALLOC(size)           ( AllocateTLSFGlobal(size) )
+#define STBI_FREE(ptr)              ( DeAllocateTLSFGlobal(ptr) )
+#define STBI_REALLOC(ptr, size)     ( ReAllocateTLSFGlobal(ptr, size) )
 
-#define STBIR_MALLOC(size, c)       ( rpmalloc(size) )
-#define STBIR_FREE(ptr, c)          ( (void)(c), rpfree(ptr) )
-
-#include "Include/FileSystem.h"
-#include "Include/Arena.h"
-#include "Include/Platform.h"
-#include "Include/Graphics.h"
-#include "Include/Algorithm.h"
-
-#include "Extern/sinfl.h"
-
-#include "Extern/ufbx.h"
+#define STBIR_MALLOC(size, c)       ( AllocateTLSFGlobal(size) )
+#define STBIR_FREE(ptr, c)          ( (void)(c), DeAllocateTLSFGlobal(ptr) )
 
 #include "Extern/stb/stb_image.h"
 #include "Extern/stb/stb_image_resize2.h"
-#include "BasisBinding.h"
 
 static const uint8_t TextureTypeToBytesPerPixelMap[_SG_PIXELFORMAT_NUM] =
 {
@@ -147,7 +146,7 @@ int rGetMipmapImageData(sg_image_data* img_data, void* data, int width, int heig
     {
         bufferSize += (width / i) * (height / i);
     }
-    uint8_t* buffer = ArenaGetCurrent(bufferSize);
+    uint8_t* buffer = (uint8_t*)ArenaGetMainCurrent(bufferSize);
     img_data->subimage[0][0].ptr = data;
     img_data->subimage[0][0].size = size;
 
@@ -195,7 +194,7 @@ Texture rImportTexture(const char* path, TexFlags flags, const char* label)
     AFile asset = AFileOpen(path, AOpenFlag_ReadBinary);
     uint64_t size = AFileSize(asset);
 
-    void* textureLoadBuffer = arena_alloc(&global_arena, size);
+    void* textureLoadBuffer = ArenaGetMainCurrent(size);
     
     const int compressed = IsCompressed(path, StringLength(path));
     if (compressed) {
@@ -223,35 +222,6 @@ Texture rImportTexture(const char* path, TexFlags flags, const char* label)
         texture.buffer = NULL;
     }
     return texture;
-}
-
-void LoadSceneImagesGeneric(const char* texturePath, Texture* textures, int numImages)
-{
-    if (numImages == 0) {
-        return;
-    }
-    char outputDir[2048] = { 0 };
-    char* p = outputDir;
-    AFile file = AFileOpen(texturePath, AOpenFlag_ReadBinary);
-    int numDigits = AFileReadLine(outputDir, 2048, file);
-    numImages = ParsePositiveNumber((const char**)&p);
-
-    for (int i = 0; i < numImages; i++)
-    {
-        int outputLen = AFileReadLine(outputDir, 2048, file);
-        ChangeExtension(outputDir, outputLen, "basis");
-        uint64_t fileSize = FileSize(outputDir);
-        char* arena = ArenaGetCurrent(fileSize);
-        if (arena == NULL) continue;
-        void* basisFile = ReadAllFile(outputDir, &arena);
-
-        AFileReadLine(outputDir, 2048, file);
-        int textureType = ParsePositiveNumber((const char**)&p);
-        BasisuMakeImage(basisFile, fileSize, 
-                        &textures[i].width, &textures[i].height, 
-                        &textures[i].format, &textures[i].buffer, &textures[i].handle,
-                        textureType & 1, (textureType & 2) >> 1);
-    }
 }
 
 static uint64_t CalcMipBytes(uint32_t width, uint32_t height, uint32_t bpp, uint32_t mipLevels)

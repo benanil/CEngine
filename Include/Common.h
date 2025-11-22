@@ -8,6 +8,11 @@
 #include <limits.h>
 #include "SIMD.h"
 
+#if defined(__cplusplus)
+extern "C" {
+#endif
+
+
 #define KB 1024L
 #define MB (1024L * 1024L)
 #define GB (1024L * 1024L * 1024L)
@@ -189,6 +194,9 @@
     #define SmallMemSet(dst, val, size) __builtin_memset(dst, val, size);
 #endif
 
+#define MemSet(dst, val, sizeInBytes) memset(dst, val, sizeInBytes);
+
+#define MemCpy(dst, src, sizeInBytes) memcpy(dst, src, sizeInBytes);
 
 #define MemsetZero(dst, size) SmallMemSet(dst, 0, size)
 
@@ -439,6 +447,7 @@ purefn int CalculateArrayGrowth(int _size)
         char const* p = s;
         const uint64_t m = 0x7efefefefefefeffull; 
         const uint64_t n = ~m;
+        uint64_t i;
 
         for (; (uint64_t)p & (sizeof(uint64_t) - 1); p++) 
             if (!*p)
@@ -458,153 +467,52 @@ purefn int CalculateArrayGrowth(int _size)
                     if (!*p) return (int)(uint64_t)(p - s);
             }
         }
+        return 0;
+    }
+ #endif
+
+#if defined (_MSC_VER)
+    #define StringLengthSafe(s, maxLen) ((s) ? (int)strnlen_s((s), (maxLen)) : 0)
+#elif defined (__STDC_LIB_EXT1__)  // GCC / Clang with C11 Annex K
+    #define StringLengthSafe(s, maxLen) ((s) ? (int)strnlen_s((s), (maxLen)) : 0)
+#else
+    // Returns -1 if s is NULL or not null-terminated within maxLen
+    static inline int StringLengthSafe(const char* s, size_t maxLen)
+    {
+        if (!s || maxLen == 0) return 0;
+
+        const char* p = s;
+        const size_t wordSize = sizeof(uint64_t);
+        const uint64_t m = 0x7efefefefefefeffull;
+        const uint64_t n = ~m;
+        size_t remaining = maxLen;
+
+        // Align pointer
+        while (((uintptr_t)p & (wordSize - 1)) && remaining) {
+            if (*p == '\0') return (int)(p - s);
+            p++; remaining--;
+        }
+
+        // Aligned scanning
+        while (remaining >= wordSize) {
+            uint64_t chunk = *(const uint64_t*)p;
+            if (!(((chunk + m) ^ ~chunk) & n)) {
+                p += wordSize; remaining -= wordSize;
+            } else {
+                for (size_t i = 0; i < wordSize && remaining; i++, p++, remaining--)
+                    if (*p == '\0') return (int)(p - s);
+            }
+        }
+
+        // Remaining bytes
+        while (remaining--) {
+            if (*p == '\0') return (int)(p - s);
+            p++;
+        }
+        return 0; // unterminated
     }
 #endif
 
-#include <string.h>
-
-static inline void MemSet(void* RESTRICT dst, unsigned char val, uint64_t sizeInBytes)
-{
-    memset(dst, val, sizeInBytes);
-    return;
-    #if defined(AX_SUPPORT_SSE)
-    __m128i vval = _mm_set1_epi8(val);
-    __m128i* dp = (__m128i*)dst;
-    uint64_t count = sizeInBytes >> 4; // number of 16-byte chunks
-    
-    while (count >= 4) {
-        _mm_storeu_si128(dp + 0, vval);
-        _mm_storeu_si128(dp + 1, vval);
-        _mm_storeu_si128(dp + 2, vval);
-        _mm_storeu_si128(dp + 3, vval);
-        dp += 4, count -= 4;
-    }
-    
-    AX_NO_UNROLL 
-    while (count--) {
-        _mm_storeu_si128(dp++, vval);
-    }
-    
-    uint64_t rem = sizeInBytes & 15;
-    if (rem) SmallMemSet((unsigned char*)dp, val, rem);
-        
-    #elif defined(AX_ARM) && defined(__ARM_NEON)
-    uint8x16_t vval = vdupq_n_u8(val);
-    uint8_t* dp = (uint8_t*)dst;
-    uint64_t count = sizeInBytes >> 4;
-    
-    while (count >= 4) {
-        vst1q_u8(dp + 0, vval);
-        vst1q_u8(dp + 16, vval);
-        vst1q_u8(dp + 32, vval);
-        vst1q_u8(dp + 48, vval);
-        dp += 64, count -= 4;
-    }
-    
-    AX_NO_UNROLL
-    while (count--) {
-        vst1q_u8(dp, vval);
-        dp += 16;
-    }
-    
-    uint64_t rem = sizeInBytes & 15;
-    if (rem) SmallMemSet(dp, val, rem);
-        
-    #else
-    uint64_t* dp = (uint64_t*)dst;
-    uint64_t count = sizeInBytes >> 3;
-    uint64_t d8 = val * 0x0101010101010101ULL;
-    
-    while (count >= 8) {
-        dp[0] = d8; dp[1] = d8; dp[2] = d8; dp[3] = d8; 
-        dp[4] = d8; dp[5] = d8; dp[6] = d8; dp[7] = d8;
-        dp += 8, count -= 8;
-    }
-    
-    AX_NO_UNROLL while (count--) *dp++ = d8;
-    
-    uint64_t rem = sizeInBytes & 7;
-    if (rem) SmallMemSet((unsigned char*)dp, val, rem);
-    #endif
-}
-
-static inline void MemCpy(void* dst, const void* RESTRICT src, uint64_t sizeInBytes)
-{
-    memcpy(dst, src, sizeInBytes);
-    return;
-    #if defined(AX_SUPPORT_SSE)
-    const __m128i* sp = (const __m128i*)src;
-    __m128i* dp = (__m128i*)dst;
-    uint64_t count = sizeInBytes >> 4; // number of 16-byte chunks
-    
-    while (count >= 4)
-    {
-        __m128i v0 = _mm_loadu_si128(sp + 0);
-        __m128i v1 = _mm_loadu_si128(sp + 1);
-        __m128i v2 = _mm_loadu_si128(sp + 2);
-        __m128i v3 = _mm_loadu_si128(sp + 3);
-        _mm_storeu_si128(dp + 0, v0);
-        _mm_storeu_si128(dp + 1, v1);
-        _mm_storeu_si128(dp + 2, v2);
-        _mm_storeu_si128(dp + 3, v3);
-        sp += 4, dp += 4, count -= 4;
-    }
-
-    AX_NO_UNROLL while (count--)
-    {
-        _mm_storeu_si128(dp++, _mm_loadu_si128(sp++));
-    }
-    
-    uint64_t rem = sizeInBytes & 15;
-    if (rem) SmallMemCpy((char*)dp, (const char*)sp, rem);
-    
-    #elif defined(AX_ARM) && defined(__ARM_NEON)
-    const uint8_t* sp = (const uint8_t*)src;
-    uint8_t* dp = (uint8_t*)dst;
-    uint64_t count = sizeInBytes >> 4;
-    
-    while (count >= 4)
-    {
-        uint8x16_t v0 = vld1q_u8(sp + 0);
-        uint8x16_t v1 = vld1q_u8(sp + 16);
-        uint8x16_t v2 = vld1q_u8(sp + 32);
-        uint8x16_t v3 = vld1q_u8(sp + 48);
-        vst1q_u8(dp + 0, v0);
-        vst1q_u8(dp + 16, v1);
-        vst1q_u8(dp + 32, v2);
-        vst1q_u8(dp + 48, v3);
-        sp += 64, dp += 64, count -= 4;
-    }
-    
-    AX_NO_UNROLL while (count--)
-    {
-        vst1q_u8(dp, vld1q_u8(sp));
-        sp += 16;
-        dp += 16;
-    }
-    
-    uint64_t rem = sizeInBytes & 15;
-    if (rem) SmallMemCpy(dp, sp, rem);
-        
-    #else
-    uint64_t* dp = (uint64_t*)dst;
-    const uint64_t* sp = (const uint64_t*)src;
-    uint64_t count = sizeInBytes >> 3;
-    
-    while (count >= 8)
-    {
-        dp[0] = sp[0]; dp[1] = sp[1]; dp[2] = sp[2]; dp[3] = sp[3];
-        dp[4] = sp[4]; dp[5] = sp[5]; dp[6] = sp[6]; dp[7] = sp[7];
-        dp += 8, sp += 8, count -= 8;
-    }
-    
-    AX_NO_UNROLL
-    while (count--) *dp++ = *sp++;
-    
-    uint64_t rem = sizeInBytes & 7;
-    if (rem) SmallMemCpy((char*)dp, (const char*)sp, rem);
-    #endif
-}
 
 purefn const char* GetFileName(const char* path)
 {
@@ -613,5 +521,10 @@ purefn const char* GetFileName(const char* path)
         length--;
     return path + length;
 }
+
+#if defined(__cplusplus)
+}
+#endif
+
 
 #endif // COMMON_H

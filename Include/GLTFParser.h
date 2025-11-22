@@ -4,6 +4,10 @@
 
 #include "Common.h"
 
+#if defined(__cplusplus)
+extern "C" {
+#endif
+
 // Warning! order is important, dependent in functions: ParseMeshes, ParseAttributes, ParseGLTF... 
 enum AAttribType_
 {
@@ -333,5 +337,10 @@ void FreeGLTFBuffers(SceneBundle* gltf);
 void FreeSceneBundle(SceneBundle* gltf);
 
 const char* ParsedSceneGetError(AErrorType error);
+
+#if defined(__cplusplus)
+}
+#endif
+
 
 #endif // ASTL_GLTF_PARSER

@@ -11,14 +11,15 @@ set SOURCE_FILES=^
 	Main.c ^
 	OS.c ^
 	Extern/dynarray.c ^
-	Extern/tlsf.c ^
+	TLSF.c ^
 	Memory.c ^
+	FileSystem.c ^
     Platform.c ^
 	Graphics.c ^
 	GLTFParser.c ^
 	Animation.c ^
-	AssetManager.c ^
-    BasisSokol.cpp
+	Algorithm.c ^
+	AssetManager.c 
 
 if not exist "Build\obj" mkdir "Build\obj"
 
@@ -37,32 +38,36 @@ if %ERRORLEVEL% neq 0 (
 
 REM Incremental build for ufbx
 echo Checking extern libs...
-for %%f in (Extern\ufbx.c) do (
-	if not exist "Build\obj\%%~nf.obj" (
-		echo Compiling %%f...
-		cl.exe /c /O2 /arch:AVX2 /GR- /GS- /EHsc /I. /FoBuild\obj\%%~nf.obj %%f >nul
-	) else (
-		for %%a in (%%f) do for %%b in (Build\obj\%%~nf.obj) do (
-			if %%~ta GTR %%~tb (
-				echo Recompiling %%f...
-				cl.exe /c /O2 /arch:AVX2 /GR- /GS- /EHsc /I. /FoBuild\obj\%%~nf.obj %%f >nul
-			)
-		)
-	)
+set EXTERNAL_SRC = Extern\ufbx.c BasisSokol.cpp
+
+for %%f in (%EXTERNAL_SRC%) do (
+    if not exist "Build\obj\%%~nf.obj" (
+        echo Compiling %%f...
+        cl.exe /std:c++17 /c /O2 /arch:AVX2 /GR- /GS- /EHsc /I. /FoBuild\obj\%%~nf.obj %%f >nul
+    ) else (
+        for %%a in (%%f) do for %%b in (Build\obj\%%~nf.obj) do (
+            if %%~ta GTR %%~tb (
+                echo Recompiling %%f...
+                cl.exe /c /O2 /arch:AVX2 /GR- /GS- /EHsc /I. /FoBuild\obj\%%~nf.obj %%f >nul
+            )
+        )
+    )
 )
 
 if "%1"=="Debug" (
-	cl.exe /Od /Zi /arch:AVX2 /GR- /EHsc /I. /FoBuild\obj\ /FdBuild\MainDebug.pdb %SOURCE_FILES% Build\obj\ufbx.obj  /Fe:Build\MainDebug.exe /link advapi32.lib d3d11.lib dxgi.lib dxguid.lib user32.lib shell32.lib gdi32.lib winmm.lib
+	cl.exe /std:c++17 /Od /Zi /arch:AVX2 /GR- /EHsc /I. /FoBuild\obj\ /FdBuild\MainDebug.pdb %SOURCE_FILES% Build\obj\ufbx.obj Build\obj\BasisSokol.obj  /Fe:Build\MainDebug.exe /link advapi32.lib d3d11.lib dxgi.lib dxguid.lib user32.lib shell32.lib gdi32.lib winmm.lib
 	if %ERRORLEVEL% neq 0 (
 		echo Compilation failed!
 		exit /b %ERRORLEVEL%
 	)
+    start "" "Build/MainDebug.exe"
 ) else (
-	cl.exe /O2 /arch:AVX2 /GR- /GS- /EHsc /I. /FoBuild\obj\ %SOURCE_FILES%  Build\obj\ufbx.obj /Fe:Build\MainMSVC.exe /link advapi32.lib d3d11.lib dxgi.lib dxguid.lib user32.lib shell32.lib gdi32.lib winmm.lib
+	cl.exe /std:c++17 /O2 /arch:AVX2 /GR- /GS- /EHsc /I. /FoBuild\obj\ %SOURCE_FILES%  Build\obj\ufbx.obj Build\obj\BasisSokol.obj /Fe:Build\MainMSVC.exe /link advapi32.lib d3d11.lib dxgi.lib dxguid.lib user32.lib shell32.lib gdi32.lib winmm.lib
 	if %ERRORLEVEL% neq 0 (
 		echo Compilation failed!
 		exit /b %ERRORLEVEL%
 	)
+    start "" "Build/MainMSVC.exe"
 )
 
 echo Build complete.

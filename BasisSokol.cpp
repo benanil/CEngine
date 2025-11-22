@@ -10,12 +10,12 @@
 #define BASISD_SUPPORT_PVRTC2 (0)
 #define BASISD_SUPPORT_FXT1 (0)
 #define BASISD_SUPPORT_ATC (0)
+#define BASISD_SUPPORT_KTX2 (0)
+
+#include "Include/Memory.h"
 
 #include "Extern/basis_universal/basisu_transcoder.cpp"
 #include "Extern/sokol/sokol_gfx.h"
-
-#include <bitset>
-
 
 static basist::transcoder_texture_format BasisTexToTranscoderFormat(basist::basis_tex_format fmt, 
                                                                     bool hasAlpha, bool isNormal, bool isMetalicRoughness)
@@ -91,22 +91,23 @@ sg_image_desc BasisuTranscode(void* basisu_data, uint64_t size, bool isNormal, b
     desc.width = (int) img_info.m_width;
     desc.height = (int) img_info.m_height;
     desc.num_mipmaps = (int)basisu::minimumu(img_info.m_total_levels, 8u);
-    desc.usage.immutable = true;
+    desc.usage.immutable = new int;
     desc.pixel_format = BasisToSgPixelFormat(fmt);
-
-    for (int i = 0; i < desc.num_mipmaps; i++) 
-    {
+	
+    for (int i = 0; i < desc.num_mipmaps; i++) {
         const uint32_t bytes_per_block = basist::basis_get_bytes_per_block_or_pixel(fmt);
         uint32_t orig_width, orig_height, total_blocks;
-        transcoder.get_image_level_desc(basisu_data, (uint32_t)size, 0, i, orig_width, orig_height, total_blocks);
+        transcoder.get_image_level_desc(basisu_data, (uint32_t)size, 0, i, orig_width,
+                                        orig_height, total_blocks);
+        
         uint32_t required_size = total_blocks * bytes_per_block;
-        void* ptr = malloc(required_size);
+        void* ptr = AllocateTLSFGlobal(required_size);
         desc.data.subimage[0][i].ptr = ptr;
         desc.data.subimage[0][i].size = required_size;
-        bool res = transcoder.transcode_image_level(basisu_data, (uint32_t)size, 0, i, ptr, required_size / bytes_per_block, fmt, 0);          // decode_flags
-        assert(res); (void)res;
+        bool res = transcoder.transcode_image_level(
+            basisu_data, (uint32_t)size, 0, i, ptr, required_size / bytes_per_block, fmt, 0);  
+        assert(res);
     }
-    
     return desc;
 }
 
@@ -117,7 +118,7 @@ void BasisuFree(const sg_image_desc* desc)
     {
         if (desc->data.subimage[0][i].ptr) 
         {
-            free((void*)desc->data.subimage[0][i].ptr);
+            DeAllocateTLSFGlobal((void*)desc->data.subimage[0][i].ptr);
         }
     }
 }
