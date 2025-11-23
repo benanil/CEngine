@@ -380,9 +380,13 @@ purefn float Minf(float a, float b) { return a < b ? a : b; }
 
 purefn float Maxf(float a, float b) { return a > b ? a : b; }
 
-purefn float Min32(int a, int b) { return a < b ? a : b; }
+purefn int Min32(int a, int b) { return a < b ? a : b; }
 
-purefn float Max32(int a, int b) { return a > b ? a : b; }
+purefn int Max32(int a, int b) { return a > b ? a : b; }
+
+purefn uint64_t Min64(uint64_t a, uint64_t b) { return a < b ? a : b; }
+
+purefn uint64_t Max64(uint64_t a, uint64_t b) { return a > b ? a : b; }
 
 purefn int64_t Abs64(int64_t x) {
     int64_t temp = x >> 63;

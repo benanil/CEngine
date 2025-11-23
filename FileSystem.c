@@ -263,7 +263,6 @@ AFile AFileOpen(const char* fileName, AOpenFlag flag)
             creation = CREATE_ALWAYS;
         break;
     }
-
     afile.file = CreateFileA(fileName, access, FILE_SHARE_READ, NULL, creation, FILE_ATTRIBUTE_NORMAL, NULL);
 
     if (afile.file == INVALID_HANDLE_VALUE)

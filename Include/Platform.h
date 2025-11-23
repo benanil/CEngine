@@ -2,9 +2,9 @@
 #define PLATFORM_H
 
 // enables logging no matter what
-#define AX_ENABLE_LOGGING
+// #define AX_ENABLE_LOGGING
 
-#if defined(AX_ENABLE_LOGGING) || defined(_DEBUG) || defined(DEBUG) || defined(Debug)
+#if defined(_DEBUG) || defined(DEBUG) || defined(Debug)
 #ifdef __ANDROID__
     #include <android/log.h>
     #define AX_ERROR(format, ...) { __android_log_print(ANDROID_LOG_FATAL, "AX-FATAL", "%s -line:%i " format, GetFileName(__FILE__), __LINE__, ##__VA_ARGS__); ASSERT(0);}
@@ -69,42 +69,35 @@ typedef enum MouseButton_ {
     MouseButton_Backward = 1 << 4
 } MouseButton;
 
+// Mouse
+void   GetMousePos(float* x, float* y);
+void   SetMousePos(float x, float y);
+void   wGetMouseWindowPos(float* x, float* y);
+void   wGetMonitorSize(int* width, int* height);
+void   SetMouseWindowPos(float x, float y);
+float  GetMouseWheelDelta();
+bool   GetDoubleClicked();
+bool   AnyMouseKeyDown();
+bool   GetMouseDown(uint32_t button);
+bool   GetMouseReleased(uint32_t button);
+bool   GetMousePressed(uint32_t button);
 
-void GetMousePos(float* x, float* y);
+// Keyboard
+bool   AnyKeyDown();
+bool   GetKeyDown(char c);
+bool   GetKeyReleased(char c);
+bool   GetKeyPressed(char c);
 
-void SetMousePos(float x, float y);
-
-void wGetMouseWindowPos(float* x, float* y);
-
-void wGetMonitorSize(int* width, int* height);
-
-void SetMouseWindowPos(float x, float y);
-
-bool AnyKeyDown();
-bool GetKeyDown(char c);
-bool GetKeyReleased(char c);
-bool GetKeyPressed(char c);
-
-float GetMouseWheelDelta();
-bool GetDoubleClicked();
-bool AnyMouseKeyDown();
-bool GetMouseDown(uint32_t button);
-bool GetMouseReleased(uint32_t button);
-bool GetMousePressed(uint32_t button);
-
-void wSetWindowSize(int width, int height);
-
-void wSetWindowPosition(int x, int y);
-
-bool wOpenFolder(const char* folderPath);
-
-bool wOpenFile(const char* filePath);
+// window
+void   wSetWindowSize(int width, int height);
+void   wSetWindowPosition(int x, int y);
+bool   wOpenFolder(const char* folderPath);
+bool   wOpenFile(const char* filePath);
 
 double GetDeltaTime();
-
 double TimeSinceStartup();
 
-void PlatformInit();
+void   PlatformInit();
 
 extern PlatformContext PlatformCtx;
 

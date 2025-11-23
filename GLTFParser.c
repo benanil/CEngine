@@ -144,7 +144,7 @@ __private const char* ParseFloat16(const char* curr, short* flt)
 
 __private const char* ParseAccessors(const char* curr, GLTFAccessor** accessorArray)
 {
-    GLTFAccessor accessor={};
+    GLTFAccessor accessor={0};
     curr += 10; // skip accessors"
     // read each accessor
     while (true)
@@ -210,7 +210,7 @@ inline const char* ParsePositiveNumberSkip1(const char* ptr, int* result)
 
 __private const char* ParseBufferViews(const char* curr, GLTFBufferView** bufferViews)
 {
-    GLTFBufferView bufferView={};
+    GLTFBufferView bufferView={0};
     curr += sizeof("bufferViews'");
 
     // read each buffer view
@@ -276,7 +276,7 @@ static void DecodeBase64(char *dst, const char *src, size_t src_length)
 
 __private const char* ParseBuffers(const char* curr, const char* path, GLTFBuffer** bufferArray)
 {
-    GLTFBuffer buffer={};
+    GLTFBuffer buffer={0};
     curr += sizeof("buffers'"); // skip buffers"
     char binFilePath[512]={0};
     char* endOfWorkDir = binFilePath;
@@ -285,7 +285,7 @@ __private const char* ParseBuffers(const char* curr, const char* path, GLTFBuffe
     endOfWorkDir = binFilePath + binPathlen;
     
     // remove bla.gltf
-    while (binFilePath[binPathlen - 1] != '/' && binFilePath[binPathlen - 1] != '\\')
+    while (binPathlen > 0 && binFilePath[binPathlen - 1] != '/' && binFilePath[binPathlen - 1] != '\\')
         binFilePath[--binPathlen] = '\0', endOfWorkDir--;
 
     // read each buffer
@@ -349,7 +349,7 @@ __private const char* ParseImages(const char* curr, const char* path, AImage** i
     int pathLen = StringLength(path);
     while (path[pathLen-1] != '/') pathLen--;
 
-    AImage image={};
+    AImage image={0};
     // read each buffer
     while (true)
     {
@@ -385,7 +385,7 @@ __private const char* ParseImages(const char* curr, const char* path, AImage** i
 __private const char* ParseTextures(const char* curr, ATexture** textures, FixedPow2Allocator* allocator)
 {
     curr += sizeof("textures'");
-    ATexture texture={};
+    ATexture texture={0};
 
     // read each buffer
     while (true)
@@ -456,9 +456,9 @@ __private const char* ParseAttributes(const char* curr, APrimitive* primitive)
 
 __private const char* ParseMeshes(const char* curr, AMesh** meshes, FixedPow2Allocator* allocator)
 {
-    char text[64]={};
+    char text[64]={0};
     curr += sizeof("meshes'"); // skip meshes" 
-    AMesh mesh={};
+    AMesh mesh={0};
     MemsetZero(&mesh, sizeof(AMesh));
 
     // parse all meshes
@@ -534,7 +534,7 @@ __private const char* ParseMeshes(const char* curr, AMesh** meshes, FixedPow2All
             else if (StrCMP16(curr, "targets"))    
             {
                 curr += sizeof("targets'");
-                AMorphTarget morphTarget = {};
+                AMorphTarget morphTarget = {0};
                 while (*curr)
                 {
                     while (*curr != '"')
@@ -564,7 +564,7 @@ __private const char* ParseMeshes(const char* curr, AMesh** meshes, FixedPow2All
             else { ASSERT(0); return (const char*)AError_UNKNOWN_MESH_PRIMITIVE_VAR; }
         }
         end_primitives:{}
-        curr++; // skip ]
+        curr++; // skip 
     }
     return NULL;
 }
@@ -606,7 +606,7 @@ __private const char* ParseNodes(const char* curr, ANode** nodes, float scale, F
 {
     curr = SkipUntill(curr, '[');
     curr++;
-    ANode node = {};
+    ANode node = {0};
     node.rotation[3] = 1.0f;
     node.scale[0] = node.scale[1] = node.scale[2] = scale; 
     node.index = -1;
@@ -701,8 +701,8 @@ __private const char* ParseNodes(const char* curr, ANode** nodes, float scale, F
 __private const char* ParseCameras(const char* curr, ACamera** cameras, FixedPow2Allocator* allocator)
 {
     curr += sizeof("camera'");
-    char text[64]={};
-    ACamera camera={};
+    char text[64]={0};
+    ACamera camera={0};
     // parse all meshes
     while (true)
     {
@@ -758,7 +758,7 @@ __private const char* ParseScenes(const char* curr, AScene** scenes, FixedPow2Al
 {
     curr = SkipUntill(curr, '[');
     curr++;
-    AScene scene={};
+    AScene scene={0};
     // read each node
     while (true)
     {
@@ -825,7 +825,7 @@ __private const char* ParseSamplers(const char* curr, ASampler** samplers)
     curr = SkipUntill(curr, '[');
     curr++;
     
-    ASampler sampler={};
+    ASampler sampler={0};
     
     // read each node
     while (true)
@@ -897,7 +897,7 @@ __private const char* ParseMaterials(const char* curr, AMaterial** materials, Fi
     // matrix, translation, rotation, scale
     curr = SkipUntill(curr, '[');
     curr++; // skip '['
-    AMaterial material={};
+    AMaterial material={0};
     // read each material
     while (true)
     {
@@ -1118,7 +1118,7 @@ static const char* ParseAnimations(const char* curr, AAnimation** animations, Fi
     AAnimChannel* channels = dynarray_create(AAnimChannel);
     AAnimSampler* samplers = dynarray_create(AAnimSampler);
 
-    AAnimation animation={};
+    AAnimation animation={0};
     animation.speed = 1.0f;
     // read each node
     while (true)
@@ -1511,3 +1511,4 @@ const char* ParsedSceneGetError(AErrorType error)
         "MAX" };
     return SceneParseErrorToStr[error];
 }
+

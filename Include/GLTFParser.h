@@ -329,9 +329,6 @@ typedef struct ParsedObj_
 // outScene should not be null
 int ParseGLTF(const char* path, SceneBundle* outScene, float scale);
 
-int ParseObj(const char* path, ParsedObj* scene);
-
-
 void FreeGLTFBuffers(SceneBundle* gltf);
 
 void FreeSceneBundle(SceneBundle* gltf);

@@ -78,17 +78,16 @@ void Init(void)
         .logger.func = slog_func,
     });
 
+    // if (!LoadSceneBundleBinary("Assets/Meshes/Paladin/Paladin.abm", sceneBundle))
     sceneBundle = AllocateTLSFGlobal(sizeof(SceneBundle));
-
-    if (!LoadSceneBundleBinary("Assets/Meshes/Paladin/PaladinTest.abm", sceneBundle))
-    // if (!ParseGLTF("Assets/Meshes/Paladin/Paladin.gltf", sceneBundle, 1.0f))
+    if (!ParseGLTF("Assets/Meshes/Paladin/Paladin.gltf", sceneBundle, 1.0f))
     {
         AX_ERROR("gltf scene load failed2");
         return;
     }
     
-    // CreateVerticesIndicesSkined(sceneBundle);
-    SaveSceneImages(sceneBundle, "Assets/Meshes/Paladin/PaladinTest.bdc");
+    CreateVerticesIndicesSkined(sceneBundle);
+    // SaveSceneImages(sceneBundle, "Assets/Meshes/Paladin/PaladinTest.bdc");
     // SaveGLTFBinary(sceneBundle, "Assets/Meshes/Paladin/PaladinTest.abm");
 
     nodeTransforms = AllocateTLSFGlobal(sizeof(Matrix4) * sceneBundle->numNodes);
@@ -102,9 +101,6 @@ void Init(void)
 
     Texture textures[8];
     LoadSceneImages("Assets/Meshes/Paladin/PaladinTest.bdc", textures, sceneBundle->numImages);
-    // Texture img = rImportTexture("Assets/Textures/Test.jpg", TexFlags_MipMap, "Test Tex");
-    // int baseColorIndex = sceneBundle->materials[0].baseColorTexture.index;
-    // textures[baseColorIndex] = img;
 
     sg_buffer vbuf = sg_make_buffer(&(sg_buffer_desc){
         .data = (sg_range){sceneBundle->allVertices, sceneBundle->totalVertices * sizeof(ASkinedVertex)},

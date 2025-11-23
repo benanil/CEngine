@@ -1288,7 +1288,7 @@ int LoadSceneBundleBinary(const char* path, SceneBundle* gltf)
         ASkin* skin = &gltf->skins[i];
         AFileRead(&skin->skeleton, sizeof(int), file, 1);
         AFileRead(&skin->numJoints, sizeof(int), file, 1);
-        skin->inverseBindMatrices = AllocateTLSFGlobal(sizeof(Matrix4) * skin->numJoints);
+        skin->inverseBindMatrices = (float*)AllocateTLSFGlobal(sizeof(Matrix4) * skin->numJoints);
         skin->joints = FixedPow2Allocator_AllocateUninitialized(allocator, skin->numJoints * sizeof(int));
         AFileRead(skin->inverseBindMatrices, sizeof(Matrix4) * skin->numJoints, file, 1);
         AFileRead(skin->joints, sizeof(int) * skin->numJoints, file, 1);

@@ -2,6 +2,7 @@
 *.obj
 *.o
 *.rdi
+*.exe
 
 # MSVC / Linker artifacts
 *.ilk
