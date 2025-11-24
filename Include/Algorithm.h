@@ -47,6 +47,8 @@ bool IsParsable(const char* curr);
 
 const char* ParseFloat(const char* text, float* out);
 
+int IntToString(char* ptr, int x, int afterPoint);
+
 int Pow10(int x);
 
 // converts floating point to string

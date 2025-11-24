@@ -91,7 +91,7 @@ sg_image_desc BasisuTranscode(void* basisu_data, uint64_t size, bool isNormal, b
     desc.width = (int) img_info.m_width;
     desc.height = (int) img_info.m_height;
     desc.num_mipmaps = (int)basisu::minimumu(img_info.m_total_levels, 8u);
-    desc.usage.immutable = new int;
+    desc.usage.immutable = true;
     desc.pixel_format = BasisToSgPixelFormat(fmt);
 	
     for (int i = 0; i < desc.num_mipmaps; i++) {

@@ -15,6 +15,7 @@
 #include "Include/Animation.h"
 #include "Include/Platform.h"
 #include "Include/Algorithm.h"
+#include "Include/Graphics.h"
 #include "Math/Half.h"
 
 // <<<<<<<        prefab         >>>>>>>>>>>>

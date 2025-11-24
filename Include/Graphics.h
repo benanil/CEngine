@@ -136,6 +136,7 @@ Texture rCreateTexture(int width, int height, void* data, sg_pixel_format format
 
 void rDeleteTexture(Texture texture);
 
+void rUpdateTexture(Texture texture, void* data);
 
 int GraphicsTypeToSize(GraphicType type);
 

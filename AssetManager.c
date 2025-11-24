@@ -23,7 +23,7 @@
 #include "Math/Color.h"
 #include "Include/FileSystem.h"
 #include "Include/Common.h"
-
+#include "Include/BasisBinding.h"
 
 #define SINFL_IMPLEMENTATION
 #define SDEFL_IMPLEMENTATION
@@ -31,6 +31,9 @@
 #include "Extern/sinfl.h"
 #include "Extern/dynarray.h"
 
+#include "Extern/stb/stb_sprintf.h"
+
+#include <stdio.h>
 
 // https://copyprogramming.com/howto/how-to-pack-normals-into-gl-int-2-10-10-10-rev
 static inline uint32_t Pack_INT_2_10_10_10_REV(Vec3f v) {
@@ -808,11 +811,11 @@ int LoadSceneImages(const char* texturePath, Texture* textures, int numImages)
         void* basisData = ReadAllFile(buffer, mem, size);
         int textureType = AFileReadI32(buffer, sizeof(buffer), file);
 
-        int isSRGB =  textureType & 1;
-        int isCubemap = (textureType >> 1) & 1;
+        int isNormal =  textureType & 1;
+        int isMetallicRoughness = (textureType >> 1) & 1;
 
         BasisuMakeImage(basisData, size, &textures[i].width, &textures[i].height, &textures[i].format,
-                        &textures[i].buffer, &textures[i].handle, (bool)isSRGB, (bool)isCubemap);
+                        &textures[i].buffer, &textures[i].handle, (bool)isNormal, (bool)isMetallicRoughness);
     }
     return result;
 }

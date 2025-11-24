@@ -25,7 +25,7 @@ if not exist "Build\obj" mkdir "Build\obj"
 
 REM <<<  CLANG COMPILER  >>>
 REM clang -O3 -mavx2 -mfma -msse4.2 -mf16c -mrdseed -s -fno-rtti -fno-stack-protector -Wimplicit-function-declaration -fno-exceptions -fno-unwind-tables -static-libgcc ^
-REM %SOURCE_FILES% Extern/ufbx.c -o Build/MainCLANG.exe -I. -ladvapi32 -ld3d11 -ldxgi -ldxguid -luser32 -lshell32 -lgdi32 -lwinmm
+REM %SOURCE_FILES% Extern/ufbx.c BasisSokol.cpp -o Build/MainCLANG.exe -I. -ladvapi32 -ld3d11 -ldxgi -ldxguid -luser32 -lshell32 -lgdi32 -lwinmm
 REM start "" "Build/MainCLANG.exe"
 REM exit /b %ERRORLEVEL%
 
@@ -36,22 +36,17 @@ if %ERRORLEVEL% neq 0 (
     exit /b %ERRORLEVEL%
 )
 
-REM Incremental build for ufbx
 echo Checking extern libs...
-set EXTERNAL_SRC = Extern\ufbx.c BasisSokol.cpp
+REM Compile C files
+if not exist "Build\obj\ufbx.obj" (
+    echo Compiling ufbx.c...
+    cl.exe /c /O2 /arch:AVX2 /GR- /GS- /I. /FoBuild\obj\ufbx.obj Extern\ufbx.c >nul
+)
 
-for %%f in (%EXTERNAL_SRC%) do (
-    if not exist "Build\obj\%%~nf.obj" (
-        echo Compiling %%f...
-        cl.exe /std:c++17 /c /O2 /arch:AVX2 /GR- /GS- /EHsc /I. /FoBuild\obj\%%~nf.obj %%f >nul
-    ) else (
-        for %%a in (%%f) do for %%b in (Build\obj\%%~nf.obj) do (
-            if %%~ta GTR %%~tb (
-                echo Recompiling %%f...
-                cl.exe /c /O2 /arch:AVX2 /GR- /GS- /EHsc /I. /FoBuild\obj\%%~nf.obj %%f >nul
-            )
-        )
-    )
+REM Compile C++ files  
+if not exist "Build\obj\BasisSokol.obj" (
+    echo Compiling BasisSokol.cpp...
+    cl.exe /std:c++17 /c /O2 /arch:AVX2 /GR- /GS- /EHsc /I. /FoBuild\obj\BasisSokol.obj BasisSokol.cpp >nul
 )
 
 if "%1"=="Debug" (

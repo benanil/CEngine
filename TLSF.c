@@ -1,5 +1,6 @@
 #include "Include/Common.h"
 #include "Include/TLSF.h"
+#include <string.h>
 
 #define tlsf_assert(x) ASSERT(x)
 

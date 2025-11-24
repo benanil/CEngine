@@ -64,7 +64,7 @@ AFile    AFileOpen       (const char* fileName, AOpenFlag flag);
 void     AFileWrite      (const void* src, uint64_t size, AFile file, int alignment);
 void     AFileRead       (      void* dst, uint64_t size, AFile file, int alignment);
 void     AFileSeekBegin  (      AFile file);
-void     AFileSeek       (      long offset, AFile file);
+void     AFileSeek       (      long  offset, AFile file);
 void     AFileClose      (      AFile file);
 bool     AFileExist      (      AFile file);
 int      AFileReadLine   (      char* dst, int maxLen, AFile file);
@@ -75,16 +75,11 @@ char*    ReadAllFile     (const char* fileName, char* buffer, uint64_t bufferSiz
 char*    ReadAllFileAlloc(const char* fileName);
 char*    ReadAllText     (const char* fileName, char* buffer, uint64_t* numCharacters, const char* startText); // startText: if its not null will be added to start of the buffer
 char*    ReadAllTextAlloc(const char* fileName, uint64_t* numCharacters, const char* startText);
-void     WriteAllBytes   (const char *filename, const char *bytes, unsigned long size);
+void     WriteAllBytes   (const char* filename, const char *bytes, unsigned long size);
 void     FreeAllText     (      char* text);
-
-// buffer is pre allocated memory if exist. otherwise null. 
-// note: if you define it you are responsible of deleting the buffer
 void     ACopyFile       (const char* source, const char* dst, char* buffer);
 
-// input: ../Textures/Tree.png
-// output: C:/Source/Repos/Textures/Tree.png
-void     AbsolutePath    (const char* path, char* outBuffer, int bufferSize);
+void     AbsolutePath    (const char* path, char* outBuffer, int bufferSize); // output: workDir/path
 bool     CombinePaths    (      char* dst , uint64_t dstSize, const char* a, const char* b);
 
 bool     VisitFolder     (const char* path, FolderVisitFn visitFn, void* data);

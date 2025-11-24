@@ -24,6 +24,7 @@
 #include "Include/Animation.h"
 #include "Include/AssetManager.h"
 #include "Include/Algorithm.h"
+#include "Include/BasisBinding.h"
 
 #include "Math/Matrix.h"
 
@@ -62,13 +63,13 @@ void Init(void)
 
     PlatformCtx.StartupTime = stm_now();
     MemsetZero(&globalCamera, sizeof(globalCamera));
-    globalCamera.pitch = 0.0f;
-    globalCamera.yaw = -0.0f;
-    globalCamera.senstivity = 15.0f;
+    globalCamera.pitch       = 0.0f;
+    globalCamera.yaw         = 0.0f;
+    globalCamera.senstivity  = 15.0f;
     globalCamera.verticalFOV = 65.0f;
-    globalCamera.nearClip = 0.1f;
-    globalCamera.farClip = 2400.0f;
-    globalCamera.speed = 0.4f;
+    globalCamera.nearClip    = 0.1f;
+    globalCamera.farClip     = 2400.0f;
+    globalCamera.speed       = 0.4f;
     globalCamera.position.x -= 6;
 
     CameraInit(&globalCamera, ScreenStartWidth, ScreenStartHeight);
