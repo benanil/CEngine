@@ -47,7 +47,7 @@ bool IsParsable(const char* curr);
 
 const char* ParseFloat(const char* text, float* out);
 
-int IntToString(char* ptr, int x, int afterPoint);
+int IntToString(char* ptr, int64_t x, int afterPoint);
 
 int Pow10(int x);
 
@@ -78,7 +78,7 @@ int aCountIf(const void* arr, const void* val, int n, size_t elemSize, int (*cmp
 #if defined(AX_SUPPORT_SSE)
 static inline bool StrCmp16(const char* RESTRICT a, const char* RESTRICT b, uint64_t n)
 {
-    n = Min64(n, 16);
+    n = n > 16 ? 16 : n;
     __m128i va = _mm_loadu_si128((const __m128i*)a);
     __m128i vb = _mm_loadu_si128((const __m128i*)b);
     __m128i cmp = _mm_cmpeq_epi8(va, vb);
@@ -90,7 +90,7 @@ static inline bool StrCmp16(const char* RESTRICT a, const char* RESTRICT b, uint
 
 static inline bool StrCmp16(const char* RESTRICT a, const char* RESTRICT b, uint64_t n)
 {
-    n = Min64(n, 16);
+    n = n > 16 ? 16 : n;
     uint8x16_t va  = vld1q_u8((const uint8_t*)a);
     uint8x16_t vb  = vld1q_u8((const uint8_t*)b);
     uint8x16_t cmp = vceqq_u8(va, vb);

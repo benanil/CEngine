@@ -137,7 +137,7 @@ typedef __m128i Vector4x32u;
 #define VecLoadA(x)              _mm_load_ps(x)
 #define VecLoadI(x)              _mm_load_si128(x)
 #define VecLoadIU(x)             _mm_loadu_si128(x)
-#define VecStoreU(ptr, x)        _mm_store_si128(ptr, x)
+#define VecStoreU(ptr, x)        _mm_storeu_si128(ptr, x)
                                 
 #define VecStore(ptr, x)         _mm_storeu_ps(ptr, x)
 #define VecStoreA(ptr, x)        _mm_store_ps(ptr, x)

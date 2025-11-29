@@ -75,29 +75,7 @@ int* BinarySearch(int* begin, int len, int value)
     return NULL;
 }
 
-// String to number functions
-const char* ParseNumber(const char* curr, int* result)
-{
-    while (*curr && (*curr != '-' && !IsNumber(*curr))) 
-        curr++; // skip whitespace
-    
-    int val = 0l;
-    bool negative = false;
-    
-    if (*curr == '-') 
-        curr++, negative = true;
-    
-    while (*curr > '\n' && IsNumber(*curr))
-    {
-        if (val >= (INT_MAX / 10)) goto next; // Check overflow 
-        val = val * 10 + (*curr - '0');
-        next: { curr++; }
-    }
-    *result = negative ? -val : val;
-    return curr;
-}
-
-const char* ParseNumberLong(const char* curr, int64_t* result)
+const char* ParseNumberI64(const char* curr, int64_t* result)
 {
     while (*curr && (*curr != '-' && !IsNumber(*curr))) 
         curr++; // skip whitespace
@@ -119,28 +97,18 @@ const char* ParseNumberLong(const char* curr, int64_t* result)
     return curr;
 }
 
-// if you really want to squeeze performance no negative and such checks
 const char* ParsePositiveNumber(const char* str, int* outValue)
 {
-    while (*str && !IsNumber(*str))
-        str++;
-
-    int v = 0;
-    while (*str && IsNumber(*str)) 
-    {
-        if (v > (INT_MAX / 10)) goto next; // Check overflow 
-        v = v * 10 + (*str - '0');
-        next: { str++; }
-    }
-
-    *outValue = v;
+    int64_t number;
+    str = ParseNumberI64(str, &number);
+    *outValue = (int)number;
     return str;
 }
 
 const char* ParsePositiveNumberU16(const char* str, uint16_t* outValue)
 {
-    int number = 0;
-    str = ParsePositiveNumber(str, &number);
+    int64_t number;
+    str = ParseNumberI64(str, &number);
     *outValue = (uint16_t)number;
     return str;
 }
@@ -215,21 +183,15 @@ const char* ParseFloat(const char* ptr, float* res)
     return ptr;
 }
 
-
 // time complexity O(numDigits(x)), space complexity O(1), afterpoint is 0 
 // @returns number of characters added
-int IntToString(char* ptr, int x, int afterPoint)
+int IntToString(char* ptr, int64_t x, int afterPoint)
 {
-    if (x == 0 && afterPoint == 0)
-    {
-        ptr[0] = '0';
-        return 1;
-    }
-    if (afterPoint < 0) return 0;
     int size = 0;
+    if (afterPoint < 0) goto end; // possible error
     if (x < 0) ptr[size++] = '-', x = 0-x;
     
-    int numDigits = Log10_32(x);
+    int numDigits = Log10_64(x);
     int blen = numDigits;
     
     AX_NO_UNROLL while (++blen <= afterPoint)
@@ -237,26 +199,24 @@ int IntToString(char* ptr, int x, int afterPoint)
         ptr[size++] = '0';
     }
 
-    unsigned int const PowersOf10[10] = { 1, 10, 100, 1000, 10000, 100000, 1000000, 10000000, 100000000, 1000000000 };
-    numDigits = PowersOf10[numDigits];
-
-    while (numDigits)
+    if (x == 0)
     {
-        int digit = x / numDigits;
-        ptr[size++] = (char)(digit + '0');
-        x -= numDigits * digit;
-        numDigits /= 10;
+        ptr[size++] = '0';
+        goto end;
     }
 
+    int64_t digitCursor = Pow10Table64(numDigits-1);
+
+    while (digitCursor)
+    {
+        int64_t digit = x / digitCursor;
+        ptr[size++] = (char)(digit + '0');
+        x -= digitCursor * digit;
+        digitCursor /= 10;
+    }
+end:
     ptr[size] = '\0';
     return size;
-}
-
-int Pow10(int x) 
-{
-    int res = x != 0;
-    while (x-- > 0) res *= 10;
-    return res;
 }
 
 // converts floating point to string
@@ -275,8 +235,8 @@ int FloatToString(char* ptr, float f, int afterpoint)
     numChars += IntToString(ptr + numChars, iPart, 0);
     float fPart = f - (float)iPart;
     ptr[numChars++] = '.';
-    int power = Pow10(afterpoint); 
-    return numChars + IntToString(ptr + numChars, (int)(fPart * power), afterpoint-1);
+    int power = afterpoint == 0 ? 0 : Pow10Table64(afterpoint); 
+    return numChars + IntToString(ptr + numChars, (int)(fPart * power), afterpoint-(iPart != 0));
 }
 
 bool aStartsWith(const char** curr, const char* str)
@@ -299,7 +259,8 @@ bool aStartsWith(const char** curr, const char* str)
 }
 
 // fill [begin, end) with val
-void aFill(void* begin, void* end, const void* val, size_t elemSize) {
+void aFill(void* begin, void* end, const void* val, size_t elemSize)
+{
     unsigned char* p = (unsigned char*)begin;
     unsigned char* e = (unsigned char*)end;
     while (p < e) {
@@ -309,7 +270,8 @@ void aFill(void* begin, void* end, const void* val, size_t elemSize) {
 }
 
 // fill n elements with val
-void aFillN(void* arr, const void* val, int n, size_t elemSize) {
+void aFillN(void* arr, const void* val, int n, size_t elemSize) 
+{
     unsigned char* p = (unsigned char*)arr;
     for (int i = 0; i < n; i++, p += elemSize)
         SmallMemCpy(p, val, elemSize);
@@ -356,3 +318,32 @@ bool StringEqual(const char* RESTRICT a, const char* RESTRICT b, int n)
             return false;
     return true;
 }
+
+
+#ifdef TEST_ALGO
+#define CHECK(x) printf("%s ", buf); if(!(x)) { printf("fail line %d\n", __LINE__); printf("failed\n"); } else printf("passed\n")
+
+static void Test_IntToString()
+{
+    char buf[64];
+    IntToString(buf, 0, 0);         CHECK(strcmp(buf,"0")==0);
+    IntToString(buf, 8, 0);         CHECK(strcmp(buf,"8")==0);
+    IntToString(buf, -44, 0);       CHECK(strcmp(buf,"-44")==0);
+    IntToString(buf, 42, 5);        CHECK(strcmp(buf,"00042")==0);
+    IntToString(buf, 123456789, 0); CHECK(strcmp(buf,"123456789")==0);
+}
+
+static void Test_FloatToString()
+{
+    char buf[64];
+    FloatToString(buf, 0.0f, 2);        CHECK(strcmp(buf, "0.00") == 0);
+    FloatToString(buf, 5.0f, 3);        CHECK(strcmp(buf, "5.000") == 0);
+    FloatToString(buf, 3.14159f, 3);    CHECK(strcmp(buf, "3.141") == 0);
+    FloatToString(buf, -7.25f, 2);      CHECK(strcmp(buf, "-7.25") == 0);
+    FloatToString(buf, 123456.789f, 1); CHECK(strcmp(buf, "123456.7") == 0);
+    FloatToString(buf, 9.99f, 1);       CHECK(strcmp(buf, "9.9") == 0);      /* matches previous expectation */
+    FloatToString(buf, 0.00051f, 5);    CHECK(strcmp(buf, "0.00051") == 0);   /* leading zeros in fraction */
+    FloatToString(buf, -0.1234f, 2);    CHECK(strcmp(buf, "-0.12") == 0);
+    FloatToString(buf, 0.9999f, 3);     CHECK(strcmp(buf, "0.999") == 0);   /* truncation, not rounding */
+}
+#endif

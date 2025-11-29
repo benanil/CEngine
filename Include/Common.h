@@ -194,10 +194,6 @@ extern "C" {
     #define SmallMemSet(dst, val, size) __builtin_memset(dst, val, size);
 #endif
 
-#define MemSet(dst, val, sizeInBytes) memset(dst, val, sizeInBytes);
-
-#define MemCpy(dst, src, sizeInBytes) memcpy(dst, src, sizeInBytes);
-
 #define MemsetZero(dst, size) SmallMemSet(dst, 0, size)
 
 #if defined(_MSC_VER) && !defined(__clang__)
@@ -441,6 +437,78 @@ purefn int CalculateArrayGrowth(int _size)
     return _size + addition; // growth is sufficient
 }
 
+// almost same performance with memcpy
+static inline void MemCpy(void* dst, const void* RESTRICT src, size_t size) 
+{
+    const uint8_t* s = (const uint8_t*)src;
+    uint8_t* d = (uint8_t*)dst;
+    size_t simd_count = size >> 4;  // Divide by 16
+    
+    if (simd_count > 0) {
+        switch (simd_count & 3) {
+            case 3: VecStoreU((Vector4x32u*)d, VecLoadIU((const Vector4x32u*)s)); s += 16; d += 16;
+            case 2: VecStoreU((Vector4x32u*)d, VecLoadIU((const Vector4x32u*)s)); s += 16; d += 16;
+            case 1: VecStoreU((Vector4x32u*)d, VecLoadIU((const Vector4x32u*)s)); s += 16; d += 16;
+            case 0: break;
+        }
+        
+        simd_count >>= 2;
+        while (simd_count--) {
+            Vector4x32u xmm0 = VecLoadIU((const Vector4x32u*)s);
+            Vector4x32u xmm1 = VecLoadIU((const Vector4x32u*)(s + 16));
+            Vector4x32u xmm2 = VecLoadIU((const Vector4x32u*)(s + 32));
+            Vector4x32u xmm3 = VecLoadIU((const Vector4x32u*)(s + 48));
+            
+            VecStoreU((Vector4x32u*)d, xmm0);
+            VecStoreU((Vector4x32u*)(d + 16), xmm1);
+            VecStoreU((Vector4x32u*)(d + 32), xmm2);
+            VecStoreU((Vector4x32u*)(d + 48), xmm3);
+            s += 64; d += 64;
+        }
+    }
+    
+    size_t r = size & 15;
+    if (r >= 8) { *(uint64_t*)d = *(uint64_t*)s; d+=8; s+=8; r-=8; }
+    if (r >= 4) { *(uint32_t*)d = *(uint32_t*)s; d+=4; s+=4; r-=4; }
+    if (r >= 2) { *(uint16_t*)d = *(uint16_t*)s; d+=2; s+=2; r-=2; }
+    if (r)      { *d = *s; }
+}
+
+static inline void MemSet(void* dst, uint8_t value, size_t size) {
+    uint8_t* d = (uint8_t*)dst;
+    
+    Vector4x32u xmm_value = _mm_set1_epi8(value);
+    size_t simd_count = size >> 4;  // Divide by 16
+    
+    if (simd_count > 0) {
+        switch (simd_count & 3) {
+            case 3: VecStoreU((Vector4x32u*)d, xmm_value); d += 16;
+            case 2: VecStoreU((Vector4x32u*)d, xmm_value); d += 16;
+            case 1: VecStoreU((Vector4x32u*)d, xmm_value); d += 16;
+            case 0: break;
+        }
+        
+        simd_count >>= 2;
+        while (simd_count--) {
+            VecStoreU((Vector4x32u*)d, xmm_value);
+            VecStoreU((Vector4x32u*)(d + 16), xmm_value);
+            VecStoreU((Vector4x32u*)(d + 32), xmm_value);
+            VecStoreU((Vector4x32u*)(d + 48), xmm_value);
+            d += 64;
+        }
+    }
+    
+    // Tail bytes
+    size_t r = size & 15;
+    if (r >= 8) { *(uint64_t*)d = (uint64_t)value * 0x0101010101010101ULL; d += 8; r -= 8; }
+    if (r >= 4) { *(uint32_t*)d = (uint32_t)value * 0x01010101U; d += 4; r -= 4; }
+    if (r >= 2) { *(uint16_t*)d = (uint16_t)value * 0x0101U; d += 2; r -= 2; }
+    if (r) { *d = value; }
+}
+
+
+//------------------------------------------------------------------------
+// String
 
 #if (defined(__GNUC__) || defined(__clang__))
     #define StringLength(s) (int)__builtin_strlen(s)

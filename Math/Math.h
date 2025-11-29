@@ -477,7 +477,7 @@ purefn float Log2f(float val) {
 
 // https://graphics.stanford.edu/~seander/bithacks.html#IntegerLog
 purefn unsigned int Log2_32(unsigned int v) {
-    static const uint8_t MultiplyDeBruijnBitPosition[32] = 
+    uint8_t const MultiplyDeBruijnBitPosition[32] = 
     {
         0, 9, 1, 10, 13, 21, 2, 29, 11, 14, 16, 18, 22, 25, 3, 30,
         8, 12, 20, 28, 15, 17, 24, 7, 19, 27, 23, 6, 26, 5, 4, 31
@@ -490,13 +490,48 @@ purefn unsigned int Log2_32(unsigned int v) {
 
 purefn unsigned int Log10_32(unsigned int v) {
     // this would work too
-    unsigned int const PowersOf10[] = {             // if (n <= 9) return 1;
+    const unsigned int PowersOf10[] = {             // if (n <= 9) return 1;
         1, 10, 100, 1000, 10000, 100000,            // if (n <= 99) return 2;
         1000000, 10000000, 100000000, 1000000000    // if (n <= 999) return 3;
     };                                              // ...
     unsigned int t = (Log2_32(v) + 1) * 1233 >> 12;    // if (n <= 2147483647) return 10; // 2147483647 = int max
     return t - (v < PowersOf10[t]);                                                      
-}                                                                                        
+}                            
+
+static inline uint64_t Pow10Table64(int numDigits)
+{
+    const uint64_t Pow10Table[20] = {
+        1ULL,
+        10ULL,
+        100ULL,
+        1000ULL,
+        10000ULL,
+        100000ULL,
+        1000000ULL,
+        10000000ULL,
+        100000000ULL,
+        1000000000ULL,
+        10000000000ULL,
+        100000000000ULL,
+        1000000000000ULL,
+        10000000000000ULL,
+        100000000000000ULL,
+        1000000000000000ULL,
+        10000000000000000ULL,
+        100000000000000000ULL,
+        1000000000000000000ULL,
+        10000000000000000000ULL
+    };
+    return Pow10Table[numDigits];
+}
+
+static inline int Log10_64(uint64_t v)
+{
+    int l2 = 63 - LeadingZeroCount64(v);
+    int d = (int)((l2 + 1) * 0.30103);
+    return d + (v >= Pow10Table64(d));
+}
+
 
 /*//////////////////////////////////////////////////////////////////////////*/
 /*                      Trigonometric Functions                             */

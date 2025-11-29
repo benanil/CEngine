@@ -715,7 +715,7 @@ void SaveSceneImages(SceneBundle* scene, const char* savePath)
     ChangeExtension(outputDir, pathLen, "bdc");
     AFile file = AFileOpen(outputDir, AOpenFlag_WriteText);
     
-    int numDigits = IntToString(command, (int)scene->numImages, 0);
+    int numDigits = IntToString(command, (int64_t)scene->numImages, 0);
     command[numDigits] = '\n';
     AFileWrite(command, numDigits + 1, file, 1); // num textures 
 

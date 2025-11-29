@@ -577,9 +577,10 @@ static inline Matrix4 VECTORCALL MatrixFromQuaternionF(const float* quaternion)
 }
 
 purefn Matrix4 Matrix4RotationX(float angleRadians) {
-    Matrix4 out_matrix = Matrix4Identity();
+    Matrix4 out_matrix;
     float s, c;
     SinCos(angleRadians, &s, &c);
+    out_matrix.r[0] = VecIdentityR0;
     out_matrix.m[1][1] = c;
     out_matrix.m[1][2] = s;
     out_matrix.m[2][1] = -s;

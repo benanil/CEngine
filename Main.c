@@ -79,15 +79,15 @@ void Init(void)
         .logger.func = slog_func,
     });
 
-    // if (!LoadSceneBundleBinary("Assets/Meshes/Paladin/Paladin.abm", sceneBundle))
     sceneBundle = AllocateTLSFGlobal(sizeof(SceneBundle));
-    if (!ParseGLTF("Assets/Meshes/Paladin/Paladin.gltf", sceneBundle, 1.0f))
+    if (!LoadSceneBundleBinary("Assets/Meshes/Paladin/Paladin.abm", sceneBundle))
+    // if (!ParseGLTF("Assets/Meshes/Paladin/Paladin.gltf", sceneBundle, 1.0f))
     {
         AX_ERROR("gltf scene load failed2");
         return;
     }
     
-    CreateVerticesIndicesSkined(sceneBundle);
+    // CreateVerticesIndicesSkined(sceneBundle);
     // SaveSceneImages(sceneBundle, "Assets/Meshes/Paladin/PaladinTest.bdc");
     // SaveGLTFBinary(sceneBundle, "Assets/Meshes/Paladin/PaladinTest.abm");
 
