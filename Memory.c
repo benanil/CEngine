@@ -5,7 +5,6 @@
 #include "Include/Memory.h"
 #include "Include/Platform.h"
 #include "Include/OS.h"
-#include <string.h>
 
 tlsf_t GlobalTLSF;
 Arena GlobalArena;
