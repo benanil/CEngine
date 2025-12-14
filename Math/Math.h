@@ -113,6 +113,8 @@ purefn Vector4x32f VECTORCALL VecFract(Vector4x32f x)
     return VecSub(x, VecFloor(x));
 }
 
+//------------------------------------------------------------------------------
+
 static inline Vector4x32f VecModAngles(Vector4x32f angles)
 {
     Vector4x32f twoPi       = VecSet1(2.0f * MATH_PI);
@@ -122,110 +124,90 @@ static inline Vector4x32f VecModAngles(Vector4x32f angles)
     return VecSub(angles, VecMul(v, twoPi));
 }
 
-purefn Vector4x32f VECTORCALL VecSin(Vector4x32f V)
+purefn Vector4x32f VECTORCALL VecSin(const Vector4x32f V)
 {
-    Vector4x32f  g_XMSinCoefficients0 = VecSetR( -0.16666667f, +0.0083333310f, -0.00019840874f, +2.7525562e-06f );
-    Vector4x32f  g_XMSinCoefficients1 = VecSetR( -2.3889859e-08f, -0.16665852f /*Est1*/, +0.0083139502f /*Est2*/, -0.00018524670f /*Est3*/ );
-    // Force the value within the bounds of pi
+    Vector4x32f SC0 = VecSetR(-0.16666667f, +0.0083333310f, -0.00019840874f, +2.7525562e-06f);
+    Vector4x32f SC1 = VecSetR(-2.3889859e-08f, -0.16665852f, +0.0083139502f, -0.00018524670f);
+
     Vector4x32f x = VecModAngles(V);
-    #if defined(AX_ARM)
-    uint32x4_t sign = vandq_u32(vreinterpretq_u32_f32(x), g_XMNegativeZero);
-    uint32x4_t c = vorrq_u32(g_XMPi, sign);  // pi when x >= 0, -pi when x < 0
-    float32x4_t absx = vabsq_f32(x);
-    float32x4_t rflx = vsubq_f32(vreinterpretq_f32_u32(c), x);
-    uint32x4_t comp = vcleq_f32(absx, g_XMHalfPi);
-    x = vbslq_f32(comp, x, rflx);
-    float32x4_t x2 = vmulq_f32(x, x);
-    XMVECTOR vConstants = vdupq_lane_f32(vget_high_f32(SC0), 1);
-    XMVECTOR Result = vmlaq_lane_f32(vConstants, x2, vget_low_f32(SC1), 0);
-    vConstants = vdupq_lane_f32(vget_high_f32(SC0), 0);
-    Result = vmlaq_f32(vConstants, Result, x2);
-    vConstants = vdupq_lane_f32(vget_low_f32(SC0), 1);
-    Result = vmlaq_f32(vConstants, Result, x2);
-    vConstants = vdupq_lane_f32(vget_low_f32(SC0), 0);
-    Result = vmlaq_f32(vConstants, Result, x2);
-    Result = vmlaq_f32(g_XMOne, Result, x2);
-    Result = vmulq_f32(Result, x);
-    return Result;
-    #elif defined(AX_SUPPORT_SSE)
 
-    // Map in [-pi/2,pi/2] with sin(y) = sin(x).
-    Vector4x32f sign = _mm_and_ps(x, _mm_set1_ps(-0.0f));
-    Vector4x32f c = _mm_or_ps(_mm_set1_ps(3.141592654f), sign);  // pi when x >= 0, -pi when x < 0
-    Vector4x32f absx = _mm_andnot_ps(sign, x);  // |x|
-    Vector4x32f rflx = _mm_sub_ps(c, x);
-    Vector4x32f comp = _mm_cmple_ps(absx, _mm_set1_ps(1.570796327f));
-    Vector4x32f select0 = _mm_and_ps(comp, x);
-    Vector4x32f select1 = _mm_andnot_ps(comp, rflx);
-    x = _mm_or_ps(select0, select1);
-    Vector4x32f x2 = _mm_mul_ps(x, x);
+    Vector4x32f signbit = VecAnd(x, VecNegZero());
+    Vector4x32f c       = VecOr(VecSet1(MATH_PI), signbit);
+    Vector4x32f absx    = VecAndNot(signbit, x);
+    Vector4x32f rflx    = VecSub(c, x);
+    Vector4x32f comp    = VecCmpLe(absx, VecSet1(MATH_HalfPI));
 
-    // Compute polynomial approximation
-    Vector4x32f vConstantsB = VecSplatX(g_XMSinCoefficients1);
-    Vector4x32f Result = VecFmadd(vConstantsB, x2, VecSplatW(g_XMSinCoefficients0));
-    Result = VecFmadd(Result, x2, VecSplatZ(g_XMSinCoefficients0));
-    Result = VecFmadd(Result, x2, VecSplatY(g_XMSinCoefficients0));
-    Result = VecFmadd(Result, x2, VecSplatX(g_XMSinCoefficients0));
+    x = VecBlend(rflx, x, comp);
+    Vector4x32f x2 = VecMul(x, x);
+    // Horner with explicit splats (same order as DXMath/SSE version)
+    Vector4x32f Result = VecFmadd(VecSplatX(SC1), x2, VecSplatW(SC0));
+    Result = VecFmadd(Result, x2, VecSplatZ(SC0));
+    Result = VecFmadd(Result, x2, VecSplatY(SC0));
+    Result = VecFmadd(Result, x2, VecSplatX(SC0));
     Result = VecFmadd(Result, x2, VecOne());
-    Result = VecMul(Result, x);
-    return Result;
-    #endif
+    return VecMul(Result, x);
 }
 
-//------------------------------------------------------------------------------
-
-purefn Vector4x32f VECTORCALL VecCos(Vector4x32f V)
+purefn Vector4x32f VECTORCALL VecCos(const Vector4x32f V)
 {
-    Vector4x32f  g_XMCosCoefficients0 = VecSetR( -0.5f, +0.041666638f, -0.0013888378f, +2.4760495e-05f  );
-    Vector4x32f  g_XMCosCoefficients1 = VecSetR( -2.6051615e-07f, -0.49992746f /*Est1*/, +0.041493919f /*Est2*/, -0.0012712436f /*Est3*/  );
-    // Map V to x in [-pi,pi].
-    Vector4x32f  x = VecModAngles(V);
-    #if defined(AX_ARM)
-    // Map in [-pi/2,pi/2] with cos(y) = sign*cos(x).
-    uint32x4_t sign = vandq_u32(vreinterpretq_u32_f32(x), g_XMNegativeZero);
-    uint32x4_t c = vorrq_u32(g_XMPi, sign);  // pi when x >= 0, -pi when x < 0
-    float32x4_t absx = vabsq_f32(x);
-    float32x4_t rflx = vsubq_f32(vreinterpretq_f32_u32(c), x);
-    uint32x4_t comp = vcleq_f32(absx, g_XMHalfPi);
-    x = vbslq_f32(comp, x, rflx);
-    float32x4_t fsign = vbslq_f32(comp, g_XMOne, g_XMNegativeOne);
-    float32x4_t x2 = vmulq_f32(x, x);
-    XMVECTOR vConstants = vdupq_lane_f32(vget_high_f32(g_XMCosCoefficients0), 1);
-    XMVECTOR Result = vmlaq_lane_f32(vConstants, x2, vget_low_f32(g_XMCosCoefficients1), 0);
-    vConstants = vdupq_lane_f32(vget_high_f32(g_XMCosCoefficients0), 0);
-    Result = vmlaq_f32(vConstants, Result, x2);
-    vConstants = vdupq_lane_f32(vget_low_f32(g_XMCosCoefficients0), 1);
-    Result = vmlaq_f32(vConstants, Result, x2);
-    vConstants = vdupq_lane_f32(vget_low_f32(g_XMCosCoefficients0), 0);
-    Result = vmlaq_f32(vConstants, Result, x2);
-    Result = vmlaq_f32(g_XMOne, Result, x2);
-    Result = vmulq_f32(Result, fsign);
-    return Result;
-    #elif defined(AX_SUPPORT_SSE)
-    // Map in [-pi/2,pi/2] with cos(y) = sign*cos(x).
-    Vector4x32f sign = _mm_and_ps(x, _mm_set1_ps(-0.0f));
-    Vector4x32f c = _mm_or_ps(_mm_set1_ps(3.141592654f), sign);  // pi when x >= 0, -pi when x < 0
-    Vector4x32f absx = _mm_andnot_ps(sign, x);  // |x|
-    Vector4x32f comp = _mm_cmple_ps(absx, _mm_set1_ps(3.141592654f * 0.5f));
-    Vector4x32f select0 = _mm_and_ps(comp, x);
-    Vector4x32f select1 = _mm_andnot_ps(comp, _mm_sub_ps(c, x));
-    x = _mm_or_ps(select0, select1);
-    select0 = _mm_and_ps(comp, VecOne());
-    select1 = _mm_andnot_ps(comp, VecNegativeOne());
-    sign = _mm_or_ps(select0, select1);
-    Vector4x32f x2 = _mm_mul_ps(x, x);
+    Vector4x32f CC0 = VecSetR(-0.5f, +0.041666638f, -0.0013888378f, +2.4760495e-05f);
+    Vector4x32f CC1 = VecSetR(-2.6051615e-07f, -0.49992746f, +0.041493919f, -0.0012712436f);
+    
+    Vector4x32f x       = VecModAngles(V);
+    
+    Vector4x32f signbit = VecAnd(x, VecNegZero());   // sign bit only
+    Vector4x32f c       = VecOr(VecSet1(MATH_PI), signbit);
+    Vector4x32f absx    = VecAndNot(signbit, x);
+    Vector4x32f rflx    = VecSub(c, x);
+    Vector4x32f comp    = VecCmpLe(absx, VecSet1(MATH_HalfPI));
 
-    // Compute polynomial approximation
-    Vector4x32f Result = VecFmadd(VecSplatX(g_XMCosCoefficients1), x2, VecSplatW(g_XMCosCoefficients0));
-    Result = VecFmadd(Result, x2, VecSplatZ(g_XMCosCoefficients0));
-    Result = VecFmadd(Result, x2, VecSplatY(g_XMCosCoefficients0));
-    Result = VecFmadd(Result, x2, VecSplatX(g_XMCosCoefficients0));
-    Result = VecFmadd(Result, x2, VecOne());
-    Result = VecMul(Result, sign);
-    return Result;
-    #endif
+    x = VecBlend(rflx, x, comp);
+    
+    Vector4x32f sign = VecBlend(VecNegativeOne(), VecOne(), comp);
+    Vector4x32f x2   = VecMul(x, x);
+    Vector4x32f R    = VecFmadd(VecSplatX(CC1), x2, VecSplatW(CC0));
+    R = VecFmadd(R, x2, VecSplatZ(CC0));
+    R = VecFmadd(R, x2, VecSplatY(CC0));
+    R = VecFmadd(R, x2, VecSplatX(CC0));
+    R = VecFmadd(R, x2, VecOne());
+    return VecMul(R, sign);
 }
 
+purefn void VECTORCALL VecSinCos(Vector4x32f V, Vector4x32f* pSin, Vector4x32f* pCos)
+{
+    Vector4x32f SC0 = VecSetR( -0.16666667f   , +0.0083333310f, -0.00019840874f, +2.7525562e-06f );
+    Vector4x32f SC1 = VecSetR( -2.3889859e-08f, -0.16665852f /*Est1*/, +0.0083139502f /*Est2*/, -0.00018524670f /*Est3*/ );
+    Vector4x32f CC0 = VecSetR( -0.500000000f  , +0.041666638f, -0.0013888378f, +2.4760495e-05f );
+    Vector4x32f CC1 = VecSetR( -2.6051615e-07f, -0.49992746f /*Est1*/, +0.041493919f /*Est2*/, -0.0012712436f /*Est3*/ );
+
+    Vector4x32f x       = VecModAngles(V);
+    Vector4x32f signbit = VecAnd(x, VecNegZero());
+    Vector4x32f c       = VecOr(VecSet1(MATH_PI), signbit);
+    Vector4x32f absx    = VecAndNot(signbit, x);
+    Vector4x32f rflx    = VecSub(c, x);
+    Vector4x32f comp    = VecCmpLe(absx, VecSet1(MATH_HalfPI));
+
+    x = VecBlend(rflx, x, comp); // x = comp ? x : rflx
+    Vector4x32f s0   = VecAnd(comp, VecOne());            // +1
+    Vector4x32f s1   = VecAndNot(comp, VecNegativeOne()); // -1
+    Vector4x32f sign = VecOr(s0, s1);
+
+    Vector4x32f x2 = VecMul(x, x);
+    Vector4x32f R;
+    R     = VecFmadd(VecSplatX(SC1), x2, VecSplatW(SC0));
+    R     = VecFmadd(R, x2, VecSplatZ(SC0));
+    R     = VecFmadd(R, x2, VecSplatY(SC0));
+    R     = VecFmadd(R, x2, VecSplatX(SC0));
+    R     = VecFmadd(R, x2, VecOne());
+    *pSin = VecMul(R, x);
+
+    R     = VecFmadd(VecSplatX(CC1), x2, VecSplatW(CC0));
+    R     = VecFmadd(R, x2, VecSplatZ(CC0));
+    R     = VecFmadd(R, x2, VecSplatY(CC0));
+    R     = VecFmadd(R, x2, VecSplatX(CC0));
+    R     = VecFmadd(R, x2, VecOne());
+    *pCos = VecMul(R, sign);
+}
 
 purefn Vector4x32f VECTORCALL VecAtan(Vector4x32f x)
 {
@@ -233,7 +215,6 @@ purefn Vector4x32f VECTORCALL VecAtan(Vector4x32f x)
     sa7 = -0.11643287f, sa9 =  0.05265332f, sa11 = -0.01172120f;
       
     const Vector4x32f xx = VecMul(x, x);
-    // (a9 + x_sq * a11
     Vector4x32f res = VecSet1(sa11); 
     res = VecFmadd(xx, res, VecSet1(sa9));
     res = VecFmadd(xx, res, VecSet1(sa7));
@@ -252,13 +233,6 @@ purefn Vector4x32f VECTORCALL VecAtan2(Vector4x32f y, Vector4x32f x)
     th = VecSelect(th, VecSub(VecSet1(MATH_HalfPI), th), swapMask);
     th = VecSelect(th, VecSub(VecSet1(MATH_PI), th), VecCmpLt(x, VecZero()));
     return VecCopySign(th, y);
-}
-
-purefn Vector4x32f VECTORCALL VecSinCos(Vector4x32f* cv, Vector4x32f x)
-{
-    Vector4x32f s = VecSin(x);
-    *cv = VecCos(x);
-    return s;
 }
 
 purefn float VECTORCALL Min3v(Vector4x32f ab)
@@ -379,6 +353,15 @@ purefn float FModf(float x, float y)
     return remainder;
 }
 
+purefn double FMod(double x, double y) 
+{
+    double quotient = x / y;
+    int64_t whole = (int64_t)quotient;  // truncate toward zero
+    double remainder = x - (double)whole * y;
+    if (remainder < 0.0) remainder += y;
+    return remainder;
+}
+
 purefn float Floorf(float x) {
     float whole = (float)(int)x;  // truncate quotient to integer
     return x - (x-whole);
@@ -394,7 +377,7 @@ purefn float Fractf(float a) {
 }
 
 purefn double Fract(double a) {
-    return a - (uint64_t)(a); 
+    return a - (int64_t)(a); 
 }
 
 // https://github.com/id-Software/DOOM-3/blob/master/neo/idlib/math/Math.h

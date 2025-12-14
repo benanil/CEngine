@@ -1488,6 +1488,53 @@ __public void FreeSceneBundle(SceneBundle* gltf)
     MemsetZero(gltf, sizeof(SceneBundle));
 }
 
+// <<<<<<<        prefab         >>>>>>>>>>>>
+
+
+int Prefab_FindAnimRootNodeIndex(const SceneBundle* prefab)
+{
+    if (prefab->skins == NULL)
+        return 0;
+
+    ASkin skin = prefab->skins[0];
+    if (skin.skeleton != -1) 
+        return skin.skeleton;
+    
+    // search for Armature name, and also record the node that has most children
+    int armatureIdx = -1;
+    int maxChilds   = 0;
+    int maxChildIdx = 0;
+    // maybe recurse to find max children
+    for (int i = 0; i < prefab->numNodes; i++)
+    {
+        if (StrCMP16(prefab->nodes[i].name, "Armature")) {
+            armatureIdx = i;
+            break;
+        }
+    
+        int numChildren = prefab->nodes[i].numChildren;
+        if (numChildren > maxChilds) {
+            maxChilds = numChildren;
+            maxChildIdx = i;
+        }
+    }
+    
+    int skeletonNode = armatureIdx != -1 ? armatureIdx : maxChildIdx;
+    return skeletonNode;
+}
+
+int Prefab_FindNodeFromName(const SceneBundle* prefab, const char* name)
+{
+    int len = StringLength(name);
+    for (int i = 0; i < prefab->numNodes; i++)
+    {
+        if (StringEqual(prefab->nodes[i].name, name, len))
+            return i;
+    }
+    return -1;
+}
+
+
 const char* ParsedSceneGetError(AErrorType error)
 {
     const char* SceneParseErrorToStr[] = {"NONE", 

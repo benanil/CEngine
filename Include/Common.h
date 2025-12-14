@@ -85,6 +85,8 @@ extern "C" {
     #define AX_UNLIKELY(x) (x) 
 #endif
 
+
+
 // https://nullprogram.com/blog/2022/06/26/
 #if defined(_DEBUG) || defined(Debug)
     #if __GNUC__
@@ -371,6 +373,8 @@ purefn int64_t NextPowerOf2_64(int64_t x) {
 purefn float Clamp01f(float x) { return MMIN(1.0f, MMAX(x, 0.0f)); }
 
 purefn float Clampf(float x, float min, float max) { return MMIN(max, MMAX(x, min)); }
+
+purefn int Clamp32(int x, int min, int max) { return MMIN(max, MMAX(x, min)); }
 
 purefn float Minf(float a, float b) { return a < b ? a : b; }
 

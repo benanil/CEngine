@@ -4,7 +4,7 @@
 // enables logging no matter what
 #define AX_ENABLE_LOGGING
 
-#if defined(_DEBUG) || defined(DEBUG) || defined(Debug)
+#if defined(AX_ENABLE_LOGGING) || defined(_DEBUG) || defined(DEBUG) || defined(Debug)
 #ifdef __ANDROID__
     #include <android/log.h>
     #define AX_ERROR(format, ...) { __android_log_print(ANDROID_LOG_FATAL, "AX-FATAL", "%s -line:%i " format, GetFileName(__FILE__), __LINE__, ##__VA_ARGS__); ASSERT(0);}
@@ -26,7 +26,7 @@
 #else
     #define AX_ERROR(format, ...)
     #define AX_LOG(format, ...)  
-    #define AX_WARN(format, ...) 
+    #define AX_WARN(format, ...)
 #endif
 
 #include "Bitset.h"

@@ -16,7 +16,7 @@
     #include <io.h>
     #include <direct.h> 
     #include <windows.h>
-    #include "Extern/dirent.h"
+    #include "Include/dirent.h"
     #define F_OK 0
 #else 
     #include <unistd.h>
@@ -34,6 +34,18 @@
 #include <game-activity/native_app_glue/android_native_app_glue.h>
 
 extern "C" android_app* g_android_app;
+#endif
+
+
+#ifdef PLATFORM_WINDOWS
+    #define ASTL_FILE_SEPERATOR ('\\')
+    typedef void* HANDLE; // forward declare Windows handle
+#else
+    #define ASTL_FILE_SEPERATOR ('/')
+    int GetCurrentDirectory(int size, char* outPath);
+    #if !defined(__ANDROID__)
+    #include <stdio.h>
+    #endif
 #endif
 
 // path must be null terminated string
@@ -192,6 +204,12 @@ bool IsFolder(const char* path)
 {
   struct stat file_info; 
   return stat(path, &file_info) == 0 && (S_ISDIR(file_info.st_mode));
+}
+
+bool IsSymLink(const char* path)
+{
+    struct stat file_info; 
+    return stat(path, &file_info) == 0 && (S_ISLNK(file_info.st_mode));
 }
 
 #ifdef __ANDROID__
@@ -552,39 +570,99 @@ bool CombinePaths(char* dst, uint64_t dstSize, const char* a, const char* b)
 {
     int aLen = StringLength(a);
     int bLen = StringLength(b);
-    if (aLen + bLen + 1 > dstSize) 
-    { 
-        AX_WARN("Combine path len is too long! capacity: %d, requested:%d, %s %s", dstSize, aLen+bLen, a, b); 
+    if (aLen + bLen + 1 > dstSize)
+    {
+        AX_WARN("Combine path len is too long! capacity: %d, requested:%d, %s %s", dstSize, aLen + bLen, a, b);
         return false;
     }
     SmallMemCpy(dst, a, aLen);
     dst[aLen] = ASTL_FILE_SEPERATOR;
     SmallMemCpy(dst + aLen + 1, b, bLen);
+    dst[aLen + 1 + bLen] = 0;
     return true;
 }
 
-// data is user defined, whatever data you need, and nullable
 typedef void(*FolderVisitFn)(const char* path, void* data);
 
-// thanks to https://github.com/tronkko/dirent this is windows and linux compatible
-bool VisitFolder(const char* path, FolderVisitFn visitFn, void* data)
+// returns 0: reading failed, 1: success, 2: not enough buffer
+int VisitFolder(const char* root, FolderVisitFn visitFn, void* data, bool recurse)
 {
-    DIR* dir;
-    dirent* ent;
-    if ((dir = opendir(path)) != NULL) 
+    static int16_t stack[1024 * SIMD_NUM_BYTES * 2]; // 128kb
+    char* buffer = ArenaPushGlobal(0); 
+    char combined[MAX_PATH];
+    int sp = 0;
+    int bufPos = 0;
+
+    MemsetZero(buffer, MAX_PATH);
+    MemsetZero(combined, sizeof(combined));
+
+    int rootLen = (int)StringLength(root);
+    if (rootLen <= 0)
+        return 0;
+
+    MemCpy(buffer + bufPos, root, rootLen);
+    buffer[bufPos + rootLen] = '\0';
+
+    stack[sp++] = bufPos;
+    bufPos += rootLen + 1;
+
+    while (sp > 0)
     {
-        char combined[1024];
-        while ((ent = readdir(dir)) != NULL)  
+        int offset = stack[--sp];
+        const char* path = buffer + offset;
+
+        DIR* dir = opendir(path);
+        if (!dir)
         {
-            MemsetZero(combined, sizeof(combined));
-            bool combineSuccess = CombinePaths(combined, sizeof(combined), path, (const char*)ent->d_name);
-            if (combineSuccess && ent->d_name[0] != '.') visitFn((const char*)combined, data);
+            AX_WARN("VisitFolder file couldn't open! %s\n", path);
+            continue;
         }
+
+        struct dirent* ent;
+        while ((ent = readdir(dir)) != NULL)
+        {
+            const char* name = ent->d_name;
+            if (name[0] == '.')
+                continue;
+
+            if (!CombinePaths(combined, sizeof(combined), path, name))
+            {
+                continue;
+            }
+
+            visitFn(combined, data);
+
+            if (recurse && IsFolder(combined))
+            {
+                int len = (int)StringLengthSafe(combined, sizeof(combined) - 1);
+                if (len <= 0)
+                {
+                    AX_WARN("VisitFolder skipping folder! %s\n", path);
+                    continue;
+                }
+
+                len += 1;
+
+                if (sp < (int)ARRAY_SIZE(stack) && (bufPos + len) <= ArenaRemainingCurrent())
+                {
+                    MemCpy(buffer + bufPos, combined, len);
+                    stack[sp++] = bufPos;
+                    bufPos += len;
+                }
+                else
+                {
+                    AX_WARN("VisitFolder stack size is not enough! %s\n", path);
+                    return 2;
+                }
+            }
+        }
+
         closedir(dir);
-        return true;
     }
-    return false;
+
+    return 1;
 }
+
 
 bool HasAnySubdir(const char* path)
 {
@@ -609,7 +687,7 @@ bool HasAnySubdir(const char* path)
 void RemoveFolder(const char* path, void* unused) 
 {
     (void)unused;
-    VisitFolder(path, RemoveFolder, NULL); // recursive delete all subfolders and files
+    VisitFolder(path, RemoveFolder, NULL, true); // recursive delete all subfolders and files
     if (IsFolder(path)) {
         _rmdir(path);
     }

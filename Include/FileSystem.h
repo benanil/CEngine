@@ -7,20 +7,11 @@
 #ifndef FILE_SYSTEM_INCLUDED
 #define FILE_SYSTEM_INCLUDED
 
-#ifdef _WIN32
-    #define ASTL_FILE_SEPERATOR ('\\')
-    typedef void* HANDLE; // forward declare Windows handle
-#else
-    #define ASTL_FILE_SEPERATOR ('/')
-    int GetCurrentDirectory(int size, char* outPath);
-#endif
-
 #ifdef __ANDROID__
     typedef struct AAsset AAsset; // forward declare Android asset
 #endif
 
-#include <stdint.h>  // uint64_t
-#include <stdbool.h> // bool
+#include "Common.h"
 
 #if defined(__cplusplus)
 extern "C" {
@@ -36,8 +27,8 @@ enum AOpenFlag_
 typedef int AOpenFlag;
 
 typedef struct AFile_ {
-#ifdef _MSC_VER
-    HANDLE file;
+#ifdef PLATFORM_WINDOWS
+    void* file;
 #elif defined(__ANDROID__)
     AAsset* asset;
 #else
@@ -71,18 +62,19 @@ int      AFileReadLine   (      char* dst, int maxLen, AFile file);
 int      AFileReadI32    (      char* dst, int maxLen, AFile file);
 uint64_t AFileSize       (      AFile file);
 
-char*    ReadAllFile     (const char* fileName, char* buffer, uint64_t bufferSize);
-char*    ReadAllFileAlloc(const char* fileName);
-char*    ReadAllText     (const char* fileName, char* buffer, uint64_t* numCharacters, const char* startText); // startText: if its not null will be added to start of the buffer
-char*    ReadAllTextAlloc(const char* fileName, uint64_t* numCharacters, const char* startText);
-void     WriteAllBytes   (const char* filename, const char *bytes, unsigned long size);
+char*    ReadAllFile     (const char* file, char* buffer, uint64_t bufferSize);
+char*    ReadAllFileAlloc(const char* file);
+char*    ReadAllText     (const char* file, char* buffer, uint64_t* numCharacters, const char* startText); // startText: if its not null will be added to start of the buffer
+char*    ReadAllTextAlloc(const char* file, uint64_t* numCharacters, const char* startText);
+void     WriteAllBytes   (const char* file, const char *bytes, unsigned long size);
 void     FreeAllText     (      char* text);
 void     ACopyFile       (const char* source, const char* dst, char* buffer);
 
 void     AbsolutePath    (const char* path, char* outBuffer, int bufferSize); // output: workDir/path
 bool     CombinePaths    (      char* dst , uint64_t dstSize, const char* a, const char* b);
 
-bool     VisitFolder     (const char* path, FolderVisitFn visitFn, void* data);
+// returns 0: reading failed, 1: success, 2: not enough buffer
+int      VisitFolder     (const char* path, FolderVisitFn visitFn, void* data, bool recurse);
 bool     HasAnySubdir    (const char* path);
 void     RemoveFolder    (const char* path, void* unused);
 bool     CreateFolder    (const char* folderName);

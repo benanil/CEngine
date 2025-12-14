@@ -55,29 +55,23 @@ typedef struct Matrix3x4f16_
     half z[4];
 } Matrix3x4f16;
 
-typedef struct PoseSoa_
-{
-    uint16_t* rotX;
-    uint16_t* rotY;
-    uint16_t* rotZ;
-    uint16_t* rotW;
-
-    half* x;
-    half* y;
-    half* z;
-} PoseSoa;
-
 // make 192 or 256 if we use more joints
 #define MaxBonePoses  128
 
+typedef struct AnimNode_
+{
+    uint8_t numChildren;
+    uint8_t childrenStartIndex;
+} AnimNode;
+
 typedef struct AnimationController_
 {
-    Texture mMatrixTex;
-    SceneBundle* mPrefab;
+    const SceneBundle* mPrefab;
     eAnimState mState;
-
+    AnimNode mAnimNodes[MaxBonePoses];
     int mRootNodeIndex;
     int mNumNodes;
+    float mRootScale;
 
     Vec2f mAnimTime;
 
@@ -89,10 +83,7 @@ typedef struct AnimationController_
     int mLastAnim;
     eAnimTriggerOpt mTriggerOpt;
 
-    ANode* mSpineNode; // < upper body root bone 
-    ANode* mNeckNode;
-
-    int mSpineNodeIdx;
+    int mSpineNodeIdx; // < upper body root bone 
     int mNeckNodeIdx;
 
     // lower body bones are starting from 60th with Brute character and 58 with mixamo Paladin Character
@@ -118,12 +109,9 @@ typedef struct AnimationController_
     Pose mAnimPoseD[MaxBonePoses]; // < Trigerred Animations blend target
 
     Matrix4 mBoneMatrices[MaxBonePoses];
-    Matrix3x4f16 mOutMatrices[MaxBonePoses];
-
-    PoseSoa mAnimPoseA_Soa;
-    PoseSoa mAnimPoseB_Soa;
-    PoseSoa mAnimPoseC_Soa;
-    PoseSoa mAnimPoseD_Soa;
+    Matrix3x4f16* mOutMatrices;
+    
+    uint8_t mChildIndices[MaxBonePoses * 2];
 
     // animation indexes to blend coordinates
     // Given xy blend coordinates, we will blend animations.
@@ -171,26 +159,26 @@ bool AnimationController_TriggerAnim(AnimationController* ac, int animIndex, flo
 
 // after this line all of the functions are private but feel free to use
 // upload to gpu. internal usage only for now
-void AnimationController_UploadPose(AnimationController* ac, Pose* nodeMatrices);
+void AnimationController_UploadPose(AnimationController* ac, const Pose nodeMatrices[MaxBonePoses]);
     
-void AnimationController_RecurseBoneMatrices(AnimationController* ac, ANode* node, Matrix4 parentMatrix);
+void AnimationController_RecurseBoneMatrices(AnimationController* ac, int nodeIndex, Matrix4 parentMatrix);
 
 void AnimationController_UploadBoneMatrices(AnimationController* ac);
     
 // when we want to play different animations with lower body and upper body
-void AnimationController_UploadPoseUpperLower(AnimationController* ac, Pose* lowerPose, Pose* uperPose);
+void AnimationController_UploadPoseUpperLower(AnimationController* ac, const Pose lowerPose[MaxBonePoses], const Pose uperPose[MaxBonePoses]);
 
 // use negative normTime to sample animation reversely
-void AnimationController_SampleAnimationPose(AnimationController* ac, Pose* pose, int animIdx, float normTime);
+void AnimationController_SampleAnimationPose(const AnimationController* ac, Pose pose[MaxBonePoses], int animIdx, float normTime);
 
-// bool humanoid = true, int lowerBodyStart = 58
-void AnimationController_Create(SceneBundle* prefab, AnimationController* animController, bool humanoid, int lowerBodyStart);
+// bool humanoid = true, int lowerBodyStart = 58, animId = global animation controllerIndex 
+void AnimationController_Create(const SceneBundle* prefab, 
+                                AnimationController* animController, 
+                                bool humanoid, 
+                                int lowerBodyStart,
+                                Matrix3x4f16* outMatrices); // [0, NUM_ANIMS]
 
 void AnimationController_Clear(AnimationController* ac);
-
-int Prefab_FindAnimRootNodeIndex(const SceneBundle* prefab);
-
-void Prefab_UpdateGlobalNodeTransforms(SceneBundle* bundle, int nodeIndex, Matrix4 parentMat);
 
 
 #if defined(__cplusplus)

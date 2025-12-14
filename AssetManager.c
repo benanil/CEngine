@@ -797,7 +797,7 @@ int LoadSceneImages(const char* texturePath, Texture* textures, int numImages)
         ChangeExtension(buffer, pathLen, "basis");
 
         uint64_t size = FileSize(buffer);
-        void* mem = ArenaGetMainCurrent(size);
+        void* mem = ArenaPushGlobal(size);
         
         if (!mem || size == 0)
         {
@@ -816,6 +816,7 @@ int LoadSceneImages(const char* texturePath, Texture* textures, int numImages)
 
         BasisuMakeImage(basisData, size, &textures[i].width, &textures[i].height, &textures[i].format,
                         &textures[i].buffer, &textures[i].handle, (bool)isNormal, (bool)isMetallicRoughness);
+        ArenaPopGlobal(size);
     }
     return result;
 }
@@ -894,11 +895,10 @@ int SaveGLTFBinary(const SceneBundle* gltf, const char* path)
     
     // Compress and write, vertices and indices
     uint64_t compressedSize = (uint64_t)(allVertexSize * 0.9);
-    char* compressedBuffer = ArenaGetMainCurrent(compressedSize); // global_arena.buf + global_arena.curr_offset;
+    char* compressedBuffer = ArenaPushGlobal(compressedSize); // global_arena.buf + global_arena.curr_offset;
     
     struct sdefl sdfl;
     size_t afterCompSize = zsdeflate(&sdfl, compressedBuffer, gltf->allVertices, allVertexSize, 5);
-    // ZSTD_compress(compressedBuffer, compressedSize, gltf->allVertices, allVertexSize, 5);
     AFileWrite(&afterCompSize, sizeof(uint64_t), file, 1);
     AFileWrite(compressedBuffer, afterCompSize, file, 1);
     
@@ -1056,6 +1056,7 @@ int SaveGLTFBinary(const SceneBundle* gltf, const char* path)
     }
     
     AFileClose(file);
+    ArenaPopGlobal(compressedSize);
 #endif
     return 1;
 }
@@ -1084,8 +1085,7 @@ void ReadGLTFString(char** str, AFile file, FixedPow2Allocator* stringAllocator)
         *str = FixedPow2Allocator_AllocateUninitialized(stringAllocator, nameLen + 1);
         AFileRead(*str, nameLen + 1, file, 1);
         (*str)[nameLen + 1] = 0;
-    }
-}
+    }}
 
 int LoadSceneBundleBinary(const char* path, SceneBundle* gltf)
 {
@@ -1136,7 +1136,7 @@ int LoadSceneBundleBinary(const char* path, SceneBundle* gltf)
         
         uint64_t compressedSize;
         AFileRead(&compressedSize, sizeof(uint64_t), file, 1);
-        char* compressedBuffer = ArenaGetMainCurrent(compressedSize); // global_arena.buf + global_arena.curr_offset; //  AllocateTLSFGlobal(allVertexSize);
+        char* compressedBuffer = ArenaPushGlobal(compressedSize); // global_arena.buf + global_arena.curr_offset; //  AllocateTLSFGlobal(allVertexSize);
         AFileRead(compressedBuffer, compressedSize, file, 1);
        
         zsinflate(gltf->allVertices, allVertexSize, compressedBuffer, compressedSize);
@@ -1145,9 +1145,8 @@ int LoadSceneBundleBinary(const char* path, SceneBundle* gltf)
         AFileRead(&compressedSize, sizeof(uint64_t), file, 1);
         AFileRead(compressedBuffer, compressedSize, file, 1);
         zsinflate(gltf->allIndices, allIndexSize, compressedBuffer, compressedSize);
-        // ZSTD_decompress(gltf->allIndices, allIndexSize, compressedBuffer, compressedSize);
-
-        // DeAllocateTLSFGlobal(compressedBuffer);
+    
+        ArenaPopGlobal(compressedSize);
     }
     
     char* currVertices = (char*)gltf->allVertices;

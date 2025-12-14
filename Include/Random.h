@@ -68,10 +68,10 @@ purefn uint64_t Seed64() {
 }
 
 purefn float NextFloat01(uint32_t next) {
-    return float(next >> 8) / (float)(1 << 24);
+    return (float)(next >> 8) / (float)(1 << 24);
 }
 	
-purefn float RepatMinMax(uint32_t next, float min, float max) {
+purefn float RepeatMinMaxF32(uint32_t next, float min, float max) {
     return min + (NextFloat01(next) * Absf(min - max));
 }
 	
@@ -86,13 +86,13 @@ purefn double NextDouble01(uint64_t next)
     return (next & 0x001FFFFFFFFFFFFF) / 9007199254740992.0;
 }
 	
-purefn double RepatMinMax(uint64_t next, double min, double max) {
+purefn double RepatMinMaxF64(uint64_t next, double min, double max) {
     return min + (NextDouble01(next) * Absf(min - max));
 }
 	
-purefn uint32 RepatMinMax(uint32_t next, uint32_t min, uint32_t max) { return min + (next % (max - min)); }
-purefn uint64_t RepatMinMax(uint64_t next, uint64_t min, uint64_t max) { return min + (next % (max - min)); }
-purefn int    RepatMinMax(int next, int _min, int _max) { return _min + (next % (_max - _min)); }
+purefn uint32_t RepeatMinMaxU32(uint32_t next, uint32_t min, uint32_t max) { return min + (next % (max - min)); }
+purefn uint64_t RepeatMinMaxU64(uint64_t next, uint64_t min, uint64_t max) { return min + (next % (max - min)); }
+purefn int      RepeatMinMaxI32(int next, int _min, int _max) { return _min + (next % (_max - _min)); }
 
 // https://www.pcg-random.org/index.html
 // we can also add global state in a cpp file
@@ -111,7 +111,7 @@ typedef struct PCG_
 purefn uint32_t PCGNext(PCG* pcg)
 {
     uint64_t oldstate = pcg->state;
-    *pcg->state = oldstate * 6364136223846793005ULL + (pcg->inc | 1);
+    pcg->state = oldstate * 6364136223846793005ULL + (pcg->inc | 1);
     uint64_t xorshifted = ((oldstate >> 18u) ^ oldstate) >> 27u;
     uint64_t rot = oldstate >> 59u;
     #pragma warning(disable : 4146) // unary minus warning fix
@@ -119,7 +119,7 @@ purefn uint32_t PCGNext(PCG* pcg)
     return (uint32_t)((xorshifted >> rot) | (xorshifted << ((-rot) & 31)));
 }
 
-purefn uint32_t PCG2Next(uint* rng_state)
+purefn uint32_t PCG2Next(uint32_t* rng_state)
 {
     uint32_t state = *rng_state;
     *rng_state = state * 747796405u + 2891336453u;
@@ -158,18 +158,18 @@ purefn uint64_t Xoroshiro128Plus(uint64_t s[2])
     return result;
 }
 
-purefn inline uint32_t StringToHash(const char* str, uint32_t hash)
+purefn uint32_t StringToHash(const char* str, uint32_t hash)
 {
 	while (*str)
 		hash = *str++ + (hash << 6u) + (hash << 16u) - hash;
 	return hash;
 }
 
-purefn inline uint32_t PathToHash(const char* str)
+purefn uint32_t PathToHash(const char* str)
 {
 	uint32_t hash = 0u, idx = 0u, shift = 0u;
 	while (str[idx] && idx < 4u)
-		hash |= uint(str[idx]) << shift, shift += 8u, idx++;
+		hash |= (uint32_t)(str[idx]) << shift, shift += 8u, idx++;
 	return StringToHash(str + idx, WangHash(hash));
 }
 

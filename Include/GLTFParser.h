@@ -335,6 +335,10 @@ void FreeSceneBundle(SceneBundle* gltf);
 
 const char* ParsedSceneGetError(AErrorType error);
 
+int Prefab_FindAnimRootNodeIndex(const SceneBundle* prefab);
+
+int Prefab_FindNodeFromName(const SceneBundle* prefab, const char* name);
+
 #if defined(__cplusplus)
 }
 #endif

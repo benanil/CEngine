@@ -79,7 +79,7 @@ extern "C" {
 #elif defined(AX_SUPPORT_SSE) || defined(AX_SUPPORT_NEON)
     #define SIMD_NUM_BYTES 16
 #else
-    #define SIMD_NUM_BYTES 8
+    #define SIMD_NUM_BYTES sizeof(long)
 #endif
 
 
@@ -126,6 +126,7 @@ typedef __m128  Vector4x32i;
 typedef __m128i Vector4x32u;
 
 #define VecZero()                _mm_setzero_ps()
+#define VecNegZero()             _mm_set1_ps(-0.0f)
 #define VecOne()                 _mm_set1_ps(1.0f)
 #define VecNegativeOne()         _mm_setr_ps( -1.0f, -1.0f, -1.0f, -1.0f)
 #define VecSet1(x)               _mm_set1_ps(x)
@@ -188,6 +189,7 @@ typedef __m128i Vector4x32u;
 #define VecFmaddLane(a, b, c, l) _mm_fmadd_ps(a, _mm_permute_ps(b, MakeShuffleMask(l, l, l, l)), c)
 #define VecFmadd(a, b, c)        _mm_fmadd_ps(a, b, c) /* a * b + c */
 #define VecFmsub(a, b, c)        _mm_fmsub_ps(a, b, c)
+#define VecNegMulSub(a, b, c)    VecFmsub(c, a, b) 
 #define VecHadd(a, b)            _mm_hadd_ps(a, b) /* pairwise add (aw+bz, ay+bx, aw+bz, ay+bx) */
 
 #define VecNeg(a)                _mm_sub_ps(_mm_setzero_ps(), a) /* -a */
@@ -242,6 +244,7 @@ typedef __m128i Vector4x32u;
 // Logical
 #define VecNot(a)                   _mm_andnot_ps(a, VecSelect1111)
 #define VecAnd(a, b)                _mm_and_ps(a, b)
+#define VecAndNot(a, b)             _mm_andnot_ps(a, b)
 #define VecOr(a, b)                 _mm_or_ps(a, b)
 #define VecXor(a, b)                _mm_xor_ps(a, b)
 #define VecMask(a, msk)             _mm_and_ps(a, msk)
@@ -323,6 +326,7 @@ typedef uint32x4_t Vector4x32i;
 typedef uint32x4_t Vector4x32u;
 
 #define VecZero()                   vdupq_n_f32(0.0f)
+#define VecNegZero()                vdupq_n_f32(-0.0f)
 #define VecOne()                    vdupq_n_f32(1.0f)
 #define VecNegativeOne()            vdupq_n_f32(-1.0f)
 #define VecSet1(x)                  vdupq_n_f32(x)
@@ -380,6 +384,7 @@ typedef uint32x4_t Vector4x32u;
 #define VecFmaddLane(a, b, c, l)    vfmaq_laneq_f32(c, a, b, l)
 #define VecFmadd(a, b, c)           vfmaq_f32(c, a, b)
 #define VecFmsub(a, b, c)           vfmsq_f32(c, a, b)
+#define VecNegMulSub(a, b, c)       VecFmsub(c, a, b) 
 #define VecHadd(a, b)               vpaddq_f32(a, b)
 #define VecSqrt(a)                  vsqrtq_f32(a)
 #define VecRcp(a)                   vrecpeq_f32(a)
@@ -429,6 +434,7 @@ typedef uint32x4_t Vector4x32u;
 
 #define VecNot(a)                   vreinterpretq_f32_u32(vmvnq_u32(vreinterpretq_u32_f32(a)))
 #define VecAnd(a, b)                vreinterpretq_f32_u32(vandq_u32(vreinterpretq_u32_f32(a), b))
+#define VecAndNot(a, b)             vreinterpretq_f32_u32(vandnotq_u32(vreinterpretq_u32_f32(a), b))
 #define VecOr(a, b)                 vreinterpretq_f32_u32(vorrq_u32(vreinterpretq_u32_f32(a), b))
 #define VecXor(a, b)                vreinterpretq_f32_u32(veorq_u32(vreinterpretq_u32_f32(a), b))
                                     

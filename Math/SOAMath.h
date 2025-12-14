@@ -24,8 +24,8 @@
 #define Vec4SubSoaf(V1, V2, res) Do4(res[i] = VecSub(V1[i], V2))
 #define Vec4DivSoaf(V1, V2, res) Do4(res[i] = VecDiv(V1[i], V2))
 
-#define Vec3DotSoa(V1, V2) VecFmadd(q0[0], q1[0], VecFmadd(q0[1], q1[1], VecAdd(q0[2], q1[2]))) 
-#define Vec4DotSoa(V1, V2) VecFmadd(q0[0], q1[0], VecFmadd(q0[1], q1[1], VecFmadd(q0[2], q1[2], VecAdd(q0[3], q1[3])))) 
+#define Vec3DotSoa(q0, q1) VecFmadd(q0[0], q1[0], VecFmadd(q0[1], q1[1], VecAdd(q0[2], q1[2]))) 
+#define Vec4DotSoa(q0, q1) VecFmadd(q0[0], q1[0], VecFmadd(q0[1], q1[1], VecFmadd(q0[2], q1[2], VecAdd(q0[3], q1[3])))) 
 
 #define Vec3LenSoa(xyz) VecSqrt(Vec3DotSoa(xyz, xyz))
 #define Vec4LenSoa(vec) VecSqrt(Vec4DotSoa(vec, vec))

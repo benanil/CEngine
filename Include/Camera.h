@@ -83,6 +83,16 @@ static inline RayV ScreenPointToRay(Camera* camera, Vec2f pos)
 
 static inline void CameraInit(Camera* camera, int width, int height)
 {
+    MemsetZero(camera, sizeof(Camera));
+    camera->pitch       = 0.0f;
+    camera->yaw         = 0.0f;
+    camera->senstivity  = 15.0f;
+    camera->verticalFOV = 65.0f;
+    camera->nearClip    = 0.1f;
+    camera->farClip     = 2400.0f;
+    camera->speed       = 0.4f;
+    camera->position.x -= 6;
+
     Camera_CalculateLook(camera);
     Camera_RecalculateView(camera);
     Camera_RecalculateProjection(camera, width, height);

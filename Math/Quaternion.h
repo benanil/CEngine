@@ -140,7 +140,8 @@ purefn Quaternion QFromEuler(float x, float y, float z)
     x *= 0.5f; y *= 0.5f; z *= 0.5f;
     float c[4], s[4];
     Vector4x32f cv;
-    Vector4x32f sv = VecSinCos(&cv, VecSetR(x, y, z, 1.0f));
+    Vector4x32f sv;
+    VecSinCos(VecSetR(x, y, z, 1.0f), &sv, &cv);
     VecStore(c, cv);
     VecStore(s, sv);
     

@@ -111,7 +111,7 @@ purefn Matrix4 MatrixFromPosition(float x, float y, float z)
     M.r[0] = VecIdentityR0;
     M.r[1] = VecIdentityR1;
     M.r[2] = VecIdentityR2;
-    M.r[3] = VecSet(1.0f, z, y, x);
+    M.r[3] = VecSetR(x, y, z, 1.0f);
     return M;
 }
 
@@ -467,19 +467,25 @@ purefn Matrix4 OrthoRH(float left, float right, float bottom, float top, float z
     return Result;
 }
 
-purefn Matrix4 PositionRotationScale(Vec3f position, Quaternion rotation, Vec3f scale)
+purefn Matrix4 PositionRotationScaleVec(Vector4x32f position, Quaternion rotation, Vector4x32f scale)
 {
     Matrix4 res;
     // Export rotation to matrix
     MatrixFromQuaternion(&res.m[0][0], rotation, 4);
     // Scale 3x3 matrix by given scale
-    res.r[0] = VecMulf(res.r[0], scale.x);
-    res.r[1] = VecMulf(res.r[1], scale.y);
-    res.r[2] = VecMulf(res.r[2], scale.z);
+    res.r[0] = VecMul(res.r[0], VecSplatX(scale));
+    res.r[1] = VecMul(res.r[1], VecSplatY(scale));
+    res.r[2] = VecMul(res.r[2], VecSplatZ(scale));
     // Third row is position, x, y, z, 1.0f
-    res.r[3] = VecLoad(&position.x);
+    res.r[3] = position;
     VecSetW(res.r[3], 1.0f);
     return res; 
+}
+
+
+purefn Matrix4 PositionRotationScale(Vec3f position, Quaternion rotation, Vec3f scale)
+{
+    return PositionRotationScaleVec(VecLoad(&position.x), rotation, VecSetR(scale.x, scale.y, scale.z, 0.0f)); 
 }
 
 purefn Matrix4 PositionRotationScalePtr(const float* position, const float* rotation, const float* scale)

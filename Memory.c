@@ -6,27 +6,15 @@
 #include "Include/Platform.h"
 #include "Include/OS.h"
 
-tlsf_t GlobalTLSF;
-Arena GlobalArena;
-char AppMemory[1 * 1000 * 1000 * 1000];
+tlsf_t GlobalTLSF = NULL;
+Arena GlobalArena = { 0, 0, 0 };
+char AppMemory[TLSF_MEMORY_SIZE];
+char ArenaMemory[ARENA_MEMORY_SIZE];
 
-void* AllocZeroTLSFGlobal(size_t count, size_t size) 
-{
-    void* mem = TLSFMalloc(GlobalTLSF, count * size);
-    if (mem) MemSet(mem, 0, count * size);
-    return mem; 
-}
 
-void* ArenaGetMainCurrent(uint64_t size)
-{
-    if (GlobalArena.currOffset + size > GlobalArena.buffLen)
-    {
-        AX_ERROR("Arena Get Current Failed!");
-        ASSERT(0);
-        return NULL;
-    }
-    return GlobalArena.buf + GlobalArena.currOffset;
-}
+/* //////////////////////////////////////////////////////////////////////////// */
+/*                                    MemAdress                                 */
+/* //////////////////////////////////////////////////////////////////////////// */
 
 // Shift the given address upwards if/as necessary to// ensure it is aligned to the given number of bytes.
 uint64_t AlignAddress(uint64_t addr, uint64_t align)
@@ -62,6 +50,96 @@ void FreeAligned(void* pMem)
     DeAllocateTLSFGlobal(pRawMem);
 }
 
+/* //////////////////////////////////////////////////////////////////////////// */
+/*                                    TLSF                                     */
+/* //////////////////////////////////////////////////////////////////////////// */
+
+static inline void CheckTLSFSize()
+{
+    if (GlobalTLSF == NULL)
+    {
+        GlobalTLSF = TLSFCreateWithPool(AppMemory, TLSF_MEMORY_SIZE);
+    }
+}
+
+void* AllocZeroTLSFGlobal(size_t count, size_t size) 
+{
+    CheckTLSFSize();
+    void* mem = TLSFMalloc(GlobalTLSF, count * size);
+    if (mem) MemSet(mem, 0, count * size);
+    return mem; 
+}
+
+void* AllocateTLSFGlobal(size_t size) 
+{
+    CheckTLSFSize();
+    return TLSFMalloc(GlobalTLSF, size); 
+}
+
+void* ReAllocateTLSFGlobal(void* ptr, size_t size)
+{
+    CheckTLSFSize();
+    return TLSFRealloc(GlobalTLSF, ptr, size); 
+}
+
+void DeAllocateTLSFGlobal(void* buff)
+{
+    TLSFFree(GlobalTLSF, buff); 
+}
+
+/* //////////////////////////////////////////////////////////////////////////// */
+/*                                    Arena                                     */
+/* //////////////////////////////////////////////////////////////////////////// */
+
+static inline void CheckArenaSize()
+{
+    if (GlobalArena.buf == NULL)
+    {
+        GlobalArena.buf = ArenaMemory;
+        GlobalArena.buffLen = ARENA_MEMORY_SIZE;
+        GlobalArena.currOffset = 0;
+    }
+}
+
+uint64_t ArenaRemainingCurrent()
+{
+    return GlobalArena.buffLen - GlobalArena.currOffset;
+}
+
+uint64_t ArenaGetCurrentOfset()
+{
+    return GlobalArena.currOffset;
+}
+
+void ArenaSetCurrentOfset(size_t offset)
+{
+    GlobalArena.currOffset = offset;
+}
+
+void* ArenaPushGlobal(uint64_t size)
+{
+    CheckArenaSize();
+    if (GlobalArena.currOffset + size > GlobalArena.buffLen)
+    {
+        AX_ERROR("Arena Get Current Failed!");
+        ASSERT(0);
+        return NULL;
+    }
+    void* result = GlobalArena.buf + GlobalArena.currOffset;
+    GlobalArena.currOffset += size;
+    return result;
+}
+
+void ArenaPopGlobal(uint64_t size)
+{
+    if (GlobalArena.currOffset < size)
+    {
+        AX_WARN("arena trying to free more than necessarry!");
+        size = GlobalArena.currOffset;
+    }
+    GlobalArena.currOffset -= size;
+}
+
 void ArenaInit(Arena *a, size_t backing_buffer_length) 
 {
 	size_t aligned_size = OSRoundToPage(backing_buffer_length);
@@ -70,7 +148,7 @@ void ArenaInit(Arena *a, size_t backing_buffer_length)
 	a->currOffset = 0;
 }
 
-void *ArenaAllocAlign(Arena *a, size_t size, size_t align)
+void* ArenaAllocAlign(Arena *a, size_t size, size_t align)
 {
 	size_t curr_ptr = (size_t)a->buf + a->currOffset;
 	size_t offset = AlignAddress(curr_ptr, align);
@@ -82,8 +160,9 @@ void *ArenaAllocAlign(Arena *a, size_t size, size_t align)
 	return ptr;
 }
 
+
 /*//////////////////////////////////////////////////////////////////////////*/
-//                          FixedPow2Allocator
+/*                          FixedPow2Allocator                              */
 /*//////////////////////////////////////////////////////////////////////////*/
 
 void FixedPow2Allocator_Init(FixedPow2Allocator* alloc, size_t initialSize)

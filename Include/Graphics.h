@@ -107,10 +107,6 @@ typedef struct Texture_
     void* buffer;
 } Texture;
 
-static inline ANode* GetNodePtr(SceneBundle* prefab, int index)
-{
-    return &prefab->nodes[index];
-}
 
 static inline int GetRootNodeIdx(SceneBundle* bundle)
 {

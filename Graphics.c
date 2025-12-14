@@ -146,7 +146,7 @@ int rGetMipmapImageData(sg_image_data* img_data, void* data, int width, int heig
     {
         bufferSize += (width / i) * (height / i);
     }
-    uint8_t* buffer = (uint8_t*)ArenaGetMainCurrent(bufferSize);
+    uint8_t* buffer = (uint8_t*)ArenaPushGlobal(bufferSize);
     img_data->subimage[0][0].ptr = data;
     img_data->subimage[0][0].size = size;
 
@@ -165,6 +165,7 @@ int rGetMipmapImageData(sg_image_data* img_data, void* data, int width, int heig
         img_data->subimage[0][i].ptr = data;
         img_data->subimage[0][i].size = size;
     }
+
     return numMips;
 }
 
@@ -194,7 +195,7 @@ Texture rImportTexture(const char* path, TexFlags flags, const char* label)
     AFile asset = AFileOpen(path, AOpenFlag_ReadBinary);
     uint64_t size = AFileSize(asset);
 
-    void* textureLoadBuffer = ArenaGetMainCurrent(size);
+    void* textureLoadBuffer = ArenaPushGlobal(size);
     
     const int compressed = IsCompressed(path, StringLength(path));
     if (compressed) {
@@ -203,6 +204,7 @@ Texture rImportTexture(const char* path, TexFlags flags, const char* label)
     
     AFileRead(textureLoadBuffer, size, asset, 1);
     image = stbi_load_from_memory(textureLoadBuffer, (int)size, &width, &height, &channels, 4);
+    ArenaPopGlobal(size);
 
     AFileClose(asset);
     
@@ -255,14 +257,9 @@ Texture rCreateTexture(int width, int height, void* data, sg_pixel_format format
     
     if (!!(flags & TexFlags_MipMap))
     {
-        if (!!(flags & TexFlags_Compressed))
-        {
-            // todo handle compressed mips
-        }
-        else
-        {
-            imageDesc.num_mipmaps = rGetMipmapImageData(&imageDesc.data, data, imageDesc.width, imageDesc.height);
-        }
+        size_t arenaStart = ArenaGetCurrentOfset();
+        imageDesc.num_mipmaps = rGetMipmapImageData(&imageDesc.data, data, imageDesc.width, imageDesc.height);
+        ArenaSetCurrentOfset(arenaStart);
     }
 
     if (!!(flags & (TexFlags_DynamicUpdate | TexFlags_StreamUpdate)))
@@ -272,20 +269,13 @@ Texture rCreateTexture(int width, int height, void* data, sg_pixel_format format
     imageDesc.usage.stream_update     = !!(flags & TexFlags_StreamUpdate);
     imageDesc.usage.render_attachment = !!(flags & TexFlags_RenderAttachment);
 
-    Texture texture = {
+    return (Texture){
         .width = width,
         .height = height,
         .format = format,
         .handle = sg_make_image(&imageDesc),
         .buffer = data
     };
-    
-    if ((flags & TexFlags_MipMap) && !!(flags & TexFlags_Compressed))
-    {
-
-    }
-
-    return texture;
 }
 
 void rUpdateTexture(Texture texture, void* data)

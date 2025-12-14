@@ -13,6 +13,7 @@ set SOURCE_FILES=^
 	Extern/dynarray.c ^
 	TLSF.c ^
 	Memory.c ^
+	ECS.c ^
 	FileSystem.c ^
     Platform.c ^
 	Graphics.c ^
