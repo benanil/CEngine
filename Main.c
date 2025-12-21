@@ -89,7 +89,6 @@ void Init(void)
         return;
     }
     
-    
     // CreateVerticesIndicesSkined(sceneBundle);
     // SaveSceneImages(sceneBundle, "Assets/Meshes/Paladin/PaladinTest.bdc");   
     // SaveGLTFBinary(sceneBundle, "Assets/Meshes/Paladin/PaladinTest.abm");
@@ -217,7 +216,7 @@ void Frame(void)
     for (int i = 0; i < NUM_ANIMS; i++)
     {
         const int numAnims = animController[i].mPrefab->numAnimations;
-        const int animIdx = Clamp32(WangHash(i) % numAnims, 1, numAnims);
+        const int animIdx = Clamp32(WangHash(i+645) % numAnims, 1, numAnims);
 
         const double animDuration = (double)animController[i].mPrefab->animations[animIdx].duration;
         const float animRatio = (float)Fract((timeSinceStartup + (i * 0.1)) / animDuration);
@@ -241,7 +240,9 @@ void Frame(void)
     
     vs_params_t vs_params;
     vs_params.uViewProj = Matrix4Multiply(globalCamera.view, globalCamera.projection);
-    
+    for (int i = 0; i < 16; i++)
+        vs_params.uLightMatrix.m[0][i] = (float)timeSinceStartup;
+
     sg_begin_pass(&(sg_pass) {
         .action = {
             .colors[0] = {

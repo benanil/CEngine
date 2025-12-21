@@ -40,20 +40,28 @@ typedef int eAnimLocation;
 typedef int eAnimState;
 typedef int eAnimControllerState;
 
+typedef struct Matrix3x4f16_ {
+    half x[4];
+    half y[4];
+    half z[4];
+} Matrix3x4f16;
 
-typedef struct Pose_
-{
+typedef struct DualQuaternionHalf_ {
+    half real[4];
+    half dual[4];
+} DualQuaternionHalf;
+
+typedef struct Pose_ {
     Vector4x32f translation;
     Vector4x32f rotation;
     // Vector4x32f scale;
 } Pose;
 
-typedef struct Matrix3x4f16_
-{
-    half x[4];
-    half y[4];
-    half z[4];
-} Matrix3x4f16;
+typedef struct HalfPose_ {
+    half position[4];
+    half rotation[4];
+} HalfPose;
+
 
 // make 192 or 256 if we use more joints
 #define MaxBonePoses  128
@@ -110,6 +118,7 @@ typedef struct AnimationController_
 
     Matrix4 mBoneMatrices[MaxBonePoses];
     Matrix3x4f16* mOutMatrices;
+    DualQuaternionHalf* mOutDualQuaternions;
     
     uint8_t mChildIndices[MaxBonePoses * 2];
 
@@ -162,6 +171,8 @@ bool AnimationController_TriggerAnim(AnimationController* ac, int animIndex, flo
 void AnimationController_UploadPose(AnimationController* ac, const Pose nodeMatrices[MaxBonePoses]);
     
 void AnimationController_RecurseBoneMatrices(AnimationController* ac, int nodeIndex, Matrix4 parentMatrix);
+
+void AnimationController_UploadBoneDualQuats(AnimationController* ac);
 
 void AnimationController_UploadBoneMatrices(AnimationController* ac);
     

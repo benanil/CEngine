@@ -217,6 +217,9 @@
 			<File>
 				<Path>AOC0.txt</Path>
 			</File>
+			<File>
+				<Path>BoneScales.txt</Path>
+			</File>
 		</Children>
 	</Workspace>
 </N10X>

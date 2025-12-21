@@ -17,8 +17,49 @@
 #include "Include/Algorithm.h"
 #include "Include/Graphics.h"
 #include "Include/GLTFParser.h"
+#include "Include/FileSystem.h"
 #include "Math/Half.h"
 
+
+typedef struct AnimationData_
+{
+    int poseStart;
+    int numFrames;
+} AnimationData;
+
+typedef struct InstanceData_
+{
+    float normTime;
+    int animIndex;
+} InstanceData;
+
+
+typedef struct AnimationContainerCapacity_
+{
+    uint32_t numAnimPoses;
+    uint32_t numInverseBindMatrices;
+    uint32_t numBoneMatricesOut;
+    uint32_t numAnimData;
+    uint32_t numInstanceData;
+} AnimationContainerCapacity;
+
+typedef struct AnimationContainer_
+{
+    HalfPose*       animPoses;
+    Matrix4*        inverseBindMatrices;
+    Matrix3x4f16*   boneMatricesOut;
+    AnimationData*  animData;
+    InstanceData*   instanceData;
+
+    // send this empty when creating 
+    AnimationContainerCapacity capacity;
+} AnimationContainer;
+
+// give the buffers manually inside AnimationContainer this function will not allocate
+void AnimationContainer_Create(const SceneBundle* prefab, int numInstances, AnimationContainer* out)
+{
+    
+}
 
 void AnimationController_Create(const SceneBundle* prefab, 
                                 AnimationController* result,
@@ -41,11 +82,11 @@ void AnimationController_Create(const SceneBundle* prefab,
     result->mNumNodes = prefab->numNodes;
     result->mTrigerredNorm = 0.0f;
     result->lowerBodyIdxStart = lowerBodyStart;
-    result->mRootScale = 0.16f;// prefab->nodes[result->mRootNodeIndex].scale[0];
+    result->mRootScale = prefab->nodes[result->mRootNodeIndex].scale[0]; // 0.1610, rcp: 6.2111
 
     ASSERT(result->mRootNodeIndex < MaxBonePoses);
     ASSERT(prefab->nodes[result->mRootNodeIndex].numChildren > 0); // root node has to have children nodes
-    
+
     int childIndex = 0;
     for (int i = 0; i < result->mNumNodes; i++)
     {
@@ -61,7 +102,7 @@ void AnimationController_Create(const SceneBundle* prefab,
 
         result->mAnimNodes[i] = animNode;
         result->mAnimPoseA[i] = pose;
-        
+
         for (int j = 0; j < animNode.numChildren; j++)
         {
             result->mChildIndices[childIndex++] = (uint8_t)inputNode.children[j];
@@ -89,6 +130,15 @@ purefn Matrix4 GetNodeMatrix(const AnimationController* ac, int index)
     VecSetW(res.r[3], 1.0f);
     return res;
 }
+
+// // handle neck, spine rotations
+// if (ac->mSpineNodeIdx != -1 && Absf(ac->mSpineYAngle) + Absf(ac->mSpineXAngle) > MATH_Epsilon) {
+//     RotateNode(ac->mAnimPoseA + ac->mSpineNodeIdx, ac->mSpineXAngle, ac->mSpineYAngle); 
+// }
+//     
+// if (ac->mNeckNodeIdx != -1 && (Absf(ac->mNeckYAngle) + Absf(ac->mSpineXAngle) > MATH_Epsilon)) {
+//     RotateNode(ac->mAnimPoseA + ac->mNeckNodeIdx, ac->mNeckXAngle, ac->mNeckYAngle); 
+// }
 
 void AnimationController_RecurseBoneMatrices(AnimationController* ac, int nodeIndex, Matrix4 parentMatrix)
 {
@@ -174,36 +224,30 @@ void AnimationController_SampleAnimationPose(const AnimationController* ac, Pose
     }
 }
 
-// send matrices to GPU
 void AnimationController_UploadBoneMatrices(AnimationController* ac)
 {
     const ASkin* skin = &ac->mPrefab->skins[0];
     const Matrix4* invMatrices = (const Matrix4*)skin->inverseBindMatrices;
 
-    // give this, thousands of joints it will process it rapidly!
     for (int i = 0; i < skin->numJoints; i++)
     {
         Matrix4 mat = Matrix4Multiply(invMatrices[i], ac->mBoneMatrices[skin->joints[i]]);
         mat = Matrix4Transpose(mat);
+        
         // with AVX F16C this is single instruction! vcvtps2ph 
-        ConvertFloat8ToHalf8(ac->mOutMatrices[i].x, &mat.m[0][0]);
-        ConvertFloat4ToHalf4(ac->mOutMatrices[i].z, &mat.m[2][0]); // this is single instruction with it as well
+        Float8ToHalf8(ac->mOutMatrices[i].x, &mat.m[0][0]);
+        Float4ToHalf4(ac->mOutMatrices[i].z, &mat.m[2][0]); // this is single instruction with it as well
     }
 }
 
+
 void AnimationController_UploadPose(AnimationController* ac, const Pose pose[MaxBonePoses])
 {
-    ac->mBoneMatrices[ac->mRootNodeIndex] = MatrixFromScalef(ac->mRootScale);
+    int rootIdx = ac->mRootNodeIndex;
+    ac->mBoneMatrices[rootIdx] = PositionRotationScaleVec(pose[rootIdx].translation, pose[rootIdx].rotation, VecSet1(ac->mRootScale));
     
-    AnimationController_RecurseBoneMatrices(ac, ac->mRootNodeIndex, ac->mBoneMatrices[ac->mRootNodeIndex]);
-    // // handle neck, spine rotations
-    // if (ac->mSpineNodeIdx != -1 && Absf(ac->mSpineYAngle) + Absf(ac->mSpineXAngle) > MATH_Epsilon) {
-    //     RotateNode(ac->mAnimPoseA + ac->mSpineNodeIdx, ac->mSpineXAngle, ac->mSpineYAngle); 
-    // }
-    //     
-    // if (ac->mNeckNodeIdx != -1 && (Absf(ac->mNeckYAngle) + Absf(ac->mSpineXAngle) > MATH_Epsilon)) {
-    //     RotateNode(ac->mAnimPoseA + ac->mNeckNodeIdx, ac->mNeckXAngle, ac->mNeckYAngle); 
-    // }
+    AnimationController_RecurseBoneMatrices(ac, ac->mRootNodeIndex, ac->mBoneMatrices[rootIdx]);
+
     AnimationController_UploadBoneMatrices(ac);
 }
 

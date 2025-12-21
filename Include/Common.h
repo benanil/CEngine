@@ -448,8 +448,10 @@ static inline void MemCpy(void* dst, const void* RESTRICT src, size_t size)
     uint8_t* d = (uint8_t*)dst;
     size_t simd_count = size >> 4;  // Divide by 16
     
-    if (simd_count > 0) {
-        switch (simd_count & 3) {
+    if (simd_count > 0)
+    {
+        switch (simd_count & 3)
+        {
             case 3: VecStoreU((Vector4x32u*)d, VecLoadIU((const Vector4x32u*)s)); s += 16; d += 16;
             case 2: VecStoreU((Vector4x32u*)d, VecLoadIU((const Vector4x32u*)s)); s += 16; d += 16;
             case 1: VecStoreU((Vector4x32u*)d, VecLoadIU((const Vector4x32u*)s)); s += 16; d += 16;
@@ -457,7 +459,8 @@ static inline void MemCpy(void* dst, const void* RESTRICT src, size_t size)
         }
         
         simd_count >>= 2;
-        while (simd_count--) {
+        while (simd_count--)
+        {
             Vector4x32u xmm0 = VecLoadIU((const Vector4x32u*)s);
             Vector4x32u xmm1 = VecLoadIU((const Vector4x32u*)(s + 16));
             Vector4x32u xmm2 = VecLoadIU((const Vector4x32u*)(s + 32));
@@ -478,14 +481,17 @@ static inline void MemCpy(void* dst, const void* RESTRICT src, size_t size)
     if (r)      { *d = *s; }
 }
 
-static inline void MemSet(void* dst, uint8_t value, size_t size) {
+static inline void MemSet(void* dst, uint8_t value, size_t size) 
+{
     uint8_t* d = (uint8_t*)dst;
     
     Vector4x32u xmm_value = _mm_set1_epi8(value);
     size_t simd_count = size >> 4;  // Divide by 16
     
-    if (simd_count > 0) {
-        switch (simd_count & 3) {
+    if (simd_count > 0) 
+    {
+        switch (simd_count & 3)
+        {
             case 3: VecStoreU((Vector4x32u*)d, xmm_value); d += 16;
             case 2: VecStoreU((Vector4x32u*)d, xmm_value); d += 16;
             case 1: VecStoreU((Vector4x32u*)d, xmm_value); d += 16;
@@ -493,7 +499,8 @@ static inline void MemSet(void* dst, uint8_t value, size_t size) {
         }
         
         simd_count >>= 2;
-        while (simd_count--) {
+        while (simd_count--)
+        {
             VecStoreU((Vector4x32u*)d, xmm_value);
             VecStoreU((Vector4x32u*)(d + 16), xmm_value);
             VecStoreU((Vector4x32u*)(d + 32), xmm_value);

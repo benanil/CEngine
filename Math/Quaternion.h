@@ -67,7 +67,7 @@ static inline Vector4x32f QFromZAngle(float angle) {
 static inline Vector4x32f VECTORCALL QMulVec3V(Vector4x32f vec, Vector4x32f quat)
 {
     Vector4x32f temp0 = Vec3CrossV(quat, vec);
-    Vector4x32f temp1 = VecMul(vec, VecSplatZ(quat));
+    Vector4x32f temp1 = VecMul(vec, VecSplatW(quat));
     temp0 = VecAdd(temp0, temp1);
     temp1 = VecMul(Vec3CrossV(quat, temp0), VecSet1(2.0f));
     return VecAdd(vec, temp1);
@@ -176,9 +176,9 @@ static inline void QuaternionFromMatrix(float* Orientation, const float* m, int 
     
     if (trace > 0.0f)
     {
-        root = RSqrtf(trace + 1.0f);
-        Orientation[3] = 0.5f / root;
-        root = 0.5f * root;
+        root = Sqrtf(trace + 1.0f);
+        Orientation[3] = 0.5f * root;
+        root = 0.5f / root;
         Orientation[0] = root * (m[1 * numCol + 2] - m[2 * numCol + 1]);
         Orientation[1] = root * (m[2 * numCol + 0] - m[0 * numCol + 2]);
         Orientation[2] = root * (m[0 * numCol + 1] - m[1 * numCol + 0]);
@@ -192,10 +192,10 @@ static inline void QuaternionFromMatrix(float* Orientation, const float* m, int 
         j = Next[i];
         k = Next[j];
         
-        root = RSqrtf(m[i * numCol + i] - m[j * numCol + j] - m[k * numCol + k] + 1.0f);
+        root = Sqrtf(m[i * numCol + i] - m[j * numCol + j] - m[k * numCol + k] + 1.0f);
         
-        Orientation[i] = 0.5f / root;
-        root = 0.5f * root;
+        Orientation[i] = 0.5f * root;
+        root = 0.5f / root;
         Orientation[j] = root * (m[i * numCol + j] + m[j * numCol + i]);
         Orientation[k] = root * (m[i * numCol + k] + m[k * numCol + i]);
         Orientation[3] = root * (m[j * numCol + k] - m[k*numCol+j]);
@@ -285,6 +285,64 @@ static inline Vec3f VECTORCALL QGetUp(Quaternion vec) {
     Vec3f res;
     Vec3Store(&res.x, QMulVec3V(VecSetR( 0.0f, 1.0f, 0.0f, 0.0f), QConjugate(vec)));
     return res; 
+}
+
+
+// Dual Quaternion structure
+typedef struct DualQuaternion_ {
+    Vector4x32f real;  // rotation quaternion
+    Vector4x32f dual;  // encodes translation
+} DualQuaternion;
+
+static inline DualQuaternion DQMultiply(DualQuaternion a, DualQuaternion b)
+{
+    DualQuaternion result;
+    result.real = QMul(a.real, b.real);
+    // dual = real_a * dual_b + dual_a * real_b
+    result.dual = VecAdd(QMul(a.real, b.dual), QMul(a.dual, b.real));
+    return result;
+}
+
+static inline Vector4x32f DQGetTranslation(DualQuaternion dq)
+{
+    // t = 2 * dual * conjugate(real)
+    Vector4x32f real_conj = QConjugate(dq.real);
+    Vector4x32f t = QMul(VecMul(dq.dual, VecSet1(2.0f)), real_conj);
+    VecSetW(t, 0.0f);
+    return t;
+}
+
+static inline DualQuaternion DQFromRotationTranslation(Vector4x32f rotation, Vector4x32f translation)
+{
+    VecSetW(translation, 0.0f);
+    DualQuaternion dq;
+    dq.real = rotation;
+    dq.dual = VecMulf(QMul(translation, rotation), 0.5f);
+    // // enforce q·d = 0
+    // float dotRD = VecDotf(dq.real, dq.dual);
+    // dq.dual = VecSub(dq.dual, VecMulf(dq.real, dotRD));
+    return dq;
+}
+
+static inline DualQuaternion DQBlend(DualQuaternion x, DualQuaternion y, float a)
+{
+    // Check dot product to handle antipodality
+    Vector4x32f k = VecDot(x.real, y.real);
+    Vector4x32i le = VecCmpLe(k, VecZero());
+    
+    // If dot < 0, negate dq1 to take shorter path
+    Vector4x32f neg_one = VecSet1(-1.0f);
+    y.real = VecBlend(y.real, VecMul(y.real, neg_one), le);
+    y.dual = VecBlend(y.dual, VecMul(y.dual, neg_one), le);
+    
+    // Linear blend
+    Vector4x32f a_vec = VecSet1(a);
+    Vector4x32f one_minus_a = VecSub(VecOne(), a_vec);
+    
+    DualQuaternion result;
+    result.real = VecFmadd(x.real, one_minus_a, VecMul(y.real, k));
+    result.dual = VecFmadd(x.dual, one_minus_a, VecMul(y.dual, k));
+    return result;
 }
 
 #endif // Quaternion_H

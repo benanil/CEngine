@@ -44,7 +44,7 @@ typedef uint32_t half2;
 #define Half2SetY(v, y) (v &= 0x0000FFFFu, v |= y;)
 
 // todo better check for half support
-purefn float ConvertHalfToFloat(half x) 
+purefn float HalfToFloat(half x) 
 {
     #if defined(AX_SUPPORT_AVX2) 
     return _mm_cvtss_f32(_mm_cvtph_ps(_mm_set1_epi16(x))); 
@@ -66,7 +66,7 @@ purefn float ConvertHalfToFloat(half x)
     #endif
 }
 
-purefn half ConvertFloatToHalf(float Value) 
+purefn half FloatToHalf(float Value) 
 {
     #if defined(AX_SUPPORT_AVX2)
     return _mm_extract_epi16(_mm_cvtps_ph(_mm_set_ss(Value), 0), 0);
@@ -90,7 +90,7 @@ purefn half ConvertFloatToHalf(float Value)
     #endif
 }
 
-static inline void ConvertHalf2ToFloat2(float* result, uint32_t h) 
+static inline void Half2ToFloat2(float* result, uint32_t h) 
 {
     #if defined(AX_SUPPORT_AVX2)
     _mm_storel_pi((__m64 *)result, _mm_cvtph_ps(_mm_set1_epi16(h)));
@@ -115,7 +115,7 @@ static inline void ConvertHalf2ToFloat2(float* result, uint32_t h)
     #endif
 }
 
-static inline uint32_t ConvertFloat2ToHalf2(const float* float2)
+static inline uint32_t Float2ToHalf2(const float* float2)
 {
     #if defined(AX_SUPPORT_NEON)
     float32x2_t x = vld1_dup_f32(float2);
@@ -125,13 +125,13 @@ static inline uint32_t ConvertFloat2ToHalf2(const float* float2)
     return _mm_extract_epi32(_mm_cvtps_ph(_mm_set_ss(float2), 0), 0);
     #endif
     uint32_t result = 0;
-    result  = ConvertFloatToHalf(float2[0]);
-    result |= (uint32_t)ConvertFloatToHalf(float2[1]) << 16;
+    result  = FloatToHalf(float2[0]);
+    result |= (uint32_t)FloatToHalf(float2[1]) << 16;
     return result;
 }
 
 // input half4 is 4x 16 bit integer for example it can be uint64_t
-static inline void ConvertHalf4ToFloat4(float* result, const half* half4)
+static inline void Half4ToFloat4(float* result, const half* half4)
 {
     #ifdef AX_SUPPORT_AVX2
     _mm_storeu_ps(result, _mm_cvtph_ps(_mm_loadu_si64(half4)));
@@ -157,12 +157,12 @@ static inline void ConvertHalf4ToFloat4(float* result, const half* half4)
     VecStore(result, VeciToVecf(i_result));
     
     #else // no intrinsics
-    ConvertHalf2ToFloat2(result, *(uint32_t*)half4);
-    ConvertHalf2ToFloat2(result + 2, *((uint32_t*)(half4) + 1));
+    Half2ToFloat2(result, *(uint32_t*)half4);
+    Half2ToFloat2(result + 2, *((uint32_t*)(half4) + 1));
     #endif
 }
 
-static inline void ConvertFloat4ToHalf4(half* result, const float* float4)
+static inline void Float4ToHalf4(half* result, const float* float4)
 {
     #ifdef AX_SUPPORT_AVX2
 
@@ -206,8 +206,8 @@ static inline void ConvertFloat4ToHalf4(half* result, const float* float4)
     #endif
 
     #else // no intrinsics
-    *(uint32_t*)result = ConvertFloat2ToHalf2(float4);
-    *((uint32_t*)result + 1) = ConvertFloat2ToHalf2(float4 + 2);
+    *(uint32_t*)result = Float2ToHalf2(float4);
+    *((uint32_t*)result + 1) = Float2ToHalf2(float4 + 2);
     #endif
 }
 
@@ -215,48 +215,48 @@ static inline void ConvertFloat4ToHalf4(half* result, const float* float4)
 #ifdef AX_SUPPORT_AVX2
 
 // convert 8 float and half with one instruction
-#define ConvertFloat8ToHalf8(result, float8) _mm_storeu_si128((__m128i*)result, _mm256_cvtps_ph(_mm256_loadu_ps(float8), _MM_FROUND_TO_NEAREST_INT))
+#define Float8ToHalf8(result, float8) _mm_storeu_si128((__m128i*)result, _mm256_cvtps_ph(_mm256_loadu_ps(float8), _MM_FROUND_TO_NEAREST_INT))
 
-#define ConvertHalf8ToFloat8(result, half8)  _mm256_storeu_ps(result,  _mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)half8)))
+#define Half8ToFloat8(result, half8)  _mm256_storeu_ps(result,  _mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)half8)))
 
 #else
 
-purefn void ConvertHalf8ToFloat8(float* float8, const half* half8)
+purefn void Half8ToFloat8(float* float8, const half* half8)
 {
-    ConvertHalf4ToFloat4(float8    , half8);
-    ConvertHalf4ToFloat4(float8 + 4, half8 + 4);
+    Half4ToFloat4(float8    , half8);
+    Half4ToFloat4(float8 + 4, half8 + 4);
 }
 
-purefn void ConvertFloat8ToHalf8(half* result, const float* float8)
+purefn void Float8ToHalf8(half* result, const float* float8)
 {
-    ConvertFloat4ToHalf4(result    , float8);
-    ConvertFloat4ToHalf4(result + 4, float8 + 4);
+    Float4ToHalf4(result    , float8);
+    Float4ToHalf4(result + 4, float8 + 4);
 }
 
 #endif // AX_SUPPORT_AVX2
 
 
-static forceinline void ConvertHalfToFloatN(float* res, const half* x, const int n) 
+static forceinline void HalfToFloatN(float* res, const half* x, const int n) 
 {   
     for (int i = 0; i < n; i += 8, x += 8, res += 8)
-        ConvertHalf8ToFloat8(res, x);
+        Half8ToFloat8(res, x);
  
     for (int i = 0; i < (n & 7); i++, res++, x++)
-        *res = ConvertHalfToFloat(*x);
+        *res = HalfToFloat(*x);
 }
 
-static forceinline void ConvertFloatToHalfN(half* res, const float* x, const int n) 
+static forceinline void FloatToHalfN(half* res, const float* x, const int n) 
 {   
     for (int i = 0; i < n; i += 8, x += 8, res += 8)
-        ConvertFloat8ToHalf8(res, x);
+        Float8ToHalf8(res, x);
  
     for (int i = 0; i < (n & 7); i++, res++, x++)
-        *res = ConvertFloatToHalf(*x);
+        *res = FloatToHalf(*x);
 }
 
-static forceinline void ConvertFloat3ToHalf3(float* f, half* res) {
-    *(uint32_t*)res = ConvertFloat2ToHalf2(f); 
-    res[2] = ConvertFloatToHalf(f[2]); 
+static forceinline void Float3ToHalf3(float* f, half* res) {
+    *(uint32_t*)res = Float2ToHalf2(f); 
+    res[2] = FloatToHalf(f[2]); 
 }
 
 // purefn Vec3f ConvertHalf3ToFloat3(half* h) {

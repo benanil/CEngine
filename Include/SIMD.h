@@ -153,7 +153,7 @@ typedef __m128i Vector4x32u;
 #define VecCvtU32F32(x)          _mm_cvtepi32_ps(x)
 #define VecWidenU16ToU32(x)      _mm_unpacklo_epi16(x, _mm_setzero_si128())
 #define VecNarrowU32U16(x)       _mm_packus_epi32((x), _mm_setzero_si128())
-#define VecStoreI16(ptr, vec)    _mm_storel_pi((__m64*)(ptr), vec) // stores lower 64 bits (first 2 x 32-bit elements)
+#define VecStoreI16(ptr, vec)    _mm_storel_pi((__m64*)(ptr), _mm_castsi128_ps(vec)) // stores lower 64 bits (first 2 x 32-bit elements)
 
 // _mm_permute_ps is avx only
 // Get Set

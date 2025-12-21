@@ -197,7 +197,7 @@ int LoadFBX(const char* path, SceneBundle* fbxScene, float scale)
         {
             SmallMemCpy(&currentVertex[j].position.x, &umesh->vertex_position.values.data[j], sizeof(float) * 3);
             if (umesh->vertex_uv.exists) {
-                currentVertex[j].texCoord = ConvertFloat2ToHalf2((float*)(umesh->vertex_uv.values.data + j));
+                currentVertex[j].texCoord = Float2ToHalf2((float*)(umesh->vertex_uv.values.data + j));
             }
             if (umesh->vertex_normal.exists) {
                 currentVertex[j].normal = Pack_INT_2_10_10_10_REV(Vec3FromPtr((float*)(umesh->vertex_normal.values.data + j)));
@@ -514,7 +514,7 @@ void CreateVerticesIndices(SceneBundle* gltf)
                 Vec3f normal   = normals   ? normals[v]   : (Vec3f){0.5f, 0.5f, 0.0};
 
                 currVertex[v].position  = positions[v];
-                currVertex[v].texCoord  = ConvertFloat2ToHalf2(&texCoord.x);
+                currVertex[v].texCoord  = Float2ToHalf2(&texCoord.x);
                 currVertex[v].normal    = Pack_INT_2_10_10_10_REV(normal);
                 currVertex[v].tangent   = Pack_INT_2_10_10_10_REV_VEC(tangent);
             }
@@ -592,7 +592,7 @@ void CreateVerticesIndicesSkined(SceneBundle* gltf)
                 Vec3f normal   = normals   ? normals[v]   : (Vec3f){0.5f, 0.5f, 0.0};
 
                 currVertex[v].position = positions[v];
-                currVertex[v].texCoord = ConvertFloat2ToHalf2(&texCoord.x);
+                currVertex[v].texCoord = Float2ToHalf2(&texCoord.x);
                 currVertex[v].normal   = Pack_INT_2_10_10_10_REV(normal);
                 currVertex[v].tangent  = Pack_INT_2_10_10_10_REV_VEC(tangent);
             }

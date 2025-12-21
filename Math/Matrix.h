@@ -340,33 +340,33 @@ static inline Matrix4 VECTORCALL Matrix4Inverse(Matrix4 mat)
 }
 #endif
 
-purefn Matrix4 VECTORCALL Matrix4Multiply(Matrix4 in2, const Matrix4 in1)
+purefn Matrix4 VECTORCALL Matrix4Multiply(Matrix4 in0, const Matrix4 in1)
 {
     Vector4x32f m0, m1, m2, m3;
-    m0 = VecMul(in1.r[0], VecSplatX(in2.r[0]));
-    m0 = VecFmaddLane(in1.r[1], in2.r[0], m0, 1);
-    m0 = VecFmaddLane(in1.r[2], in2.r[0], m0, 2); 
-    m0 = VecFmaddLane(in1.r[3], in2.r[0], m0, 3); 
-    in2.r[0] = m0;
+    m0 = VecMul(in1.r[0], VecSplatX(in0.r[0]));
+    m0 = VecFmaddLane(in1.r[1], in0.r[0], m0, 1);
+    m0 = VecFmaddLane(in1.r[2], in0.r[0], m0, 2); 
+    m0 = VecFmaddLane(in1.r[3], in0.r[0], m0, 3); 
+    in0.r[0] = m0;
         
-    m1 = VecMul(in1.r[0], VecSplatX(in2.r[1]));
-    m1 = VecFmaddLane(in1.r[1], in2.r[1], m1, 1); 
-    m1 = VecFmaddLane(in1.r[2], in2.r[1], m1, 2); 
-    m1 = VecFmaddLane(in1.r[3], in2.r[1], m1, 3); 
-    in2.r[1] = m1;
+    m1 = VecMul(in1.r[0], VecSplatX(in0.r[1]));
+    m1 = VecFmaddLane(in1.r[1], in0.r[1], m1, 1); 
+    m1 = VecFmaddLane(in1.r[2], in0.r[1], m1, 2); 
+    m1 = VecFmaddLane(in1.r[3], in0.r[1], m1, 3); 
+    in0.r[1] = m1;
         
-    m2 = VecMul(in1.r[0], VecSplatX(in2.r[2]));
-    m2 = VecFmaddLane(in1.r[1], in2.r[2], m2, 1); 
-    m2 = VecFmaddLane(in1.r[2], in2.r[2], m2, 2); 
-    m2 = VecFmaddLane(in1.r[3], in2.r[2], m2, 3); 
-    in2.r[2] = m2;
+    m2 = VecMul(in1.r[0], VecSplatX(in0.r[2]));
+    m2 = VecFmaddLane(in1.r[1], in0.r[2], m2, 1); 
+    m2 = VecFmaddLane(in1.r[2], in0.r[2], m2, 2); 
+    m2 = VecFmaddLane(in1.r[3], in0.r[2], m2, 3); 
+    in0.r[2] = m2;
         
-    m3 = VecMul(in1.r[0], VecSplatX(in2.r[3]));
-    m3 = VecFmaddLane(in1.r[1], in2.r[3], m3, 1); 
-    m3 = VecFmaddLane(in1.r[2], in2.r[3], m3, 2); 
-    m3 = VecFmaddLane(in1.r[3], in2.r[3], m3, 3); 
-    in2.r[3] = m3;
-    return in2;
+    m3 = VecMul(in1.r[0], VecSplatX(in0.r[3]));
+    m3 = VecFmaddLane(in1.r[1], in0.r[3], m3, 1); 
+    m3 = VecFmaddLane(in1.r[2], in0.r[3], m3, 2); 
+    m3 = VecFmaddLane(in1.r[3], in0.r[3], m3, 3); 
+    in0.r[3] = m3;
+    return in0;
 }
 
 purefn Vector4x32f VECTORCALL Vector4Transform(Vector4x32f v, const Vector4x32f r[4])
@@ -670,5 +670,21 @@ static inline Vec2f WorldToScreenCoord(Matrix4 viewProj, Vec3f worldPos, int wid
     Vec2f ndc = WorldToNDC(viewProj, worldPos);
     return (Vec2f){ (width  * ndc.x), (height * ndc.y) };
 }
+
+purefn Matrix4 DQToMatrix(DualQuaternion dq)
+{
+    Matrix4 m = Matrix4Identity();
+    // Build rotation matrix from real part
+    MatrixFromQuaternion(&m.m[0][0], dq.real, 4);
+    
+    // Extract translation: t = 2 * dual * conjugate(real)
+    Vector4x32f real_conj = QConjugate(dq.real);
+    Vector4x32f t_quat = QMul(VecMul(dq.dual, VecSet1(2.0f)), real_conj);
+    
+    m.r[3] = t_quat;
+    VecSetW(m.r[3], 1.0f);
+    return m;
+}
+
 
 #endif
