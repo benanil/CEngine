@@ -11,3 +11,6 @@
 [submodule "Extern/sokol"]
 	path = Extern/sokol
 	url = https://github.com/floooh/sokol
+[submodule "Extern/meshoptimizer"]
+	path = Extern/meshoptimizer
+	url = https://github.com/zeux/meshoptimizer

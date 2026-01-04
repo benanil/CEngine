@@ -6,7 +6,7 @@
 #include "TLSF.h"
 
 #ifndef TLSF_MEMORY_SIZE
-    // 512 mb
+    // 256 mb
     #define TLSF_MEMORY_SIZE (512 * 1000 * 1000)
 #endif
 
@@ -61,10 +61,10 @@ uint64_t ArenaRemainingCurrent();
 uint64_t ArenaGetCurrentOfset();
 void     ArenaSetCurrentOfset(size_t offset);
 
-#define ArenaStruct(arena, type)      (ArenaAllocAlign(arena, sizeof(type), ALIGNOF(type)))
-#define ArenaArray(arena, type, cnt)  (ArenaAllocAlign(arena, sizeof(type) * cnt, ALIGNOF(type)))
-#define AlignPointer(ptr, align)(void*)AlignAddress((uint64_t)ptr, align);
-#define ArenaAllocGlobal(cnt)         (ArenaAllocAlign(&GlobalArena, (cnt), 2 * sizeof(void*)))
+#define ArenaStruct(arena, type)       (ArenaAllocAlign(arena, sizeof(type), ALIGNOF(type)))
+#define ArenaArray(arena, type, cnt)   (ArenaAllocAlign(arena, sizeof(type) * cnt, ALIGNOF(type)))
+#define AlignPointer(ptr, align) (void*)AlignAddress((uint64_t)ptr, align);
+#define ArenaAllocGlobal(cnt)          (ArenaAllocAlign(&GlobalArena, (cnt), 2 * sizeof(void*)))
 
 // TLSF Allocator
 void*   AllocateTLSFGlobal(size_t size);

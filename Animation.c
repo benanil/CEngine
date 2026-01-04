@@ -21,51 +21,7 @@
 #include "Math/Half.h"
 
 
-typedef struct AnimationData_
-{
-    int poseStart;
-    int numFrames;
-} AnimationData;
-
-typedef struct InstanceData_
-{
-    float normTime;
-    int animIndex;
-} InstanceData;
-
-
-typedef struct AnimationContainerCapacity_
-{
-    uint32_t numAnimPoses;
-    uint32_t numInverseBindMatrices;
-    uint32_t numBoneMatricesOut;
-    uint32_t numAnimData;
-    uint32_t numInstanceData;
-} AnimationContainerCapacity;
-
-typedef struct AnimationContainer_
-{
-    HalfPose*       animPoses;
-    Matrix4*        inverseBindMatrices;
-    Matrix3x4f16*   boneMatricesOut;
-    AnimationData*  animData;
-    InstanceData*   instanceData;
-
-    // send this empty when creating 
-    AnimationContainerCapacity capacity;
-} AnimationContainer;
-
-// give the buffers manually inside AnimationContainer this function will not allocate
-void AnimationContainer_Create(const SceneBundle* prefab, int numInstances, AnimationContainer* out)
-{
-    
-}
-
-void AnimationController_Create(const SceneBundle* prefab, 
-                                AnimationController* result,
-                                bool humanoid, 
-                                int lowerBodyStart, 
-                                Matrix3x4f16* outMatrices)
+void AnimationController_Create(const SceneBundle* prefab, AnimationController* result, Matrix3x4f16* outMatrices)
 {
     const ASkin* skin = &prefab->skins[0];
     if (skin == NULL) {
@@ -75,15 +31,12 @@ void AnimationController_Create(const SceneBundle* prefab,
         AX_WARN("number of joints is greater than max capacity"); 
         return; 
     }
-    result->mOutMatrices = outMatrices;
+    result->mOutMatrices   = outMatrices;
     result->mRootNodeIndex = Prefab_FindAnimRootNodeIndex(prefab);
-    result->mPrefab = prefab;
-    result->mState = AnimState_Update;
-    result->mNumNodes = prefab->numNodes;
-    result->mTrigerredNorm = 0.0f;
-    result->lowerBodyIdxStart = lowerBodyStart;
-    result->mRootScale = prefab->nodes[result->mRootNodeIndex].scale[0]; // 0.1610, rcp: 6.2111
-
+    result->mPrefab        = prefab;
+    result->mNumNodes      = prefab->numNodes;
+    result->mRootScale     = prefab->nodes[result->mRootNodeIndex].scale[0]; // 0.1610, rcp: 6.2111
+    
     ASSERT(result->mRootNodeIndex < MaxBonePoses);
     ASSERT(prefab->nodes[result->mRootNodeIndex].numChildren > 0); // root node has to have children nodes
 
@@ -96,6 +49,7 @@ void AnimationController_Create(const SceneBundle* prefab,
 
         pose.translation = VecLoad(inputNode.translation);
         pose.rotation = VecLoad(inputNode.rotation);
+        VecSetW(pose.translation, inputNode.scale[1]);
 
         animNode.numChildren = inputNode.numChildren;
         animNode.childrenStartIndex = childIndex;
@@ -108,39 +62,9 @@ void AnimationController_Create(const SceneBundle* prefab,
             result->mChildIndices[childIndex++] = (uint8_t)inputNode.children[j];
         }
     }
-
-    if (!humanoid)
-        return;
-    
-    result->mSpineNodeIdx = Prefab_FindNodeFromName(prefab, "mixamorig:Spine");
-    result->mNeckNodeIdx  = Prefab_FindNodeFromName(prefab, "mixamorig:Neck");
 }
 
-static inline void RotateNode(Pose* node, float xAngle, float yAngle)
-{
-    node->rotation = QMul(QMul(QFromXAngle(xAngle), QFromYAngle(yAngle)), node->rotation);
-}
-
-purefn Matrix4 GetNodeMatrix(const AnimationController* ac, int index)
-{
-    const Pose pose = ac->mAnimPoseA[index];
-    Matrix4 res = Matrix4Identity();
-    MatrixFromQuaternion(&res.m[0][0], pose.rotation, 4);
-    res.r[3] = pose.translation;
-    VecSetW(res.r[3], 1.0f);
-    return res;
-}
-
-// // handle neck, spine rotations
-// if (ac->mSpineNodeIdx != -1 && Absf(ac->mSpineYAngle) + Absf(ac->mSpineXAngle) > MATH_Epsilon) {
-//     RotateNode(ac->mAnimPoseA + ac->mSpineNodeIdx, ac->mSpineXAngle, ac->mSpineYAngle); 
-// }
-//     
-// if (ac->mNeckNodeIdx != -1 && (Absf(ac->mNeckYAngle) + Absf(ac->mSpineXAngle) > MATH_Epsilon)) {
-//     RotateNode(ac->mAnimPoseA + ac->mNeckNodeIdx, ac->mNeckXAngle, ac->mNeckYAngle); 
-// }
-
-void AnimationController_RecurseBoneMatrices(AnimationController* ac, int nodeIndex, Matrix4 parentMatrix)
+void AnimationController_RecurseBoneMatrices(AnimationController* ac, int nodeIndex, Vector4x32f parentPos, Vector4x32f parentRot)
 {
     const AnimNode* node = &ac->mAnimNodes[nodeIndex];
 
@@ -148,19 +72,45 @@ void AnimationController_RecurseBoneMatrices(AnimationController* ac, int nodeIn
     {
         int childIndex = ac->mChildIndices[node->childrenStartIndex + c];
 
-        ac->mBoneMatrices[childIndex] = Matrix4Multiply(GetNodeMatrix(ac, childIndex), parentMatrix);
+        Pose pose        = ac->mAnimPoseA[childIndex];
+        Vector4x32f t    = QMulVec3V(pose.translation, parentRot);
+        pose.translation = VecAdd(t, parentPos);
+        pose.rotation    = QMul(pose.rotation, parentRot);
 
-        AnimationController_RecurseBoneMatrices(ac, childIndex, ac->mBoneMatrices[childIndex]);
+        ac->mAnimPoseA[childIndex] = pose; 
+        AnimationController_RecurseBoneMatrices(ac, childIndex, pose.translation, pose.rotation);
     }
 }
 
-static void MergeAnims(Pose pose0[MaxBonePoses], const Pose pose1[MaxBonePoses], float animBlend, int numNodes)
+void AnimationController_UploadBoneMatrices(AnimationController* ac)
 {
-    for (int i = 0; i < numNodes; i++)
+    const ASkin* skin = &ac->mPrefab->skins[0];
+    const Matrix4* invMatrices = (const Matrix4*)skin->inverseBindMatrices;
+
+    for (int i = 0; i < skin->numJoints; i++)
     {
-        pose0[i].rotation    = QNLerp(pose0[i].rotation, pose1[i].rotation, animBlend); // slerp+norm?
-        pose0[i].translation = VecLerp(pose0[i].translation, pose1[i].translation, animBlend);
+        const Pose* pose = ac->mAnimPoseA + skin->joints[i];
+        Matrix4 mat = Matrix4Multiply(invMatrices[i], PositionRotationScaleVec(pose->translation, pose->rotation, VecOne()));
+        mat = Matrix4Transpose(mat);
+
+        // with AVX F16C this is single insstruction! vcvtps2ph 
+        Float8ToHalf8(ac->mOutMatrices[i].x, &mat.m[0][0]);
+        Float4ToHalf4(ac->mOutMatrices[i].z, &mat.m[2][0]); // this is single instruction with it as well
     }
+}
+
+void AnimationController_UploadPose(AnimationController* ac, const Pose pose[MaxBonePoses])
+{
+    int rootIdx = ac->mRootNodeIndex;
+    const Pose* root = pose + rootIdx;
+    AnimationController_RecurseBoneMatrices(ac, rootIdx, root->translation, root->rotation);
+    AnimationController_UploadBoneMatrices(ac);
+}
+
+void AnimationController_PlayAnim(AnimationController* ac, int index, float norm)
+{   
+    AnimationController_SampleAnimationPose(ac, ac->mAnimPoseA, index, norm);
+    AnimationController_UploadPose(ac, ac->mAnimPoseA);
 }
 
 void AnimationController_SampleAnimationPose(const AnimationController* ac, Pose pose[MaxBonePoses], int animIdx, float normTime)
@@ -216,75 +166,69 @@ void AnimationController_SampleAnimationPose(const AnimationController* ac, Pose
                 pose[targetNode].translation = VecLerp(begin, end, t);
                 break;
             case AAnimTargetPath_Rotation:
-                rot = QSlerp(begin, end, t);
+                rot = QNLerp(begin, end, t);
                 pose[targetNode].rotation = QNorm(rot); // QNormEst maybe
                 break;
-            // no scale for now
         };
     }
 }
 
-void AnimationController_UploadBoneMatrices(AnimationController* ac)
-{
-    const ASkin* skin = &ac->mPrefab->skins[0];
-    const Matrix4* invMatrices = (const Matrix4*)skin->inverseBindMatrices;
 
-    for (int i = 0; i < skin->numJoints; i++)
+////////            ANIMATED CHARACTER            ////////
+
+
+void AnimatedCharacter_Create(const SceneBundle* prefab, AnimatedCharacter* result, int lowerBodyStart, Matrix3x4f16* outMatrices)
+{
+    result->lowerBodyIdxStart = lowerBodyStart;
+    result->mState = AnimState_Update;
+    result->mTrigerredNorm = 0.0f;
+
+    result->mSpineNodeIdx = Prefab_FindNodeFromName(prefab, "mixamorig:Spine");
+    result->mNeckNodeIdx  = Prefab_FindNodeFromName(prefab, "mixamorig:Neck");    
+    
+    AnimationController_Create(prefab, &result->controller, outMatrices);
+}
+
+
+static inline void RotateNode(Pose* node, float xAngle, float yAngle)
+{
+    node->rotation = QMul(QMul(QFromXAngle(xAngle), QFromYAngle(yAngle)), node->rotation);
+}
+
+static void MergeAnims(Pose pose0[MaxBonePoses], const Pose pose1[MaxBonePoses], float animBlend, int numNodes)
+{
+    for (int i = 0; i < numNodes; i++)
     {
-        Matrix4 mat = Matrix4Multiply(invMatrices[i], ac->mBoneMatrices[skin->joints[i]]);
-        mat = Matrix4Transpose(mat);
-        
-        // with AVX F16C this is single instruction! vcvtps2ph 
-        Float8ToHalf8(ac->mOutMatrices[i].x, &mat.m[0][0]);
-        Float4ToHalf4(ac->mOutMatrices[i].z, &mat.m[2][0]); // this is single instruction with it as well
+        pose0[i].rotation    = QNLerp(pose0[i].rotation, pose1[i].rotation, animBlend); // slerp+norm?
+        pose0[i].translation = VecLerp(pose0[i].translation, pose1[i].translation, animBlend);
     }
 }
 
-
-void AnimationController_UploadPose(AnimationController* ac, const Pose pose[MaxBonePoses])
+static void CopyPoses(Pose* destination, const Pose* pose, int begin, int numPoses)
 {
-    int rootIdx = ac->mRootNodeIndex;
-    ac->mBoneMatrices[rootIdx] = PositionRotationScaleVec(pose[rootIdx].translation, pose[rootIdx].rotation, VecSet1(ac->mRootScale));
-    
-    AnimationController_RecurseBoneMatrices(ac, ac->mRootNodeIndex, ac->mBoneMatrices[rootIdx]);
-
-    AnimationController_UploadBoneMatrices(ac);
-}
-
-static void InitNodes(Pose* nodes, const Pose* pose, int begin, int numNodes)
-{
-    numNodes += begin;
-    for (int i = begin; i < numNodes; i++)
+    numPoses += begin;
+    for (int i = begin; i < numPoses; i++)
     {
-        nodes[i].translation = pose[i].translation;
-        nodes[i].rotation    = pose[i].rotation;
+        destination[i].translation = pose[i].translation;
+        destination[i].rotation    = pose[i].rotation;
     }
 }
 
 // when we want to play different animations with lower body and upper body
-void AnimationController_UploadPoseUpperLower(AnimationController* ac, const Pose lowerPose[MaxBonePoses], const Pose uperPose[MaxBonePoses])
+void AnimatedCharacter_UploadPoseUpperLower(AnimatedCharacter* ac, const Pose lowerPose[MaxBonePoses], const Pose uperPose[MaxBonePoses])
 {
     // apply posess to lower body and upper body seperately, so both of it has diferrent animations
-    InitNodes(ac->mAnimPoseA, lowerPose, ac->lowerBodyIdxStart, ac->mNumNodes - ac->lowerBodyIdxStart);
-    InitNodes(ac->mAnimPoseA, uperPose, 0, ac->lowerBodyIdxStart);
+    CopyPoses(ac->controller.mAnimPoseA, lowerPose, ac->lowerBodyIdxStart, ac->controller.mNumNodes - ac->lowerBodyIdxStart);
+    CopyPoses(ac->controller.mAnimPoseA, uperPose, 0, ac->lowerBodyIdxStart);
 
-    const AnimNode rootNode = ac->mAnimNodes[ac->mRootNodeIndex];
-    const Matrix4 rootMatrix = GetNodeMatrix(ac, ac->mRootNodeIndex);
-    ac->mBoneMatrices[ac->mRootNodeIndex] = rootMatrix;
-
-    AnimationController_RecurseBoneMatrices(ac, ac->mRootNodeIndex, rootMatrix);
-    AnimationController_UploadBoneMatrices(ac);
+    const Pose* root = ac->controller.mAnimPoseA + ac->controller.mRootNodeIndex;
+    AnimationController_RecurseBoneMatrices(&ac->controller, ac->controller.mRootNodeIndex, root->translation, root->rotation);
+    AnimationController_UploadBoneMatrices(&ac->controller);
 }
 
-void AnimationController_PlayAnim(AnimationController* ac, int index, float norm)
+bool AnimatedCharacter_Trigger(AnimatedCharacter* ac, int index, float transitionInTime, float transitionOutTime, eAnimTriggerOpt triggerOpt)
 {
-    AnimationController_SampleAnimationPose(ac, ac->mAnimPoseA, index, norm);
-    AnimationController_UploadPose(ac, ac->mAnimPoseA);
-}
-
-bool AnimationController_TriggerAnim(AnimationController* ac, int index, float transitionInTime, float transitionOutTime, eAnimTriggerOpt triggerOpt)
-{
-    if (AnimationController_IsTrigerred(ac)) return false; // already trigerred
+    if (AnimatedCharacter_IsTrigerred(ac)) return false; // already trigerred
 
     ac->mTriggerredAnim = index;
     ac->mTriggerOpt = triggerOpt;
@@ -297,44 +241,44 @@ bool AnimationController_TriggerAnim(AnimationController* ac, int index, float t
     }
 
     ac->mState = AnimState_TriggerIn;
-    SmallMemCpy(ac->mAnimPoseC, ac->mAnimPoseA, sizeof(ac->mAnimPoseA));
+    SmallMemCpy(ac->mAnimPoseC, ac->controller.mAnimPoseA, sizeof(ac->controller.mAnimPoseA));
     if ((triggerOpt & eAnimTriggerOpt_ReverseOut))
         ac->mAnimTime.y = 0.0f;
     return true;
 }
 
-bool AnimationController_TriggerTransition(AnimationController* ac, float deltaTime, int targetAnim)
+bool AnimatedCharacter_TriggerTransition(AnimatedCharacter* ac, float deltaTime, int targetAnim)
 {
     float newNorm   = Clamp01f((ac->mTransitionTime - ac->mCurTransitionTime) / ac->mTransitionTime);
     float animDelta = Clamp01f(deltaTime * (1.0f / MMAX(1.0f - newNorm, MATH_Epsilon)));
-    AnimationController_SampleAnimationPose(ac, ac->mAnimPoseD, targetAnim, ac->mAnimTime.y);
-    MergeAnims(ac->mAnimPoseC, ac->mAnimPoseD, animDelta, ac->mNumNodes);
+    AnimationController_SampleAnimationPose(&ac->controller, ac->mAnimPoseD, targetAnim, ac->mAnimTime.y);
+    MergeAnims(ac->mAnimPoseC, ac->mAnimPoseD, animDelta, ac->controller.mNumNodes);
     ac->mCurTransitionTime -= deltaTime;
     return ac->mCurTransitionTime <= 0.0f;
 }
 
 // x, y has to be between -1.0 and 1.0
-void AnimationController_EvaluateLocomotion(AnimationController* ac, float x, float y, float animSpeed)
+void AnimatedCharacter_EvaluateLocomotion(AnimatedCharacter* ac, float x, float y, float animSpeed)
 {
     const float deltaTime = (float)GetDeltaTime();
-    const bool wasTriggerState = AnimationController_IsTrigerred(ac);
+    const bool wasTriggerState = AnimatedCharacter_IsTrigerred(ac);
 
     if (ac->mState == AnimState_TriggerIn)
     {
-        if (AnimationController_TriggerTransition(ac, deltaTime, ac->mTriggerredAnim)) 
+        if (AnimatedCharacter_TriggerTransition(ac, deltaTime, ac->mTriggerredAnim)) 
             ac->mState = AnimState_TriggerPlaying;
     }
     else if (ac->mState == AnimState_TriggerOut)
     {
         if (!!!(ac->mTriggerOpt & eAnimTriggerOpt_ReverseOut)) 
         {
-            if (AnimationController_TriggerTransition(ac, deltaTime, ac->mLastAnim))
+            if (AnimatedCharacter_TriggerTransition(ac, deltaTime, ac->mLastAnim))
                 ac->mState = AnimState_Update;
         }
         else 
         {
-            AnimationController_SampleAnimationPose(ac, ac->mAnimPoseC, ac->mTriggerredAnim, -ac->mTrigerredNorm);
-            float animStep = 1.0f / ac->mPrefab->animations[ac->mTriggerredAnim].duration;
+            AnimationController_SampleAnimationPose(&ac->controller, ac->mAnimPoseC, ac->mTriggerredAnim, -ac->mTrigerredNorm);
+            float animStep = 1.0f / ac->controller.mPrefab->animations[ac->mTriggerredAnim].duration;
             ac->mTrigerredNorm = Clamp01f(ac->mTrigerredNorm + (animSpeed * animStep * deltaTime));
             if (ac->mTrigerredNorm >= 1.0f)
                 ac->mState = AnimState_Update;
@@ -342,9 +286,9 @@ void AnimationController_EvaluateLocomotion(AnimationController* ac, float x, fl
     }
     else if (ac->mState == AnimState_TriggerPlaying)
     {
-        AnimationController_SampleAnimationPose(ac, ac->mAnimPoseC, ac->mTriggerredAnim, ac->mTrigerredNorm);
+        AnimationController_SampleAnimationPose(&ac->controller, ac->mAnimPoseC, ac->mTriggerredAnim, ac->mTrigerredNorm);
 
-        float animStep = 1.0f / ac->mPrefab->animations[ac->mTriggerredAnim].duration;
+        float animStep = 1.0f / ac->controller.mPrefab->animations[ac->mTriggerredAnim].duration;
         ac->mTrigerredNorm = Clamp01f(ac->mTrigerredNorm + (animSpeed * animStep * deltaTime));
           
         if (ac->mTrigerredNorm >= 1.0f)
@@ -356,7 +300,7 @@ void AnimationController_EvaluateLocomotion(AnimationController* ac, float x, fl
         }
     }
 
-    int yIndex = AnimationController_GetAnim(ac, aMiddle, 0);
+    int yIndex = AnimatedCharacter_GetAnim(ac, aMiddle, 0);
     // if trigerred animation is not standing, we don't have to sample walking or running animations
     if (!wasTriggerState || (wasTriggerState && !!(ac->mTriggerOpt & eAnimTriggerOpt_Standing) && Absf(y) > 0.001f))
     {
@@ -365,34 +309,34 @@ void AnimationController_EvaluateLocomotion(AnimationController* ac, float x, fl
         int yi = (int)(y);
         // sample y anim
         ASSERTR(yi <= 3, return); // must be between 1 and 4
-        yIndex = AnimationController_GetAnim(ac, aMiddle, yi);
+        yIndex = AnimatedCharacter_GetAnim(ac, aMiddle, yi);
 
-        AnimationController_SampleAnimationPose(ac, ac->mAnimPoseA, yIndex, ac->mAnimTime.y);
+        AnimationController_SampleAnimationPose(&ac->controller, ac->controller.mAnimPoseA, yIndex, ac->mAnimTime.y);
         float yBlend = Fractf(y);
 
         bool shouldAnimBlendY = yi != 3 && yBlend > 0.00002f;
         if (shouldAnimBlendY)
         {
-            yIndex = AnimationController_GetAnim(ac, aMiddle, yi + 1);
-            AnimationController_SampleAnimationPose(ac, ac->mAnimPoseB, yIndex, ac->mAnimTime.y);
-            MergeAnims(ac->mAnimPoseA, ac->mAnimPoseB, EaseOut(yBlend), ac->mNumNodes);
+            yIndex = AnimatedCharacter_GetAnim(ac, aMiddle, yi + 1);
+            AnimationController_SampleAnimationPose(&ac->controller, ac->mAnimPoseB, yIndex, ac->mAnimTime.y);
+            MergeAnims(ac->controller.mAnimPoseA, ac->mAnimPoseB, EaseOut(yBlend), ac->controller.mNumNodes);
         }
 
         // if anim is two seconds animStep is 0.5 because we are using normalized value
-        float yAnimStep = 1.0f / ac->mPrefab->animations[yIndex].duration;
+        float yAnimStep = 1.0f / ac->controller.mPrefab->animations[yIndex].duration;
         ac->mAnimTime.y += animSpeed * yAnimStep * deltaTime;
         ac->mAnimTime.y  = Fractf(ac->mAnimTime.y);
     }
     ac->mLastAnim = yIndex;
 
     if (!wasTriggerState) {
-        AnimationController_UploadPose(ac, ac->mAnimPoseA);
+        AnimationController_UploadPose(&ac->controller, ac->controller.mAnimPoseA);
     }
     else {
         if (!!(ac->mTriggerOpt & eAnimTriggerOpt_Standing) && y > 0.001f)
-            AnimationController_UploadPoseUpperLower(ac, ac->mAnimPoseA, ac->mAnimPoseC);
+            AnimatedCharacter_UploadPoseUpperLower(ac, ac->controller.mAnimPoseA, ac->mAnimPoseC);
         else
-            AnimationController_UploadPose(ac, ac->mAnimPoseC);
+            AnimationController_UploadPose(&ac->controller, ac->mAnimPoseC);
     }
 }
 
@@ -403,3 +347,13 @@ void AnimationController_Clear(AnimationController* animSystem)
 void DestroyAnimationSystem()
 { }
     
+
+// // handle neck, spine rotations
+// if (ac->mSpineNodeIdx != -1 && Absf(ac->mSpineYAngle) + Absf(ac->mSpineXAngle) > MATH_Epsilon) {
+//     RotateNode(ac->mAnimPoseA + ac->mSpineNodeIdx, ac->mSpineXAngle, ac->mSpineYAngle); 
+// }
+//     
+// if (ac->mNeckNodeIdx != -1 && (Absf(ac->mNeckYAngle) + Absf(ac->mSpineXAngle) > MATH_Epsilon)) {
+//     RotateNode(ac->mAnimPoseA + ac->mNeckNodeIdx, ac->mNeckXAngle, ac->mNeckYAngle); 
+// }
+

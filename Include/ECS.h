@@ -10,6 +10,7 @@ typedef struct ECS_
 {
     Vector4x32f EntityPositions[MAX_ENTITY];
     uint32_t    EntityRotations[MAX_ENTITY * 2];
+
     uint32_t    EntityData[MAX_ENTITY];
 } ECS;
 

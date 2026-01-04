@@ -695,3 +695,24 @@ void RemoveFolder(const char* path, void* unused)
         RemoveFile(path);
     }
 }
+
+static void WriteFloat4(Vector4x32f v, AFile file0)
+{
+    char buff[128];
+    int sizeLen = FloatToString(buff, VecGetX(v), 4);
+    buff[sizeLen] = '\n';
+    AFileWrite(buff, sizeLen+1, file0, 1);
+
+    sizeLen = FloatToString(buff, VecGetY(v), 4);
+    buff[sizeLen] = '\n';
+    AFileWrite(buff, sizeLen+1, file0, 1);
+
+    sizeLen = FloatToString(buff, VecGetZ(v), 4);
+    buff[sizeLen] = '\n';
+    AFileWrite(buff, sizeLen+1, file0, 1);
+
+    sizeLen = FloatToString(buff, VecGetW(v), 4);
+    buff[sizeLen] = '\n';
+    buff[sizeLen+1] = '\n';
+    AFileWrite(buff, sizeLen+2, file0, 1);
+}

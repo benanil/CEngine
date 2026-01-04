@@ -218,7 +218,25 @@
 				<Path>AOC0.txt</Path>
 			</File>
 			<File>
-				<Path>BoneScales.txt</Path>
+				<Path>Compile.c</Path>
+			</File>
+			<File>
+				<Path>BuildCompile.bat</Path>
+			</File>
+			<File>
+				<Path>scales.txt</Path>
+			</File>
+			<File>
+				<Path>invscales.txt</Path>
+			</File>
+			<File>
+				<Path>nodeNames.txt</Path>
+			</File>
+			<File>
+				<Path>transformedCorrect.txt</Path>
+			</File>
+			<File>
+				<Path>transformedFalse.txt</Path>
 			</File>
 		</Children>
 	</Workspace>

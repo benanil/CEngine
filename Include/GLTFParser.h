@@ -132,6 +132,9 @@ typedef struct APrimitive_
     // pointers to binary file to lookup position, texture, normal..
     void* indices; 
     void* vertices;
+    void* lodIndices75; // %75 simplified mesh
+    void* lodIndices50; // %50 simplified mesh
+    
     unsigned bvhNodeIndex;
 
     unsigned attributes; // AAttribType Position, Normal, TexCoord, Tangent, masks
@@ -139,6 +142,9 @@ typedef struct APrimitive_
     int numIndices;
     int numVertices;
     int indexOffset;
+    int numIndicesLOD50;
+    int numIndicesLOD75;
+    
     short jointType;   // GraphicType_UnsignedInt, GraphicType_UnsignedShort.. 
     short jointCount;  // per vertex bone count (joint), 1-4
     short jointStride; // lets say index data is rgba16u  [r, g, b, a, .......] stride might be bigger than joint

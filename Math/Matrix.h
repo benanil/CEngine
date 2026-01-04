@@ -81,13 +81,6 @@ purefn Matrix3 Matrix3LookAt(Vec3f direction, Vec3f up)
     return result;
 }
 
-purefn Matrix3 Matrix3FromQuaternion(Quaternion quat)
-{
-    Matrix3 res = {0};
-    MatrixFromQuaternion(&res.r[0].x, quat, 3);
-    return res;
-}
-    
 purefn Quaternion Matrix3ToQuaternion(Matrix3 m)
 {
     Quaternion Orientation;
@@ -471,7 +464,7 @@ purefn Matrix4 PositionRotationScaleVec(Vector4x32f position, Quaternion rotatio
 {
     Matrix4 res;
     // Export rotation to matrix
-    MatrixFromQuaternion(&res.m[0][0], rotation, 4);
+    Matrix4FromQuaternion(&res.m[0][0], rotation);
     // Scale 3x3 matrix by given scale
     res.r[0] = VecMul(res.r[0], VecSplatX(scale));
     res.r[1] = VecMul(res.r[1], VecSplatY(scale));
@@ -492,7 +485,7 @@ purefn Matrix4 PositionRotationScalePtr(const float* position, const float* rota
 {
     Matrix4 res = {0};
     // Export rotation to matrix
-    MatrixFromQuaternion(&res.m[0][0], VecLoad(rotation), 4);
+    Matrix4FromQuaternion(&res.m[0][0], VecLoad(rotation));
     // Scale 3x3 matrix by given scale
     Vector4x32f vecScale = VecLoad(scale);
     res.r[0] = VecMul(res.r[0], VecSplatX(vecScale));
@@ -532,7 +525,7 @@ inline Matrix4 VECTORCALL MatrixFromQuaternionV(Quaternion q)
 {
     #if defined(AX_ARM)
     Matrix4 mat = {};
-    MatrixFromQuaternion(&mat.m[0][0], q, 4);
+    Matrix4FromQuaternion(&mat.m[0][0], q);
     mat.m[3][3] = 1.0f;
     return mat;
     #else
@@ -675,7 +668,7 @@ purefn Matrix4 DQToMatrix(DualQuaternion dq)
 {
     Matrix4 m = Matrix4Identity();
     // Build rotation matrix from real part
-    MatrixFromQuaternion(&m.m[0][0], dq.real, 4);
+    Matrix4FromQuaternion(&m.m[0][0], dq.real);
     
     // Extract translation: t = 2 * dual * conjugate(real)
     Vector4x32f real_conj = QConjugate(dq.real);

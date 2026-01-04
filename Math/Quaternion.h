@@ -202,8 +202,7 @@ static inline void QuaternionFromMatrix(float* Orientation, const float* m, int 
     } 
 }
 
-// number of columns of matrix, 3 or 4
-static inline void MatrixFromQuaternion(float* mat, Quaternion quat, int numCol)
+static inline void Matrix3FromQuaternion(float* mat, Quaternion quat)
 {
     xyzw q;
     VecStore(&q.x, quat);
@@ -213,20 +212,37 @@ static inline void MatrixFromQuaternion(float* mat, Quaternion quat, int numCol)
     num3 = q.y * q.w, num2 = q.y * q.z,
     num  = q.x * q.w;
 
-    mat[numCol * 0 + 0] = 1.0f - (2.0f * (num8 + num7));
-    mat[numCol * 0 + 1] = 2.0f * (num6 + num5);
-    mat[numCol * 0 + 2] = 2.0f * (num4 - num3);
-    
-    mat[numCol * 1 + 0] = 2.0f * (num6 - num5);
-    mat[numCol * 1 + 1] = 1.0f - (2.0f * (num7 + num9));
-    mat[numCol * 1 + 2] = 2.0f * (num2 + num);
-    
-    mat[numCol * 2 + 0] = 2.0f * (num4 + num3);
-    mat[numCol * 2 + 1] = 2.0f * (num2 - num);
-    mat[numCol * 2 + 2] = 1.0f - (2.0f * (num8 + num9));
-    
-    if (numCol == 4)
-        mat[numCol * 3 + 3] = 1.0f;
+    mat[3 * 0 + 0] = 1.0f - (2.0f * (num8 + num7));
+    mat[3 * 0 + 1] = 2.0f * (num6 + num5);
+    mat[3 * 0 + 2] = 2.0f * (num4 - num3);
+    mat[3 * 1 + 0] = 2.0f * (num6 - num5);
+    mat[3 * 1 + 1] = 1.0f - (2.0f * (num7 + num9));
+    mat[3 * 1 + 2] = 2.0f * (num2 + num);
+    mat[3 * 2 + 0] = 2.0f * (num4 + num3);
+    mat[3 * 2 + 1] = 2.0f * (num2 - num);
+    mat[3 * 2 + 2] = 1.0f - (2.0f * (num8 + num9));
+}
+
+static inline void Matrix4FromQuaternion(float* mat, Quaternion quat)
+{
+    xyzw q;
+    VecStore(&q.x, quat);
+    const float num9 = q.x * q.x, num8 = q.y * q.y,
+    num7 = q.z * q.z, num6 = q.x * q.y,
+    num5 = q.z * q.w, num4 = q.z * q.x,
+    num3 = q.y * q.w, num2 = q.y * q.z,
+    num  = q.x * q.w;
+
+    mat[4 * 0 + 0] = 1.0f - (2.0f * (num8 + num7));
+    mat[4 * 0 + 1] = 2.0f * (num6 + num5);
+    mat[4 * 0 + 2] = 2.0f * (num4 - num3);
+    mat[4 * 1 + 0] = 2.0f * (num6 - num5);
+    mat[4 * 1 + 1] = 1.0f - (2.0f * (num7 + num9));
+    mat[4 * 1 + 2] = 2.0f * (num2 + num);
+    mat[4 * 2 + 0] = 2.0f * (num4 + num3);
+    mat[4 * 2 + 1] = 2.0f * (num2 - num);
+    mat[4 * 2 + 2] = 1.0f - (2.0f * (num8 + num9));
+    mat[4 * 3 + 3] = 1.0f;
 }
 
 purefn Quaternion QFromLookRotation(Vec3f direction, Vec3f up)

@@ -821,6 +821,103 @@ int LoadSceneImages(const char* texturePath, Texture* textures, int numImages)
     return result;
 }
 
+void GenerateLOD_50_GLTF(SceneBundle* sceneBundle)
+{
+    for (int m = 0; m < sceneBundle->numMeshes; m++)
+    {
+        AMesh mesh = sceneBundle->meshes[m];
+
+        for (int p = 0; p < mesh.numPrimitives; p++)
+        {
+            APrimitive primitive = mesh.primitives[p];
+        
+            size_t numIndices = (size_t)primitive.numIndices;
+            int* indicesLod0 = ArenaAllocGlobal(numIndices * sizeof(int));
+        
+            float resultError;
+            size_t numSimplified = meshopt_simplifySloppy(indicesLod0, 
+                                                          (const uint32_t*)primitive.indices, 
+                                                          numIndices, 
+                                                          (const float*)sceneBundle->allVertices, 
+                                                          (size_t)sceneBundle->totalVertices,
+                                                          sizeof(ASkinedVertex),
+                                                          NULL,
+                                                          numIndices - (numIndices >> 1), 
+                                                          0.04f,
+                                                          &resultError);
+            primitive.numIndicesLOD50 = numSimplified;
+            MemCpy(primitive.lodIndices50, indicesLod0, numSimplified * sizeof(uint32_t));
+            ArenaPopGlobal(numSimplified * sizeof(int));
+        }
+    }
+}
+
+void GenerateLOD_75_GLTF(SceneBundle* sceneBundle)
+{
+    for (int m = 0; m < sceneBundle->numMeshes; m++)
+    {
+        AMesh mesh = sceneBundle->meshes[m];
+
+        for (int p = 0; p < mesh.numPrimitives; p++)
+        {
+            APrimitive primitive = mesh.primitives[p];
+        
+            size_t numIndices = (size_t)primitive.numIndices;
+            int* indicesLod0 = ArenaAllocGlobal(numIndices * sizeof(int));
+        
+            float resultError;
+            size_t numSimplified = meshopt_simplifySloppy(indicesLod0, 
+                                                          (const uint32_t*)primitive.indices, 
+                                                          numIndices, 
+                                                          (const float*)sceneBundle->allVertices, 
+                                                          (size_t)sceneBundle->totalVertices,
+                                                          sizeof(ASkinedVertex),
+                                                          NULL,
+                                                          numIndices - (numIndices >> 2), 
+                                                          0.04f,
+                                                          &resultError);
+            primitive.numIndicesLOD75 = numSimplified;
+            MemCpy(primitive.lodIndices75, indicesLod0, numSimplified * sizeof(uint32_t));
+            ArenaPopGlobal(numSimplified * sizeof(int));
+        }
+    }
+}
+
+void OptimizeMesh(const SceneBundle* gltf)
+{
+    int* remap = ArenaAllocGlobal(gltf->totalIndices * sizeof(int));
+    size_t totalVertices = meshopt_generateVertexRemap(remap,
+                                                       (const uint32_t *)gltf->allIndices,
+                                                       (size_t)gltf->totalIndices,
+                                                       gltf->allVertices,
+                                                       (size_t)gltf->totalVertices,
+                                                       sizeof(ASkinedVertex));
+
+    int* temp = ArenaAllocGlobal(gltf->totalIndices * sizeof(int));
+    meshopt_remapIndexBuffer(temp, gltf->allIndices, (size_t)gltf->totalIndices, remap);
+
+    ASkinedVertex* vertexBufferNew = ArenaAllocGlobal((size_t)gltf->totalVertices * sizeof(ASkinedVertex));
+    meshopt_remapVertexBuffer(vertexBufferNew,
+                              gltf->allVertices,
+                              (size_t)gltf->totalVertices,
+                              sizeof(ASkinedVertex),
+                              remap);
+
+    MemSet(gltf->allVertices, 0, (size_t)gltf->totalVertices * sizeof(ASkinedVertex));
+    MemSet(gltf->allIndices , 0, (size_t)gltf->totalIndices * sizeof(int));
+    
+    MemCpy(gltf->allIndices , temp, (size_t)gltf->totalIndices * sizeof(int));
+    MemCpy(gltf->allVertices, vertexBufferNew, (size_t)totalVertices * sizeof(ASkinedVertex));
+    
+    ArenaPopGlobal((size_t)gltf->totalIndices * sizeof(int)); // remap
+    ArenaPopGlobal((size_t)gltf->totalIndices * sizeof(int)); // temp
+    ArenaPopGlobal((size_t)gltf->totalVertices * sizeof(ASkinedVertex)); // vertexBufferNew
+
+    meshopt_optimizeVertexCache(gltf->allIndices , gltf->allIndices, gltf->totalIndices, (size_t)totalVertices);
+    meshopt_optimizeVertexFetch(gltf->allVertices, gltf->allIndices, gltf->totalIndices,
+                                gltf->allVertices, (size_t)totalVertices, sizeof(ASkinedVertex));
+}
+
 /*//////////////////////////////////////////////////////////////////////////*/
 /*                            Binary Save                                   */
 /*//////////////////////////////////////////////////////////////////////////*/
@@ -886,6 +983,8 @@ int SaveGLTFBinary(const SceneBundle* gltf, const char* path)
     short isSkined = (short)(gltf->skins != NULL);
     AFileWrite(&isSkined, sizeof(short), file, 1);
     
+    OptimizeMesh(gltf);
+
     AFileWrite(&gltf->totalIndices, sizeof(int), file, 1);
     AFileWrite(&gltf->totalVertices, sizeof(int), file, 1);
     
@@ -1140,7 +1239,6 @@ int LoadSceneBundleBinary(const char* path, SceneBundle* gltf)
         AFileRead(compressedBuffer, compressedSize, file, 1);
        
         zsinflate(gltf->allVertices, allVertexSize, compressedBuffer, compressedSize);
-        // ZSTD_decompress(gltf->allVertices, allVertexSize, compressedBuffer, compressedSize);
 
         AFileRead(&compressedSize, sizeof(uint64_t), file, 1);
         AFileRead(compressedBuffer, compressedSize, file, 1);

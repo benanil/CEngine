@@ -5,6 +5,9 @@
 #include "Graphics.h"
 #include "../Math/Matrix.h"
 
+// make 192 or 256 if we use more joints
+#define MaxBonePoses  128
+
 
 #if defined(__cplusplus)
 extern "C" {
@@ -62,10 +65,6 @@ typedef struct HalfPose_ {
     half rotation[4];
 } HalfPose;
 
-
-// make 192 or 256 if we use more joints
-#define MaxBonePoses  128
-
 typedef struct AnimNode_
 {
     uint8_t numChildren;
@@ -75,31 +74,41 @@ typedef struct AnimNode_
 typedef struct AnimationController_
 {
     const SceneBundle* mPrefab;
-    eAnimState mState;
-    AnimNode mAnimNodes[MaxBonePoses];
-    int mRootNodeIndex;
-    int mNumNodes;
+
+    int   mRootNodeIndex;
+    int   mNumNodes;
     float mRootScale;
+   
+    Matrix3x4f16* mOutMatrices;
 
-    Vec2f mAnimTime;
+    AnimNode mAnimNodes[MaxBonePoses];
+    Pose     mAnimPoseA[MaxBonePoses]; // < the result bone array that we send to GPU
+    uint8_t  mChildIndices[MaxBonePoses * 2];
 
-    int mTriggerredAnim;
-    float mTrigerredNorm;
-    float mTransitionTime; // trigger transition time
-    float mTransitionOutTime;
-    float mCurTransitionTime;
-    int mLastAnim;
-    eAnimTriggerOpt mTriggerOpt;
+} AnimationController;
 
-    int mSpineNodeIdx; // < upper body root bone 
-    int mNeckNodeIdx;
-
+typedef struct AnimatedCharacter_
+{
     // lower body bones are starting from 60th with Brute character and 58 with mixamo Paladin Character
     // used for animating diferrent animations for legs and uper body
     // this value can change from character to character. 
     // you can detect using 3DVert and GBuffer shader just uncomment lines with vBoneIdx, and it will visualize lower body as white
     // Maybe Add: automatic detect.
     int lowerBodyIdxStart; 
+
+    int mSpineNodeIdx; // < upper body root bone 
+    int mNeckNodeIdx;
+ 
+    int mTriggerredAnim;
+    int mLastAnim;
+   
+    float mTrigerredNorm;
+    float mTransitionTime; // trigger transition time
+    float mTransitionOutTime;
+    float mCurTransitionTime;
+
+    eAnimTriggerOpt mTriggerOpt;
+    eAnimState mState;
 
     // angle's recomended values are between (-PI/3, PI/3)
     // calculate the angle between target and player, then clamp the value between the limits
@@ -108,19 +117,13 @@ typedef struct AnimationController_
     float mNeckYAngle;
     float mSpineXAngle; // < will rotate around this axis (normalized) default vec3::up
     float mNeckXAngle;  // < will rotate around this axis (normalized) default vec3::up
-
-    // two posses for blending
-    Pose mAnimPoseA[MaxBonePoses]; // < the result bone array that we send to GPU
-    Pose mAnimPoseB[MaxBonePoses]; // < blend target
     
+    Vec2f mAnimTime;
+
+    Pose mAnimPoseB[MaxBonePoses]; // < blend target
+    // two posses for blending
     Pose mAnimPoseC[MaxBonePoses]; // < Trigerred animations result
     Pose mAnimPoseD[MaxBonePoses]; // < Trigerred Animations blend target
-
-    Matrix4 mBoneMatrices[MaxBonePoses];
-    Matrix3x4f16* mOutMatrices;
-    DualQuaternionHalf* mOutDualQuaternions;
-    
-    uint8_t mChildIndices[MaxBonePoses * 2];
 
     // animation indexes to blend coordinates
     // Given xy blend coordinates, we will blend animations.
@@ -130,66 +133,78 @@ typedef struct AnimationController_
     //  #  #  #  <- DiagonalWalk, ForwardWalk, DiagonalWalk
     //  #  #  #  <- StrafeLeft  , Idle       , StrafeRight 
     int mLocomotionIndices   [4][3];
-    int mLocomotionIndicesInv[3][3];    
-} AnimationController;
+    int mLocomotionIndicesInv[3][3]; 
+    
+    AnimationController controller;
+} AnimatedCharacter;
 
-static inline void AnimationController_SetAnim(AnimationController* ac, int x, int y, int index)
+
+////////           ANIMATION CONTROLLER           ////////
+
+
+// bool humanoid = true, int lowerBodyStart = 58, animId = global animation controllerIndex 
+void AnimationController_Create(const SceneBundle* prefab, 
+                                AnimationController* animController, 
+                                Matrix3x4f16* outMatrices);
+
+
+// play the given animation, norm is the animation progress between 0.0 and 1.0
+void AnimationController_PlayAnim(AnimationController* ac, int index, float norm);
+
+void AnimationController_UploadBoneMatrices(AnimationController* ac);
+
+void AnimationController_Clear(AnimationController* ac);
+
+
+////////            ANIMATED CHARACTER            ////////
+
+
+static inline void AnimatedCharacter_SetAnim(AnimatedCharacter* ac, int x, int y, int index)
 {
     if (y >= 0) ac->mLocomotionIndices[y][x] = index;
     else        ac->mLocomotionIndicesInv[Abs32(y-1.0f)][x] = index;
 }
 
-static inline int AnimationController_GetAnim(const AnimationController* ac, int x, int y)
+static inline int AnimatedCharacter_GetAnim(const AnimatedCharacter* ac, int x, int y)
 {
     if (y >= 0) return ac->mLocomotionIndices[y][x];
     else        return ac->mLocomotionIndicesInv[Abs32(y)-1][x];
 }
     
-static inline bool AnimationController_IsTrigerred(const AnimationController* ac)
+static inline bool AnimatedCharacter_IsTrigerred(const AnimatedCharacter* ac)
 {
     return (ac->mState & AnimState_TriggerMask) != 0;
 }
+
+void AnimatedCharacter_Create(const SceneBundle* prefab, AnimatedCharacter* result, int lowerBodyStart, Matrix3x4f16* outMatrices);
 
 // x, y has to be between -1.0 and 1.0 (normalized)
 // xspeed and yspeed is between 0 and infinity speed of animation
 // normTime should be between 0 and 1
 // runs the walking running etc animations from given inputs
-void AnimationController_EvaluateLocomotion(AnimationController* ac, float x, float y, float animSpeed);
+void AnimatedCharacter_EvaluateLocomotion(AnimatedCharacter* ac, float x, float y, float animSpeed);
 
-bool AnimationController_TriggerTransition(AnimationController* ac, float dt, int targetAnim);
-
-// play the given animation, norm is the animation progress between 0.0 and 1.0
-void AnimationController_PlayAnim(AnimationController* ac, int index, float norm);
+bool AnimatedCharacter_TriggerTransition(AnimatedCharacter* ac, float dt, int targetAnim);
 
 // trigger time is the animation transition time
 // standing anims are animations that we can play when walking or running
 // returns true if triggered successfully (wasn't trigerred already)
-bool AnimationController_TriggerAnim(AnimationController* ac, int animIndex, float triggerInTime, float triggerOutTime, eAnimTriggerOpt triggerOpt);
+bool AnimatedCharacter_Trigger(AnimatedCharacter* ac, int animIndex, float triggerInTime, float triggerOutTime, eAnimTriggerOpt triggerOpt);
 
-// after this line all of the functions are private but feel free to use
+
+////////              PRIVATE                 ////////  feel free to use
+
+
 // upload to gpu. internal usage only for now
 void AnimationController_UploadPose(AnimationController* ac, const Pose nodeMatrices[MaxBonePoses]);
     
-void AnimationController_RecurseBoneMatrices(AnimationController* ac, int nodeIndex, Matrix4 parentMatrix);
-
-void AnimationController_UploadBoneDualQuats(AnimationController* ac);
-
-void AnimationController_UploadBoneMatrices(AnimationController* ac);
-    
-// when we want to play different animations with lower body and upper body
-void AnimationController_UploadPoseUpperLower(AnimationController* ac, const Pose lowerPose[MaxBonePoses], const Pose uperPose[MaxBonePoses]);
+void AnimationController_RecurseBoneMatrices(AnimationController* ac, int nodeIndex, Vector4x32f position, Vector4x32f rotation); // Matrix4 parentMatrix);
 
 // use negative normTime to sample animation reversely
 void AnimationController_SampleAnimationPose(const AnimationController* ac, Pose pose[MaxBonePoses], int animIdx, float normTime);
 
-// bool humanoid = true, int lowerBodyStart = 58, animId = global animation controllerIndex 
-void AnimationController_Create(const SceneBundle* prefab, 
-                                AnimationController* animController, 
-                                bool humanoid, 
-                                int lowerBodyStart,
-                                Matrix3x4f16* outMatrices); // [0, NUM_ANIMS]
-
-void AnimationController_Clear(AnimationController* ac);
+// when we want to play different animations with lower body and upper body
+void AnimatedCharacter_UploadPoseUpperLower(AnimatedCharacter* ac, const Pose lowerPose[MaxBonePoses], const Pose uperPose[MaxBonePoses]);
 
 
 #if defined(__cplusplus)

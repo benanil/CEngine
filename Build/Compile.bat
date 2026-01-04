@@ -11,6 +11,11 @@ set SOURCE_FILES=^
 	Main.c ^
 	OS.c ^
 	Extern/dynarray.c ^
+	Extern/meshoptimizer/src/indexgenerator.cpp ^
+	Extern/meshoptimizer/src/vcacheoptimizer.cpp ^
+	Extern/meshoptimizer/src/vfetchoptimizer.cpp ^
+	Extern/meshoptimizer/src/simplifier.cpp ^
+	Extern/meshoptimizer/src/allocator.cpp ^
 	TLSF.c ^
 	Memory.c ^
 	ECS.c ^
@@ -47,18 +52,18 @@ if not exist "Build\obj\ufbx.obj" (
 REM Compile C++ files  
 if not exist "Build\obj\BasisSokol.obj" (
     echo Compiling BasisSokol.cpp...
-    cl.exe /std:c++17 /c /O2 /arch:AVX2 /GR- /GS- /EHsc /I. /FoBuild\obj\BasisSokol.obj BasisSokol.cpp >nul
+    cl.exe /std:c++17 /c /O2 /arch:AVX2 /openmp /GR- /GS- /EHsc /I. /FoBuild\obj\BasisSokol.obj BasisSokol.cpp >nul
 )
 
 if "%1"=="Debug" (
-	cl.exe /std:c++17 /Od /Zi /arch:AVX2 /GR- /EHsc /I. /FoBuild\obj\ /FdBuild\MainDebug.pdb %SOURCE_FILES% Build\obj\ufbx.obj Build\obj\BasisSokol.obj  /Fe:Build\MainDebug.exe /link advapi32.lib d3d11.lib dxgi.lib dxguid.lib user32.lib shell32.lib gdi32.lib winmm.lib
+	cl.exe /std:c++17 /Od /Zi /arch:AVX2 /openmp /GR- /EHsc /I. /FoBuild\obj\ /FdBuild\MainDebug.pdb %SOURCE_FILES% Build\obj\ufbx.obj Build\obj\BasisSokol.obj  /Fe:Build\MainDebug.exe /link advapi32.lib d3d11.lib dxgi.lib dxguid.lib user32.lib shell32.lib gdi32.lib winmm.lib
 	if %ERRORLEVEL% neq 0 (
 		echo Compilation failed!
 		exit /b %ERRORLEVEL%
 	)
     start "" "Build/MainDebug.exe"
 ) else (
-	cl.exe /std:c++17 /O2 /arch:AVX2 /GR- /GS- /EHsc /I. /FoBuild\obj\ %SOURCE_FILES%  Build\obj\ufbx.obj Build\obj\BasisSokol.obj /Fe:Build\MainMSVC.exe /link advapi32.lib d3d11.lib dxgi.lib dxguid.lib user32.lib shell32.lib gdi32.lib winmm.lib
+	cl.exe /std:c++17 /O2 /arch:AVX2 /openmp /GR- /GS- /EHsc /I. /FoBuild\obj\ %SOURCE_FILES%  Build\obj\ufbx.obj Build\obj\BasisSokol.obj /Fe:Build\MainMSVC.exe /link advapi32.lib d3d11.lib dxgi.lib dxguid.lib user32.lib shell32.lib gdi32.lib winmm.lib
 	if %ERRORLEVEL% neq 0 (
 		echo Compilation failed!
 		exit /b %ERRORLEVEL%
