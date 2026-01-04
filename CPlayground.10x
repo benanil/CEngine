@@ -209,34 +209,10 @@
 				<Path>TLSF.c</Path>
 			</File>
 			<File>
-				<Path>trace.txt</Path>
-			</File>
-			<File>
 				<Path>AOC.c</Path>
 			</File>
 			<File>
 				<Path>AOC0.txt</Path>
-			</File>
-			<File>
-				<Path>Compile.c</Path>
-			</File>
-			<File>
-				<Path>BuildCompile.bat</Path>
-			</File>
-			<File>
-				<Path>scales.txt</Path>
-			</File>
-			<File>
-				<Path>invscales.txt</Path>
-			</File>
-			<File>
-				<Path>nodeNames.txt</Path>
-			</File>
-			<File>
-				<Path>transformedCorrect.txt</Path>
-			</File>
-			<File>
-				<Path>transformedFalse.txt</Path>
 			</File>
 		</Children>
 	</Workspace>
