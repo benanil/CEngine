@@ -1,12 +1,15 @@
 #ifndef PLATFORM_C
 #define PLATFORM_C
 
-#define SOKOL_APP_IMPL
-#define SOKOL_TIME_IMPL
-#define SOKOL_D3D11
 
 #include "Extern/sokol/sokol_time.h"
 #include "Extern/sokol/sokol_app.h"
+
+#if defined(_WIN32) || defined(_WIN64)
+    #define WIN32_LEAN_AND_MEAN
+    #include <Windows.h>
+#endif
+
 #include "Include/Platform.h"
 #include "Include/Bitset.h"
 #include "Include/Camera.h"

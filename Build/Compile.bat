@@ -1,74 +1,60 @@
 @echo off
+setlocal
 
-echo Shaders compiling...
-call "Build/ShaderCompile.bat"
-if %ERRORLEVEL% neq 0 (
-    echo Failed to compile shaders!
-    exit /b %ERRORLEVEL%
+REM --- Shaders ---
+echo Compiling shaders...
+call Build\ShaderCompile.bat || exit /b %ERRORLEVEL%
+
+REM --- Paths ---
+set OBJ=Build\obj
+set DOBJ=Build\dbgobj
+set INC=/I.
+
+if not exist %OBJ% mkdir %OBJ%
+if not exist %DOBJ% mkdir %DOBJ%
+
+REM --- Sources ---
+set SRC=^
+ Main.c OS.c Extern/dynarray.c BasisSokol.cpp ^
+ TLSF.c Memory.c ECS.c FileSystem.c Platform.c ^
+ Graphics.c GLTFParser.c Animation.c Algorithm.c AssetManager.c
+
+set LIBS=advapi32.lib d3d11.lib dxgi.lib dxguid.lib user32.lib shell32.lib gdi32.lib winmm.lib
+
+REM --- MSVC env ---
+call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvarsall.bat" x64 || exit /b
+
+REM --- Extern (release) ---
+if not exist %OBJ%\ExternAll.obj (
+    cl /c /O2 /arch:AVX2 /GR- /GS- %INC% Extern\ExternAll.c /Fo%OBJ%\ExternAll.obj || exit /b
 )
 
-set SOURCE_FILES=^
-	Main.c ^
-	OS.c ^
-	Extern/dynarray.c ^
-	Extern/meshoptimizer/src/indexgenerator.cpp ^
-	Extern/meshoptimizer/src/vcacheoptimizer.cpp ^
-	Extern/meshoptimizer/src/vfetchoptimizer.cpp ^
-	Extern/meshoptimizer/src/simplifier.cpp ^
-	Extern/meshoptimizer/src/allocator.cpp ^
-	TLSF.c ^
-	Memory.c ^
-	ECS.c ^
-	FileSystem.c ^
-    Platform.c ^
-	Graphics.c ^
-	GLTFParser.c ^
-	Animation.c ^
-	Algorithm.c ^
-	AssetManager.c 
-
-if not exist "Build\obj" mkdir "Build\obj"
-
-REM <<<  CLANG COMPILER  >>>
-REM clang -O3 -mavx2 -mfma -msse4.2 -mf16c -mrdseed -s -fno-rtti -fno-stack-protector -Wimplicit-function-declaration -fno-exceptions -fno-unwind-tables -static-libgcc ^
-REM %SOURCE_FILES% Extern/ufbx.c BasisSokol.cpp -o Build/MainCLANG.exe -I. -ladvapi32 -ld3d11 -ldxgi -ldxguid -luser32 -lshell32 -lgdi32 -lwinmm
-REM start "" "Build/MainCLANG.exe"
-REM exit /b %ERRORLEVEL%
-
-REM <<<  MSVC COMPILER  >>>
-call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvarsall.bat" x64
-if %ERRORLEVEL% neq 0 (
-    echo Failed to set up MSVC environment!
-    exit /b %ERRORLEVEL%
+REM C++
+if not exist %OBJ%\ExternAllCpp.obj (
+    cl /std:c++17 /c /O2 /arch:AVX2 /GR- /GS- %INC% Extern\ExternAllCpp.cpp /Fo%OBJ%\ExternAllCpp.obj || exit /b
 )
 
-echo Checking extern libs...
-REM Compile C files
-if not exist "Build\obj\ufbx.obj" (
-    echo Compiling ufbx.c...
-    cl.exe /c /O2 /arch:AVX2 /GR- /GS- /I. /FoBuild\obj\ufbx.obj Extern\ufbx.c >nul
+REM --- Extern (debug) ---
+if not exist %DOBJ%\ExternAll.obj (
+    cl /c /Od /Zi /GR- /GS- %INC% Extern\ExternAll.c /Fo%DOBJ%\ExternAll.obj /Fd%DOBJ%\ExternAll.pdb || exit /b
 )
 
-REM Compile C++ files  
-if not exist "Build\obj\BasisSokol.obj" (
-    echo Compiling BasisSokol.cpp...
-    cl.exe /std:c++17 /c /O2 /arch:AVX2 /openmp /GR- /GS- /EHsc /I. /FoBuild\obj\BasisSokol.obj BasisSokol.cpp >nul
+REM C++
+if not exist %DOBJ%\ExternAllCpp.obj (
+    cl /std:c++17 /c /Od /Zi /GR- /GS- %INC% Extern\ExternAllCpp.cpp /Fo%DOBJ%\ExternAllCpp.obj /Fd%DOBJ%\ExternAllCpp.pdb || exit /b
 )
 
+REM --- Build ---
 if "%1"=="Debug" (
-	cl.exe /std:c++17 /Od /Zi /arch:AVX2 /openmp /GR- /EHsc /I. /FoBuild\obj\ /FdBuild\MainDebug.pdb %SOURCE_FILES% Build\obj\ufbx.obj Build\obj\BasisSokol.obj  /Fe:Build\MainDebug.exe /link advapi32.lib d3d11.lib dxgi.lib dxguid.lib user32.lib shell32.lib gdi32.lib winmm.lib
-	if %ERRORLEVEL% neq 0 (
-		echo Compilation failed!
-		exit /b %ERRORLEVEL%
-	)
-    start "" "Build/MainDebug.exe"
+    cl /Od /Zi /arch:AVX2 /openmp /GR- /EHsc %INC% ^
+       %SRC% %DOBJ%\ExternAll.obj %DOBJ%\ExternAllCpp.obj ^
+       /Fo%DOBJ%\ /Fe:Build\MainDebug.exe /FdBuild\MainDebug.pdb /link %LIBS%
+    start Build\MainDebug.exe
 ) else (
-	cl.exe /std:c++17 /O2 /arch:AVX2 /openmp /GR- /GS- /EHsc /I. /FoBuild\obj\ %SOURCE_FILES%  Build\obj\ufbx.obj Build\obj\BasisSokol.obj /Fe:Build\MainMSVC.exe /link advapi32.lib d3d11.lib dxgi.lib dxguid.lib user32.lib shell32.lib gdi32.lib winmm.lib
-	if %ERRORLEVEL% neq 0 (
-		echo Compilation failed!
-		exit /b %ERRORLEVEL%
-	)
-    start "" "Build/MainMSVC.exe"
+    cl /O2 /arch:AVX2 /openmp /GR- /GS- /EHsc %INC% ^
+       %SRC% %OBJ%\ExternAll.obj %OBJ%\ExternAllCpp.obj ^
+       /Fo%OBJ%\ /Fe:Build\Main.exe /link %LIBS%
+    start Build\Main.exe
 )
 
 echo Build complete.

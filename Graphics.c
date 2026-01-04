@@ -1,8 +1,6 @@
 #ifndef _GRAPHICS_
 #define _GRAPHICS_
 
-// #include "Extern/sokol/sokol_gfx.h"
-// #include "Math/Math.h"
 
 #include "Include/FileSystem.h"
 #include "Include/Platform.h"

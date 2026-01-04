@@ -1,11 +1,11 @@
-#define SOKOL_LOG_IMPL
-#define SOKOL_GLUE_IMPL
-
-#define SOKOL_GFX_IMPL
-#define SOKOL_D3D11
-#define SOKOL_ASSERT(x) ASSERT(x)
 
 #define AX_ENABLE_LOGGING
+
+#include "Extern/sokol/sokol_gfx.h"
+#include "Extern/sokol/sokol_app.h"
+#include "Extern/sokol/sokol_log.h"
+#include "Extern/sokol/sokol_glue.h"
+#include "Extern/sokol/sokol_time.h"
 
 #include "Include/Common.h"
 #include "Include/OS.h"
@@ -14,13 +14,6 @@
 #include "Include/ECS.h"
 
 #include "Include/FileSystem.h"
-
-#include "Extern/sokol/sokol_gfx.h"
-#include "Extern/sokol/sokol_app.h"
-#include "Extern/sokol/sokol_log.h"
-#include "Extern/sokol/sokol_glue.h"
-#include "Extern/sokol/sokol_time.h"
-#undef SOKOL_GFX_IMPL
 
 #include "Include/Camera.h"
 #include "Include/Bitset.h"

@@ -8,7 +8,6 @@
 #include <stdint.h>
 #include <stddef.h>
 #include "hashmap.h"
-#include "xxhash.h"
 
 #define GROW_AT   0.60 /* 60% */
 #define SHRINK_AT 0.10 /* 10% */
@@ -475,8 +474,3 @@ bool hashmap_iter(struct hashmap *map, size_t *i, void **item) {
     return true;
 }
 
-uint64_t hashmap_xxhash3(const void *data, size_t len, uint64_t seed0, uint64_t seed1)
-{
-    (void)seed1;
-    return XXH3_64bits_withSeed(data, len, seed0);
-}

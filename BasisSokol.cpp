@@ -1,20 +1,6 @@
 
-#ifdef __APPLE__
-    #include <TargetConditionals.h>
-#endif
-
-#if !(TARGET_OS_IPHONE || defined(__EMSCRIPTEN__) || defined(__ANDROID__))
-    #define BASISD_SUPPORT_BC7 (0)
-#endif
-
-#define BASISD_SUPPORT_PVRTC2 (0)
-#define BASISD_SUPPORT_FXT1 (0)
-#define BASISD_SUPPORT_ATC (0)
-#define BASISD_SUPPORT_KTX2 (0)
-
 #include "Include/Memory.h"
-
-#include "Extern/basis_universal/basisu_transcoder.cpp"
+#include "Extern/basis_universal/basisu_transcoder.h"
 #include "Extern/sokol/sokol_gfx.h"
 
 static basist::transcoder_texture_format BasisTexToTranscoderFormat(basist::basis_tex_format fmt, 
