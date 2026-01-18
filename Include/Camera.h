@@ -3,6 +3,9 @@
 
 #include "../Math/Matrix.h"
 #include "Platform.h"
+#include <SDL3/SDL_keycode.h>
+#include <SDL3/SDL_mouse.h>
+
 //#include "sokol/sokol_app.h"
 
 #if defined(__cplusplus)
@@ -115,19 +118,22 @@ static inline void InfiniteMouse(Vec2f point)
 static inline void CameraUpdate(Camera* camera, float dt)
 {
     bool pressing = GetMouseDown(MouseButton_Right);
-    float speed = dt * (1.0f + GetKeyDown(SAPP_KEYCODE_LEFT_SHIFT) * 2.0f) * 2.0f;
-
+    float speed = dt * (1.0f + GetKeyDown(SDLK_LSHIFT) * 2.0f) * 2.0f;
+    
     if (!pressing) { camera->wasPressing = false; return; }
         
     Vec2f mousePos;
     GetMousePos(&mousePos.x, &mousePos.y);
     Vec2f diff = Vec2Sub(mousePos, camera->mouseOld);
-    sapp_set_mouse_cursor(SAPP_MOUSECURSOR_RESIZE_ALL);
+    
+    SDL_Cursor* cursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_MOVE);
+    SDL_SetCursor(cursor);
+    SDL_DestroyCursor(cursor);
         
     // if platform is android left side is for movement, right side is for rotating camera
     #ifdef __ANDROID__
     if (mousePos.x > (monitorSize.x / 2.0f))
-        #endif
+    #endif
     {
         if (camera->wasPressing && diff.x + diff.y < 130.0f)
         {
@@ -146,12 +152,12 @@ static inline void CameraUpdate(Camera* camera, float dt)
     camera->mouseOld = mousePos;
     camera->wasPressing = true;
 
-    if (GetKeyDown(SAPP_KEYCODE_D)) camera->position = Vec3Add(camera->position, Vec3MulF(camera->Right, camera->speed));
-    if (GetKeyDown(SAPP_KEYCODE_A)) camera->position = Vec3Sub(camera->position, Vec3MulF(camera->Right, camera->speed));
-    if (GetKeyDown(SAPP_KEYCODE_W)) camera->position = Vec3Add(camera->position, Vec3MulF(camera->Front, camera->speed));
-    if (GetKeyDown(SAPP_KEYCODE_S)) camera->position = Vec3Sub(camera->position, Vec3MulF(camera->Front, camera->speed));
-    if (GetKeyDown(SAPP_KEYCODE_E)) camera->position = Vec3Add(camera->position, Vec3MulF(camera->Up, camera->speed));
-    if (GetKeyDown(SAPP_KEYCODE_Q)) camera->position = Vec3Sub(camera->position, Vec3MulF(camera->Up, camera->speed));
+    if (GetKeyDown(SDLK_D)) camera->position = Vec3Add(camera->position, Vec3MulF(camera->Right, camera->speed));
+    if (GetKeyDown(SDLK_A)) camera->position = Vec3Sub(camera->position, Vec3MulF(camera->Right, camera->speed));
+    if (GetKeyDown(SDLK_W)) camera->position = Vec3Add(camera->position, Vec3MulF(camera->Front, camera->speed));
+    if (GetKeyDown(SDLK_S)) camera->position = Vec3Sub(camera->position, Vec3MulF(camera->Front, camera->speed));
+    if (GetKeyDown(SDLK_E)) camera->position = Vec3Add(camera->position, Vec3MulF(camera->Up, camera->speed));
+    if (GetKeyDown(SDLK_Q)) camera->position = Vec3Sub(camera->position, Vec3MulF(camera->Up, camera->speed));
 
     InfiniteMouse(mousePos);
     Camera_RecalculateView(camera);

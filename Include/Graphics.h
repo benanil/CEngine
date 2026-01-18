@@ -1,7 +1,7 @@
 #ifndef _H_GRAPHICS_
 #define _H_GRAPHICS_
 
-#include "../Extern/sokol/sokol_gfx.h"
+#include <SDL3/SDL_gpu.h>
 #include "../Math/Half.h"
 #include "../Math/Vector.h"
 #include "GLTFParser.h"
@@ -102,8 +102,8 @@ typedef struct GPUMesh_
 typedef struct Texture_
 {
     int width, height;
-    sg_image handle;
-    sg_pixel_format format;
+    SDL_GPUTexture* handle;
+    SDL_GPUTextureFormat format;
     void* buffer;
 } Texture;
 
@@ -118,17 +118,17 @@ static inline int GetRootNodeIdx(SceneBundle* bundle)
     return node;
 }
 
-uint8_t rTextureTypeToBytesPerPixel(sg_pixel_format type);
+// uint8_t rTextureTypeToBytesPerPixel(sg_pixel_format type);
 
 void rInit();
 
 void rDestroy();
 
-int rGetMipmapImageData(sg_image_data* img_data, void* data, int width, int height);
+// int rGetMipmapImageData(sg_image_data* img_data, void* data, int width, int height);
 
 Texture rImportTexture(const char* path, TexFlags flags, const char* label);
 
-Texture rCreateTexture(int width, int height, void* data, sg_pixel_format format, TexFlags flags, const char* label);
+Texture rCreateTexture(int width, int height, void* data, SDL_PixelFormat format, TexFlags flags, const char* label);
 
 void rDeleteTexture(Texture texture);
 

@@ -30,6 +30,7 @@
 #endif
 
 #include "Bitset.h"
+#include <SDL3/SDL_events.h>
 // #include "sokol_app.h"
 
 #if defined(__cplusplus)
@@ -100,6 +101,8 @@ double TimeSinceStartup();
 void   PlatformInit();
 
 extern PlatformContext PlatformCtx;
+
+void EventCallback(const SDL_Event* event);
 
 #if defined(__cplusplus)
 }

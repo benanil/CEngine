@@ -38,7 +38,7 @@ bool IsTextureLastVersion(const char* path);
 void SaveSceneImages(SceneBundle* scene, const char* savePath);
 
 // returns: 0 = noFile, 1 = success, 2 = missingImages, 3 = fileNumImage missmatch
-int LoadSceneImages(const char* texturePath, Texture* textures, int numImages);
+int LoadSceneImages(const char* texturePath, Texture* textures, int numImages, SDL_GPUDevice* gpuDevice);
 
 
 #if defined(__cplusplus)

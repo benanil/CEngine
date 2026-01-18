@@ -1,6 +1,14 @@
 @echo off
 setlocal
 
+rem call Shaders\ShaderCompile.bat || exit /b %ERRORLEVEL%
+
+echo Compiling project...
+devenv vsbuild\CPlayground.sln /Build "%1"
+start vsbuild\Debug\CPlayground.exe
+
+exit
+
 REM --- Shaders ---
 echo Compiling shaders...
 call Build\ShaderCompile.bat || exit /b %ERRORLEVEL%
@@ -26,33 +34,23 @@ call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build
 
 REM --- Extern (release) ---
 if not exist %OBJ%\ExternAll.obj (
-    cl /c /O2 /arch:AVX2 /GR- /GS- %INC% Extern\ExternAll.c /Fo%OBJ%\ExternAll.obj || exit /b
-)
-
-REM C++
-if not exist %OBJ%\ExternAllCpp.obj (
-    cl /std:c++17 /c /O2 /arch:AVX2 /GR- /GS- %INC% Extern\ExternAllCpp.cpp /Fo%OBJ%\ExternAllCpp.obj || exit /b
+    cl /std:c++17 /c /O2 /arch:AVX2 /GR- /GS- %INC% Extern\ExternAll.cpp /Fo%OBJ%\ExternAll.obj || exit /b
 )
 
 REM --- Extern (debug) ---
 if not exist %DOBJ%\ExternAll.obj (
-    cl /c /Od /Zi /GR- /GS- %INC% Extern\ExternAll.c /Fo%DOBJ%\ExternAll.obj /Fd%DOBJ%\ExternAll.pdb || exit /b
-)
-
-REM C++
-if not exist %DOBJ%\ExternAllCpp.obj (
-    cl /std:c++17 /c /Od /Zi /GR- /GS- %INC% Extern\ExternAllCpp.cpp /Fo%DOBJ%\ExternAllCpp.obj /Fd%DOBJ%\ExternAllCpp.pdb || exit /b
+    cl /std:c++17 /c /Od /Zi /GR- /GS- %INC% Extern\ExternAll.cpp /Fo%DOBJ%\ExternAll.obj /Fd%DOBJ%\ExternAll.pdb || exit /b
 )
 
 REM --- Build ---
 if "%1"=="Debug" (
-    cl /Od /Zi /arch:AVX2 /openmp /GR- /EHsc %INC% ^
-       %SRC% %DOBJ%\ExternAll.obj %DOBJ%\ExternAllCpp.obj ^
+    cl /std:c++17 /Od /Zi /arch:AVX2 /openmp /GR- /EHsc %INC% ^
+       %SRC% %DOBJ%\ExternAll.obj ^
        /Fo%DOBJ%\ /Fe:Build\MainDebug.exe /FdBuild\MainDebug.pdb /link %LIBS%
     start Build\MainDebug.exe
 ) else (
-    cl /O2 /arch:AVX2 /openmp /GR- /GS- /EHsc %INC% ^
-       %SRC% %OBJ%\ExternAll.obj %OBJ%\ExternAllCpp.obj ^
+    cl /std:c++17 /O2 /arch:AVX2 /openmp /GR- /GS- /EHsc %INC% ^
+       %SRC% %OBJ%\ExternAll.obj ^
        /Fo%OBJ%\ /Fe:Build\Main.exe /link %LIBS%
     start Build\Main.exe
 )

@@ -76,7 +76,7 @@ int aCountIf(const void* arr, const void* val, int n, size_t elemSize, int (*cmp
 #define StrCMP16(_str, _otr) StrCmp16(_str, _otr, sizeof(_otr) - 1)
 
 #if defined(AX_SUPPORT_SSE)
-static inline bool StrCmp16(const char* RESTRICT a, const char* RESTRICT b, uint64_t n)
+static inline bool StrCmp16(const char* a, const char* b, uint64_t n)
 {
     n = n > 16 ? 16 : n;
     __m128i va = _mm_loadu_si128((const __m128i*)a);
@@ -88,7 +88,7 @@ static inline bool StrCmp16(const char* RESTRICT a, const char* RESTRICT b, uint
 }
 #elif defined(__ARM_NEON) || defined(__ARM_NEON__)
 
-static inline bool StrCmp16(const char* RESTRICT a, const char* RESTRICT b, uint64_t n)
+static inline bool StrCmp16(const char* a, const char* b, uint64_t n)
 {
     n = n > 16 ? 16 : n;
     uint8x16_t va  = vld1q_u8((const uint8_t*)a);
@@ -100,7 +100,7 @@ static inline bool StrCmp16(const char* RESTRICT a, const char* RESTRICT b, uint
 }
 #endif
 
-bool StringEqual(const char* RESTRICT a, const char* RESTRICT b, int n);
+bool StringEqual(const char* a, const char* b, int n);
 
 #if defined(__cplusplus)
 }

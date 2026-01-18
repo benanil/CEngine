@@ -1,64 +1,64 @@
-cmake_minimum_required(VERSION 3.20)
-project(Main C CXX)  # Add CXX since you have .cpp files
+cmake_minimum_required(VERSION 3.16)
 
-if (MSVC)
-    add_compile_options(
-        /arch:AVX2
-        /GR-
-        /GS-
-        /EHsc-
-    )
-    
-    # Force C99/C11 standard for C files
-    set(CMAKE_C_STANDARD 11)
-    set(CMAKE_C_STANDARD_REQUIRED ON)
+# set the output directory for built objects.
+# This makes sure that the dynamic library goes into the build directory automatically.
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/$<CONFIGURATION>")
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/$<CONFIGURATION>")
+
+# prevent installing to system directories. 
+set(CMAKE_INSTALL_PREFIX "${CMAKE_BINARY_DIR}" CACHE INTERNAL "")
+
+# Declare the project
+project(CPlayground)
+
+if ((APPLE AND NOT CMAKE_SYSTEM_NAME MATCHES "Darwin") OR EMSCRIPTEN)
+    set(BUILD_SHARED_LIBS OFF CACHE INTERNAL "")    # Disable shared builds on platforms where it does not make sense to use them
+    set(SDL_SHARED OFF)
+else()
+    set(SDL_SHARED ON)
 endif()
 
-set(C_SOURCES
-    Main.c
-    OS.c
-    Extern/dynarray.c
-    TLSF.c
-    Memory.c
-    FileSystem.c
-    Platform.c
-    Graphics.c
-    GLTFParser.c
-    Animation.c
-    Algorithm.c
-    AssetManager.c
-    Extern/ufbx.c
+if(MSVC)
+    if(NOT CMAKE_GENERATOR STREQUAL "Ninja")
+        add_definitions(/MP)				# parallelize each target, unless Ninja is the generator
+    endif()
+endif()
+
+# Set the name of the executable
+set(EXECUTABLE_NAME ${PROJECT_NAME})
+
+include_directories(${CMAKE_SOURCE_DIR})
+
+add_executable(${EXECUTABLE_NAME})
+
+# Add your sources to the target
+target_sources(${EXECUTABLE_NAME} PRIVATE
+Source/MainSDL.c
+# Source/Main.c
+Source/OS.c
+Extern/dynarray.c 
+Source/TLSF.c
+Source/Memory.c
+Source/ECS.c
+Source/FileSystem.c
+Source/Platform.c 
+# Source/Graphics.c 
+Source/GLTFParser.c 
+# Source/Animation.c
+Source/Algorithm.c
+Source/AssetManager.c
+Source/BasisSokol.cpp 
+Extern/ExternAll.cpp
 )
 
-set(CPP_SOURCES
-    BasisSokol.cpp
-)
+# Configure SDL by calling its CMake file.
+# we use EXCLUDE_FROM_ALL so that its install targets and configs don't
+# pollute upwards into our configuration.
+add_subdirectory(Extern/SDL3 EXCLUDE_FROM_ALL)
 
-add_executable(MainMSVC ${C_SOURCES} ${CPP_SOURCES})
+# Link SDL to our executable. This also makes its include directory available to us. 
+target_link_libraries(${EXECUTABLE_NAME} PUBLIC SDL3::SDL3) # If using satelite libraries, SDL must be the last item in the list. 
 
-# Explicitly set C files as C (not C++)
-set_source_files_properties(${C_SOURCES} PROPERTIES LANGUAGE C)
-
-# Explicitly set C++ files as C++
-set_source_files_properties(${CPP_SOURCES} PROPERTIES LANGUAGE CXX)
-
-# Add this to help IntelliSense
-set_target_properties(MainMSVC PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/build"
-    VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-	VS_GLOBAL_VcpkgEnabled false
-)
-
-# If you have include directories, add them explicitly
-# target_include_directories(MainMSVC PRIVATE ${CMAKE_SOURCE_DIR}/include)
-
-target_link_libraries(MainMSVC PRIVATE
-    advapi32
-    d3d11
-    dxgi
-    dxguid
-    user32
-    shell32
-    gdi32
-    winmm
-)
+set_property(TARGET CPlayground PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+# on Visual Studio, set our app as the default project
+set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT "${EXECUTABLE_NAME}")
