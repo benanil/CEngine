@@ -34,7 +34,6 @@ add_executable(${EXECUTABLE_NAME})
 # Add your sources to the target
 target_sources(${EXECUTABLE_NAME} PRIVATE
 Source/MainSDL.c
-# Source/Main.c
 Source/OS.c
 Extern/dynarray.c 
 Source/TLSF.c
@@ -44,7 +43,7 @@ Source/FileSystem.c
 Source/Platform.c 
 # Source/Graphics.c 
 Source/GLTFParser.c 
-# Source/Animation.c
+Source/Animation.c
 Source/Algorithm.c
 Source/AssetManager.c
 Source/BasisSokol.cpp 

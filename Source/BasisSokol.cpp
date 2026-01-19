@@ -118,14 +118,15 @@ SDL_GPUTexture* BasisuMakeImage(
     transcoder.get_image_info(basisu_data, (uint32_t)size, img_info, 0);
     
     basisTexFmt = transcoder.get_basis_tex_format(basisu_data, (uint32_t)size);
-    fmt         = BasisTexToTranscoderFormat(basisTexFmt, img_info.m_alpha_flag, isNormal, isMetallicRoughness);
+    fmt = BasisTexToTranscoderFormat(basisTexFmt, img_info.m_alpha_flag, isNormal, isMetallicRoughness);
     bytes_per_block = basist::basis_get_bytes_per_block_or_pixel(fmt);
     
     imageDataLength = 0;
     for (int i = 0; i < img_info.m_total_levels; i++)
     {
         levelDesc = &imageLevelDescriptions[i];
-        transcoder.get_image_level_desc(basisu_data, (uint32_t)size, 0, i, levelDesc->width, levelDesc->height, levelDesc->blocks);
+        transcoder.get_image_level_desc(basisu_data, (uint32_t)size, 0, i,
+                                        levelDesc->width, levelDesc->height, levelDesc->blocks);
         imageDataLength += levelDesc->blocks * bytes_per_block;
     }
     
@@ -149,7 +150,7 @@ SDL_GPUTexture* BasisuMakeImage(
     transferBufferCreateInfo.size  = imageDataLength;
     
     textureTransferBuffer = SDL_CreateGPUTransferBuffer(gpuDevice, &transferBufferCreateInfo);
-    textureTransferPtr    = (Uint8*)SDL_MapGPUTransferBuffer(gpuDevice, textureTransferBuffer, false);
+    textureTransferPtr = (Uint8*)SDL_MapGPUTransferBuffer(gpuDevice, textureTransferBuffer, false);
     ptr = textureTransferPtr;
     
     for (int i = 0; i < texDesc.num_levels; i++) 
@@ -181,17 +182,16 @@ SDL_GPUTexture* BasisuMakeImage(
         imageDataLength += levelDesc->blocks * bytes_per_block;
     }
     
-    SDL_ReleaseGPUTransferBuffer(gpuDevice, textureTransferBuffer);
     SDL_EndGPUCopyPass(copyPass);
     fence = SDL_SubmitGPUCommandBufferAndAcquireFence(uploadCmdBuf);
     
     SDL_WaitForGPUFences(gpuDevice, true, &fence, 1);
     SDL_ReleaseGPUFence(gpuDevice, fence);
+    SDL_ReleaseGPUTransferBuffer(gpuDevice, textureTransferBuffer);
     
     *width  = img_info.m_width;
     *height = img_info.m_height;
     *format = texDesc.format;
-    
     return result;
 }
 

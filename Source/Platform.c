@@ -247,7 +247,7 @@ void PlatformInit()
 
 double TimeSinceStartup()
 {
-    return 0; // stm_sec(stm_diff(stm_now(), PlatformCtx.StartupTime));
+    return (double)(SDL_GetTicks() - PlatformCtx.StartupTime) / 1000.0;
 }
 
 #endif // PLATFORM_C

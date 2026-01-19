@@ -43,6 +43,7 @@ typedef struct RenderState
 {
 	SDL_GPUBuffer* buf_vertex;
 	SDL_GPUBuffer* buf_index;
+	SDL_GPUBuffer* buf_bones;
     SDL_GPUSampler* sampler;
     Texture textures[8];
 	SDL_GPUGraphicsPipeline* pipeline;
@@ -66,8 +67,15 @@ static SDL_GPUDevice* gpu_device = NULL;
 static RenderState render_state;
 static WindowState* window_states = NULL;
 static CommonState state;
+
 Camera globalCamera;
 SceneBundle* sceneBundle;
+
+#define NUM_ANIMS (32)
+Matrix4* nodeTransforms;
+static int characterRootIndex;
+static AnimationController animController[NUM_ANIMS];
+AX_ALIGN(4) Matrix3x4f16 OutMatrices[MaxBonePoses * NUM_ANIMS];
 
 static void shutdownGPU(void)
 {
@@ -169,6 +177,40 @@ static SDL_GPUTexture* CreateResolveTexture(Uint32 drawablew, Uint32 drawableh)
 	return result;
 }
 
+static void UploadBoneBuffer()
+{
+    SDL_GPUTransferBufferCreateInfo transferBufferCreateInfo;
+    transferBufferCreateInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
+    transferBufferCreateInfo.size  = sizeof(OutMatrices);
+    transferBufferCreateInfo.props = 0;
+
+    SDL_GPUTransferBuffer* boneTransferBuffer;
+    SDL_GPUCopyPass* copyPass;
+    Uint8* boneTransferPtr;
+    SDL_GPUCommandBuffer* uploadCmdBuf;
+
+    uploadCmdBuf = SDL_AcquireGPUCommandBuffer(gpu_device);
+    copyPass = SDL_BeginGPUCopyPass(uploadCmdBuf);
+    
+    boneTransferBuffer = SDL_CreateGPUTransferBuffer(gpu_device, &transferBufferCreateInfo);
+    boneTransferPtr = (Uint8*)SDL_MapGPUTransferBuffer(gpu_device, boneTransferBuffer, true);
+    MemCpy(boneTransferPtr, OutMatrices, sizeof(OutMatrices));
+    SDL_UnmapGPUTransferBuffer(gpu_device, boneTransferBuffer);
+
+    SDL_UploadToGPUBuffer(copyPass,
+                          &(SDL_GPUTransferBufferLocation){ .transfer_buffer = boneTransferBuffer, .offset = 0}, 
+                          &(SDL_GPUBufferRegion){.buffer=render_state.buf_bones, .offset=0, .size = sizeof(OutMatrices)}, true);
+    
+    
+    SDL_EndGPUCopyPass(copyPass);
+    
+    SDL_GPUFence* fence = SDL_SubmitGPUCommandBufferAndAcquireFence(uploadCmdBuf);
+    SDL_WaitForGPUFences(gpu_device, true, &fence, 1);
+    SDL_ReleaseGPUFence(gpu_device, fence);
+    
+    SDL_ReleaseGPUTransferBuffer(gpu_device, boneTransferBuffer);
+}
+
 static void Render(SDL_Window* window, const int windownum)
 {
 	WindowState* winstate = &window_states[windownum];
@@ -200,8 +242,6 @@ static void Render(SDL_Window* window, const int windownum)
 		return;
 	}
 
-    CameraUpdate(&globalCamera, 0.01f);
-
 	/* Resize the depth buffer if the window size changed */
 	if (winstate->prev_drawablew != drawablew || winstate->prev_drawableh != drawableh) {
 		SDL_ReleaseGPUTexture(gpu_device, winstate->tex_depth);
@@ -213,6 +253,10 @@ static void Render(SDL_Window* window, const int windownum)
 	}
 	winstate->prev_drawablew = drawablew;
 	winstate->prev_drawableh = drawableh;
+    
+    CameraUpdate(&globalCamera, 0.01f);
+
+    UploadBoneBuffer();
 
 	/* Set up the pass */
 	SDL_zero(color_target);
@@ -253,6 +297,7 @@ static void Render(SDL_Window* window, const int windownum)
 	SDL_BindGPUGraphicsPipeline(pass, render_state.pipeline);
 	SDL_BindGPUVertexBuffers(pass, 0, &vertex_binding, 1);
     SDL_BindGPUIndexBuffer(pass, &index_binding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
+    SDL_BindGPUVertexStorageBuffers(pass, 0, &render_state.buf_bones, 1);
     SDL_BindGPUFragmentSamplers(pass, 0,
                                 &(SDL_GPUTextureSamplerBinding){
                                     .texture = tex, 
@@ -260,7 +305,7 @@ static void Render(SDL_Window* window, const int windownum)
                                 }, 1);
 
     SDL_PushGPUVertexUniformData(cmd, 0, &viewProj, sizeof(Matrix4));
-
+    
     int numNodes  = sceneBundle->numNodes;
     const bool hasScene = sceneBundle->numScenes > 0;
     AScene defaultScene;
@@ -320,35 +365,7 @@ static void Render(SDL_Window* window, const int windownum)
 	++frames;
 }
 
-static SDL_GPUShader* load_shader(bool is_vertex)
-{
-	SDL_GPUShaderCreateInfo createinfo;
-	SDL_zero(createinfo);
-	createinfo.num_uniform_buffers = is_vertex ? 1 : 0;
-
-	SDL_GPUShaderFormat format = SDL_GetGPUShaderFormats(gpu_device);
-	// if (format & SDL_GPU_SHADERFORMAT_DXIL) {
-	//     createinfo.format = SDL_GPU_SHADERFORMAT_DXIL;
-	//     createinfo.code = is_vertex ? cube_vert_dxil : cube_frag_dxil;
-	//     createinfo.code_size = is_vertex ? cube_vert_dxil_len : cube_frag_dxil_len;
-	// } else if (format & SDL_GPU_SHADERFORMAT_MSL) {
-	//     createinfo.format = SDL_GPU_SHADERFORMAT_MSL;
-	//     createinfo.code = is_vertex ? cube_vert_msl : cube_frag_msl;
-	//     createinfo.code_size = is_vertex ? cube_vert_msl_len : cube_frag_msl_len;
-	// } 
-	// else
-	{
-		createinfo.format = SDL_GPU_SHADERFORMAT_SPIRV;
-		createinfo.code = is_vertex ? SkinnedVert_spv : SkinnedFrag_spv;
-		createinfo.code_size = is_vertex ? SkinnedVert_spv_size : SkinnedFrag_spv_size;
-        createinfo.num_samplers = !is_vertex ? 1 : 0;
-    }
-
-	createinfo.stage = is_vertex ? SDL_GPU_SHADERSTAGE_VERTEX : SDL_GPU_SHADERSTAGE_FRAGMENT;
-	return SDL_CreateGPUShader(gpu_device, &createinfo);
-}
-
-SDL_GPUBuffer* CreateBuffer(void* buffer, size_t bufferSize, SDL_GPUBufferUsageFlags bufferUsage)
+SDL_GPUBuffer* CreateBuffer(void* buffer, size_t bufferSize, SDL_GPUBufferUsageFlags bufferUsage, const char* debugName)
 {
 	SDL_GPUBufferCreateInfo buffer_desc;
 	SDL_GPUTransferBufferCreateInfo transfer_buffer_desc;
@@ -363,7 +380,7 @@ SDL_GPUBuffer* CreateBuffer(void* buffer, size_t bufferSize, SDL_GPUBufferUsageF
 	buffer_desc.usage = bufferUsage;
 	buffer_desc.size = bufferSize;
 	buffer_desc.props = SDL_CreateProperties();
-	SDL_SetStringProperty(buffer_desc.props, SDL_PROP_GPU_BUFFER_CREATE_NAME_STRING, "Buffer");
+	SDL_SetStringProperty(buffer_desc.props, SDL_PROP_GPU_BUFFER_CREATE_NAME_STRING, debugName);
     SDL_GPUBuffer* gpu_buffer = SDL_CreateGPUBuffer(gpu_device, &buffer_desc);
 
 	CHECK_CREATE(gpu_buffer, "Static buffer")
@@ -409,8 +426,19 @@ static void InitScene()
     }
 
     CreateVerticesIndicesSkined(sceneBundle);
-    render_state.buf_vertex = CreateBuffer(sceneBundle->allVertices, sceneBundle->totalVertices * sizeof(ASkinedVertex), SDL_GPU_BUFFERUSAGE_VERTEX);
-    render_state.buf_index  = CreateBuffer(sceneBundle->allIndices, sceneBundle->totalIndices * sizeof(int), SDL_GPU_BUFFERUSAGE_INDEX);
+    render_state.buf_vertex = CreateBuffer(sceneBundle->allVertices, sceneBundle->totalVertices * sizeof(ASkinedVertex), SDL_GPU_BUFFERUSAGE_VERTEX, "CPVertexBuffer");
+    render_state.buf_index  = CreateBuffer(sceneBundle->allIndices, sceneBundle->totalIndices * sizeof(int), SDL_GPU_BUFFERUSAGE_INDEX, "CPIndexBuffer");
+
+    nodeTransforms     = AllocateTLSFGlobal(sizeof(Matrix4) * sceneBundle->numNodes);
+    characterRootIndex = Prefab_FindAnimRootNodeIndex(sceneBundle);
+
+    for (int i = 0; i < NUM_ANIMS; i++)
+    {
+        Matrix3x4f16* outMatrices = OutMatrices + (i * MaxBonePoses);
+        AnimationController_Create(sceneBundle, &animController[i], outMatrices);
+    }
+        
+    render_state.buf_bones = CreateBuffer(OutMatrices, sizeof(OutMatrices), SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ, "CPJointMatrices");
 
 	BasisuSetup();
     int imgRes = LoadSceneImages("Assets/Meshes/Paladin/PaladinTest.bdc", render_state.textures, sceneBundle->numImages, gpu_device);
@@ -447,11 +475,29 @@ static void init_render_state(int msaa)
 	}
 
 	/* Create shaders */
-	vertex_shader   = load_shader(true);  CHECK_CREATE(vertex_shader  , "Vertex Shader")
-	fragment_shader = load_shader(false); CHECK_CREATE(fragment_shader, "Fragment Shader")
+    vertex_shader = SDL_CreateGPUShader(gpu_device, &(SDL_GPUShaderCreateInfo){
+        .num_uniform_buffers = 1,
+        .format              = SDL_GetGPUShaderFormats(gpu_device),
+        .code                = SkinnedVert_spv,
+        .code_size           = sizeof(SkinnedVert_spv),
+        .num_samplers        = 0,
+        .num_storage_buffers = 1,
+        .stage               = SDL_GPU_SHADERSTAGE_VERTEX
+    });
 
-	PlatformInit();
-    CameraInit(&globalCamera, 1920, 1080);
+    fragment_shader = SDL_CreateGPUShader(gpu_device, &(SDL_GPUShaderCreateInfo){
+        .num_uniform_buffers = 0,
+        .format              = SDL_GetGPUShaderFormats(gpu_device),
+        .code                = SkinnedFrag_spv,
+        .code_size           = sizeof(SkinnedFrag_spv),
+        .num_samplers        = 1,
+        .num_storage_buffers = 0,
+        .stage               = SDL_GPU_SHADERSTAGE_FRAGMENT
+    });
+
+    CHECK_CREATE(vertex_shader  , "Vertex Shader")
+    CHECK_CREATE(fragment_shader, "Fragment Shader")
+
     InitScene();
 
 	/* Determine which sample count to use */
@@ -550,6 +596,7 @@ static void init_render_state(int msaa)
 }
 
 static int done = 0;
+Uint64 lastTime;
 
 void loop(void)
 {
@@ -564,6 +611,26 @@ void loop(void)
 
 		EventCallback(&event);
 	}
+
+    Uint64 now = SDL_GetTicks();
+    Uint64 ms_elapsed = now - lastTime;
+    PlatformCtx.DeltaTime = ms_elapsed / 1000;
+
+    const double timeSinceStartup = (double)(now - PlatformCtx.StartupTime) / 1000.0;
+
+    for (int i = 0; i < 1; i++)
+    {
+        AnimationController* ac = &animController[i];
+
+        const int numAnims = ac->mPrefab->numAnimations;
+        const int animIdx  = Clamp32(WangHash(i + 645) % numAnims, 1, numAnims);
+
+        const double animDuration = (double)ac->mPrefab->animations[animIdx].duration;
+        const float animRatio = (float)Fract((timeSinceStartup + (i * 0.1)) / animDuration);
+
+        AnimationController_PlayAnim(animController + i, 2, animRatio);
+    }
+    
 	if (!done)
 	{
 		for (i = 0; i < state.num_windows; ++i)
@@ -583,7 +650,6 @@ int main(int argc, char* argv[])
 	int msaa;
 	int i;
 	const SDL_DisplayMode* mode;
-	Uint64 then, now;
 
 	/* Initialize params */
 	msaa = 0;
@@ -604,8 +670,12 @@ int main(int argc, char* argv[])
 
 	/* Main render loop */
 	frames = 0;
-	then = SDL_GetTicks();
+	PlatformCtx.StartupTime = SDL_GetTicks();
+    lastTime = PlatformCtx.StartupTime;
 	done = 0;
+
+    PlatformInit();
+    CameraInit(&globalCamera, 1920, 1080);
 
 #ifdef __EMSCRIPTEN__
 	emscripten_set_main_loop(loop, 0, 1);
@@ -616,10 +686,7 @@ int main(int argc, char* argv[])
 #endif
 
 	/* Print out some timing information */
-	now = SDL_GetTicks();
-	if (now > then) {
-		SDL_Log("%2.2f frames per second", ((double)frames * 1000) / (now - then));
-	}
+	SDL_Log("%2.2f frames per second", ((double)frames * 1000) / (SDL_GetTicks() - PlatformCtx.StartupTime));
 #if !defined(__ANDROID__)
 	quit(0);
 #endif
