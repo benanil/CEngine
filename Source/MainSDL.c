@@ -1,6 +1,4 @@
 
-#include <stdlib.h>
-
 #ifdef __EMSCRIPTEN__
 #include <emscripten/emscripten.h>
 #endif
@@ -628,9 +626,9 @@ void loop(void)
         const double animDuration = (double)ac->mPrefab->animations[animIdx].duration;
         const float animRatio = (float)Fract((timeSinceStartup + (i * 0.1)) / animDuration);
 
-        AnimationController_PlayAnim(animController + i, 2, animRatio);
+        AnimationController_PlayAnim(animController + i, 6 & 7, animRatio);
     }
-    
+
 	if (!done)
 	{
 		for (i = 0; i < state.num_windows; ++i)
@@ -650,7 +648,7 @@ int main(int argc, char* argv[])
 	int msaa;
 	int i;
 	const SDL_DisplayMode* mode;
-
+    
 	/* Initialize params */
 	msaa = 0;
 
