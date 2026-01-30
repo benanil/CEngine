@@ -43,7 +43,7 @@ static inline Vector4x32f VECTORCALL QMul(Vector4x32f Q1, Vector4x32f Q2)
 }
 
 // Angle should be between -twopi, twopi
-static inline Vector4x32f QFromAxisAngle(Vec3f axis, float angle)
+static inline Vector4x32f QFromAxisAngle(float3 axis, float angle)
 {
     float SinV = Sin(0.5f * angle);
     float CosV = Cos(0.5f * angle);
@@ -73,9 +73,9 @@ static inline Vector4x32f VECTORCALL QMulVec3V(Vector4x32f vec, Vector4x32f quat
     return VecAdd(vec, temp1);
 }
 
-static inline Vec3f VECTORCALL QMulVec3(Vec3f vec, Quaternion quat)
+static inline float3 VECTORCALL QMulVec3(float3 vec, Quaternion quat)
 {
-    Vec3f res;
+    float3 res;
     Vec3Store(&res.x, QMulVec3V(VecSetR(vec.x, vec.y, vec.z, 1.0f), quat));
     return res;
 }
@@ -153,16 +153,16 @@ purefn Quaternion QFromEuler(float x, float y, float z)
     return q;
 }
 
-purefn Quaternion VECTORCALL QFromEulerVec3(Vec3f euler)
+purefn Quaternion VECTORCALL QFromEulerVec3(float3 euler)
 {
     return QFromEuler(euler.x, euler.y, euler.z);
 }
 
-purefn Vec3f QToEulerAngles(Quaternion qu)
+purefn float3 QToEulerAngles(Quaternion qu)
 {
     xyzw q;
     VecStore(&q.x, qu);
-    Vec3f eulerAngles; // using cstd for trigonometric functions recommended
+    float3 eulerAngles; // using cstd for trigonometric functions recommended
     eulerAngles.x = ATan2(2.0f * (q.y * q.z + q.w * q.x), q.w * q.w - q.x * q.x - q.y * q.y + q.z * q.z);
     eulerAngles.y = ASin(MCLAMP(-2.0f * (q.x * q.z - q.w * q.y), -1.0f, 1.0f));
     eulerAngles.z = ATan2(2.0f * (q.x * q.y + q.w * q.z), q.w * q.w + q.x * q.x - q.y * q.y - q.z * q.z);
@@ -245,10 +245,10 @@ static inline void Matrix4FromQuaternion(float* mat, Quaternion quat)
     mat[4 * 3 + 3] = 1.0f;
 }
 
-purefn Quaternion QFromLookRotation(Vec3f direction, Vec3f up)
+purefn Quaternion QFromLookRotation(float3 direction, float3 up)
 {
-    Vec3f matrix[3] = {
-        Vec3Cross(up, direction), up, direction 
+    const float3 matrix[3] = {
+        Float3Cross(up, direction), up, direction 
     };
     xyzw result;
     QuaternionFromMatrix(&result.x, &matrix[0].x, 3);
@@ -279,26 +279,26 @@ purefn Quaternion VECTORCALL QInverse(Quaternion q)
     }
 }
 
-static inline Vec3f VECTORCALL QGetForward(Quaternion vec) {
-    Vec3f res;
+static inline float3 VECTORCALL QGetForward(Quaternion vec) {
+    float3 res;
     Vec3Store(&res.x, QMulVec3V(VecSetR( 0.0f, 0.0f, 1.0f, 0.0f), QConjugate(vec)));
     return res; 
 }
 
-static inline Vec3f VECTORCALL QGetRight(Quaternion vec) {
-    Vec3f res;
+static inline float3 VECTORCALL QGetRight(Quaternion vec) {
+    float3 res;
     Vec3Store(&res.x, QMulVec3V(VecSetR( 1.0f, 0.0f, 0.0f, 0.0f), QConjugate(vec)));
     return res; 
 }
 
-static inline Vec3f VECTORCALL QGetLeft(Quaternion vec) {
-    Vec3f res;
+static inline float3 VECTORCALL QGetLeft(Quaternion vec) {
+    float3 res;
     Vec3Store(&res.x, QMulVec3V(VecSetR(-1.0f, 0.0f, 0.0f, 0.0f), QConjugate(vec)));
     return res; 
 }
 
-static inline Vec3f VECTORCALL QGetUp(Quaternion vec) {
-    Vec3f res;
+static inline float3 VECTORCALL QGetUp(Quaternion vec) {
+    float3 res;
     Vec3Store(&res.x, QMulVec3V(VecSetR( 0.0f, 1.0f, 0.0f, 0.0f), QConjugate(vec)));
     return res; 
 }

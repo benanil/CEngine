@@ -47,21 +47,21 @@ purefn uint32_t MultiplyU32Colors(uint32_t a, uint32_t b)
     return result;
 }
 
-purefn Vec3f HUEToRGB(float h) {
+purefn float3 HUEToRGB(float h) {
     float r = Clamp01f(Absf(h * 6.0f - 3.0f) - 1.0f);
     float g = Clamp01f(2.0f - Absf(h * 6.0f - 2.0f));
     float b = Clamp01f(2.0f - Absf(h * 6.0f - 4.0f));
-    return (Vec3f){ r, g, b };
+    return (float3){ r, g, b };
 }
 
 // converts hue to rgb color
 purefn uint32_t HUEToRGBU32(float h) {
-    Vec3f v3 = HUEToRGB(h);
+    float3 v3 = HUEToRGB(h);
     uint32_t res = PackColor3PtrToUint(&v3.x);
     return res | 0xFF000000u; // make the alpha 255
 }
 
-purefn Vec3f RGBToHSV(Vec3f rgb)
+purefn float3 RGBToHSV(float3 rgb)
 {
     float r = rgb.x, g = rgb.y, b = rgb.z;
     float K = 0.0f;
@@ -81,14 +81,14 @@ purefn Vec3f RGBToHSV(Vec3f rgb)
         K = -2.0f / 6.0f - K;
     }
     const float chroma = r - (g < b ? g : b);
-    return (Vec3f){
+    return (float3){
         Absf(K + (g - b) / (6.0f * chroma + 1e-20f)),
         chroma / (r + 1e-20f),
         r
     };
 }
 
-forceinline void HSVToRGB(Vec3f hsv, float* dst)
+forceinline void HSVToRGB(float3 hsv, float* dst)
 {
     const Vector4x32f K = VecSetR(1.0f, 2.0f / 3.0f, 1.0f / 3.0f, 3.0f);
     Vector4x32f p = VecFabs(VecSub(VecMul(VecFract(VecAdd(VecSet1(hsv.x), K)), VecSet1(6.0f)), VecSet1(3.0f)));

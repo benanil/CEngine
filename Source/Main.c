@@ -208,7 +208,7 @@ void Frame(void)
     #pragma omp parallel for schedule(static)
     for (i = 0; i < NUM_ANIMS; i++)
     {
-        Vec3f entityPos; 
+        float3 entityPos; 
         Vec3Store(&entityPos.x, ecs.EntityPositions[i]);
     
         float distSqr = Vec3DistSqr(globalCamera.position, entityPos);

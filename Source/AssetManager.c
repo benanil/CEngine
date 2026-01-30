@@ -36,7 +36,7 @@
 #include <stdio.h>
 
 // https://copyprogramming.com/howto/how-to-pack-normals-into-gl-int-2-10-10-10-rev
-static inline uint32_t Pack_INT_2_10_10_10_REV(Vec3f v) {
+static inline uint32_t Pack_INT_2_10_10_10_REV(float3 v) {
     const uint32_t xs = v.x < 0.0f, ys = v.y < 0.0f, zs = v.z < 0.0f;   
     return zs << 29 | ((uint32_t)(v.z * 511 + (zs << 9)) & 511) << 20 |
         ys << 19 | ((uint32_t)(v.y * 511 + (ys << 9)) & 511) << 10 |
@@ -61,9 +61,9 @@ int GraphicsTypeToSize(GraphicType type)
     return TypeToSize[type];
 }
 
-static inline Vec3f Unpack_INT_2_10_10_10_REV(uint32_t p) 
+static inline float3 Unpack_INT_2_10_10_10_REV(uint32_t p) 
 {
-    Vec3f result;
+    float3 result;
     const uint32_t tenMask = (1 << 10)-1;
     result.x = 255.0f / ((p >>  0) & tenMask);
     result.y = 255.0f / ((p >> 10) & tenMask);
@@ -207,7 +207,7 @@ int LoadFBX(const char* path, SceneBundle* fbxScene, float scale)
                 currentVertex[j].texCoord = Float2ToHalf2((float*)(umesh->vertex_uv.values.data + j));
             }
             if (umesh->vertex_normal.exists) {
-                currentVertex[j].normal = Pack_INT_2_10_10_10_REV(Vec3FromPtr((float*)(umesh->vertex_normal.values.data + j)));
+                currentVertex[j].normal = Pack_INT_2_10_10_10_REV(Float3FromPtr((float*)(umesh->vertex_normal.values.data + j)));
             }
             if (umesh->vertex_tangent.exists)
             {
@@ -454,9 +454,9 @@ int LoadFBX(const char* path, SceneBundle* fbxScene, float scale)
             ASSERT(anode->children[j] != -1);
         }
         
-        SmallMemCpy(anode->translation, &unode->world_transform.translation.x, sizeof(Vec3f));
+        SmallMemCpy(anode->translation, &unode->world_transform.translation.x, sizeof(float3));
         SmallMemCpy(anode->rotation, &unode->world_transform.rotation.x, sizeof(Vector4x32f));
-        SmallMemCpy(anode->scale, &unode->world_transform.scale.x, sizeof(Vec3f));
+        SmallMemCpy(anode->scale, &unode->world_transform.scale.x, sizeof(float3));
         
         if (anode->type == 0)
         {
@@ -509,16 +509,16 @@ void CreateVerticesIndices(SceneBundle* gltf)
             primitive->vertices = currVertex;
             
             // https://www.yosoygames.com.ar/wp/2018/03/vertex-formats-part-1-compression/
-            Vec3f* positions = (Vec3f*)primitive->vertexAttribs[0];
-            Vec2f* texCoords = (Vec2f*)primitive->vertexAttribs[1];
-            Vec3f* normals   = (Vec3f*)primitive->vertexAttribs[2];
+            float3* positions = (float3*)primitive->vertexAttribs[0];
+            float2* texCoords = (float2*)primitive->vertexAttribs[1];
+            float3* normals   = (float3*)primitive->vertexAttribs[2];
             Vector4x32f* tangents     = (Vector4x32f*)primitive->vertexAttribs[3];
             
             for (int v = 0; v < primitive->numVertices; v++)
             {
                 Vector4x32f    tangent  = tangents  ? tangents[v]  : VecZero();
-                Vec2f texCoord = texCoords ? texCoords[v] : (Vec2f){0.0f, 0.0f};
-                Vec3f normal   = normals   ? normals[v]   : (Vec3f){0.5f, 0.5f, 0.0};
+                float2 texCoord = texCoords ? texCoords[v] : (float2){0.0f, 0.0f};
+                float3 normal   = normals   ? normals[v]   : (float3){0.5f, 0.5f, 0.0};
 
                 currVertex[v].position  = positions[v];
                 currVertex[v].texCoord  = Float2ToHalf2(&texCoord.x);
@@ -587,16 +587,16 @@ void CreateVerticesIndicesSkined(SceneBundle* gltf)
             
             // https://www.yosoygames.com.ar/wp/2018/03/vertex-formats-part-1-compression/
             primitive->vertices = currVertex;
-            Vec3f* positions = (Vec3f*)primitive->vertexAttribs[0];
-            Vec2f* texCoords = (Vec2f*)primitive->vertexAttribs[1];
-            Vec3f* normals   = (Vec3f*)primitive->vertexAttribs[2];
+            float3* positions = (float3*)primitive->vertexAttribs[0];
+            float2* texCoords = (float2*)primitive->vertexAttribs[1];
+            float3* normals   = (float3*)primitive->vertexAttribs[2];
             Vector4x32f*    tangents  = (Vector4x32f*)primitive->vertexAttribs[3];
 
             for (int v = 0; v < primitive->numVertices; v++)
             {
                 Vector4x32f tangent     = tangents  ? tangents[v]  : VecZero();
-                Vec2f texCoord = texCoords ? texCoords[v] : (Vec2f){0.0f, 0.0f};
-                Vec3f normal   = normals   ? normals[v]   : (Vec3f){0.5f, 0.5f, 0.0};
+                float2 texCoord = texCoords ? texCoords[v] : (float2){0.0f, 0.0f};
+                float3 normal   = normals   ? normals[v]   : (float3){0.5f, 0.5f, 0.0};
 
                 currVertex[v].position = positions[v];
                 currVertex[v].texCoord = Float2ToHalf2(&texCoord.x);

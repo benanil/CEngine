@@ -21,12 +21,12 @@ typedef struct Camera_
     float nearClip;
     float farClip;
 
-    Vec2i viewportSize, monitorSize;
+    int2 viewportSize, monitorSize;
        
-    Vec3f position;
-    Vec2f mouseOld;
-    Vec3f targetPos;
-    Vec3f Front, Right, Up;
+    float3 position;
+    float2 mouseOld;
+    float3 targetPos;
+    float3 Front, Right, Up;
  
     float pitch, yaw, senstivity;
     float speed;
@@ -58,16 +58,16 @@ static inline void Camera_CalculateLook(Camera* camera) // from yaw pitch
     camera->Front.x = Cos(camera->yaw * MATH_DegToRad) * Cos(camera->pitch * MATH_DegToRad);
     camera->Front.y = Sin(camera->pitch * MATH_DegToRad);
     camera->Front.z = Sin(camera->yaw * MATH_DegToRad) * Cos(camera->pitch * MATH_DegToRad);
-    camera->Front = Vec3Norm(camera->Front);
+    camera->Front = Float3Norm(camera->Front);
     // also re-calculate the Right and Up vector
     // normalize the vectors, because their length gets closer to 0 the more you look up or down which results in slower movement.
-    camera->Right = Vec3NormEst(Vec3Cross(camera->Front, Vec3Up()));
-    camera->Up = Vec3Cross(camera->Right, camera->Front);
+    camera->Right = Float3NormEst(Float3Cross(camera->Front, Float3Up()));
+    camera->Up = Float3Cross(camera->Right, camera->Front);
 }
 
-static inline RayV ScreenPointToRay(Camera* camera, Vec2f pos)
+static inline RayV ScreenPointToRay(Camera* camera, float2 pos)
 {
-    Vec2f coord = (Vec2f){ pos.x / (float)camera->viewportSize.x, pos.y / (float)camera->viewportSize.y };
+    float2 coord = (float2){ pos.x / (float)camera->viewportSize.x, pos.y / (float)camera->viewportSize.y };
     coord.y = 1.0f - coord.y;    // Flip Y to match the NDC coordinate system
     coord = Vec2SubF(Vec2MulF(coord, 2.0f), 1.0f); // Map to range [-1, 1]
 
@@ -101,9 +101,9 @@ static inline void CameraInit(Camera* camera, int width, int height)
     Camera_RecalculateProjection(camera, width, height);
 }
 
-static inline void InfiniteMouse(Vec2f point)
+static inline void InfiniteMouse(float2 point)
 {
-    Vec2i monitorSize;
+    int2 monitorSize;
     wGetMonitorSize(&monitorSize.x, &monitorSize.y);
     
     #ifndef __ANDROID__
@@ -122,9 +122,9 @@ static inline void CameraUpdate(Camera* camera, float dt)
     
     if (!pressing) { camera->wasPressing = false; return; }
         
-    Vec2f mousePos;
+    float2 mousePos;
     GetMousePos(&mousePos.x, &mousePos.y);
-    Vec2f diff = Vec2Sub(mousePos, camera->mouseOld);
+    float2 diff = Vec2Sub(mousePos, camera->mouseOld);
     
     SDL_Cursor* cursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_MOVE);
     SDL_SetCursor(cursor);
@@ -152,12 +152,12 @@ static inline void CameraUpdate(Camera* camera, float dt)
     camera->mouseOld = mousePos;
     camera->wasPressing = true;
 
-    if (GetKeyDown(SDLK_D)) camera->position = Vec3Add(camera->position, Vec3MulF(camera->Right, camera->speed));
-    if (GetKeyDown(SDLK_A)) camera->position = Vec3Sub(camera->position, Vec3MulF(camera->Right, camera->speed));
-    if (GetKeyDown(SDLK_W)) camera->position = Vec3Add(camera->position, Vec3MulF(camera->Front, camera->speed));
-    if (GetKeyDown(SDLK_S)) camera->position = Vec3Sub(camera->position, Vec3MulF(camera->Front, camera->speed));
-    if (GetKeyDown(SDLK_E)) camera->position = Vec3Add(camera->position, Vec3MulF(camera->Up, camera->speed));
-    if (GetKeyDown(SDLK_Q)) camera->position = Vec3Sub(camera->position, Vec3MulF(camera->Up, camera->speed));
+    if (GetKeyDown(SDLK_D)) camera->position = Float3Add(camera->position, Float3MulF(camera->Right, camera->speed));
+    if (GetKeyDown(SDLK_A)) camera->position = Float3Sub(camera->position, Float3MulF(camera->Right, camera->speed));
+    if (GetKeyDown(SDLK_W)) camera->position = Float3Add(camera->position, Float3MulF(camera->Front, camera->speed));
+    if (GetKeyDown(SDLK_S)) camera->position = Float3Sub(camera->position, Float3MulF(camera->Front, camera->speed));
+    if (GetKeyDown(SDLK_E)) camera->position = Float3Add(camera->position, Float3MulF(camera->Up, camera->speed));
+    if (GetKeyDown(SDLK_Q)) camera->position = Float3Sub(camera->position, Float3MulF(camera->Up, camera->speed));
 
     InfiniteMouse(mousePos);
     Camera_RecalculateView(camera);

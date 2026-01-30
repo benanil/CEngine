@@ -65,7 +65,7 @@ typedef int GraphicType;
 // https://www.yosoygames.com.ar/wp/2018/03/vertex-formats-part-1-compression/
 typedef struct AVertex_
 {
-    Vec3f    position;
+    float3    position;
     uint32_t normal;
     uint32_t tangent;
     uint32_t texCoord; // half2
@@ -73,7 +73,7 @@ typedef struct AVertex_
 
 typedef struct ASkinedVertex_
 {
-    Vec3f    position;
+    float3    position;
     uint32_t normal;
     uint32_t tangent;
     uint32_t texCoord; // half2

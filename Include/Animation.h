@@ -118,7 +118,7 @@ typedef struct AnimatedCharacter_
     float mSpineXAngle; // < will rotate around this axis (normalized) default vec3::up
     float mNeckXAngle;  // < will rotate around this axis (normalized) default vec3::up
     
-    Vec2f mAnimTime;
+    float2 mAnimTime;
 
     Pose mAnimPoseB[MaxBonePoses]; // < blend target
     // two posses for blending

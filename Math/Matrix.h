@@ -20,7 +20,7 @@ typedef union Matrix4_ {
 } Matrix4;
 
 typedef union Matrix3_ {
-    Vec3f r[3];
+    float3 r[3];
 } Matrix3;
 
 typedef struct FrustumPlanes_ {
@@ -31,29 +31,29 @@ typedef struct FrustumPlanes_ {
 purefn Matrix3 Matrix3Multiply(Matrix3 a, Matrix3 b)
 {
     Matrix3 result;
-    Vec3f vx = Vec3Mul(b.r[0], a.r[0]);
-    Vec3f vy = Vec3Mul(b.r[1], a.r[0]);
-    Vec3f vz = Vec3Mul(b.r[2], a.r[0]);
-    result.r[0] = Vec3Add(Vec3Add(vx, vy), vz);
+    float3 vx = Float3Mul(b.r[0], a.r[0]);
+    float3 vy = Float3Mul(b.r[1], a.r[0]);
+    float3 vz = Float3Mul(b.r[2], a.r[0]);
+    result.r[0] = Float3Add(Float3Add(vx, vy), vz);
         
-    vx = Vec3Mul(b.r[0], a.r[1]);
-    vy = Vec3Mul(b.r[1], a.r[1]);
-    vz = Vec3Mul(b.r[2], a.r[1]);
-    result.r[1] = Vec3Add(Vec3Add(vx, vy), vz);
+    vx = Float3Mul(b.r[0], a.r[1]);
+    vy = Float3Mul(b.r[1], a.r[1]);
+    vz = Float3Mul(b.r[2], a.r[1]);
+    result.r[1] = Float3Add(Float3Add(vx, vy), vz);
         
-    vx = Vec3Mul(b.r[0], a.r[2]);
-    vy = Vec3Mul(b.r[1], a.r[2]);
-    vz = Vec3Mul(b.r[2], a.r[2]);
-    result.r[2] = Vec3Add(Vec3Add(vx, vy), vz);
+    vx = Float3Mul(b.r[0], a.r[2]);
+    vy = Float3Mul(b.r[1], a.r[2]);
+    vz = Float3Mul(b.r[2], a.r[2]);
+    result.r[2] = Float3Add(Float3Add(vx, vy), vz);
     return result;
 }
 
-purefn Vec3f Matrix3MultiplyVec3(Matrix3 m, Vec3f v)
+purefn float3 Matrix3MultiplyFloat3(Matrix3 m, float3 v)
 {
-    return Vec3Add(Vec3Add(Vec3MulF(m.r[0], v.x), Vec3MulF(m.r[1], v.y)), Vec3MulF(m.r[2], v.z));
+    return Float3Add(Float3Add(Float3MulF(m.r[0], v.x), Float3MulF(m.r[1], v.y)), Float3MulF(m.r[2], v.z));
 }
     
-static inline Matrix3 TBN(Vec3f normal, Vec3f tangent, Vec3f bitangent)
+static inline Matrix3 TBN(float3 normal, float3 tangent, float3 bitangent)
 {
     Matrix3 M;
     M.r[0] = normal;
@@ -65,19 +65,19 @@ static inline Matrix3 TBN(Vec3f normal, Vec3f tangent, Vec3f bitangent)
 static inline Matrix3 Identity()
 {
     Matrix3 result;
-    result.r[0] = (Vec3f){1.0f, 0.0f, 0.0f};
-    result.r[1] = (Vec3f){0.0f, 1.0f, 0.0f};
-    result.r[2] = (Vec3f){0.0f, 0.0f, 1.0f};
+    result.r[0] = (float3){1.0f, 0.0f, 0.0f};
+    result.r[1] = (float3){0.0f, 1.0f, 0.0f};
+    result.r[2] = (float3){0.0f, 0.0f, 1.0f};
     return result;
 }
 
-purefn Matrix3 Matrix3LookAt(Vec3f direction, Vec3f up)
+purefn Matrix3 Matrix3LookAt(float3 direction, float3 up)
 {
     Matrix3 result;
     result.r[2] = direction;
-    Vec3f Right = Vec3Cross(up, result.r[2]);
-    result.r[0] = Vec3MulF(Right, RSqrtf(MMAX(0.00001f, Vec3Dot(Right, Right))));
-    result.r[1] = Vec3Cross(result.r[2], result.r[0]);
+    float3 Right = Float3Cross(up, result.r[2]);
+    result.r[0] = Float3MulF(Right, RSqrtf(MMAX(0.00001f, Float3Dot(Right, Right))));
+    result.r[1] = Float3Cross(result.r[2], result.r[0]);
     return result;
 }
 
@@ -113,7 +113,7 @@ purefn Matrix4 MatrixFromPositionPtr(const float* vec3)
     return MatrixFromPosition(vec3[0], vec3[1], vec3[2]);
 }
     
-purefn Matrix4 MatrixFromPositionVec(Vec3f vec3)
+purefn Matrix4 MatrixFromPositionFloat3(float3 vec3)
 {
     return MatrixFromPosition(vec3.x, vec3.y, vec3.z);
 }
@@ -128,7 +128,7 @@ purefn Matrix4 MatrixFromScale(float ScaleX, float ScaleY, float ScaleZ)
     return M;
 }
     
-purefn Matrix4 MatrixFromScaleVec(Vec3f vec3)
+purefn Matrix4 MatrixFromScaleVec(float3 vec3)
 {
     return MatrixFromScale(vec3.x, vec3.y, vec3.z);
 }
@@ -143,7 +143,7 @@ purefn Matrix4 MatrixFromScalef(float scale)
     return MatrixFromScale(scale, scale, scale);
 }
 
-purefn Matrix4 MatrixCreateRotation(Vec3f right, Vec3f up, Vec3f forward)
+purefn Matrix4 MatrixCreateRotation(float3 right, float3 up, float3 forward)
 {
     Matrix4 m;
     m.r[0] = Vec3Load(&right.x);
@@ -421,7 +421,7 @@ purefn Matrix4 VECTORCALL Matrix4Transpose(Matrix4 M)
     return mResult;
 }
 
-purefn Matrix4 VECTORCALL LookAtRH(Vec3f eye, Vec3f center, Vec3f up)
+purefn Matrix4 VECTORCALL LookAtRH(const float3 eye, const float3 center, const float3 up)
 {
     Vector4x32f EyePosition  = VecLoad(&eye.x);
     Vector4x32f EyeDirection = VecSub(VecZero(), VecLoad(&center.x));
@@ -476,7 +476,7 @@ purefn Matrix4 PositionRotationScaleVec(Vector4x32f position, Quaternion rotatio
 }
 
 
-purefn Matrix4 PositionRotationScale(Vec3f position, Quaternion rotation, Vec3f scale)
+purefn Matrix4 PositionRotationScale(float3 position, Quaternion rotation, float3 scale)
 {
     return PositionRotationScaleVec(VecLoad(&position.x), rotation, VecSetR(scale.x, scale.y, scale.z, 0.0f)); 
 }
@@ -497,9 +497,9 @@ purefn Matrix4 PositionRotationScalePtr(const float* position, const float* rota
     return res; 
 }
 
-purefn Vec3f VECTORCALL ExtractPosition(Matrix4 matrix)
+purefn float3 VECTORCALL ExtractPosition(Matrix4 matrix)
 {
-    Vec3f res;
+    float3 res;
     Vec3Store(&res.x, matrix.r[3]);
     return res;
 }
@@ -511,9 +511,9 @@ purefn Quaternion VECTORCALL ExtractRotation(Matrix4 M, bool rowNormalize)
     return res;
 }
     
-purefn Vec3f VECTORCALL ExtractScale(Matrix4 matrix) 
+purefn float3 VECTORCALL ExtractScale(Matrix4 matrix) 
 {
-    return (Vec3f){ Vec3LenfV(matrix.r[0]), Vec3LenfV(matrix.r[2]), Vec3LenfV(matrix.r[1]) };
+    return (float3){ Vec3LenfV(matrix.r[0]), Vec3LenfV(matrix.r[2]), Vec3LenfV(matrix.r[1]) };
 }
 
 purefn Vector4x32f VECTORCALL ExtractScaleV(Matrix4 matrix) 
@@ -627,41 +627,41 @@ purefn Vector4x32f VECTORCALL MaxPointAlongNormal(Vector4x32f min, Vector4x32f m
     return VecSelect(min, max, VecCmpGe(n, VecZero()));
 }
 
-static inline bool VECTORCALL CheckAABBCulled(Vector4x32f min, Vector4x32f max, FrustumPlanes frustum, Matrix4 model)
+static inline bool VECTORCALL CheckAABBCulled(Vector4x32f min, Vector4x32f max, const Vector4x32f frustumPlanes[6])
 {
     for (uint32_t i = 0u; i < 5u; ++i) // make < 6 if you want far plane 
     {
-        Vector4x32f p = MaxPointAlongNormal(min, max, frustum.planes[i]);
+        Vector4x32f p = MaxPointAlongNormal(min, max, frustumPlanes[i]);
         p = VecSelect(VecOne(), p, VecSelect1110);
-        if (VecDotf(frustum.planes[i], p) < 0.0f) return false;
+        if (VecDotf(frustumPlanes[i], p) < 0.0f) return false;
     }
     return true;
 }
 
-static inline bool isPointCulled(FrustumPlanes frustum, Vec3f _point, Matrix4 matrix)
+static inline bool isPointCulled(float3 _point, Matrix4 matrix, const Vector4x32f frustumPlanes[6])
 {
     Vector4x32f point = Vector3Transform(VecLoad(&_point.x), matrix.r);
-    if (VecDotf(frustum.planes[0], point) < 0.0f) return false;
-    if (VecDotf(frustum.planes[1], point) < 0.0f) return false;
-    if (VecDotf(frustum.planes[2], point) < 0.0f) return false;
-    if (VecDotf(frustum.planes[3], point) < 0.0f) return false;
-    if (VecDotf(frustum.planes[4], point) < 0.0f) return false;
+    if (VecDotf(frustumPlanes[0], point) < 0.0f) return false;
+    if (VecDotf(frustumPlanes[1], point) < 0.0f) return false;
+    if (VecDotf(frustumPlanes[2], point) < 0.0f) return false;
+    if (VecDotf(frustumPlanes[3], point) < 0.0f) return false;
+    if (VecDotf(frustumPlanes[4], point) < 0.0f) return false;
     return true;
 }
 
-static inline Vec2f WorldToNDC(Matrix4 viewProj, Vec3f worldPos)
+static inline float2 WorldToNDC(Matrix4 viewProj, float3 worldPos)
 {
     Vector4x32f pos = VecLoad(&worldPos.x);
     Vector4x32f clipCoords = Vector3Transform(pos, viewProj.r);
     pos = VecDiv(clipCoords, VecSplatW(clipCoords));
     Vec3Store(&worldPos.x, pos);
-    return (Vec2f){ worldPos.x, worldPos.y };
+    return (float2){ worldPos.x, worldPos.y };
 }
 
-static inline Vec2f WorldToScreenCoord(Matrix4 viewProj, Vec3f worldPos, int width, int height)
+static inline float2 WorldToScreenCoord(Matrix4 viewProj, float3 worldPos, int width, int height)
 {
-    Vec2f ndc = WorldToNDC(viewProj, worldPos);
-    return (Vec2f){ (width  * ndc.x), (height * ndc.y) };
+    float2 ndc = WorldToNDC(viewProj, worldPos);
+    return (float2){ (width  * ndc.x), (height * ndc.y) };
 }
 
 purefn Matrix4 DQToMatrix(DualQuaternion dq)
@@ -678,6 +678,5 @@ purefn Matrix4 DQToMatrix(DualQuaternion dq)
     VecSetW(m.r[3], 1.0f);
     return m;
 }
-
 
 #endif
