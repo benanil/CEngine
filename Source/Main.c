@@ -233,7 +233,7 @@ void Frame(void)
             AnimationController* ac = &animController[i];
 
             const int numAnims = ac->mPrefab->numAnimations;
-            const int animIdx  = Clamp32(WangHash(i + 645) % numAnims, 1, numAnims);
+            const int animIdx  = Clampi32(WangHash(i + 645) % numAnims, 1, numAnims);
 
             const double animDuration = (double)ac->mPrefab->animations[animIdx].duration;
             const float animRatio = (float)Fract((timeSinceStartup + (i * 0.1)) / animDuration);
@@ -389,7 +389,7 @@ static void _sapp_setup_wave_icon(void)
         for (int y = 0; y < dim; y++) {
             for (int x = 0; x < dim; x++) {
                 int wave_y = dim/2 + SinR(x * 6.28f / dim * 2.0f) * dim * 0.3f;
-                *dst++ = (Absf(y - wave_y) <= 2) ? colors[x * 7 / dim] : 0x00FFFFFF;
+                *dst++ = (Absf32(y - wave_y) <= 2) ? colors[x * 7 / dim] : 0x00FFFFFF;
             }
         }
     }

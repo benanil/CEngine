@@ -610,10 +610,10 @@ void CreateVerticesIndicesSkined(SceneBundle* gltf)
 
             // size and offset in bytes
             int jointSize = GraphicsTypeToSize(primitive->jointType);
-            int jointOffset = Max32((int)(primitive->jointStride - (jointSize * primitive->jointCount)), 0); // stride - sizeof(rgbau16)
+            int jointOffset = Maxi32((int)(primitive->jointStride - (jointSize * primitive->jointCount)), 0); // stride - sizeof(rgbau16)
             // size and offset in bytes
             int weightSize   = GraphicsTypeToSize(primitive->weightType);
-            int weightOffset = Max32((int)(primitive->weightStride - (weightSize * primitive->jointCount)), 0);
+            int weightOffset = Maxi32((int)(primitive->weightStride - (weightSize * primitive->jointCount)), 0);
             
             for (int j = 0; j < primitive->numVertices; j++)
             {

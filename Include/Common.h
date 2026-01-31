@@ -370,41 +370,41 @@ purefn int64_t NextPowerOf2_64(int64_t x) {
 
 #define MCLAMP01(x) (MMIN((1.0f), MMAX((x), (0.0f))))
 
-purefn float Clamp01f(float x) { return MMIN(1.0f, MMAX(x, 0.0f)); }
+purefn float Clamp01f32(float x) { return MMIN(1.0f, MMAX(x, 0.0f)); }
 
-purefn float Clampf(float x, float min, float max) { return MMIN(max, MMAX(x, min)); }
+purefn float Clampf32(float x, float min, float max) { return MMIN(max, MMAX(x, min)); }
 
-purefn int Clamp32(int x, int min, int max) { return MMIN(max, MMAX(x, min)); }
+purefn int Clampi32(int x, int min, int max) { return MMIN(max, MMAX(x, min)); }
 
-purefn float Minf(float a, float b) { return a < b ? a : b; }
+purefn float Minf32(float a, float b) { return a < b ? a : b; }
 
-purefn float Maxf(float a, float b) { return a > b ? a : b; }
+purefn float Maxf32(float a, float b) { return a > b ? a : b; }
 
-purefn int Min32(int a, int b) { return a < b ? a : b; }
+purefn int Mini32(int a, int b) { return a < b ? a : b; }
 
-purefn int Max32(int a, int b) { return a > b ? a : b; }
+purefn int Maxi32(int a, int b) { return a > b ? a : b; }
 
-purefn uint64_t Min64(uint64_t a, uint64_t b) { return a < b ? a : b; }
+purefn uint64_t Minu64(uint64_t a, uint64_t b) { return a < b ? a : b; }
 
-purefn uint64_t Max64(uint64_t a, uint64_t b) { return a > b ? a : b; }
+purefn uint64_t Maxu64(uint64_t a, uint64_t b) { return a > b ? a : b; }
 
-purefn int64_t Abs64(int64_t x) {
+purefn int64_t Absu64(int64_t x) {
     int64_t temp = x >> 63;
     return (x ^ temp) - temp;
 }
 
-purefn int Abs32(int x) {
+purefn int Absi32(int x) {
     int temp = x >> 31;
     return (x ^ temp) - temp;
 }
 
-purefn float Absf(float x)
+purefn float Absf32(float x)
 {
     int ix = BitCast(int, x) & 0x7FFFFFFF; // every bit except sign mask
     return BitCast(float, ix);
 }
 
-purefn double AbsD(double x)
+purefn double Absf64(double x)
 {
     uint64_t  ix = BitCast(uint64_t, x) & (~(1ull << 63ull));// every bit except sign mask
     return BitCast(double, ix);

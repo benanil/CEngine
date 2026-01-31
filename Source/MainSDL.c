@@ -31,207 +31,55 @@
 #include "Shaders/SkinnedFrag.spv.h"
 #include "Shaders/SkinnedVert.spv.h"
 
-#define TESTGPU_SUPPORTED_FORMATS (SDL_GPU_SHADERFORMAT_SPIRV | SDL_GPU_SHADERFORMAT_DXBC | SDL_GPU_SHADERFORMAT_DXIL | SDL_GPU_SHADERFORMAT_METALLIB)
-
-#define CHECK_CREATE(var, thing) { if (!(var)) { SDL_Log("Failed to create %s: %s", thing, SDL_GetError()); quit(2); } }
+#define NUM_ANIMS (32)
 
 static Uint32 frames = 0;
 
-typedef struct RenderState
-{
-	SDL_GPUBuffer* buf_vertex;
-	SDL_GPUBuffer* buf_index;
-	SDL_GPUBuffer* buf_bones;
-    SDL_GPUSampler* sampler;
-    Texture textures[8];
-	SDL_GPUGraphicsPipeline* pipeline;
-	SDL_GPUSampleCount sample_count;
-} RenderState;
+SDL_Window* sdlWindow;
+SDL_GPUDevice* gpu_device = NULL;
+WindowState window_state;
 
-typedef struct WindowState
-{
-	int angle_x, angle_y, angle_z;
-	SDL_GPUTexture* tex_depth, * tex_msaa, * tex_resolve;
-	Uint32 prev_drawablew, prev_drawableh;
-} WindowState;
-
-typedef struct
-{
-	int num_windows;
-	SDL_Window* windows[4];
-} CommonState;
-
-static SDL_GPUDevice* gpu_device = NULL;
-static RenderState render_state;
-static WindowState* window_states = NULL;
-static CommonState state;
+RenderState render_state;
 
 Camera globalCamera;
 SceneBundle* sceneBundle;
-
-#define NUM_ANIMS (32)
 Matrix4* nodeTransforms;
+
 static int characterRootIndex;
 static AnimationController animController[NUM_ANIMS];
 AX_ALIGN(4) Matrix3x4f16 OutMatrices[MaxBonePoses * NUM_ANIMS];
 
-static void shutdownGPU(void)
+static void DestroyPipeline()
 {
-	if (window_states) 
-    {
-        for (int i = 0; i < state.num_windows; i++)
-        {
-			WindowState* winstate = &window_states[i];
-			SDL_ReleaseGPUTexture(gpu_device, winstate->tex_depth);
-			SDL_ReleaseGPUTexture(gpu_device, winstate->tex_msaa);
-			SDL_ReleaseGPUTexture(gpu_device, winstate->tex_resolve);
-			SDL_ReleaseWindowFromGPUDevice(gpu_device, state.windows[i]);
-		}
-		SDL_free(window_states);
-		window_states = NULL;
-	}
-
-	SDL_ReleaseGPUBuffer(gpu_device, render_state.buf_vertex);
-	SDL_ReleaseGPUGraphicsPipeline(gpu_device, render_state.pipeline);
-	SDL_DestroyGPUDevice(gpu_device);
+	if (render_state.buf_vertex) SDL_ReleaseGPUBuffer(gpu_device, render_state.buf_vertex);
+	if (render_state.pipeline)   SDL_ReleaseGPUGraphicsPipeline(gpu_device, render_state.pipeline);
 
 	SDL_zero(render_state);
 	gpu_device = NULL;
 }
 
-
 /* Call this instead of exit(), so we can clean up SDL: atexit() is evil. */
-static void quit(int rc)
+void Quit(int rc)
 {
-	shutdownGPU();
+	DestroyPipeline();
+    rDestroy();
 	exit(rc);
 }
 
-static SDL_GPUTexture* CreateDepthTexture(Uint32 drawablew, Uint32 drawableh)
+static void Render()
 {
-	SDL_GPUTextureCreateInfo createinfo;
-	SDL_GPUTexture* result;
-
-	createinfo.type = SDL_GPU_TEXTURETYPE_2D;
-	createinfo.format = SDL_GPU_TEXTUREFORMAT_D24_UNORM;
-	createinfo.width = drawablew;
-	createinfo.height = drawableh;
-	createinfo.layer_count_or_depth = 1;
-	createinfo.num_levels = 1;
-	createinfo.sample_count = render_state.sample_count;
-	createinfo.usage = SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET;
-	createinfo.props = 0;
-
-	result = SDL_CreateGPUTexture(gpu_device, &createinfo);
-	CHECK_CREATE(result, "Depth Texture")
-	return result;
-}
-
-static SDL_GPUTexture* CreateMSAATexture(Uint32 drawablew, Uint32 drawableh)
-{
-	SDL_GPUTextureCreateInfo createinfo;
-	SDL_GPUTexture* result;
-
-	if (render_state.sample_count == SDL_GPU_SAMPLECOUNT_1) {
-		return NULL;
-	}
-
-	createinfo.type = SDL_GPU_TEXTURETYPE_2D;
-	createinfo.format = SDL_GetGPUSwapchainTextureFormat(gpu_device, state.windows[0]);
-	createinfo.width = drawablew;
-	createinfo.height = drawableh;
-	createinfo.layer_count_or_depth = 1;
-	createinfo.num_levels = 1;
-	createinfo.sample_count = render_state.sample_count;
-	createinfo.usage = SDL_GPU_TEXTUREUSAGE_COLOR_TARGET;
-	createinfo.props = 0;
-
-	result = SDL_CreateGPUTexture(gpu_device, &createinfo);
-	CHECK_CREATE(result, "MSAA Texture")
-	return result;
-}
-
-static SDL_GPUTexture* CreateResolveTexture(Uint32 drawablew, Uint32 drawableh)
-{
-	SDL_GPUTextureCreateInfo createinfo;
-	SDL_GPUTexture* result;
-
-	if (render_state.sample_count == SDL_GPU_SAMPLECOUNT_1) {
-		return NULL;
-	}
-
-	createinfo.type = SDL_GPU_TEXTURETYPE_2D;
-	createinfo.format = SDL_GetGPUSwapchainTextureFormat(gpu_device, state.windows[0]);
-	createinfo.width = drawablew;
-	createinfo.height = drawableh;
-	createinfo.layer_count_or_depth = 1;
-	createinfo.num_levels = 1;
-	createinfo.sample_count = SDL_GPU_SAMPLECOUNT_1;
-	createinfo.usage = SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER;
-	createinfo.props = 0;
-
-	result = SDL_CreateGPUTexture(gpu_device, &createinfo);
-	CHECK_CREATE(result, "Resolve Texture")
-	return result;
-}
-
-static void UploadBoneBuffer()
-{
-    SDL_GPUTransferBufferCreateInfo transferBufferCreateInfo;
-    transferBufferCreateInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
-    transferBufferCreateInfo.size  = sizeof(OutMatrices);
-    transferBufferCreateInfo.props = 0;
-
-    SDL_GPUTransferBuffer* boneTransferBuffer;
-    SDL_GPUCopyPass* copyPass;
-    Uint8* boneTransferPtr;
-    SDL_GPUCommandBuffer* uploadCmdBuf;
-
-    uploadCmdBuf = SDL_AcquireGPUCommandBuffer(gpu_device);
-    copyPass = SDL_BeginGPUCopyPass(uploadCmdBuf);
-    
-    boneTransferBuffer = SDL_CreateGPUTransferBuffer(gpu_device, &transferBufferCreateInfo);
-    boneTransferPtr = (Uint8*)SDL_MapGPUTransferBuffer(gpu_device, boneTransferBuffer, true);
-    MemCpy(boneTransferPtr, OutMatrices, sizeof(OutMatrices));
-    SDL_UnmapGPUTransferBuffer(gpu_device, boneTransferBuffer);
-
-    SDL_UploadToGPUBuffer(copyPass,
-                          &(SDL_GPUTransferBufferLocation){ .transfer_buffer = boneTransferBuffer, .offset = 0}, 
-                          &(SDL_GPUBufferRegion){.buffer=render_state.buf_bones, .offset=0, .size = sizeof(OutMatrices)}, true);
-    
-    
-    SDL_EndGPUCopyPass(copyPass);
-    
-    SDL_GPUFence* fence = SDL_SubmitGPUCommandBufferAndAcquireFence(uploadCmdBuf);
-    SDL_WaitForGPUFences(gpu_device, true, &fence, 1);
-    SDL_ReleaseGPUFence(gpu_device, fence);
-    
-    SDL_ReleaseGPUTransferBuffer(gpu_device, boneTransferBuffer);
-}
-
-static void Render(SDL_Window* window, const int windownum)
-{
-	WindowState* winstate = &window_states[windownum];
-	SDL_GPUTexture* swapchainTexture;
-	SDL_GPUColorTargetInfo color_target;
-	SDL_GPUDepthStencilTargetInfo depth_target;
-	SDL_GPUCommandBuffer* cmd;
-	SDL_GPURenderPass* pass;
-	SDL_GPUBufferBinding vertex_binding;
-	SDL_GPUBufferBinding index_binding;
-
-	SDL_GPUBlitInfo blit_info;
-	Uint32 drawablew, drawableh;
-
 	/* Acquire the swapchain texture */
-	cmd = SDL_AcquireGPUCommandBuffer(gpu_device);
+	SDL_GPUCommandBuffer* cmd = SDL_AcquireGPUCommandBuffer(gpu_device);
 	if (!cmd) {
 		SDL_Log("Failed to acquire command buffer :%s", SDL_GetError());
-		quit(2);
+		Quit(2);
 	}
-	if (!SDL_WaitAndAcquireGPUSwapchainTexture(cmd, state.windows[windownum], &swapchainTexture, &drawablew, &drawableh)) {
+	
+    SDL_GPUTexture* swapchainTexture;
+    Uint32 drawablew, drawableh;
+	if (!SDL_WaitAndAcquireGPUSwapchainTexture(cmd, sdlWindow, &swapchainTexture, &drawablew, &drawableh)) {
 		SDL_Log("Failed to acquire swapchain texture: %s", SDL_GetError());
-		quit(2);
+		Quit(2);
 	}
 
 	if (swapchainTexture == NULL) {
@@ -239,7 +87,8 @@ static void Render(SDL_Window* window, const int windownum)
 		SDL_CancelGPUCommandBuffer(cmd);
 		return;
 	}
-
+	
+    WindowState* winstate = &window_state;
 	/* Resize the depth buffer if the window size changed */
 	if (winstate->prev_drawablew != drawablew || winstate->prev_drawableh != drawableh) {
 		SDL_ReleaseGPUTexture(gpu_device, winstate->tex_depth);
@@ -251,13 +100,10 @@ static void Render(SDL_Window* window, const int windownum)
 	}
 	winstate->prev_drawablew = drawablew;
 	winstate->prev_drawableh = drawableh;
-    
-    CameraUpdate(&globalCamera, 0.01f);
-
-    UploadBoneBuffer();
 
 	/* Set up the pass */
-	SDL_zero(color_target);
+    SDL_GPUColorTargetInfo color_target;
+    SDL_zero(color_target);
 	color_target.clear_color.a = 1.0f;
 	if (winstate->tex_msaa) {
 		color_target.load_op = SDL_GPU_LOADOP_CLEAR;
@@ -273,6 +119,7 @@ static void Render(SDL_Window* window, const int windownum)
 		color_target.texture = swapchainTexture;
 	}
 
+	SDL_GPUDepthStencilTargetInfo depth_target;
 	SDL_zero(depth_target);
 	depth_target.clear_depth = 1.0f;
 	depth_target.load_op          = SDL_GPU_LOADOP_CLEAR;
@@ -283,15 +130,19 @@ static void Render(SDL_Window* window, const int windownum)
 	depth_target.cycle            = true;
 
 	/* Set up the bindings */
+    SDL_GPUBufferBinding vertex_binding;
+	SDL_GPUBufferBinding index_binding;
 	vertex_binding.buffer = render_state.buf_vertex;
 	vertex_binding.offset = 0;
     index_binding.buffer = render_state.buf_index;
     index_binding.offset = 0;
+    
+    UpdateGPUBuffer(render_state.buf_bones, OutMatrices, sizeof(OutMatrices));
 
 	/* Draw */
     SDL_GPUTexture* tex = render_state.textures[sceneBundle->materials[0].baseColorTexture.index].handle;
     Matrix4 viewProj = Matrix4Multiply(globalCamera.view, globalCamera.projection);
-	pass = SDL_BeginGPURenderPass(cmd, &color_target, 1, &depth_target);
+	SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmd, &color_target, 1, &depth_target);
 	SDL_BindGPUGraphicsPipeline(pass, render_state.pipeline);
 	SDL_BindGPUVertexBuffers(pass, 0, &vertex_binding, 1);
     SDL_BindGPUIndexBuffer(pass, &index_binding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
@@ -342,7 +193,9 @@ static void Render(SDL_Window* window, const int windownum)
     SDL_EndGPURenderPass(pass);
 
 	/* Blit MSAA resolve target to swapchain, if needed */
-	if (render_state.sample_count > SDL_GPU_SAMPLECOUNT_1) {
+	if (render_state.sample_count > SDL_GPU_SAMPLECOUNT_1) 
+    {
+        SDL_GPUBlitInfo blit_info;
 		SDL_zero(blit_info);
 		blit_info.source.texture = winstate->tex_resolve;
 		blit_info.source.w = drawablew;
@@ -360,56 +213,6 @@ static void Render(SDL_Window* window, const int windownum)
 
 	/* Submit the command buffer! */
 	SDL_SubmitGPUCommandBuffer(cmd);
-	++frames;
-}
-
-SDL_GPUBuffer* CreateBuffer(void* buffer, size_t bufferSize, SDL_GPUBufferUsageFlags bufferUsage, const char* debugName)
-{
-	SDL_GPUBufferCreateInfo buffer_desc;
-	SDL_GPUTransferBufferCreateInfo transfer_buffer_desc;
-	SDL_GPUTransferBuffer* buf_transfer;
-	SDL_GPUCopyPass* copy_pass;
-	SDL_GPUTransferBufferLocation buf_location;
-	SDL_GPUBufferRegion dst_region;
-	SDL_GPUCommandBuffer* cmd;
-    void* map;
-
-    /* Create buffers */
-	buffer_desc.usage = bufferUsage;
-	buffer_desc.size = bufferSize;
-	buffer_desc.props = SDL_CreateProperties();
-	SDL_SetStringProperty(buffer_desc.props, SDL_PROP_GPU_BUFFER_CREATE_NAME_STRING, debugName);
-    SDL_GPUBuffer* gpu_buffer = SDL_CreateGPUBuffer(gpu_device, &buffer_desc);
-
-	CHECK_CREATE(gpu_buffer, "Static buffer")
-    SDL_DestroyProperties(buffer_desc.props);
-
-	transfer_buffer_desc.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
-	transfer_buffer_desc.size = bufferSize;
-	transfer_buffer_desc.props = SDL_CreateProperties();
-	SDL_SetStringProperty(transfer_buffer_desc.props, SDL_PROP_GPU_TRANSFERBUFFER_CREATE_NAME_STRING, "Transfer Buffer");
-	buf_transfer = SDL_CreateGPUTransferBuffer(gpu_device, &transfer_buffer_desc);
-	CHECK_CREATE(buf_transfer, "transfer buffer")
-    SDL_DestroyProperties(transfer_buffer_desc.props);
-
-	/* We just need to upload the static data once. */
-	map = SDL_MapGPUTransferBuffer(gpu_device, buf_transfer, false);
-	SDL_memcpy(map, buffer, bufferSize);
-	SDL_UnmapGPUTransferBuffer(gpu_device, buf_transfer);
-
-	cmd = SDL_AcquireGPUCommandBuffer(gpu_device);
-	copy_pass = SDL_BeginGPUCopyPass(cmd);
-	buf_location.transfer_buffer = buf_transfer;
-	buf_location.offset = 0;
-	dst_region.buffer = gpu_buffer;
-	dst_region.offset = 0;
-	dst_region.size = bufferSize;
-	SDL_UploadToGPUBuffer(copy_pass, &buf_location, &dst_region, false);
-	SDL_EndGPUCopyPass(copy_pass);
-	SDL_SubmitGPUCommandBuffer(cmd);
-
-	SDL_ReleaseGPUTransferBuffer(gpu_device, buf_transfer);
-    return gpu_buffer;
 }
 
 
@@ -453,27 +256,15 @@ static void InitScene()
 	});
 }
 
-static void init_render_state(int msaa)
+static void InitPipeline()
 {
 	SDL_GPUGraphicsPipelineCreateInfo pipelinedesc;
 	SDL_GPUColorTargetDescription color_target_desc;
-	Uint32 drawablew, drawableh;
 	SDL_GPUVertexAttribute vertex_attributes[6];
 	SDL_GPUVertexBufferDescription vertex_buffer_desc;
-	SDL_GPUShader* vertex_shader;
-	SDL_GPUShader* fragment_shader;
-	int i;
-
-	gpu_device = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_SPIRV, true, NULL);
-	CHECK_CREATE(gpu_device, "GPU device");
-
-	/* Claim the windows */
-	for (i = 0; i < state.num_windows; i++) {
-		SDL_ClaimWindowForGPUDevice(gpu_device, state.windows[i]);
-	}
 
 	/* Create shaders */
-    vertex_shader = SDL_CreateGPUShader(gpu_device, &(SDL_GPUShaderCreateInfo){
+    SDL_GPUShader* vertex_shader = SDL_CreateGPUShader(gpu_device, &(SDL_GPUShaderCreateInfo){
         .num_uniform_buffers = 1,
         .format              = SDL_GetGPUShaderFormats(gpu_device),
         .code                = SkinnedVert_spv,
@@ -483,7 +274,7 @@ static void init_render_state(int msaa)
         .stage               = SDL_GPU_SHADERSTAGE_VERTEX
     });
 
-    fragment_shader = SDL_CreateGPUShader(gpu_device, &(SDL_GPUShaderCreateInfo){
+    SDL_GPUShader* fragment_shader = SDL_CreateGPUShader(gpu_device, &(SDL_GPUShaderCreateInfo){
         .num_uniform_buffers = 0,
         .format              = SDL_GetGPUShaderFormats(gpu_device),
         .code                = SkinnedFrag_spv,
@@ -496,23 +287,11 @@ static void init_render_state(int msaa)
     CHECK_CREATE(vertex_shader  , "Vertex Shader")
     CHECK_CREATE(fragment_shader, "Fragment Shader")
 
-    InitScene();
-
-	/* Determine which sample count to use */
-	render_state.sample_count = SDL_GPU_SAMPLECOUNT_1;
-	if (msaa && SDL_GPUTextureSupportsSampleCount(
-		gpu_device,
-		SDL_GetGPUSwapchainTextureFormat(gpu_device, state.windows[0]),
-		SDL_GPU_SAMPLECOUNT_4)) 
-    {
-		render_state.sample_count = SDL_GPU_SAMPLECOUNT_4;
-	}
-
 	/* Set up the graphics pipeline */
 	SDL_zero(pipelinedesc);
 	SDL_zero(color_target_desc);
 
-	color_target_desc.format = SDL_GetGPUSwapchainTextureFormat(gpu_device, state.windows[0]);
+	color_target_desc.format = SDL_GetGPUSwapchainTextureFormat(gpu_device, sdlWindow);
 
 	pipelinedesc.target_info.num_color_targets = 1;
 	pipelinedesc.target_info.color_target_descriptions = &color_target_desc;
@@ -578,23 +357,9 @@ static void init_render_state(int msaa)
 	/* These are reference-counted; once the pipeline is created, you don't need to keep these. */
 	SDL_ReleaseGPUShader(gpu_device, vertex_shader);
 	SDL_ReleaseGPUShader(gpu_device, fragment_shader);
-
-	/* Set up per-window state */
-	window_states = (WindowState*)SDL_calloc(state.num_windows, sizeof(WindowState));
-
-	for (i = 0; i < state.num_windows; i++) 
-    {
-		WindowState* winstate = &window_states[i];
-		/* create a depth texture for the window */
-		SDL_GetWindowSizeInPixels(state.windows[i], (int*)&drawablew, (int*)&drawableh);
-		winstate->tex_depth   = CreateDepthTexture(drawablew, drawableh);
-		winstate->tex_msaa    = CreateMSAATexture(drawablew, drawableh);
-		winstate->tex_resolve = CreateResolveTexture(drawablew, drawableh);
-	}
 }
 
 static int done = 0;
-Uint64 lastTime;
 
 void loop(void)
 {
@@ -610,18 +375,17 @@ void loop(void)
 		EventCallback(&event);
 	}
 
-    Uint64 now = SDL_GetTicks();
-    Uint64 ms_elapsed = now - lastTime;
-    PlatformCtx.DeltaTime = ms_elapsed / 1000;
-
-    const double timeSinceStartup = (double)(now - PlatformCtx.StartupTime) / 1000.0;
+    PlatformUpdate();
+    CameraUpdate(&globalCamera, 0.01f);
+    
+    const double timeSinceStartup = TimeSinceStartup();
 
     for (int i = 0; i < 1; i++)
     {
         AnimationController* ac = &animController[i];
 
         const int numAnims = ac->mPrefab->numAnimations;
-        const int animIdx  = Clamp32(WangHash(i + 645) % numAnims, 1, numAnims);
+        const int animIdx  = Clampi32(WangHash(i + 645) % numAnims, 1, numAnims);
 
         const double animDuration = (double)ac->mPrefab->animations[animIdx].duration;
         const float animRatio = (float)Fract((timeSinceStartup + (i * 0.1)) / animDuration);
@@ -631,10 +395,7 @@ void loop(void)
 
 	if (!done)
 	{
-		for (i = 0; i < state.num_windows; ++i)
-		{
-			Render(state.windows[i], i);
-		}
+		Render();
 	}
 #ifdef __EMSCRIPTEN__
 	else {
@@ -645,32 +406,23 @@ void loop(void)
 
 int main(int argc, char* argv[])
 {
-	int msaa;
-	int i;
-	const SDL_DisplayMode* mode;
-    
-	/* Initialize params */
-	msaa = 0;
+	int msaa = 0;
+    done = 0;
 
 	if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO))
 		return 0;
 
 	SDL_Window* window = SDL_CreateWindow("SDL Minimal Sample", 1920, 1080, SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
-	state.num_windows = 1;
-	state.windows[0] = window;
+	sdlWindow = window;
 
 	if (!window)
 		return 0;
 
-	mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(state.windows[0]));
-	SDL_Log("Screen bpp: %d", SDL_BITSPERPIXEL(mode->format));
-	init_render_state(msaa);
+	const SDL_DisplayMode* mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(window));
 
-	/* Main render loop */
-	frames = 0;
-	PlatformCtx.StartupTime = SDL_GetTicks();
-    lastTime = PlatformCtx.StartupTime;
-	done = 0;
+    rInit(msaa);
+    InitPipeline(msaa);
+    InitScene();
 
     PlatformInit();
     CameraInit(&globalCamera, 1920, 1080);
@@ -683,12 +435,8 @@ int main(int argc, char* argv[])
 	}
 #endif
 
-	/* Print out some timing information */
-	SDL_Log("%2.2f frames per second", ((double)frames * 1000) / (SDL_GetTicks() - PlatformCtx.StartupTime));
 #if !defined(__ANDROID__)
-	quit(0);
+	Quit(0);
 #endif
 	return 0;
 }
-
-/* vi: set ts=4 sw=4 expandtab: */

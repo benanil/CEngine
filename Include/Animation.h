@@ -162,13 +162,13 @@ void AnimationController_Clear(AnimationController* ac);
 static inline void AnimatedCharacter_SetAnim(AnimatedCharacter* ac, int x, int y, int index)
 {
     if (y >= 0) ac->mLocomotionIndices[y][x] = index;
-    else        ac->mLocomotionIndicesInv[Abs32(y-1.0f)][x] = index;
+    else        ac->mLocomotionIndicesInv[Absi32(y-1.0f)][x] = index;
 }
 
 static inline int AnimatedCharacter_GetAnim(const AnimatedCharacter* ac, int x, int y)
 {
     if (y >= 0) return ac->mLocomotionIndices[y][x];
-    else        return ac->mLocomotionIndicesInv[Abs32(y)-1][x];
+    else        return ac->mLocomotionIndicesInv[Absi32(y)-1][x];
 }
     
 static inline bool AnimatedCharacter_IsTrigerred(const AnimatedCharacter* ac)

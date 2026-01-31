@@ -48,9 +48,9 @@ purefn uint32_t MultiplyU32Colors(uint32_t a, uint32_t b)
 }
 
 purefn float3 HUEToRGB(float h) {
-    float r = Clamp01f(Absf(h * 6.0f - 3.0f) - 1.0f);
-    float g = Clamp01f(2.0f - Absf(h * 6.0f - 2.0f));
-    float b = Clamp01f(2.0f - Absf(h * 6.0f - 4.0f));
+    float r = Clamp01f32(Absf32(h * 6.0f - 3.0f) - 1.0f);
+    float g = Clamp01f32(2.0f - Absf32(h * 6.0f - 2.0f));
+    float b = Clamp01f32(2.0f - Absf32(h * 6.0f - 4.0f));
     return (float3){ r, g, b };
 }
 
@@ -82,7 +82,7 @@ purefn float3 RGBToHSV(float3 rgb)
     }
     const float chroma = r - (g < b ? g : b);
     return (float3){
-        Absf(K + (g - b) / (6.0f * chroma + 1e-20f)),
+        Absf32(K + (g - b) / (6.0f * chroma + 1e-20f)),
         chroma / (r + 1e-20f),
         r
     };

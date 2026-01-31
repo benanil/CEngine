@@ -6,11 +6,12 @@
 #include "../Math/Vector.h"
 #include "GLTFParser.h"
 
+#define CHECK_CREATE(var, thing) { if (!(var)) { SDL_Log("Failed to create %s: %s", thing, SDL_GetError()); Quit(2); } }
+#define TESTGPU_SUPPORTED_FORMATS (SDL_GPU_SHADERFORMAT_SPIRV | SDL_GPU_SHADERFORMAT_DXBC | SDL_GPU_SHADERFORMAT_DXIL | SDL_GPU_SHADERFORMAT_METALLIB)
 
 #if defined(__cplusplus)
 extern "C" {
 #endif
-
 
 enum TexFlags_
 {
@@ -107,6 +108,23 @@ typedef struct Texture_
     void* buffer;
 } Texture;
 
+typedef struct WindowState
+{
+	SDL_GPUTexture* tex_depth, *tex_msaa, *tex_resolve;
+	Uint32 prev_drawablew, prev_drawableh;
+} WindowState;
+
+typedef struct RenderState
+{
+	SDL_GPUBuffer* buf_vertex;
+	SDL_GPUBuffer* buf_index;
+	SDL_GPUBuffer* buf_bones;
+    SDL_GPUSampler* sampler;
+    Texture textures[8];
+	SDL_GPUGraphicsPipeline* pipeline;
+	SDL_GPUSampleCount sample_count;
+} RenderState;
+
 
 static inline int GetRootNodeIdx(SceneBundle* bundle)
 {
@@ -120,7 +138,7 @@ static inline int GetRootNodeIdx(SceneBundle* bundle)
 
 // uint8_t rTextureTypeToBytesPerPixel(sg_pixel_format type);
 
-void rInit();
+void rInit(bool msaa);
 
 void rDestroy();
 
@@ -135,6 +153,16 @@ void rDeleteTexture(Texture texture);
 void rUpdateTexture(Texture texture, void* data);
 
 int GraphicsTypeToSize(GraphicType type);
+
+SDL_GPUBuffer* CreateBuffer(void* buffer, size_t bufferSize, SDL_GPUBufferUsageFlags bufferUsage, const char* debugName);
+
+void UpdateGPUBuffer(SDL_GPUBuffer* buffer, const void* data, size_t bufferSize);
+
+SDL_GPUTexture* CreateDepthTexture(Uint32 drawablew, Uint32 drawableh);
+
+SDL_GPUTexture* CreateMSAATexture(Uint32 drawablew, Uint32 drawableh);
+
+SDL_GPUTexture* CreateResolveTexture(Uint32 drawablew, Uint32 drawableh);
 
 
 // // w value is undefined, it could be anything or trash data

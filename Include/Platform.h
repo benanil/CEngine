@@ -46,8 +46,11 @@ typedef struct PlatformContext_
     float MouseWheelDelta;
     float SecondsSinceLastClick;
     double DeltaTime;
+    
     uint64_t LastClickTime;
+    uint64_t CPUFrequency;
     uint64_t StartupTime;
+    uint64_t LastTime;
     
     // Window state
     int WindowWidth, WindowHeight;
@@ -99,6 +102,7 @@ double GetDeltaTime();
 double TimeSinceStartup();
 
 void   PlatformInit();
+void   PlatformUpdate();
 
 extern PlatformContext PlatformCtx;
 

@@ -242,12 +242,22 @@ void PlatformInit()
     PlatformCtx.LastKeys.bits = LastKeys;
     PlatformCtx.PressedKeys.bits = PressedKeys;
     PlatformCtx.ReleasedKeys.bits = ReleasedKeys;
-    PlatformCtx.StartupTime = 0; // stm_now();
+    PlatformCtx.CPUFrequency = SDL_GetPerformanceFrequency();
+    PlatformCtx.StartupTime = SDL_GetPerformanceCounter();
+    PlatformCtx.LastTime = PlatformCtx.StartupTime;
+}
+
+void PlatformUpdate()
+{
+    Uint64 now = SDL_GetPerformanceCounter();
+    Uint64 delta = now - PlatformCtx.LastTime;
+    PlatformCtx.DeltaTime = (double)delta / (double)PlatformCtx.CPUFrequency;
+    PlatformCtx.LastTime = now;
 }
 
 double TimeSinceStartup()
 {
-    return (double)(SDL_GetTicks() - PlatformCtx.StartupTime) / 1000.0;
+    return (double)(SDL_GetPerformanceCounter() - PlatformCtx.StartupTime) / (double)PlatformCtx.CPUFrequency;
 }
 
 #endif // PLATFORM_C

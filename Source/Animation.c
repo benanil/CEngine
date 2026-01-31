@@ -118,7 +118,7 @@ void AnimationController_SampleAnimationPose(const AnimationController* ac, Pose
     const AAnimation* animation = &ac->mPrefab->animations[animIdx];
     const bool reverse = normTime < 0.0f;
 
-    normTime = Absf(normTime);
+    normTime = Absf32(normTime);
     if (reverse) normTime = MMAX(1.0f - normTime, 0.0f);
 
     float realTime = normTime * animation->duration;
@@ -152,12 +152,12 @@ void AnimationController_SampleAnimationPose(const AnimationController* ac, Pose
         const Vector4x32f begin = ((const Vector4x32f*)sampler->output)[beginIdx];
         const Vector4x32f end   = ((const Vector4x32f*)sampler->output)[endIdx];
     
-        float beginTime = Maxf(0.0001f, realTime - sampler->input[beginIdx]);
-        float endTime   = Maxf(0.0001f, sampler->input[endIdx] - sampler->input[beginIdx]);
+        float beginTime = Maxf32(0.0001f, realTime - sampler->input[beginIdx]);
+        float endTime   = Maxf32(0.0001f, sampler->input[endIdx] - sampler->input[beginIdx]);
         
         if (reverse) XSWAP(float, beginTime, endTime);
         
-        const float t = Clamp01f(beginTime / endTime);
+        const float t = Clamp01f32(beginTime / endTime);
         Quaternion rot;
 
         switch (channel->targetPath)
@@ -249,8 +249,8 @@ bool AnimatedCharacter_Trigger(AnimatedCharacter* ac, int index, float transitio
 
 bool AnimatedCharacter_TriggerTransition(AnimatedCharacter* ac, float deltaTime, int targetAnim)
 {
-    float newNorm   = Clamp01f((ac->mTransitionTime - ac->mCurTransitionTime) / ac->mTransitionTime);
-    float animDelta = Clamp01f(deltaTime * (1.0f / MMAX(1.0f - newNorm, MATH_Epsilon)));
+    float newNorm   = Clamp01f32((ac->mTransitionTime - ac->mCurTransitionTime) / ac->mTransitionTime);
+    float animDelta = Clamp01f32(deltaTime * (1.0f / MMAX(1.0f - newNorm, MATH_Epsilon)));
     AnimationController_SampleAnimationPose(&ac->controller, ac->mAnimPoseD, targetAnim, ac->mAnimTime.y);
     MergeAnims(ac->mAnimPoseC, ac->mAnimPoseD, animDelta, ac->controller.mNumNodes);
     ac->mCurTransitionTime -= deltaTime;
@@ -279,7 +279,7 @@ void AnimatedCharacter_EvaluateLocomotion(AnimatedCharacter* ac, float x, float 
         {
             AnimationController_SampleAnimationPose(&ac->controller, ac->mAnimPoseC, ac->mTriggerredAnim, -ac->mTrigerredNorm);
             float animStep = 1.0f / ac->controller.mPrefab->animations[ac->mTriggerredAnim].duration;
-            ac->mTrigerredNorm = Clamp01f(ac->mTrigerredNorm + (animSpeed * animStep * deltaTime));
+            ac->mTrigerredNorm = Clamp01f32(ac->mTrigerredNorm + (animSpeed * animStep * deltaTime));
             if (ac->mTrigerredNorm >= 1.0f)
                 ac->mState = AnimState_Update;
         }
@@ -289,7 +289,7 @@ void AnimatedCharacter_EvaluateLocomotion(AnimatedCharacter* ac, float x, float 
         AnimationController_SampleAnimationPose(&ac->controller, ac->mAnimPoseC, ac->mTriggerredAnim, ac->mTrigerredNorm);
 
         float animStep = 1.0f / ac->controller.mPrefab->animations[ac->mTriggerredAnim].duration;
-        ac->mTrigerredNorm = Clamp01f(ac->mTrigerredNorm + (animSpeed * animStep * deltaTime));
+        ac->mTrigerredNorm = Clamp01f32(ac->mTrigerredNorm + (animSpeed * animStep * deltaTime));
           
         if (ac->mTrigerredNorm >= 1.0f)
         {
@@ -302,10 +302,10 @@ void AnimatedCharacter_EvaluateLocomotion(AnimatedCharacter* ac, float x, float 
 
     int yIndex = AnimatedCharacter_GetAnim(ac, aMiddle, 0);
     // if trigerred animation is not standing, we don't have to sample walking or running animations
-    if (!wasTriggerState || (wasTriggerState && !!(ac->mTriggerOpt & eAnimTriggerOpt_Standing) && Absf(y) > 0.001f))
+    if (!wasTriggerState || (wasTriggerState && !!(ac->mTriggerOpt & eAnimTriggerOpt_Standing) && Absf32(y) > 0.001f))
     {
         // play and blend walking and running anims
-        y = Absf(y); 
+        y = Absf32(y); 
         int yi = (int)(y);
         // sample y anim
         ASSERTR(yi <= 3, return); // must be between 1 and 4

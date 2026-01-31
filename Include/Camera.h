@@ -69,7 +69,7 @@ static inline RayV ScreenPointToRay(Camera* camera, float2 pos)
 {
     float2 coord = (float2){ pos.x / (float)camera->viewportSize.x, pos.y / (float)camera->viewportSize.y };
     coord.y = 1.0f - coord.y;    // Flip Y to match the NDC coordinate system
-    coord = Vec2SubF(Vec2MulF(coord, 2.0f), 1.0f); // Map to range [-1, 1]
+    coord = Float2SubF(Float2MulF(coord, 2.0f), 1.0f); // Map to range [-1, 1]
 
     Vector4x32f clipSpacePos = VecSetR(coord.x, coord.y, 1.0f, 1.0f);
     Vector4x32f viewSpacePos = Vector4Transform(clipSpacePos, camera->inverseProjection.r);
@@ -124,7 +124,7 @@ static inline void CameraUpdate(Camera* camera, float dt)
         
     float2 mousePos;
     GetMousePos(&mousePos.x, &mousePos.y);
-    float2 diff = Vec2Sub(mousePos, camera->mouseOld);
+    float2 diff = Float2Sub(mousePos, camera->mouseOld);
     
     SDL_Cursor* cursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_MOVE);
     SDL_SetCursor(cursor);

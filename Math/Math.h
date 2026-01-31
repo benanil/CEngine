@@ -311,11 +311,11 @@ purefn float Lerpf(float x, float y, float t) {
 }
 
 purefn bool IsZerof(float x) {
-    return Absf(x) <= 0.0001f; 
+    return Absf32(x) <= 0.0001f; 
 }
 
 purefn bool AlmostEqualf(float x, float y) {
-    return Absf(x-y) <= 0.001f;
+    return Absf32(x-y) <= 0.001f;
 }
 
 purefn float Signf(float x) {
@@ -459,7 +459,7 @@ purefn float Log2f(float val) {
 }
 
 // https://graphics.stanford.edu/~seander/bithacks.html#IntegerLog
-purefn unsigned int Log2_32(unsigned int v) {
+purefn unsigned int Log2u32(unsigned int v) {
     uint8_t const MultiplyDeBruijnBitPosition[32] = 
     {
         0, 9, 1, 10, 13, 21, 2, 29, 11, 14, 16, 18, 22, 25, 3, 30,
@@ -477,7 +477,7 @@ purefn unsigned int Log10_32(unsigned int v) {
         1, 10, 100, 1000, 10000, 100000,            // if (n <= 99) return 2;
         1000000, 10000000, 100000000, 1000000000    // if (n <= 999) return 3;
     };                                              // ...
-    unsigned int t = (Log2_32(v) + 1) * 1233 >> 12;    // if (n <= 2147483647) return 10; // 2147483647 = int max
+    unsigned int t = (Log2u32(v) + 1) * 1233 >> 12;    // if (n <= 2147483647) return 10; // 2147483647 = int max
     return t - (v < PowersOf10[t]);                                                      
 }                            
 
@@ -537,7 +537,7 @@ purefn float ACos(float x)
 {
     // Lagarde 2014, "Inverse trigonometric functions GPU optimization for AMD GCN architecture"
     // This is the approximation of degree 1, with a max absolute error of 9.0x10^-3
-    float y = Absf(x);
+    float y = Absf32(x);
     float p = -0.1565827f * y + 1.570796f;
     p *= Sqrtf(1.0f - y);
     return x >= 0.0f ? p : MATH_PI - p;
@@ -667,7 +667,7 @@ purefn float SinPI(float x)  { return Sin(x) / MATH_PI; }
 
 // packs -1,1 range float to short
 purefn short PackSnorm16(float x) {
-    return (short)Clampf(x * (float)INT16_MAX, (float)INT16_MIN, (float)INT16_MAX);
+    return (short)Clampf32(x * (float)INT16_MAX, (float)INT16_MIN, (float)INT16_MAX);
 }
 
 purefn float UnpackSnorm16(short x) {
@@ -676,7 +676,7 @@ purefn float UnpackSnorm16(short x) {
 
 // packs 0,1 range float to short
 purefn short PackUnorm16(float x) {
-    return (short)Clampf(x * (float)INT16_MAX, (float)INT16_MIN, (float)INT16_MAX);
+    return (short)Clampf32(x * (float)INT16_MAX, (float)INT16_MIN, (float)INT16_MAX);
 }
 
 purefn float UnpackUnorm16(short x) {
@@ -702,7 +702,7 @@ purefn float EaseInOut(float x) {
 
 // integral symbol shaped interpolation, similar to EaseInOut
 purefn float SmoothStep(float edge0, float edge1, float x) {
-    float t = Clamp01f((x - edge0) / (edge1 - edge0));
+    float t = Clamp01f32((x - edge0) / (edge1 - edge0));
     return t * t * (3.0f - t * 2.0f);
 }
 
@@ -732,7 +732,7 @@ purefn float SmoothDamp(float current, float target, float* currentVelocity, flo
 
     // Clamp maximum speed
     float maxChange = maxSpeed * smoothTime;
-    change = Clampf(change, -maxChange, maxChange);
+    change = Clampf32(change, -maxChange, maxChange);
     target = current - change;
 
     float temp = (*currentVelocity + omega * change) * deltaTime;
@@ -756,7 +756,7 @@ purefn float Remap(float in, float inMin, float inMax, float outMin, float outMa
 
 purefn float Repeat(float t, float length)
 {
-    return Clampf(t - Floorf(t / length) * length, 0.0f, length);
+    return Clampf32(t - Floorf(t / length) * length, 0.0f, length);
 }
 
 purefn float Step(float edge, float x)
@@ -769,7 +769,7 @@ purefn float Step(float edge, float x)
 purefn float LineDistance(float x0, float y0, float x1, float y1, float x2, float y2)
 {
     float a = ((x2 - x1) * (y0 - y1)) - ((x0 - x1) * (y2 - y1));
-    return Absf(a) * RSqrtf(Sqrf(x2 - x1) + Sqrf(y2 - y1));
+    return Absf32(a) * RSqrtf(Sqrf(x2 - x1) + Sqrf(y2 - y1));
 }
 
 #endif // MATH_H

@@ -72,7 +72,7 @@ purefn float NextFloat01(uint32_t next) {
 }
 	
 purefn float RepeatMinMaxF32(uint32_t next, float min, float max) {
-    return min + (NextFloat01(next) * Absf(min - max));
+    return min + (NextFloat01(next) * Absf32(min - max));
 }
 	
 purefn double NextDouble01(uint64_t next) 
@@ -87,7 +87,7 @@ purefn double NextDouble01(uint64_t next)
 }
 	
 purefn double RepatMinMaxF64(uint64_t next, double min, double max) {
-    return min + (NextDouble01(next) * Absf(min - max));
+    return min + (NextDouble01(next) * Absf32(min - max));
 }
 	
 purefn uint32_t RepeatMinMaxU32(uint32_t next, uint32_t min, uint32_t max) { return min + (next % (max - min)); }

@@ -43,7 +43,7 @@ Source/Memory.c
 Source/ECS.c
 Source/FileSystem.c
 Source/Platform.c 
-# Source/Graphics.c 
+Source/Graphics.c 
 Source/GLTFParser.c 
 Source/Animation.c
 Source/Algorithm.c
