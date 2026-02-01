@@ -55,8 +55,8 @@ typedef struct DualQuaternionHalf_ {
 } DualQuaternionHalf;
 
 typedef struct Pose_ {
-    Vector4x32f translation;
-    Vector4x32f rotation;
+    Vec4x32f translation;
+    Vec4x32f rotation;
     // Vector4x32f scale;
 } Pose;
 
@@ -198,7 +198,7 @@ bool AnimatedCharacter_Trigger(AnimatedCharacter* ac, int animIndex, float trigg
 // upload to gpu. internal usage only for now
 void AnimationController_UploadPose(AnimationController* ac, const Pose nodeMatrices[MaxBonePoses]);
     
-void AnimationController_RecurseBoneMatrices(AnimationController* ac, int nodeIndex, Vector4x32f position, Vector4x32f rotation); // Matrix4 parentMatrix);
+void AnimationController_RecurseBoneMatrices(AnimationController* ac, int nodeIndex, Vec4x32f position, Vec4x32f rotation); // Matrix4 parentMatrix);
 
 // use negative normTime to sample animation reversely
 void AnimationController_SampleAnimationPose(const AnimationController* ac, Pose pose[MaxBonePoses], int animIdx, float normTime);

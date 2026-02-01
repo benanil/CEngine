@@ -7,6 +7,10 @@ typedef struct Vec3f_ {
     float x, y, z;
 } float3;
 
+typedef struct Int2_ {
+    int x, y;
+} int2;
+
 typedef struct Int3_ {
     int x, y, z;
 } int3;
@@ -15,17 +19,15 @@ typedef struct Float2f_ {
     float x, y;
 } float2;
 
-typedef struct Int2_ {
-    int x, y;
-} int2;
-
 typedef struct Ray_ {
     float3 origin, dir;
 } Ray;
 
 typedef struct RayV_ {
-    Vector4x32f origin, dir;
+    Vec4x32f origin, dir;
 } RayV;
+
+typedef Vec4x32f float4;
 
 // VECTOR32
 purefn float3 Float3Add(float3 a, float3 b) { return (float3){a.x + b.x, a.y + b.y, a.z + b.z}; }
@@ -37,7 +39,8 @@ purefn float3 Float3AddF(float3 a, float b) { return (float3){a.x + b, a.y + b, 
 purefn float3 Float3MulF(float3 a, float b) { return (float3){a.x * b, a.y * b, a.z * b}; }
 purefn float3 Float3DivF(float3 a, float b) { return (float3){a.x / b, a.y / b, a.z / b}; }
 purefn float3 Float3SubF(float3 a, float b) { return (float3){a.x - b, a.y - b, a.z - b}; }
-purefn float Float3Len(float3 a) { return Sqrtf(a.x * a.x + a.y * a.y + a.z * a.z); }
+
+purefn float Float3Len(float3 a)           { return Sqrtf(a.x * a.x + a.y * a.y + a.z * a.z); }
 purefn float Float3Dot(float3 a, float3 b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
 
 purefn float3 Float3Norm(float3 a)    { return Float3DivF(a, Sqrtf(a.x * a.x + a.y * a.y + a.z * a.z)); }

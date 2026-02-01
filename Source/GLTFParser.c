@@ -653,7 +653,7 @@ __private const char* ParseNodes(const char* curr, ANode** nodes, float scale, F
             node.translation[2] = matrix[14];
             QuaternionFromMatrix(node.rotation, matrix, 4);
 
-            Vector4x32f v = VecMulf(ExtractScaleV(m), scale);
+            Vec4x32f v = VecMulf(ExtractScaleV(m), scale);
             Vec3Store(node.scale, v);
         }
         else if (StrCMP16(curr, "translation"))

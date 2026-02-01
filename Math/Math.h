@@ -25,7 +25,7 @@
 #define MATH_Epsilon   (0.0001f)
 
 
-purefn Vector4x32f VECTORCALL Vec3CrossV(Vector4x32f vec0, Vector4x32f vec1)
+purefn Vec4x32f VECTORCALL Vec3Cross(Vec4x32f vec0, Vec4x32f vec1)
 {
 #if defined(AX_ARM)
     float32x2_t v1xy = vget_low_f32(vec0);
@@ -35,49 +35,49 @@ purefn Vector4x32f VECTORCALL Vec3CrossV(Vector4x32f vec0, Vector4x32f vec1)
     float32x2_t v1zz = vdup_lane_f32(vget_high_f32(vec0), 0);
     float32x2_t v2zz = vdup_lane_f32(vget_high_f32(vec1), 0);
     uint32x4_t FlipY = ARMCreateVecI(0x00000000u, 0x80000000u, 0x00000000u, 0x00000000u);
-    Vector4x32f vResult = vmulq_f32(vcombine_f32(v1yx, v1xy), vcombine_f32(v2zz, v2yx));
+    Vec4x32f vResult = vmulq_f32(vcombine_f32(v1yx, v1xy), vcombine_f32(v2zz, v2yx));
     vResult = vmlsq_f32(vResult, vcombine_f32(v1zz, v1yx), vcombine_f32(v2yx, v2xy));
     vResult = vreinterpretq_f32_u32(veorq_u32(vreinterpretq_u32_f32(vResult), FlipY));
     return vreinterpretq_f32_u32(vandq_u32(vreinterpretq_u32_f32(vResult), VecMask3));
 #else
-    Vector4x32f tmp0 = VecShuffleR(vec0, vec0, 3,0,2,1);
-    Vector4x32f tmp1 = VecShuffleR(vec1, vec1, 3,1,0,2);
-    Vector4x32f tmp2 = VecMul(tmp0, vec1);
-    Vector4x32f tmp3 = VecMul(tmp0, tmp1);
-    Vector4x32f tmp4 = VecShuffleR(tmp2, tmp2, 3,0,2,1);
+    Vec4x32f tmp0 = VecShuffleR(vec0, vec0, 3,0,2,1);
+    Vec4x32f tmp1 = VecShuffleR(vec1, vec1, 3,1,0,2);
+    Vec4x32f tmp2 = VecMul(tmp0, vec1);
+    Vec4x32f tmp3 = VecMul(tmp0, tmp1);
+    Vec4x32f tmp4 = VecShuffleR(tmp2, tmp2, 3,0,2,1);
     return VecSub(tmp3, tmp4);
 #endif
 }
 
-purefn float VECTORCALL Min3(Vector4x32f ab)
+purefn float VECTORCALL Min3(Vec4x32f ab)
 {
-    Vector4x32f xy = VecMin(VecSplatX(ab), VecSplatY(ab));
+    Vec4x32f xy = VecMin(VecSplatX(ab), VecSplatY(ab));
     return VecGetX(VecMin(xy, VecSplatZ(ab)));
 }
 
-purefn float VECTORCALL Max3(Vector4x32f ab)
+purefn float VECTORCALL Max3(Vec4x32f ab)
 {
-    Vector4x32f xy = VecMax(VecSplatX(ab), VecSplatY(ab));
+    Vec4x32f xy = VecMax(VecSplatX(ab), VecSplatY(ab));
     return VecGetX(VecMax(xy, VecSplatZ(ab)));
 }
 
 #define VecClamp01(v) VecClamp(v, VecZero(), VecOne())
 
-purefn Vector4x32f VECTORCALL VecClamp(Vector4x32f v, Vector4x32f vmin, Vector4x32f vmax)
+purefn Vec4x32f VECTORCALL VecClamp(Vec4x32f v, Vec4x32f vmin, Vec4x32f vmax)
 {
     v = VecSelect(v, vmax, VecCmpGt(v, vmax));
     v = VecSelect(v, vmin, VecCmpLt(v, vmin));
     return v;
 }
 
-static forceinline void VECTORCALL Vec3Store(float* f, Vector4x32f v)
+static forceinline void VECTORCALL Vec3Store(float* f, Vec4x32f v)
 {
     f[0] = VecGetX(v);
     f[1] = VecGetY(v);
     f[2] = VecGetZ(v);
 }
 
-purefn Vector4x32f VECTORCALL VecHSum(Vector4x32f v) {
+purefn Vec4x32f VECTORCALL VecHSum(Vec4x32f v) {
     v = VecHadd(v, v); // high half -> low half
     return VecHadd(v, v);
 }
@@ -90,57 +90,57 @@ purefn Vector4x32f VECTORCALL VecHSum(Vector4x32f v) {
     #define VecFabs(v) MakeVec4(Abs(v.x), Abs(v.y), Abs(v.z), Abs(v.w))
 #endif
 
-purefn Vector4x32f VECTORCALL VecCopySign(Vector4x32f x, Vector4x32f y)
+purefn Vec4x32f VECTORCALL VecCopySign(Vec4x32f x, Vec4x32f y)
 {
-    Vector4x32u clearedX = VeciAnd(VeciFromVec(x), VeciSet1(0x7fffffff));
-    Vector4x32u signY    = VeciAnd(VeciFromVec(y), VeciSet1(0x80000000));
-    Vector4x32u res      = VeciOr(clearedX, signY);
-    return VecFromVeci(res);
+    Vec4x32u clearedX = VeciAnd(VecBitcastU32(x), VeciSet1(0x7fffffff));
+    Vec4x32u signY    = VeciAnd(VecBitcastU32(y), VeciSet1(0x80000000));
+    Vec4x32u res      = VeciOr(clearedX, signY);
+    return VeciBitcastF32(res);
 }
 
-purefn Vector4x32f VECTORCALL VecLerp(Vector4x32f x, Vector4x32f y, float t)
+purefn Vec4x32f VECTORCALL VecLerp(Vec4x32f x, Vec4x32f y, float t)
 {
     return VecFmadd(VecSub(y, x), VecSet1(t), x);
 }
 
-purefn Vector4x32f VECTORCALL VecStep(Vector4x32f edge, Vector4x32f x)
+purefn Vec4x32f VECTORCALL VecStep(Vec4x32f edge, Vec4x32f x)
 {
     return VecBlend(VecZero(), VecOne(), VecCmpGt(x, edge));
 }
 
-purefn Vector4x32f VECTORCALL VecFract(Vector4x32f x)
+purefn Vec4x32f VECTORCALL VecFract(Vec4x32f x)
 {
     return VecSub(x, VecFloor(x));
 }
 
 //------------------------------------------------------------------------------
 
-static inline Vector4x32f VecModAngles(Vector4x32f angles)
+static inline Vec4x32f VecModAngles(Vec4x32f angles)
 {
-    Vector4x32f twoPi       = VecSet1(2.0f * MATH_PI);
-    Vector4x32f recipTwoPi  = VecSet1(1.0f / (2.0f * MATH_PI));
-    Vector4x32f v = VecMul(angles, recipTwoPi); // Multiply by 1/(2*pi)
+    Vec4x32f twoPi       = VecSet1(2.0f * MATH_PI);
+    Vec4x32f recipTwoPi  = VecSet1(1.0f / (2.0f * MATH_PI));
+    Vec4x32f v = VecMul(angles, recipTwoPi); // Multiply by 1/(2*pi)
     v = VecRound(v); 
     return VecSub(angles, VecMul(v, twoPi));
 }
 
-purefn Vector4x32f VECTORCALL VecSin(const Vector4x32f V)
+purefn Vec4x32f VECTORCALL VecSin(const Vec4x32f V)
 {
-    Vector4x32f SC0 = VecSetR(-0.16666667f, +0.0083333310f, -0.00019840874f, +2.7525562e-06f);
-    Vector4x32f SC1 = VecSetR(-2.3889859e-08f, -0.16665852f, +0.0083139502f, -0.00018524670f);
+    Vec4x32f SC0 = VecSetR(-0.16666667f, +0.0083333310f, -0.00019840874f, +2.7525562e-06f);
+    Vec4x32f SC1 = VecSetR(-2.3889859e-08f, -0.16665852f, +0.0083139502f, -0.00018524670f);
 
-    Vector4x32f x = VecModAngles(V);
+    Vec4x32f x = VecModAngles(V);
 
-    Vector4x32f signbit = VecAnd(x, VecNegZero());
-    Vector4x32f c       = VecOr(VecSet1(MATH_PI), signbit);
-    Vector4x32f absx    = VecAndNot(signbit, x);
-    Vector4x32f rflx    = VecSub(c, x);
-    Vector4x32f comp    = VecCmpLe(absx, VecSet1(MATH_HalfPI));
+    Vec4x32f signbit = VecAnd(x, VecNegZero());
+    Vec4x32f c       = VecOr(VecSet1(MATH_PI), signbit);
+    Vec4x32f absx    = VecAndNot(signbit, x);
+    Vec4x32f rflx    = VecSub(c, x);
+    Vec4x32f comp    = VecCmpLe(absx, VecSet1(MATH_HalfPI));
 
     x = VecBlend(rflx, x, comp);
-    Vector4x32f x2 = VecMul(x, x);
+    Vec4x32f x2 = VecMul(x, x);
     // Horner with explicit splats (same order as DXMath/SSE version)
-    Vector4x32f Result = VecFmadd(VecSplatX(SC1), x2, VecSplatW(SC0));
+    Vec4x32f Result = VecFmadd(VecSplatX(SC1), x2, VecSplatW(SC0));
     Result = VecFmadd(Result, x2, VecSplatZ(SC0));
     Result = VecFmadd(Result, x2, VecSplatY(SC0));
     Result = VecFmadd(Result, x2, VecSplatX(SC0));
@@ -148,24 +148,24 @@ purefn Vector4x32f VECTORCALL VecSin(const Vector4x32f V)
     return VecMul(Result, x);
 }
 
-purefn Vector4x32f VECTORCALL VecCos(const Vector4x32f V)
+purefn Vec4x32f VECTORCALL VecCos(const Vec4x32f V)
 {
-    Vector4x32f CC0 = VecSetR(-0.5f, +0.041666638f, -0.0013888378f, +2.4760495e-05f);
-    Vector4x32f CC1 = VecSetR(-2.6051615e-07f, -0.49992746f, +0.041493919f, -0.0012712436f);
+    Vec4x32f CC0 = VecSetR(-0.5f, +0.041666638f, -0.0013888378f, +2.4760495e-05f);
+    Vec4x32f CC1 = VecSetR(-2.6051615e-07f, -0.49992746f, +0.041493919f, -0.0012712436f);
     
-    Vector4x32f x       = VecModAngles(V);
+    Vec4x32f x       = VecModAngles(V);
     
-    Vector4x32f signbit = VecAnd(x, VecNegZero());   // sign bit only
-    Vector4x32f c       = VecOr(VecSet1(MATH_PI), signbit);
-    Vector4x32f absx    = VecAndNot(signbit, x);
-    Vector4x32f rflx    = VecSub(c, x);
-    Vector4x32f comp    = VecCmpLe(absx, VecSet1(MATH_HalfPI));
+    Vec4x32f signbit = VecAnd(x, VecNegZero());   // sign bit only
+    Vec4x32f c       = VecOr(VecSet1(MATH_PI), signbit);
+    Vec4x32f absx    = VecAndNot(signbit, x);
+    Vec4x32f rflx    = VecSub(c, x);
+    Vec4x32f comp    = VecCmpLe(absx, VecSet1(MATH_HalfPI));
 
     x = VecBlend(rflx, x, comp);
     
-    Vector4x32f sign = VecBlend(VecNegativeOne(), VecOne(), comp);
-    Vector4x32f x2   = VecMul(x, x);
-    Vector4x32f R    = VecFmadd(VecSplatX(CC1), x2, VecSplatW(CC0));
+    Vec4x32f sign = VecBlend(VecNegativeOne(), VecOne(), comp);
+    Vec4x32f x2   = VecMul(x, x);
+    Vec4x32f R    = VecFmadd(VecSplatX(CC1), x2, VecSplatW(CC0));
     R = VecFmadd(R, x2, VecSplatZ(CC0));
     R = VecFmadd(R, x2, VecSplatY(CC0));
     R = VecFmadd(R, x2, VecSplatX(CC0));
@@ -173,27 +173,27 @@ purefn Vector4x32f VECTORCALL VecCos(const Vector4x32f V)
     return VecMul(R, sign);
 }
 
-purefn void VECTORCALL VecSinCos(Vector4x32f V, Vector4x32f* pSin, Vector4x32f* pCos)
+purefn void VECTORCALL VecSinCos(Vec4x32f V, Vec4x32f* pSin, Vec4x32f* pCos)
 {
-    Vector4x32f SC0 = VecSetR( -0.16666667f   , +0.0083333310f, -0.00019840874f, +2.7525562e-06f );
-    Vector4x32f SC1 = VecSetR( -2.3889859e-08f, -0.16665852f /*Est1*/, +0.0083139502f /*Est2*/, -0.00018524670f /*Est3*/ );
-    Vector4x32f CC0 = VecSetR( -0.500000000f  , +0.041666638f, -0.0013888378f, +2.4760495e-05f );
-    Vector4x32f CC1 = VecSetR( -2.6051615e-07f, -0.49992746f /*Est1*/, +0.041493919f /*Est2*/, -0.0012712436f /*Est3*/ );
+    Vec4x32f SC0 = VecSetR( -0.16666667f   , +0.0083333310f, -0.00019840874f, +2.7525562e-06f );
+    Vec4x32f SC1 = VecSetR( -2.3889859e-08f, -0.16665852f /*Est1*/, +0.0083139502f /*Est2*/, -0.00018524670f /*Est3*/ );
+    Vec4x32f CC0 = VecSetR( -0.500000000f  , +0.041666638f, -0.0013888378f, +2.4760495e-05f );
+    Vec4x32f CC1 = VecSetR( -2.6051615e-07f, -0.49992746f /*Est1*/, +0.041493919f /*Est2*/, -0.0012712436f /*Est3*/ );
 
-    Vector4x32f x       = VecModAngles(V);
-    Vector4x32f signbit = VecAnd(x, VecNegZero());
-    Vector4x32f c       = VecOr(VecSet1(MATH_PI), signbit);
-    Vector4x32f absx    = VecAndNot(signbit, x);
-    Vector4x32f rflx    = VecSub(c, x);
-    Vector4x32f comp    = VecCmpLe(absx, VecSet1(MATH_HalfPI));
+    Vec4x32f x       = VecModAngles(V);
+    Vec4x32f signbit = VecAnd(x, VecNegZero());
+    Vec4x32f c       = VecOr(VecSet1(MATH_PI), signbit);
+    Vec4x32f absx    = VecAndNot(signbit, x);
+    Vec4x32f rflx    = VecSub(c, x);
+    Vec4x32f comp    = VecCmpLe(absx, VecSet1(MATH_HalfPI));
 
     x = VecBlend(rflx, x, comp); // x = comp ? x : rflx
-    Vector4x32f s0   = VecAnd(comp, VecOne());            // +1
-    Vector4x32f s1   = VecAndNot(comp, VecNegativeOne()); // -1
-    Vector4x32f sign = VecOr(s0, s1);
+    Vec4x32f s0   = VecAnd(comp, VecOne());            // +1
+    Vec4x32f s1   = VecAndNot(comp, VecNegativeOne()); // -1
+    Vec4x32f sign = VecOr(s0, s1);
 
-    Vector4x32f x2 = VecMul(x, x);
-    Vector4x32f R;
+    Vec4x32f x2 = VecMul(x, x);
+    Vec4x32f R;
     R     = VecFmadd(VecSplatX(SC1), x2, VecSplatW(SC0));
     R     = VecFmadd(R, x2, VecSplatZ(SC0));
     R     = VecFmadd(R, x2, VecSplatY(SC0));
@@ -209,13 +209,13 @@ purefn void VECTORCALL VecSinCos(Vector4x32f V, Vector4x32f* pSin, Vector4x32f* 
     *pCos = VecMul(R, sign);
 }
 
-purefn Vector4x32f VECTORCALL VecAtan(Vector4x32f x)
+purefn Vec4x32f VECTORCALL VecAtan(Vec4x32f x)
 {
     const float sa1 =  0.99997726f, sa3 = -0.33262347f, sa5  = 0.19354346f,
     sa7 = -0.11643287f, sa9 =  0.05265332f, sa11 = -0.01172120f;
       
-    const Vector4x32f xx = VecMul(x, x);
-    Vector4x32f res = VecSet1(sa11); 
+    const Vec4x32f xx = VecMul(x, x);
+    Vec4x32f res = VecSet1(sa11); 
     res = VecFmadd(xx, res, VecSet1(sa9));
     res = VecFmadd(xx, res, VecSet1(sa7));
     res = VecFmadd(xx, res, VecSet1(sa5));
@@ -224,33 +224,33 @@ purefn Vector4x32f VECTORCALL VecAtan(Vector4x32f x)
     return VecMul(x, res);
 }
 
-purefn Vector4x32f VECTORCALL VecAtan2(Vector4x32f y, Vector4x32f x)
+purefn Vec4x32f VECTORCALL VecAtan2(Vec4x32f y, Vec4x32f x)
 {
-    Vector4x32f ay = VecFabs(y), ax = VecFabs(x);
-    Vector4x32i swapMask = VecCmpGt(ay, ax);
-    Vector4x32f z  = VecDiv(VecBlend(ay, ax, swapMask), VecBlend(ax, ay, swapMask));
-    Vector4x32f th = VecAtan(z);
+    Vec4x32f ay = VecFabs(y), ax = VecFabs(x);
+    Vec4x32i swapMask = VecCmpGt(ay, ax);
+    Vec4x32f z  = VecDiv(VecBlend(ay, ax, swapMask), VecBlend(ax, ay, swapMask));
+    Vec4x32f th = VecAtan(z);
     th = VecSelect(th, VecSub(VecSet1(MATH_HalfPI), th), swapMask);
     th = VecSelect(th, VecSub(VecSet1(MATH_PI), th), VecCmpLt(x, VecZero()));
     return VecCopySign(th, y);
 }
 
-purefn float VECTORCALL Min3v(Vector4x32f ab)
+purefn float VECTORCALL Min3v(Vec4x32f ab)
 {
-    Vector4x32f xy = VecMin(VecSplatX(ab), VecSplatY(ab));
+    Vec4x32f xy = VecMin(VecSplatX(ab), VecSplatY(ab));
     return VecGetX(VecMin(xy, VecSplatZ(ab)));
 }
 
-purefn float VECTORCALL Max3v(Vector4x32f ab)
+purefn float VECTORCALL Max3v(Vec4x32f ab)
 {
-    Vector4x32f xy = VecMax(VecSplatX(ab), VecSplatY(ab));
+    Vec4x32f xy = VecMax(VecSplatX(ab), VecSplatY(ab));
     return VecGetX(VecMax(xy, VecSplatZ(ab)));
 }
 
-purefn bool IsPointInsideAABB(Vector4x32f point, Vector4x32f aabbMin, Vector4x32f aabbMax)
+purefn bool IsPointInsideAABB(Vec4x32f point, Vec4x32f aabbMin, Vec4x32f aabbMax)
 {
-    Vector4x32i cmpMin = VecCmpGe(point, aabbMin);
-    Vector4x32i cmpMax = VecCmpLe(point, aabbMax);
+    Vec4x32i cmpMin = VecCmpGe(point, aabbMin);
+    Vec4x32i cmpMax = VecCmpLe(point, aabbMax);
     #if defined(AX_ARM)
     uint32_t movemask = VecMovemask(VeciAnd(cmpMin, cmpMax));
     #else
@@ -259,11 +259,11 @@ purefn bool IsPointInsideAABB(Vector4x32f point, Vector4x32f aabbMin, Vector4x32
     return (movemask & 0b111) == 0b111;
 }
 
-purefn float VECTORCALL IntersectAABB(Vector4x32f origin, Vector4x32f invDir, Vector4x32f aabbMin, Vector4x32f aabbMax, float minSoFar)
+purefn float VECTORCALL IntersectAABB(Vec4x32f origin, Vec4x32f invDir, Vec4x32f aabbMin, Vec4x32f aabbMax, float minSoFar)
 {
     if (IsPointInsideAABB(origin, aabbMin, aabbMax)) return 0.1f;
-    Vector4x32f tmin = VecMul(VecSub(aabbMin, origin), invDir);
-    Vector4x32f tmax = VecMul(VecSub(aabbMax, origin), invDir);
+    Vec4x32f tmin = VecMul(VecSub(aabbMin, origin), invDir);
+    Vec4x32f tmax = VecMul(VecSub(aabbMax, origin), invDir);
     float tnear = Max3v(VecMin(tmin, tmax));
     float tfar  = Min3v(VecMax(tmin, tmax));
     // return tnear < tfar && tnear > 0.0f && tnear < minSoFar;
@@ -272,9 +272,9 @@ purefn float VECTORCALL IntersectAABB(Vector4x32f origin, Vector4x32f invDir, Ve
 }
 
 // calculate popcount of 4 32 bit integer concurrently
-purefn Vector4x32u VECTORCALL PopCount32_128(Vector4x32u x)
+purefn Vec4x32u VECTORCALL PopCount32_128(Vec4x32u x)
 {
-    Vector4x32u y;
+    Vec4x32u y;
     y = VeciAnd(VeciSrl32(x, 1), VeciSet1(0x55555555));
     x = VeciSub(x, y);
     y = VeciAnd(VeciSrl32(x, 2), VeciSet1(0x33333333));
@@ -284,7 +284,7 @@ purefn Vector4x32u VECTORCALL PopCount32_128(Vector4x32u x)
 }
 
 // LeadingZeroCount of 4 32 bit integer concurrently
-purefn Vector4x32u VECTORCALL LeadingZeroCount32_128(Vector4x32u x)
+purefn Vec4x32u VECTORCALL LeadingZeroCount32_128(Vec4x32u x)
 {
     x = VeciOr(x, VeciSrl32(x, 1));
     x = VeciOr(x, VeciSrl32(x, 2));

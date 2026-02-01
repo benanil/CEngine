@@ -90,10 +90,10 @@ purefn float3 RGBToHSV(float3 rgb)
 
 forceinline void HSVToRGB(float3 hsv, float* dst)
 {
-    const Vector4x32f K = VecSetR(1.0f, 2.0f / 3.0f, 1.0f / 3.0f, 3.0f);
-    Vector4x32f p = VecFabs(VecSub(VecMul(VecFract(VecAdd(VecSet1(hsv.x), K)), VecSet1(6.0f)), VecSet1(3.0f)));
-    Vector4x32f kx = VecSplatX(K);
-    Vector4x32f rv = VecMul(VecLerp(kx, VecClamp01(VecSub(p, kx)), hsv.y), VecSet1(hsv.z));
+    const Vec4x32f K = VecSetR(1.0f, 2.0f / 3.0f, 1.0f / 3.0f, 3.0f);
+    Vec4x32f p = VecFabs(VecSub(VecMul(VecFract(VecAdd(VecSet1(hsv.x), K)), VecSet1(6.0f)), VecSet1(3.0f)));
+    Vec4x32f kx = VecSplatX(K);
+    Vec4x32f rv = VecMul(VecLerp(kx, VecClamp01(VecSub(p, kx)), hsv.y), VecSet1(hsv.z));
     Vec3Store(dst, rv);
 }
 

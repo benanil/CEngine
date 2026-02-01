@@ -31,7 +31,7 @@
 #include "Shaders/SkinnedFrag.spv.h"
 #include "Shaders/SkinnedVert.spv.h"
 
-#define NUM_ANIMS (32)
+#define NUM_ANIMS (2048)
 
 static Uint32 frames = 0;
 
@@ -48,6 +48,8 @@ Matrix4* nodeTransforms;
 static int characterRootIndex;
 static AnimationController animController[NUM_ANIMS];
 AX_ALIGN(4) Matrix3x4f16 OutMatrices[MaxBonePoses * NUM_ANIMS];
+
+ECS ecs;
 
 static void DestroyPipeline()
 {
@@ -138,15 +140,21 @@ static void Render()
     index_binding.offset = 0;
     
     UpdateGPUBuffer(render_state.buf_bones, OutMatrices, sizeof(OutMatrices));
+    UpdateGPUBuffer(render_state.buf_positions, ecs.EntityPositions, sizeof(ecs.EntityPositions));
+    UpdateGPUBuffer(render_state.buf_rotations, ecs.EntityRotations, sizeof(ecs.EntityRotations));
 
 	/* Draw */
     SDL_GPUTexture* tex = render_state.textures[sceneBundle->materials[0].baseColorTexture.index].handle;
     Matrix4 viewProj = Matrix4Multiply(globalCamera.view, globalCamera.projection);
+
 	SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmd, &color_target, 1, &depth_target);
 	SDL_BindGPUGraphicsPipeline(pass, render_state.pipeline);
 	SDL_BindGPUVertexBuffers(pass, 0, &vertex_binding, 1);
     SDL_BindGPUIndexBuffer(pass, &index_binding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
-    SDL_BindGPUVertexStorageBuffers(pass, 0, &render_state.buf_bones, 1);
+    
+    SDL_GPUBuffer* buffers[3] = {render_state.buf_bones, render_state.buf_positions, render_state.buf_rotations };
+    SDL_BindGPUVertexStorageBuffers(pass, 0, buffers, SDL_arraysize(buffers));
+
     SDL_BindGPUFragmentSamplers(pass, 0,
                                 &(SDL_GPUTextureSamplerBinding){
                                     .texture = tex, 
@@ -181,7 +189,7 @@ static void Render()
                 // const bool hasMaterial = sceneBundle->materials && primitive->material != UINT16_MAX;
                 // const AMaterial material = sceneBundle->materials[primitive->material];
                 // const Matrix4 model = nodeTransforms[nodeIndex];
-                SDL_DrawGPUIndexedPrimitives(pass, primitive->numIndices, 1, primitive->indexOffset, 0, 0);
+                SDL_DrawGPUIndexedPrimitives(pass, primitive->numIndices, NUM_ANIMS, primitive->indexOffset, 0, 0);
             }
     
             for (int i = 0; i < node->numChildren; i++)
@@ -240,6 +248,8 @@ static void InitScene()
     }
         
     render_state.buf_bones = CreateBuffer(OutMatrices, sizeof(OutMatrices), SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ, "CPJointMatrices");
+    render_state.buf_positions = CreateBuffer(ecs.EntityPositions, sizeof(ecs.EntityPositions), SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ, "CPInstancePositions");
+    render_state.buf_rotations = CreateBuffer(ecs.EntityRotations, sizeof(ecs.EntityRotations), SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ, "CPInstanceRotations");
 
 	BasisuSetup();
     int imgRes = LoadSceneImages("Assets/Meshes/Paladin/PaladinTest.bdc", render_state.textures, sceneBundle->numImages, gpu_device);
@@ -267,18 +277,18 @@ static void InitPipeline()
     SDL_GPUShader* vertex_shader = SDL_CreateGPUShader(gpu_device, &(SDL_GPUShaderCreateInfo){
         .num_uniform_buffers = 1,
         .format              = SDL_GetGPUShaderFormats(gpu_device),
-        .code                = SkinnedVert_spv,
-        .code_size           = sizeof(SkinnedVert_spv),
+        .code                = Shaders_SkinnedVert_spv,
+        .code_size           = sizeof(Shaders_SkinnedVert_spv),
         .num_samplers        = 0,
-        .num_storage_buffers = 1,
+        .num_storage_buffers = 3,
         .stage               = SDL_GPU_SHADERSTAGE_VERTEX
     });
 
     SDL_GPUShader* fragment_shader = SDL_CreateGPUShader(gpu_device, &(SDL_GPUShaderCreateInfo){
         .num_uniform_buffers = 0,
         .format              = SDL_GetGPUShaderFormats(gpu_device),
-        .code                = SkinnedFrag_spv,
-        .code_size           = sizeof(SkinnedFrag_spv),
+        .code                = Shaders_SkinnedFrag_spv,
+        .code_size           = sizeof(Shaders_SkinnedFrag_spv),
         .num_samplers        = 1,
         .num_storage_buffers = 0,
         .stage               = SDL_GPU_SHADERSTAGE_FRAGMENT
@@ -320,12 +330,12 @@ static void InitPipeline()
 	vertex_attributes[0].offset      = 0;
 
 	vertex_attributes[1].buffer_slot = 0;
-	vertex_attributes[1].format      = SDL_GPU_VERTEXELEMENTFORMAT_10BIT_SNORM;
+	vertex_attributes[1].format      = SDL_GPU_VERTEXELEMENTFORMAT_UINT;
 	vertex_attributes[1].location    = 1;
 	vertex_attributes[1].offset      = sizeof(float) * 3;
 
     vertex_attributes[2].buffer_slot = 0;
-	vertex_attributes[2].format      = SDL_GPU_VERTEXELEMENTFORMAT_10BIT_SNORM;
+	vertex_attributes[2].format      = SDL_GPU_VERTEXELEMENTFORMAT_UINT;
 	vertex_attributes[2].location    = 2;
 	vertex_attributes[2].offset      = vertex_attributes[1].offset + sizeof(int);
 
@@ -340,7 +350,7 @@ static void InitPipeline()
 	vertex_attributes[4].offset      = vertex_attributes[3].offset + sizeof(int);
 
     vertex_attributes[5].buffer_slot = 0;
-	vertex_attributes[5].format      = SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4_NORM;
+	vertex_attributes[5].format      = SDL_GPU_VERTEXELEMENTFORMAT_UINT;
 	vertex_attributes[5].location    = 5;
 	vertex_attributes[5].offset      = vertex_attributes[4].offset + sizeof(int);
 
@@ -379,8 +389,9 @@ void loop(void)
     CameraUpdate(&globalCamera, 0.01f);
     
     const double timeSinceStartup = TimeSinceStartup();
-
-    for (int i = 0; i < 1; i++)
+    
+    #pragma omp parallel for schedule(static)
+    for (i = 0; i < NUM_ANIMS; i++)
     {
         AnimationController* ac = &animController[i];
 
@@ -390,7 +401,7 @@ void loop(void)
         const double animDuration = (double)ac->mPrefab->animations[animIdx].duration;
         const float animRatio = (float)Fract((timeSinceStartup + (i * 0.1)) / animDuration);
 
-        AnimationController_PlayAnim(animController + i, 6 & 7, animRatio);
+        AnimationController_PlayAnim(animController + i, animIdx, animRatio);
     }
 
 	if (!done)
@@ -419,6 +430,8 @@ int main(int argc, char* argv[])
 		return 0;
 
 	const SDL_DisplayMode* mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(window));
+
+    ECS_Init(ecs.EntityPositions, ecs.EntityRotations);
 
     rInit(msaa);
     InitPipeline(msaa);

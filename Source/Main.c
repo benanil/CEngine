@@ -161,7 +161,7 @@ void Init(void)
             .storage_buffer = true,
             .stream_update  = true,
         },
-        .size  = MAX_ENTITY * sizeof(Vector4x32f),
+        .size  = MAX_ENTITY * sizeof(Vec4x32f),
         .label = "EntityPositionSSBO",
     });
 

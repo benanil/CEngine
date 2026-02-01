@@ -140,20 +140,20 @@ static inline void Half4ToFloat4(float* result, const half* half4)
     vst1q_f32(result, vcvt_f32_f16(vld1_dup_f16(half4)));
 
     #elif defined(AX_SUPPORT_SSE)
-    Vector4x32u h4 = VeciLoad64((const uint64_t*)half4);
+    Vec4x32u h4 = VeciLoad64((const uint64_t*)half4);
     h4 = VeciUnpackLow16(h4, VeciZero());   // [half4.xy, half4.xy, half4.zw, half4.zw] 
     
-    Vector4x32u h_e = VeciAnd(h4, VeciSet1(0x00007c00));
-    Vector4x32u h_m = VeciAnd(h4, VeciSet1(0x000003ff));
-    Vector4x32u h_s = VeciAnd(h4, VeciSet1(0x00008000));
-    Vector4x32u h_e_f_bias = VeciAdd(h_e, VeciSet1(0x0001c000));
+    Vec4x32u h_e = VeciAnd(h4, VeciSet1(0x00007c00));
+    Vec4x32u h_m = VeciAnd(h4, VeciSet1(0x000003ff));
+    Vec4x32u h_s = VeciAnd(h4, VeciSet1(0x00008000));
+    Vec4x32u h_e_f_bias = VeciAdd(h_e, VeciSet1(0x0001c000));
     
-    Vector4x32u f_s  = VeciSll32(h_s, 0x00000010);
-    Vector4x32u f_e  = VeciSll32(h_e_f_bias, 0x0000000d);
-    Vector4x32u f_m  = VeciSll32(h_m, 0x0000000d);
-    Vector4x32u f_em = VeciOr(f_e, f_m);
+    Vec4x32u f_s  = VeciSll32(h_s, 0x00000010);
+    Vec4x32u f_e  = VeciSll32(h_e_f_bias, 0x0000000d);
+    Vec4x32u f_m  = VeciSll32(h_m, 0x0000000d);
+    Vec4x32u f_em = VeciOr(f_e, f_m);
 
-    Vector4x32u i_result = VeciOr(f_s, f_em);
+    Vec4x32u i_result = VeciOr(f_s, f_em);
     VecStore(result, VeciToVecf(i_result));
     
     #else // no intrinsics
@@ -162,30 +162,35 @@ static inline void Half4ToFloat4(float* result, const half* half4)
     #endif
 }
 
-static inline void Float4ToHalf4(half* result, const float* float4)
+static inline void Float4ToHalf4V(half* result, Vec4x32f f4)
+{
+    *((long long*)result) = _mm_extract_epi64(_mm_cvtps_ph(f4, _MM_FROUND_TO_NEAREST_INT), 0);
+}
+
+static inline void Float4ToHalf4(half* result, const float* f4)
 {
     #ifdef AX_SUPPORT_AVX2
 
-    *((long long*)result) = _mm_extract_epi64(_mm_cvtps_ph(_mm_loadu_ps(float4), _MM_FROUND_TO_NEAREST_INT), 0);
+    *((long long*)result) = _mm_extract_epi64(_mm_cvtps_ph(_mm_loadu_ps(f4), _MM_FROUND_TO_NEAREST_INT), 0);
 
     #elif defined(AX_SUPPORT_NEON)
 
-    *(float16x4_t*)result = vcvt_f16_f32(vld1q_f32(float4));
+    *(float16x4_t*)result = vcvt_f16_f32(vld1q_f32(f4));
 
     #elif defined(AX_SUPPORT_SSE)
 
-    Vector4x32u IValue = VeciLoad((const unsigned int*)float4);
-    Vector4x32u Sign = VeciSrl32(VeciAnd(IValue, VeciSet1(0x80000000u)), 16);
+    Vec4x32u IValue = VeciLoad((const unsigned int*)f4);
+    Vec4x32u Sign = VeciSrl32(VeciAnd(IValue, VeciSet1(0x80000000u)), 16);
     IValue = VeciAnd(IValue, VeciSet1(0x7FFFFFFFu));      // Hack off the sign
     
-    Vector4x32u mask = VeciCmpLt(IValue, VeciSet1(0x38800000u));
-    Vector4x32u b = VeciAdd(IValue, VeciSet1(0xC8000000u));
-    Vector4x32u a = VeciOr(VeciSet1(0x800000u), VeciAnd(IValue, VeciSet1(0x7FFFFFu)));
+    Vec4x32u mask = VeciCmpLt(IValue, VeciSet1(0x38800000u));
+    Vec4x32u b = VeciAdd(IValue, VeciSet1(0xC8000000u));
+    Vec4x32u a = VeciOr(VeciSet1(0x800000u), VeciAnd(IValue, VeciSet1(0x7FFFFFu)));
     a = VeciSrl(a, VeciSub(VeciSet1(113u), VeciSrl32(IValue, 23u)));
     
     IValue = VeciBlend(b, a, mask);
 
-    Vector4x32u Result = VeciAdd(IValue, VeciSet1(0x0FFFu));
+    Vec4x32u Result = VeciAdd(IValue, VeciSet1(0x0FFFu));
     Result = VeciAdd(Result, VeciAnd(VeciSrl32(IValue, 13u), VeciSet1(1u)));
     Result = VeciSrl32(Result, 13u);
     Result = VeciAnd(Result, VeciSet1(0x7FFFu));
@@ -206,8 +211,8 @@ static inline void Float4ToHalf4(half* result, const float* float4)
     #endif
 
     #else // no intrinsics
-    *(uint32_t*)result = Float2ToHalf2(float4);
-    *((uint32_t*)result + 1) = Float2ToHalf2(float4 + 2);
+    *(uint32_t*)result = Float2ToHalf2(f4);
+    *((uint32_t*)result + 1) = Float2ToHalf2(f4 + 2);
     #endif
 }
 

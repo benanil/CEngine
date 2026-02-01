@@ -71,12 +71,12 @@ static inline RayV ScreenPointToRay(Camera* camera, float2 pos)
     coord.y = 1.0f - coord.y;    // Flip Y to match the NDC coordinate system
     coord = Float2SubF(Float2MulF(coord, 2.0f), 1.0f); // Map to range [-1, 1]
 
-    Vector4x32f clipSpacePos = VecSetR(coord.x, coord.y, 1.0f, 1.0f);
-    Vector4x32f viewSpacePos = Vector4Transform(clipSpacePos, camera->inverseProjection.r);
+    Vec4x32f clipSpacePos = VecSetR(coord.x, coord.y, 1.0f, 1.0f);
+    Vec4x32f viewSpacePos = Vector4Transform(clipSpacePos, camera->inverseProjection.r);
     viewSpacePos = VecDiv(viewSpacePos, VecSplatW(viewSpacePos));
         
-    Vector4x32f worldSpacePos = Vector4Transform(viewSpacePos, camera->inverseView.r);
-    Vector4x32f rayDir = Vec3NormV(VecSub(worldSpacePos, VecLoad(&camera->position.x)));
+    Vec4x32f worldSpacePos = Vector4Transform(viewSpacePos, camera->inverseView.r);
+    Vec4x32f rayDir = Vec3NormV(VecSub(worldSpacePos, VecLoad(&camera->position.x)));
         
     RayV ray;
     ray.origin = VecLoad(&camera->position.x); 

@@ -64,7 +64,7 @@ void AnimationController_Create(const SceneBundle* prefab, AnimationController* 
     }
 }
 
-void AnimationController_RecurseBoneMatrices(AnimationController* ac, int nodeIndex, Vector4x32f parentPos, Vector4x32f parentRot)
+void AnimationController_RecurseBoneMatrices(AnimationController* ac, int nodeIndex, Vec4x32f parentPos, Vec4x32f parentRot)
 {
     const AnimNode* node = &ac->mAnimNodes[nodeIndex];
 
@@ -73,7 +73,7 @@ void AnimationController_RecurseBoneMatrices(AnimationController* ac, int nodeIn
         int childIndex = ac->mChildIndices[node->childrenStartIndex + c];
 
         Pose pose        = ac->mAnimPoseA[childIndex];
-        Vector4x32f t    = QMulVec3V(pose.translation, parentRot);
+        Vec4x32f t       = QMulVec3V(pose.translation, parentRot);
         pose.translation = VecAdd(t, parentPos);
         pose.rotation    = QMul(pose.rotation, parentRot);
 
@@ -149,8 +149,8 @@ void AnimationController_SampleAnimationPose(const AnimationController* ac, Pose
 
         if (reverse) XSWAP(int, beginIdx, endIdx);
 
-        const Vector4x32f begin = ((const Vector4x32f*)sampler->output)[beginIdx];
-        const Vector4x32f end   = ((const Vector4x32f*)sampler->output)[endIdx];
+        const Vec4x32f begin = ((const Vec4x32f*)sampler->output)[beginIdx];
+        const Vec4x32f end   = ((const Vec4x32f*)sampler->output)[endIdx];
     
         float beginTime = Maxf32(0.0001f, realTime - sampler->input[beginIdx]);
         float endTime   = Maxf32(0.0001f, sampler->input[endIdx] - sampler->input[beginIdx]);

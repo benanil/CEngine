@@ -66,7 +66,7 @@ typedef int GraphicType;
 // https://www.yosoygames.com.ar/wp/2018/03/vertex-formats-part-1-compression/
 typedef struct AVertex_
 {
-    float3    position;
+    float3   position;
     uint32_t normal;
     uint32_t tangent;
     uint32_t texCoord; // half2
@@ -75,8 +75,8 @@ typedef struct AVertex_
 typedef struct ASkinedVertex_
 {
     float3    position;
-    uint32_t normal;
-    uint32_t tangent;
+    uint32_t qtangentXYF16;
+    uint32_t qtangentZWF16;
     uint32_t texCoord; // half2
     uint32_t joints;  // rgb8u
     uint32_t weights; // rgb8u
@@ -119,6 +119,8 @@ typedef struct RenderState
 	SDL_GPUBuffer* buf_vertex;
 	SDL_GPUBuffer* buf_index;
 	SDL_GPUBuffer* buf_bones;
+	SDL_GPUBuffer* buf_positions;
+	SDL_GPUBuffer* buf_rotations;
     SDL_GPUSampler* sampler;
     Texture textures[8];
 	SDL_GPUGraphicsPipeline* pipeline;

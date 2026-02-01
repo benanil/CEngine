@@ -696,7 +696,7 @@ void RemoveFolder(const char* path, void* unused)
     }
 }
 
-static void WriteFloat4(Vector4x32f v, AFile file0)
+static void WriteFloat4(Vec4x32f v, AFile file0)
 {
     char buff[128];
     int sizeLen = FloatToString(buff, VecGetX(v), 4);

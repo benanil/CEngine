@@ -452,24 +452,24 @@ static inline void MemCpy(void* dst, const void* RESTRICT src, size_t size)
     {
         switch (simd_count & 3)
         {
-            case 3: VecStoreU((Vector4x32u*)d, VecLoadIU((const Vector4x32u*)s)); s += 16; d += 16;
-            case 2: VecStoreU((Vector4x32u*)d, VecLoadIU((const Vector4x32u*)s)); s += 16; d += 16;
-            case 1: VecStoreU((Vector4x32u*)d, VecLoadIU((const Vector4x32u*)s)); s += 16; d += 16;
+            case 3: VecStoreU((Vec4x32u*)d, VecLoadIU((const Vec4x32u*)s)); s += 16; d += 16;
+            case 2: VecStoreU((Vec4x32u*)d, VecLoadIU((const Vec4x32u*)s)); s += 16; d += 16;
+            case 1: VecStoreU((Vec4x32u*)d, VecLoadIU((const Vec4x32u*)s)); s += 16; d += 16;
             case 0: break;
         }
         
         simd_count >>= 2;
         while (simd_count--)
         {
-            Vector4x32u xmm0 = VecLoadIU((const Vector4x32u*)s);
-            Vector4x32u xmm1 = VecLoadIU((const Vector4x32u*)(s + 16));
-            Vector4x32u xmm2 = VecLoadIU((const Vector4x32u*)(s + 32));
-            Vector4x32u xmm3 = VecLoadIU((const Vector4x32u*)(s + 48));
+            Vec4x32u xmm0 = VecLoadIU((const Vec4x32u*)s);
+            Vec4x32u xmm1 = VecLoadIU((const Vec4x32u*)(s + 16));
+            Vec4x32u xmm2 = VecLoadIU((const Vec4x32u*)(s + 32));
+            Vec4x32u xmm3 = VecLoadIU((const Vec4x32u*)(s + 48));
             
-            VecStoreU((Vector4x32u*)d, xmm0);
-            VecStoreU((Vector4x32u*)(d + 16), xmm1);
-            VecStoreU((Vector4x32u*)(d + 32), xmm2);
-            VecStoreU((Vector4x32u*)(d + 48), xmm3);
+            VecStoreU((Vec4x32u*)d, xmm0);
+            VecStoreU((Vec4x32u*)(d + 16), xmm1);
+            VecStoreU((Vec4x32u*)(d + 32), xmm2);
+            VecStoreU((Vec4x32u*)(d + 48), xmm3);
             s += 64; d += 64;
         }
     }
@@ -485,26 +485,26 @@ static inline void MemSet(void* dst, uint8_t value, size_t size)
 {
     uint8_t* d = (uint8_t*)dst;
     
-    Vector4x32u xmm_value = _mm_set1_epi8(value);
+    Vec4x32u xmm_value = _mm_set1_epi8(value);
     size_t simd_count = size >> 4;  // Divide by 16
     
     if (simd_count > 0) 
     {
         switch (simd_count & 3)
         {
-            case 3: VecStoreU((Vector4x32u*)d, xmm_value); d += 16;
-            case 2: VecStoreU((Vector4x32u*)d, xmm_value); d += 16;
-            case 1: VecStoreU((Vector4x32u*)d, xmm_value); d += 16;
+            case 3: VecStoreU((Vec4x32u*)d, xmm_value); d += 16;
+            case 2: VecStoreU((Vec4x32u*)d, xmm_value); d += 16;
+            case 1: VecStoreU((Vec4x32u*)d, xmm_value); d += 16;
             case 0: break;
         }
         
         simd_count >>= 2;
         while (simd_count--)
         {
-            VecStoreU((Vector4x32u*)d, xmm_value);
-            VecStoreU((Vector4x32u*)(d + 16), xmm_value);
-            VecStoreU((Vector4x32u*)(d + 32), xmm_value);
-            VecStoreU((Vector4x32u*)(d + 48), xmm_value);
+            VecStoreU((Vec4x32u*)d, xmm_value);
+            VecStoreU((Vec4x32u*)(d + 16), xmm_value);
+            VecStoreU((Vec4x32u*)(d + 32), xmm_value);
+            VecStoreU((Vec4x32u*)(d + 48), xmm_value);
             d += 64;
         }
     }

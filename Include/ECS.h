@@ -8,14 +8,13 @@
 
 typedef struct ECS_
 {
-    Vector4x32f EntityPositions[MAX_ENTITY];
-    uint32_t    EntityRotations[MAX_ENTITY * 2];
-
-    uint32_t    EntityData[MAX_ENTITY];
+    Vec4x32f EntityPositions[MAX_ENTITY];
+    uint32_t EntityRotations[MAX_ENTITY * 2];
+    uint32_t EntityData[MAX_ENTITY];
 } ECS;
 
 
-void ECS_Init(Vector4x32f* EntityPositions, uint32_t* EntityRotations);
+void ECS_Init(Vec4x32f* EntityPositions, uint32_t* EntityRotations);
 
 void ECS_Update(ECS* ecs, float delta_time);
 

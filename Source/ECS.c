@@ -3,17 +3,7 @@
 #include "Include/Random.h"
 #include "Math/Matrix.h"
 
-
-void PackQuaternionS16Norm(Vector4x32f quat, uint32_t* result)
-{
-    quat = VecNorm(quat);
-    Vector4x32f shortMax = VecSet1(INT16_MAX);
-    Vector4x32u u32 = VecCvtF32U32(VecMul(quat, shortMax));
-    Vector4x32u u16 = VecNarrowU32U16(u32);
-    VecStoreI16(result, u16);
-}
-
-void ECS_Init(Vector4x32f* EntityPositions, uint32_t* EntityRotations)
+void ECS_Init(Vec4x32f* EntityPositions, uint32_t* EntityRotations)
 {
     for (int i = 0; i < MAX_ENTITY; i++)
     {

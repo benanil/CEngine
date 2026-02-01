@@ -1,4 +1,5 @@
 
+
 #ifndef SIMD_H
 #define SIMD_H
 
@@ -121,9 +122,9 @@ typedef __m256i Vector8x32u;
 /*                                 SSE                                      */
 /*//////////////////////////////////////////////////////////////////////////*/
 
-typedef __m128  Vector4x32f;
-typedef __m128  Vector4x32i;
-typedef __m128i Vector4x32u;
+typedef __m128  Vec4x32f;
+typedef __m128  Vec4x32i;
+typedef __m128i Vec4x32u;
 
 #define VecZero()                _mm_setzero_ps()
 #define VecNegZero()             _mm_set1_ps(-0.0f)
@@ -146,17 +147,19 @@ typedef __m128i Vector4x32u;
 #define VecFromInt1(x)           _mm_castsi128_ps(_mm_set1_epi32(x))
 #define VecToInt(x) x           
                                 
-#define VecFromVeci(x)           _mm_castsi128_ps(x)
-#define VeciFromVec(x)           _mm_castps_si128(x)
+#define VecBitcastU32(x)          _mm_castps_si128(x)
+#define VeciBitcastF32(x)         _mm_castsi128_ps(x)
                                 
-#define VecCvtF32U32(x)          _mm_cvtps_epi32(x)
+#define VecCvtF32I32(x)          _mm_cvtps_epi32(x)
+#define VecCvtF32U32(x)          _mm_cvtps_epu32(x)
 #define VecCvtU32F32(x)          _mm_cvtepi32_ps(x)
 #define VecWidenU16ToU32(x)      _mm_unpacklo_epi16(x, _mm_setzero_si128())
 #define VecNarrowU32U16(x)       _mm_packus_epi32((x), _mm_setzero_si128())
 #define VecStoreI16(ptr, vec)    _mm_storel_pi((__m64*)(ptr), _mm_castsi128_ps(vec)) // stores lower 64 bits (first 2 x 32-bit elements)
 
-// _mm_permute_ps is avx only
+#define MakeShuffleMask(x,y,z,w)     (x | (y<<2) | (z<<4) | (w<<6)) /* internal use only */
 // Get Set
+// _mm_permute_ps is avx only
 #define VecSplatX(v)             _mm_permute_ps(v, MakeShuffleMask(0, 0, 0, 0)) /* { v.x, v.x, v.x, v.x} */
 #define VecSplatY(v)             _mm_permute_ps(v, MakeShuffleMask(1, 1, 1, 1)) /* { v.y, v.y, v.y, v.y} */
 #define VecSplatZ(v)             _mm_permute_ps(v, MakeShuffleMask(2, 2, 2, 2)) /* { v.z, v.z, v.z, v.z} */
@@ -228,7 +231,6 @@ typedef __m128i Vector4x32u;
 #define VecMaskZ  _mm_castsi128_ps(_mm_setr_epi32(0x00000000, 0x00000000, 0xFFFFFFFF, 0x00000000))
 #define VecMaskW  _mm_castsi128_ps(_mm_setr_epi32(0x00000000, 0x00000000, 0x00000000, 0xFFFFFFFF))
 
-#define MakeShuffleMask(x,y,z,w)     (x | (y<<2) | (z<<4) | (w<<6)) /* internal use only */
 // vec(0, 1, 2, 3) -> (vec[x], vec[y], vec[z], vec[w])
 #define VecSwizzleMask(vec, msk)    _mm_shuffle_ps(vec, vec, msk)
 #define VecSwizzle(vec, x, y, z, w) VecSwizzleMask(vec, MakeShuffleMask(x,y,z,w))
@@ -311,8 +313,8 @@ typedef __m128i Vector4x32u;
 #define VeciBlend(a, b, c)          _mm_blendv_epi8(a, b, c)
 
 
-static inline Vector4x32f VECTORCALL Vec3Load(void const* x) {
-    Vector4x32f v = _mm_loadu_ps((float const*)x); 
+static inline Vec4x32f VECTORCALL Vec3Load(void const* x) {
+    Vec4x32f v = _mm_loadu_ps((float const*)x); 
     VecSetW(v, 0.0); return v;
 }
 
@@ -321,9 +323,9 @@ static inline Vector4x32f VECTORCALL Vec3Load(void const* x) {
 /*                                 NEON                                     */
 /*//////////////////////////////////////////////////////////////////////////*/
 
-typedef float32x4_t Vector4x32f;
-typedef uint32x4_t Vector4x32i;
-typedef uint32x4_t Vector4x32u;
+typedef float32x4_t Vec4x32f;
+typedef uint32x4_t Vec4x32i;
+typedef uint32x4_t Vec4x32u;
 
 #define VecZero()                   vdupq_n_f32(0.0f)
 #define VecNegZero()                vdupq_n_f32(-0.0f)
@@ -347,7 +349,7 @@ typedef uint32x4_t Vector4x32u;
 #define VecFromInt1(x)              vdupq_n_s32(x)
 #define VecFromInt(x, y, z, w)      ARMCreateVecI(x, y, z, w)
 #define VecToInt(x)                 vreinterpretq_u32_f32(x)
-#define VecCvtF32U32(x)             vcvtq_u32_f32(x)
+#define VecCvtF32I32(x)             vcvtq_u32_f32(x)
 #define VecCvtU32F32(x)             vcvtq_f32_u32(x)
 #define VecWidenU16ToU32(x)         vmovl_u16(x)
 #define VeciNarrowU32U16(x)         vmovn_u32((uint32x4_t)(x))  // returns uint16x4_t
@@ -472,8 +474,8 @@ typedef uint32x4_t Vector4x32u;
 #define VeciSub(a, b)               vsubq_u32(a, b)
 #define VeciMul(a, b)               vmulq_u32(a, b)
 
-#define VecFromVeci(x)              vreinterpretq_f32_u32(x)
-#define VeciFromVec(x)              vreinterpretq_u32_f32(x)
+#define VecBitcastU32(x)               vreinterpretq_f32_u32(x)
+#define VeciBitcastF32(x)              vreinterpretq_u32_f32(x)
 // Swizzling Masking
 #define VecSelect1000  ARMCreateVecI(0xFFFFFFFFu, 0x00000000u, 0x00000000u, 0x00000000u)
 #define VecSelect1100  ARMCreateVecI(0xFFFFFFFFu, 0xFFFFFFFFu, 0x00000000u, 0x00000000u)
@@ -517,27 +519,27 @@ typedef uint32x4_t Vector4x32u;
 #define VeciUnpackLow16(a, b)       vzip1q_s16(a, b)   /* [a.x, a.y, b.x, b.y] */
 #define VeciBlend(a, b, c)          vbslq_u8(c, b, a)  /* Blend a and b based on mask c */
 
-purefn Vector4x32f ARMVectorRev(Vector4x32f v)
+purefn Vec4x32f ARMVectorRev(Vec4x32f v)
 {
     float32x4_t rev64 = vrev64q_f32(v);
     return vextq_f32(rev64, rev64, 2);
 }
 
-purefn Vector4x32f ARMVector3Load(float* src) {
+purefn Vec4x32f ARMVector3Load(float* src) {
     return vcombine_f32(vld1_f32(src), vld1_lane_f32(src + 2, vdup_n_f32(0), 0));
 }
 
-purefn Vector4x32f ARMCreateVec(float x, float y, float z, float w) {
+purefn Vec4x32f ARMCreateVec(float x, float y, float z, float w) {
     AX_ALIGN(16) float v[4] = {x, y, z, w};
     return vld1q_f32(v);
 }
 
-purefn Vector4x32i ARMCreateVecI(uint32_t x, uint32_t y, uint32_t z, uint32_t w) {
+purefn Vec4x32i ARMCreateVecI(uint32_t x, uint32_t y, uint32_t z, uint32_t w) {
     return vcombine_u32(vcreate_u32(((uint64_t)x) | (((uint64_t)y) << 32)),
                         vcreate_u32(((uint64_t)z) | (((uint64_t)w) << 32)));
 }
 
-purefn Vector4x32f ARMVector3NormEst(Vector4x32f v) {
+purefn Vec4x32f ARMVector3NormEst(Vec4x32f v) {
     float32x4_t vTemp = vmulq_f32(v, v);
     float32x2_t v1 = vget_low_f32(vTemp);
     float32x2_t v2 = vget_high_f32(vTemp);
@@ -548,7 +550,7 @@ purefn Vector4x32f ARMVector3NormEst(Vector4x32f v) {
     return vmulq_f32(v, vcombine_f32(v2, v2)); // Normalize
 }
 
-static inline Vector4x32f ARMVector3Norm(Vector4x32f v) {
+static inline Vec4x32f ARMVector3Norm(Vec4x32f v) {
     // Dot3
     float32x4_t vTemp = vmulq_f32(v, v);
     float32x2_t v1 = vget_low_f32(vTemp);
@@ -565,12 +567,12 @@ static inline Vector4x32f ARMVector3Norm(Vector4x32f v) {
     float32x2_t R1 = vrsqrts_f32(vmul_f32(v1, S1), S1);
     v2 = vmul_f32(S1, R1);
     // Normalize
-    Vector4x32f vResult = vmulq_f32(v, vcombine_f32(v2, v2));
+    Vec4x32f vResult = vmulq_f32(v, vcombine_f32(v2, v2));
     vResult = vbslq_f32(vcombine_u32(VEqualsZero, VEqualsZero), vdupq_n_f32(0), vResult);
     return vResult;
 }
 
-purefn Vector4x32f ARMVector3Dot(Vector4x32f a, Vector4x32f b) {
+purefn Vec4x32f ARMVector3Dot(Vec4x32f a, Vec4x32f b) {
     float32x4_t vTemp = vmulq_f32(a, b);
     float32x2_t v1 = vget_low_f32(vTemp);
     float32x2_t v2 = vget_high_f32(vTemp);
@@ -580,7 +582,7 @@ purefn Vector4x32f ARMVector3Dot(Vector4x32f a, Vector4x32f b) {
     return vcombine_f32(v1, v1);
 }
 
-static inline Vector4x32f ARMVector3Length(Vector4x32f v) {
+static inline Vec4x32f ARMVector3Length(Vec4x32f v) {
     float32x4_t vTemp = vmulq_f32(v, v);
     float32x2_t v1 = vget_low_f32(vTemp);
     float32x2_t v2 = vget_high_f32(vTemp);
@@ -595,7 +597,7 @@ static inline Vector4x32f ARMVector3Length(Vector4x32f v) {
     return vcombine_f32(Result, Result);
 }
 
-static inline Vector4x32f ARMVectorLengthEst(Vector4x32f v) {
+static inline Vec4x32f ARMVectorLengthEst(Vec4x32f v) {
     float32x4_t vTemp = vmulq_f32(v, v);
     float32x2_t v1 = vget_low_f32(vTemp);
     float32x2_t v2 = vget_high_f32(vTemp);
@@ -609,7 +611,7 @@ static inline Vector4x32f ARMVectorLengthEst(Vector4x32f v) {
     return vcombine_f32(Result, Result);
 }
 
-static inline Vector4x32f ARMVectorLength(Vector4x32f v) {
+static inline Vec4x32f ARMVectorLength(Vec4x32f v) {
 	// Dot4
     float32x4_t vTemp = vmulq_f32(v, v);
     float32x2_t v1 = vget_low_f32(vTemp);
@@ -631,7 +633,7 @@ static inline Vector4x32f ARMVectorLength(Vector4x32f v) {
     return vcombine_f32(Result, Result);
 }
 
-purefn Vector4x32f ARMVectorDevide(Vector4x32f V1, Vector4x32f V2) {
+purefn Vec4x32f ARMVectorDevide(Vec4x32f V1, Vec4x32f V2) {
     // 2 iterations of Newton-Raphson refinement of reciprocal
     float32x4_t Reciprocal = vrecpeq_f32(V2);
     float32x4_t S = vrecpsq_f32(Reciprocal, V2);
@@ -641,7 +643,7 @@ purefn Vector4x32f ARMVectorDevide(Vector4x32f V1, Vector4x32f V2) {
     return vmulq_f32(V1, Reciprocal);
 }
 
-purefn Vector4x32f ARMVectorDot(Vector4x32f a, Vector4x32f b) {
+purefn Vec4x32f ARMVectorDot(Vec4x32f a, Vec4x32f b) {
     float32x4_t vTemp = vmulq_f32(a, b);
     float32x2_t v1 = vget_low_f32(vTemp);
     float32x2_t v2 = vget_high_f32(vTemp);
@@ -650,7 +652,7 @@ purefn Vector4x32f ARMVectorDot(Vector4x32f a, Vector4x32f b) {
     return vcombine_f32(v1, v1);
 }
 
-purefn Vector4x32f ARMVectorNormEst(Vector4x32f v) {
+purefn Vec4x32f ARMVectorNormEst(Vec4x32f v) {
     float32x4_t vTemp = vmulq_f32(v, v);
     float32x2_t v1 = vget_low_f32(vTemp);
     float32x2_t v2 = vget_high_f32(vTemp);
@@ -660,12 +662,12 @@ purefn Vector4x32f ARMVectorNormEst(Vector4x32f v) {
     return vmulq_f32(v, vcombine_f32(v2, v2));
 }
 
-purefn Vector4x32f ARMVectorNorm(Vector4x32f v) 
+purefn Vec4x32f ARMVectorNorm(Vec4x32f v) 
 {
     return ARMVectorDevide(v, ARMVectorLength(v));
 }
 
-purefn int ARMVecMovemask(Vector4x32i v) {
+purefn int ARMVecMovemask(Vec4x32i v) {
     const int shiftArr[4] = { 0, 1, 2, 3 };
     int32x4_t shift = vld1q_s32(shiftArr);
     return vaddvq_u32(vshlq_u32(vshrq_n_u32(v, 31), shift));
@@ -675,12 +677,12 @@ purefn int ARMVecMovemask(Vector4x32i v) {
 
 
 #if defined(AX_SUPPORT_SSE) || defined(AX_ARM)
-static inline float VECTORCALL VecGetN(Vector4x32f v, int n)
+static inline float VECTORCALL VecGetN(Vec4x32f v, int n)
 {
     return ((float*)&v)[n & 3];
 }
 
-static inline Vector4x32f VECTORCALL VecSetN(Vector4x32f v, int n, float f)
+static inline Vec4x32f VECTORCALL VecSetN(Vec4x32f v, int n, float f)
 {
     ((float*)&v)[n & 3] = f;
     return v;

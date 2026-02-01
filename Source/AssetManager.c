@@ -35,23 +35,45 @@
 
 #include <stdio.h>
 
-// https://copyprogramming.com/howto/how-to-pack-normals-into-gl-int-2-10-10-10-rev
-static inline uint32_t Pack_INT_2_10_10_10_REV(float3 v) {
-    const uint32_t xs = v.x < 0.0f, ys = v.y < 0.0f, zs = v.z < 0.0f;   
-    return zs << 29 | ((uint32_t)(v.z * 511 + (zs << 9)) & 511) << 20 |
-        ys << 19 | ((uint32_t)(v.y * 511 + (ys << 9)) & 511) << 10 |
-        xs << 9  | ((uint32_t)(v.x * 511 + (xs << 9)) & 511);
+static inline uint32_t PackXY11Z10SnormToU32(Vec4x32f v)
+{
+    v = VecClamp(v, VecSet1(-1.0f), VecSet1(1.0f));
+    v = VecMul(v, VecSetR(1023.f, 1023.f, 511.f, 0.f));
+    v = VecRound(v);
+
+    Vec4x32u i = VecCvtF32I32(v);
+
+    i = VeciAnd(i, VeciSetR(0x7FF, 0x7FF, 0x3FF, 0));
+    i = VeciSll(i, VeciSetR(0, 11, 22, 0));
+
+    uint32_t lanes[4];
+    VecStoreU((Vec4x32u*)lanes, i);
+
+    return lanes[0] | lanes[1] | lanes[2];
 }
 
-static inline uint32_t Pack_INT_2_10_10_10_REV_VEC(Vector4x32f v)
+static inline uint32_t PackXY11Z10UnormToU32(Vec4x32f v)
 {
-    float x = VecGetX(v), y = VecGetY(v), z = VecGetZ(v), w = VecGetW(v); 
+    v = VecClamp01(v);
+    v = VecMul(v, VecSetR(2047.f, 2047.f, 1023.f, 0.f));
+    v = VecRound(v);
 
-    const uint32_t xs = x < 0.0f, ys = y < 0.0f, zs = z < 0.0f, ws = w < 0.0f;
-    return ws << 31 | ((uint32_t)(w       + (ws << 1)) & 1) << 30 |
-        zs << 29 | ((uint32_t)(z * 511 + (zs << 9)) & 511) << 20 |
-        ys << 19 | ((uint32_t)(y * 511 + (ys << 9)) & 511) << 10 |
-        xs << 9  | ((uint32_t)(x * 511 + (xs << 9)) & 511);
+    Vec4x32u i = VecCvtF32I32(v);
+
+    i = VeciAnd(i, VeciSetR(0x7FF, 0x7FF, 0x3FF, 0));
+    i = VeciSll(i, VeciSetR(0, 11, 22, 0));
+
+    uint32_t lanes[4];
+    VecStoreU((Vec4x32u*)lanes, i);
+    return lanes[0] | lanes[1] | lanes[2];
+}
+
+static void PackTBNIntoQuaternion64(Vec4x32f normal, Vec4x32f tangent, uint32_t* out)
+{
+    Vec4x32f binormal = Vec3Cross(tangent, normal);
+    Vec4x32f quat = QuaternionFromMatrix3Vec(binormal, tangent, normal);
+    quat = VecNorm(quat);
+    PackQuaternionS16Norm(quat, out);
 }
 
 int GraphicsTypeToSize(GraphicType type)
@@ -59,16 +81,6 @@ int GraphicsTypeToSize(GraphicType type)
     // BYTE, UNSIGNED_BYTE, SHORT, UNSIGNED_SHORT, INT, UNSIGNED_INT, FLOAT 
     const int TypeToSize[12] = { 1, 1, 2, 2, 4, 4, 4, 2, 4, 4, 8, 2 };
     return TypeToSize[type];
-}
-
-static inline float3 Unpack_INT_2_10_10_10_REV(uint32_t p) 
-{
-    float3 result;
-    const uint32_t tenMask = (1 << 10)-1;
-    result.x = 255.0f / ((p >>  0) & tenMask);
-    result.y = 255.0f / ((p >> 10) & tenMask);
-    result.z = 255.0f / ((p >> 20) & tenMask);
-    return result;
 }
 
 
@@ -203,17 +215,19 @@ int LoadFBX(const char* path, SceneBundle* fbxScene, float scale)
         for (int j = 0; j < primitive->numVertices; j++)
         {
             SmallMemCpy(&currentVertex[j].position.x, &umesh->vertex_position.values.data[j], sizeof(float) * 3);
-            if (umesh->vertex_uv.exists) {
+            if (umesh->vertex_uv.exists)
+            {
                 currentVertex[j].texCoord = Float2ToHalf2((float*)(umesh->vertex_uv.values.data + j));
             }
-            if (umesh->vertex_normal.exists) {
-                currentVertex[j].normal = Pack_INT_2_10_10_10_REV(Float3FromPtr((float*)(umesh->vertex_normal.values.data + j)));
+            if (umesh->vertex_normal.exists) 
+            {
+                // currentVertex[j].qtangentXYf16 = PackVec3XYZ10BitToInt(Vec3Load((float*)(umesh->vertex_normal.values.data + j)));
             }
             if (umesh->vertex_tangent.exists)
             {
-                Vector4x32f tangent = Vec3Load((float*)(umesh->vertex_normal.values.data + j));
+                Vec4x32f tangent = Vec3Load((float*)(umesh->vertex_tangent.values.data + j));
                 VecSetW(tangent, 1.0f);
-                currentVertex[j].tangent = Pack_INT_2_10_10_10_REV_VEC(tangent);
+                // currentVertex[j].qtangentZWF16 = PackVec3XYZ10BitToInt(tangent);
             }
         }
 
@@ -455,7 +469,7 @@ int LoadFBX(const char* path, SceneBundle* fbxScene, float scale)
         }
         
         SmallMemCpy(anode->translation, &unode->world_transform.translation.x, sizeof(float3));
-        SmallMemCpy(anode->rotation, &unode->world_transform.rotation.x, sizeof(Vector4x32f));
+        SmallMemCpy(anode->rotation, &unode->world_transform.rotation.x, sizeof(Vec4x32f));
         SmallMemCpy(anode->scale, &unode->world_transform.scale.x, sizeof(float3));
         
         if (anode->type == 0)
@@ -509,21 +523,23 @@ void CreateVerticesIndices(SceneBundle* gltf)
             primitive->vertices = currVertex;
             
             // https://www.yosoygames.com.ar/wp/2018/03/vertex-formats-part-1-compression/
-            float3* positions = (float3*)primitive->vertexAttribs[0];
-            float2* texCoords = (float2*)primitive->vertexAttribs[1];
-            float3* normals   = (float3*)primitive->vertexAttribs[2];
-            Vector4x32f* tangents     = (Vector4x32f*)primitive->vertexAttribs[3];
+            float3*   positions = (float3*)primitive->vertexAttribs[0];
+            float2*   texCoords = (float2*)primitive->vertexAttribs[1];
+            float3*   normals   = (float3*)primitive->vertexAttribs[2];
+            Vec4x32f* tangents  = (Vec4x32f*)primitive->vertexAttribs[3];
             
             for (int v = 0; v < primitive->numVertices; v++)
             {
-                Vector4x32f    tangent  = tangents  ? tangents[v]  : VecZero();
-                float2 texCoord = texCoords ? texCoords[v] : (float2){0.0f, 0.0f};
-                float3 normal   = normals   ? normals[v]   : (float3){0.5f, 0.5f, 0.0};
+                Vec4x32f tangent  = tangents  ? tangents[v]  : VecZero();
+                float2   texCoord = texCoords ? texCoords[v] : (float2){0.0f, 0.0f};
+                float3   normal   = normals   ? normals[v]   : (float3){0.5f, 0.5f, 0.0};
 
                 currVertex[v].position  = positions[v];
                 currVertex[v].texCoord  = Float2ToHalf2(&texCoord.x);
-                currVertex[v].normal    = Pack_INT_2_10_10_10_REV(normal);
-                currVertex[v].tangent   = Pack_INT_2_10_10_10_REV_VEC(tangent);
+                currVertex[v].normal  = PackXY11Z10SnormToU32(Vec3Load(&normal.x));
+                currVertex[v].tangent = PackXY11Z10SnormToU32(tangent);
+
+                // PackTBNIntoQuaternion64(Vec3Load(&normal.x), tangent, &currVertex[v].qtangentXYF16);                
             }
 
             int indexSize = GraphicsTypeToSize(primitive->indexType);
@@ -590,18 +606,20 @@ void CreateVerticesIndicesSkined(SceneBundle* gltf)
             float3* positions = (float3*)primitive->vertexAttribs[0];
             float2* texCoords = (float2*)primitive->vertexAttribs[1];
             float3* normals   = (float3*)primitive->vertexAttribs[2];
-            Vector4x32f*    tangents  = (Vector4x32f*)primitive->vertexAttribs[3];
+            Vec4x32f* tangents  = (Vec4x32f*)primitive->vertexAttribs[3];
 
             for (int v = 0; v < primitive->numVertices; v++)
             {
-                Vector4x32f tangent     = tangents  ? tangents[v]  : VecZero();
+                Vec4x32f tangent     = tangents  ? tangents[v]  : VecZero();
                 float2 texCoord = texCoords ? texCoords[v] : (float2){0.0f, 0.0f};
                 float3 normal   = normals   ? normals[v]   : (float3){0.5f, 0.5f, 0.0};
 
                 currVertex[v].position = positions[v];
                 currVertex[v].texCoord = Float2ToHalf2(&texCoord.x);
-                currVertex[v].normal   = Pack_INT_2_10_10_10_REV(normal);
-                currVertex[v].tangent  = Pack_INT_2_10_10_10_REV_VEC(tangent);
+                currVertex[v].qtangentXYF16 = PackXY11Z10SnormToU32(Vec3Load(&normal.x));
+                currVertex[v].qtangentZWF16 = PackXY11Z10SnormToU32(tangent);
+
+                // PackTBNIntoQuaternion64(Vec3Load(&normal.x), tangent, &currVertex[v].qtangentXYF16);
             }
 
             // convert whatever joint format to rgb8u
@@ -633,18 +651,21 @@ void CreateVerticesIndicesSkined(SceneBundle* gltf)
                 uint32_t packedWeights;
                 if (weightSize == 4) // if float, pack it directly
                 {
-                    packedWeights = PackColor4PtrToUint((float*)weights);
+                    packedWeights = PackXY11Z10UnormToU32(Vec3Load((float*)weights));
+                    // packedWeights = PackColor4PtrToUint((float*)weights);
                     weights += weightSize * 4;
                 }
                 else
                 {
-                    for (int k = 0, shift = 0; k < primitive->jointCount && k < 4; k++, shift += 8)
+                    float packMax[3] = { 1023.0f, 1023.0f, 511.0f };
+                    // don't parse w, we will get it from xyz
+                    for (int k = 0, shift = 0; k < primitive->jointCount && k < 3; k++, shift += 11)
                     {
                         uint32_t jointWeight = 0u;
-                        SmallMemCpy(&jointWeight, weights, weightSize); 
+                        SmallMemCpy(&jointWeight, weights, weightSize);
                         float weightMax = (float)((1u << (weightSize * 8)) - 1);
                         float norm = (float)jointWeight / weightMax; // divide by 255 or 65535
-                        packedWeights |= (uint32_t)(norm * 255.0f) << shift;
+                        packedWeights |= (uint32_t)(norm * packMax[k]) << shift;
                         weights += weightSize;
                     }
                 }
@@ -683,7 +704,7 @@ void CreateVerticesIndicesSkined(SceneBundle* gltf)
                 totalSamplerInput += gltf->animations[a].samplers[s].count;
         
         float* currSampler = (float*)AllocZeroTLSFGlobal(totalSamplerInput, 4);
-        Vector4x32f* currOutput = (Vector4x32f*)AllocZeroTLSFGlobal(totalSamplerInput, sizeof(Vector4x32f));
+        Vec4x32f* currOutput = (Vec4x32f*)AllocZeroTLSFGlobal(totalSamplerInput, sizeof(Vec4x32f));
 
         for (int a = 0; a < gltf->numAnimations; a++)
         {
@@ -1139,7 +1160,7 @@ int SaveGLTFBinary(const SceneBundle* gltf, const char* path)
     if (totalAnimSamplerInput > 0) {
         // all sampler input and outputs are allocated in one buffer each. at the end of the CreateVerticesIndicesSkined function
         AFileWrite(gltf->animations[0].samplers[0].input, sizeof(float) * totalAnimSamplerInput, file, 1);
-        AFileWrite(gltf->animations[0].samplers[0].output, sizeof(Vector4x32f) * totalAnimSamplerInput, file, 1);
+        AFileWrite(gltf->animations[0].samplers[0].output, sizeof(Vec4x32f) * totalAnimSamplerInput, file, 1);
     }
 
     for (int i = 0; i < gltf->numAnimations; i++)
@@ -1404,13 +1425,13 @@ int LoadSceneBundleBinary(const char* path, SceneBundle* gltf)
     int totalAnimSamplerInput = 0;
     AFileRead(&totalAnimSamplerInput, sizeof(int), file, 1);
     float* currSamplerInput;
-    Vector4x32f* currSamplerOutput;
+    Vec4x32f* currSamplerOutput;
 
     if (totalAnimSamplerInput) {
         currSamplerInput  = (float*)AllocZeroTLSFGlobal(totalAnimSamplerInput, sizeof(float));
-        currSamplerOutput = (Vector4x32f*)AllocZeroTLSFGlobal(totalAnimSamplerInput, sizeof(Vector4x32f));
+        currSamplerOutput = (Vec4x32f*)AllocZeroTLSFGlobal(totalAnimSamplerInput, sizeof(Vec4x32f));
         AFileRead(currSamplerInput, sizeof(float) * totalAnimSamplerInput, file, 1);
-        AFileRead(currSamplerOutput, sizeof(Vector4x32f) * totalAnimSamplerInput, file, 1);
+        AFileRead(currSamplerOutput, sizeof(Vec4x32f) * totalAnimSamplerInput, file, 1);
     }
 
     if (gltf->numAnimations) gltf->animations = AllocZeroTLSFGlobal(gltf->numAnimations, sizeof(AAnimation));
