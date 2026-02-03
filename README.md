@@ -19,16 +19,30 @@ Install a C/C++ toolchain and CMake 3.16+.
 
 ## How to Compile
 
+### Windows (Visual Studio Generator)
 ```
-cmake -Bbuild
-cmake --build build
+cmake -S . -B build
+cmake --build build --config Debug
+cmake --build build --config Release
 ```
 
-### Ninja (Windows example)
+### Windows (Ninja)
 ```
 winget install Ninja-build.Ninja
 cmake -S . -B Debug -G Ninja -DCMAKE_BUILD_TYPE=Debug
 cmake --build Debug
 cmake -S . -B Release -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build Release
+```
+
+### macOS (Unix Makefiles)
+```
+cmake -S . -B build
+cmake --build build
+```
+
+### Linux (Unix Makefiles)
+```
+cmake -S . -B build
+cmake --build build
 ```
