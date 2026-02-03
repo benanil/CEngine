@@ -28,8 +28,21 @@
 #include "Math/Matrix.h"
 
 /* Regenerate the shaders with testgpu/build-shaders.sh */
+#if defined(PLATFORM_APPLE)
+#include "Shaders/msl/SkinnedFrag.msl.h"
+#include "Shaders/msl/SkinnedVert.msl.h"
+#define Shaders_SkinnedFrag_spv Shaders_SkinnedFrag_msl
+#define Shaders_SkinnedFrag_spv_size Shaders_SkinnedFrag_msl_size
+#define Shaders_SkinnedVert_spv Shaders_SkinnedVert_msl
+#define Shaders_SkinnedVert_spv_size Shaders_SkinnedVert_msl_size
+#elif defined(PLATFORM_WINDOWS)
+// Shaders_SkinnedFrag_spv
 #include "Shaders/SkinnedFrag.spv.h"
 #include "Shaders/SkinnedVert.spv.h"
+#else
+#include "Shaders/spv/SkinnedFrag.spv.h"
+#include "Shaders/spv/SkinnedVert.spv.h"
+#endif
 
 #define NUM_ANIMS (2048)
 
