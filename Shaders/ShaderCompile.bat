@@ -5,33 +5,43 @@ setlocal enabledelayedexpansion
 set CROSS=Shaders\shadercross.exe
 set BIN2C=Shaders\bin2c.exe
 set SHADER_DIR=Shaders
+set SPV_DIR=Shaders\spv
+set MSL_DIR=Shaders\msl
+set SHADERS=SkinnedFrag:fragment SkinnedVert:vertex
 
-echo [1/2] Compiling HLSL to SPIR-V...
+if not exist %SPV_DIR% mkdir %SPV_DIR%
+if not exist %MSL_DIR% mkdir %MSL_DIR%
 
-:: Compile Fragment Shader
-%CROSS% %SHADER_DIR%\SkinnedFrag.hlsl -s HLSL -d SPIRV -t fragment -o %SHADER_DIR%\SkinnedFrag.spv
-if %ERRORLEVEL% neq 0 (
-    echo [ERROR] Failed to compile SkinnedFrag.hlsl
-    pause
-    exit /b %ERRORLEVEL%
-)
-
-:: Compile Vertex Shader
-%CROSS% %SHADER_DIR%\SkinnedVert.hlsl -s HLSL -d SPIRV -t vertex -o %SHADER_DIR%\SkinnedVert.spv
-if %ERRORLEVEL% neq 0 (
-    echo [ERROR] Failed to compile SkinnedVert.hlsl
-    pause
-    exit /b %ERRORLEVEL%
+echo [1/2] Compiling shaders...
+for %%S in (%SHADERS%) do (
+    for /f "tokens=1,2 delims=:" %%A in ("%%S") do (
+        %CROSS% %SHADER_DIR%\%%A.hlsl -s HLSL -d SPIRV -t %%B -o %SHADER_DIR%\%%A.spv
+        if !ERRORLEVEL! neq 0 (
+            echo [ERROR] Failed to compile %%A.hlsl to SPIR-V
+            pause
+            exit /b !ERRORLEVEL!
+        )
+        %CROSS% %SHADER_DIR%\%%A.hlsl -s HLSL -d MSL -t %%B -o %MSL_DIR%\%%A.msl
+        if !ERRORLEVEL! neq 0 (
+            echo [ERROR] Failed to compile %%A.hlsl to MSL
+            pause
+            exit /b !ERRORLEVEL!
+        )
+    )
 )
 
 echo [2/2] Generating C headers...
 
-:: Convert to headers
-%BIN2C% -o %SHADER_DIR%\SkinnedFrag.spv.h %SHADER_DIR%\SkinnedFrag.spv
-if %ERRORLEVEL% neq 0 goto :bin_error
-
-%BIN2C% -o %SHADER_DIR%\SkinnedVert.spv.h %SHADER_DIR%\SkinnedVert.spv
-if %ERRORLEVEL% neq 0 goto :bin_error
+for %%S in (%SHADERS%) do (
+    for /f "tokens=1,2 delims=:" %%A in ("%%S") do (
+        %BIN2C% -o %SHADER_DIR%\%%A.spv.h %SHADER_DIR%\%%A.spv
+        if !ERRORLEVEL! neq 0 goto :bin_error
+        copy /Y %SHADER_DIR%\%%A.spv %SPV_DIR%\%%A.spv >NUL
+        copy /Y %SHADER_DIR%\%%A.spv.h %SPV_DIR%\%%A.spv.h >NUL
+        %BIN2C% -o %MSL_DIR%\%%A.msl.h %MSL_DIR%\%%A.msl
+        if !ERRORLEVEL! neq 0 goto :bin_error
+    )
+)
 
 echo.
 echo SUCCESS: All shaders compiled and headers generated.
