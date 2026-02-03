@@ -12,7 +12,7 @@
     *        No License whatsoever do whatever you want.             *
     *                                                                *
     *****************************************************************/
-
+#include <SDL3/SDL_log.h>
 #include "Include/Common.h"
 #include "Include/FileSystem.h"
 #include "Include/Algorithm.h"
@@ -596,7 +596,8 @@ static IntPtrPair ParseIntArray(const char** cr, FixedPow2Allocator* allocator)
             curr = ParsePositiveNumber(curr, result.ptr + result.numElements);
             result.numElements++;
         }
-        curr++;
+        else
+            curr++;
     }
     *cr = curr;
     return result;
@@ -797,8 +798,9 @@ __private const char* ParseScenes(const char* curr, AScene** scenes, FixedPow2Al
                     curr = ParsePositiveNumber(curr, scene.nodes + scene.numNodes);
                     scene.numNodes++;
                 }
-                curr++;
-            }
+                else
+                    curr++;
+            }   
             curr++;// skip ]
         }
         else if (StrCMP16(curr, "name"))
@@ -1243,9 +1245,67 @@ __public int ParseGLTF(const char* path, SceneBundle* result, float scale)
 {
     ASSERT(result && path);
     uint64_t sourceSize = 0;
-    char* source = ReadAllTextAlloc(path, &sourceSize, NULL);
+    char* source = NULL;
     MemsetZero(result, sizeof(SceneBundle));
 
+    if (FileHasExtension(path, StringLength(path), ".glb"))
+    {
+        AFile file = AFileOpen(path, AOpenFlag_ReadBinary);
+        if (AFileExist(file))
+        {
+            int magic, version, length;
+            AFileRead(&magic, 4, file, 1);
+            if (magic == 0x46546C67) // gltf in binary
+            {
+                AFileRead(&version, 4, file, 1);
+                AFileRead(&length, 4, file, 1);
+                SDL_Log("magic um! %d, %d", version, length);
+                
+                int chunk0Len, chunk0Type;
+                AFileRead(&chunk0Len, 4, file, 1);
+                AFileRead(&chunk0Type, 4, file, 1);
+
+                SDL_Log("first chunk %d, %d", chunk0Len, chunk0Type);
+
+                if (chunk0Type == 0x4E4F534A) // json in binary
+                {
+                    SDL_Log("first chunk json:");
+                    source = ReadAllTextAlloc("Assets/Meshes/FoxTest.txt", NULL, NULL); // (char*)AllocZeroTLSFGlobal(chunk0Len + 40, 1);
+                    AFileRead(source, chunk0Len, file, 1);
+                    SDL_Log("%s", source);
+                }
+                else
+                {
+                    SDL_Log("first chunk not json");
+                }
+
+                int chunk1Len, chunk1Type;
+                AFileRead(&chunk1Len, 4, file, 1);
+                AFileRead(&chunk1Type, 4, file, 1);
+
+                SDL_Log("second chunk %d, %d", chunk1Len, chunk1Type);
+
+                if (chunk1Type == 0x004E4942) // bin in binary
+                {
+                    SDL_Log("second chunk bin:");
+                    result->buffers = (GLTFBuffer*)AllocateTLSFGlobal(sizeof(GLTFBuffer));
+                    result->buffers[0].uri = AllocateTLSFGlobal(chunk1Len);
+                    result->buffers[0].byteLength = chunk1Len;
+                    AFileRead(result->buffers[0].uri , chunk1Len, file, 1);
+                }
+                else
+                {
+                    SDL_Log("second chunk not bin");
+                }
+
+            }
+            AFileClose(file);
+        }
+    }
+
+    if (source == NULL)
+        source = ReadAllTextAlloc(path, &sourceSize, NULL);
+        
     if (source == NULL) { result->error = AError_FILE_NOT_FOUND; ASSERT(0); return 0; }
 
     #if defined(DEBUG) || defined(_DEBUG)

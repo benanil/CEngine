@@ -41,6 +41,27 @@ float3 QuaternionRotateVector(float4 quat, float3 vec)
     return vec + (cross(quat.xyz, cross(quat.xyz, vec) + (vec * quat.w)) * 2.0f);
 }
 
+float3x3 Matrix3FromQuaternion(float4 q)
+{
+    float3x3 mat;
+    const float num9 = q.x * q.x, num8 = q.y * q.y,
+    num7 = q.z * q.z, num6 = q.x * q.y,
+    num5 = q.z * q.w, num4 = q.z * q.x,
+    num3 = q.y * q.w, num2 = q.y * q.z,
+    num  = q.x * q.w;
+
+    mat[0][0] = 1.0f - (2.0f * (num8 + num7));
+    mat[0][1] = 2.0f * (num6 + num5);
+    mat[0][2] = 2.0f * (num4 - num3);
+    mat[1][0] = 2.0f * (num6 - num5);
+    mat[1][1] = 1.0f - (2.0f * (num7 + num9));
+    mat[1][2] = 2.0f * (num2 + num);
+    mat[2][0] = 2.0f * (num4 + num3);
+    mat[2][1] = 2.0f * (num2 - num);
+    mat[2][2] = 1.0f - (2.0f * (num8 + num9));
+    return mat;
+}
+
 // HLSL equivalent to GLSL's unpackHalf2x16
 float2 unpackHalf2x16(uint packed)
 {
