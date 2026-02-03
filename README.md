@@ -19,11 +19,12 @@ Install a C/C++ toolchain and CMake 3.16+.
 
 ## How to Compile
 
-### Windows (Visual Studio Generator)
+### Other platforms
+
+### Basic build
 ```
 cmake -S . -B build
-cmake --build build --config Debug
-cmake --build build --config Release
+cmake --build build
 ```
 
 ### Windows (Ninja)
@@ -33,16 +34,4 @@ cmake -S . -B Debug -G Ninja -DCMAKE_BUILD_TYPE=Debug
 cmake --build Debug
 cmake -S . -B Release -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build Release
-```
-
-### macOS (Unix Makefiles)
-```
-cmake -S . -B build
-cmake --build build
-```
-
-### Linux (Unix Makefiles)
-```
-cmake -S . -B build
-cmake --build build
 ```
