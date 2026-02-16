@@ -62,7 +62,7 @@ void AnimationController_Create(const SceneBundle* prefab, AnimationController* 
     animNode.numChildren = inputNode.numChildren;
     animNode.childrenStartIndex = 0;
     
-    result->nodeToJoint[result->mRootNodeIndex] = skin->joints[0];
+    result->nodeToJoint[result->mRootNodeIndex] = result->mRootNodeIndex;
     result->mAnimNodes[result->mRootNodeIndex]  = animNode;
     result->mAnimPoseA[result->mRootNodeIndex]  = pose;
 

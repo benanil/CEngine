@@ -275,7 +275,7 @@ static void InitScene()
     
     // if (!LoadSceneBundleBinary("Assets/Meshes/Paladin/Paladin.abm", sceneBundle))
     // if (!ParseGLTF2("Assets/Meshes/Paladin/Paladin.gltf", sceneBundle, 1.0f))
-    if (!ParseGLTF2("Assets/Meshes/Fox.glb", sceneBundle, 1.0f))
+    if (!ParseGLTF2("Assets/Meshes/Paladin/Paladin.gltf", sceneBundle, 1.0f))
     {
         AX_ERROR("gltf scene load failed2");
         return;
