@@ -1,3 +1,4 @@
+
 #ifndef Vector_H
 #define Vector_H
 
@@ -30,44 +31,44 @@ typedef struct RayV_ {
 typedef Vec4x32f float4;
 
 // VECTOR32
-purefn float3 Float3Add(float3 a, float3 b) { return (float3){a.x + b.x, a.y + b.y, a.z + b.z}; }
-purefn float3 Float3Mul(float3 a, float3 b) { return (float3){a.x * b.x, a.y * b.y, a.z * b.z}; }
-purefn float3 Float3Div(float3 a, float3 b) { return (float3){a.x / b.x, a.y / b.y, a.z / b.z}; }
-purefn float3 Float3Sub(float3 a, float3 b) { return (float3){a.x - b.x, a.y - b.y, a.z - b.z}; }
-purefn float3 Float3Neg(float3 a) { return (float3){-a.x, -a.y, -a.z}; }
-purefn float3 Float3AddF(float3 a, float b) { return (float3){a.x + b, a.y + b, a.z + b}; }
-purefn float3 Float3MulF(float3 a, float b) { return (float3){a.x * b, a.y * b, a.z * b}; }
-purefn float3 Float3DivF(float3 a, float b) { return (float3){a.x / b, a.y / b, a.z / b}; }
-purefn float3 Float3SubF(float3 a, float b) { return (float3){a.x - b, a.y - b, a.z - b}; }
+purefn float3 F3Add(float3 a, float3 b) { return (float3){a.x + b.x, a.y + b.y, a.z + b.z}; }
+purefn float3 F3Mul(float3 a, float3 b) { return (float3){a.x * b.x, a.y * b.y, a.z * b.z}; }
+purefn float3 F3Div(float3 a, float3 b) { return (float3){a.x / b.x, a.y / b.y, a.z / b.z}; }
+purefn float3 F3Sub(float3 a, float3 b) { return (float3){a.x - b.x, a.y - b.y, a.z - b.z}; }
+purefn float3 F3AddF(float3 a, float b) { return (float3){a.x + b, a.y + b, a.z + b}; }
+purefn float3 F3MulF(float3 a, float b) { return (float3){a.x * b, a.y * b, a.z * b}; }
+purefn float3 F3DivF(float3 a, float b) { return (float3){a.x / b, a.y / b, a.z / b}; }
+purefn float3 F3SubF(float3 a, float b) { return (float3){a.x - b, a.y - b, a.z - b}; }
+purefn float3 F3Neg(float3 a) { return (float3){-a.x, -a.y, -a.z}; }
 
-purefn float Float3Len(float3 a)           { return Sqrtf(a.x * a.x + a.y * a.y + a.z * a.z); }
-purefn float Float3Dot(float3 a, float3 b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
+purefn float F3Len(float3 a)           { return Sqrtf(a.x * a.x + a.y * a.y + a.z * a.z); }
+purefn float F3Dot(float3 a, float3 b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
 
-purefn float3 Float3Norm(float3 a)    { return Float3DivF(a, Sqrtf(a.x * a.x + a.y * a.y + a.z * a.z)); }
-purefn float3 Float3NormSafe(float3 a){ return Float3DivF(a, MATH_Epsilon + Sqrtf(a.x * a.x + a.y * a.y + a.z * a.z)); }
-purefn float3 Float3NormEst(float3 a) { return Float3MulF(a, RSqrtf(a.x * a.x + a.y * a.y + a.z * a.z)); }
+purefn float3 F3Norm(float3 a)    { return F3DivF(a, Sqrtf(a.x * a.x + a.y * a.y + a.z * a.z)); }
+purefn float3 F3NormSafe(float3 a){ return F3DivF(a, MATH_Epsilon + Sqrtf(a.x * a.x + a.y * a.y + a.z * a.z)); }
+purefn float3 F3NormEst(float3 a) { return F3MulF(a, RSqrtf(a.x * a.x + a.y * a.y + a.z * a.z)); }
 
-purefn float Float3Dist(float3 a, float3 b) {
-    float3 diff = Float3Sub(a, b);
+purefn float F3Dist(float3 a, float3 b) {
+    float3 diff = F3Sub(a, b);
     return Sqrtf(diff.x * diff.x + diff.y * diff.y + diff.z * diff.z); 
 }
 
-purefn float Float3DistSqr(float3 a, float3 b) {
-    float3 diff = Float3Sub(a, b);
+purefn float F3DistSqr(float3 a, float3 b) {
+    float3 diff = F3Sub(a, b);
     return (diff.x * diff.x + diff.y * diff.y + diff.z * diff.z); 
 }
 
-purefn float Float3AngleBetween(float3 a, float3 b) {
-    float dot = Float3Dot(a, b) * RSqrtf(Float3Dot(a, a) * Float3Dot(b, b));
+purefn float F3AngleBetween(float3 a, float3 b) {
+    float dot = F3Dot(a, b) * RSqrtf(F3Dot(a, a) * F3Dot(b, b));
     dot = MCLAMP(dot, -1.0f, 1.0f);
     return ACos(dot);
 }
 
-purefn float3 Float3Reflect(float3 in, float3 normal) {
-    return Float3Sub(in, Float3MulF(normal, Float3Dot(normal, in) * 2.0f));
+purefn float3 F3Reflect(float3 in, float3 normal) {
+    return F3Sub(in, F3MulF(normal, F3Dot(normal, in) * 2.0f));
 }
 
-purefn float3 Float3Lerp(float3 a, float3 b, float t) {
+purefn float3 F3Lerp(float3 a, float3 b, float t) {
     return (float3) {
         a.x + (b.x - a.x) * t,
         a.y + (b.y - a.y) * t,
@@ -75,7 +76,7 @@ purefn float3 Float3Lerp(float3 a, float3 b, float t) {
     };
 }
 
-purefn float3 Float3Cross(float3 a, float3 b) {
+purefn float3 F3Cross(float3 a, float3 b) {
     return (float3) {
         a.y * b.z - b.y * a.z,
         a.z * b.x - b.z * a.x,
@@ -83,16 +84,16 @@ purefn float3 Float3Cross(float3 a, float3 b) {
     };
 }
 
-purefn float3 Float3FromPtr(float* ptr) { return (float3){ ptr[0], ptr[1], ptr[2] }; }
+purefn float3 F3FromPtr(float* ptr) { return (float3){ ptr[0], ptr[1], ptr[2] }; }
 
-purefn float3 Float3Zero()     { return (float3){ 0.0f,  0.0f,  0.0f}; }
-purefn float3 Float3One()      { return (float3){ 1.0f,  1.0f,  1.0f}; }
-purefn float3 Float3Up()       { return (float3){ 0.0f,  1.0f,  0.0f}; }
-purefn float3 Float3Left()     { return (float3){-1.0f,  0.0f,  0.0f}; }
-purefn float3 Float3Down()     { return (float3){ 0.0f, -1.0f,  0.0f}; }
-purefn float3 Float3Right()    { return (float3){ 1.0f,  0.0f,  0.0f}; }
-purefn float3 Float3Forward()  { return (float3){ 0.0f,  0.0f,  1.0f}; }
-purefn float3 Float3Backward() { return (float3){ 0.0f,  0.0f, -1.0f}; }
+purefn float3 F3Zero()     { return (float3){ 0.0f,  0.0f,  0.0f}; }
+purefn float3 F3One()      { return (float3){ 1.0f,  1.0f,  1.0f}; }
+purefn float3 F3Up()       { return (float3){ 0.0f,  1.0f,  0.0f}; }
+purefn float3 F3Left()     { return (float3){-1.0f,  0.0f,  0.0f}; }
+purefn float3 F3Down()     { return (float3){ 0.0f, -1.0f,  0.0f}; }
+purefn float3 F3Right()    { return (float3){ 1.0f,  0.0f,  0.0f}; }
+purefn float3 F3Forward()  { return (float3){ 0.0f,  0.0f,  1.0f}; }
+purefn float3 F3Backward() { return (float3){ 0.0f,  0.0f, -1.0f}; }
 
 // VECTOR3I
 purefn int3 Int3Add(int3 a, int3 b) { return (int3){a.x + b.x, a.y + b.y, a.z + b.z}; }
@@ -123,32 +124,32 @@ purefn float Int2LenSqr(int2 a) { return (a.x * a.x + a.y * a.y); }
 purefn float Int2Dist(int2 a, int2 b) { return Int2Len(Int2Sub(a, b)); }
 
 // Float2f
-purefn float2 Float2Add(float2 a, float2 b) { return (float2){a.x + b.x, a.y + b.y}; }
-purefn float2 Float2Mul(float2 a, float2 b) { return (float2){a.x * b.x, a.y * b.y}; }
-purefn float2 Float2Div(float2 a, float2 b) { return (float2){a.x / b.x, a.y / b.y}; }
-purefn float2 Float2Sub(float2 a, float2 b) { return (float2){a.x - b.x, a.y - b.y}; }
-purefn float2 Float2Neg(float2 a)           { return (float2){-a.x, -a.y}; }
+purefn float2 F2Add(float2 a, float2 b) { return (float2){a.x + b.x, a.y + b.y}; }
+purefn float2 F2Mul(float2 a, float2 b) { return (float2){a.x * b.x, a.y * b.y}; }
+purefn float2 F2Div(float2 a, float2 b) { return (float2){a.x / b.x, a.y / b.y}; }
+purefn float2 F2Sub(float2 a, float2 b) { return (float2){a.x - b.x, a.y - b.y}; }
+purefn float2 F2Neg(float2 a)           { return (float2){-a.x, -a.y}; }
 
-purefn float2 Float2AddF(float2 a, float b) { return (float2){a.x + b, a.y + b}; }
-purefn float2 Float2MulF(float2 a, float b) { return (float2){a.x * b, a.y * b}; }
-purefn float2 Float2DivF(float2 a, float b) { return (float2){a.x / b, a.y / b}; }
-purefn float2 Float2SubF(float2 a, float b) { return (float2){a.x - b, a.y - b}; }
+purefn float2 F2AddF(float2 a, float b) { return (float2){a.x + b, a.y + b}; }
+purefn float2 F2MulF(float2 a, float b) { return (float2){a.x * b, a.y * b}; }
+purefn float2 F2DivF(float2 a, float b) { return (float2){a.x / b, a.y / b}; }
+purefn float2 F2SubF(float2 a, float b) { return (float2){a.x - b, a.y - b}; }
 
-purefn float Float2Len(float2 a)            { return Sqrtf(a.x * a.x + a.y * a.y); }
-purefn float Float2LenSqr(float2 a)         { return (a.x * a.x + a.y * a.y); }
-purefn float Float2Dist(float2 a, float2 b) { return Float2Len(Float2Sub(a, b)); }
+purefn float F2Len(float2 a)            { return Sqrtf(a.x * a.x + a.y * a.y); }
+purefn float F2LenSqr(float2 a)         { return (a.x * a.x + a.y * a.y); }
+purefn float F2Dist(float2 a, float2 b) { return F2Len(F2Sub(a, b)); }
 
 purefn float2 Lerp(float2 a, float2 b, float t) {
     return (float2) { a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t };
 }
 
-purefn float2 Float2Rotate(float2 vec, float angle) {
+purefn float2 F2Rotate(float2 vec, float angle) {
     float s = Sin(angle), c = Cos(angle);
     return (float2){vec.x * c - vec.y * s, vec.x * s + vec.y * c};
 }
 
-purefn float2 ToFloat2f(int2 vec)    { return (float2){(float)vec.x, (float)vec.y }; }
-purefn int2 ToInt2(float2 vec) { return (int2){  (int)vec.x, (int)vec.y   }; }
+purefn float2 ToFloat2(int2 vec) { return (float2){(float)vec.x, (float)vec.y }; }
+purefn int2 ToInt2(float2 vec)   { return   (int2){  (int)vec.x,   (int)vec.y }; }
 
 purefn bool PointBoxIntersection(float2 min, float2 max, float2 point)
 {

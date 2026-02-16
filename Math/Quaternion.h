@@ -398,7 +398,7 @@ purefn void VECTORCALL PackQuaternionS16Norm(Vec4x32f quat, uint32_t* result)
 purefn Quaternion QFromLookRotation(float3 direction, float3 up)
 {
     const float3 matrix[3] = {
-        Float3Cross(up, direction), up, direction 
+        F3Cross(up, direction), up, direction 
     };
     xyzw result;
     QuaternionFromMatrix(&result.x, &matrix[0].x, 3);

@@ -34,22 +34,53 @@ void AnimationController_Create(const SceneBundle* prefab, AnimationController* 
     result->mOutMatrices   = outMatrices;
     result->mRootNodeIndex = Prefab_FindAnimRootNodeIndex(prefab);
     result->mPrefab        = prefab;
-    result->mNumNodes      = prefab->numNodes;
+    result->mNumJoints     = skin->numJoints;
     result->mRootScale     = prefab->nodes[result->mRootNodeIndex].scale[0]; // 0.1610, rcp: 6.2111
     
     ASSERT(result->mRootNodeIndex < MaxBonePoses);
     ASSERT(prefab->nodes[result->mRootNodeIndex].numChildren > 0); // root node has to have children nodes
 
-    int childIndex = 0;
-    for (int i = 0; i < result->mNumNodes; i++)
+    MemSet(result->nodeToJoint, 255, sizeof(result->nodeToJoint));
+    for (int i = 0; i < result->mNumJoints; i++)
     {
-        Pose pose;
-        AnimNode animNode;
-        ANode inputNode = prefab->nodes[i];
+        result->nodeToJoint[skin->joints[i]] = i;
+    }
+    SDL_Log("num joint: %d", result->mNumJoints);
+    SDL_Log("root index: %d", result->mRootNodeIndex);
+    
+    Pose pose;
+    AnimNode animNode;
+    int jointIndex;
+    ANode inputNode;
+    int childIndex = 0;
+
+    inputNode = prefab->nodes[result->mRootNodeIndex];
+
+    pose.translation = VecLoad(inputNode.translation);
+    pose.rotation    = VecLoad(inputNode.rotation);
+
+    animNode.numChildren = inputNode.numChildren;
+    animNode.childrenStartIndex = 0;
+    
+    result->nodeToJoint[result->mRootNodeIndex] = skin->joints[0];
+    result->mAnimNodes[result->mRootNodeIndex]  = animNode;
+    result->mAnimPoseA[result->mRootNodeIndex]  = pose;
+
+    SDL_Log("root joint: %d", skin->joints[0]);
+
+    for (int j = 0; j < animNode.numChildren; j++)
+    {
+        int childNodeIndex = inputNode.children[j];
+        result->mChildIndices[childIndex++] = (uint8_t)result->nodeToJoint[childNodeIndex];
+    }
+
+    for (int i = 0; i < result->mNumJoints; i++)
+    {
+        jointIndex = skin->joints[i];
+        inputNode  = prefab->nodes[jointIndex];
 
         pose.translation = VecLoad(inputNode.translation);
-        pose.rotation = VecLoad(inputNode.rotation);
-        VecSetW(pose.translation, inputNode.scale[1]);
+        pose.rotation    = VecLoad(inputNode.rotation);
 
         animNode.numChildren = inputNode.numChildren;
         animNode.childrenStartIndex = childIndex;
@@ -59,7 +90,8 @@ void AnimationController_Create(const SceneBundle* prefab, AnimationController* 
 
         for (int j = 0; j < animNode.numChildren; j++)
         {
-            result->mChildIndices[childIndex++] = (uint8_t)inputNode.children[j];
+            int childNodeIndex = inputNode.children[j];
+            result->mChildIndices[childIndex++] = (uint8_t)result->nodeToJoint[childNodeIndex];
         }
     }
 }
@@ -89,7 +121,7 @@ void AnimationController_UploadBoneMatrices(AnimationController* ac)
 
     for (int i = 0; i < skin->numJoints; i++)
     {
-        const Pose* pose = ac->mAnimPoseA + skin->joints[i];
+        const Pose* pose = ac->mAnimPoseA + i;
         Matrix4 mat = Matrix4Multiply(invMatrices[i], PositionRotationScaleVec(pose->translation, pose->rotation, VecOne()));
         mat = Matrix4Transpose(mat);
 
@@ -101,7 +133,7 @@ void AnimationController_UploadBoneMatrices(AnimationController* ac)
 
 void AnimationController_UploadPose(AnimationController* ac, const Pose pose[MaxBonePoses])
 {
-    int rootIdx = ac->mRootNodeIndex;
+    int rootIdx = ac->nodeToJoint[ac->mRootNodeIndex];
     const Pose* root = pose + rootIdx;
     AnimationController_RecurseBoneMatrices(ac, rootIdx, root->translation, root->rotation);
     AnimationController_UploadBoneMatrices(ac);
@@ -126,7 +158,12 @@ void AnimationController_SampleAnimationPose(const AnimationController* ac, Pose
     for (int c = 0; c < animation->numChannels; c++)
     {
         const AAnimChannel* channel = &animation->channels[c];
-        const int targetNode = channel->targetNode;
+        const int targetNode = ac->nodeToJoint[channel->targetNode];
+        if (targetNode == 255)
+        {
+            SDL_Log("non joint");
+            continue;
+        }
         const AAnimSampler* sampler = &animation->samplers[channel->sampler];
     
         // morph targets are not supported
@@ -218,7 +255,7 @@ static void CopyPoses(Pose* destination, const Pose* pose, int begin, int numPos
 void AnimatedCharacter_UploadPoseUpperLower(AnimatedCharacter* ac, const Pose lowerPose[MaxBonePoses], const Pose uperPose[MaxBonePoses])
 {
     // apply posess to lower body and upper body seperately, so both of it has diferrent animations
-    CopyPoses(ac->controller.mAnimPoseA, lowerPose, ac->lowerBodyIdxStart, ac->controller.mNumNodes - ac->lowerBodyIdxStart);
+    CopyPoses(ac->controller.mAnimPoseA, lowerPose, ac->lowerBodyIdxStart, ac->controller.mNumJoints - ac->lowerBodyIdxStart);
     CopyPoses(ac->controller.mAnimPoseA, uperPose, 0, ac->lowerBodyIdxStart);
 
     const Pose* root = ac->controller.mAnimPoseA + ac->controller.mRootNodeIndex;
@@ -252,7 +289,7 @@ bool AnimatedCharacter_TriggerTransition(AnimatedCharacter* ac, float deltaTime,
     float newNorm   = Clamp01f32((ac->mTransitionTime - ac->mCurTransitionTime) / ac->mTransitionTime);
     float animDelta = Clamp01f32(deltaTime * (1.0f / MMAX(1.0f - newNorm, MATH_Epsilon)));
     AnimationController_SampleAnimationPose(&ac->controller, ac->mAnimPoseD, targetAnim, ac->mAnimTime.y);
-    MergeAnims(ac->mAnimPoseC, ac->mAnimPoseD, animDelta, ac->controller.mNumNodes);
+    MergeAnims(ac->mAnimPoseC, ac->mAnimPoseD, animDelta, ac->controller.mNumJoints);
     ac->mCurTransitionTime -= deltaTime;
     return ac->mCurTransitionTime <= 0.0f;
 }
@@ -319,7 +356,7 @@ void AnimatedCharacter_EvaluateLocomotion(AnimatedCharacter* ac, float x, float 
         {
             yIndex = AnimatedCharacter_GetAnim(ac, aMiddle, yi + 1);
             AnimationController_SampleAnimationPose(&ac->controller, ac->mAnimPoseB, yIndex, ac->mAnimTime.y);
-            MergeAnims(ac->controller.mAnimPoseA, ac->mAnimPoseB, EaseOut(yBlend), ac->controller.mNumNodes);
+            MergeAnims(ac->controller.mAnimPoseA, ac->mAnimPoseB, EaseOut(yBlend), ac->controller.mNumJoints);
         }
 
         // if anim is two seconds animStep is 0.5 because we are using normalized value

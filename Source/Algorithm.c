@@ -239,23 +239,18 @@ int FloatToString(char* ptr, float f, int afterpoint)
     return numChars + IntToString(ptr + numChars, (int)(fPart * power), afterpoint-(iPart != 0));
 }
 
-bool aStartsWith(const char** curr, const char* str)
+bool aStartsWith(const char* curr, const char* str)
 {
-    const char* currStart = *curr;
-    while (IsWhitespace(**curr))
-        (*curr)++;
+    while (IsWhitespace(*curr))
+        (curr)++;
 
-    if (**curr != *str)
+    if (*curr != *str)
         return false;
 
-    while (*str && **curr == *str)
-        (*curr)++, str++;
+    while (*str && *curr == *str)
+        curr++, str++;
 
-    bool isEqual = *str == 0;
-    if (!isEqual)
-        *curr = currStart;
-
-    return isEqual;
+    return *str == 0;
 }
 
 // fill [begin, end) with val

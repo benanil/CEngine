@@ -6,7 +6,7 @@
 #include "TLSF.h"
 
 #ifndef TLSF_MEMORY_SIZE
-    // 256 mb
+    // 512 mb
     #define TLSF_MEMORY_SIZE (512 * 1000 * 1000)
 #endif
 
@@ -42,7 +42,6 @@ typedef struct FixedPow2Allocator_
 } FixedPow2Allocator;
 
 
-extern tlsf_t GlobalTLSF;
 extern Arena GlobalArena;
 
 // Alignment

@@ -3,9 +3,16 @@
 #include <emscripten/emscripten.h>
 #endif
 
+
 #include <SDL3/SDL_test_common.h>
 #include <SDL3/SDL_gpu.h>
 #include <SDL3/SDL_main.h>
+
+#include <stdio.h>
+#include <string.h>
+
+#define CGLTF_IMPLEMENTATION
+#include "Extern/cgltf/cgltf.h"
 
 #include "Include/Common.h"
 #include "Include/OS.h"
@@ -61,6 +68,8 @@ static AnimationController animController[NUM_ANIMS];
 AX_ALIGN(4) Matrix3x4f16 OutMatrices[MaxBonePoses * NUM_ANIMS];
 
 ECS ecs;
+
+extern int ParseGLTF2(const char* path, SceneBundle* result, float scale);
 
 static void DestroyPipeline()
 {
@@ -174,7 +183,7 @@ static void Render()
     
     SDL_PushGPUVertexUniformData(cmd, 0, &viewProj, sizeof(Matrix4));
     
-    int numNodes  = sceneBundle->numNodes;
+    int numNodes = sceneBundle->numNodes;
     const bool hasScene = sceneBundle->numScenes > 0;
     AScene defaultScene;
     if (hasScene)
@@ -182,11 +191,20 @@ static void Render()
         defaultScene = sceneBundle->scenes[sceneBundle->defaultSceneIndex];
         numNodes = defaultScene.numNodes;
     }
-    
-    int stackLen = 1;
+
+    int stackLen = 0;
     int nodeStack[256];
-    nodeStack[0] = hasScene ? defaultScene.nodes[0] : 0;
-    
+
+    if (hasScene)
+    {
+        for (int i = 0; i < defaultScene.numNodes; i++)
+            nodeStack[stackLen++] = defaultScene.nodes[i];
+    }
+    else
+    {
+        nodeStack[stackLen++] = 0; // No scene defined, traverse all top-level nodes
+    }
+
     while (stackLen > 0)
     {
         const int nodeIndex = nodeStack[--stackLen];
@@ -234,7 +252,6 @@ static void Render()
     SDL_SubmitGPUCommandBuffer(cmd);
 }
 
-
 static void InitScene()
 {
     // foxScene = AllocateTLSFGlobal(sizeof(SceneBundle));
@@ -245,9 +262,20 @@ static void InitScene()
     //     return;
     // }
 
+    // SceneBundle* sceneBundle2 = AllocateTLSFGlobal(sizeof(SceneBundle));
+    // ParseGLTF2("Assets/Meshes/Paladin/Paladin.gltf", sceneBundle2, 1.0f);
+    
+    // cgltf_options cOpts;
+    // MemsetZero(&cOpts, sizeof(cgltf_options));
+    // cOpts.type = cgltf_file_type_glb;
+    // cgltf_data* cgltfRes = NULL;
+    // cgltf_result cres = cgltf_parse_file(&cOpts, "Assets/Meshes/Fox.glb", &cgltfRes);
+    
     sceneBundle = AllocateTLSFGlobal(sizeof(SceneBundle));
+    
     // if (!LoadSceneBundleBinary("Assets/Meshes/Paladin/Paladin.abm", sceneBundle))
-    if (!ParseGLTF("Assets/Meshes/Paladin/Paladin.gltf", sceneBundle, 1.0f))
+    // if (!ParseGLTF2("Assets/Meshes/Paladin/Paladin.gltf", sceneBundle, 1.0f))
+    if (!ParseGLTF2("Assets/Meshes/Fox.glb", sceneBundle, 1.0f))
     {
         AX_ERROR("gltf scene load failed2");
         return;
@@ -409,7 +437,7 @@ void loop(void)
     
     const double timeSinceStartup = TimeSinceStartup();
     
-    #pragma omp parallel for schedule(static)
+    // #pragma omp parallel for schedule(static)
     for (i = 0; i < NUM_ANIMS; i++)
     {
         AnimationController* ac = &animController[i];

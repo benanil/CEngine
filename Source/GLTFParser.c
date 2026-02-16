@@ -165,7 +165,7 @@ __private const char* ParseAccessors(const char* curr, GLTFAccessor** accessorAr
         }
         ASSERTR(*curr != '\0' && "parsing accessors failed probably you forget to close brackets!", return (const char*)AError_CloseBrackets);
         curr++;
-        if (StrCMP16(curr, "bufferView"))         curr = ParsePositiveNumber(curr, &accessor.bufferView);
+        if      (StrCMP16(curr, "bufferView"))    curr = ParsePositiveNumber(curr, &accessor.bufferView);
         else if (StrCMP16(curr, "byteOffset"))    curr = ParsePositiveNumber(curr, &accessor.byteOffset);
         else if (StrCMP16(curr, "componentType")) curr = ParsePositiveNumber(curr, &accessor.componentType), accessor.componentType -= 0x1400; // GL_BYTE 
         else if (StrCMP16(curr, "count"))         curr = ParsePositiveNumber(curr, &accessor.count);
@@ -191,8 +191,8 @@ __private const char* ParseAccessors(const char* curr, GLTFAccessor** accessorAr
             else if (hash == AHashString8("MAT4")) { accessor.type = 16; continue; } 
             else ASSERT(0 && "Unknown accessor type");
         }
-        else if (StrCMP16(curr, "min")) curr = SkipToNextNode(curr, '[', ']'); // skip min and max
-        else if (StrCMP16(curr, "max")) curr = SkipToNextNode(curr, '[', ']');
+        else if (StrCMP16(curr, "min"))        curr = SkipToNextNode(curr, '[', ']'); // skip min and max
+        else if (StrCMP16(curr, "max"))        curr = SkipToNextNode(curr, '[', ']');
         else if (StrCMP16(curr, "normalized")) curr = SkipAfter(curr, '"');
         else
         {
@@ -278,6 +278,7 @@ __private const char* ParseBuffers(const char* curr, const char* path, GLTFBuffe
 {
     GLTFBuffer buffer={0};
     curr += sizeof("buffers'"); // skip buffers"
+
     char binFilePath[512]={0};
     char* endOfWorkDir = binFilePath;
     int binPathlen = StringLengthSafe(path, sizeof(binFilePath));
@@ -309,7 +310,7 @@ __private const char* ParseBuffers(const char* curr, const char* path, GLTFBuffe
         {
             curr += sizeof("uri'"); // skip uri": 
             while (*curr != '"') curr++;
-            if (aStartsWith(&curr, "\"data:"))
+            if (StrCMP16(curr, "\"data:"))
             {
                 curr = SkipAfter(curr, ',');
                 uint64_t base64Size = 0;
@@ -735,7 +736,6 @@ __private const char* ParseCameras(const char* curr, ACamera** cameras, FixedPow
             return (const char*)AError_UNKNOWN_CAMERA_VAR; 
         }
 
-        // parse primitives
         while (true)
         {
             while (*curr != '"')
@@ -1342,7 +1342,7 @@ __public int ParseGLTF(const char* path, SceneBundle* result, float scale)
         curr++; // skips the "
         if      (StrCMP16(curr, "accessors"))    curr = ParseAccessors(curr, &accessors);
         else if (StrCMP16(curr, "scenes"))       curr = ParseScenes(curr, &scenes, allocator);
-        else if (StrCMP16(curr, "scene"))        curr = ParsePositiveNumberU16(curr, &result->defaultSceneIndex);
+        else if (StrCMP16(curr, "scene"))        curr = ParsePositiveNumber(curr, &result->defaultSceneIndex);
         else if (StrCMP16(curr, "bufferViews"))  curr = ParseBufferViews(curr, &bufferViews);
         else if (StrCMP16(curr, "buffers"))      curr = ParseBuffers(curr, path, &buffers);     
         else if (StrCMP16(curr, "images"))       curr = ParseImages(curr, path, &images, allocator);       
@@ -1507,7 +1507,7 @@ __public void FreeGLTFBuffers(SceneBundle* gltf)
         FreeAllText((char*)gltf->buffers[i].uri);
         gltf->buffers[i].uri = NULL;
     }
-    dynarray_destroy(gltf->buffers);
+    // dynarray_destroy(gltf->buffers);
     gltf->numBuffers = 0;
     gltf->buffers = NULL;
 }
@@ -1564,10 +1564,13 @@ int Prefab_FindAnimRootNodeIndex(const SceneBundle* prefab)
     int armatureIdx = -1;
     int maxChilds   = 0;
     int maxChildIdx = 0;
-    // maybe recurse to find max children
+    
+    // todo recurse to find max children
     for (int i = 0; i < prefab->numNodes; i++)
     {
-        if (StrCMP16(prefab->nodes[i].name, "Armature")) {
+        if (StrCMP16(prefab->nodes[i].name, "Armature") ||
+            StrCMP16(prefab->nodes[i].name, "_rootJoint"))
+        {
             armatureIdx = i;
             break;
         }
@@ -1579,7 +1582,7 @@ int Prefab_FindAnimRootNodeIndex(const SceneBundle* prefab)
         }
     }
     
-    int skeletonNode = armatureIdx != -1 ? armatureIdx : maxChildIdx;
+    int skeletonNode = armatureIdx != -1 ? armatureIdx : maxChilds;
     return skeletonNode;
 }
 

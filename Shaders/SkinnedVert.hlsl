@@ -26,6 +26,7 @@ struct VSOutput
     float4 position  : SV_Position;
     float2 texCoords : TEXCOORD0;
     float3 normal    : NORMAL;
+    float4 weights   : WEIGHTS;
 };
 
 float4 QuaternionMul(float4 Q1, float4 Q2)
@@ -136,8 +137,10 @@ VSOutput main(VSInput input, uint instanceID : SV_InstanceID)
     uint boneStart = instanceID * MaxBonePoses * MatrixNumInt32;
     float4 weights;
     weights.xyz = UnpackVec3XY11Z10Unorm(input.aWeights);
-    weights.w = 1.0 - (weights.x + weights.y + weights.z);
+    weights.w = max(1.0 - (weights.x + weights.y + weights.z), 0.0);
+
     // Accumulate bone transforms
+    [unroll]
     for (int i = 0; i < 4; i++)
     {
         uint matIdx = input.aJoints[i] * MatrixNumInt32 + boneStart;
@@ -176,11 +179,13 @@ VSOutput main(VSInput input, uint instanceID : SV_InstanceID)
     worldPos += sInstancePosition[instanceID].xyz;
 
     // Rotate TBN basis vectors by instance rotation
+    
     float3x3 instanceRotMat = Matrix3FromQuaternion(instanceRotation);
     tbn = mul(tbn, instanceRotMat);
 
     o.texCoords = input.aTexCoords;
     o.position = mul(uViewProj, float4(worldPos, 1.0));
     o.normal = normalize(tbn[2]); // Normalize after transformations
+    o.weights = weights;
     return o;
 }

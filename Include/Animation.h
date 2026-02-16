@@ -76,14 +76,15 @@ typedef struct AnimationController_
     const SceneBundle* mPrefab;
 
     int   mRootNodeIndex;
-    int   mNumNodes;
+    int   mNumJoints;
     float mRootScale;
    
     Matrix3x4f16* mOutMatrices;
 
-    AnimNode mAnimNodes[MaxBonePoses];
-    Pose     mAnimPoseA[MaxBonePoses]; // < the result bone array that we send to GPU
+    AnimNode mAnimNodes[MaxBonePoses * 2];
+    Pose     mAnimPoseA[MaxBonePoses * 2]; // < the result bone array that we send to GPU
     uint8_t  mChildIndices[MaxBonePoses * 2];
+    uint8_t  nodeToJoint[MaxBonePoses * 2];
 
 } AnimationController;
 

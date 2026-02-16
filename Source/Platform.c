@@ -12,12 +12,19 @@
 #include "Include/Camera.h"
 
 #include <SDL3/SDL_events.h>
+#include <SDL3/SDL_dialog.h>
 
 #define STB_SPRINTF_IMPLEMENTATION
 #include "Extern/stb/stb_sprintf.h"
 
 PlatformContext PlatformCtx = {0};
-// extern Camera globalCamera;
+extern Camera globalCamera;
+extern SDL_Window* sdlWindow;
+
+static uint64_t DownKeys[8]; 
+static uint64_t LastKeys[8]; 
+static uint64_t PressedKeys[8];
+static uint64_t ReleasedKeys[8];
 
 // Sokol event callback
 void EventCallback(const SDL_Event* event) 
@@ -42,11 +49,11 @@ void EventCallback(const SDL_Event* event)
             
             // Handle double click detection for left button
             if (button_flag == MouseButton_Left) {
-                // uint64_t current_time = stm_now();
-                // double time_diff = stm_sec(stm_diff(current_time, PlatformCtx.LastClickTime));
-                // PlatformCtx.DoubleClicked = (time_diff < 0.4);
-                // PlatformCtx.SecondsSinceLastClick = 0.0f;
-                // PlatformCtx.LastClickTime = current_time;
+                uint64_t current_time = SDL_GetPerformanceCounter();
+                double time_diff = (current_time - PlatformCtx.LastClickTime) / (double)PlatformCtx.CPUFrequency;
+                PlatformCtx.DoubleClicked = (time_diff < 0.4);
+                PlatformCtx.SecondsSinceLastClick = 0.0f;
+                PlatformCtx.LastClickTime = current_time;
             }
             PlatformCtx.MouseDown &= ~button_flag;
             
@@ -54,7 +61,9 @@ void EventCallback(const SDL_Event* event)
         }
         case SDL_EVENT_KEY_DOWN: {
             int vk_code = event->key.key;
-            Bitset_Set(&PlatformCtx.DownKeys, vk_code);
+            if (vk_code > 0 && vk_code < 512) {
+                Bitset_Set(&PlatformCtx.DownKeys, vk_code);
+            }
             break;
         }
         case SDL_EVENT_KEY_UP: {
@@ -66,9 +75,15 @@ void EventCallback(const SDL_Event* event)
         }
         case  SDL_EVENT_WINDOW_RESIZED: {
             if ((event->window.data1 + event->window.data2) != 0)
-                // Camera_RecalculateProjection(&globalCamera, event->window.data1, event->window.data2);
+                Camera_RecalculateProjection(&globalCamera, event->window.data1, event->window.data2);
+            PlatformCtx.WindowWidth = event->window.data1;
+            PlatformCtx.WindowHeight = event->window.data2;
             break;
         }
+        case SDL_EVENT_WINDOW_MOVED:
+            PlatformCtx.WindowPosX = event->window.data1;
+            PlatformCtx.WindowPosY = event->window.data2;
+            break;
         case SDL_EVENT_QUIT:
             
             break;
@@ -78,76 +93,35 @@ void EventCallback(const SDL_Event* event)
     }
 }
 
-void FatalError(const char* format, ...)
-{
-    char buffer[2048];
-    va_list args;
-    va_start(args, format);
-    stbsp_vsnprintf(buffer, sizeof(buffer), format, args);
-    va_end(args);
-    
-#ifdef PLATFORM_WINDOWS
-    HANDLE stdout_handle = GetStdHandle(STD_OUTPUT_HANDLE);
-    DWORD chars_written;
-    WriteFile(stdout_handle, buffer, StringLength(buffer), &chars_written, NULL);
-    WriteFile(stdout_handle, "\n", 1, &chars_written, NULL);
-    
-    OutputDebugString(buffer);
-    MessageBoxA(NULL, buffer, "Fatal Error", MB_ICONERROR | MB_OK);
-#endif
-}
+void GetMousePos(float* x, float* y) { SDL_GetMouseState(x, y); }
 
-void DebugLog(const char* format, ...)
-{
-    char buffer[2048];
-    va_list args;
-    va_start(args, format);
-    stbsp_vsnprintf(buffer, sizeof(buffer), format, args);
-    va_end(args);
-    
-#ifdef PLATFORM_WINDOWS
-    HANDLE stdout_handle = GetStdHandle(STD_OUTPUT_HANDLE);
-    DWORD chars_written;
-    WriteFile(stdout_handle, buffer, StringLength(buffer), &chars_written, NULL);
-    WriteFile(stdout_handle, "\n", 1, &chars_written, NULL);
-    
-    OutputDebugString(buffer);
-    MessageBoxA(NULL, buffer, "DebugLog", MB_ICONWARNING | MB_OK);
-#endif
-}
-
-void GetMousePos(float* x, float* y) {
-#ifdef PLATFORM_WINDOWS
-    //ASSERT((uint64_t)x & (uint64_t)y); // shouldn't be nullptr
-    POINT point;
-    GetCursorPos(&point);
-    *x = (float)point.x;
-    *y = (float)point.y;
-#endif
-}
-
-void SetMousePos(float x, float y)
-{
-#ifdef PLATFORM_WINDOWS
-    SetCursorPos((int)x, (int)y);
-#endif
-}
+void SetMousePos(float x, float y) {  SDL_WarpMouseGlobal(x, y); }
 
 void wGetMouseWindowPos(float* x, float* y) {
-    *x = PlatformCtx.MousePosX; *y = PlatformCtx.MousePosY;
+    float globalX, globalY;
+    GetMousePos(&globalX, &globalY);
+    *x = PlatformCtx.MousePosX - globalX; 
+    *y = PlatformCtx.MousePosY - globalY;
 }
 
 void wGetMonitorSize(int* width, int* height) 
 {
-#ifdef PLATFORM_WINDOWS
-    *width  = GetSystemMetrics(SM_CXSCREEN);
-    *height = GetSystemMetrics(SM_CYSCREEN);
-#endif
+    const SDL_DisplayMode* DM = SDL_GetCurrentDisplayMode(0);
+    if (DM)
+    {
+        *width  = DM->w;
+        *height = DM->h;
+    }
+    else
+    {
+        *width = 1920;
+        *height = 1090;
+    }
 }
 
 void SetMouseWindowPos(float x, float y)
 {
-    SetMousePos(PlatformCtx.WindowPosX + x, PlatformCtx.WindowPosY + y);
+    SDL_WarpMouseInWindow(sdlWindow, x, y);
 }
 
 bool AnyKeyDown()           { return Bitset_Count(&PlatformCtx.DownKeys) > 0; }
@@ -173,67 +147,52 @@ static void SetPressedAndReleasedKeys()
 
 void wSetWindowSize(int width, int height)
 {
-#ifdef PLATFORM_WINDOWS
-    PlatformCtx.WindowWidth = width; PlatformCtx.WindowHeight = height;
-    // SetWindowPos((void*)sapp_win32_get_hwnd(), NULL, PlatformCtx.WindowPosX, PlatformCtx.WindowPosY, width, height, 0);
-#endif
+    SDL_SetWindowSize(sdlWindow, width, height);
+    PlatformCtx.WindowWidth = width;
+    PlatformCtx.WindowHeight = height;
 }
 
 void wSetWindowPosition(int x, int y)
 {
-#ifdef PLATFORM_WINDOWS
-    PlatformCtx.WindowPosX = x; PlatformCtx.WindowPosY = y;
-    // SetWindowPos((void*)sapp_win32_get_hwnd(), NULL, x, y, PlatformCtx.WindowWidth, PlatformCtx.WindowHeight, 0);
-#endif
+    SDL_SetWindowPosition(sdlWindow, x, y);
+    PlatformCtx.WindowPosX = x;
+    PlatformCtx.WindowPosY = y;
 }
 
-static void FixSeperators(char* dst, uint64_t dstSize, const char* src)
+//  void FolderCallback(void *userdata, const char * const *filelist, int filter)
+bool wOpenFolder(const char* folderPath, SDL_DialogFileCallback callback)
 {
-    int len = StringLengthSafe(src, dstSize);
-    SmallMemCpy(dst, src, len);
-    
-    for (int i = 0; i < len; i++) 
-        if (dst[i] == '/') dst[i] = '\\';
-}
+    SDL_ShowOpenFolderDialog(
+        callback,
+        NULL,               // supply state if you want the result
+        NULL,               // parent window if you have one
+        folderPath,
+        false
+    );
 
-bool wOpenFolder(const char* folderPath) 
-{
-#ifdef PLATFORM_WINDOWS
-    char copy[1024] = {0};
-    FixSeperators(copy, sizeof(copy), folderPath);
-
-    if ((size_t)ShellExecuteA(NULL, "open", copy, NULL, NULL, SW_SHOWNORMAL) <= 32) 
-        return false;
     return true;
-#else 
-    return false;
-#endif
 }
 
-bool wOpenFile(const char* filePath)
+// void FileCallback(void *userdata, const char * const *filelist, int filter)
+bool wOpenFile(const char* filePath, SDL_DialogFileCallback callback)
 {
-#ifdef PLATFORM_WINDOWS
-    char copy[1024] = {0};
-    FixSeperators(copy, sizeof(copy), filePath);  
+    SDL_ShowOpenFileDialog(
+        callback,
+        NULL,
+        NULL,
+        NULL,   // filters
+        0,
+        filePath,
+        false
+    );
 
-    if ((size_t)ShellExecuteA(NULL, NULL, copy, NULL, NULL, SW_SHOW) <= 32)
-        return false;
     return true;
-#else 
-    return false;
-#endif
 }
-
 
 double GetDeltaTime() 
 { 
     return PlatformCtx.DeltaTime; 
 }
-
-static uint64_t DownKeys[8]; 
-static uint64_t LastKeys[8]; 
-static uint64_t PressedKeys[8];
-static uint64_t ReleasedKeys[8];
 
 void PlatformInit()
 {

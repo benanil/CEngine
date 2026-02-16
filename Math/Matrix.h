@@ -36,26 +36,26 @@ typedef struct FrustumPlanes_ {
 purefn float3x3 Matrix3Multiply(float3x3 a, float3x3 b)
 {
     float3x3 result;
-    float3 vx = Float3Mul(b.r[0], a.r[0]);
-    float3 vy = Float3Mul(b.r[1], a.r[0]);
-    float3 vz = Float3Mul(b.r[2], a.r[0]);
-    result.r[0] = Float3Add(Float3Add(vx, vy), vz);
+    float3 vx = F3Mul(b.r[0], a.r[0]);
+    float3 vy = F3Mul(b.r[1], a.r[0]);
+    float3 vz = F3Mul(b.r[2], a.r[0]);
+    result.r[0] = F3Add(F3Add(vx, vy), vz);
         
-    vx = Float3Mul(b.r[0], a.r[1]);
-    vy = Float3Mul(b.r[1], a.r[1]);
-    vz = Float3Mul(b.r[2], a.r[1]);
-    result.r[1] = Float3Add(Float3Add(vx, vy), vz);
+    vx = F3Mul(b.r[0], a.r[1]);
+    vy = F3Mul(b.r[1], a.r[1]);
+    vz = F3Mul(b.r[2], a.r[1]);
+    result.r[1] = F3Add(F3Add(vx, vy), vz);
         
-    vx = Float3Mul(b.r[0], a.r[2]);
-    vy = Float3Mul(b.r[1], a.r[2]);
-    vz = Float3Mul(b.r[2], a.r[2]);
-    result.r[2] = Float3Add(Float3Add(vx, vy), vz);
+    vx = F3Mul(b.r[0], a.r[2]);
+    vy = F3Mul(b.r[1], a.r[2]);
+    vz = F3Mul(b.r[2], a.r[2]);
+    result.r[2] = F3Add(F3Add(vx, vy), vz);
     return result;
 }
 
 purefn float3 Matrix3MultiplyFloat3(float3x3 m, float3 v)
 {
-    return Float3Add(Float3Add(Float3MulF(m.r[0], v.x), Float3MulF(m.r[1], v.y)), Float3MulF(m.r[2], v.z));
+    return F3Add(F3Add(F3MulF(m.r[0], v.x), F3MulF(m.r[1], v.y)), F3MulF(m.r[2], v.z));
 }
     
 static inline float3x3 TBN(float3 normal, float3 tangent, float3 bitangent)
@@ -80,9 +80,9 @@ purefn float3x3 Matrix3LookAt(float3 direction, float3 up)
 {
     float3x3 result;
     result.r[2] = direction;
-    float3 Right = Float3Cross(up, result.r[2]);
-    result.r[0] = Float3MulF(Right, RSqrtf(MMAX(0.00001f, Float3Dot(Right, Right))));
-    result.r[1] = Float3Cross(result.r[2], result.r[0]);
+    float3 Right = F3Cross(up, result.r[2]);
+    result.r[0] = F3MulF(Right, RSqrtf(MMAX(0.00001f, F3Dot(Right, Right))));
+    result.r[1] = F3Cross(result.r[2], result.r[0]);
     return result;
 }
 
@@ -367,7 +367,7 @@ purefn Matrix4 VECTORCALL Matrix4Multiply(Matrix4 in0, const Matrix4 in1)
     return in0;
 }
 
-purefn Vec4x32f VECTORCALL Vector4Transform(Vec4x32f v, const Vec4x32f r[4])
+purefn Vec4x32f VECTORCALL Vec4Transform(Vec4x32f v, const Vec4x32f r[4])
 {
     Vec4x32f m0;
     m0 = VecMul(r[0], VecSplatX(v));

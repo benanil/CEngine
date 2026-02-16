@@ -6,9 +6,7 @@
 #include "Include/Platform.h"
 #include "Include/OS.h"
 
-tlsf_t GlobalTLSF = NULL;
 Arena GlobalArena = { 0, 0, 0 };
-char AppMemory[TLSF_MEMORY_SIZE];
 char ArenaMemory[ARENA_MEMORY_SIZE];
 
 
@@ -28,7 +26,7 @@ uint64_t AlignAddress(uint64_t addr, uint64_t align)
 void* AllocAligned(uint64_t bytes, uint64_t align)
 {
     uint64_t  actualBytes = bytes + align;
-    uint8_t* pRawMem = (uint8_t*)AllocateTLSFGlobal(actualBytes);
+    uint8_t* pRawMem = (uint8_t*)SDL_malloc(actualBytes);
     uint8_t* pAlignedMem = AlignPointer(pRawMem, align);
     
     if (pAlignedMem == pRawMem)
@@ -47,44 +45,33 @@ void FreeAligned(void* pMem)
     if (shift == 0)
         shift = 256;
     uint8_t* pRawMem = pAlignedMem - shift;
-    DeAllocateTLSFGlobal(pRawMem);
+    SDL_free(pRawMem);
 }
 
 /* //////////////////////////////////////////////////////////////////////////// */
 /*                                    TLSF                                     */
 /* //////////////////////////////////////////////////////////////////////////// */
 
-static inline void CheckTLSFSize()
-{
-    if (GlobalTLSF == NULL)
-    {
-        GlobalTLSF = TLSFCreateWithPool(AppMemory, TLSF_MEMORY_SIZE);
-    }
-}
-
 void* AllocZeroTLSFGlobal(size_t count, size_t size) 
 {
-    CheckTLSFSize();
-    void* mem = TLSFMalloc(GlobalTLSF, count * size);
-    if (mem) MemSet(mem, 0, count * size);
-    return mem; 
+    return SDL_calloc(count, size); 
 }
 
 void* AllocateTLSFGlobal(size_t size) 
 {
-    CheckTLSFSize();
-    return TLSFMalloc(GlobalTLSF, size); 
+    void* ptr = SDL_malloc(size); 
+    MemSet(ptr, 0xCD, size);
+    return ptr;
 }
 
 void* ReAllocateTLSFGlobal(void* ptr, size_t size)
 {
-    CheckTLSFSize();
-    return TLSFRealloc(GlobalTLSF, ptr, size); 
+    return SDL_realloc(ptr, size); 
 }
 
 void DeAllocateTLSFGlobal(void* buff)
 {
-    TLSFFree(GlobalTLSF, buff); 
+    SDL_free(buff); 
 }
 
 /* //////////////////////////////////////////////////////////////////////////// */
@@ -207,6 +194,9 @@ void* FixedPow2Allocator_AllocateUninitialized(FixedPow2Allocator* alloc, size_t
     FixedPow2Allocator_CheckFixGrow(alloc, countBytes);
     void* ptr = alloc->current->ptr + alloc->current->size;
     alloc->current->size += countBytes;
+    #if defined(_DEBUG) || defined(DEBUG) || defined(Debug)
+    MemSet(ptr, 0xCD, countBytes);
+    #endif
     return ptr;
 }
 
@@ -249,6 +239,7 @@ void* FixedPow2Allocator_TakeOwnership(FixedPow2Allocator* alloc)
 
 void FixedPow2Allocator_Destroy(FixedPow2Allocator* alloc)
 {
+    // test {} 
     if (!alloc->base) return;
     while (alloc->base)
     {

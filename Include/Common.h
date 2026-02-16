@@ -185,15 +185,15 @@ extern "C" {
 // Memory Operations:  memcpy, memset, unaligned load
 
 #ifdef AX_SUPPORT_SSE
-    #define SmallMemCpy(dst, src, size) __movsb((unsigned char*)(dst), (unsigned char*)(src), size);
+    #define SmallMemCpy(dst, src, size) __movsb((unsigned char*)(dst), (unsigned char*)(src), size)
 #else
     #define SmallMemCpy(dst, src, size) __builtin_memcpy(dst, src, size);
 #endif
 
 #ifdef AX_SUPPORT_SSE
-    #define SmallMemSet(dst, val, size) __stosb((unsigned char*)(dst), val, size);
+    #define SmallMemSet(dst, val, size) __stosb((unsigned char*)(dst), val, size)
 #else
-    #define SmallMemSet(dst, val, size) __builtin_memset(dst, val, size);
+    #define SmallMemSet(dst, val, size) __builtin_memset(dst, val, size)
 #endif
 
 #define MemsetZero(dst, size) SmallMemSet(dst, 0, size)

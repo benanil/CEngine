@@ -45,7 +45,7 @@ const char* GetFileExtension(const char* path, int size);
 int      ChangeExtension (      char* path, int pathLen, const char* newExt);
 bool     FileHasExtension(const char* path, int size   , const char* extension);
 char*    PathGoBackwards (      char* path, int end, bool skipSeparator);               // returns pointer to the end of the new path
-int      CopyFilename    (      char* out, uint64_t outLen, const char* path, int end); // returns length of filename
+int      CopyFilename    (      char* out , uint64_t outLen, const char* path, int end); // returns length of filename
 bool     FileExist       (const char* file); // works fine with file and folders
 uint64_t FileSize        (const char* file);
 bool     RenameFile      (const char* oldFile, const char* newFile);

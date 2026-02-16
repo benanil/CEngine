@@ -52,6 +52,7 @@ Source/FileSystem.c
 Source/Platform.c 
 Source/Graphics.c 
 Source/GLTFParser.c 
+Source/GLTFParser2.c 
 Source/Animation.c
 Source/Algorithm.c
 Source/AssetManager.c

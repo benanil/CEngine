@@ -133,6 +133,16 @@
 						<Children></Children>
 					</Folder>
 					<Folder>
+						<Path>Extern/SDL3</Path>
+						<IncludeFilter>*.c,*.cc,*.cpp,*.c++,*.cp,*.cxx,*.h,*.hh,*.hpp,*.h++,*.hp,*.hxx,*.inl,*.cs,*.rs,*.java,*.jav,*.js,*.jsc,*.jsx,*.json,*.cls,*.py,*.rpy,*.php,*.php3,*.phl,*.phtml,*.rhtml,*.tpl,*.phps,*.lua,*.html,*.html5,*.htm,*.xml,*.xaml,*.css,*.ssi,*.haml,*.yaml,*.bat,*.wbf,*.wbt,*.txt,*.cmake,*.make,*.makefile,*.mak,*.mk,*.sh,*.bash,*.csv,*.asp,*.pl,*.mac,*.ws,*.vbs,*.perl,*.src,*.rss,*.inc,*.f,*.go,*.prl,*.plx,*.rb,*.lsp,*.lpx,*.ps1,*.command,*.cbl,*.cob,*.qs,*.wxs,*.ph,*.msc,*.glsl,*.hlsl,*.fx,*.vert,*.tesc,*.tese,*.geom,*.frag,*.comp,*.pssl,*.scons,*.cu,*.jai,</IncludeFilter>
+						<ExcludeFilter></ExcludeFilter>
+						<SyncFiles>true</SyncFiles>
+						<Recursive>true</Recursive>
+						<ShowEmptyFolders>true</ShowEmptyFolders>
+						<IncludeFilesWithoutExt>false</IncludeFilesWithoutExt>
+						<Children></Children>
+					</Folder>
+					<Folder>
 						<Path>Extern/stb</Path>
 						<IncludeFilter>*.c,*.cc,*.cpp,*.c++,*.cp,*.cxx,*.h,*.hh,*.hpp,*.h++,*.hp,*.hxx,*.inl,*.cs,*.rs,*.java,*.jav,*.js,*.jsc,*.jsx,*.json,*.cls,*.py,*.rpy,*.php,*.php3,*.phl,*.phtml,*.rhtml,*.tpl,*.phps,*.lua,*.html,*.html5,*.htm,*.xml,*.xaml,*.css,*.ssi,*.haml,*.yaml,*.bat,*.wbf,*.wbt,*.txt,*.cmake,*.make,*.makefile,*.mak,*.mk,*.sh,*.bash,*.csv,*.asp,*.pl,*.mac,*.ws,*.vbs,*.perl,*.src,*.rss,*.inc,*.f,*.go,*.prl,*.plx,*.rb,*.lsp,*.lpx,*.ps1,*.command,*.cbl,*.cob,*.qs,*.wxs,*.ph,*.msc,*.glsl,*.hlsl,*.fx,*.vert,*.tesc,*.tese,*.geom,*.frag,*.comp,*.pssl,*.scons,*.cu,*.jai,</IncludeFilter>
 						<ExcludeFilter></ExcludeFilter>
@@ -144,6 +154,16 @@
 					</Folder>
 					<Folder>
 						<Path>Extern/meshoptimizer</Path>
+						<IncludeFilter>*.c,*.cc,*.cpp,*.c++,*.cp,*.cxx,*.h,*.hh,*.hpp,*.h++,*.hp,*.hxx,*.inl,*.cs,*.rs,*.java,*.jav,*.js,*.jsc,*.jsx,*.json,*.cls,*.py,*.rpy,*.php,*.php3,*.phl,*.phtml,*.rhtml,*.tpl,*.phps,*.lua,*.html,*.html5,*.htm,*.xml,*.xaml,*.css,*.ssi,*.haml,*.yaml,*.bat,*.wbf,*.wbt,*.txt,*.cmake,*.make,*.makefile,*.mak,*.mk,*.sh,*.bash,*.csv,*.asp,*.pl,*.mac,*.ws,*.vbs,*.perl,*.src,*.rss,*.inc,*.f,*.go,*.prl,*.plx,*.rb,*.lsp,*.lpx,*.ps1,*.command,*.cbl,*.cob,*.qs,*.wxs,*.ph,*.msc,*.glsl,*.hlsl,*.fx,*.vert,*.tesc,*.tese,*.geom,*.frag,*.comp,*.pssl,*.scons,*.cu,*.jai,</IncludeFilter>
+						<ExcludeFilter></ExcludeFilter>
+						<SyncFiles>true</SyncFiles>
+						<Recursive>true</Recursive>
+						<ShowEmptyFolders>true</ShowEmptyFolders>
+						<IncludeFilesWithoutExt>false</IncludeFilesWithoutExt>
+						<Children></Children>
+					</Folder>
+					<Folder>
+						<Path>Extern/cgltf</Path>
 						<IncludeFilter>*.c,*.cc,*.cpp,*.c++,*.cp,*.cxx,*.h,*.hh,*.hpp,*.h++,*.hp,*.hxx,*.inl,*.cs,*.rs,*.java,*.jav,*.js,*.jsc,*.jsx,*.json,*.cls,*.py,*.rpy,*.php,*.php3,*.phl,*.phtml,*.rhtml,*.tpl,*.phps,*.lua,*.html,*.html5,*.htm,*.xml,*.xaml,*.css,*.ssi,*.haml,*.yaml,*.bat,*.wbf,*.wbt,*.txt,*.cmake,*.make,*.makefile,*.mak,*.mk,*.sh,*.bash,*.csv,*.asp,*.pl,*.mac,*.ws,*.vbs,*.perl,*.src,*.rss,*.inc,*.f,*.go,*.prl,*.plx,*.rb,*.lsp,*.lpx,*.ps1,*.command,*.cbl,*.cob,*.qs,*.wxs,*.ph,*.msc,*.glsl,*.hlsl,*.fx,*.vert,*.tesc,*.tese,*.geom,*.frag,*.comp,*.pssl,*.scons,*.cu,*.jai,</IncludeFilter>
 						<ExcludeFilter></ExcludeFilter>
 						<SyncFiles>true</SyncFiles>
@@ -185,16 +205,9 @@
 					<File>
 						<Path>Extern/ExternAll.cpp</Path>
 					</File>
-					<Folder>
-						<Path>Extern/SDL3</Path>
-						<IncludeFilter>*.c,*.cc,*.cpp,*.c++,*.cp,*.cxx,*.h,*.hh,*.hpp,*.h++,*.hp,*.hxx,*.inl,*.cs,*.rs,*.java,*.jav,*.js,*.jsc,*.jsx,*.json,*.cls,*.py,*.rpy,*.php,*.php3,*.phl,*.phtml,*.rhtml,*.tpl,*.phps,*.lua,*.html,*.html5,*.htm,*.xml,*.xaml,*.css,*.ssi,*.haml,*.yaml,*.bat,*.wbf,*.wbt,*.txt,*.cmake,*.make,*.makefile,*.mak,*.mk,*.sh,*.bash,*.csv,*.asp,*.pl,*.mac,*.ws,*.vbs,*.perl,*.src,*.rss,*.inc,*.f,*.go,*.prl,*.plx,*.rb,*.lsp,*.lpx,*.ps1,*.command,*.cbl,*.cob,*.qs,*.wxs,*.ph,*.msc,*.glsl,*.hlsl,*.fx,*.vert,*.tesc,*.tese,*.geom,*.frag,*.comp,*.pssl,*.scons,*.cu,*.jai,</IncludeFilter>
-						<ExcludeFilter></ExcludeFilter>
-						<SyncFiles>true</SyncFiles>
-						<Recursive>true</Recursive>
-						<ShowEmptyFolders>true</ShowEmptyFolders>
-						<IncludeFilesWithoutExt>false</IncludeFilesWithoutExt>
-						<Children></Children>
-					</Folder>
+					<File>
+						<Path>Extern/sj.h</Path>
+					</File>
 				</Children>
 			</Folder>
 			<Folder>
@@ -205,7 +218,74 @@
 				<Recursive>true</Recursive>
 				<ShowEmptyFolders>true</ShowEmptyFolders>
 				<IncludeFilesWithoutExt>false</IncludeFilesWithoutExt>
-				<Children></Children>
+				<Children>
+					<File>
+						<Path>Include/Algorithm.h</Path>
+					</File>
+					<File>
+						<Path>Include/Animation.h</Path>
+					</File>
+					<File>
+						<Path>Include/AssetManager.h</Path>
+					</File>
+					<File>
+						<Path>Include/BasisBinding.h</Path>
+					</File>
+					<File>
+						<Path>Include/Bitset.h</Path>
+					</File>
+					<File>
+						<Path>Include/Camera.h</Path>
+					</File>
+					<File>
+						<Path>Include/Common.h</Path>
+					</File>
+					<File>
+						<Path>Include/ECS.h</Path>
+					</File>
+					<File>
+						<Path>Include/FastDelta.h</Path>
+					</File>
+					<File>
+						<Path>Include/FileSystem.h</Path>
+					</File>
+					<File>
+						<Path>Include/GLTFParser.h</Path>
+					</File>
+					<File>
+						<Path>Include/Graphics.h</Path>
+					</File>
+					<File>
+						<Path>Include/Memory.h</Path>
+					</File>
+					<File>
+						<Path>Include/Platform.h</Path>
+					</File>
+					<File>
+						<Path>Include/OS.h</Path>
+					</File>
+					<File>
+						<Path>Include/Queue.h</Path>
+					</File>
+					<File>
+						<Path>Include/Random.h</Path>
+					</File>
+					<File>
+						<Path>Include/RedBlackTree.h</Path>
+					</File>
+					<File>
+						<Path>Include/SIMD.h</Path>
+					</File>
+					<File>
+						<Path>Include/String.h</Path>
+					</File>
+					<File>
+						<Path>Include/TLSF.h</Path>
+					</File>
+					<File>
+						<Path>Include/dirent.h</Path>
+					</File>
+				</Children>
 			</Folder>
 			<Folder>
 				<Path>Math</Path>
@@ -235,21 +315,63 @@
 				<Recursive>true</Recursive>
 				<ShowEmptyFolders>true</ShowEmptyFolders>
 				<IncludeFilesWithoutExt>false</IncludeFilesWithoutExt>
-				<Children></Children>
+				<Children>
+					<File>
+						<Path>Source/AOC.c</Path>
+					</File>
+					<File>
+						<Path>Source/AOC0.txt</Path>
+					</File>
+					<File>
+						<Path>Source/Algorithm.c</Path>
+					</File>
+					<File>
+						<Path>Source/AssetManager.c</Path>
+					</File>
+					<File>
+						<Path>Source/BasisSokol.cpp</Path>
+					</File>
+					<File>
+						<Path>Source/ECS.c</Path>
+					</File>
+					<File>
+						<Path>Source/FileSystem.c</Path>
+					</File>
+					<File>
+						<Path>Source/Graphics.c</Path>
+					</File>
+					<File>
+						<Path>Source/Main.c</Path>
+					</File>
+					<File>
+						<Path>Source/Memory.c</Path>
+					</File>
+					<File>
+						<Path>Source/OS.c</Path>
+					</File>
+					<File>
+						<Path>Source/Platform.c</Path>
+					</File>
+					<File>
+						<Path>Source/RedBlackTree.c</Path>
+					</File>
+					<File>
+						<Path>Source/TLSF.c</Path>
+					</File>
+					<File>
+						<Path>Source/GLTFParser.c</Path>
+					</File>
+					<File>
+						<Path>Source/GLTFParser2.c</Path>
+					</File>
+					<File>
+						<Path>Source/Animation.c</Path>
+					</File>
+				</Children>
 			</Folder>
 			<File>
 				<Path>CMakeLists.txt</Path>
 			</File>
-			<Folder>
-				<Path>Debug</Path>
-				<IncludeFilter>*.c,*.cc,*.cpp,*.c++,*.cp,*.cxx,*.h,*.hh,*.hpp,*.h++,*.hp,*.hxx,*.inl,*.cs,*.rs,*.java,*.jav,*.js,*.jsc,*.jsx,*.json,*.cls,*.py,*.rpy,*.php,*.php3,*.phl,*.phtml,*.rhtml,*.tpl,*.phps,*.lua,*.html,*.html5,*.htm,*.xml,*.xaml,*.css,*.ssi,*.haml,*.yaml,*.bat,*.wbf,*.wbt,*.txt,*.cmake,*.make,*.makefile,*.mak,*.mk,*.sh,*.bash,*.csv,*.asp,*.pl,*.mac,*.ws,*.vbs,*.perl,*.src,*.rss,*.inc,*.f,*.go,*.prl,*.plx,*.rb,*.lsp,*.lpx,*.ps1,*.command,*.cbl,*.cob,*.qs,*.wxs,*.ph,*.msc,*.glsl,*.hlsl,*.fx,*.vert,*.tesc,*.tese,*.geom,*.frag,*.comp,*.pssl,*.scons,*.cu,*.jai,</IncludeFilter>
-				<ExcludeFilter></ExcludeFilter>
-				<SyncFiles>true</SyncFiles>
-				<Recursive>true</Recursive>
-				<ShowEmptyFolders>true</ShowEmptyFolders>
-				<IncludeFilesWithoutExt>false</IncludeFilesWithoutExt>
-				<Children></Children>
-			</Folder>
 			<Folder>
 				<Path>build</Path>
 				<IncludeFilter>*.c,*.cc,*.cpp,*.c++,*.cp,*.cxx,*.h,*.hh,*.hpp,*.h++,*.hp,*.hxx,*.inl,*.cs,*.rs,*.java,*.jav,*.js,*.jsc,*.jsx,*.json,*.cls,*.py,*.rpy,*.php,*.php3,*.phl,*.phtml,*.rhtml,*.tpl,*.phps,*.lua,*.html,*.html5,*.htm,*.xml,*.xaml,*.css,*.ssi,*.haml,*.yaml,*.bat,*.wbf,*.wbt,*.txt,*.cmake,*.make,*.makefile,*.mak,*.mk,*.sh,*.bash,*.csv,*.asp,*.pl,*.mac,*.ws,*.vbs,*.perl,*.src,*.rss,*.inc,*.f,*.go,*.prl,*.plx,*.rb,*.lsp,*.lpx,*.ps1,*.command,*.cbl,*.cob,*.qs,*.wxs,*.ph,*.msc,*.glsl,*.hlsl,*.fx,*.vert,*.tesc,*.tese,*.geom,*.frag,*.comp,*.pssl,*.scons,*.cu,*.jai,</IncludeFilter>
@@ -261,7 +383,17 @@
 				<Children></Children>
 			</Folder>
 			<Folder>
-				<Path>Release</Path>
+				<Path>Debug</Path>
+				<IncludeFilter>*.c,*.cc,*.cpp,*.c++,*.cp,*.cxx,*.h,*.hh,*.hpp,*.h++,*.hp,*.hxx,*.inl,*.cs,*.rs,*.java,*.jav,*.js,*.jsc,*.jsx,*.json,*.cls,*.py,*.rpy,*.php,*.php3,*.phl,*.phtml,*.rhtml,*.tpl,*.phps,*.lua,*.html,*.html5,*.htm,*.xml,*.xaml,*.css,*.ssi,*.haml,*.yaml,*.bat,*.wbf,*.wbt,*.txt,*.cmake,*.make,*.makefile,*.mak,*.mk,*.sh,*.bash,*.csv,*.asp,*.pl,*.mac,*.ws,*.vbs,*.perl,*.src,*.rss,*.inc,*.f,*.go,*.prl,*.plx,*.rb,*.lsp,*.lpx,*.ps1,*.command,*.cbl,*.cob,*.qs,*.wxs,*.ph,*.msc,*.glsl,*.hlsl,*.fx,*.vert,*.tesc,*.tese,*.geom,*.frag,*.comp,*.pssl,*.scons,*.cu,*.jai,</IncludeFilter>
+				<ExcludeFilter></ExcludeFilter>
+				<SyncFiles>true</SyncFiles>
+				<Recursive>true</Recursive>
+				<ShowEmptyFolders>true</ShowEmptyFolders>
+				<IncludeFilesWithoutExt>false</IncludeFilesWithoutExt>
+				<Children></Children>
+			</Folder>
+			<Folder>
+				<Path>vsbuild</Path>
 				<IncludeFilter>*.c,*.cc,*.cpp,*.c++,*.cp,*.cxx,*.h,*.hh,*.hpp,*.h++,*.hp,*.hxx,*.inl,*.cs,*.rs,*.java,*.jav,*.js,*.jsc,*.jsx,*.json,*.cls,*.py,*.rpy,*.php,*.php3,*.phl,*.phtml,*.rhtml,*.tpl,*.phps,*.lua,*.html,*.html5,*.htm,*.xml,*.xaml,*.css,*.ssi,*.haml,*.yaml,*.bat,*.wbf,*.wbt,*.txt,*.cmake,*.make,*.makefile,*.mak,*.mk,*.sh,*.bash,*.csv,*.asp,*.pl,*.mac,*.ws,*.vbs,*.perl,*.src,*.rss,*.inc,*.f,*.go,*.prl,*.plx,*.rb,*.lsp,*.lpx,*.ps1,*.command,*.cbl,*.cob,*.qs,*.wxs,*.ph,*.msc,*.glsl,*.hlsl,*.fx,*.vert,*.tesc,*.tese,*.geom,*.frag,*.comp,*.pssl,*.scons,*.cu,*.jai,</IncludeFilter>
 				<ExcludeFilter></ExcludeFilter>
 				<SyncFiles>true</SyncFiles>

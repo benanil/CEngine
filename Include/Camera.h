@@ -58,24 +58,24 @@ static inline void Camera_CalculateLook(Camera* camera) // from yaw pitch
     camera->Front.x = Cos(camera->yaw * MATH_DegToRad) * Cos(camera->pitch * MATH_DegToRad);
     camera->Front.y = Sin(camera->pitch * MATH_DegToRad);
     camera->Front.z = Sin(camera->yaw * MATH_DegToRad) * Cos(camera->pitch * MATH_DegToRad);
-    camera->Front = Float3Norm(camera->Front);
+    camera->Front   = F3Norm(camera->Front);
     // also re-calculate the Right and Up vector
     // normalize the vectors, because their length gets closer to 0 the more you look up or down which results in slower movement.
-    camera->Right = Float3NormEst(Float3Cross(camera->Front, Float3Up()));
-    camera->Up = Float3Cross(camera->Right, camera->Front);
+    camera->Right = F3NormEst(F3Cross(camera->Front, F3Up()));
+    camera->Up    = F3Cross(camera->Right, camera->Front);
 }
 
 static inline RayV ScreenPointToRay(Camera* camera, float2 pos)
 {
     float2 coord = (float2){ pos.x / (float)camera->viewportSize.x, pos.y / (float)camera->viewportSize.y };
     coord.y = 1.0f - coord.y;    // Flip Y to match the NDC coordinate system
-    coord = Float2SubF(Float2MulF(coord, 2.0f), 1.0f); // Map to range [-1, 1]
+    coord = F2SubF(F2MulF(coord, 2.0f), 1.0f); // Map to range [-1, 1]
 
     Vec4x32f clipSpacePos = VecSetR(coord.x, coord.y, 1.0f, 1.0f);
-    Vec4x32f viewSpacePos = Vector4Transform(clipSpacePos, camera->inverseProjection.r);
+    Vec4x32f viewSpacePos = Vec4Transform(clipSpacePos, camera->inverseProjection.r);
     viewSpacePos = VecDiv(viewSpacePos, VecSplatW(viewSpacePos));
         
-    Vec4x32f worldSpacePos = Vector4Transform(viewSpacePos, camera->inverseView.r);
+    Vec4x32f worldSpacePos = Vec4Transform(viewSpacePos, camera->inverseView.r);
     Vec4x32f rayDir = Vec3NormV(VecSub(worldSpacePos, VecLoad(&camera->position.x)));
         
     RayV ray;
@@ -124,7 +124,7 @@ static inline void CameraUpdate(Camera* camera, float dt)
         
     float2 mousePos;
     GetMousePos(&mousePos.x, &mousePos.y);
-    float2 diff = Float2Sub(mousePos, camera->mouseOld);
+    float2 diff = F2Sub(mousePos, camera->mouseOld);
     
     SDL_Cursor* cursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_MOVE);
     SDL_SetCursor(cursor);
@@ -152,12 +152,12 @@ static inline void CameraUpdate(Camera* camera, float dt)
     camera->mouseOld = mousePos;
     camera->wasPressing = true;
 
-    if (GetKeyDown(SDLK_D)) camera->position = Float3Add(camera->position, Float3MulF(camera->Right, camera->speed));
-    if (GetKeyDown(SDLK_A)) camera->position = Float3Sub(camera->position, Float3MulF(camera->Right, camera->speed));
-    if (GetKeyDown(SDLK_W)) camera->position = Float3Add(camera->position, Float3MulF(camera->Front, camera->speed));
-    if (GetKeyDown(SDLK_S)) camera->position = Float3Sub(camera->position, Float3MulF(camera->Front, camera->speed));
-    if (GetKeyDown(SDLK_E)) camera->position = Float3Add(camera->position, Float3MulF(camera->Up, camera->speed));
-    if (GetKeyDown(SDLK_Q)) camera->position = Float3Sub(camera->position, Float3MulF(camera->Up, camera->speed));
+    if (GetKeyDown(SDLK_D)) camera->position = F3Add(camera->position, F3MulF(camera->Right, camera->speed));
+    if (GetKeyDown(SDLK_A)) camera->position = F3Sub(camera->position, F3MulF(camera->Right, camera->speed));
+    if (GetKeyDown(SDLK_W)) camera->position = F3Add(camera->position, F3MulF(camera->Front, camera->speed));
+    if (GetKeyDown(SDLK_S)) camera->position = F3Sub(camera->position, F3MulF(camera->Front, camera->speed));
+    if (GetKeyDown(SDLK_E)) camera->position = F3Add(camera->position, F3MulF(camera->Up, camera->speed));
+    if (GetKeyDown(SDLK_Q)) camera->position = F3Sub(camera->position, F3MulF(camera->Up, camera->speed));
 
     InfiniteMouse(mousePos);
     Camera_RecalculateView(camera);

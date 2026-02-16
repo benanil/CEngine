@@ -102,8 +102,9 @@ typedef struct AMaterial_
 typedef struct AImage_
 {
     char* path;
+    // -1, or index
+    int bufferViewIndex;
 } AImage;
-
 
 typedef struct ANode_
 {
@@ -170,7 +171,7 @@ typedef struct APrimitive_
     AX_ALIGN(16) float min[4];
     AX_ALIGN(16) float max[4];
     
-    AMorphTarget* morphTargets; // num morph targets is equal to mesh.num numMorphWeights
+    AMorphTarget* morphTargets; // num morph targets is equal to mesh.numMorphWeights
 } APrimitive;
 
 typedef struct AMesh_
@@ -277,18 +278,18 @@ typedef struct AAnimation_
 
 typedef struct SceneBundle_
 {
-    unsigned short numMeshes;
-    unsigned short numNodes;
-    unsigned short numMaterials;
-    unsigned short numTextures;
-    unsigned short numImages;
-    unsigned short numSamplers;
-    unsigned short numCameras;
-    unsigned short numScenes;
-    unsigned short defaultSceneIndex;
-    unsigned short numBuffers;
-    unsigned short numAnimations;
-    unsigned short numSkins;
+    int numMeshes;
+    int numNodes;
+    int numMaterials;
+    int numTextures;
+    int numImages;
+    int numSamplers;
+    int numCameras;
+    int numScenes;
+    int defaultSceneIndex;
+    int numBuffers;
+    int numAnimations;
+    int numSkins;
 
     AErrorType error;
 
@@ -316,9 +317,9 @@ typedef struct SceneBundle_
 
 typedef struct ParsedObj_
 {
-    short numMeshes;
-    short numMaterials;
-    short numImages;
+    int numMeshes;
+    int numMaterials;
+    int numImages;
     
     AErrorType error;
 

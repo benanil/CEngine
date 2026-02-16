@@ -11,6 +11,7 @@
 #include "Include/Platform.h"
 #include "Include/Graphics.h"
 #include "Include/Algorithm.h"
+#include "Include/Animation.h" // maxBonePoses
 #include "Include/Memory.h"
 
 // #include "Scene.h"
@@ -31,10 +32,6 @@
 #include "Extern/sinfl.h"
 #include "Extern/dynarray.h"
 
-#include "Extern/stb/stb_sprintf.h"
-
-#include <stdio.h>
-
 static inline uint32_t PackXY11Z10SnormToU32(Vec4x32f v)
 {
     v = VecClamp(v, VecSet1(-1.0f), VecSet1(1.0f));
@@ -42,13 +39,11 @@ static inline uint32_t PackXY11Z10SnormToU32(Vec4x32f v)
     v = VecRound(v);
 
     Vec4x32u i = VecCvtF32I32(v);
-
     i = VeciAnd(i, VeciSetR(0x7FF, 0x7FF, 0x3FF, 0));
     i = VeciSll(i, VeciSetR(0, 11, 22, 0));
 
     uint32_t lanes[4];
     VecStoreU((Vec4x32u*)lanes, i);
-
     return lanes[0] | lanes[1] | lanes[2];
 }
 
@@ -59,7 +54,6 @@ static inline uint32_t PackXY11Z10UnormToU32(Vec4x32f v)
     v = VecRound(v);
 
     Vec4x32u i = VecCvtF32I32(v);
-
     i = VeciAnd(i, VeciSetR(0x7FF, 0x7FF, 0x3FF, 0));
     i = VeciSll(i, VeciSetR(0, 11, 22, 0));
 
@@ -538,8 +532,6 @@ void CreateVerticesIndices(SceneBundle* gltf)
                 currVertex[v].texCoord  = Float2ToHalf2(&texCoord.x);
                 currVertex[v].normal  = PackXY11Z10SnormToU32(Vec3Load(&normal.x));
                 currVertex[v].tangent = PackXY11Z10SnormToU32(tangent);
-
-                // PackTBNIntoQuaternion64(Vec3Load(&normal.x), tangent, &currVertex[v].qtangentXYF16);                
             }
 
             int indexSize = GraphicsTypeToSize(primitive->indexType);
@@ -578,6 +570,15 @@ void CreateVerticesIndicesSkined(SceneBundle* gltf)
     ASkinedVertex* currVertex = (ASkinedVertex*)gltf->allVertices;
     uint32_t* currIndices = (uint32_t*)gltf->allIndices;
     
+    ASkin* skin = gltf->skins;
+    uint8_t mJointToPose[MaxBonePoses]; 
+    MemsetZero(mJointToPose, sizeof(mJointToPose));
+    
+    for (uint8_t j = 0; j < skin->numJoints; j++)
+    {
+        mJointToPose[skin->joints[j]] = j;
+    }
+
     int vertexCursor = 0;
     int indexCursor = 0;
     
@@ -585,41 +586,52 @@ void CreateVerticesIndicesSkined(SceneBundle* gltf)
     {
         // get number of vertex, getting first attribute count because all of the others are same
         AMesh mesh = meshes[m];
-        for (uint64_t p = 0; p < mesh.numPrimitives; p++)
+        for (int p = 0; p < mesh.numPrimitives; p++)
         {
             APrimitive* primitive = &mesh.primitives[p];
-            char* beforeCopy = (char*)primitive->indices;
-            primitive->indices = currIndices;
-            int indexSize = GraphicsTypeToSize(primitive->indexType);
-
-            for (int i = 0; i < primitive->numIndices; i++)
+          
+            if (primitive->indices != NULL)
             {
-                uint32_t index = 0;
-                SmallMemCpy(&index, beforeCopy, indexSize);
-                // we are combining all vertices and indices into one buffer, that's why we have to add vertex cursor
-                currIndices[i] = index + vertexCursor; 
-                beforeCopy += indexSize;
+                char* beforeCopy = (char*)primitive->indices;
+                primitive->indices = currIndices;
+                int indexSize = GraphicsTypeToSize(primitive->indexType);
+
+                for (int i = 0; i < primitive->numIndices; i++)
+                {
+                    uint32_t index = 0;
+                    SmallMemCpy(&index, beforeCopy, indexSize);
+                    // we are combining all vertices and indices into one buffer, that's why we have to add vertex cursor
+                    currIndices[i] = index + vertexCursor; 
+                    beforeCopy += indexSize;
+                }
+            }
+            else
+            {
+                primitive->indices = currIndices;
+                int* indices = (int*)primitive->indices;
+                for (int i = 0; i < primitive->numIndices; i++)
+                {
+                    indices[i] = i;
+                }
             }
             
             // https://www.yosoygames.com.ar/wp/2018/03/vertex-formats-part-1-compression/
             primitive->vertices = currVertex;
-            float3* positions = (float3*)primitive->vertexAttribs[0];
-            float2* texCoords = (float2*)primitive->vertexAttribs[1];
-            float3* normals   = (float3*)primitive->vertexAttribs[2];
-            Vec4x32f* tangents  = (Vec4x32f*)primitive->vertexAttribs[3];
+            float3* positions  = (float3*)primitive->vertexAttribs[0];
+            float2* texCoords  = (float2*)primitive->vertexAttribs[1];
+            float3* normals    = (float3*)primitive->vertexAttribs[2];
+            Vec4x32f* tangents = (Vec4x32f*)primitive->vertexAttribs[3];
 
             for (int v = 0; v < primitive->numVertices; v++)
             {
-                Vec4x32f tangent     = tangents  ? tangents[v]  : VecZero();
-                float2 texCoord = texCoords ? texCoords[v] : (float2){0.0f, 0.0f};
-                float3 normal   = normals   ? normals[v]   : (float3){0.5f, 0.5f, 0.0};
+                Vec4x32f tangent = tangents  ? tangents[v]  : VecZero();
+                float2 texCoord  = texCoords ? texCoords[v] : (float2){0.0f, 0.0f};
+                float3 normal    = normals   ? normals[v]   : (float3){0.5f, 0.5f, 0.0};
 
                 currVertex[v].position = positions[v];
                 currVertex[v].texCoord = Float2ToHalf2(&texCoord.x);
                 currVertex[v].qtangentXYF16 = PackXY11Z10SnormToU32(Vec3Load(&normal.x));
                 currVertex[v].qtangentZWF16 = PackXY11Z10SnormToU32(tangent);
-
-                // PackTBNIntoQuaternion64(Vec3Load(&normal.x), tangent, &currVertex[v].qtangentXYF16);
             }
 
             // convert whatever joint format to rgb8u
@@ -627,7 +639,7 @@ void CreateVerticesIndicesSkined(SceneBundle* gltf)
             char* weights = (char*)primitive->vertexAttribs[6];
 
             // size and offset in bytes
-            int jointSize = GraphicsTypeToSize(primitive->jointType);
+            int jointSize   = GraphicsTypeToSize(primitive->jointType);
             int jointOffset = Maxi32((int)(primitive->jointStride - (jointSize * primitive->jointCount)), 0); // stride - sizeof(rgbau16)
             // size and offset in bytes
             int weightSize   = GraphicsTypeToSize(primitive->weightType);
@@ -642,6 +654,7 @@ void CreateVerticesIndicesSkined(SceneBundle* gltf)
                 {
                     uint32_t jointIndex = 0;
                     SmallMemCpy(&jointIndex, joints, jointSize); 
+                    jointIndex = mJointToPose[jointIndex];
                     ASSERT(jointIndex < 255u && "index has to be smaller than 255");
                     packedJoints |= jointIndex << shift;
                     shift += 8;
@@ -1424,8 +1437,8 @@ int LoadSceneBundleBinary(const char* path, SceneBundle* gltf)
 
     int totalAnimSamplerInput = 0;
     AFileRead(&totalAnimSamplerInput, sizeof(int), file, 1);
-    float* currSamplerInput;
-    Vec4x32f* currSamplerOutput;
+    float* currSamplerInput = NULL;
+    Vec4x32f* currSamplerOutput = NULL;
 
     if (totalAnimSamplerInput) {
         currSamplerInput  = (float*)AllocZeroTLSFGlobal(totalAnimSamplerInput, sizeof(float));

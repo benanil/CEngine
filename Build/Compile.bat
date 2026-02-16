@@ -1,3 +1,4 @@
+
 @echo off
 setlocal
 
@@ -9,11 +10,11 @@ call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build
 echo Compiling project...
 
 if "%1"=="Debug" (
-    cmake -S . -B Debug -G Ninja -DCMAKE_BUILD_TYPE=Debug
+    rem cmake -S . -B Debug -G Ninja -DCMAKE_BUILD_TYPE=Debug
     cmake --build Debug
     start Debug/Debug/CPlayground.exe
 ) else (
-    cmake -S . -B Release -G Ninja -DCMAKE_BUILD_TYPE=Release
+    rem cmake -S . -B Release -G Ninja -DCMAKE_BUILD_TYPE=Release
     cmake --build Release
     start Release/Release/CPlayground.exe
 )   
