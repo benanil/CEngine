@@ -14,6 +14,3 @@
 [submodule "Extern/SDL3"]
 	path = Extern/SDL3
 	url = https://github.com/libsdl-org/SDL
-[submodule "Extern/cgltf"]
-	path = Extern/cgltf
-	url = https://github.com/jkuhlmann/cgltf

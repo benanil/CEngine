@@ -10,13 +10,14 @@ struct main0_out
 
 struct main0_in
 {
-    float4 in_var_WEIGHTS [[user(locn2)]];
+    float2 in_var_TEXCOORD0 [[user(locn0)]];
+    float3 in_var_NORMAL [[user(locn1)]];
 };
 
-fragment main0_out main0(main0_in in [[stage_in]])
+fragment main0_out main0(main0_in in [[stage_in]], texture2d<float> Texture [[texture(0)]], sampler Sampler [[sampler(0)]])
 {
     main0_out out = {};
-    out.out_var_SV_Target0 = in.in_var_WEIGHTS;
+    out.out_var_SV_Target0 = Texture.sample(Sampler, in.in_var_TEXCOORD0) * precise::max(dot(in.in_var_NORMAL, float3(-0.5, -0.5, 0.0)), 0.100000001490116119384765625);
     return out;
 }
 

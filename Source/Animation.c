@@ -23,7 +23,12 @@
 
 void AnimationController_Create(const SceneBundle* prefab, AnimationController* result, Matrix3x4f16* outMatrices)
 {
+    Pose pose;
+    AnimNode animNode;
+    ANode inputNode;
+    int childIndex;
     const ASkin* skin = &prefab->skins[0];
+
     if (skin == NULL) {
         AX_WARN("skin is null"); return;
     }
@@ -39,54 +44,14 @@ void AnimationController_Create(const SceneBundle* prefab, AnimationController* 
     
     ASSERT(result->mRootNodeIndex < MaxBonePoses);
     ASSERT(prefab->nodes[result->mRootNodeIndex].numChildren > 0); // root node has to have children nodes
+    MemSet(result->mChildIndices, 255, sizeof(result->mChildIndices));
 
-    MemSet(result->nodeToJoint, 255, sizeof(result->nodeToJoint));
-    for (int i = 0; i < result->mNumJoints; i++)
+    childIndex = 0;
+    for (int i = 0; i < prefab->numNodes; i++)
     {
-        result->nodeToJoint[skin->joints[i]] = i;
-    }
-    SDL_Log("num  joint: %d", result->mNumJoints);
-    SDL_Log("root index: %d", result->mRootNodeIndex);
-    
-    Pose pose;
-    AnimNode animNode;
-    ANode inputNode;
-    int jointIndex;
-    int childIndex = 0;
-
-    inputNode = prefab->nodes[result->mRootNodeIndex];
-
-    pose.translation = VecLoad(inputNode.translation);
-    pose.rotation    = VecLoad(inputNode.rotation);
-
-    animNode.numChildren = inputNode.numChildren;
-    animNode.childrenStartIndex = 0;
-    
-    result->nodeToJoint[result->mRootNodeIndex] = result->mRootNodeIndex;
-    result->mAnimNodes[result->mRootNodeIndex]  = animNode;
-    result->mAnimPoseA[result->mRootNodeIndex]  = pose;
-
-    SDL_Log("root joint: %d", skin->joints[0]);
-
-    for (int j = 0; j < animNode.numChildren; j++)
-    {
-        int childNodeIndex = inputNode.children[j];
-        result->mChildIndices[childIndex++] = (uint8_t)result->nodeToJoint[childNodeIndex];
-    }
-
-    for (int i = 0; i < MaxBonePoses * 2; i++)
-    {
-        result->mAnimPoseA[i].translation = VecZero();
-        result->mAnimPoseA[i].rotation = VecSetR(0.0f, 0.0f, 0.0f, 1.0f);
-    }
-
-    for (int i = 0; i < result->mNumJoints; i++)
-    {
-        jointIndex = skin->joints[i];
-        inputNode  = prefab->nodes[jointIndex];
-
+        inputNode  = prefab->nodes[i];
         pose.translation = VecLoad(inputNode.translation);
-        pose.rotation    = VecLoad(inputNode.rotation);
+        pose.rotation    = QNorm(VecLoad(inputNode.rotation));
 
         animNode.numChildren = inputNode.numChildren;
         animNode.childrenStartIndex = childIndex;
@@ -96,9 +61,7 @@ void AnimationController_Create(const SceneBundle* prefab, AnimationController* 
 
         for (int j = 0; j < animNode.numChildren; j++)
         {
-            int childNodeIndex = result->nodeToJoint[inputNode.children[j]];
-            if (childNodeIndex != 255)
-                result->mChildIndices[childIndex++] = (uint8_t)childNodeIndex;
+            result->mChildIndices[childIndex++] = (uint8_t)inputNode.children[j];
         }
     }
 }
@@ -108,7 +71,7 @@ void AnimationController_RecurseBoneMatrices(AnimationController* ac, int nodeIn
     const AnimNode* node = &ac->mAnimNodes[nodeIndex];
     if (nodeIndex == 255)
     {
-        SDL_Log("ow shit: ");
+        AX_LOG("ow shit: ");
         return;
     }
 
@@ -117,7 +80,7 @@ void AnimationController_RecurseBoneMatrices(AnimationController* ac, int nodeIn
         int childIndex = ac->mChildIndices[node->childrenStartIndex + c];
         if (childIndex == 255)
         {
-            SDL_Log("abov: %d, %d, %d", (int)node->numChildren, (int)node->childrenStartIndex, c);
+            AX_LOG("abov: %d, %d, %d", (int)node->numChildren, (int)node->childrenStartIndex, c);
             continue;
         }
         Pose pose        = ac->mAnimPoseA[childIndex];
@@ -132,15 +95,15 @@ void AnimationController_RecurseBoneMatrices(AnimationController* ac, int nodeIn
 
 void AnimationController_UploadBoneMatrices(AnimationController* ac)
 {
+    Matrix4 mat;
     const ASkin* skin = &ac->mPrefab->skins[0];
     const Matrix4* invMatrices = (const Matrix4*)skin->inverseBindMatrices;
-
+    
     for (int i = 0; i < skin->numJoints; i++)
     {
-        const Pose* pose = ac->mAnimPoseA + i;
-        Matrix4 mat = Matrix4Multiply(invMatrices[i], PositionRotationScaleVec(pose->translation, pose->rotation, VecOne()));
+        const Pose* pose = ac->mAnimPoseA + skin->joints[i];
+        mat = Matrix4Multiply(invMatrices[i], PositionRotationScaleVec(pose->translation, pose->rotation, VecOne()));
         mat = Matrix4Transpose(mat);
-
         // with AVX F16C this is single instruction! vcvtps2ph 
         Float8ToHalf8(ac->mOutMatrices[i].x, &mat.m[0][0]);
         Float4ToHalf4(ac->mOutMatrices[i].z, &mat.m[2][0]); // this is single instruction with it as well
@@ -149,7 +112,7 @@ void AnimationController_UploadBoneMatrices(AnimationController* ac)
 
 void AnimationController_UploadPose(AnimationController* ac, const Pose pose[MaxBonePoses])
 {
-    int rootIdx = ac->nodeToJoint[ac->mRootNodeIndex];
+    int rootIdx = ac->mRootNodeIndex;
     const Pose* root = pose + rootIdx;
     AnimationController_RecurseBoneMatrices(ac, rootIdx, root->translation, root->rotation);
     AnimationController_UploadBoneMatrices(ac);
@@ -174,16 +137,19 @@ void AnimationController_SampleAnimationPose(const AnimationController* ac, Pose
     for (int c = 0; c < animation->numChannels; c++)
     {
         const AAnimChannel* channel = &animation->channels[c];
-        const int targetNode = ac->nodeToJoint[channel->targetNode];
+        const int targetNode = channel->targetNode;
         if (targetNode == 255)
         {
-            SDL_Log("non joint");
+            AX_LOG("non joint");
             continue;
         }
         const AAnimSampler* sampler = &animation->samplers[channel->sampler];
     
         // morph targets are not supported
-        if (channel->targetPath == AAnimTargetPath_Weight)
+        if (channel->targetPath == AAnimTargetPath_Weight || 
+            sampler->interpolation == ASamplerInterpolation_CubicSpline || 
+            sampler->inputType  != AComponentType_FLOAT || 
+            sampler->outputType != AComponentType_FLOAT)
             continue;
     
         // binary search
@@ -202,9 +168,9 @@ void AnimationController_SampleAnimationPose(const AnimationController* ac, Pose
 
         if (reverse) XSWAP(int, beginIdx, endIdx);
 
-        const Vec4x32f begin = ((const Vec4x32f*)sampler->output)[beginIdx];
-        const Vec4x32f end   = ((const Vec4x32f*)sampler->output)[endIdx];
-    
+        const Vec4x32f begin = ((Vec4x32f*)sampler->output)[beginIdx];
+        const Vec4x32f end   = ((Vec4x32f*)sampler->output)[endIdx];
+
         float beginTime = Maxf32(0.0001f, realTime - sampler->input[beginIdx]);
         float endTime   = Maxf32(0.0001f, sampler->input[endIdx] - sampler->input[beginIdx]);
         

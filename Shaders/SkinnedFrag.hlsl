@@ -16,5 +16,5 @@ float4 main(VSOutput input) : SV_Target0
 {
     float3 sunDir = float3(-0.5, -0.5, 0.0f);
     float ndl = dot(input.normal, sunDir);
-    return input.weights; // Texture.Sample(Sampler, input.texCoords) * max(ndl, 0.1);
+    return Texture.Sample(Sampler, input.texCoords) * max(ndl, 0.1);
 }

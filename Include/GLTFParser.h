@@ -49,6 +49,19 @@ enum AErrorType_
 };
 typedef int AErrorType;
 
+enum AComponentType_
+{
+    // GL_TYPE starts from 0x1400
+    AComponentType_BYTE          ,
+    AComponentType_UNSIGNED_BYTE ,
+    AComponentType_SHORT         ,
+    AComponentType_UNSIGNED_SHORT,
+    AComponentType_INT           ,
+    AComponentType_UNSIGNED_INT  ,
+    AComponentType_FLOAT         
+};
+typedef int AComponentType;
+
 enum AMaterialAlphaMode_
 {
     AMaterialAlphaMode_Opaque, AMaterialAlphaMode_Blend, AMaterialAlphaMode_Mask
@@ -87,16 +100,11 @@ typedef struct AMaterial_
     AMaterialAlphaMode alphaMode;
     GLTFTexture textures[3];
 
-    // #ifdef __cplusplus
-    // const Texture& GetNormalTexture()    const { return textures[0]; }
-    // const Texture& GetOcclusionTexture() const { return textures[1]; }
-    // const Texture& GetEmissiveTexture()  const { return textures[2]; }
-    // Texture& GetNormalTexture()    { return textures[0]; }
-    // Texture& GetOcclusionTexture() { return textures[1]; }
-    // Texture& GetEmissiveTexture()  { return textures[2]; }
-    // 
-    // #endif
-
+    #ifdef __cplusplus
+    const GLTFTexture& GetNormalTexture()    const { return textures[0]; }
+    const GLTFTexture& GetOcclusionTexture() const { return textures[1]; }
+    const GLTFTexture& GetEmissiveTexture()  const { return textures[2]; }
+    #endif
 } AMaterial;
 
 typedef struct AImage_
@@ -262,6 +270,8 @@ typedef struct AAnimSampler_
     float* output; // quaternion or vector array
     int count;
     int numComponent; // 3,4 vec3 or vec4
+    AComponentType inputType;
+    AComponentType outputType;
     ASamplerInterpolation interpolation;
 } AAnimSampler;
 
@@ -345,6 +355,13 @@ const char* ParsedSceneGetError(AErrorType error);
 int Prefab_FindAnimRootNodeIndex(const SceneBundle* prefab);
 
 int Prefab_FindNodeFromName(const SceneBundle* prefab, const char* name);
+
+static inline int GraphicsTypeToSize(AComponentType type)
+{
+    // BYTE, UNSIGNED_BYTE, SHORT, UNSIGNED_SHORT, INT, UNSIGNED_INT, FLOAT 
+    const int TypeToSize[12] = { 1, 1, 2, 2, 4, 4, 4, 2, 4, 4, 8, 2 };
+    return TypeToSize[type];
+}
 
 #if defined(__cplusplus)
 }

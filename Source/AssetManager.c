@@ -70,13 +70,6 @@ static void PackTBNIntoQuaternion64(Vec4x32f normal, Vec4x32f tangent, uint32_t*
     PackQuaternionS16Norm(quat, out);
 }
 
-int GraphicsTypeToSize(GraphicType type)
-{
-    // BYTE, UNSIGNED_BYTE, SHORT, UNSIGNED_SHORT, INT, UNSIGNED_INT, FLOAT 
-    const int TypeToSize[12] = { 1, 1, 2, 2, 4, 4, 4, 2, 4, 4, 8, 2 };
-    return TypeToSize[type];
-}
-
 
 /*//////////////////////////////////////////////////////////////////////////*/
 /*                              FBX LOAD                                    */
@@ -727,12 +720,26 @@ void CreateVerticesIndicesSkined(SceneBundle* gltf)
                 SmallMemCpy(currSampler, sampler->input, sampler->count * sizeof(float));
                 sampler->input = currSampler;
                 currSampler += sampler->count;
+                
+                if (sampler->interpolation == ASamplerInterpolation_CubicSpline)
+                    AX_WARN("sampler cubic spline not supported");
+                
+                if (sampler->inputType != AComponentType_FLOAT)
+                    AX_WARN("unsupported sampler input type: %d", sampler->inputType);
 
-                for (int i = 0; i < sampler->count; i++)
+                switch (sampler->outputType)
                 {
-                    SmallMemCpy(currOutput + i, sampler->output + (i * sampler->numComponent), sizeof(float) * sampler->numComponent);
-                    currOutput[i] = VecLoad(sampler->output + (i * sampler->numComponent));
-                    if (sampler->numComponent == 3) currOutput[i] = VecSetW(currOutput[i], 0.0f);
+                    case AComponentType_FLOAT: 
+                        for (int i = 0; i < sampler->count; i++)
+                        {
+                            SmallMemCpy(currOutput + i, sampler->output + (i * sampler->numComponent), sizeof(float) * sampler->numComponent);
+                            currOutput[i] = VecLoad(sampler->output + (i * sampler->numComponent));
+                            if (sampler->numComponent == 3) currOutput[i] = VecSetW(currOutput[i], 0.0f);
+                        }
+                        break;
+                    default:
+                        AX_WARN("unsupported sampler output type: %d", sampler->outputType);
+                        break;
                 }
                 sampler->output = (float*)currOutput;
                 currOutput += sampler->count;
@@ -773,13 +780,20 @@ void SaveSceneImages(SceneBundle* scene, const char* savePath)
         int textureType = 0;
         for (int j = 0; j < scene->numMaterials; j++)
         {
-            textureType |= scene->textures[scene->materials[j].textures[0].index].source == i;
+            AMaterial material = scene->materials[j];
+            if (material.textures[0].index < scene->numTextures)
+            textureType |= scene->textures[material.textures[0].index].source == i;
+            
+            if (material.baseColorTexture.index < scene->numTextures)
             // if an normal map used as base color, unmark it. (causing problems on sponza)
-            textureType &= ~(scene->textures[scene->materials[j].baseColorTexture.index].source == i);
-            textureType |= (scene->textures[scene->materials[j].metallicRoughnessTexture.index].source == i) << 1;
+            textureType &= ~(scene->textures[material.baseColorTexture.index].source == i);
+            
+            if (material.metallicRoughnessTexture.index < scene->numTextures)
+            textureType |= (scene->textures[material.metallicRoughnessTexture.index].source == i) << 1;
             // mixamo animations are exporting specular instead of metallic roughness, 
             // in our engine we don't use specular but using metallic roughess with our engine specular means metallic roughness
-            textureType |= (scene->textures[scene->materials[j].specularTexture.index].source == i) << 1;
+            if (material.specularTexture.index < scene->numTextures)
+            textureType |= (scene->textures[material.specularTexture.index].source == i) << 1;
         }
 
         int isNormal = (textureType & 1) != 0;

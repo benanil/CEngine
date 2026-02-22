@@ -3,16 +3,11 @@
 #include <emscripten/emscripten.h>
 #endif
 
-
-#include <SDL3/SDL_test_common.h>
 #include <SDL3/SDL_gpu.h>
 #include <SDL3/SDL_main.h>
 
 #include <stdio.h>
 #include <string.h>
-
-#define CGLTF_IMPLEMENTATION
-#include "Extern/cgltf/cgltf.h"
 
 #include "Include/Common.h"
 #include "Include/OS.h"
@@ -46,7 +41,6 @@
 #include "Shaders/SkinnedFrag.spv.h"
 #include "Shaders/SkinnedVert.spv.h"
 #endif
-
 
 #define NUM_ANIMS (32)
 
@@ -93,14 +87,14 @@ static void Render()
     /* Acquire the swapchain texture */
     SDL_GPUCommandBuffer* cmd = SDL_AcquireGPUCommandBuffer(gpu_device);
     if (!cmd) {
-        SDL_Log("Failed to acquire command buffer :%s", SDL_GetError());
+        AX_WARN("Failed to acquire command buffer :%s", SDL_GetError());
         Quit(2);
     }
     
     SDL_GPUTexture* swapchainTexture;
     Uint32 drawablew, drawableh;
     if (!SDL_WaitAndAcquireGPUSwapchainTexture(cmd, sdlWindow, &swapchainTexture, &drawablew, &drawableh)) {
-        SDL_Log("Failed to acquire swapchain texture: %s", SDL_GetError());
+        AX_WARN("Failed to acquire swapchain texture: %s", SDL_GetError());
         Quit(2);
     }
     
@@ -254,28 +248,11 @@ static void Render()
 
 static void InitScene()
 {
-    // foxScene = AllocateTLSFGlobal(sizeof(SceneBundle));
-    // // if (!LoadSceneBundleBinary("Assets/Meshes/Paladin/Paladin.abm", sceneBundle))
-    // if (!ParseGLTF("Assets/Meshes/Fox.glb", foxScene, 1.0f))
-    // {
-    //     AX_ERROR("glb scene load failed2");
-    //     return;
-    // }
-
-    // SceneBundle* sceneBundle2 = AllocateTLSFGlobal(sizeof(SceneBundle));
-    // ParseGLTF2("Assets/Meshes/Paladin/Paladin.gltf", sceneBundle2, 1.0f);
-    
-    // cgltf_options cOpts;
-    // MemsetZero(&cOpts, sizeof(cgltf_options));
-    // cOpts.type = cgltf_file_type_glb;
-    // cgltf_data* cgltfRes = NULL;
-    // cgltf_result cres = cgltf_parse_file(&cOpts, "Assets/Meshes/Fox.glb", &cgltfRes);
-    
     sceneBundle = AllocateTLSFGlobal(sizeof(SceneBundle));
     
     // if (!LoadSceneBundleBinary("Assets/Meshes/Paladin/Paladin.abm", sceneBundle))
     // if (!ParseGLTF2("Assets/Meshes/Paladin/Paladin.gltf", sceneBundle, 1.0f))
-    if (!ParseGLTF2("Assets/Meshes/Paladin/Paladin.gltf", sceneBundle, 1.0f))
+    if (!ParseGLTF2("Assets/Meshes/Fox.glb", sceneBundle, 1.0f))
     {
         AX_ERROR("gltf scene load failed2");
         return;
@@ -299,7 +276,9 @@ static void InitScene()
     render_state.buf_rotations = CreateBuffer(ecs.EntityRotations, sizeof(ecs.EntityRotations), SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ, "CPInstanceRotations");
     
     BasisuSetup();
-    int imgRes = LoadSceneImages("Assets/Meshes/Paladin/PaladinTest.bdc", render_state.textures, sceneBundle->numImages, gpu_device);
+    // SaveSceneImages(sceneBundle, "Assets/Meshes/Fox.bdc");
+    // "Assets/Meshes/Paladin/PaladinTest.bdc"
+    int imgRes = LoadSceneImages("Assets/Meshes/Fox.bdc", render_state.textures, sceneBundle->numImages, gpu_device);
     
     render_state.sampler = SDL_CreateGPUSampler(gpu_device, &(SDL_GPUSamplerCreateInfo){
         .min_filter      = SDL_GPU_FILTER_LINEAR,

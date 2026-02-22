@@ -129,7 +129,6 @@ static void ParseIntArray(const char* curr, const char* end, int* numbers)
     } 
 }
 
-
 static int* ParseIntArrayAlloc(GLTFParseContext* ctx, sj_Value sjArr, int* outCount)
 {
     int numElements = sjCountArray(*ctx->sj, sjArr);
@@ -184,7 +183,7 @@ static void ParseAccessorObj(sj_Value sjAccessorObj, void* element, GLTFParseCon
                 case 'R': accessor->type = 1; break;  // SCALAR 
             }
         }
-        else AX_LOG("unknown: %s ", key.start);
+        else AX_LOG("unknown accessor parameter: %s ", key.start);
         *key.end = beforeChar;
     }
 }
@@ -889,6 +888,8 @@ int ParseGLTF2(const char* path, SceneBundle* result, float scale)
     if (source == NULL)
         source = ReadAllTextAlloc(path, &sourceSize, NULL);
         
+    WriteAllBytes("C:/Users/Administrator/Desktop/Fox.json", source, sourceSize);
+
     if (source == NULL) { result->error = AError_FILE_NOT_FOUND; ASSERT(0); return 0; }
 
     FixedPow2Allocator* allocator = AllocateTLSFGlobal(sizeof(FixedPow2Allocator));
@@ -930,7 +931,7 @@ int ParseGLTF2(const char* path, SceneBundle* result, float scale)
         else if (StrCMP16(name, "cameras"))     result->cameras    = ParseList(ACamera   , &result->numCameras   , ParseCamerasObj   );
         else if (StrCMP16(name, "skins"))       result->skins      = ParseList(ASkin     , &result->numSkins     , ParseSkinsObj     );
         else if (StrCMP16(name, "animations"))  result->animations = ParseList(AAnimation, &result->numAnimations, ParseAnimationsObj);
-        else if (StrCMP16(name, "scene"))       ParsePositiveNumberU16(key.start, &result->defaultSceneIndex);
+        else if (StrCMP16(name, "scene"))       ParsePositiveNumber(key.start, &result->defaultSceneIndex);
         else if (!isGLB) AX_LOG("unknown gltf parameter: %s", name);
 
         // skip, asets, extensions used
@@ -969,7 +970,6 @@ int ParseGLTF2(const char* path, SceneBundle* result, float scale)
             primitive->jointCount  = (short)accessor.type;
             primitive->jointStride = (short)bufferViews[accessor.bufferView].byteStride;
 
-
             // get weight data that we need for creating vertices
             const uint32_t weightIndex = TrailingZeroCount32(AAttribType_WEIGHTS);
             accessor = accessors[(int)(size_t)primitive->vertexAttribs[weightIndex]];
@@ -1000,8 +1000,6 @@ int ParseGLTF2(const char* path, SceneBundle* result, float scale)
         GLTFBufferView view      = bufferViews[accessor.bufferView];
         int64_t        offset    = (int64_t)(accessor.byteOffset) + view.byteOffset;
         skin->inverseBindMatrices = (float*)((char*)result->buffers[view.buffer].uri + offset);
-        SDL_Log("joint count: %d", (int)skin->numJoints);
-        SDL_Log("num inv: %d", accessor.count);
     }
 
     for (int i = 0; i < result->numImages; ++i)
@@ -1033,22 +1031,24 @@ int ParseGLTF2(const char* path, SceneBundle* result, float scale)
         {
             AAnimSampler* sampler = &animation->samplers[s];
             size_t inputIndex = (size_t)sampler->input;
-            GLTFAccessor   accessor  = accessors[(int)inputIndex];
-            GLTFBufferView view      = bufferViews[accessor.bufferView];
-            int64_t        offset    = (int64_t)(accessor.byteOffset) + view.byteOffset;
+            GLTFAccessor   accessor = accessors[(int)inputIndex];
+            GLTFBufferView view     = bufferViews[accessor.bufferView];
+            int64_t        offset   = (int64_t)(accessor.byteOffset) + view.byteOffset;
             
-            sampler->input = (float*)((char*)result->buffers[view.buffer].uri + offset);
-            sampler->count = accessor.count;
-            
+            sampler->input     = (float*)((char*)result->buffers[view.buffer].uri + offset);
+            sampler->count     = accessor.count;
+            sampler->inputType = accessor.componentType;
+
             size_t outputIndex = (size_t)sampler->output;
             accessor = accessors[(int)outputIndex];
             view     = bufferViews[accessor.bufferView];
             offset   = (int64_t)(accessor.byteOffset) + view.byteOffset;
             
             sampler->output = (float*)((char*)result->buffers[view.buffer].uri + offset);
-            sampler->count = MMIN(sampler->count, accessor.count);
+            sampler->count  = accessor.count;
+            sampler->outputType = accessor.componentType;
             sampler->numComponent = accessor.type;
-            
+           
             animation->duration = MMAX(animation->duration, sampler->input[sampler->count - 1]);
         }
     }

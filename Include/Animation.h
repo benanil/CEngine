@@ -84,7 +84,6 @@ typedef struct AnimationController_
     AnimNode mAnimNodes[MaxBonePoses * 2];
     Pose     mAnimPoseA[MaxBonePoses * 2]; // < the result bone array that we send to GPU
     uint8_t  mChildIndices[MaxBonePoses * 2];
-    uint8_t  nodeToJoint[MaxBonePoses * 2];
 
 } AnimationController;
 
