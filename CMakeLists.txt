@@ -42,22 +42,22 @@ endif()
 
 # Add your sources to the target
 target_sources(${EXECUTABLE_NAME} PRIVATE
-Source/Main.c
-Source/OS.c
-Extern/dynarray.c 
-Source/TLSF.c
-Source/Memory.c
-Source/ECS.c
-Source/FileSystem.c
-Source/Platform.c 
-Source/Graphics.c 
-Source/GLTFParser.c 
-Source/GLTFParser2.c 
-Source/Animation.c
-Source/Algorithm.c
-Source/AssetManager.c
-Source/BasisSokol.cpp 
-Extern/ExternAll.cpp
+	Source/Main.c
+	Source/OS.c
+	Extern/dynarray.c 
+	Source/TLSF.c
+	Source/Memory.c
+	Source/ECS.c
+	Source/FileSystem.c
+	Source/Platform.c 
+	Source/Graphics.c 
+	Source/GLTFParser.c 
+	Source/GLTFParser2.c 
+	Source/Animation.c
+	Source/Algorithm.c
+	Source/AssetManager.c
+	Source/BasisSokol.cpp 
+	Extern/ExternAll.cpp
 )
 
 # Configure SDL by calling its CMake file.

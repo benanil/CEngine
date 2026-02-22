@@ -45,13 +45,13 @@ void AnimationController_Create(const SceneBundle* prefab, AnimationController* 
     {
         result->nodeToJoint[skin->joints[i]] = i;
     }
-    SDL_Log("num joint: %d", result->mNumJoints);
+    SDL_Log("num  joint: %d", result->mNumJoints);
     SDL_Log("root index: %d", result->mRootNodeIndex);
     
     Pose pose;
     AnimNode animNode;
-    int jointIndex;
     ANode inputNode;
+    int jointIndex;
     int childIndex = 0;
 
     inputNode = prefab->nodes[result->mRootNodeIndex];
@@ -74,6 +74,12 @@ void AnimationController_Create(const SceneBundle* prefab, AnimationController* 
         result->mChildIndices[childIndex++] = (uint8_t)result->nodeToJoint[childNodeIndex];
     }
 
+    for (int i = 0; i < MaxBonePoses * 2; i++)
+    {
+        result->mAnimPoseA[i].translation = VecZero();
+        result->mAnimPoseA[i].rotation = VecSetR(0.0f, 0.0f, 0.0f, 1.0f);
+    }
+
     for (int i = 0; i < result->mNumJoints; i++)
     {
         jointIndex = skin->joints[i];
@@ -90,8 +96,9 @@ void AnimationController_Create(const SceneBundle* prefab, AnimationController* 
 
         for (int j = 0; j < animNode.numChildren; j++)
         {
-            int childNodeIndex = inputNode.children[j];
-            result->mChildIndices[childIndex++] = (uint8_t)result->nodeToJoint[childNodeIndex];
+            int childNodeIndex = result->nodeToJoint[inputNode.children[j]];
+            if (childNodeIndex != 255)
+                result->mChildIndices[childIndex++] = (uint8_t)childNodeIndex;
         }
     }
 }
@@ -99,11 +106,20 @@ void AnimationController_Create(const SceneBundle* prefab, AnimationController* 
 void AnimationController_RecurseBoneMatrices(AnimationController* ac, int nodeIndex, Vec4x32f parentPos, Vec4x32f parentRot)
 {
     const AnimNode* node = &ac->mAnimNodes[nodeIndex];
+    if (nodeIndex == 255)
+    {
+        SDL_Log("ow shit: ");
+        return;
+    }
 
     for (int c = 0; c < node->numChildren; c++)
     {
         int childIndex = ac->mChildIndices[node->childrenStartIndex + c];
-
+        if (childIndex == 255)
+        {
+            SDL_Log("abov: %d, %d, %d", (int)node->numChildren, (int)node->childrenStartIndex, c);
+            continue;
+        }
         Pose pose        = ac->mAnimPoseA[childIndex];
         Vec4x32f t       = QMulVec3V(pose.translation, parentRot);
         pose.translation = VecAdd(t, parentPos);
@@ -125,7 +141,7 @@ void AnimationController_UploadBoneMatrices(AnimationController* ac)
         Matrix4 mat = Matrix4Multiply(invMatrices[i], PositionRotationScaleVec(pose->translation, pose->rotation, VecOne()));
         mat = Matrix4Transpose(mat);
 
-        // with AVX F16C this is single insstruction! vcvtps2ph 
+        // with AVX F16C this is single instruction! vcvtps2ph 
         Float8ToHalf8(ac->mOutMatrices[i].x, &mat.m[0][0]);
         Float4ToHalf4(ac->mOutMatrices[i].z, &mat.m[2][0]); // this is single instruction with it as well
     }

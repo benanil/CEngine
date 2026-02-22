@@ -654,7 +654,7 @@ void CreateVerticesIndicesSkined(SceneBundle* gltf)
                 {
                     uint32_t jointIndex = 0;
                     SmallMemCpy(&jointIndex, joints, jointSize); 
-                    jointIndex = mJointToPose[jointIndex];
+                    // jointIndex = mJointToPose[jointIndex];
                     ASSERT(jointIndex < 255u && "index has to be smaller than 255");
                     packedJoints |= jointIndex << shift;
                     shift += 8;
