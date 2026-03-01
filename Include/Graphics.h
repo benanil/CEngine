@@ -74,7 +74,8 @@ typedef struct AVertex_
 
 typedef struct ASkinedVertex_
 {
-    float3    position;
+    uint32_t positionXY;
+    uint32_t positionZW;
     uint32_t qtangentXYF16;
     uint32_t qtangentZWF16;
     uint32_t texCoord; // half2

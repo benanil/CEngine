@@ -56,17 +56,6 @@ int Pow10(int x);
 // @returns number of characters added
 int FloatToString(char* ptr, float f, int afterpoint);
 
-bool aStartsWith(const char** curr, const char* str);
-
-// fill [begin, end) with val
-void aFill(void* begin, void* end, const void* val, size_t elemSize);
-
-// fill n elements with val
-void aFillN(void* arr, const void* val, int n, size_t elemSize);
-
-// check if arr contains val
-bool aContains(const void* arr, const void* val, int n, size_t elemSize, int (*cmp)(const void*, const void*));
-
 // return index if found, -1 otherwise
 int aIndexOf(const void* arr, const void* val, int n, size_t elemSize, int (*cmp)(const void*, const void*));
 

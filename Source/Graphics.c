@@ -33,36 +33,36 @@
 #include "Extern/stb/stb_image.h"
 #include "Extern/stb/stb_image_resize2.h"
 
-extern SDL_GPUDevice* gpu_device;
-extern WindowState window_state;
-extern RenderState render_state;
-extern SDL_Window* sdlWindow;
+extern SDL_GPUDevice* g_GPUDevice;
+extern WindowState g_WindowState;
+extern RenderState g_RenderState;
+extern SDL_Window* g_SDLWindow;
 
 extern void Quit(int rc);
 
 void rInit(bool msaa)
 {
-    gpu_device = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_SPIRV, true, NULL);
-	CHECK_CREATE(gpu_device, "GPU device");
+    g_GPUDevice = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_SPIRV, true, NULL);
+	CHECK_CREATE(g_GPUDevice, "GPU device");
 
 	/* Claim the windows */
-    SDL_ClaimWindowForGPUDevice(gpu_device, sdlWindow);
+    SDL_ClaimWindowForGPUDevice(g_GPUDevice, g_SDLWindow);
 
     /* Determine which sample count to use */
-	render_state.sample_count = SDL_GPU_SAMPLECOUNT_1;
+	g_RenderState.sample_count = SDL_GPU_SAMPLECOUNT_1;
 	if (msaa && SDL_GPUTextureSupportsSampleCount(
-		gpu_device,
-		SDL_GetGPUSwapchainTextureFormat(gpu_device, sdlWindow),
+		g_GPUDevice,
+		SDL_GetGPUSwapchainTextureFormat(g_GPUDevice, g_SDLWindow),
 		SDL_GPU_SAMPLECOUNT_4)) 
     {
-		render_state.sample_count = SDL_GPU_SAMPLECOUNT_4;
+		g_RenderState.sample_count = SDL_GPU_SAMPLECOUNT_4;
 	}
 
     int drawablew, drawableh;
     /* Set up per-window state */
-	WindowState* winstate = &window_state;
+	WindowState* winstate = &g_WindowState;
 	/* create a depth texture for the window */
-	SDL_GetWindowSizeInPixels(sdlWindow, (int*)&drawablew, (int*)&drawableh);
+	SDL_GetWindowSizeInPixels(g_SDLWindow, (int*)&drawablew, (int*)&drawableh);
 	winstate->tex_depth   = CreateDepthTexture(drawablew, drawableh);
 	winstate->tex_msaa    = CreateMSAATexture(drawablew, drawableh);
 	winstate->tex_resolve = CreateResolveTexture(drawablew, drawableh);
@@ -70,13 +70,13 @@ void rInit(bool msaa)
 
 void rDestroy()
 {
-    WindowState* winstate = &window_state;
-    SDL_ReleaseGPUTexture(gpu_device, winstate->tex_depth);
-    SDL_ReleaseGPUTexture(gpu_device, winstate->tex_msaa);
-    SDL_ReleaseGPUTexture(gpu_device, winstate->tex_resolve);
-    SDL_ReleaseWindowFromGPUDevice(gpu_device, sdlWindow);
+    WindowState* winstate = &g_WindowState;
+    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_depth);
+    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_msaa);
+    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_resolve);
+    SDL_ReleaseWindowFromGPUDevice(g_GPUDevice, g_SDLWindow);
 	
-    SDL_DestroyGPUDevice(gpu_device);
+    SDL_DestroyGPUDevice(g_GPUDevice);
 }
 
 SDL_GPUBuffer* CreateBuffer(void* buffer, size_t bufferSize, SDL_GPUBufferUsageFlags bufferUsage, const char* debugName)
@@ -95,7 +95,7 @@ SDL_GPUBuffer* CreateBuffer(void* buffer, size_t bufferSize, SDL_GPUBufferUsageF
 	buffer_desc.size = bufferSize;
 	buffer_desc.props = SDL_CreateProperties();
 	SDL_SetStringProperty(buffer_desc.props, SDL_PROP_GPU_BUFFER_CREATE_NAME_STRING, debugName);
-    SDL_GPUBuffer* gpu_buffer = SDL_CreateGPUBuffer(gpu_device, &buffer_desc);
+    SDL_GPUBuffer* gpu_buffer = SDL_CreateGPUBuffer(g_GPUDevice, &buffer_desc);
 
 	CHECK_CREATE(gpu_buffer, "Static buffer")
     SDL_DestroyProperties(buffer_desc.props);
@@ -104,16 +104,16 @@ SDL_GPUBuffer* CreateBuffer(void* buffer, size_t bufferSize, SDL_GPUBufferUsageF
 	transfer_buffer_desc.size = bufferSize;
 	transfer_buffer_desc.props = SDL_CreateProperties();
 	SDL_SetStringProperty(transfer_buffer_desc.props, SDL_PROP_GPU_TRANSFERBUFFER_CREATE_NAME_STRING, "Transfer Buffer");
-	buf_transfer = SDL_CreateGPUTransferBuffer(gpu_device, &transfer_buffer_desc);
+	buf_transfer = SDL_CreateGPUTransferBuffer(g_GPUDevice, &transfer_buffer_desc);
 	CHECK_CREATE(buf_transfer, "transfer buffer")
     SDL_DestroyProperties(transfer_buffer_desc.props);
 
 	/* We just need to upload the static data once. */
-	map = SDL_MapGPUTransferBuffer(gpu_device, buf_transfer, false);
+	map = SDL_MapGPUTransferBuffer(g_GPUDevice, buf_transfer, false);
 	SDL_memcpy(map, buffer, bufferSize);
-	SDL_UnmapGPUTransferBuffer(gpu_device, buf_transfer);
+	SDL_UnmapGPUTransferBuffer(g_GPUDevice, buf_transfer);
 
-	cmd = SDL_AcquireGPUCommandBuffer(gpu_device);
+	cmd = SDL_AcquireGPUCommandBuffer(g_GPUDevice);
 	copy_pass = SDL_BeginGPUCopyPass(cmd);
 	buf_location.transfer_buffer = buf_transfer;
 	buf_location.offset = 0;
@@ -124,7 +124,7 @@ SDL_GPUBuffer* CreateBuffer(void* buffer, size_t bufferSize, SDL_GPUBufferUsageF
 	SDL_EndGPUCopyPass(copy_pass);
 	SDL_SubmitGPUCommandBuffer(cmd);
 
-	SDL_ReleaseGPUTransferBuffer(gpu_device, buf_transfer);
+	SDL_ReleaseGPUTransferBuffer(g_GPUDevice, buf_transfer);
     return gpu_buffer;
 }
 
@@ -140,13 +140,13 @@ void UpdateGPUBuffer(SDL_GPUBuffer* buffer, const void* data, size_t bufferSize)
     Uint8* boneTransferPtr;
     SDL_GPUCommandBuffer* uploadCmdBuf;
 
-    uploadCmdBuf = SDL_AcquireGPUCommandBuffer(gpu_device);
+    uploadCmdBuf = SDL_AcquireGPUCommandBuffer(g_GPUDevice);
     copyPass = SDL_BeginGPUCopyPass(uploadCmdBuf);
     
-    boneTransferBuffer = SDL_CreateGPUTransferBuffer(gpu_device, &transferBufferCreateInfo);
-    boneTransferPtr = (Uint8*)SDL_MapGPUTransferBuffer(gpu_device, boneTransferBuffer, true);
+    boneTransferBuffer = SDL_CreateGPUTransferBuffer(g_GPUDevice, &transferBufferCreateInfo);
+    boneTransferPtr = (Uint8*)SDL_MapGPUTransferBuffer(g_GPUDevice, boneTransferBuffer, true);
     MemCpy(boneTransferPtr, data, bufferSize);
-    SDL_UnmapGPUTransferBuffer(gpu_device, boneTransferBuffer);
+    SDL_UnmapGPUTransferBuffer(g_GPUDevice, boneTransferBuffer);
 
     SDL_UploadToGPUBuffer(copyPass,
                           &(SDL_GPUTransferBufferLocation) { .transfer_buffer = boneTransferBuffer, .offset = 0}, 
@@ -162,9 +162,9 @@ void UpdateGPUBuffer(SDL_GPUBuffer* buffer, const void* data, size_t bufferSize)
     SDL_EndGPUCopyPass(copyPass);
     
     SDL_GPUFence* fence = SDL_SubmitGPUCommandBufferAndAcquireFence(uploadCmdBuf);
-    SDL_WaitForGPUFences(gpu_device, true, &fence, 1);
-    SDL_ReleaseGPUFence(gpu_device, fence);
-    SDL_ReleaseGPUTransferBuffer(gpu_device, boneTransferBuffer);
+    SDL_WaitForGPUFences(g_GPUDevice, true, &fence, 1);
+    SDL_ReleaseGPUFence(g_GPUDevice, fence);
+    SDL_ReleaseGPUTransferBuffer(g_GPUDevice, boneTransferBuffer);
 }
 
 
@@ -179,11 +179,11 @@ SDL_GPUTexture* CreateDepthTexture(Uint32 drawablew, Uint32 drawableh)
 	createinfo.height = drawableh;
 	createinfo.layer_count_or_depth = 1;
 	createinfo.num_levels = 1;
-	createinfo.sample_count = render_state.sample_count;
+	createinfo.sample_count = g_RenderState.sample_count;
 	createinfo.usage = SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET;
 	createinfo.props = 0;
 
-	result = SDL_CreateGPUTexture(gpu_device, &createinfo);
+	result = SDL_CreateGPUTexture(g_GPUDevice, &createinfo);
 	CHECK_CREATE(result, "Depth Texture")
     return result;
 }
@@ -193,21 +193,21 @@ SDL_GPUTexture* CreateMSAATexture(Uint32 drawablew, Uint32 drawableh)
 	SDL_GPUTextureCreateInfo createinfo;
 	SDL_GPUTexture* result;
 
-	if (render_state.sample_count == SDL_GPU_SAMPLECOUNT_1) {
+	if (g_RenderState.sample_count == SDL_GPU_SAMPLECOUNT_1) {
 		return NULL;
 	}
 
 	createinfo.type = SDL_GPU_TEXTURETYPE_2D;
-	createinfo.format = SDL_GetGPUSwapchainTextureFormat(gpu_device, sdlWindow);
+	createinfo.format = SDL_GetGPUSwapchainTextureFormat(g_GPUDevice, g_SDLWindow);
 	createinfo.width = drawablew;
 	createinfo.height = drawableh;
 	createinfo.layer_count_or_depth = 1;
 	createinfo.num_levels = 1;
-	createinfo.sample_count = render_state.sample_count;
+	createinfo.sample_count = g_RenderState.sample_count;
 	createinfo.usage = SDL_GPU_TEXTUREUSAGE_COLOR_TARGET;
 	createinfo.props = 0;
 
-	result = SDL_CreateGPUTexture(gpu_device, &createinfo);
+	result = SDL_CreateGPUTexture(g_GPUDevice, &createinfo);
 	CHECK_CREATE(result, "MSAA Texture")
     return result;
 }
@@ -217,12 +217,12 @@ SDL_GPUTexture* CreateResolveTexture(Uint32 drawablew, Uint32 drawableh)
 	SDL_GPUTextureCreateInfo createinfo;
 	SDL_GPUTexture* result;
 
-	if (render_state.sample_count == SDL_GPU_SAMPLECOUNT_1) {
+	if (g_RenderState.sample_count == SDL_GPU_SAMPLECOUNT_1) {
 		return NULL;
 	}
 
 	createinfo.type = SDL_GPU_TEXTURETYPE_2D;
-	createinfo.format = SDL_GetGPUSwapchainTextureFormat(gpu_device, sdlWindow);
+	createinfo.format = SDL_GetGPUSwapchainTextureFormat(g_GPUDevice, g_SDLWindow);
 	createinfo.width = drawablew;
 	createinfo.height = drawableh;
 	createinfo.layer_count_or_depth = 1;
@@ -231,7 +231,7 @@ SDL_GPUTexture* CreateResolveTexture(Uint32 drawablew, Uint32 drawableh)
 	createinfo.usage = SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER;
 	createinfo.props = 0;
 
-	result = SDL_CreateGPUTexture(gpu_device, &createinfo);
+	result = SDL_CreateGPUTexture(g_GPUDevice, &createinfo);
 	CHECK_CREATE(result, "Resolve Texture")
     return result;
 }
@@ -346,13 +346,13 @@ Texture rCreateTexture(int width, int height, void* data, SDL_GPUTextureFormat f
     Texture res; 
     res.width = width;
     res.height = height;
-    res.handle = SDL_CreateGPUTexture(gpu_device, &texDesc);
+    res.handle = SDL_CreateGPUTexture(g_GPUDevice, &texDesc);
     res.format = format;
     res.buffer = data;
 
     if (data)
     {
-        SDL_GPUCommandBuffer* uploadCmdBuf = SDL_AcquireGPUCommandBuffer(gpu_device);
+        SDL_GPUCommandBuffer* uploadCmdBuf = SDL_AcquireGPUCommandBuffer(g_GPUDevice);
         SDL_GPUCopyPass* copyPass = SDL_BeginGPUCopyPass(uploadCmdBuf);
      
         SDL_GPUTransferBufferCreateInfo transferBufferCreateInfo = {
@@ -360,10 +360,10 @@ Texture rCreateTexture(int width, int height, void* data, SDL_GPUTextureFormat f
             .size  = SDL_GPUTextureFormatTexelBlockSize(format) * width * height
         };
 
-        SDL_GPUTransferBuffer* textureTransferBuffer = SDL_CreateGPUTransferBuffer(gpu_device, &transferBufferCreateInfo);
-        Uint8* textureTransferPtr = (Uint8*)SDL_MapGPUTransferBuffer(gpu_device, textureTransferBuffer, false);
+        SDL_GPUTransferBuffer* textureTransferBuffer = SDL_CreateGPUTransferBuffer(g_GPUDevice, &transferBufferCreateInfo);
+        Uint8* textureTransferPtr = (Uint8*)SDL_MapGPUTransferBuffer(g_GPUDevice, textureTransferBuffer, false);
         MemCpy(textureTransferPtr, data, transferBufferCreateInfo.size);
-        SDL_UnmapGPUTransferBuffer(gpu_device, textureTransferBuffer);
+        SDL_UnmapGPUTransferBuffer(g_GPUDevice, textureTransferBuffer);
         
         SDL_GPUTextureRegion textureRegion = {
             .texture = res.handle,
@@ -382,18 +382,18 @@ Texture rCreateTexture(int width, int height, void* data, SDL_GPUTextureFormat f
         SDL_EndGPUCopyPass(copyPass);
         
         SDL_GPUFence* fence = SDL_SubmitGPUCommandBufferAndAcquireFence(uploadCmdBuf);
-        SDL_WaitForGPUFences(gpu_device, true, &fence, 1);
-        SDL_ReleaseGPUFence(gpu_device, fence);
-        SDL_ReleaseGPUTransferBuffer(gpu_device, textureTransferBuffer);
+        SDL_WaitForGPUFences(g_GPUDevice, true, &fence, 1);
+        SDL_ReleaseGPUFence(g_GPUDevice, fence);
+        SDL_ReleaseGPUTransferBuffer(g_GPUDevice, textureTransferBuffer);
     }
 
     if (data && !!(flags & TexFlags_MipMap))
     {
-        SDL_GPUCommandBuffer* mipmapCmdBuf = SDL_AcquireGPUCommandBuffer(gpu_device);
+        SDL_GPUCommandBuffer* mipmapCmdBuf = SDL_AcquireGPUCommandBuffer(g_GPUDevice);
         SDL_GenerateMipmapsForGPUTexture(mipmapCmdBuf, res.handle);
         SDL_GPUFence* fence = SDL_SubmitGPUCommandBufferAndAcquireFence(mipmapCmdBuf);
-        SDL_WaitForGPUFences(gpu_device, true, &fence, 1);
-        SDL_ReleaseGPUFence(gpu_device, fence); 
+        SDL_WaitForGPUFences(g_GPUDevice, true, &fence, 1);
+        SDL_ReleaseGPUFence(g_GPUDevice, fence); 
     }
 
     return res;

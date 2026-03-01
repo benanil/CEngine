@@ -51,7 +51,8 @@ void AnimationController_Create(const SceneBundle* prefab, AnimationController* 
     {
         inputNode  = prefab->nodes[i];
         pose.translation = VecLoad(inputNode.translation);
-        pose.rotation    = QNorm(VecLoad(inputNode.rotation));
+        pose.rotation    = VecLoad(inputNode.rotation);
+        pose.rotation    = QNorm(pose.rotation);
 
         animNode.numChildren = inputNode.numChildren;
         animNode.childrenStartIndex = childIndex;
@@ -66,30 +67,40 @@ void AnimationController_Create(const SceneBundle* prefab, AnimationController* 
     }
 }
 
-void AnimationController_RecurseBoneMatrices(AnimationController* ac, int nodeIndex, Vec4x32f parentPos, Vec4x32f parentRot)
+void AnimationController_RecurseBoneMatrices(AnimationController* ac)
 {
-    const AnimNode* node = &ac->mAnimNodes[nodeIndex];
-    if (nodeIndex == 255)
-    {
-        AX_LOG("ow shit: ");
-        return;
-    }
+    typedef struct StackNode_ {
+        Pose pose;
+        int  idx;
+    } StackNode;
 
-    for (int c = 0; c < node->numChildren; c++)
+    StackNode stack[MaxBonePoses];
+    int stackIndex = 0;
+    int root = ac->mRootNodeIndex;
+    Pose* poses = ac->mAnimPoseA;
+    const uint8_t* childIndices = ac->mChildIndices;
+    
+    stack[stackIndex++] = (StackNode){ ac->mAnimPoseA[root], root };
+
+    while (stackIndex)
     {
-        int childIndex = ac->mChildIndices[node->childrenStartIndex + c];
-        if (childIndex == 255)
+        StackNode sn = stack[--stackIndex];
+        const AnimNode* node = &ac->mAnimNodes[sn.idx];
+        Pose parent = sn.pose;
+
+        const uint8_t* children = &childIndices[node->childrenStartIndex];
+        int count = node->numChildren;
+
+        for (int c = 0; c < count; c++)
         {
-            AX_LOG("abov: %d, %d, %d", (int)node->numChildren, (int)node->childrenStartIndex, c);
-            continue;
+            int child = (int)children[c];
+            Pose pose = poses[child];
+            Vec4x32f t = QMulVec3V(pose.translation, parent.rotation);
+            pose.translation = VecAdd(t, parent.translation);
+            pose.rotation = QMul(pose.rotation, parent.rotation);
+            poses[child] = pose;
+            stack[stackIndex++] = (StackNode){ pose, child };
         }
-        Pose pose        = ac->mAnimPoseA[childIndex];
-        Vec4x32f t       = QMulVec3V(pose.translation, parentRot);
-        pose.translation = VecAdd(t, parentPos);
-        pose.rotation    = QMul(pose.rotation, parentRot);
-
-        ac->mAnimPoseA[childIndex] = pose; 
-        AnimationController_RecurseBoneMatrices(ac, childIndex, pose.translation, pose.rotation);
     }
 }
 
@@ -112,9 +123,7 @@ void AnimationController_UploadBoneMatrices(AnimationController* ac)
 
 void AnimationController_UploadPose(AnimationController* ac, const Pose pose[MaxBonePoses])
 {
-    int rootIdx = ac->mRootNodeIndex;
-    const Pose* root = pose + rootIdx;
-    AnimationController_RecurseBoneMatrices(ac, rootIdx, root->translation, root->rotation);
+    AnimationController_RecurseBoneMatrices(ac);
     AnimationController_UploadBoneMatrices(ac);
 }
 
@@ -137,20 +146,15 @@ void AnimationController_SampleAnimationPose(const AnimationController* ac, Pose
     for (int c = 0; c < animation->numChannels; c++)
     {
         const AAnimChannel* channel = &animation->channels[c];
-        const int targetNode = channel->targetNode;
-        if (targetNode == 255)
-        {
-            AX_LOG("non joint");
-            continue;
-        }
         const AAnimSampler* sampler = &animation->samplers[channel->sampler];
+        const int targetNode = channel->targetNode;
     
-        // morph targets are not supported
-        if (channel->targetPath == AAnimTargetPath_Weight || 
-            sampler->interpolation == ASamplerInterpolation_CubicSpline || 
-            sampler->inputType  != AComponentType_FLOAT || 
-            sampler->outputType != AComponentType_FLOAT)
-            continue;
+        // // morph targets are not supported
+        // if (channel->targetPath == AAnimTargetPath_Weight || 
+        //     sampler->interpolation == ASamplerInterpolation_CubicSpline || 
+        //     sampler->inputType  != AComponentType_FLOAT || 
+        //     sampler->outputType != AComponentType_FLOAT)
+        //     continue;
     
         // binary search
         int beginIdx = 0;
@@ -177,7 +181,6 @@ void AnimationController_SampleAnimationPose(const AnimationController* ac, Pose
         if (reverse) XSWAP(float, beginTime, endTime);
         
         const float t = Clamp01f32(beginTime / endTime);
-        Quaternion rot;
 
         switch (channel->targetPath)
         {
@@ -185,8 +188,7 @@ void AnimationController_SampleAnimationPose(const AnimationController* ac, Pose
                 pose[targetNode].translation = VecLerp(begin, end, t);
                 break;
             case AAnimTargetPath_Rotation:
-                rot = QNLerp(begin, end, t);
-                pose[targetNode].rotation = QNorm(rot); // QNormEst maybe
+                pose[targetNode].rotation = QNLerp(begin, end, t); // QNormEst maybe
                 break;
         };
     }
@@ -240,8 +242,7 @@ void AnimatedCharacter_UploadPoseUpperLower(AnimatedCharacter* ac, const Pose lo
     CopyPoses(ac->controller.mAnimPoseA, lowerPose, ac->lowerBodyIdxStart, ac->controller.mNumJoints - ac->lowerBodyIdxStart);
     CopyPoses(ac->controller.mAnimPoseA, uperPose, 0, ac->lowerBodyIdxStart);
 
-    const Pose* root = ac->controller.mAnimPoseA + ac->controller.mRootNodeIndex;
-    AnimationController_RecurseBoneMatrices(&ac->controller, ac->controller.mRootNodeIndex, root->translation, root->rotation);
+    AnimationController_RecurseBoneMatrices(&ac->controller);
     AnimationController_UploadBoneMatrices(&ac->controller);
 }
 

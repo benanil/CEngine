@@ -239,49 +239,6 @@ int FloatToString(char* ptr, float f, int afterpoint)
     return numChars + IntToString(ptr + numChars, (int)(fPart * power), afterpoint-(iPart != 0));
 }
 
-bool aStartsWith(const char* curr, const char* str)
-{
-    while (IsWhitespace(*curr))
-        (curr)++;
-
-    if (*curr != *str)
-        return false;
-
-    while (*str && *curr == *str)
-        curr++, str++;
-
-    return *str == 0;
-}
-
-// fill [begin, end) with val
-void aFill(void* begin, void* end, const void* val, size_t elemSize)
-{
-    unsigned char* p = (unsigned char*)begin;
-    unsigned char* e = (unsigned char*)end;
-    while (p < e) {
-        SmallMemCpy(p, val, elemSize);
-        p += elemSize;
-    }
-}
-
-// fill n elements with val
-void aFillN(void* arr, const void* val, int n, size_t elemSize) 
-{
-    unsigned char* p = (unsigned char*)arr;
-    for (int i = 0; i < n; i++, p += elemSize)
-        SmallMemCpy(p, val, elemSize);
-}
-
-
-// check if arr contains val
-bool aContains(const void* arr, const void* val, int n, size_t elemSize, int (*cmp)(const void*, const void*)) 
-{
-    const unsigned char* p = (const unsigned char*)arr;
-    for (int i = 0; i < n; i++, p += elemSize)
-        if (cmp(p, val) == 0) return true;
-    return false;
-}
-
 // return index if found, -1 otherwise
 int aIndexOf(const void* arr, const void* val, int n, size_t elemSize, int (*cmp)(const void*, const void*))
 {

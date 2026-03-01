@@ -271,29 +271,6 @@ purefn float VECTORCALL IntersectAABB(Vec4x32f origin, Vec4x32f invDir, Vec4x32f
         return tnear; else return 1e30f;
 }
 
-// calculate popcount of 4 32 bit integer concurrently
-purefn Vec4x32u VECTORCALL PopCount32_128(Vec4x32u x)
-{
-    Vec4x32u y;
-    y = VeciAnd(VeciSrl32(x, 1), VeciSet1(0x55555555));
-    x = VeciSub(x, y);
-    y = VeciAnd(VeciSrl32(x, 2), VeciSet1(0x33333333));
-    x = VeciAdd(VeciAnd(x, VeciSet1(0x33333333)), y);  
-    x = VeciAnd(VeciAdd(x, VeciSrl32(x, 4)), VeciSet1(0x0F0F0F0F));
-    return VeciSrl32(VeciMul(x, VeciSet1(0x01010101)),  24);
-}
-
-// LeadingZeroCount of 4 32 bit integer concurrently
-purefn Vec4x32u VECTORCALL LeadingZeroCount32_128(Vec4x32u x)
-{
-    x = VeciOr(x, VeciSrl32(x, 1));
-    x = VeciOr(x, VeciSrl32(x, 2));
-    x = VeciOr(x, VeciSrl32(x, 4));
-    x = VeciOr(x, VeciSrl32(x, 8));
-    x = VeciOr(x, VeciSrl32(x, 16)); 
-    return VeciSub(VeciSet1(sizeof(uint32_t) * 8), PopCount32_128(x));
-}   
-
 purefn float Sqrf(float x) {
     return x * x;
 }
@@ -342,6 +319,12 @@ purefn bool IsNanf(float f) {
     uint32_t exponent = (intValue >> 23) & 0xFF;
     uint32_t fraction = intValue & 0x7FFFFF;
     return (exponent == 0xFF) && (fraction != 0);
+}
+
+purefn int64_t Int64MulDiv(int64_t value, int64_t numer, int64_t denom) {
+    int64_t q = value / denom;
+    int64_t r = value % denom;
+    return q * numer + r * numer / denom;
 }
 
 purefn float FModf(float x, float y) 

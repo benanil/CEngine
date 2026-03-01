@@ -7,7 +7,8 @@ set BIN2C=Shaders\bin2c.exe
 set SHADER_DIR=Shaders
 set SPV_DIR=Shaders\spv
 set MSL_DIR=Shaders\msl
-set SHADERS=SkinnedFrag:fragment SkinnedVert:vertex
+rem set SHADERS=SkinnedFrag:fragment SkinnedVert:vertex
+set SHADERS=SkinnedFrag:ps SkinnedVert:vs
 
 if not exist %SPV_DIR% mkdir %SPV_DIR%
 if not exist %MSL_DIR% mkdir %MSL_DIR%
@@ -15,18 +16,19 @@ if not exist %MSL_DIR% mkdir %MSL_DIR%
 echo [1/2] Compiling shaders...
 for %%S in (%SHADERS%) do (
     for /f "tokens=1,2 delims=:" %%A in ("%%S") do (
-        %CROSS% %SHADER_DIR%\%%A.hlsl -s HLSL -d SPIRV -t %%B -o %SHADER_DIR%\%%A.spv
+        rem %CROSS% %SHADER_DIR%\%%A.hlsl -s HLSL -d SPIRV -t %%B -o %SHADER_DIR%\%%A.spv
+        Shaders\dxc.exe -spirv -T %%B_6_6 -E main -enable-16bit-types %SHADER_DIR%\%%A.hlsl -Fo %SHADER_DIR%\%%A.spv
         if !ERRORLEVEL! neq 0 (
             echo [ERROR] Failed to compile %%A.hlsl to SPIR-V
             pause
             exit /b !ERRORLEVEL!
         )
-        %CROSS% %SHADER_DIR%\%%A.hlsl -s HLSL -d MSL -t %%B -o %MSL_DIR%\%%A.msl
-        if !ERRORLEVEL! neq 0 (
-            echo [ERROR] Failed to compile %%A.hlsl to MSL
-            pause
-            exit /b !ERRORLEVEL!
-        )
+        rem %CROSS% %SHADER_DIR%\%%A.hlsl -s HLSL -d MSL -t %%B -o %MSL_DIR%\%%A.msl
+        rem if !ERRORLEVEL! neq 0 (
+        rem     echo [ERROR] Failed to compile %%A.hlsl to MSL
+        rem     pause
+        rem     exit /b !ERRORLEVEL!
+        rem )
     )
 )
 

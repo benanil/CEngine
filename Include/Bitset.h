@@ -2,291 +2,115 @@
 #define BITSET_H
 
 #include <stdint.h>
-#include <stdbool.h>
 #include "Common.h"
-
-/*********************************************************************************
-    *    Description:                                                               *
-    *        128-bit bitset implementation for C                                    *
-    *        Supports all standard bitset operations with efficient implementation  *
-    *        Generated for high-performance bit manipulation                        *
-    *********************************************************************************/
 
 #if defined(__cplusplus)
 extern "C" {
 #endif
 
-typedef struct BitSet128_ {
-    uint64_t bits[2];  // 128 bits = 2 * 64-bit words
-} BitSet128;
-
-
-typedef struct Bitset_ {
-    uint64_t* bits; 
-    int size;
-    int numBits;
-} Bitset;
-
-
-// Construction and initialization
-static inline BitSet128 BitSet128_Zero(void) {
-    return (BitSet128){{0, 0}};
+static inline void BitsetSet(uint64_t* bits, int idx) {
+    bits[idx >> 6] |= (1ull << (idx & 63));
 }
 
-static inline BitSet128 BitSet128_Ones(void) {
-    return (BitSet128){{UINT64_MAX, UINT64_MAX}};
-}
-
-static inline BitSet128 BitSet128_FromU64(uint64_t low, uint64_t high) {
-    return (BitSet128){{low, high}};
-}
-
-// Bit manipulation
-static inline void BitSet128_Set(BitSet128* bs, unsigned int index) {
-    if (index < 128) {
-        unsigned int word = index >> 6;  // index / 64
-        unsigned int bit = index & 63;   // index % 64
-        bs->bits[word] |= (1ULL << bit);
-    }
-}
-
-static inline void BitSet128_Clear(BitSet128* bs, unsigned int index) {
-    if (index < 128) {
-        unsigned int word = index >> 6;
-        unsigned int bit = index & 63;
-        bs->bits[word] &= ~(1ULL << bit);
-    }
-}
-
-static inline void BitSet128_Flip(BitSet128* bs, unsigned int index) {
-    if (index < 128) {
-        unsigned int word = index >> 6;
-        unsigned int bit = index & 63;
-        bs->bits[word] ^= (1ULL << bit);
-    }
-}
-
-static inline bool BitSet128_Test(const BitSet128* bs, unsigned int index) {
-    if (index >= 128) return false;
-    unsigned int word = index >> 6;
-    unsigned int bit = index & 63;
-    return (bs->bits[word] & (1ULL << bit)) != 0;
-}
-
-// Set operations
-static inline BitSet128 BitSet128_And(BitSet128 a, BitSet128 b) {
-    return (BitSet128){{a.bits[0] & b.bits[0], a.bits[1] & b.bits[1]}};
-}
-
-static inline BitSet128 BitSet128_AndNot(BitSet128 a, BitSet128 b) {
-    return (BitSet128){{a.bits[0] & ~b.bits[0], a.bits[1] & ~b.bits[1]}};
-}
-
-static inline BitSet128 BitSet128_Or(BitSet128 a, BitSet128 b) {
-    return (BitSet128){{a.bits[0] | b.bits[0], a.bits[1] | b.bits[1]}};
-}
-
-static inline BitSet128 BitSet128_Xor(BitSet128 a, BitSet128 b) {
-    return (BitSet128){{a.bits[0] ^ b.bits[0], a.bits[1] ^ b.bits[1]}};
-}
-
-static inline BitSet128 BitSet128_Not(BitSet128 a) {
-    return (BitSet128){{~a.bits[0], ~a.bits[1]}};
-}
-
-// In-place operations
-static inline void BitSet128_AndEq(BitSet128* a, BitSet128 b) {
-    a->bits[0] &= b.bits[0];
-    a->bits[1] &= b.bits[1];
-}
-
-static inline void BitSet128_OrEq(BitSet128* a, BitSet128 b) {
-    a->bits[0] |= b.bits[0];
-    a->bits[1] |= b.bits[1];
-}
-
-static inline void BitSet128_XorEq(BitSet128* a, BitSet128 b) {
-    a->bits[0] ^= b.bits[0];
-    a->bits[1] ^= b.bits[1];
-}
-
-static inline void BitSet128_NotEq(BitSet128* a) {
-    a->bits[0] = ~a->bits[0];
-    a->bits[1] = ~a->bits[1];
-}
-
-// Comparison
-static inline bool BitSet128_Equal(BitSet128 a, BitSet128 b) {
-    return a.bits[0] == b.bits[0] && a.bits[1] == b.bits[1];
-}
-
-static inline bool BitSet128_IsZero(BitSet128 a) {
-    return (a.bits[0] | a.bits[1]) == 0;
-}
-
-static inline bool BitSet128_IsOnes(BitSet128 a) {
-    return a.bits[0] == UINT64_MAX && a.bits[1] == UINT64_MAX;
-}
-
-// Utility functions
-static inline unsigned int BitSet128_PopCount(BitSet128 a) {
-    // Count set bits using builtin popcount if available
-    return PopCount64(a.bits[0]) + PopCount64(a.bits[1]);
-}
-
-static inline unsigned int BitSet128_FindFirstSet(BitSet128 a) {
-    if (a.bits[0] != 0) {
-        return LeadingZeroCount64(a.bits[0]);
-    } else if (a.bits[1] != 0) {
-        return 64 + LeadingZeroCount64(a.bits[1]);
-    }
-    return 128; // No bits set
-}
-
-// Shift operations
-static inline BitSet128 BitSet128_ShiftLeft(BitSet128 a, unsigned int shift) {
-    if (shift >= 128) {
-        return BitSet128_Zero();
-    } else if (shift >= 64) {
-        BitSet128 result = {{0, a.bits[0] << (shift - 64)}};
-        return result;
-    } else if (shift == 0) {
-        return a;
-    } else {
-        uint64_t high = (a.bits[1] << shift) | (a.bits[0] >> (64 - shift));
-        uint64_t low = a.bits[0] << shift;
-        BitSet128 result = {{low, high}};
-        return result;
-    }
-}
-
-static inline BitSet128 BitSet128_ShiftRight(BitSet128 a, unsigned int shift) {
-    if (shift >= 128) {
-        return BitSet128_Zero();
-    } else if (shift >= 64) {
-        BitSet128 result = {{a.bits[1] >> (shift - 64), 0}};
-        return result;
-    } else if (shift == 0) {
-        return a;
-    } else {
-        uint64_t low = (a.bits[0] >> shift) | (a.bits[1] << (64 - shift));
-        uint64_t high = a.bits[1] >> shift;
-        BitSet128 result = {{low, high}};
-        return result;
-    }
-}
-
-// Range operations
-static inline void BitSet128_SetRange(BitSet128* bs, unsigned int start, unsigned int end) {
-    for (unsigned int i = start; i <= end && i < 128; i++) {
-        BitSet128_Set(bs, i);
-    }
-}
-
-static inline void BitSet128_ClearRange(BitSet128* bs, unsigned int start, unsigned int end) {
-    for (unsigned int i = start; i <= end && i < 128; i++) {
-        BitSet128_Clear(bs, i);
-    }
-}
-
-static inline void BitSet128_FlipRange(BitSet128* bs, unsigned int start, unsigned int end) {
-    for (unsigned int i = start; i <= end && i < 128; i++) {
-        BitSet128_Flip(bs, i);
-    }
-}
-
-// Conversion functions
-static inline void BitSet128_ToString(BitSet128 a, char* buffer) {
-    // Buffer should be at least 129 bytes (128 bits + null terminator)
-    for (int i = 127; i >= 0; i--) {
-        buffer[127 - i] = BitSet128_Test(&a, i) ? '1' : '0';
-    }
-    buffer[128] = '\0';
-}
-
-static inline BitSet128 BitSet128_FromString(const char* str) {
-    BitSet128 result = BitSet128_Zero();
-    int len = StringLength(str);
-    for (int i = 0; i < len && i < 128; i++) {
-        if (str[len - 1 - i] == '1') {
-            BitSet128_Set(&result, i);
-        }
-    }
-    return result;
-}
-
-static inline void Bitset_Set(Bitset* bitset, int idx) {
-    int arrIndex = idx / 64;
-    int bitIndex = idx & 63;
-    bitset->bits[arrIndex] |= 1ull << bitIndex;
+static inline bool BitsetGet(const uint64_t* bits, int idx) {
+    return (bits[idx >> 6] >> (idx & 63)) & 1ull;
 }
    
-static inline bool Bitset_Get(Bitset* bitset, int idx) {
-    int arrIndex = idx / 64;
-    int bitIndex = idx & 63;
-    return (bitset->bits[arrIndex] >> bitIndex) & 1;
+static inline void BitsetReset(uint64_t* bits, int idx) {
+    bits[idx / 64] &= ~(1ull << (idx & 63));
 }
-   
-static inline void Bitset_Reset(Bitset* bitset, int idx) {
-    int arrIndex = idx / 64;
-    int bitIndex = idx & 63;
-    bitset->bits[arrIndex] &= ~(1ul << bitIndex);
+
+#define BIT_OPERATION(_Name, _Operation, _256Operation)                             \
+static inline void _Name##256(uint64_t* res, const uint64_t* a, const uint64_t* b)  \
+{                                                                                   \
+    Vec4x32u a0 = VeciLoad(a), a1 = VeciLoad(a + 2);                                \
+    Vec4x32u b0 = VeciLoad(b), b1 = VeciLoad(b + 2);                                \
+    VecStoreU(res,     _Operation(a0, b0));                                         \
+    VecStoreU(res + 2, _Operation(a1, b1));                                         \
+}                                                                                   \
+static inline void _Name##512(uint64_t* res, const uint64_t* a, const uint64_t* b)  \
+{                                                                                   \
+    if (SIMD_NUM_BYTES == 32) {                                                     \
+        Vec8x32i a0 = VecLoadI256(a),     b0 = VecLoadI256(b);                      \
+        Vec8x32i a1 = VecLoadI256(a + 4), b1 = VecLoadI256(b + 4);                  \
+        VecStoreI256(res,     _256Operation(a0, b0));                               \
+        VecStoreI256(res + 4, _256Operation(a1, b1));                               \
+    } else {                                                                        \
+        _Name##256(res,     a,     b);                                              \
+        _Name##256(res + 4, a + 4, b + 4);                                          \
+    }                                                                               \
+}                                                                                   \
+static inline void _Name##1024(uint64_t* res, const uint64_t* a, const uint64_t* b) \
+{                                                                                   \
+    Name##512(res, a, b);                                                           \
+    Name##512(res + 8, a + 8, b + 8);                                               \
 }
-   
-static inline void Bitset_Flip(Bitset* bitset) {
-    for (int i = 0; i < bitset->size - 1; ++i)
-        bitset->bits[i] = ~bitset->bits[i];
-    int lastBits = (1ul << (bitset->numBits & 63)) - 1;
-    bitset->bits[bitset->size - 1] ^= lastBits;
-}
-   
-static inline bool Bitset_All(Bitset* bitset) {
-    for (int i = 0; i < bitset->size - 1; ++i)
-        if (bitset->bits[i] != ~0ul) return false;
-    int lastBits = (1ul << (bitset->numBits & 63)) - 1;
-    return (bitset->bits[bitset->size - 1] & lastBits) == lastBits;
-}
-   
-static inline bool Bitset_One(Bitset* bitset) {
-    for (int i = 0; i < bitset->size; ++i)
-        if (bitset->bits[i] > 0ul) return true;
-    return false;
-}
-   
-static inline int Bitset_Count(Bitset* bitset)
+
+// Below macro defines the functions:
+// AndNot256, AndNot512, AndNot1024
+// Or256    , Or512    , Or1024 
+// And256   , And512   , And1024 
+// Xor256   , Xor512   , Xor1024 
+BIT_OPERATION(AndNot, VeciAndNot, VeciAndNot256)
+BIT_OPERATION(Or,     VeciOr,     VeciOr256)
+BIT_OPERATION(And,    VeciAnd,    VeciAnd256)
+BIT_OPERATION(Xor,    VeciXor,    VeciXor256)
+
+
+#if defined(__aarch64__) || defined(__arm__)
+    #define HSum32_128(x) vaddvq_u32(x)
+#else
+purefn uint32_t VECTORCALL HSum32_128(Vec4x32u x)
 {
-    int sum = 0;
-    for (int i = 0; i < bitset->size - 1; ++i)
-        sum += PopCount64(bitset->bits[i]);
-    
-    int lastBits = bitset->numBits & 63;
-    for (int i = 0; i < lastBits; ++i)
-        sum += ((1ul << i) & bitset->bits[bitset->size - 1]) > 0;
-    return sum;
+    Vec4x32u hi64  = _mm_shuffle_epi32(x,     _MM_SHUFFLE(1, 0, 3, 2));
+    Vec4x32u sum64 = _mm_add_epi32(x, hi64);
+    Vec4x32u hi32  = _mm_shuffle_epi32(sum64, _MM_SHUFFLE(2, 3, 0, 1));
+    return _mm_cvtsi128_si32(_mm_add_epi32(sum64, hi32));
 }
-  
-static inline void Bitset_AndNot(Bitset* res, Bitset* bitset, Bitset* other)
+#endif
+
+#ifdef AX_SUPPORT_AVX2
+purefn uint32_t VECTORCALL HSum32_256(Vec8x32u v)
 {
-    for (int i = 0; i < bitset->size; i++)
-        res->bits[i] = bitset->bits[i] & ~other->bits[i];
+    return _mm256_cvtsi256_si32(v) + _mm256_extract_epi64(v, 1) + _mm256_extract_epi64(v, 2) + _mm256_extract_epi64(v, 3);
+}
+#endif
+
+purefn Vec4x32u VECTORCALL PopCount128(Vec4x32u x)
+{
+    Vec4x32u y;
+    y = VeciAnd(VeciSrl32(x, 1), VeciSet1(0x55555555));
+    x = VeciSub(x, y);
+    y = VeciAnd(VeciSrl32(x, 2), VeciSet1(0x33333333));
+    x = VeciAdd(VeciAnd(x, VeciSet1(0x33333333)), y);
+    x = VeciAnd(VeciAdd(x, VeciSrl32(x, 4)), VeciSet1(0x0F0F0F0F));
+    return VeciSrl32(VeciMul(x, VeciSet1(0x01010101)), 24);
 }
 
-static inline void Bitset_And(Bitset* res, Bitset* bitset, Bitset* other)
+// from Faster Population Counts Using AVX2 Instructions resource paper
+purefn uint32_t VECTORCALL PopCount256(const uint64_t* ptr)
 {
-    for (int i = 0; i < bitset->size; i++)
-        res->bits[i] = bitset->bits[i] & other->bits[i];
+    #ifdef AX_SUPPORT_AVX2
+    const __m256i lookup = _mm256_setr_epi8(0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4, 0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4);
+    const __m256i low_mask = _mm256_set1_epi8(0x0f);
+    __m256i v       = _mm256_stream_load_si256((__m256i const *)ptr);
+    __m256i lo      = _mm256_and_si256(v, low_mask);
+    __m256i hi      = _mm256_and_si256(_mm256_srli_epi32(v, 4), low_mask);
+    __m256i popcnt1 = _mm256_shuffle_epi8(lookup, lo);
+    __m256i popcnt2 = _mm256_shuffle_epi8(lookup, hi);
+    __m256i total   = _mm256_add_epi8(popcnt1, popcnt2);	
+    return HSum32_256(_mm256_sad_epu8(total, _mm256_setzero_si256()));
+    #else
+    return HSum32_128(PopCount128(VeciLoad(ptr))) + HSum32_128(PopCount128(VeciLoad(ptr + 2)));
+    #endif
 }
 
-static inline void Bitset_Or(Bitset* res, Bitset* bitset, Bitset* other)
-{
-    for (int i = 0; i < bitset->size; i++)
-        res->bits[i] = bitset->bits[i] | other->bits[i];
+purefn uint32_t VECTORCALL PopCount512(const uint64_t* ptr) {
+    return PopCount256(ptr) + PopCount256(ptr + 4);
 }
 
-static inline void Bitset_Xor(Bitset* res, Bitset* bitset, Bitset* other)
-{
-    for (int i = 0; i < bitset->size; i++)
-        res->bits[i] = bitset->bits[i] ^ other->bits[i];
+purefn uint32_t VECTORCALL PopCount1024(const uint64_t* ptr) {
+    return PopCount512(ptr) + PopCount512(ptr + 8);
 }
 
 #if defined(__cplusplus)

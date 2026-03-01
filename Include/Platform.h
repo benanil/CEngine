@@ -39,17 +39,16 @@ typedef struct PlatformContext_
     float SecondsSinceLastClick;
     double DeltaTime;
     
-    uint64_t LastClickTime;
-    uint64_t CPUFrequency;
-    uint64_t StartupTime;
-    uint64_t LastTime;
+    int64_t LastClickTime;
+    int64_t CPUFrequency;
+    int64_t StartupTime;
+    int64_t LastTime;
+    int64_t FrameCount;
     
     // Window state
     int WindowWidth, WindowHeight;
     int WindowPosX, WindowPosY;
     
-    // Keyboard state
-    Bitset DownKeys, LastKeys, PressedKeys, ReleasedKeys;
     int MouseDown, MouseLast, MousePressed, MouseReleased;
     bool DoubleClicked;
     
@@ -74,27 +73,37 @@ void   SetMouseWindowPos(float x, float y);
 float  GetMouseWheelDelta();
 bool   GetDoubleClicked();
 bool   AnyMouseKeyDown();
-bool   GetMouseDown(uint32_t button);
-bool   GetMouseReleased(uint32_t button);
-bool   GetMousePressed(uint32_t button);
+bool   GetMouseDown(int button);
+bool   GetMouseReleased(int button);
+bool   GetMousePressed(int button);
+
 
 // Keyboard
 bool   AnyKeyDown();
-bool   GetKeyDown(char c);
-bool   GetKeyReleased(char c);
-bool   GetKeyPressed(char c);
+bool   GetKeyDown(int c);
+bool   GetKeyReleased(int c);
+bool   GetKeyPressed(int c);
+
+void   SetPressedAndReleasedKeys();
+void   RecordLastKeys();
 
 // forward declare, for sdl dialog file callback
 typedef void (SDLCALL *CP_DialogFileCallback)(void *userdata, const char * const *filelist, int filter);
 
-// window
+// Window
 void   wSetWindowSize(int width, int height);
 void   wSetWindowPosition(int x, int y);
-bool   wOpenFolder(const char* folderPath, CP_DialogFileCallback callback);
-bool   wOpenFile(const char* filePath, CP_DialogFileCallback callback);
+void   wOpenFolder(const char* folderPath, CP_DialogFileCallback callback);
+void   wOpenFile(const char* filePath, CP_DialogFileCallback callback);
 
+// Time
 double GetDeltaTime();
 double TimeSinceStartup();
+
+// time is nanoseconds
+double TimeToSeconds(int64_t time);
+int64_t TimeToMilliseconds(int64_t time);
+int64_t TimeToMicroseconds(int64_t time);
 
 void   PlatformInit();
 void   PlatformUpdate();

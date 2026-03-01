@@ -108,14 +108,6 @@ extern "C" {
     #define purefn static inline __attribute__((always_inline))
 #endif
 
-#if defined(AX_SUPPORT_AVX2)
-typedef __m256  Vector8x32f;
-typedef __m256i Vector8x32i;
-typedef __m256i Vector8x32u;
-#define VecLoadI256(ptr)     _mm256_stream_load_si256(ptr)
-#define VecStoreI256(ptr, x) _mm256_stream_si256(ptr, x)
-#define VecSetBytes256(x)    _mm256_set1_epi8(x)
-#endif
 
 #if defined(AX_SUPPORT_SSE) && !defined(AX_ARM)
 /*//////////////////////////////////////////////////////////////////////////*/
@@ -139,7 +131,7 @@ typedef __m128i Vec4x32u;
 #define VecLoadA(x)              _mm_load_ps(x)
 #define VecLoadI(x)              _mm_load_si128(x)
 #define VecLoadIU(x)             _mm_loadu_si128(x)
-#define VecStoreU(ptr, x)        _mm_storeu_si128(ptr, x)
+#define VecStoreU(ptr, x)        _mm_storeu_si128((Vec4x32u*)ptr, x)
                                 
 #define VecStore(ptr, x)         _mm_storeu_ps(ptr, x)
 #define VecStoreA(ptr, x)        _mm_store_ps(ptr, x)
@@ -289,7 +281,7 @@ typedef __m128i Vec4x32u;
                                     
 #define VeciAdd(a, b)               _mm_add_epi32(a, b)
 #define VeciSub(a, b)               _mm_sub_epi32(a, b)
-#define VeciMul(a, b)               _mm_mul_epi32(a, b)
+#define VeciMul(a, b)               _mm_mullo_epi32(a, b)
                                     
 #define VeciNot(a)                  _mm_andnot_si128(a, _mm_set1_epi32(0xFFFFFFFF))
 #define VeciAnd(a, b)               _mm_and_si128(a, b)
@@ -474,8 +466,8 @@ typedef uint32x4_t Vec4x32u;
 #define VeciSub(a, b)               vsubq_u32(a, b)
 #define VeciMul(a, b)               vmulq_u32(a, b)
 
-#define VecBitcastU32(x)               vreinterpretq_f32_u32(x)
-#define VeciBitcastF32(x)              vreinterpretq_u32_f32(x)
+#define VecBitcastU32(x)            vreinterpretq_f32_u32(x)
+#define VeciBitcastF32(x)           vreinterpretq_u32_f32(x)
 // Swizzling Masking
 #define VecSelect1000  ARMCreateVecI(0xFFFFFFFFu, 0x00000000u, 0x00000000u, 0x00000000u)
 #define VecSelect1100  ARMCreateVecI(0xFFFFFFFFu, 0xFFFFFFFFu, 0x00000000u, 0x00000000u)
@@ -674,6 +666,62 @@ purefn int ARMVecMovemask(Vec4x32i v) {
 }
 
 #endif
+
+#if defined(AX_SUPPORT_AVX2)
+typedef __m256  Vec8x32f;
+typedef __m256i Vec8x32i;
+typedef __m256i Vec8x32u;
+
+#define VecLoadI256(ptr)     _mm256_stream_load_si256((__m256i const *)ptr)
+#define VecStoreI256(ptr, x) _mm256_stream_si256((__m256i *)ptr, x)
+
+#define VeciAndNot256(x, y)  _mm256_andnot_si256(x, y)
+#define VeciAnd256(x, y)     _mm256_and_si256(x, y)
+#define VeciOr256(x, y)      _mm256_or_si256(x, y)
+#define VeciXor256(x, y)     _mm256_xor_si256(x, y)
+
+#define VeciSrl256(a, b)     _mm256_srlv_epi32(a, b)    /*  a >> b */
+#define VeciSll256(a, b)     _mm256_sllv_epi32(a, b)    /*  a << b */
+#define VeciSrl32_256(a, b)  _mm256_srli_epi32(a, b)    /*  a >> b */
+#define VeciSll32_256(a, b)  _mm256_slli_epi32(a, b)
+#define VeciSet1_256(x)      _mm256_set1_epi32(x)
+
+#define VeciAdd256(a, b)     _mm256_add_epi32(a, b)
+#define VeciSub256(a, b)     _mm256_sub_epi32(a, b)
+#define VeciMul256(a, b)     _mm256_mullo_epi32(a, b)
+#define VeciDiv256(a, b)     _mm256_div_epi32(a, b)
+
+#define VecSetBytes256(x)    _mm256_set1_epi8(x)
+
+#else
+typedef struct Vec8x32f_ { Vec4x32f lo, hi; } Vec8x32f;
+typedef struct Vec8x32i_ { Vec4x32i lo, hi; } Vec8x32i;
+typedef struct Vec8x32u_ { Vec4x32u lo, hi; } Vec8x32u;
+
+#define VeciAndNot256(x, y)   (Vec8x32u){ VeciAndNot((x).lo, (y).lo), VeciAndNot((x).hi, (y).hi) }
+#define VeciAnd256(x, y)      (Vec8x32u){ VeciAnd   ((x).lo, (y).lo), VeciAnd   ((x).hi, (y).hi) }
+#define VeciOr256(x, y)       (Vec8x32u){ VeciOr    ((x).lo, (y).lo), VeciOr    ((x).hi, (y).hi) }
+#define VeciXor256(x, y)      (Vec8x32u){ VeciXor   ((x).lo, (y).lo), VeciXor   ((x).hi, (y).hi) }
+#define VeciSrl256(a, b)      (Vec8x32u){ VeciSrl   ((a).lo, (b).lo), VeciSrl   ((a).hi, (b).hi) }
+#define VeciSll256(a, b)      (Vec8x32u){ VeciSll   ((a).lo, (b).lo), VeciSll   ((a).hi, (b).hi) }
+#define VeciSrl32_256(a, b)   (Vec8x32u){ VeciSrl32 ((a).lo, (b).lo), VeciSrl32 ((a).hi, (b).hi) }
+#define VeciSll32_256(a, b)   (Vec8x32u){ VeciSll32 ((a).lo, (b).lo), VeciSll32 ((a).hi, (b).hi) }
+#define VeciAdd256(a, b)      (Vec8x32u){ VeciAdd   ((a).lo, (b).lo), VeciAdd   ((a).hi, (b).hi) }
+#define VeciSub256(a, b)      (Vec8x32u){ VeciSub   ((a).lo, (b).lo), VeciSub   ((a).hi, (b).hi) }
+#define VeciMul256(a, b)      (Vec8x32u){ VeciMul   ((a).lo, (b).lo), VeciMul   ((a).hi, (b).hi) }
+#define VeciDiv256(a, b)      (Vec8x32u){ VeciDiv   ((a).lo, (b).lo), VeciDiv   ((a).hi, (b).hi) }
+
+#define VecLoadI256(ptr)      (Vec8x32u){ VecLoadI(ptr)    , VecLoadI((char*)(ptr) + 16)     }
+#define VecStoreI256(ptr, x)  (Vec8x32u){ VecStoreI(ptr, x), VecStoreI((char*)(ptr) + 16, x) }
+#define VeciSet1_256(x)       (Vec8x32u){ VeciSet1(x)      , VeciSet1(x)                     }
+#define VecSetBytes256(x)     (Vec8x32u){ VecSetBytes(x)   , VecSetBytes(x)                  }
+
+#endif
+
+// shared 
+purefn Vec4x32f VECTORCALL Vec3DistV    (Vec4x32f a, Vec4x32f b) { Vec4x32f x = VecSub(a, b); return Vec3LenV(x);  } 
+purefn float    VECTORCALL Vec3DistfV   (Vec4x32f a, Vec4x32f b) { Vec4x32f x = VecSub(a, b); return Vec3LenfV(x); } 
+purefn float    VECTORCALL Vec3DistSqrfV(Vec4x32f a, Vec4x32f b) { Vec4x32f x = VecSub(a, b); return Vec3DotfV(x, x); } 
 
 
 #if defined(AX_SUPPORT_SSE) || defined(AX_ARM)

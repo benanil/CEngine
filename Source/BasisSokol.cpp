@@ -44,8 +44,8 @@ static SDL_GPUTextureFormat BasisToSDLPixelFormat(basist::transcoder_texture_for
         case basist::transcoder_texture_format::cTFBC5_RG:    return SDL_GPU_TEXTUREFORMAT_BC5_RG_UNORM;
         case basist::transcoder_texture_format::cTFBC7_RGBA:  return SDL_GPU_TEXTUREFORMAT_BC7_RGBA_UNORM;
 
-        case basist::transcoder_texture_format::cTFETC2_RGBA: return SDL_GPU_TEXTUREFORMAT_ETC2_RGB8A8_UNORM;
-        case basist::transcoder_texture_format::cTFETC1_RGB:  return SDL_GPU_TEXTUREFORMAT_ETC2_RGB8_UNORM;
+        // case basist::transcoder_texture_format::cTFETC2_RGBA: return SDL_GPU_TEXTUREFORMAT_ETC2_RGB8A8_UNORM;
+        // case basist::transcoder_texture_format::cTFETC1_RGB:  return SDL_GPU_TEXTUREFORMAT_ETC2_RGB8_UNORM;
         
         case basist::transcoder_texture_format::cTFRGBA32:    return SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
 

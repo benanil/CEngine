@@ -393,6 +393,11 @@ purefn int64_t Absu64(int64_t x) {
     return (x ^ temp) - temp;
 }
 
+purefn int64_t Absi64(int64_t x) {
+    int64_t temp = x >> 63;
+    return (x ^ temp) - temp;
+}
+
 purefn int Absi32(int x) {
     int temp = x >> 31;
     return (x ^ temp) - temp;

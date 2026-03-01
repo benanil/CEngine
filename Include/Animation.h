@@ -198,7 +198,9 @@ bool AnimatedCharacter_Trigger(AnimatedCharacter* ac, int animIndex, float trigg
 // upload to gpu. internal usage only for now
 void AnimationController_UploadPose(AnimationController* ac, const Pose nodeMatrices[MaxBonePoses]);
     
-void AnimationController_RecurseBoneMatrices(AnimationController* ac, int nodeIndex, Vec4x32f position, Vec4x32f rotation); // Matrix4 parentMatrix);
+// void AnimationController_RecurseBoneMatrices(AnimationController* ac); 
+
+void AnimationController_RecurseBoneMatrices(AnimationController* ac);
 
 // use negative normTime to sample animation reversely
 void AnimationController_SampleAnimationPose(const AnimationController* ac, Pose pose[MaxBonePoses], int animIdx, float normTime);

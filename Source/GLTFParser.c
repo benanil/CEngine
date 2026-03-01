@@ -1,33 +1,20 @@
 
-/*****************************************************************
-    *                                                                *
-    *    Purpose:                                                    *
-    *        Simple and efficient parser for GLTF format             *
-    *        allows you to import 3d mesh, material and scene        *
-    *    Author:                                                     *
-    *        Anilcan Gulkaya 2023 anilcangulkaya7@gmail.com          *
-    *    Restrictions:                                               *
-    *        No extension support.                                   *
-    *    License:                                                    *
-    *        No License whatsoever do whatever you want.             *
-    *                                                                *
-    *****************************************************************/
+
+#define SJ_IMPL
+
 #include <SDL3/SDL_log.h>
-#include "Include/Common.h"
+
+#include <Extern/sj.h>
+
+#include "Include/GLTFParser.h"
 #include "Include/FileSystem.h"
 #include "Include/Algorithm.h"
-#include "Include/GLTFParser.h"
 #include "Include/Memory.h"
+#include "Include/Platform.h"
 
 #include "Math/Matrix.h"
 #include "Math/Color.h"
 
-#include "Extern/dynarray.h"
-
-#define __private static
-#define __public 
-
-STATIC_ASSERT(sizeof(ASampler) == sizeof(int), "size must be 4");
 
 typedef struct GLTFAccessor_
 {
@@ -47,210 +34,13 @@ typedef struct GLTFBufferView_
     int byteStride;
 } GLTFBufferView;
 
-inline const char* SkipUntill(const char* curr, char character)
+typedef struct GLTFParseContext_
 {
-    AX_NO_UNROLL while (*curr != character) curr++;
-    return curr;
-}
-
-inline const char* SkipAfter(const char* curr, char character)
-{
-    AX_NO_UNROLL while (*curr++ != character);
-    return curr;
-}
-
-__private const char* CopyStringInQuotes(char** str, const char** curr, FixedPow2Allocator* stringAllocator)
-{
-    // skip until first quote
-    while (**curr && **curr != '"')
-        (*curr)++;
-
-    if (**curr != '"')
-        return NULL; // no opening quote
-
-    (*curr)++; // skip opening "
-
-    // find closing quote
-    const char* quote = *curr;
-    while (*quote && *quote != '"')
-        quote++;
-
-    int len = (int)(quote - *curr);
-
-    char* alloc = (char*)FixedPow2Allocator_Allocate(stringAllocator, len + 1); // +1 for null
-    *str = alloc;
-
-    SmallMemCpy(alloc, *curr, len);
-    alloc[len] = '\0';
-
-    *curr = (*quote == '"') ? quote + 1 : quote; // skip closing quote if found
-    return *curr;
-}
-
-__private const char* GetStringInQuotes(char* str, const char* curr)
-{
-    ++curr; // skip quote " 
-    AX_NO_UNROLL while (*curr != '"') *str++ = *curr++;
-    *str = '\0'; // null terminate
-    return ++curr;
-}
-
-__private const char* HashStringInQuotes(uint64_t* hash, const char* curr)
-{
-    ++curr; // skip quote " 
-    uint64_t h = 0ull;
-    uint64_t shift = 0;
-    AX_NO_UNROLL while (*curr != '"' && shift < 64) { h |= (uint64_t)(*curr++) << shift; shift += 8; }
-    *hash = h;
-    return ++curr;
-}
-
-// most 8 characters
-__private uint64_t AHashString8(const char* curr)
-{
-    uint64_t h = 0ull;
-    uint64_t shift = 0;
-
-    AX_NO_UNROLL
-    while (*curr != '\0') 
-    { 
-        h |= (uint64_t)(*curr++) << shift; 
-        shift += 8; 
-    }
-    return h;
-}
-
-__private const char* SkipToNextNode(const char* curr, char open, char close)
-{
-    int balance = 1;
-    // skip to first open brackets
-    AX_NO_UNROLL while (*curr++ != open);
-
-    while (*curr && balance > 0)
-    {
-        balance += *curr == open;
-        balance -= *curr++ == close;
-    }
-    return curr;
-}
-
-__private const char* ParseFloat16(const char* curr, short* flt)
-{
-    float fp32;
-    curr = ParseFloat(curr, &fp32);
-    *flt = (short)(fp32 * 400.0f);
-    return curr;
-}
-
-__private const char* ParseAccessors(const char* curr, GLTFAccessor** accessorArray)
-{
-    GLTFAccessor accessor={0};
-    curr += 10; // skip accessors"
-    // read each accessor
-    while (true)
-    {
-        // search for name
-        while (*curr && *curr != '"')
-        {
-            if (*curr == '}') // next accessor
-            {
-                dynarray_push(*accessorArray, accessor);
-                // accessorArray.Add(accessor);
-                MemsetZero(&accessor, sizeof(GLTFAccessor));
-            }
-
-            if (*curr == ']') // end all accessors
-                return ++curr;
-            curr++;
-        }
-        ASSERTR(*curr != '\0' && "parsing accessors failed probably you forget to close brackets!", return (const char*)AError_CloseBrackets);
-        curr++;
-        if      (StrCMP16(curr, "bufferView"))    curr = ParsePositiveNumber(curr, &accessor.bufferView);
-        else if (StrCMP16(curr, "byteOffset"))    curr = ParsePositiveNumber(curr, &accessor.byteOffset);
-        else if (StrCMP16(curr, "componentType")) curr = ParsePositiveNumber(curr, &accessor.componentType), accessor.componentType -= 0x1400; // GL_BYTE 
-        else if (StrCMP16(curr, "count"))         curr = ParsePositiveNumber(curr, &accessor.count);
-        else if (StrCMP16(curr, "name"))
-        {
-            curr += sizeof("name'"); // we don't need accessor's name
-            int numQuotes = 0;
-            // skip two quotes
-            while (numQuotes < 2)
-                numQuotes += *curr++ == '"';
-        }
-        else if (StrCMP16(curr, "type"))
-        {
-            curr += sizeof("type'"); // skip type
-            curr = SkipUntill(curr, '"');
-            uint64_t hash;
-            curr = HashStringInQuotes(&hash, curr);
-            
-            if (hash == AHashString8("SCALAR"))    { accessor.type = 1;  continue; } 
-            else if (hash == AHashString8("VEC2")) { accessor.type = 2;  continue; } 
-            else if (hash == AHashString8("VEC3")) { accessor.type = 3;  continue; } 
-            else if (hash == AHashString8("VEC4")) { accessor.type = 4;  continue; } 
-            else if (hash == AHashString8("MAT4")) { accessor.type = 16; continue; } 
-            else ASSERT(0 && "Unknown accessor type");
-        }
-        else if (StrCMP16(curr, "min"))        curr = SkipToNextNode(curr, '[', ']'); // skip min and max
-        else if (StrCMP16(curr, "max"))        curr = SkipToNextNode(curr, '[', ']');
-        else if (StrCMP16(curr, "normalized")) curr = SkipAfter(curr, '"');
-        else
-        {
-            ASSERT(0 && "unknown accessor var");
-            return (const char*)AError_UNKNOWN_ACCESSOR_VAR;
-        }
-    }
-    return (const char*)AError_UNKNOWN_ACCESSOR_VAR;
-}
-
-inline const char* ParsePositiveNumberSkip1(const char* ptr, int* result)
-{
-    return ParsePositiveNumber(++ptr, result);
-}
-
-__private const char* ParseBufferViews(const char* curr, GLTFBufferView** bufferViews)
-{
-    GLTFBufferView bufferView={0};
-    curr += sizeof("bufferViews'");
-
-    // read each buffer view
-    while (true)
-    {
-        // search for name
-        while (*curr && *curr != '"')
-        {
-            if (*curr == '}') // next buffer view
-            {
-                // bufferViews.Add(bufferView);
-                dynarray_push(*bufferViews, bufferView);
-                MemsetZero(&bufferView, sizeof(GLTFBufferView));
-            }
-            if (*curr++ == ']') return curr; // end all buffer views
-        }
-        ASSERTR(*curr != '0' && "buffer view parse failed, probably you forgot to close brackets!", return (const char*)AError_CloseBrackets);
-
-        uint64_t hash;
-        curr = HashStringInQuotes(&hash, curr);
-
-        if      (hash == AHashString8("buffer"))   { curr = ParsePositiveNumberSkip1(curr, &bufferView.buffer); continue;  } 
-        else if (hash == AHashString8("byteOffs")) { curr = ParsePositiveNumberSkip1(curr, &bufferView.byteOffset); continue;  } 
-        else if (hash == AHashString8("byteLeng")) { curr = ParsePositiveNumberSkip1(curr, &bufferView.byteLength); continue;  } 
-        else if (hash == AHashString8("byteStri")) { curr = ParsePositiveNumberSkip1(curr, &bufferView.byteStride); continue;  } 
-        else if (hash == AHashString8("target"))   { curr = ParsePositiveNumberSkip1(curr, &bufferView.target); continue; } 
-        else if (hash == AHashString8("name")) 
-        {
-            int numQuote = 0;
-            while (numQuote < 2)
-                numQuote += *curr++ == '"';
-            continue;
-        }
-        else {
-            ASSERT(0 && "UNKNOWN buffer view value!");
-            return (const char*)AError_UNKNOWN_BUFFER_VIEW_VAR;
-        }
-    }
-    return (const char*)AError_UNKNOWN_BUFFER_VIEW_VAR;
-}
+    FixedPow2Allocator* allocator;
+    const char* path;
+    sj_Reader* sj;
+    float scale;
+} GLTFParseContext;
 
 static void DecodeBase64(char *dst, const char *src, size_t src_length)
 {
@@ -274,542 +64,6 @@ static void DecodeBase64(char *dst, const char *src, size_t src_length)
     }
 }
 
-__private const char* ParseBuffers(const char* curr, const char* path, GLTFBuffer** bufferArray)
-{
-    GLTFBuffer buffer={0};
-    curr += sizeof("buffers'"); // skip buffers"
-
-    char binFilePath[512]={0};
-    char* endOfWorkDir = binFilePath;
-    int binPathlen = StringLengthSafe(path, sizeof(binFilePath));
-    SmallMemCpy(binFilePath, path, binPathlen);
-    endOfWorkDir = binFilePath + binPathlen;
-    
-    // remove bla.gltf
-    while (binPathlen > 0 && binFilePath[binPathlen - 1] != '/' && binFilePath[binPathlen - 1] != '\\')
-        binFilePath[--binPathlen] = '\0', endOfWorkDir--;
-
-    // read each buffer
-    while (true)
-    {
-        // search for name
-        while (*curr && *curr != '"')
-        {
-            if (*curr == '}') // next buffer
-            {
-                dynarray_push(*bufferArray, buffer);
-                MemsetZero(&buffer, sizeof(GLTFBuffer));
-                MemsetZero(endOfWorkDir, sizeof(binFilePath) - (size_t)(endOfWorkDir - binFilePath));
-            }
-
-            if (*curr++ == ']') return curr; // end all buffers
-        }
-        ASSERTR(*curr && "parsing buffers failed, probably you forgot to close braces", return (const char*)AError_CloseBrackets);
-        curr++;
-        if (StrCMP16(curr, "uri")) // is uri
-        {
-            curr += sizeof("uri'"); // skip uri": 
-            while (*curr != '"') curr++;
-            if (StrCMP16(curr, "\"data:"))
-            {
-                curr = SkipAfter(curr, ',');
-                uint64_t base64Size = 0;
-                while (curr[base64Size] != '\"') {
-                    base64Size++;
-                }
-                buffer.uri = AllocateTLSFGlobal(base64Size);
-                DecodeBase64((char*)buffer.uri, curr, base64Size);
-                curr += base64Size + 1;
-            }
-            else
-            {
-                curr = GetStringInQuotes(endOfWorkDir, curr);
-                buffer.uri = ReadAllFileAlloc(binFilePath);
-                ASSERT(buffer.uri && "uri is not exist");
-                if (!buffer.uri) return (const char*)AError_BIN_NOT_EXIST;
-            }
-        }
-        else if (StrCMP16(curr, "byteLength"))
-        {
-            curr = ParsePositiveNumberSkip1(curr, &buffer.byteLength);
-        }
-        else
-        {
-            ASSERT(0 && "Unknown buffer variable! byteLength or uri excepted.");
-            return (const char*)AError_BUFFER_PARSE_FAIL;
-        }
-    }
-}
-
-// write paths to path buffer, buffer is seperated by null terminators
-__private const char* ParseImages(const char* curr, const char* path, AImage** images, FixedPow2Allocator* allocator)
-{
-    curr = SkipUntill(curr, '[');
-    curr++;
-    
-    int pathLen = StringLength(path);
-    while (path[pathLen-1] != '/') pathLen--;
-
-    AImage image={0};
-    // read each buffer
-    while (true)
-    {
-        // search for name
-        while (*curr && *curr != '"')
-            if (*curr++ == ']')
-                return curr; // end all images
-        
-        ASSERTR(*curr != '\0' && "parse images failed probably you forgot to close brackets", return (const char*)AError_CloseBrackets);
-
-        curr++;
-        bool isUri = StrCMP16(curr, "uri");
-
-        // mimeType and name is not supported
-        if (isUri)
-        {
-            curr += 4;
-            curr = SkipAfter(curr, '"');
-            int uriSize = 0;
-            while (curr[uriSize] != '"') uriSize++;
-
-            image.path = (char*)FixedPow2Allocator_Allocate(allocator, uriSize + pathLen + 16);
-            SmallMemCpy(image.path, path, pathLen);
-            SmallMemCpy(image.path + pathLen, curr, uriSize);
-            image.path[uriSize + pathLen] = '\0';
-            curr += uriSize;
-            dynarray_push(*images, image);
-        }
-    }
-    return NULL;
-}
-
-__private const char* ParseTextures(const char* curr, ATexture** textures, FixedPow2Allocator* allocator)
-{
-    curr += sizeof("textures'");
-    ATexture texture={0};
-
-    // read each buffer
-    while (true)
-    {
-        // search for name
-        while (*curr && *curr != '"')
-        {
-            if (*curr == '}') // next buffer view
-            {
-                dynarray_push(*textures, texture);
-                MemsetZero(&texture, sizeof(ATexture));
-            }
-
-            if (*curr == ']') // end all buffer views
-                return ++curr;
-            curr++;
-        }
-        ASSERTR(*curr != '\0' && "parse images failed probably you forgot to close brackets", return (const char*)AError_CloseBrackets);
-        curr++;
-        if (StrCMP16(curr, "sampler")) 
-        {
-            curr = ParsePositiveNumberSkip1(curr, &texture.sampler);
-        }
-        else if (StrCMP16(curr, "source"))
-        {
-            curr = ParsePositiveNumberSkip1(curr, &texture.source);
-        }
-        else if (StrCMP16(curr, "name"))
-        {
-            curr += 5;
-            curr = CopyStringInQuotes(&texture.name, &curr, allocator);
-        }
-        else {
-            ASSERT(0 && "Unknown buffer variable! sampler, source or name excepted.");
-            return (const char*)AError_UNKNOWN_TEXTURE_VAR;
-        }
-    }
-}
-
-__private const char* ParseAttributes(const char* curr, APrimitive* primitive)
-{
-    curr += sizeof("attributes'");
-
-    while (true)
-    {
-        while (*curr != '"')
-            if (*curr++ == '}') return curr;
-        
-        curr++; // skip "
-        unsigned maskBefore = primitive->attributes;
-        if      (StrCMP16(curr, "POSITION"))   { primitive->attributes |= AAttribType_POSITION;   curr += sizeof("POSITION'");   }
-        else if (StrCMP16(curr, "NORMAL"))     { primitive->attributes |= AAttribType_NORMAL;     curr += sizeof("NORMAL'");     }
-        else if (StrCMP16(curr, "TEXCOORD_0")) { primitive->attributes |= AAttribType_TEXCOORD_0; curr += sizeof("TEXCOORD_0'"); }
-        else if (StrCMP16(curr, "TANGENT"))    { primitive->attributes |= AAttribType_TANGENT;    curr += sizeof("TANGENT'");    }
-        else if (StrCMP16(curr, "TEXCOORD_1")) { primitive->attributes |= AAttribType_TEXCOORD_1; curr += sizeof("TEXCOORD_1'"); }
-        else if (StrCMP16(curr, "JOINTS_0"))   { primitive->attributes |= AAttribType_JOINTS;     curr += sizeof("JOINTS_0'");   }
-        else if (StrCMP16(curr, "WEIGHTS_0"))  { primitive->attributes |= AAttribType_WEIGHTS;    curr += sizeof("WEIGHTS_0'");  }
-        else if (StrCMP16(curr, "TEXCOORD_"))  { curr += sizeof("TEXCOORD_X'"); continue; } // < NO more than two texture coords
-        else { ASSERT(0 && "attribute variable unknown!"); return (const char*)AError_UNKNOWN_ATTRIB; }
-
-        // using bitmask will help us to order attributes correctly(sort) Position, Normal, TexCoord
-        unsigned newIndex = TrailingZeroCount32(maskBefore ^ primitive->attributes);
-        int attribOffset = 0;
-        curr = ParsePositiveNumber(curr, &attribOffset);
-        primitive->vertexAttribs[newIndex] = (void*)(uint64_t)attribOffset;
-    }
-}
-
-__private const char* ParseMeshes(const char* curr, AMesh** meshes, FixedPow2Allocator* allocator)
-{
-    char text[64]={0};
-    curr += sizeof("meshes'"); // skip meshes" 
-    AMesh mesh={0};
-    MemsetZero(&mesh, sizeof(AMesh));
-
-    // parse all meshes
-    while (true)
-    {
-        while (*curr != '"')
-        {
-            if (*curr == '}') 
-            {
-                dynarray_push(*meshes, mesh);
-                MemsetZero(&mesh, sizeof(AMesh));
-            }
-            if (*curr++ == ']') return curr; // end of meshes
-        }
-        curr = GetStringInQuotes(text, curr);
-        
-        if (StrCMP16(text, "name")) {
-            curr = CopyStringInQuotes(&mesh.name, &curr, allocator); 
-            continue; 
-        }
-        else if (StrCMP16(text, "weights"))
-        {
-            curr = SkipAfter(curr, '[');
-            const char* begin = curr;
-            
-            int numWeights = 1;
-            while (*curr != ']')
-                numWeights += *curr++ == ',';
-            
-            curr = begin;
-            mesh.numMorphWeights = numWeights;
-            mesh.morphWeights = AllocateTLSFGlobal(numWeights * sizeof(float));
-            for (int i = 0; i < numWeights; i++)
-            {
-                curr = ParseFloat(curr, &mesh.morphWeights[i]);
-            }
-            curr = SkipAfter(curr, ']');
-            continue;
-        }
-        else if (StrCMP16(text, "primitives"))
-        {
-            mesh.primitives = dynarray_create(APrimitive);
-        }
-        else
-        { 
-            ASSERT(0 && "only primitives, name and weights allowed"); 
-            return (const char*)AError_UNKNOWN_MESH_VAR; 
-        }
-
-        APrimitive primitive={0};  
-        primitive.material = -1;
-        // parse primitives
-        while (true)
-        {
-            while (*curr != '"')
-            {
-                if (*curr == '}')
-                {
-                    dynarray_push(mesh.primitives, primitive);
-                    MemsetZero(&primitive, sizeof(APrimitive));
-                    mesh.numPrimitives++;
-                    primitive.material = -1;
-                }
-
-                if (*curr++ == ']') goto end_primitives; // this is end of primitive list
-            }
-            curr++;
-            
-            if      (StrCMP16(curr, "attributes")) { curr = ParseAttributes(curr, &primitive); }
-            else if (StrCMP16(curr, "indices"))    { curr = ParsePositiveNumberU16(curr, &primitive.indiceIndex); }
-            else if (StrCMP16(curr, "mode"))       { curr = ParsePositiveNumberU16(curr, &primitive.mode       ); }
-            else if (StrCMP16(curr, "material"))   { curr = ParsePositiveNumberU16(curr, &primitive.material   ); }
-            else if (StrCMP16(curr, "targets"))    
-            {
-                curr += sizeof("targets'");
-                AMorphTarget morphTarget = {0};
-                while (*curr)
-                {
-                    while (*curr != '"')
-                    {
-                        if (*curr == '}') {
-                            dynarray_push(primitive.morphTargets, morphTarget);
-                            MemsetZero(&morphTarget, sizeof(AMorphTarget));
-                        }
-                        if (*curr++ == ']') goto end_morphs;
-                    }
-                    curr++; // skip "
-
-                    unsigned maskBefore = morphTarget.attributes;
-                    if      (StrCMP16(curr, "POSITION"))   { morphTarget.attributes |= AAttribType_POSITION;   curr += sizeof("POSITION'"); }
-                    else if (StrCMP16(curr, "TEXCOORD_0")) { morphTarget.attributes |= AAttribType_TEXCOORD_0; curr += sizeof("TEXCOORD_0'"); }
-                    else if (StrCMP16(curr, "NORMAL"))     { morphTarget.attributes |= AAttribType_NORMAL;     curr += sizeof("NORMAL'"); }
-                    else if (StrCMP16(curr, "TANGENT"))    { morphTarget.attributes |= AAttribType_TANGENT;    curr += sizeof("TANGENT'"); }
-                    else if (StrCMP16(curr, "TEXCOORD_"))  { curr = SkipAfter(curr, '"'); continue; } // < NO more than one texture coords
-                    else { ASSERT(0 && "attribute variable unknown!"); return (const char*)AError_UNKNOWN_ATTRIB; }
-                 
-                    // detect changed attribute.
-                    unsigned addedAttribute = TrailingZeroCount32(maskBefore ^ morphTarget.attributes);
-                    curr = ParsePositiveNumberU16(curr, morphTarget.indexes + addedAttribute);
-                }
-                end_morphs:{}
-            }
-            else { ASSERT(0); return (const char*)AError_UNKNOWN_MESH_PRIMITIVE_VAR; }
-        }
-        end_primitives:{}
-        curr++; // skip 
-    }
-    return NULL;
-}
-
-typedef struct IntPtrPair_ { int numElements, *ptr; } IntPtrPair;
-
-static IntPtrPair ParseIntArray(const char** cr, FixedPow2Allocator* allocator)
-{
-    const char* curr = *cr;
-    IntPtrPair result={0};
-    // find how many elements there are:
-    while (!IsNumber(*curr)) curr++;
-    
-    const char* begin = curr;
-    result.numElements = 1;
-    while (true)
-    {
-        result.numElements += *curr == ',';
-        if (*curr++ == ']') break;
-    }
-    curr = begin;
-    result.ptr = (int*)FixedPow2Allocator_AllocateUninitialized(allocator, result.numElements * sizeof(int));
-    result.numElements = 0;
-    
-    while (*curr != ']')
-    {
-        if (IsNumber(*curr))
-        {
-            curr = ParsePositiveNumber(curr, result.ptr + result.numElements);
-            result.numElements++;
-        }
-        else
-            curr++;
-    }
-    *cr = curr;
-    return result;
-}
-
-__private const char* ParseNodes(const char* curr, ANode** nodes, float scale, FixedPow2Allocator* allocator)
-{
-    curr = SkipUntill(curr, '[');
-    curr++;
-    ANode node = {0};
-    node.rotation[3] = 1.0f;
-    node.scale[0] = node.scale[1] = node.scale[2] = scale; 
-    node.index = -1;
-    
-    // read each node
-    while (true)
-    {
-        // search for name
-        while (*curr && *curr != '"')
-        {
-            if (*curr == '}')
-            {
-                dynarray_push(*nodes, node);
-                MemsetZero(&node, sizeof(ANode));
-                node.rotation[3] = 1.0f;
-                node.scale[0] = node.scale[1] = node.scale[2] = scale;
-                node.index = -1;
-            }
-            if (*curr++ == ']') return curr; // end all nodes
-        }
-        ASSERTR(*curr != '\0' && "parsing nodes not possible, probably forgot to close brackets!", return (const char*)AError_CloseBrackets);
-        curr++; // skips the "
-        
-        // mesh, name, children, matrix, translation, rotation, scale, skin
-        if      (StrCMP16(curr, "mesh"))   { node.type = 0; curr = ParsePositiveNumber(curr, &node.index); continue; } // don't want to skip ] that's why continue
-        else if (StrCMP16(curr, "camera")) { node.type = 1; curr = ParsePositiveNumber(curr, &node.index); continue; } // don't want to skip ] that's why continue
-        else if (StrCMP16(curr, "children"))
-        {
-            IntPtrPair result = ParseIntArray(&curr, allocator);
-            node.numChildren = result.numElements;
-            node.children = result.ptr;
-        }
-        else if (StrCMP16(curr, "matrix"))
-        {
-            Matrix4 m;
-            float* matrix = &m.m[0][0];
-            
-            for (int i = 0; i < 16; i++)
-                curr = ParseFloat(curr, &matrix[i]);
-            
-            m = Matrix4Transpose(m);
-            node.translation[0] = matrix[12];
-            node.translation[1] = matrix[13];
-            node.translation[2] = matrix[14];
-            QuaternionFromMatrix(node.rotation, matrix, 4);
-
-            Vec4x32f v = VecMulf(ExtractScaleV(m), scale);
-            Vec3Store(node.scale, v);
-        }
-        else if (StrCMP16(curr, "translation"))
-        {
-            curr = ParseFloat(curr, &node.translation[0]);
-            curr = ParseFloat(curr, &node.translation[1]);
-            curr = ParseFloat(curr, &node.translation[2]);
-        }
-        else if (StrCMP16(curr, "rotation"))
-        {
-            curr = ParseFloat(curr, &node.rotation[0]);
-            curr = ParseFloat(curr, &node.rotation[1]);
-            curr = ParseFloat(curr, &node.rotation[2]);
-            curr = ParseFloat(curr, &node.rotation[3]);
-        }
-        else if (StrCMP16(curr, "scale"))
-        {
-            curr = ParseFloat(curr, &node.scale[0]); node.scale[0] *= scale;
-            curr = ParseFloat(curr, &node.scale[1]); node.scale[1] *= scale;
-            curr = ParseFloat(curr, &node.scale[2]); node.scale[2] *= scale;
-        }
-        else if (StrCMP16(curr, "name"))
-        {
-            curr += 5;
-            curr = CopyStringInQuotes(&node.name, &curr, allocator);
-            continue; 
-        }
-        else if (StrCMP16(curr, "skin"))
-        {
-            curr = ParsePositiveNumber(curr, &node.skin);
-            continue; // continue because we don't want to skip ] and it is not exist
-        }
-        else
-        {
-            ASSERT(0 && "Unknown node variable");
-            return (const char*)AError_UNKNOWN_NODE_VAR;
-        }
-
-        curr = SkipUntill(curr, ']');
-        curr++;
-    }
-    return NULL;
-}
-
-__private const char* ParseCameras(const char* curr, ACamera** cameras, FixedPow2Allocator* allocator)
-{
-    curr += sizeof("camera'");
-    char text[64]={0};
-    ACamera camera={0};
-    // parse all meshes
-    while (true)
-    {
-        while (*curr != '"')
-        {
-            if (*curr == '}') 
-            {
-                dynarray_push(*cameras, camera);
-                MemsetZero(&camera, sizeof(ACamera));
-            }
-            if (*curr++ == ']') return curr; // end of cameras
-        }
-        curr = GetStringInQuotes(text, curr);
-        
-        if (StrCMP16(text, "name")) {
-            curr = CopyStringInQuotes(&camera.name, &curr, allocator); 
-            continue; 
-        }
-        if (StrCMP16(text, "type")) {
-            curr = SkipUntill(curr, '"');
-            curr++;
-            camera.type = *curr == 'p'; // 0 orthographic 1 perspective 
-            curr = SkipUntill(curr, '"');
-            curr++;
-            continue; 
-        }
-        else if (!StrCMP16(text, "orthographic") && !StrCMP16(text, "perspective")) { 
-            ASSERT(0 && "unknown camera variable"); 
-            return (const char*)AError_UNKNOWN_CAMERA_VAR; 
-        }
-
-        while (true)
-        {
-            while (*curr != '"')
-                if (*curr++ == '}')  goto end_properties; // this is end of camera variables
-            
-            curr++;
-            if      (StrCMP16(curr, "zfar"))        { curr = ParseFloat(curr, &camera.zFar        ); }
-            else if (StrCMP16(curr, "znear"))       { curr = ParseFloat(curr, &camera.zNear       ); }
-            else if (StrCMP16(curr, "aspectRatio")) { curr = ParseFloat(curr, &camera.aspectRatio ); }
-            else if (StrCMP16(curr, "yfov"))        { curr = ParseFloat(curr, &camera.yFov        ); }
-            else if (StrCMP16(curr, "xmag"))        { curr = ParseFloat(curr, &camera.xmag        ); }
-            else if (StrCMP16(curr, "ymag"))        { curr = ParseFloat(curr, &camera.ymag        ); }
-            else { ASSERT(0); return (const char*)AError_UNKNOWN_CAMERA_VAR; }
-        }
-        end_properties:{}
-    }
-    return NULL;
-}
-
-__private const char* ParseScenes(const char* curr, AScene** scenes, FixedPow2Allocator* allocator)
-{
-    curr = SkipUntill(curr, '[');
-    curr++;
-    AScene scene={0};
-    // read each node
-    while (true)
-    {
-        // search for name
-        while (*curr && *curr != '"')
-        {
-            if (*curr == '}')
-            {
-                dynarray_push(*scenes, scene);
-                MemsetZero(&scene, sizeof(AScene));
-            }
-            if (*curr++ == ']') return curr; // end all scenes
-        }
-        ASSERTR(*curr != '\0' && "parsing scenes not possible, probably forgot to close brackets!", return (const char*)AError_CloseBrackets);
-        curr++; // skips the "
-        
-        if (StrCMP16(curr, "nodes"))
-        {
-            // find how many childs there are:
-            while (!IsNumber(*curr)) curr++;
-            const char* begin = curr;
-            scene.numNodes = 1;
-            while (true)
-            {
-                scene.numNodes += *curr == ',';
-                if (*curr++ == ']') break;
-            }
-            curr = begin;
-            scene.nodes = (int*)FixedPow2Allocator_AllocateUninitialized(allocator, scene.numNodes * sizeof(int)); 
-            scene.numNodes = 0;
-
-            while (*curr != ']')
-            {
-                if (IsNumber(*curr))
-                {
-                    curr = ParsePositiveNumber(curr, scene.nodes + scene.numNodes);
-                    scene.numNodes++;
-                }
-                else
-                    curr++;
-            }   
-            curr++;// skip ]
-        }
-        else if (StrCMP16(curr, "name"))
-        {
-            curr += 5;
-            curr = CopyStringInQuotes(&scene.name, &curr, allocator);
-        }
-    } 
-}
 inline char OGLWrapToWrap(int wrap)
 {
     switch (wrap)
@@ -822,557 +76,884 @@ inline char OGLWrapToWrap(int wrap)
     }
 }
 
-__private const char* ParseSamplers(const char* curr, ASampler** samplers)
+const char* ParseFloat16(const char* curr, short* flt)
 {
-    curr = SkipUntill(curr, '[');
-    curr++;
-    
-    ASampler sampler={0};
-    
-    // read each node
-    while (true)
+    float fp32;
+    curr = ParseFloat(curr, &fp32);
+    *flt = (short)(fp32 * 400.0f);
+    return curr;
+}
+
+inline const char* SkipAfter(const char* curr, char character)
+{
+    AX_NO_UNROLL while (*curr++ != character);
+    return curr;
+}
+
+static const char* GetStringInQuotes(char* str, const char* curr)
+{
+    ++curr; // skip quote " 
+    AX_NO_UNROLL while (*curr != '"') *str++ = *curr++;
+    *str = '\0'; // null terminate
+    return ++curr;
+}
+
+static char* CopySJString(sj_Value key, FixedPow2Allocator* allocator)
+{
+    size_t len = (size_t)(key.end - key.start);
+    char* res = (char*)FixedPow2Allocator_Allocate(allocator, len + 1);
+    MemCpy(res, key.start, len);
+    return res;
+}
+
+static int sjCountArray(sj_Reader sj, sj_Value array)
+{
+    int balance = 1, numElements = 0;
+    sj.cur = array.start + 1;
+
+    if (sj.cur >= sj.end)
+        return 0;
+
+    while (balance >= 1 && sj.cur < sj.end)
     {
-        // search for name
-        while (*curr && *curr != '"')
-        {
-            if (*curr == '}')
-            {
-                dynarray_push(*samplers, sampler);
-                MemsetZero(&sampler, sizeof(ASampler));
-            }
-            if (*curr++ == ']') return curr; // end all nodes
+        char c = *sj.cur;
+        if (balance == 1 && c == ',')
+            numElements++;
+        balance += c == '{' || c == '[';
+        balance -= c == '}' || c == ']';
+        sj.cur++;
+    }
+    
+    return numElements + 1;
+}
+
+static void ParseIntArray(const char* curr, const char* end, int* numbers)
+{
+    int index = 0;
+    while (*curr != ']' && curr < end)
+    {
+        if (IsNumber(*curr)) {
+            curr = ParsePositiveNumber(curr, &numbers[index++]);
         }
-        ASSERTR(*curr != '\0' && "parsing nodes not possible, probably forgot to close brackets!", return (const char*)AError_CloseBrackets);
-        curr++; // skips the "
+        else  {
+            curr++;
+        }
+    } 
+}
 
-        int minFilter, magFilter, wrapS, wrapT;
+static int* ParseIntArrayAlloc(GLTFParseContext* ctx, sj_Value sjArr, int* outCount)
+{
+    int numElements = sjCountArray(*ctx->sj, sjArr);
+    int* res = (int*)FixedPow2Allocator_AllocateUninitialized(ctx->allocator, numElements * sizeof(int)); 
+    ParseIntArray(sjArr.start + 1, ctx->sj->end, res);
+    *outCount = numElements;
+    return res;
+}
 
-        if      (StrCMP16(curr, "magFilter")) curr = ParsePositiveNumber(curr, &magFilter), sampler.magFilter = (char)(magFilter - 0x2600); // GL_NEAREST 9728, GL_LINEAR 0x2601 9729
-        else if (StrCMP16(curr, "minFilter")) curr = ParsePositiveNumber(curr, &minFilter), sampler.minFilter = (char)(minFilter - 0x2600); // GL_NEAREST 9728, GL_LINEAR 0x2601 9729
-        else if (StrCMP16(curr, "wrapS"))     curr = ParsePositiveNumber(curr, &wrapS), sampler.wrapS = (char)OGLWrapToWrap(wrapS);
-        else if (StrCMP16(curr, "wrapT"))     curr = ParsePositiveNumber(curr, &wrapT), sampler.wrapT = (char)OGLWrapToWrap(wrapT);
-        else { ASSERT(0 && "parse samplers failed!"); return (const char*)AError_UNKNOWN; }
+typedef void (*ParseArrayObjFn)(sj_Value sjAccessorObj, void* element, GLTFParseContext* ctx);
+
+static void* ParseArray(sj_Value sjArray, size_t stride, int* numElementsOut, 
+                        GLTFParseContext* ctx, ParseArrayObjFn objFn)
+{
+    int numElements = sjCountArray(*ctx->sj, sjArray);
+    char* arrayOfElements = (char*)FixedPow2Allocator_Allocate(ctx->allocator, stride * numElements);
+    sj_Value val;
+    int index = 0;
+    while (sj_iter_array(ctx->sj, sjArray, &val))
+    {
+        objFn(val, arrayOfElements + (index * stride), ctx);
+        index++;
+    }
+    if (numElementsOut) *numElementsOut = index;
+    return arrayOfElements;
+}
+
+static void ParseAccessorObj(sj_Value sjAccessorObj, void* element, GLTFParseContext* ctx)
+{
+    GLTFAccessor* accessor = (GLTFAccessor*)element;
+    sj_Value key, val;
+
+    while (sj_iter_object(ctx->sj, sjAccessorObj, &key, &val))
+    {
+        char beforeChar = *key.end; *key.end = 0; char* name = key.start;
+        
+        if      (StrCMP16(key.start, "bufferView"))    ParsePositiveNumber(val.start, &accessor->bufferView);
+        else if (StrCMP16(key.start, "byteOffset"))    ParsePositiveNumber(val.start, &accessor->byteOffset);
+        else if (StrCMP16(key.start, "count"))         ParsePositiveNumber(val.start, &accessor->count);
+        else if (StrCMP16(key.start, "componentType"))
+        {
+            ParsePositiveNumber(val.start, &accessor->componentType);
+            accessor->componentType -= 0x1400; // GL_BYTE ;
+        }
+        else if (StrCMP16(key.start, "type"))
+        {
+            switch (*(val.end-1))
+            {
+                case '2': accessor->type = 2; break;  // VEC2   
+                case '3': accessor->type = 3; break;  // VEC3   
+                case '4': accessor->type = val.end[-2] == 'T' ? 16 : 4; break;  // VEC4 or mat4
+                case 'R': accessor->type = 1; break;  // SCALAR 
+            }
+        }
+        else AX_LOG("unknown accessor parameter: %s ", key.start);
+        *key.end = beforeChar;
     }
 }
 
-__private const char* ParseMaterialTexture(const char* curr, GLTFTexture* texture)
+static void ParseSceneObj(sj_Value sjSceneObj, void* element, GLTFParseContext* ctx)
 {
-    curr = SkipUntill(curr, '{');
-    curr++;
-    texture->strength = MakeFloat16(1.0f);
-    while (true)
-    {
-        while (*curr && *curr != '"')
-        {
-            if (*curr++ == '}') return curr;
-        }
-        ASSERTR(*curr && "parsing material failed, probably forgot to close brackets", return (const char*)AError_CloseBrackets);
-        curr++;
+    AScene* scene = (AScene*)element;
+    sj_Value key, val;
 
-        if (StrCMP16(curr, "scale")) {
-            curr = ParseFloat16(curr, &texture->scale);
+    while (sj_iter_object(ctx->sj, sjSceneObj, &key, &val))
+    {
+        char beforeChar = *key.end; *key.end = 0; char* name = key.start;
+
+        if (StrCMP16(key.start, "nodes"))
+        {
+            scene->nodes = ParseIntArrayAlloc(ctx, val, &scene->numNodes);
         }
-        else if (StrCMP16(curr, "index")) {
-            curr = ParsePositiveNumberU16(curr, &texture->index);
-            ASSERT(texture->index < UINT16_MAX-1);
+        else if (StrCMP16(key.start, "name"))
+        {
+            scene->name = CopySJString(val, ctx->allocator);
         }
-        else if (StrCMP16(curr, "texCoord")) {
-            curr = ParsePositiveNumberU16(curr, &texture->texCoord);
+        else AX_LOG("unknown: %s ", key.start);
+    
+        *key.end = beforeChar;
+    }
+}
+
+static void ParseBufferViewObj(sj_Value sjBufferObj, void* element, GLTFParseContext* ctx)
+{
+    GLTFBufferView* bufferView = (GLTFBufferView*)element;
+    sj_Value key, val;
+    while (sj_iter_object(ctx->sj, sjBufferObj, &key, &val))
+    {
+        char beforeChar = *key.end; *key.end = 0; char* name = key.start;
+
+        if      (StrCMP16(key.start, "buffer"))     { ParsePositiveNumber(val.start, &bufferView->buffer); }
+        else if (StrCMP16(key.start, "byteOffset")) { ParsePositiveNumber(val.start, &bufferView->byteOffset); }
+        else if (StrCMP16(key.start, "byteLength")) { ParsePositiveNumber(val.start, &bufferView->byteLength); }
+        else if (StrCMP16(key.start, "byteStride")) { ParsePositiveNumber(val.start, &bufferView->byteStride); }
+        else if (StrCMP16(key.start, "target"))     { ParsePositiveNumber(val.start, &bufferView->target);     }
+        else AX_LOG("unknown: %s ", key.start);
+        
+        *key.end = beforeChar;
+    }
+}
+
+static void ParseBuffersObj(sj_Value sjBufferObj, void* element, GLTFParseContext* ctx)
+{
+    char binFilePath[512]={0};
+    char* endOfWorkDir = binFilePath;
+    int binPathlen = StringLengthSafe(ctx->path, sizeof(binFilePath));
+    SmallMemCpy(binFilePath, ctx->path, binPathlen);
+    endOfWorkDir = binFilePath + binPathlen;
+    
+    // remove bla.gltf
+    while (binPathlen > 0 && binFilePath[binPathlen - 1] != '/' && binFilePath[binPathlen - 1] != '\\')
+        binFilePath[--binPathlen] = '\0', endOfWorkDir--;
+
+    GLTFBuffer* buffer = (GLTFBuffer*)element;
+    sj_Value key, val;
+    while (sj_iter_object(ctx->sj, sjBufferObj, &key, &val))
+    {
+        if (StrCMP16(key.start, "uri")) // is uri
+        {
+            const char* curr = key.start + sizeof("uri'"); // skip uri": 
+            while (*curr != '"') curr++;
+            if (StrCMP16(curr, "\"data:"))
+            {
+                curr = SkipAfter(curr, ',');
+                uint64_t base64Size = 0;
+                while (curr[base64Size] != '\"') {
+                    base64Size++;
+                }
+                buffer->uri = FixedPow2Allocator_Allocate(ctx->allocator, base64Size);
+                DecodeBase64((char*)buffer->uri, curr, base64Size);
+                curr += base64Size + 1;
+            }
+            else
+            {
+                curr = GetStringInQuotes(endOfWorkDir, curr);
+                buffer->uri = ReadAllFileAlloc(binFilePath);
+                ASSERT(buffer->uri && "uri is not exist");
+            }
         }
-        else if (StrCMP16(curr, "strength")) {
-            curr = ParseFloat16(curr, &texture->strength);
+        else if (StrCMP16(key.start, "byteLength"))
+        {
+            ParsePositiveNumber(val.start, &buffer->byteLength);
         }
-        else if (StrCMP16(curr, "extensions")) {
-            curr = SkipToNextNode(curr, '{', '}'); // currently extensions are not supported 
+    }
+}
+
+static void ParseImagesObj(sj_Value sjSceneObj, void* element, GLTFParseContext* ctx)
+{
+    int pathLen = StringLength(ctx->path);
+    while (ctx->path[pathLen-1] != '/') pathLen--;
+
+    AImage* image = (AImage*)element;
+    image->bufferViewIndex = -1;
+    sj_Value key, val;
+    while (sj_iter_object(ctx->sj, sjSceneObj, &key, &val))
+    {
+        char beforeChar = *key.end; *key.end = 0; char* name = key.start;
+        // mimeType and name is not supported
+        if (StrCMP16(key.start, "uri"))
+        {
+            size_t uriSize = val.end - val.start;
+            image->path = (char*)FixedPow2Allocator_Allocate(ctx->allocator, uriSize + pathLen + 16);
+            SmallMemCpy(image->path, ctx->path, pathLen);
+            SmallMemCpy(image->path + pathLen, val.start, uriSize);
+            image->path[uriSize + pathLen] = '\0';
         }
-        else {
-            ASSERT(0 && "unknown material texture value");
-            return (const char*)AError_UNKNOWN_MATERIAL_VAR;
+        else if (StrCMP16(key.start, "bufferView"))
+        {
+            ParsePositiveNumber(val.start, &image->bufferViewIndex);
         }
+        else AX_LOG("unknown: %s ", key.start);
+        *key.end = beforeChar;
+    } 
+}
+
+static void ParseTexturesObj(sj_Value sjTextureObj, void* element, GLTFParseContext* ctx)
+{
+    ATexture* texture = (ATexture*)element;
+    sj_Value key, val;
+    while (sj_iter_object(ctx->sj, sjTextureObj, &key, &val))
+    {
+        char beforeChar = *key.end; *key.end = 0; char* name = key.start;
+
+        if (StrCMP16(key.start, "sampler"))     ParsePositiveNumber(key.start, &texture->sampler);
+        else if (StrCMP16(key.start, "source")) ParsePositiveNumber(key.start, &texture->source);
+        else if (StrCMP16(key.start, "name"))   texture->name = CopySJString(val, ctx->allocator);
+        else AX_LOG("unknown: %s ", key.start);
+        
+        *key.end = beforeChar;
+    }
+}
+
+static void ParseAttributes(sj_Reader* sj, sj_Value sjAttributes, APrimitive* primitive)
+{
+    sj_Value key, val;
+    MemsetZero(primitive->vertexAttribs, sizeof(void*) * AAttribType_Count);
+    primitive->attributes = 0;
+    while (sj_iter_object(sj, sjAttributes, &key, &val))
+    {
+        unsigned maskBefore = primitive->attributes;
+        if      (StrCMP16(key.start, "POSITION"))   { primitive->attributes |= AAttribType_POSITION;   }
+        else if (StrCMP16(key.start, "NORMAL"))     { primitive->attributes |= AAttribType_NORMAL;     }
+        else if (StrCMP16(key.start, "TEXCOORD_0")) { primitive->attributes |= AAttribType_TEXCOORD_0; }
+        else if (StrCMP16(key.start, "TANGENT"))    { primitive->attributes |= AAttribType_TANGENT;    }
+        else if (StrCMP16(key.start, "TEXCOORD_1")) { primitive->attributes |= AAttribType_TEXCOORD_1; }
+        else if (StrCMP16(key.start, "JOINTS_0"))   { primitive->attributes |= AAttribType_JOINTS;     }
+        else if (StrCMP16(key.start, "WEIGHTS_0"))  { primitive->attributes |= AAttribType_WEIGHTS;    }
+        else if (StrCMP16(key.start, "TEXCOORD_"))  { continue; } // < NO more than two texture coords
+        else { ASSERT(0 && "attribute variable unknown!"); continue; }
+
+        // using bitmask will help us to order attributes correctly(sort) Position, Normal, TexCoord
+        unsigned newIndex = TrailingZeroCount32(maskBefore ^ primitive->attributes);
+        int attribOffset = 0;
+        ParsePositiveNumber(val.start, &attribOffset);
+        primitive->vertexAttribs[newIndex] = (void*)(uint64_t)attribOffset;
+    }
+}
+
+static void ParseMeshesObj(sj_Value sjMeshObj, void* element, GLTFParseContext* ctx)
+{
+    AMesh* mesh = (AMesh*)element;
+    sj_Value key, val;
+    while (sj_iter_object(ctx->sj, sjMeshObj, &key, &val))
+    {
+        if (StrCMP16(key.start, "name")) 
+        {
+            mesh->name = CopySJString(val, ctx->allocator);
+            continue; 
+        }
+        else if (StrCMP16(key.start, "weights"))
+        {
+            int numWeights = sjCountArray(*ctx->sj, val);
+            mesh->numMorphWeights = numWeights;
+            mesh->morphWeights = FixedPow2Allocator_Allocate(
+                ctx->allocator,
+                numWeights * sizeof(float)
+            );
+
+            const char* curr = val.start;
+            for (int i = 0; i < numWeights; i++)
+            {
+                curr = ParseFloat(curr, &mesh->morphWeights[i]);
+            }
+            continue;
+        }
+        else if (!StrCMP16(key.start, "primitives"))
+        { 
+            ASSERT(0 && "only primitives, name and weights allowed"); 
+            return; 
+        }
+
+        mesh->numPrimitives = sjCountArray(*ctx->sj, val);
+        mesh->primitives = FixedPow2Allocator_Allocate(
+            ctx->allocator, 
+            mesh->numPrimitives * sizeof(APrimitive)
+        );
+
+        MemSet(mesh->primitives, 0xCD, mesh->numPrimitives * sizeof(APrimitive));
+        int primitiveIndex = 0;
+        sj_Value sjPrimitiveArr;
+        while (sj_iter_array(ctx->sj, val, &sjPrimitiveArr))
+        {
+            sj_Value sjPrimKey, sjPrimVal;
+            APrimitive* primitive = mesh->primitives + primitiveIndex;  
+            primitive->material = -1;
+            primitiveIndex++;
+            while (sj_iter_object(ctx->sj, sjPrimitiveArr, &sjPrimKey, &sjPrimVal))
+            {
+                if      (StrCMP16(sjPrimKey.start, "attributes")) { ParseAttributes(ctx->sj, sjPrimVal, primitive); }
+                else if (StrCMP16(sjPrimKey.start, "indices"))    { ParsePositiveNumberU16(sjPrimVal.start, &primitive->indiceIndex);  }
+                else if (StrCMP16(sjPrimKey.start, "mode"))       { ParsePositiveNumberU16(sjPrimVal.start, &primitive->mode       ); }
+                else if (StrCMP16(sjPrimKey.start, "material"))   { ParsePositiveNumberU16(sjPrimVal.start, &primitive->material   ); }
+                else if (StrCMP16(sjPrimKey.start, "targets"))
+                {
+                    primitive->morphTargets = (AMorphTarget*)FixedPow2Allocator_Allocate(
+                        ctx->allocator, 
+                        sizeof(AMorphTarget) * sjCountArray(*ctx->sj, sjPrimVal)
+                    );
+
+                    sj_Value sjMorphArr;
+                    int morphTargetIdx = 0;
+                    while (sj_iter_array(ctx->sj, sjPrimVal, &sjMorphArr))
+                    {
+                        sj_Value sjMorphKey,  sjMorphVal;
+                        AMorphTarget* morphTarget = primitive->morphTargets + morphTargetIdx;
+                        morphTargetIdx++;
+
+                        while (sj_iter_object(ctx->sj, sjPrimitiveArr, &sjMorphKey, &sjMorphVal))
+                        {
+                            unsigned maskBefore = morphTarget->attributes;
+                            if      (StrCMP16(sjMorphKey.start, "POSITION"))   { morphTarget->attributes |= AAttribType_POSITION;   }
+                            else if (StrCMP16(sjMorphKey.start, "TEXCOORD_0")) { morphTarget->attributes |= AAttribType_TEXCOORD_0; }
+                            else if (StrCMP16(sjMorphKey.start, "NORMAL"))     { morphTarget->attributes |= AAttribType_NORMAL;     }
+                            else if (StrCMP16(sjMorphKey.start, "TANGENT"))    { morphTarget->attributes |= AAttribType_TANGENT;    }
+                            else if (StrCMP16(sjMorphKey.start, "TEXCOORD_"))  { continue; } // < NO more than one texture coords
+                            else { ASSERT(0 && "attribute variable unknown!"); return; }
+                 
+                            // detect changed attribute.
+                            unsigned addedAttribute = TrailingZeroCount32(maskBefore ^ morphTarget->attributes);
+                            ParsePositiveNumberU16(sjMorphVal.start, morphTarget->indexes + addedAttribute);
+                        }
+                    }
+                }
+                else { ASSERT(0); return; }
+            }
+        }
+    }
+}
+
+static void ParseNodesObj(sj_Value sjMeshObj, void* element, GLTFParseContext* ctx)
+{
+    ANode* node = (ANode*)element;
+    node->rotation[3] = 1.0f;
+    node->scale[0] = node->scale[1] = node->scale[2] = ctx->scale; 
+    node->index = -1;
+
+    sj_Value key, val;
+    while (sj_iter_object(ctx->sj, sjMeshObj, &key, &val))
+    {
+        const char* curr = key.start;
+
+        // mesh, name, children, matrix, translation, rotation, scale, skin
+        if      (StrCMP16(curr, "mesh"))   { node->type = 0; ParsePositiveNumber(curr, &node->index); }
+        else if (StrCMP16(curr, "camera")) { node->type = 1; ParsePositiveNumber(curr, &node->index); }
+        else if (StrCMP16(curr, "children"))
+        {
+            node->children = ParseIntArrayAlloc(ctx, val, &node->numChildren);
+        }
+        else if (StrCMP16(curr, "matrix"))
+        {
+            Matrix4 m;
+            float* matrix = &m.m[0][0];
+            
+            for (int i = 0; i < 16; i++)
+                curr = ParseFloat(curr, &matrix[i]);
+            
+            m = Matrix4Transpose(m);
+            node->translation[0] = matrix[12];
+            node->translation[1] = matrix[13];
+            node->translation[2] = matrix[14];
+            QuaternionFromMatrix(node->rotation, matrix, 4);
+
+            Vec4x32f v = VecMulf(ExtractScaleV(m), ctx->scale);
+            Vec3Store(node->scale, v);
+        }
+        else if (StrCMP16(curr, "translation"))
+        {
+            curr = ParseFloat(curr, &node->translation[0]);
+            curr = ParseFloat(curr, &node->translation[1]);
+            curr = ParseFloat(curr, &node->translation[2]);
+        }
+        else if (StrCMP16(curr, "rotation"))
+        {
+            curr = ParseFloat(curr, &node->rotation[0]);
+            curr = ParseFloat(curr, &node->rotation[1]);
+            curr = ParseFloat(curr, &node->rotation[2]);
+            curr = ParseFloat(curr, &node->rotation[3]);
+        }
+        else if (StrCMP16(curr, "scale"))
+        {
+            curr = ParseFloat(curr, &node->scale[0]); node->scale[0] *= ctx->scale;
+            curr = ParseFloat(curr, &node->scale[1]); node->scale[1] *= ctx->scale;
+            curr = ParseFloat(curr, &node->scale[2]); node->scale[2] *= ctx->scale;
+        }
+        else if (StrCMP16(curr, "name"))
+        {
+            node->name = CopySJString(val, ctx->allocator);
+        }
+        else if (StrCMP16(curr, "skin"))
+        {
+            ParsePositiveNumber(curr, &node->skin);
+        }
+        else
+        {
+            ASSERT(0 && "Unknown node variable");
+            return;
+        }   
+    }
+}
+
+static void ParseCamerasObj(sj_Value sjMeshObj, void* element, GLTFParseContext* ctx)
+{
+    ACamera* camera = (ACamera*)element;
+    sj_Value key, val;
+    while (sj_iter_object(ctx->sj, sjMeshObj, &key, &val))
+    {
+        const char* curr = key.end+1;
+        if (StrCMP16(key.start, "name")) 
+        {
+            camera->name = CopySJString(val, ctx->allocator);
+        }
+        else if (StrCMP16(key.start, "type")) 
+        {
+            camera->type = *val.start == 'p'; // 0 orthographic 1 perspective 
+        }
+        else while (true)
+        {
+            while (*curr != '"')
+                if (*curr++ == '}')  
+                    goto end_properties; // this is end of camera variables
+            
+            curr++;
+            if      (StrCMP16(curr, "zfar"))        { curr = ParseFloat(curr, &camera->zFar        ); }
+            else if (StrCMP16(curr, "znear"))       { curr = ParseFloat(curr, &camera->zNear       ); }
+            else if (StrCMP16(curr, "aspectRatio")) { curr = ParseFloat(curr, &camera->aspectRatio ); }
+            else if (StrCMP16(curr, "yfov"))        { curr = ParseFloat(curr, &camera->yFov        ); }
+            else if (StrCMP16(curr, "xmag"))        { curr = ParseFloat(curr, &camera->xmag        ); }
+            else if (StrCMP16(curr, "ymag"))        { curr = ParseFloat(curr, &camera->ymag        ); }
+            else { ASSERT(0); return; }
+        }
+        end_properties:{}
+    } 
+}
+
+static void ParseSamplersObj(sj_Value sjMeshObj, void* element, GLTFParseContext* ctx)
+{
+    ASampler* sampler = (ASampler*)element;
+    sj_Value key, val;
+    while (sj_iter_object(ctx->sj, sjMeshObj, &key, &val))
+    {
+        int minFilter, magFilter, wrapS, wrapT;
+        char beforeChar = *key.end; *key.end = 0; char* name = key.start;
+
+        if      (StrCMP16(key.start, "magFilter")) ParsePositiveNumber(val.start, &magFilter), sampler->magFilter = (char)(magFilter - 0x2600); // GL_NEAREST 9728, GL_LINEAR 0x2601 9729
+        else if (StrCMP16(key.start, "minFilter")) ParsePositiveNumber(val.start, &minFilter), sampler->minFilter = (char)(minFilter - 0x2600); // GL_NEAREST 9728, GL_LINEAR 0x2601 9729
+        else if (StrCMP16(key.start, "wrapS"))     ParsePositiveNumber(val.start, &wrapS), sampler->wrapS = (char)OGLWrapToWrap(wrapS);
+        else if (StrCMP16(key.start, "wrapT"))     ParsePositiveNumber(val.start, &wrapT), sampler->wrapT = (char)OGLWrapToWrap(wrapT);
+        else AX_LOG("unknown: %s ", key.start);
+        
+        *key.end = beforeChar;
+    }
+}
+
+
+static const char* ParseMaterialTexture(GLTFParseContext* ctx, sj_Value sjMatObj, GLTFTexture* texture)
+{
+    texture->strength = MakeFloat16(1.0f);
+    sj_Value key, val;
+    while (sj_iter_object(ctx->sj, sjMatObj, &key, &val))
+    {
+        char beforeChar = *key.end; *key.end = 0; char* name = key.start;
+        
+        if (StrCMP16(key.start, "scale")) { ParseFloat16(val.start, &texture->scale); }
+        else if (StrCMP16(key.start, "index")) {
+            ParsePositiveNumberU16(val.start, &texture->index);
+        }
+        else if (StrCMP16(key.start, "texCoord")) { ParsePositiveNumberU16(val.start, &texture->texCoord); }
+        else if (StrCMP16(key.start, "strength")) { ParseFloat16(val.start, &texture->strength); }
+        else AX_LOG("unknown: %s ", key.start);
+    
+        *key.end = beforeChar;
+    
     }
     return NULL;
 }
 
-__private const char* ParseMaterials(const char* curr, AMaterial** materials, FixedPow2Allocator* allocator)
+static void ParseSkinsObj(sj_Value sjArrObj, void* element, GLTFParseContext* ctx)
 {
-    // mesh, name, children, 
-    // matrix, translation, rotation, scale
-    curr = SkipUntill(curr, '[');
-    curr++; // skip '['
-    AMaterial material={0};
-    // read each material
-    while (true)
+    ASkin* skin = (ASkin*)element;
+    skin->skeleton = -1;
+
+    sj_Value key, val;
+    while (sj_iter_object(ctx->sj, sjArrObj, &key, &val))
     {
-        // search for name
-        while (*curr && *curr != '"')
-        {
-            if (*curr == '}')
-            {
-                dynarray_push(*materials, material);
-                MemsetZero(&material, sizeof(AMaterial));
-                material.baseColorTexture.index   = UINT16_MAX;
-                material.specularTexture.index    = UINT16_MAX;
-                material.baseColorTexture.index   = UINT16_MAX;
-                material.metallicRoughnessTexture.index = UINT16_MAX;
-                material.textures[0].index = UINT16_MAX;
-                material.textures[1].index = UINT16_MAX;
-                material.textures[2].index = UINT16_MAX;
+        char beforeChar = *key.end; *key.end = 0; char* name = key.start;
 
-                material.metallicFactor  = PackUnorm16(1.0f);
-                material.roughnessFactor = PackUnorm16(1.0f);
-            }
-            if (*curr++ == ']') return curr; // end all nodes
-        }
-        ASSERTR(*curr && "parsing material failed, probably forgot to close brackets", return (const char*)AError_CloseBrackets);
-
-        int texture = -1;
-        curr++; // skips the "
-        if (StrCMP16(curr, "name"))
+        if (StrCMP16(key.start, "inverseBindMatrices"))
         {
-            curr += 5;
-            curr = CopyStringInQuotes(&material.name, &curr, allocator);
+            // we will parse later, because we are not sure we are parsed accessors at this point
+            int inverseBindOffset = 0; 
+            ParsePositiveNumber(val.start, &inverseBindOffset);
+            skin->inverseBindMatrices = (float*)(size_t)inverseBindOffset;
         }
-        else if (StrCMP16(curr, "doubleSided"))
+        else if (StrCMP16(key.start, "skeleton")) ParsePositiveNumber(val.start, &skin->skeleton);
+        else if (StrCMP16(key.start, "name"))    { skin->name = CopySJString(val, ctx->allocator); }
+        else if (StrCMP16(key.start, "joints"))
         {
-            curr += sizeof("doubleSided'"); // skip doubleSided"
-            AX_NO_UNROLL while (!IsLower(*curr)) curr++;
-            material.doubleSided = *curr == 't';
+            skin->joints = ParseIntArrayAlloc(ctx, val, &skin->numJoints);
         }
-        else if (StrCMP16(curr, "pbrMetallicRoug")) //pbrMetallicRoughhness
-        {
-            curr = SkipUntill(curr, '{');
+        else AX_LOG("unknown: %s ", key.start);
     
-            // parse until finish
-            while (true)
+        *key.end = beforeChar;
+    }
+}
+
+static void ParseAnimationsObj(sj_Value sjArrObj, void* element, GLTFParseContext* ctx)
+{
+    AAnimation* animation = (AAnimation*)element;
+    animation->speed = 1.0f;
+    sj_Value key, val;
+    while (sj_iter_object(ctx->sj, sjArrObj, &key, &val))
+    {
+        if (StrCMP16(key.start, "name"))
+        {
+            animation->name = CopySJString(val, ctx->allocator);
+        }
+        else if (StrCMP16(key.start, "channels"))
+        {
+            animation->numChannels = sjCountArray(*ctx->sj, val);
+            animation->channels = (AAnimChannel*)FixedPow2Allocator_Allocate(
+                ctx->allocator, animation->numChannels * sizeof(AAnimChannel)
+            );
+            int channelIndex = 0;
+            sj_Value channelElement;
+            while (sj_iter_array(ctx->sj, val, &channelElement))
             {
-                // search for name
-                while (*curr && *curr != '"')
-                {
-                    if (*curr++ == '}') { goto pbr_end; }
-                }
-                curr++; // skips the "
+                AAnimChannel* channel = animation->channels + channelIndex;
+                channelIndex++;
                 
-                if      (StrCMP16(curr, "baseColorTex"))  { curr = ParseMaterialTexture(curr, &material.baseColorTexture); }
-                else if (StrCMP16(curr, "metallicRough")) { curr = ParseMaterialTexture(curr, &material.metallicRoughnessTexture); }
-                else if (StrCMP16(curr, "baseColorFact"))
+                sj_Value chKey, chVal;
+                while (sj_iter_object(ctx->sj, channelElement, &chKey, &chVal))
+                {
+                    if  (StrCMP16(chKey.start, "sampler"))
+                    {
+                        ParsePositiveNumber(chVal.start, &channel->sampler);
+                    } 
+                    else if (StrCMP16(chKey.start, "target"))  
+                    { 
+                        sj_Value tgKey, tgVal;
+                        while (sj_iter_object(ctx->sj, chVal, &tgKey, &tgVal))
+                        {
+                            if (StrCMP16(tgKey.start, "node")) 
+                            { 
+                                ParsePositiveNumber(tgVal.start, &channel->targetNode);
+                            } 
+                            else if (StrCMP16(tgKey.start, "path"))
+                            {
+                                switch (*tgVal.start) {
+                                    case 't': channel->targetPath = AAnimTargetPath_Translation; break;
+                                    case 'r': channel->targetPath = AAnimTargetPath_Rotation;    break;
+                                    case 's': channel->targetPath = AAnimTargetPath_Scale;       break;
+                                    case 'w': channel->targetPath = AAnimTargetPath_Weight;      break;
+                                    default: ASSERT(0 && "Unknown animation path value");
+                                };
+                            }
+                        }
+                    } 
+                }
+            }
+        }
+        else if (StrCMP16(key.start, "samplers"))
+        {
+            animation->numSamplers = sjCountArray(*ctx->sj, val);
+            animation->samplers = (AAnimSampler*)FixedPow2Allocator_Allocate(
+                ctx->allocator, animation->numSamplers * sizeof(AAnimSampler)
+            );
+            int samplerIdx = 0;
+            sj_Value samplerElement;
+            while (sj_iter_array(ctx->sj, val, &samplerElement))
+            {
+                AAnimSampler* sampler = animation->samplers + samplerIdx;
+                samplerIdx++;
+                
+                sj_Value spKey, spVal;
+                while (sj_iter_object(ctx->sj, samplerElement, &spKey, &spVal))
+                {
+                    if (StrCMP16(spKey.start, "input")) 
+                    { 
+                        int input = 0;
+                        ParsePositiveNumber(spVal.start, &input);
+                        sampler->input = (float*)(size_t)input;
+                    } 
+                    else if (StrCMP16(spKey.start, "output"))
+                    {
+                        int output = 0;
+                        ParsePositiveNumber(spVal.start, &output); 
+                        sampler->output = (float*)(size_t)output; 
+                    } 
+                    else if (StrCMP16(spKey.start, "interpol"))  // you've been searching from interpol hands up!!
+                    {
+                        switch (*spVal.start)
+                        {
+                            case 'L': sampler->interpolation = 0; break; // Linear
+                            case 'S': sampler->interpolation = 1; break; // Step
+                            case 'C': sampler->interpolation = 2; break; // CubicSpline
+                            default: ASSERT(0 && "Unknown animation path value"); break;
+                        };
+                    }
+                    else ASSERT(0 && "Unknown animation sampler value");
+                }
+            }
+        }
+    } 
+}
+
+
+static void ParseMaterialsObj(sj_Value sjMaterialObj, void* element, GLTFParseContext* ctx)
+{
+    AMaterial* material = (AMaterial*)element;
+    material->baseColorTexture.index = UINT16_MAX;
+    material->specularTexture.index = UINT16_MAX;
+    material->metallicRoughnessTexture.index = UINT16_MAX;
+    material->textures[0].index = UINT16_MAX;
+    material->textures[1].index = UINT16_MAX;
+    material->textures[2].index = UINT16_MAX;
+    material->metallicFactor = PackUnorm16(1.0f);
+    material->roughnessFactor = PackUnorm16(1.0f);
+
+    sj_Value key, val;
+    while (sj_iter_object(ctx->sj, sjMaterialObj, &key, &val))
+    {
+        if (StrCMP16(key.start, "name"))
+        {
+            material->name = CopySJString(val, ctx->allocator);
+        }
+        else if (StrCMP16(key.start, "doubleSided"))
+        {
+            material->doubleSided = (*val.start == 't');
+        }
+        else if (StrCMP16(key.start, "pbrMetallicRoug")) // pbrMetallicRoughness
+        {
+            sj_Value pbrKey, pbrVal;
+            while (sj_iter_object(ctx->sj, val, &pbrKey, &pbrVal))
+            {
+                if (StrCMP16(pbrKey.start, "baseColorTex")) // baseColorTexture
+                {
+                    ParseMaterialTexture(ctx, pbrVal, &material->baseColorTexture);
+                }
+                else if (StrCMP16(pbrKey.start, "metallicRough")) // metallicRoughnessTexture
+                {
+                    ParseMaterialTexture(ctx, pbrVal, &material->metallicRoughnessTexture);
+                }
+                else if (StrCMP16(pbrKey.start, "baseColorFact")) // baseColorFactor
                 {
                     float baseColorFactor[4];
+                    const char* curr = (const char*)pbrVal.start;
                     curr = ParseFloat(curr, baseColorFactor + 0); 
                     curr = ParseFloat(curr, baseColorFactor + 1); 
                     curr = ParseFloat(curr, baseColorFactor + 2); 
                     curr = ParseFloat(curr, baseColorFactor + 3); 
-                    material.baseColorFactor = PackColor4PtrToUint(baseColorFactor);
-                    curr = SkipUntill(curr, ']');
-                    curr++;
+                    material->baseColorFactor = PackColor4PtrToUint(baseColorFactor);
                 }
-                else if (StrCMP16(curr, "metallicFact"))
+                else if (StrCMP16(pbrKey.start, "metallicFact")) // metallicFactor
                 {
                     float metallicFactor = 0.0f;
-                    curr = ParseFloat(curr, &metallicFactor);
-                    material.metallicFactor = PackUnorm16(metallicFactor);
+                    ParseFloat(pbrVal.start, &metallicFactor);
+                    material->metallicFactor = PackUnorm16(metallicFactor);
                 }
-                else if (StrCMP16(curr, "roughnessFact"))
+                else if (StrCMP16(pbrKey.start, "roughnessFact")) // roughnessFactor
                 {
-                    float roughnessFactor  = 0.0f;
-                    curr = ParseFloat(curr, &roughnessFactor);
-                    material.roughnessFactor  = PackUnorm16(roughnessFactor );
-                }
-                else
-                {
-                    ASSERT(0 && "unknown pbrMetallicRoughness value!");
-                    return (char*)AError_UNKNOWN_PBR_VAR;
+                    float roughnessFactor = 0.0f;
+                    ParseFloat(pbrVal.start, &roughnessFactor);
+                    material->roughnessFactor = PackUnorm16(roughnessFactor);
                 }
             }
-            pbr_end: {}
         }
-        else if (StrCMP16(curr, "normalTexture"))    texture = 0;
-        else if (StrCMP16(curr, "occlusionTextur"))  texture = 1;
-        else if (StrCMP16(curr, "emissiveTexture"))  texture = 2;
-        else if (StrCMP16(curr, "emissiveFactor")) 
+        else if (StrCMP16(key.start, "normalTexture"))   ParseMaterialTexture(ctx, val, &material->textures[0]);
+        else if (StrCMP16(key.start, "occlusionTextur")) ParseMaterialTexture(ctx, val, &material->textures[1]);
+        else if (StrCMP16(key.start, "emissiveTexture")) ParseMaterialTexture(ctx, val, &material->textures[2]);
+        else if (StrCMP16(key.start, "emissiveFactor")) 
         {
-            curr = ParseFloat16(curr, &material.emissiveFactor[0]); 
-            curr = ParseFloat16(curr, &material.emissiveFactor[1]);
-            curr = ParseFloat16(curr, &material.emissiveFactor[2]);
-            curr = SkipUntill(curr, ']');
-            curr++;
+            float emissiveFactor[3];
+            const char* curr = (const char*)val.start;
+            curr = ParseFloat16(curr, &material->emissiveFactor[2]);
+            curr = ParseFloat16(curr, &material->emissiveFactor[0]); 
+            curr = ParseFloat16(curr, &material->emissiveFactor[1]);
         }
-        else if (StrCMP16(curr, "extensions"))
+        else if (StrCMP16(key.start, "extensions"))
         {
-            curr = SkipAfter(curr, '{');
-            int balance = 1;
-            // parse until finish
-            while (balance > 0)
+            sj_Value extKey, extVal;
+            while (sj_iter_object(ctx->sj, val, &extKey, &extVal))
             {
-                // search for name
-                if (*curr == '"')
+                // Iterate through extension properties
+                sj_Value propKey, propVal;
+                while (sj_iter_object(ctx->sj, extVal, &propKey, &propVal))
                 {
-                    ++curr; // skip "
-                    if (StrCMP16(curr, "index"))
+                    if (StrCMP16(propKey.start, "index"))
                     {
-                        curr += sizeof("index");
-                        curr = ParsePositiveNumberU16(curr, &material.specularTexture.index);
+                        ParsePositiveNumberU16(propVal.start, &material->specularTexture.index);
                     }
-                    else if (StrCMP16(curr, "ior"))
+                    else if (StrCMP16(propKey.start, "ior"))
                     {
-                        curr = ParseFloat(curr, &material.ior);
+                        ParseFloat(propVal.start, &material->ior);
                     }
-                    else if (StrCMP16(curr, "specularColorFa"))
+                    else if (StrCMP16(propKey.start, "specularColorFa")) // specularColorFactor
                     {
-                        curr += sizeof("specularColorFactor");
                         float sf[3];
+                        const char* curr = (const char*)propVal.start;
                         curr = ParseFloat(curr, sf + 0);
                         curr = ParseFloat(curr, sf + 1);
                         curr = ParseFloat(curr, sf + 2);
                         float s = (sf[0] + sf[1] + sf[2]) * 0.33333f;
-                        material.specularFactor = MakeFloat16(s);
+                        material->specularFactor = MakeFloat16(s);
                     }
                 }
+            }
+        }
+        else if (StrCMP16(key.start, "alphaMode"))
+        {
+            if      (StrCMP16(val.start, "OPAQUE"))     material->alphaMode = AMaterialAlphaMode_Opaque;
+            else if (StrCMP16(val.start, "MASK"))  material->alphaMode = AMaterialAlphaMode_Mask;
+            else if (StrCMP16(val.start, "BLEND")) material->alphaMode = AMaterialAlphaMode_Blend;
+        }
+        else if (StrCMP16(key.start, "alphaCutoff"))
+        {
+            ParseFloat(val.start, &material->alphaCutoff);
+        }
+    }
+}
+
+
+static char* ParseGLBHeader(const char* path, SceneBundle* result, uint64_t* jsonSize)
+{
+    char* source = NULL;
+    AFile file = AFileOpen(path, AOpenFlag_ReadBinary);
+    if (AFileExist(file))
+    {
+        int magic, version, length;
+        AFileRead(&magic, 4, file, 1);
+        if (magic == 0x46546C67) // gltf in binary
+        {
+            AFileRead(&version, 4, file, 1);
+            AFileRead(&length, 4, file, 1);
                 
-                balance -= *curr == '}';
-                balance += *curr++ == '{';
+            int chunk0Len, chunk0Type;
+            AFileRead(&chunk0Len, 4, file, 1);
+            AFileRead(&chunk0Type, 4, file, 1);
+            *jsonSize = (uint64_t)chunk0Len;
+
+            if (chunk0Type != 0x4E4F534A) // json in binary
+                return 0; // json must exist
+            
+            source = (char*)AllocZeroTLSFGlobal(chunk0Len + 40, 1);
+            AFileRead(source, chunk0Len, file, 1);
+
+            int chunk1Len, chunk1Type;
+            AFileRead(&chunk1Len, 4, file, 1);
+            AFileRead(&chunk1Type, 4, file, 1);
+
+            if (chunk1Type == 0x004E4942) // bin in binary
+            {
+                result->buffers = (GLTFBuffer*)AllocateTLSFGlobal(sizeof(GLTFBuffer));
+                result->buffers[0].uri = AllocateTLSFGlobal(chunk1Len);
+                result->buffers[0].byteLength = chunk1Len;
+                result->numBuffers = 1;
+                AFileRead(result->buffers[0].uri, chunk1Len, file, 1);
             }
-        }
-        else if (StrCMP16(curr, "alphaMode"))
-        {
-            char text[16]={0};
-            curr += sizeof("alphaMode'");
-            curr = SkipUntill(curr, '"');
-            curr = GetStringInQuotes(text, curr);
-            if (StrCMP16(text, "OPAQUE")) material.alphaMode = AMaterialAlphaMode_Opaque;
-            else if (StrCMP16(text, "MASK"))   material.alphaMode = AMaterialAlphaMode_Mask;
-            else if (StrCMP16(text, "BLEND"))  material.alphaMode = AMaterialAlphaMode_Blend;
-        }
-        else if (StrCMP16(curr, "alphaCutoff"))
-        {
-            curr = ParseFloat(curr, &material.alphaCutoff);
-        }
-        else if (StrCMP16(curr, "extras"))
-        {
-            curr = SkipAfter(curr, '{');
-            int balance = 1;
-            while (balance > 0) {
-                balance += *curr == '{';
-                balance -= *curr == '}';
-                curr++;
-            }
-        }
-        else
-        {
-            ASSERTR(0 && "undefined material variable!", return (const char*)AError_UNKNOWN_MATERIAL_VAR);
         }
 
-        if (texture != -1)
-        {
-            curr = ParseMaterialTexture(curr, &material.textures[texture]);
-            if ((uint64_t)curr == AError_UNKNOWN_MATERIAL_VAR) return curr;
-        }
+        AFileClose(file);
     }
-    return curr;
+    return source;
 }
 
-static const char* ParseSkins(const char* curr, ASkin** skins, FixedPow2Allocator* allocator)
-{
-    curr = SkipAfter(curr, '[');
-    
-    ASkin skin={0};
-    skin.skeleton = -1;
-
-    // read each node
-    while (true)
-    {
-        // search for name
-        while (*curr && *curr != '"')
-        {
-            if (*curr == '}')
-            {
-                dynarray_push(*skins, skin);
-                MemsetZero(&skin, sizeof(ASkin));
-                skin.skeleton = -1;
-            }
-            if (*curr++ == ']') return curr; // end all nodes
-        }
-        ASSERTR(*curr != '\0' && "parsing skins not possible, probably forgot to close brackets!", return (const char*)AError_CloseBrackets);
-        curr++; // skips the "
-
-        if (StrCMP16(curr, "inverseBindMatrices"))
-        {
-            // we will parse later, because we are not sure we are parsed accessors at this point
-            int inverseBindOffset = 0; 
-            curr = ParsePositiveNumber(curr, &inverseBindOffset);
-            skin.inverseBindMatrices = (float*)(size_t)inverseBindOffset;
-        }
-        else if (StrCMP16(curr, "skeleton")) curr = ParsePositiveNumber(curr, &skin.skeleton);
-        else if (StrCMP16(curr, "name")) { curr += 5; curr = CopyStringInQuotes(&skin.name, &curr, allocator); }
-        else if (StrCMP16(curr, "joints"))
-        {
-            IntPtrPair result = ParseIntArray(&curr, allocator);
-            skin.numJoints = result.numElements;
-            skin.joints = result.ptr;
-            curr++; // skip ]
-        }
-    }
-    return curr;
-}
-
-static const char* ParseAnimations(const char* curr, AAnimation** animations, FixedPow2Allocator* allocator)
-{
-    curr = SkipAfter(curr, '[');
-    AAnimChannel* channels = dynarray_create(AAnimChannel);
-    AAnimSampler* samplers = dynarray_create(AAnimSampler);
-
-    AAnimation animation={0};
-    animation.speed = 1.0f;
-    // read each node
-    while (true)
-    {
-        // search for name
-        while (*curr && *curr != '"')
-        {
-            if (*curr == '}')
-            {
-                animation.numSamplers = dynarray_length(samplers);
-                animation.numChannels = dynarray_length(channels);
-                animation.samplers = samplers;
-                animation.channels = channels;
-                dynarray_push(*animations, animation);
-                MemsetZero(&animation, sizeof(AAnimation));
-                channels = dynarray_create(AAnimChannel);
-                samplers = dynarray_create(AAnimSampler);
-                animation.speed = 1.0f;
-            }
-            if (*curr++ == ']')
-            {
-                dynarray_destroy(channels);
-                dynarray_destroy(samplers);
-                return curr; // end all nodes
-            }
-        }
-        ASSERTR(*curr != '\0' && "parsing animations not possible, probably forgot to close brackets!", return (const char*)AError_CloseBrackets);
-        curr++; // skips the "
-
-        if (StrCMP16(curr, "name"))
-        {
-            curr += sizeof("name'");
-            curr = CopyStringInQuotes(&animation.name, &curr, allocator);
-        }
-        else if (StrCMP16(curr, "channels"))
-        {
-            curr += sizeof("channels'");
-            AAnimChannel channel;
-            bool parsingTarget = false;
-            while (true)
-            {
-                while (*curr && *curr != '"')
-                {
-                    if (*curr == ']') { curr++; /* skip ] */ goto end_parsing; }
-                    if (*curr == '}') 
-                    {
-                        if (parsingTarget) parsingTarget = false;
-                        else 
-                        {
-                            dynarray_push(channels, channel);
-                            MemsetZero(&channel, sizeof(AAnimChannel));
-                        }
-                    }
-                    curr++;
-                }
-                ASSERTR(*curr != '\0' && "parsing anim channels not possible, probably forgot to close brackets!", return (const char*)AError_CloseBrackets);
-
-                uint64_t hash;
-                curr = HashStringInQuotes(&hash, curr);
-
-                     if (hash == AHashString8("sampler")) { curr = ParsePositiveNumber(curr, &channel.sampler); } 
-                else if (hash == AHashString8("node"))    { curr = ParsePositiveNumber(curr, &channel.targetNode); } 
-                else if (hash == AHashString8("target"))  { curr += sizeof("target'"); parsingTarget = true; } 
-                else if (hash == AHashString8("path"))
-                {
-                    curr = SkipAfter(curr, '"');
-                    switch (*curr) {
-                        case 't': channel.targetPath = AAnimTargetPath_Translation; curr += sizeof("translation'"); break;
-                        case 'r': channel.targetPath = AAnimTargetPath_Rotation;    curr += sizeof("rotation'"); break;
-                        case 's': channel.targetPath = AAnimTargetPath_Scale;       curr += sizeof("scale'"); break;
-                        case 'w': channel.targetPath = AAnimTargetPath_Weight;      curr += sizeof("weights'"); break;
-                        default: ASSERT(0 && "Unknown animation path value");
-                    };
-                }
-                else ASSERT(0 && "Unknown animation channel value");
-            }
-        }
-        else if (StrCMP16(curr, "samplers"))
-        {
-            curr += sizeof("samplers'");
-            AAnimSampler sampler;
-            while (true)
-            {
-                while (*curr && *curr != '"')
-                {
-                    if (*curr == ']') { curr++; /* skip ] */ goto end_parsing; }
-                    if (*curr == '}') 
-                    {
-                        dynarray_push(samplers, sampler);
-                        MemsetZero(&sampler, sizeof(AAnimSampler));
-                    }
-                    curr++;
-                }
-                ASSERTR(*curr != '\0' && "parsing anim channels not possible, probably forgot to close brackets!", return (const char*)AError_CloseBrackets);
-
-                uint64_t hash;
-                curr = HashStringInQuotes(&hash, curr);
-
-                     if (hash == AHashString8("input"))     { int input  = 0; curr = ParsePositiveNumber(curr, &input); sampler.input = (float*)(size_t)input; } 
-                else if (hash == AHashString8("output"))    { int output = 0; curr = ParsePositiveNumber(curr, &output); sampler.output = (float*)(size_t)output; } 
-                else if (hash == AHashString8("interpol"))  // you've been searching from interpol hands up!!
-                {
-                    curr += sizeof("interpolation") - sizeof("interpol");
-                    curr = SkipAfter(curr, '"');
-                    switch (*curr)
-                    {
-                        case 'L': sampler.interpolation = 0; curr += sizeof("Linear'");      break; // Linear
-                        case 'S': sampler.interpolation = 1; curr += sizeof("Step'");        break; // Step
-                        case 'C': sampler.interpolation = 2; curr += sizeof("CubicSpline'"); break; // CubicSpline
-                        default: ASSERT(0 && "Unknown animation path value"); break;
-                    };
-                }
-                else ASSERT(0 && "Unknown animation sampler value");
-            }
-        }
-        end_parsing:{}
-    }
-    return curr;
-}
-
-__public int ParseGLTF(const char* path, SceneBundle* result, float scale)
+int ParseGLTF2(const char* path, SceneBundle* result, float scale)
 {
     ASSERT(result && path);
     uint64_t sourceSize = 0;
     char* source = NULL;
-    MemsetZero(result, sizeof(SceneBundle));
+    MemSet(result, 0xCD, sizeof(SceneBundle));
 
     if (FileHasExtension(path, StringLength(path), ".glb"))
     {
-        AFile file = AFileOpen(path, AOpenFlag_ReadBinary);
-        if (AFileExist(file))
-        {
-            int magic, version, length;
-            AFileRead(&magic, 4, file, 1);
-            if (magic == 0x46546C67) // gltf in binary
-            {
-                AFileRead(&version, 4, file, 1);
-                AFileRead(&length, 4, file, 1);
-                SDL_Log("magic um! %d, %d", version, length);
-                
-                int chunk0Len, chunk0Type;
-                AFileRead(&chunk0Len, 4, file, 1);
-                AFileRead(&chunk0Type, 4, file, 1);
-
-                SDL_Log("first chunk %d, %d", chunk0Len, chunk0Type);
-
-                if (chunk0Type == 0x4E4F534A) // json in binary
-                {
-                    SDL_Log("first chunk json:");
-                    source = ReadAllTextAlloc("Assets/Meshes/FoxTest.txt", NULL, NULL); // (char*)AllocZeroTLSFGlobal(chunk0Len + 40, 1);
-                    AFileRead(source, chunk0Len, file, 1);
-                    SDL_Log("%s", source);
-                }
-                else
-                {
-                    SDL_Log("first chunk not json");
-                }
-
-                int chunk1Len, chunk1Type;
-                AFileRead(&chunk1Len, 4, file, 1);
-                AFileRead(&chunk1Type, 4, file, 1);
-
-                SDL_Log("second chunk %d, %d", chunk1Len, chunk1Type);
-
-                if (chunk1Type == 0x004E4942) // bin in binary
-                {
-                    SDL_Log("second chunk bin:");
-                    result->buffers = (GLTFBuffer*)AllocateTLSFGlobal(sizeof(GLTFBuffer));
-                    result->buffers[0].uri = AllocateTLSFGlobal(chunk1Len);
-                    result->buffers[0].byteLength = chunk1Len;
-                    AFileRead(result->buffers[0].uri , chunk1Len, file, 1);
-                }
-                else
-                {
-                    SDL_Log("second chunk not bin");
-                }
-
-            }
-            AFileClose(file);
-        }
+        source = ParseGLBHeader(path, result, &sourceSize);
     }
 
     if (source == NULL)
         source = ReadAllTextAlloc(path, &sourceSize, NULL);
         
-    if (source == NULL) { result->error = AError_FILE_NOT_FOUND; ASSERT(0); return 0; }
+    WriteAllBytes("C:/Users/Administrator/Desktop/Fox.json", source, sourceSize);
 
-    #if defined(DEBUG) || defined(_DEBUG)
-    // ascii utf8 support check
-    // if (IsUTF8ASCII(source, sourceSize) != 1) { result->error = AError_NON_UTF8; return; }A
-    #endif
-    GLTFBufferView* bufferViews = dynarray_create(GLTFBufferView);
-    GLTFBuffer*     buffers     = dynarray_create(GLTFBuffer);
-    GLTFAccessor*   accessors   = dynarray_create(GLTFAccessor);
+    if (source == NULL) { result->error = AError_FILE_NOT_FOUND; ASSERT(0); return 0; }
 
     FixedPow2Allocator* allocator = AllocateTLSFGlobal(sizeof(FixedPow2Allocator));
     FixedPow2Allocator_Init(allocator, 2048 * 2);
 
-    // we can just use one arena allocator here!!
-    AMesh*      meshes     = dynarray_create(AMesh);
-    AImage*     images     = dynarray_create(AImage);
-    ASkin*      skins      = dynarray_create(ASkin);
-    ANode*      nodes      = dynarray_create(ANode);
-    ASampler*   samplers   = dynarray_create(ASampler);
-    AAnimation* animations = dynarray_create(AAnimation);
-    AMaterial*  materials  = dynarray_create(AMaterial);
-    ATexture*   textures   = dynarray_create(ATexture);
-    ACamera*    cameras    = dynarray_create(ACamera);
-    AScene*     scenes     = dynarray_create(AScene);
+    GLTFAccessor* accessors = NULL;
+    GLTFBufferView* bufferViews = NULL;
 
-    const char* curr = source;
-    while (*curr)
-    {
-        // search for descriptor for example, accessors, materials, images, samplers
-        AX_NO_UNROLL while (*curr && *curr != '"') curr++;
-        
-        if (*curr == '\0') break;
+    AScene* scenes = NULL;
+    result->defaultSceneIndex = 0;
 
-        curr++; // skips the "
-        if      (StrCMP16(curr, "accessors"))    curr = ParseAccessors(curr, &accessors);
-        else if (StrCMP16(curr, "scenes"))       curr = ParseScenes(curr, &scenes, allocator);
-        else if (StrCMP16(curr, "scene"))        curr = ParsePositiveNumber(curr, &result->defaultSceneIndex);
-        else if (StrCMP16(curr, "bufferViews"))  curr = ParseBufferViews(curr, &bufferViews);
-        else if (StrCMP16(curr, "buffers"))      curr = ParseBuffers(curr, path, &buffers);     
-        else if (StrCMP16(curr, "images"))       curr = ParseImages(curr, path, &images, allocator);       
-        else if (StrCMP16(curr, "textures"))     curr = ParseTextures(curr, &textures,allocator);   
-        else if (StrCMP16(curr, "meshes"))       curr = ParseMeshes(curr, &meshes, allocator);
-        else if (StrCMP16(curr, "materials"))    curr = ParseMaterials(curr, &materials, allocator);
-        else if (StrCMP16(curr, "nodes"))        curr = ParseNodes(curr, &nodes, scale, allocator);
-        else if (StrCMP16(curr, "samplers"))     curr = ParseSamplers(curr, &samplers);    
-        else if (StrCMP16(curr, "cameras"))      curr = ParseCameras(curr, &cameras, allocator); 
-        else if (StrCMP16(curr, "skins"))        curr = ParseSkins(curr, &skins, allocator); 
-        else if (StrCMP16(curr, "animations"))   curr = ParseAnimations(curr, &animations, allocator); 
-        else if (StrCMP16(curr, "asset"))        curr = SkipToNextNode(curr, '{', '}'); // it just has text data that doesn't have anything to do with meshes, (author etc..) if you want you can add this feature :)
-        else if (StrCMP16(curr, "extensionsUsed") || StrCMP16(curr, "extensionsRequ")) curr = SkipToNextNode(curr, '[', ']');
-        else { ASSERT(0); curr = (const char*)AError_UNKNOWN_DESCRIPTOR; }
-
-        if (curr < (const char*)AError_MAX) // is failed?
-        {
-            result->error = (AErrorType)(uint64_t)curr;
-            FreeAllText(source);
-            return 0;
-        }
-    }
+    sj_Reader sj = sj_reader(source, sourceSize);
+    sj_Value obj = sj_read(&sj);
     
-    result->numMeshes = dynarray_length(meshes);
+    GLTFParseContext ctx = {allocator, path, &sj, scale };
+
+    size_t pathLen = StringLength(path);
+    bool isGLB = FileHasExtension(path, pathLen, ".glb");
+    
+    sj_Value key, val;
+    while (sj_iter_object(&sj, obj, &key, &val)) 
+    {
+        char beforeChar = *key.end;
+        *key.end = 0;
+        char* name = key.start;
+
+        #define ParseList(Type, numThings, fnName) (Type*)ParseArray(val, sizeof(Type), numThings, &ctx, fnName)
+            
+             if (StrCMP16(name, "accessors"))          accessors       = ParseList(GLTFAccessor  , NULL, ParseAccessorObj);
+        else if (StrCMP16(name, "bufferViews"))        bufferViews     = ParseList(GLTFBufferView, NULL, ParseBufferViewObj);
+        else if (!isGLB && StrCMP16(name, "buffers"))  result->buffers = ParseList(GLTFBuffer    , NULL, ParseBuffersObj);
+        else if (StrCMP16(name, "scenes"))      result->scenes     = ParseList(AScene    , &result->numScenes    , ParseSceneObj     );
+        else if (StrCMP16(name, "images"))      result->images     = ParseList(AImage    , &result->numImages    , ParseImagesObj    );
+        else if (StrCMP16(name, "textures"))    result->textures   = ParseList(ATexture  , &result->numTextures  , ParseTexturesObj  );
+        else if (StrCMP16(name, "meshes"))      result->meshes     = ParseList(AMesh     , &result->numMeshes    , ParseMeshesObj    );
+        else if (StrCMP16(name, "materials"))   result->materials  = ParseList(AMaterial , &result->numMaterials , ParseMaterialsObj );
+        else if (StrCMP16(name, "nodes"))       result->nodes      = ParseList(ANode     , &result->numNodes     , ParseNodesObj     );
+        else if (StrCMP16(name, "samplers"))    result->samplers   = ParseList(ASampler  , &result->numSamplers  , ParseSamplersObj  );
+        else if (StrCMP16(name, "cameras"))     result->cameras    = ParseList(ACamera   , &result->numCameras   , ParseCamerasObj   );
+        else if (StrCMP16(name, "skins"))       result->skins      = ParseList(ASkin     , &result->numSkins     , ParseSkinsObj     );
+        else if (StrCMP16(name, "animations"))  result->animations = ParseList(AAnimation, &result->numAnimations, ParseAnimationsObj);
+        else if (StrCMP16(name, "scene"))       ParsePositiveNumber(key.start, &result->defaultSceneIndex);
+        else if (!isGLB) AX_LOG("unknown gltf parameter: %s", name);
+
+        // skip, asets, extensions used
+        *key.end = beforeChar;
+    }
 
     for (int m = 0; m < result->numMeshes; ++m)
     {
         // get number of vertex, getting first attribute count because all of the others are same
-        AMesh mesh = meshes[m];
-        mesh.numPrimitives = dynarray_length(mesh.primitives);
+        AMesh mesh = result->meshes[m];
         for (int p = 0; p < mesh.numPrimitives; p++)
         {
             APrimitive* primitive = &mesh.primitives[p];
@@ -1380,17 +961,20 @@ __public int ParseGLTF(const char* path, SceneBundle* result, float scale)
             int numVertex = accessors[(int)(size_t)primitive->vertexAttribs[0]].count; 
             primitive->numVertices = numVertex;
         
+            bool indicesDefined = primitive->indiceIndex != 0xCDCD;
+            primitive->indiceIndex = indicesDefined ? primitive->indiceIndex : 0;
             // get number of index
             GLTFAccessor accessor = accessors[primitive->indiceIndex];
             primitive->numIndices = accessor.count;
-
+            
             accessor = accessors[primitive->indiceIndex];
             GLTFBufferView view = bufferViews[accessor.bufferView];
             int64_t offset = (int64_t)accessor.byteOffset + view.byteOffset;
-            // copy indices
-            primitive->indices = ((char*)buffers[view.buffer].uri) + offset;
+
+            primitive->indices = ((char*)result->buffers[view.buffer].uri) + offset;
+            primitive->indices = indicesDefined ? primitive->indices : NULL;
             primitive->indexType = accessor.componentType;
-            
+
             // get joint data that we need for creating vertices
             const uint32_t jointIndex = TrailingZeroCount32(AAttribType_JOINTS);
             accessor = accessors[(int)(size_t)primitive->vertexAttribs[jointIndex]];
@@ -1415,92 +999,97 @@ __public int ParseGLTF(const char* path, SceneBundle* result, float scale)
                 view         = bufferViews[accessor.bufferView];
                 offset       = (int64_t)(accessor.byteOffset) + view.byteOffset;
                 
-                primitive->vertexAttribs[j] = (char*)buffers[view.buffer].uri + offset;
+                primitive->vertexAttribs[j] = (char*)result->buffers[view.buffer].uri + offset;
             }
         }
     }
 
-    result->numSkins = dynarray_length(skins);
     for (int s = 0; s < result->numSkins; s++)
     {
-        ASkin* skin = &skins[s];
+        ASkin* skin = &result->skins[s];
         size_t skinIndex = (size_t)skin->inverseBindMatrices;
         GLTFAccessor   accessor  = accessors[(int)skinIndex];
         GLTFBufferView view      = bufferViews[accessor.bufferView];
         int64_t        offset    = (int64_t)(accessor.byteOffset) + view.byteOffset;
-        skin->inverseBindMatrices = (float*)((char*)buffers[view.buffer].uri + offset);
+        skin->inverseBindMatrices = (float*)((char*)result->buffers[view.buffer].uri + offset);
     }
 
-    result->numAnimations = dynarray_length(animations); 
+    for (int i = 0; i < result->numImages; ++i)
+    {
+        AImage* image = result->images + i;
+        if (image->bufferViewIndex == -1) continue;
+        
+        image->path = (char*)FixedPow2Allocator_Allocate(allocator, pathLen + 64);
+
+        size_t pathEnd = pathLen - (isGLB ? 4 : 5);
+        SmallMemCpy(image->path, path, pathEnd);
+        SmallMemCpy(image->path + pathEnd, "Image00000", sizeof("Image00000"));
+        
+        int idxLen = IntToString(image->path + pathEnd + sizeof("Image"), (int64_t)i, 0);
+        SmallMemCpy(image->path + pathEnd + sizeof("Image") + idxLen, ".png", 4);
+
+        GLTFBufferView bufferView = bufferViews[image->bufferViewIndex];
+        GLTFBuffer buffer = result->buffers[bufferView.buffer];
+        WriteAllBytes(image->path, (char*)buffer.uri + bufferView.byteOffset, bufferView.byteLength);
+        AX_LOG("written image into: %s", image->path);
+    }
+
     for (int a = 0; a < result->numAnimations; a++)
     {
-        AAnimation* animation = &animations[a];
+        AAnimation* animation = &result->animations[a];
         animation->duration = 0.0f;
 
         for (int s = 0; s < animation->numSamplers; s++)
         {
             AAnimSampler* sampler = &animation->samplers[s];
             size_t inputIndex = (size_t)sampler->input;
-            GLTFAccessor   accessor  = accessors[(int)inputIndex];
-            GLTFBufferView view      = bufferViews[accessor.bufferView];
-            int64_t        offset    = (int64_t)(accessor.byteOffset) + view.byteOffset;
+            GLTFAccessor   accessor = accessors[(int)inputIndex];
+            GLTFBufferView view     = bufferViews[accessor.bufferView];
+            int64_t        offset   = (int64_t)(accessor.byteOffset) + view.byteOffset;
             
-            sampler->input = (float*)((char*)buffers[view.buffer].uri + offset);
-            sampler->count = accessor.count;
-            
+            sampler->input     = (float*)((char*)result->buffers[view.buffer].uri + offset);
+            sampler->count     = accessor.count;
+            sampler->inputType = accessor.componentType;
+
             size_t outputIndex = (size_t)sampler->output;
             accessor = accessors[(int)outputIndex];
             view     = bufferViews[accessor.bufferView];
             offset   = (int64_t)(accessor.byteOffset) + view.byteOffset;
             
-            sampler->output = (float*)((char*)buffers[view.buffer].uri + offset);
-            sampler->count = MMIN(sampler->count, accessor.count);
+            sampler->output = (float*)((char*)result->buffers[view.buffer].uri + offset);
+            sampler->count  = accessor.count;
+            sampler->outputType = accessor.componentType;
             sampler->numComponent = accessor.type;
-            
+           
             animation->duration = MMAX(animation->duration, sampler->input[sampler->count - 1]);
         }
     }
 
     // calculate num vertices and indices
+    int totalVertexCount = 0;
+    int totalIndexCount = 0;
+    // Calculate total vertices, and indices
+    for (int m = 0; m < result->numMeshes; ++m)
     {
-        int totalVertexCount = 0;
-        int totalIndexCount = 0;
-        // Calculate total vertices, and indices
-        for (int m = 0; m < result->numMeshes; ++m)
+        AMesh mesh = result->meshes[m];
+        for (int p = 0; p < mesh.numPrimitives; p++)
         {
-            AMesh mesh = meshes[m];
-            for (int p = 0; p < mesh.numPrimitives; p++)
-            {
-                APrimitive* primitive = &mesh.primitives[p];
-                totalIndexCount  += primitive->numIndices;
-                totalVertexCount += primitive->numVertices;
-            }
+            APrimitive* primitive = &mesh.primitives[p];
+            totalIndexCount  += primitive->numIndices;
+            totalVertexCount += primitive->numVertices;
         }
-
-        result->totalIndices  = totalIndexCount;
-        result->totalVertices = totalVertexCount;
     }
+    
+    result->totalIndices  = totalIndexCount;
+    result->totalVertices = totalVertexCount;
 
-
-    result->numMeshes     = dynarray_length(meshes);     result->meshes     = meshes;
-    result->numNodes      = dynarray_length(nodes);      result->nodes      = nodes;
-    result->numMaterials  = dynarray_length(materials);  result->materials  = materials;
-    result->numTextures   = dynarray_length(textures);   result->textures   = textures; 
-    result->numImages     = dynarray_length(images);     result->images     = images;
-    result->numSamplers   = dynarray_length(samplers);   result->samplers   = samplers;
-    result->numCameras    = dynarray_length(cameras);    result->cameras    = cameras;
-    result->numScenes     = dynarray_length(scenes);     result->scenes     = scenes;
-    result->numBuffers    = dynarray_length(buffers);    result->buffers    = buffers;
-    result->numAnimations = dynarray_length(animations); result->animations = animations;
-    result->numSkins      = dynarray_length(skins);      result->skins      = skins;
     result->allocator = allocator;
     result->scale = scale;
     result->error = AError_NONE;
-    FreeAllText(source);
     return 1;
 }
 
-__public void FreeGLTFBuffers(SceneBundle* gltf)
+void FreeGLTFBuffers(SceneBundle* gltf)
 {
     for (int i = 0; i < gltf->numBuffers; i++)
     {
@@ -1512,44 +1101,13 @@ __public void FreeGLTFBuffers(SceneBundle* gltf)
     gltf->buffers = NULL;
 }
 
-__public void FreeSceneBundle(SceneBundle* gltf)
+void FreeSceneBundle(SceneBundle* gltf)
 {
-    for (int i = 0; i < gltf->numBuffers; i++)
-        FreeAllText((char*)gltf->buffers[i].uri);
-
-    // also controls if arrays null or not
-    for (int i = 0; i < gltf->numMeshes; i++)
-        dynarray_destroy(gltf->meshes[i].primitives);
-
     FixedPow2Allocator_Destroy((FixedPow2Allocator*)gltf->allocator);
     DeAllocateTLSFGlobal(gltf->allocator);
-
-    if (gltf->meshes)      dynarray_destroy(gltf->meshes);
-    if (gltf->nodes)       dynarray_destroy(gltf->nodes);
-    if (gltf->materials)   dynarray_destroy(gltf->materials);
-    if (gltf->textures)    dynarray_destroy(gltf->textures);
-    if (gltf->images)      dynarray_destroy(gltf->images);
-    if (gltf->samplers)    dynarray_destroy(gltf->samplers);
-    if (gltf->cameras)     dynarray_destroy(gltf->cameras);
-    if (gltf->scenes)      dynarray_destroy(gltf->scenes);
-    if (gltf->skins)       dynarray_destroy(gltf->skins);
-    if (gltf->animations)
-    {
-        for (int i = 0; i < gltf->numAnimations; i++)
-        {
-            dynarray_destroy(gltf->animations[i].samplers);
-            dynarray_destroy(gltf->animations[i].channels);
-        }
-        dynarray_destroy(gltf->animations);
-    }
-    if (gltf->allVertices) FreeAligned(gltf->allVertices);
-    if (gltf->allIndices)  FreeAligned(gltf->allIndices);
-    
-    MemsetZero(gltf, sizeof(SceneBundle));
 }
 
 // <<<<<<<        prefab         >>>>>>>>>>>>
-
 
 int Prefab_FindAnimRootNodeIndex(const SceneBundle* prefab)
 {
@@ -1596,29 +1154,3 @@ int Prefab_FindNodeFromName(const SceneBundle* prefab, const char* name)
     }
     return -1;
 }
-
-
-const char* ParsedSceneGetError(AErrorType error)
-{
-    const char* SceneParseErrorToStr[] = {"NONE", 
-        "UNKNOWN",
-        "UNKNOWN_ATTRIB",
-        "UNKNOWN_MATERIAL_VAR",
-        "UNKNOWN_PBR_VAR",
-        "UNKNOWN_NODE_VAR",
-        "UNKNOWN_TEXTURE_VAR",
-        "UNKNOWN_ACCESSOR_VAR",
-        "UNKNOWN_BUFFER_VIEW_VAR",
-        "UNKNOWN_MESH_VAR",
-        "UNKNOWN_CAMERA_VAR",
-        "UNKNOWN_MESH_PRIMITIVE_VAR",
-        "BUFFER_PARSE_FAIL",
-        "BIN_NOT_EXIST",
-        "FILE_NOT_FOUND",
-        "UNKNOWN_DESCRIPTOR",
-        "HASH_COLISSION",
-        "NON_UTF8",
-        "MAX" };
-    return SceneParseErrorToStr[error];
-}
-

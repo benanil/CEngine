@@ -201,7 +201,7 @@ int LoadFBX(const char* path, SceneBundle* fbxScene, float scale)
         
         for (int j = 0; j < primitive->numVertices; j++)
         {
-            SmallMemCpy(&currentVertex[j].position.x, &umesh->vertex_position.values.data[j], sizeof(float) * 3);
+            // SmallMemCpy(&currentVertex[j].position.x, &umesh->vertex_position.values.data[j], sizeof(float) * 3);
             if (umesh->vertex_uv.exists)
             {
                 currentVertex[j].texCoord = Float2ToHalf2((float*)(umesh->vertex_uv.values.data + j));
@@ -483,79 +483,141 @@ int LoadFBX(const char* path, SceneBundle* fbxScene, float scale)
 /*//////////////////////////////////////////////////////////////////////////*/
 
 
+static void JointsForPrimitive(APrimitive* primitive, ASkinedVertex* currVertex)
+{
+    // convert whatever joint format to rgb8u
+    char* joints    = (char*)primitive->vertexAttribs[5];
+    int jointSize   = GraphicsTypeToSize(primitive->jointType);
+    int jointOffset = Maxi32((int)(primitive->jointStride - (jointSize * primitive->jointCount)), 0); // stride - sizeof(rgbau16)
+            
+    if (joints == NULL) 
+    {
+        AX_LOG("no joints in skinned mesh renderer");
+        for (int j = 0; j < primitive->numVertices; j++)
+            currVertex[j].joints = 0;
+        return;
+    }
+
+    for (int j = 0; j < primitive->numVertices; j++)
+    {
+        // Combine 4 indices into one integer to save space
+        uint32_t packedJoints = 0u;
+        // iterate over joint indices, most of the time 4 indices
+        for (int k = 0, shift = 0; k < primitive->jointCount; k++)
+        {
+            uint32_t jointIndex = 0;
+            SmallMemCpy(&jointIndex, joints, jointSize); 
+            ASSERT(jointIndex < 255u && "index has to be smaller than 255");
+            packedJoints |= jointIndex << shift;
+            shift  += 8;
+            joints += jointSize;
+        }
+        currVertex[j].joints = packedJoints;
+        joints += jointOffset; // stride offset at the end of the struct
+    }
+}
+
+static void WeightsForPrimitive(APrimitive* primitive, ASkinedVertex* currVertex)
+{
+    const char* weights = (const char*)primitive->vertexAttribs[6];
+            
+    // size and offset in bytes
+    int weightSize   = GraphicsTypeToSize(primitive->weightType);
+    int weightOffset = Maxi32((int)(primitive->weightStride - (weightSize * primitive->jointCount)), 0);
+
+    if (weights == NULL)
+    {
+        AX_LOG("no joints in primitive");
+        for (int j = 0; j < primitive->numVertices; j++)
+            currVertex[j].weights = 1023;
+        return;
+    }
+ 
+    if (weightSize == 4) // if float, pack it directly
+    {
+        for (int j = 0; j < primitive->numVertices; j++)
+        {
+            uint32_t packedWeights = PackXY11Z10UnormToU32(Vec3Load((float*)weights));
+            if (packedWeights == 0) packedWeights = 1023;
+            currVertex[j].weights = packedWeights;
+            weights += sizeof(Vec4x32f) + weightOffset;
+        }
+    }
+    else
+    {
+        for (int j = 0; j < primitive->numVertices; j++)
+        {
+            uint32_t packedWeights = 0;
+            float packMax[3] = { 1023.0f, 1023.0f, 511.0f };
+            // don't parse w, we will get it from xyz
+            for (int k = 0, shift = 0; k < primitive->jointCount && k < 3; k++, shift += 11)
+            {
+                uint32_t jointWeight = 0u;
+                SmallMemCpy(&jointWeight, weights, weightSize);
+                float weightMax = (float)((1u << (weightSize * 8)) - 1);
+                float norm = (float)jointWeight / weightMax; // divide by 255 or 65535
+                packedWeights |= (uint32_t)(norm * packMax[k]) << shift;
+                weights += weightSize;
+            }
+            if (packedWeights == 0) packedWeights = 0XFF000000u;
+            currVertex[j].weights = packedWeights;
+            weights += weightOffset;
+        }
+    }
+}
+
+static void IndicesForPrimitive(APrimitive* primitive, uint32_t* currIndices, const uint32_t vertexCursor)
+{
+    if (primitive->indices == NULL)
+    {
+        primitive->indices = currIndices;
+        int* indices = (int*)primitive->indices;
+        for (int i = 0; i < primitive->numIndices; i++)
+            indices[i] = i;
+        return;
+    }
+
+    const char* beforeCopy = (const char*)primitive->indices;
+    primitive->indices = currIndices;
+    int indexSize = GraphicsTypeToSize(primitive->indexType);
+
+    for (int i = 0; i < primitive->numIndices; i++)
+    {
+        uint32_t index = 0;
+        SmallMemCpy(&index, beforeCopy, indexSize);
+        // we are combining all vertices and indices into one buffer, that's why we have to add vertex cursor
+        currIndices[i] = index + vertexCursor; 
+        beforeCopy += indexSize;
+    }
+}
+
+static void VerticesForPrimitive(APrimitive* primitive, ASkinedVertex* currVertex)
+{
+    // https://www.yosoygames.com.ar/wp/2018/03/vertex-formats-part-1-compression/
+    primitive->vertices = currVertex;
+    float3* positions   = (float3*)primitive->vertexAttribs[0];
+    float2* texCoords   = (float2*)primitive->vertexAttribs[1];
+    float3* normals     = (float3*)primitive->vertexAttribs[2];
+    Vec4x32f* tangents  = (Vec4x32f*)primitive->vertexAttribs[3];
+
+    for (int v = 0; v < primitive->numVertices; v++)
+    {
+        Vec4x32f tangent = tangents  ? tangents[v]  : VecZero();
+        float2 texCoord  = texCoords ? texCoords[v] : (float2){0.0f, 0.0f};
+        float3 normal    = normals   ? normals[v]   : (float3){0.5f, 0.5f, 0.0};
+        float3 position  = positions[v];
+
+        SDL_Log("x: %f, y: %f, z: %f", position.x, position.y, position.z);
+        Float4ToHalf4((half*)&currVertex[v].positionXY, &positions[v].x);
+        currVertex[v].texCoord      = Float2ToHalf2(&texCoord.x);
+        currVertex[v].qtangentXYF16 = PackXY11Z10SnormToU32(Vec3Load(&normal.x));
+        currVertex[v].qtangentZWF16 = PackXY11Z10SnormToU32(tangent);
+    }
+}
+
 void CreateVerticesIndices(SceneBundle* gltf)
 {
     AMesh* meshes = gltf->meshes;
-    
-    // pre allocate all vertices and indices 
-    gltf->allVertices = AllocAligned(sizeof(AVertex) * gltf->totalVertices, 4);
-    gltf->allIndices  = AllocAligned(gltf->totalIndices * sizeof(uint32_t) + 16, 4); // 16->give little bit of space for memcpy
-    
-    AVertex* currVertex = (AVertex*)gltf->allVertices;
-    uint32_t* currIndex = (uint32_t*)gltf->allIndices;
-    
-    uint32_t vertexCursor = 0, indexCursor = 0;
-    int count = 0;
-
-    for (int m = 0; m < gltf->numMeshes; ++m)
-    {
-        // get number of vertex, getting first attribute count because all of the others are same
-        AMesh mesh = meshes[m];
-        for (uint64_t p = 0; p < mesh.numPrimitives; p++)
-        {
-            APrimitive* primitive = &mesh.primitives[p];
-            char* beforeCopy = (char*)primitive->indices;
-            primitive->indices = currIndex;
-            primitive->indexOffset = indexCursor;
-            primitive->vertices = currVertex;
-            
-            // https://www.yosoygames.com.ar/wp/2018/03/vertex-formats-part-1-compression/
-            float3*   positions = (float3*)primitive->vertexAttribs[0];
-            float2*   texCoords = (float2*)primitive->vertexAttribs[1];
-            float3*   normals   = (float3*)primitive->vertexAttribs[2];
-            Vec4x32f* tangents  = (Vec4x32f*)primitive->vertexAttribs[3];
-            
-            for (int v = 0; v < primitive->numVertices; v++)
-            {
-                Vec4x32f tangent  = tangents  ? tangents[v]  : VecZero();
-                float2   texCoord = texCoords ? texCoords[v] : (float2){0.0f, 0.0f};
-                float3   normal   = normals   ? normals[v]   : (float3){0.5f, 0.5f, 0.0};
-
-                currVertex[v].position  = positions[v];
-                currVertex[v].texCoord  = Float2ToHalf2(&texCoord.x);
-                currVertex[v].normal  = PackXY11Z10SnormToU32(Vec3Load(&normal.x));
-                currVertex[v].tangent = PackXY11Z10SnormToU32(tangent);
-            }
-
-            int indexSize = GraphicsTypeToSize(primitive->indexType);
-            
-            for (int i = 0; i < primitive->numIndices; i++)
-            {
-                uint32_t index = 0;
-                // index type might be ushort we are converting it to uint32 here.
-                SmallMemCpy(&index, beforeCopy, indexSize);
-                // we are combining all vertices and indices into one buffer, that's why we have to add vertex cursor
-                currIndex[i] = index + vertexCursor;
-                beforeCopy += indexSize;
-            }
-
-            currVertex += primitive->numVertices;
-
-            primitive->indexOffset = indexCursor;
-            indexCursor += primitive->numIndices;
-
-            vertexCursor += primitive->numVertices;
-            currIndex += primitive->numIndices;
-        }
-    }
-    
-    FreeGLTFBuffers(gltf);
-}
-
-void CreateVerticesIndicesSkined(SceneBundle* gltf)
-{
-    AMesh* meshes = gltf->meshes;
-    
     // pre allocate all vertices and indices 
     gltf->allVertices = AllocAligned(sizeof(ASkinedVertex) * gltf->totalVertices, 4);
     gltf->allIndices  = AllocAligned(gltf->totalIndices * sizeof(uint32_t) + 16, 4); // 16->give little bit of space for memcpy
@@ -564,16 +626,8 @@ void CreateVerticesIndicesSkined(SceneBundle* gltf)
     uint32_t* currIndices = (uint32_t*)gltf->allIndices;
     
     ASkin* skin = gltf->skins;
-    uint8_t mJointToPose[MaxBonePoses]; 
-    MemsetZero(mJointToPose, sizeof(mJointToPose));
-    
-    for (uint8_t j = 0; j < skin->numJoints; j++)
-    {
-        mJointToPose[skin->joints[j]] = j;
-    }
-
-    int vertexCursor = 0;
-    int indexCursor = 0;
+    uint32_t vertexCursor = 0u;
+    uint32_t indexCursor  = 0u;
     
     for (int m = 0; m < gltf->numMeshes; ++m)
     {
@@ -581,116 +635,17 @@ void CreateVerticesIndicesSkined(SceneBundle* gltf)
         AMesh mesh = meshes[m];
         for (int p = 0; p < mesh.numPrimitives; p++)
         {
-            APrimitive* primitive = &mesh.primitives[p];
-          
-            if (primitive->indices != NULL)
-            {
-                char* beforeCopy = (char*)primitive->indices;
-                primitive->indices = currIndices;
-                int indexSize = GraphicsTypeToSize(primitive->indexType);
+            APrimitive* primitive = &mesh.primitives[p];  
+            IndicesForPrimitive(primitive, currIndices, vertexCursor);
+            VerticesForPrimitive(primitive, currVertex);
+            JointsForPrimitive(primitive, currVertex);
+            WeightsForPrimitive(primitive, currVertex);
 
-                for (int i = 0; i < primitive->numIndices; i++)
-                {
-                    uint32_t index = 0;
-                    SmallMemCpy(&index, beforeCopy, indexSize);
-                    // we are combining all vertices and indices into one buffer, that's why we have to add vertex cursor
-                    currIndices[i] = index + vertexCursor; 
-                    beforeCopy += indexSize;
-                }
-            }
-            else
-            {
-                primitive->indices = currIndices;
-                int* indices = (int*)primitive->indices;
-                for (int i = 0; i < primitive->numIndices; i++)
-                {
-                    indices[i] = i;
-                }
-            }
-            
-            // https://www.yosoygames.com.ar/wp/2018/03/vertex-formats-part-1-compression/
-            primitive->vertices = currVertex;
-            float3* positions  = (float3*)primitive->vertexAttribs[0];
-            float2* texCoords  = (float2*)primitive->vertexAttribs[1];
-            float3* normals    = (float3*)primitive->vertexAttribs[2];
-            Vec4x32f* tangents = (Vec4x32f*)primitive->vertexAttribs[3];
-
-            for (int v = 0; v < primitive->numVertices; v++)
-            {
-                Vec4x32f tangent = tangents  ? tangents[v]  : VecZero();
-                float2 texCoord  = texCoords ? texCoords[v] : (float2){0.0f, 0.0f};
-                float3 normal    = normals   ? normals[v]   : (float3){0.5f, 0.5f, 0.0};
-
-                currVertex[v].position = positions[v];
-                currVertex[v].texCoord = Float2ToHalf2(&texCoord.x);
-                currVertex[v].qtangentXYF16 = PackXY11Z10SnormToU32(Vec3Load(&normal.x));
-                currVertex[v].qtangentZWF16 = PackXY11Z10SnormToU32(tangent);
-            }
-
-            // convert whatever joint format to rgb8u
-            char* joints  = (char*)primitive->vertexAttribs[5];
-            char* weights = (char*)primitive->vertexAttribs[6];
-
-            // size and offset in bytes
-            int jointSize   = GraphicsTypeToSize(primitive->jointType);
-            int jointOffset = Maxi32((int)(primitive->jointStride - (jointSize * primitive->jointCount)), 0); // stride - sizeof(rgbau16)
-            // size and offset in bytes
-            int weightSize   = GraphicsTypeToSize(primitive->weightType);
-            int weightOffset = Maxi32((int)(primitive->weightStride - (weightSize * primitive->jointCount)), 0);
-            
-            for (int j = 0; j < primitive->numVertices; j++)
-            {
-                // Combine 4 indices into one integer to save space
-                uint32_t packedJoints = 0u;
-                // iterate over joint indices, most of the time 4 indices
-                for (int k = 0, shift = 0; k < primitive->jointCount; k++)
-                {
-                    uint32_t jointIndex = 0;
-                    SmallMemCpy(&jointIndex, joints, jointSize); 
-                    // jointIndex = mJointToPose[jointIndex];
-                    ASSERT(jointIndex < 255u && "index has to be smaller than 255");
-                    packedJoints |= jointIndex << shift;
-                    shift += 8;
-                    joints += jointSize;
-                }
-
-                uint32_t packedWeights;
-                if (weightSize == 4) // if float, pack it directly
-                {
-                    packedWeights = PackXY11Z10UnormToU32(Vec3Load((float*)weights));
-                    // packedWeights = PackColor4PtrToUint((float*)weights);
-                    weights += weightSize * 4;
-                }
-                else
-                {
-                    float packMax[3] = { 1023.0f, 1023.0f, 511.0f };
-                    // don't parse w, we will get it from xyz
-                    for (int k = 0, shift = 0; k < primitive->jointCount && k < 3; k++, shift += 11)
-                    {
-                        uint32_t jointWeight = 0u;
-                        SmallMemCpy(&jointWeight, weights, weightSize);
-                        float weightMax = (float)((1u << (weightSize * 8)) - 1);
-                        float norm = (float)jointWeight / weightMax; // divide by 255 or 65535
-                        packedWeights |= (uint32_t)(norm * packMax[k]) << shift;
-                        weights += weightSize;
-                    }
-                }
-                currVertex[j].joints  = packedJoints;
-                currVertex[j].weights = packedWeights;
-
-                if (currVertex[j].weights == 0)
-                    currVertex[j].weights = 0XFF000000u;
-
-                joints  += jointOffset; // stride offset at the end of the struct
-                weights += weightOffset;
-            }
-
-            currVertex += primitive->numVertices;
             primitive->indexOffset = indexCursor;
-            indexCursor += primitive->numIndices;
-            
-            vertexCursor += primitive->numVertices;
+            currVertex   += primitive->numVertices;
             currIndices  += primitive->numIndices;
+            vertexCursor += primitive->numVertices;
+            indexCursor  += primitive->numIndices;
         }
     }
     
@@ -726,21 +681,23 @@ void CreateVerticesIndicesSkined(SceneBundle* gltf)
                 
                 if (sampler->inputType != AComponentType_FLOAT)
                     AX_WARN("unsupported sampler input type: %d", sampler->inputType);
+                
+                if (sampler->outputType != AComponentType_FLOAT)
+                    AX_WARN("unsupported sampler output type: %d", sampler->outputType);
 
-                switch (sampler->outputType)
+                if (sampler->numComponent != 4)
+                    AX_WARN("anim sampler num components has to be 4. its: %d", sampler->numComponent);
+
+                if (sampler->outputType != AComponentType_FLOAT)
+                    AX_WARN("unsupported sampler output type: %d", sampler->outputType);
+
+                for (int i = 0; i < sampler->count; i++)
                 {
-                    case AComponentType_FLOAT: 
-                        for (int i = 0; i < sampler->count; i++)
-                        {
-                            SmallMemCpy(currOutput + i, sampler->output + (i * sampler->numComponent), sizeof(float) * sampler->numComponent);
-                            currOutput[i] = VecLoad(sampler->output + (i * sampler->numComponent));
-                            if (sampler->numComponent == 3) currOutput[i] = VecSetW(currOutput[i], 0.0f);
-                        }
-                        break;
-                    default:
-                        AX_WARN("unsupported sampler output type: %d", sampler->outputType);
-                        break;
+                    SmallMemCpy(currOutput + i, sampler->output + (i * sampler->numComponent), sizeof(float) * sampler->numComponent);
+                    currOutput[i] = VecLoad(sampler->output + (i * sampler->numComponent));
+                    if (sampler->numComponent == 3) currOutput[i] = VecSetW(currOutput[i], 0.0f);
                 }
+
                 sampler->output = (float*)currOutput;
                 currOutput += sampler->count;
             }
