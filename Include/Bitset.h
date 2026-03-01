@@ -69,13 +69,6 @@ purefn uint32_t VECTORCALL HSum32_128(Vec4x32u x)
 }
 #endif
 
-#ifdef AX_SUPPORT_AVX2
-purefn uint32_t VECTORCALL HSum32_256(Vec8x32u v)
-{
-    return _mm256_cvtsi256_si32(v) + _mm256_extract_epi64(v, 1) + _mm256_extract_epi64(v, 2) + _mm256_extract_epi64(v, 3);
-}
-#endif
-
 purefn Vec4x32u VECTORCALL PopCount128(Vec4x32u x)
 {
     Vec4x32u y;
@@ -99,7 +92,8 @@ purefn uint32_t VECTORCALL PopCount256(const uint64_t* ptr)
     __m256i popcnt1 = _mm256_shuffle_epi8(lookup, lo);
     __m256i popcnt2 = _mm256_shuffle_epi8(lookup, hi);
     __m256i total   = _mm256_add_epi8(popcnt1, popcnt2);	
-    return HSum32_256(_mm256_sad_epu8(total, _mm256_setzero_si256()));
+    v = _mm256_sad_epu8(total, _mm256_setzero_si256());
+    return _mm256_cvtsi256_si32(v) + _mm256_extract_epi64(v, 1) + _mm256_extract_epi64(v, 2) + _mm256_extract_epi64(v, 3);
     #else
     return HSum32_128(PopCount128(VeciLoad(ptr))) + HSum32_128(PopCount128(VeciLoad(ptr + 2)));
     #endif

@@ -20,7 +20,6 @@
 #include "Include/FileSystem.h"
 #include "Math/Half.h"
 
-
 void AnimationController_Create(const SceneBundle* prefab, AnimationController* result, Matrix3x4f16* outMatrices)
 {
     Pose pose;
@@ -81,13 +80,13 @@ void AnimationController_RecurseBoneMatrices(AnimationController* ac)
     const uint8_t* childIndices = ac->mChildIndices;
     
     stack[stackIndex++] = (StackNode){ ac->mAnimPoseA[root], root };
+    float parentScale = VecGetW(stack[0].pose.translation);
 
     while (stackIndex)
     {
         StackNode sn = stack[--stackIndex];
         const AnimNode* node = &ac->mAnimNodes[sn.idx];
-        Pose parent = sn.pose;
-
+        
         const uint8_t* children = &childIndices[node->childrenStartIndex];
         int count = node->numChildren;
 
@@ -95,12 +94,14 @@ void AnimationController_RecurseBoneMatrices(AnimationController* ac)
         {
             int child = (int)children[c];
             Pose pose = poses[child];
-            Vec4x32f t = QMulVec3V(pose.translation, parent.rotation);
-            pose.translation = VecAdd(t, parent.translation);
-            pose.rotation = QMul(pose.rotation, parent.rotation);
+            Vec4x32f t = VecMulf(pose.translation, parentScale); 
+            t = QMulVec3V(t, sn.pose.rotation);
+            pose.translation = VecAdd(t, sn.pose.translation);
+            pose.rotation = QMul(pose.rotation, sn.pose.rotation);
             poses[child] = pose;
             stack[stackIndex++] = (StackNode){ pose, child };
         }
+        parentScale = 1.0f;
     }
 }
 
@@ -109,11 +110,20 @@ void AnimationController_UploadBoneMatrices(AnimationController* ac)
     Matrix4 mat;
     const ASkin* skin = &ac->mPrefab->skins[0];
     const Matrix4* invMatrices = (const Matrix4*)skin->inverseBindMatrices;
+    float rootScale = ac->mPrefab->nodes[ac->mRootNodeIndex].scale[1];
+    Vec4x32f rootScaleMul = VecSetR(rootScale, rootScale, rootScale, 1.0f);
     
     for (int i = 0; i < skin->numJoints; i++)
     {
         const Pose* pose = ac->mAnimPoseA + skin->joints[i];
-        mat = Matrix4Multiply(invMatrices[i], PositionRotationScaleVec(pose->translation, pose->rotation, VecOne()));
+        Vec4x32f pos = pose->translation;
+        if (i != ac->mRootNodeIndex)
+        {
+            pos = VecMul(pos, rootScaleMul);
+        }
+
+        mat = PositionRotationVec(pos, pose->rotation);
+        mat = Matrix4Multiply(invMatrices[i], mat);
         mat = Matrix4Transpose(mat);
         // with AVX F16C this is single instruction! vcvtps2ph 
         Float8ToHalf8(ac->mOutMatrices[i].x, &mat.m[0][0]);

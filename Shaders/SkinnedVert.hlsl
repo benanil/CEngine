@@ -72,7 +72,7 @@ half2 unpackHalf2x16(uint packed) {
     return asfloat16(uint16_t2(uint16_t(packed), uint16_t(packed >> 16)));
 }
 
-half4 UnpackRGBA16Snorm(uint xy, uint zw)  {
+half4 UnpackRGBA16Snorm(uint xy, uint zw) {
     int16_t4 raw;
     raw.x = int16_t(int(xy << 16u) >> 16);
     raw.y = int16_t(int(xy) >> 16);
@@ -119,7 +119,7 @@ VSOutput main(VSInput input, uint instanceID : SV_InstanceID)
         animMat[2] += row2 * weights[i];
     }
 
-    half4 qtangent = UnpackRGBA16Snorm(input.aQTangentXY, input.aQTangentZW);
+    half4 qtangent; // = UnpackRGBA16Snorm(input.aQTangentXY, input.aQTangentZW);
     half3x3 tbn; // = Matrix3FromQuaternion(qtangent);
     tbn[2] = UnpackVec3XY11Z10Snorm(input.aQTangentXY);
     tbn[1] = UnpackVec3XY11Z10Snorm(input.aQTangentZW);
@@ -133,7 +133,7 @@ VSOutput main(VSInput input, uint instanceID : SV_InstanceID)
     half3 worldPos = mul(half4(input.aPos.xyz, 1.0), animTransposed);
     half4 instanceRotation = GetInstanceRotation(instanceID << 1);
     worldPos = QuaternionRotateVector(instanceRotation, worldPos);
-    worldPos *= 0.1610;
+    
     float3 instancePos = sInstancePosition[instanceID].xyz;
 
     half3x3 instanceRotMat = Matrix3FromQuaternion(instanceRotation);

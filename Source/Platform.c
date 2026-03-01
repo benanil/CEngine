@@ -215,7 +215,7 @@ void PlatformInit()
 void PlatformUpdate()
 {
     int64_t now = TimeNow();
-    PlatformCtx.DeltaTime = (double)(now - PlatformCtx.LastTime) / (double)PlatformCtx.CPUFrequency;
+    PlatformCtx.DeltaTime = Clampf64((double)(now - PlatformCtx.LastTime) / (double)PlatformCtx.CPUFrequency, 0.0, 1.0);
     PlatformCtx.LastTime  = now;
     SetPressedAndReleasedKeys();
     RecordLastKeys();

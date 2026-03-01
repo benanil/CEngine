@@ -480,6 +480,14 @@ purefn Matrix4 PositionRotationScaleVec(Vec4x32f position, Quaternion rotation, 
     return res; 
 }
 
+purefn Matrix4 PositionRotationVec(Vec4x32f position, Quaternion rotation)
+{
+    Matrix4 res;
+    Matrix4FromQuaternion(&res.m[0][0], rotation);
+    res.r[3] = position;
+    VecSetW(res.r[3], 1.0f);
+    return res; 
+}
 
 purefn Matrix4 PositionRotationScale(float3 position, Quaternion rotation, float3 scale)
 {

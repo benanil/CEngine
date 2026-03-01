@@ -374,6 +374,8 @@ purefn float Clamp01f32(float x) { return MMIN(1.0f, MMAX(x, 0.0f)); }
 
 purefn float Clampf32(float x, float min, float max) { return MMIN(max, MMAX(x, min)); }
 
+purefn double Clampf64(double x, double min, double  max) { return MMIN(max, MMAX(x, min)); }
+
 purefn int Clampi32(int x, int min, int max) { return MMIN(max, MMAX(x, min)); }
 
 purefn float Minf32(float a, float b) { return a < b ? a : b; }

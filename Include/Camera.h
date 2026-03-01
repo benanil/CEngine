@@ -93,7 +93,7 @@ static inline void CameraInit(Camera* camera, int width, int height)
     camera->verticalFOV = 65.0f;
     camera->nearClip    = 0.1f;
     camera->farClip     = 2400.0f;
-    camera->speed       = 0.4f;
+    camera->speed       = 1.0f;
     camera->position.x -= 6;
 
     Camera_CalculateLook(camera);
@@ -118,7 +118,7 @@ static inline void InfiniteMouse(float2 point)
 static inline void CameraUpdate(Camera* camera, float dt)
 {
     bool pressing = GetMouseDown(MouseButton_Right);
-    float speed = dt * (1.0f + GetKeyDown(SDLK_LSHIFT) * 2.0f) * 2.0f;
+    float speed = dt * (1.0f + GetKeyDown(SDLK_LSHIFT) * 2.0f) * camera->speed;
     
     if (!pressing) { camera->wasPressing = false; return; }
         
@@ -152,12 +152,17 @@ static inline void CameraUpdate(Camera* camera, float dt)
     camera->mouseOld = mousePos;
     camera->wasPressing = true;
 
-    if (GetKeyDown(SDLK_D)) camera->position = F3Add(camera->position, F3MulF(camera->Right, camera->speed));
-    if (GetKeyDown(SDLK_A)) camera->position = F3Sub(camera->position, F3MulF(camera->Right, camera->speed));
-    if (GetKeyDown(SDLK_W)) camera->position = F3Add(camera->position, F3MulF(camera->Front, camera->speed));
-    if (GetKeyDown(SDLK_S)) camera->position = F3Sub(camera->position, F3MulF(camera->Front, camera->speed));
-    if (GetKeyDown(SDLK_E)) camera->position = F3Add(camera->position, F3MulF(camera->Up, camera->speed));
-    if (GetKeyDown(SDLK_Q)) camera->position = F3Sub(camera->position, F3MulF(camera->Up, camera->speed));
+    if (GetKeyDown(SDLK_D)) camera->position = F3Add(camera->position, F3MulF(camera->Right, speed));
+    if (GetKeyDown(SDLK_A)) camera->position = F3Sub(camera->position, F3MulF(camera->Right, speed));
+    if (GetKeyDown(SDLK_W)) camera->position = F3Add(camera->position, F3MulF(camera->Front, speed));
+    if (GetKeyDown(SDLK_S)) camera->position = F3Sub(camera->position, F3MulF(camera->Front, speed));
+    if (GetKeyDown(SDLK_E)) camera->position = F3Add(camera->position, F3MulF(camera->Up, speed));
+    if (GetKeyDown(SDLK_Q)) camera->position = F3Sub(camera->position, F3MulF(camera->Up, speed));
+
+    if (GetKeyReleased(SDLK_R))
+    {
+        SDL_Log("cam pos: %f, %f, %f", camera->position.x, camera->position.y, camera->position.z);
+    }
 
     InfiniteMouse(mousePos);
     Camera_RecalculateView(camera);

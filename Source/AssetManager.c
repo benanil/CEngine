@@ -607,11 +607,110 @@ static void VerticesForPrimitive(APrimitive* primitive, ASkinedVertex* currVerte
         float3 normal    = normals   ? normals[v]   : (float3){0.5f, 0.5f, 0.0};
         float3 position  = positions[v];
 
-        SDL_Log("x: %f, y: %f, z: %f", position.x, position.y, position.z);
         Float4ToHalf4((half*)&currVertex[v].positionXY, &positions[v].x);
         currVertex[v].texCoord      = Float2ToHalf2(&texCoord.x);
         currVertex[v].qtangentXYF16 = PackXY11Z10SnormToU32(Vec3Load(&normal.x));
         currVertex[v].qtangentZWF16 = PackXY11Z10SnormToU32(tangent);
+    }
+}
+
+static void BoundsForPrimitive(APrimitive* primitive)
+{
+    float3* positions = (float3*)primitive->vertexAttribs[0];
+    Vec4x32f min = VecSet1(FLT_MAX);
+    Vec4x32f max = VecNeg(min);
+    for (int i = 0; i < primitive->numVertices; i++)
+    {
+        Vec4x32f v = VecLoad(&positions[i].x);
+        min = VecMin(min, v);
+        max = VecMax(max, v);
+    }
+    VecStore(primitive->min, min);
+    VecStore(primitive->max, max);
+    SDL_Log("min: %f, %f, %f ", primitive->min[0], primitive->min[1], primitive->min[2]);
+    SDL_Log("max: %f, %f, %f ", primitive->max[0], primitive->max[1], primitive->max[2]);
+}
+
+static void GetGLTFAnimations(SceneBundle* gltf)
+{
+    if (gltf->skins == NULL)
+        return;
+
+    int rootIndex = Prefab_FindAnimRootNodeIndex(gltf);
+    float rootScale = gltf->nodes[rootIndex].scale[1];
+    Vec4x32f rootScaleMul = VecSetR(rootScale, rootScale, rootScale, 1.0f);
+
+    for (int s = 0; s < gltf->numSkins; s++)
+    {
+        ASkin* skin = &gltf->skins[s];
+        Matrix4* inverseBindMatrices = AllocateTLSFGlobal(skin->numJoints * sizeof(Matrix4));
+        SmallMemCpy(inverseBindMatrices, skin->inverseBindMatrices, sizeof(Matrix4) * skin->numJoints);
+        skin->inverseBindMatrices = (float*)inverseBindMatrices;
+        
+        for (int i = 0; i < skin->numJoints; i++)
+        {
+            Matrix4 inv = inverseBindMatrices[i];
+            if (i != rootIndex)
+            {
+                inv.r[0] = VecNorm(inv.r[0]);
+                inv.r[1] = VecNorm(inv.r[1]);
+                inv.r[2] = VecNorm(inv.r[2]);
+                inv.r[3] = VecMul(inv.r[3], rootScaleMul); // VecMul(inv.r[3], VecSetR(0.01f, 0.01f, 0.01f, 1.0f));
+                inverseBindMatrices[i] = inv;
+            }
+            SDL_Log("inv[3]: %f, %f, %f, %f", inv.m[3][0], inv.m[3][1], inv.m[3][2], inv.m[3][3]);
+            SDL_Log("inv[2]: %f, %f, %f, %f", inv.m[2][0], inv.m[2][1], inv.m[2][2], inv.m[2][3]);
+            SDL_Log("inv[1]: %f, %f, %f, %f", inv.m[1][0], inv.m[1][1], inv.m[1][2], inv.m[1][3]);
+            SDL_Log("inv[0]: %f, %f, %f, %f", inv.m[0][0], inv.m[0][1], inv.m[0][2], inv.m[0][3]);
+            SDL_Log("--------------------------------------");
+        }
+    }
+
+    if (gltf->numAnimations <= 0)
+        return;
+    
+    int totalSamplerInput = 0;
+    for (int a = 0; a < gltf->numAnimations; a++)
+        for (int s = 0; s < gltf->animations[a].numSamplers; s++)
+            totalSamplerInput += gltf->animations[a].samplers[s].count;
+        
+    float* currSampler = (float*)AllocZeroTLSFGlobal(totalSamplerInput, 4);
+    Vec4x32f* currOutput = (Vec4x32f*)AllocZeroTLSFGlobal(totalSamplerInput, sizeof(Vec4x32f));
+
+    for (int a = 0; a < gltf->numAnimations; a++)
+    {
+        for (int s = 0; s < gltf->animations[a].numSamplers; s++)
+        {
+            AAnimSampler* sampler = &gltf->animations[a].samplers[s];
+            SmallMemCpy(currSampler, sampler->input, sampler->count * sizeof(float));
+            sampler->input = currSampler;
+            currSampler += sampler->count;
+                
+            if (sampler->interpolation == ASamplerInterpolation_CubicSpline)
+                AX_WARN("sampler cubic spline not supported");
+                
+            if (sampler->inputType != AComponentType_FLOAT)
+                AX_WARN("unsupported sampler input type: %d", sampler->inputType);
+                
+            if (sampler->outputType != AComponentType_FLOAT)
+                AX_WARN("unsupported sampler output type: %d", sampler->outputType);
+
+            if (sampler->numComponent != 4)
+                AX_WARN("anim sampler num components has to be 4. its: %d", sampler->numComponent);
+
+            if (sampler->outputType != AComponentType_FLOAT)
+                AX_WARN("unsupported sampler output type: %d", sampler->outputType);
+
+            for (int i = 0; i < sampler->count; i++)
+            {
+                SmallMemCpy(currOutput + i, sampler->output + (i * sampler->numComponent), sizeof(float) * sampler->numComponent);
+                currOutput[i] = VecLoad(sampler->output + (i * sampler->numComponent));
+                if (sampler->numComponent == 3) currOutput[i] = VecSetW(currOutput[i], 0.0f);
+            }
+
+            sampler->output = (float*)currOutput;
+            currOutput += sampler->count;
+        }
     }
 }
 
@@ -640,6 +739,7 @@ void CreateVerticesIndices(SceneBundle* gltf)
             VerticesForPrimitive(primitive, currVertex);
             JointsForPrimitive(primitive, currVertex);
             WeightsForPrimitive(primitive, currVertex);
+            BoundsForPrimitive(primitive);
 
             primitive->indexOffset = indexCursor;
             currVertex   += primitive->numVertices;
@@ -648,61 +748,14 @@ void CreateVerticesIndices(SceneBundle* gltf)
             indexCursor  += primitive->numIndices;
         }
     }
-    
-    for (int s = 0; s < gltf->numSkins; s++)
+
+    for (int i = 0; i < gltf->numNodes; i++)
     {
-        ASkin* skin = &gltf->skins[s];
-        Matrix4* inverseBindMatrices = AllocateTLSFGlobal(skin->numJoints * sizeof(Matrix4));
-        SmallMemCpy(inverseBindMatrices, skin->inverseBindMatrices, sizeof(Matrix4) * skin->numJoints);
-        skin->inverseBindMatrices = (float*)inverseBindMatrices;
+        ANode inputNode = gltf->nodes[i];
+        SDL_Log("node pos: %f, %f, %f, scale: %f", inputNode.translation[0], inputNode.translation[1], inputNode.translation[2], inputNode.scale[1]);
     }
 
-    if (gltf->numAnimations)
-    {
-        int totalSamplerInput = 0;
-        for (int a = 0; a < gltf->numAnimations; a++)
-            for (int s = 0; s < gltf->animations[a].numSamplers; s++)
-                totalSamplerInput += gltf->animations[a].samplers[s].count;
-        
-        float* currSampler = (float*)AllocZeroTLSFGlobal(totalSamplerInput, 4);
-        Vec4x32f* currOutput = (Vec4x32f*)AllocZeroTLSFGlobal(totalSamplerInput, sizeof(Vec4x32f));
-
-        for (int a = 0; a < gltf->numAnimations; a++)
-        {
-            for (int s = 0; s < gltf->animations[a].numSamplers; s++)
-            {
-                AAnimSampler* sampler = &gltf->animations[a].samplers[s];
-                SmallMemCpy(currSampler, sampler->input, sampler->count * sizeof(float));
-                sampler->input = currSampler;
-                currSampler += sampler->count;
-                
-                if (sampler->interpolation == ASamplerInterpolation_CubicSpline)
-                    AX_WARN("sampler cubic spline not supported");
-                
-                if (sampler->inputType != AComponentType_FLOAT)
-                    AX_WARN("unsupported sampler input type: %d", sampler->inputType);
-                
-                if (sampler->outputType != AComponentType_FLOAT)
-                    AX_WARN("unsupported sampler output type: %d", sampler->outputType);
-
-                if (sampler->numComponent != 4)
-                    AX_WARN("anim sampler num components has to be 4. its: %d", sampler->numComponent);
-
-                if (sampler->outputType != AComponentType_FLOAT)
-                    AX_WARN("unsupported sampler output type: %d", sampler->outputType);
-
-                for (int i = 0; i < sampler->count; i++)
-                {
-                    SmallMemCpy(currOutput + i, sampler->output + (i * sampler->numComponent), sizeof(float) * sampler->numComponent);
-                    currOutput[i] = VecLoad(sampler->output + (i * sampler->numComponent));
-                    if (sampler->numComponent == 3) currOutput[i] = VecSetW(currOutput[i], 0.0f);
-                }
-
-                sampler->output = (float*)currOutput;
-                currOutput += sampler->count;
-            }
-        }
-    }
+    GetGLTFAnimations(gltf);
 
     FreeGLTFBuffers(gltf);
 }

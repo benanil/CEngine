@@ -349,13 +349,10 @@
 						<Path>Source/TLSF.c</Path>
 					</File>
 					<File>
-						<Path>Source/GLTFParser.c</Path>
-					</File>
-					<File>
-						<Path>Source/GLTFParser2.c</Path>
-					</File>
-					<File>
 						<Path>Source/Animation.c</Path>
+					</File>
+					<File>
+						<Path>Source/GLTFParser.c</Path>
 					</File>
 				</Children>
 			</Folder>

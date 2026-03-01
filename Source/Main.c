@@ -248,7 +248,7 @@ static void InitScene()
     
     // if (!LoadSceneBundleBinary("Assets/Meshes/Paladin/Paladin.abm", sceneBundle))
     // if (!ParseGLTF2("Assets/Meshes/Paladin/Paladin.gltf", sceneBundle, 1.0f))
-    if (!ParseGLTF2("Assets/Meshes/Paladin/Paladin.gltf", g_SceneBundle, 1.0f))
+    if (!ParseGLTF2("Assets/Meshes/Paladin2/Paladin.glb", g_SceneBundle, 1.0f))
     {
         AX_ERROR("gltf scene load failed2");
         return;
@@ -272,9 +272,9 @@ static void InitScene()
     g_RenderState.buf_rotations = CreateBuffer(ecs.EntityRotations, sizeof(ecs.EntityRotations), SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ, "CPInstanceRotations");
     
     BasisuSetup();
-    // SaveSceneImages(sceneBundle, "Assets/Meshes/Fox.bdc");
+    // SaveSceneImages(g_SceneBundle, "Assets/Meshes/Paladin2/Paladin.bdc");
     // "Assets/Meshes/Paladin/PaladinTest.bdc"
-    int imgRes = LoadSceneImages("Assets/Meshes/Paladin/PaladinTest.bdc", g_RenderState.textures, g_SceneBundle->numImages, g_GPUDevice);
+    int imgRes = LoadSceneImages("Assets/Meshes/Paladin2/Paladin.bdc", g_RenderState.textures, g_SceneBundle->numImages, g_GPUDevice);
     
     g_RenderState.sampler = SDL_CreateGPUSampler(g_GPUDevice, &(SDL_GPUSamplerCreateInfo){
         .min_filter      = SDL_GPU_FILTER_LINEAR,
@@ -408,7 +408,7 @@ void loop(void)
     
     SetPressedAndReleasedKeys();
     PlatformUpdate();
-    CameraUpdate(&g_Camera, 0.01f);
+    CameraUpdate(&g_Camera, PlatformCtx.DeltaTime);
     const double timeSinceStartup = TimeSinceStartup();
     Vec4x32f camPos = VecLoad(&g_Camera.position.x);
     int frameCount = PlatformCtx.FrameCount;
