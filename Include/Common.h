@@ -23,6 +23,12 @@ extern "C" {
     #define AX_COMPILER_HAS_BUILTIN(x) 0
 #endif
 
+#if defined(_MSC_VER)
+    #define ALIGNAS(n) __declspec(align(n))
+#elif defined(__GNUC__) || defined(__clang__)
+    #define ALIGNAS(n) __attribute__((aligned(n)))
+#endif
+
 #if AX_COMPILER_HAS_BUILTIN(__builtin_assume)
     #define AX_ASSUME(x) __builtin_assume(x)
 #elif defined(_MSC_VER)

@@ -42,8 +42,8 @@ static inline void _Name##512(uint64_t* res, const uint64_t* a, const uint64_t* 
 }                                                                                   \
 static inline void _Name##1024(uint64_t* res, const uint64_t* a, const uint64_t* b) \
 {                                                                                   \
-    Name##512(res, a, b);                                                           \
-    Name##512(res + 8, a + 8, b + 8);                                               \
+    _Name##512(res, a, b);                                                           \
+    _Name##512(res + 8, a + 8, b + 8);                                               \
 }
 
 // Below macro defines the functions:

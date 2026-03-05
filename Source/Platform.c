@@ -21,12 +21,12 @@ PlatformContext PlatformCtx = {0};
 extern Camera g_Camera;
 extern SDL_Window* g_SDLWindow;
 
-static uint64_t DownKeys[8]; 
-static uint64_t LastKeys[8]; 
-static uint64_t PressedKeys[8];
-static uint64_t ReleasedKeys[8];
+static ALIGNAS(SIMD_NUM_BYTES) uint64_t DownKeys[8];
+static ALIGNAS(SIMD_NUM_BYTES) uint64_t LastKeys[8]; 
+static ALIGNAS(SIMD_NUM_BYTES) uint64_t PressedKeys[8];
+static ALIGNAS(SIMD_NUM_BYTES) uint64_t ReleasedKeys[8];
 
-inline int GetRealKey(int x)
+inline static int GetRealKey(int x)
 {
     if (x & 0x40000000u) return SDLK_PLUSMINUS + x - 0x40000039u;
     if (x & 0x20000000u) return SDLK_PLUSMINUS + 0x122u + x - 0x20000001u;
