@@ -79,7 +79,7 @@ typedef struct AnimationController_
     int   mNumJoints;
     float mRootScale;
    
-    Matrix3x4f16* mOutMatrices;
+    DualQuaternionHalf* mOutMatrices;
 
     AnimNode mAnimNodes[MaxBonePoses * 2];
     Pose     mAnimPoseA[MaxBonePoses * 2]; // < the result bone array that we send to GPU
@@ -145,8 +145,7 @@ typedef struct AnimatedCharacter_
 // bool humanoid = true, int lowerBodyStart = 58, animId = global animation controllerIndex 
 void AnimationController_Create(const SceneBundle* prefab, 
                                 AnimationController* animController, 
-                                Matrix3x4f16* outMatrices);
-
+                                DualQuaternionHalf* outMatrices);
 
 // play the given animation, norm is the animation progress between 0.0 and 1.0
 void AnimationController_PlayAnim(AnimationController* ac, int index, float norm);
@@ -176,7 +175,7 @@ static inline bool AnimatedCharacter_IsTrigerred(const AnimatedCharacter* ac)
     return (ac->mState & AnimState_TriggerMask) != 0;
 }
 
-void AnimatedCharacter_Create(const SceneBundle* prefab, AnimatedCharacter* result, int lowerBodyStart, Matrix3x4f16* outMatrices);
+void AnimatedCharacter_Create(const SceneBundle* prefab, AnimatedCharacter* result, int lowerBodyStart, DualQuaternionHalf* outMatrices);
 
 // x, y has to be between -1.0 and 1.0 (normalized)
 // xspeed and yspeed is between 0 and infinity speed of animation

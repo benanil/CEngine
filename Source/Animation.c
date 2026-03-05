@@ -20,7 +20,7 @@
 #include "Include/FileSystem.h"
 #include "Math/Half.h"
 
-void AnimationController_Create(const SceneBundle* prefab, AnimationController* result, Matrix3x4f16* outMatrices)
+void AnimationController_Create(const SceneBundle* prefab, AnimationController* result, DualQuaternionHalf* outMatrices)
 {
     Pose pose;
     AnimNode animNode;
@@ -110,26 +110,29 @@ void AnimationController_UploadBoneMatrices(AnimationController* ac)
     Matrix4 mat;
     const ASkin* skin = &ac->mPrefab->skins[0];
     const Matrix4* invMatrices = (const Matrix4*)skin->inverseBindMatrices;
-    float rootScale = ac->mPrefab->nodes[ac->mRootNodeIndex].scale[1];
+    float rootScale = ac->mRootScale;
     Vec4x32f rootScaleMul = VecSetR(rootScale, rootScale, rootScale, 1.0f);
     
     for (int i = 0; i < skin->numJoints; i++)
     {
-        const Pose* pose = ac->mAnimPoseA + skin->joints[i];
-        Vec4x32f pos = pose->translation;
+        Pose pose = ac->mAnimPoseA[skin->joints[i]];
+        Vec4x32f pos = pose.translation;
         if (i != ac->mRootNodeIndex)
         {
             pos = VecMul(pos, rootScaleMul);
         }
 
-        mat = PositionRotationVec(pos, pose->rotation);
-        mat = Matrix4Multiply(invMatrices[i], mat);
-        mat = Matrix4Transpose(mat);
-        // with AVX F16C this is single instruction! vcvtps2ph 
-        Float8ToHalf8(ac->mOutMatrices[i].x, &mat.m[0][0]);
-        Float4ToHalf4(ac->mOutMatrices[i].z, &mat.m[2][0]); // this is single instruction with it as well
+        mat = Matrix4Multiply(invMatrices[i], PositionRotationVec(pos, pose.rotation));
+        pose.rotation = ExtractRotation(mat);
+        pose.translation = mat.r[3];
+        DualQuaternion dq = DQFromRotationTranslation(pose.rotation, pose.translation);
+        Float8ToHalf8(ac->mOutMatrices[i].real, (float*)&dq.real);
     }
 }
+// mat = Matrix4Transpose(mat);
+// with AVX F16C this is single instruction! vcvtps2ph 
+// Float8ToHalf8(ac->mOutMatrices[i].x, &mat.m[0][0]);
+// Float4ToHalf4(ac->mOutMatrices[i].z, &mat.m[2][0]); // this is single instruction with it as well
 
 void AnimationController_UploadPose(AnimationController* ac, const Pose pose[MaxBonePoses])
 {
@@ -208,7 +211,7 @@ void AnimationController_SampleAnimationPose(const AnimationController* ac, Pose
 ////////            ANIMATED CHARACTER            ////////
 
 
-void AnimatedCharacter_Create(const SceneBundle* prefab, AnimatedCharacter* result, int lowerBodyStart, Matrix3x4f16* outMatrices)
+void AnimatedCharacter_Create(const SceneBundle* prefab, AnimatedCharacter* result, int lowerBodyStart, DualQuaternionHalf* outMatrices)
 {
     result->lowerBodyIdxStart = lowerBodyStart;
     result->mState = AnimState_Update;

@@ -17,16 +17,16 @@ StructuredBuffer<float4> sInstancePosition : register(t1);
 StructuredBuffer<uint>   sInstanceRotation : register(t2);
 
 static const uint MaxBonePoses = 128;
-static const uint MatrixNumInt32 = 6;
+static const uint MatrixNumInt32 = 4;
 
 struct VSInput
 {
-    half4  aPos        : POSITION0;
-    uint   aQTangentXY : TANGENT0;
-    uint   aQTangentZW : TANGENT1;
-    half2  aTexCoords  : TEXCOORD0;
-    uint4  aJoints     : BLENDINDICES0;
-    uint   aWeights    : BLENDWEIGHT0;
+    half4 aPos        : POSITION0;
+    uint  aQTangentXY : TANGENT0;
+    uint  aQTangentZW : TANGENT1;
+    half2 aTexCoords  : TEXCOORD0;
+    uint4 aJoints     : BLENDINDICES0;
+    uint  aWeights    : BLENDWEIGHT0;
 };
 
 struct VSOutput
@@ -99,42 +99,73 @@ half4 GetInstanceRotation(uint instanceID) {
     return normalize(UnpackRGBA16Snorm(sInstanceRotation[instanceID], sInstanceRotation[instanceID+1]));
 }
 
+half2x4 GetBoneDualQuat(uint matIdx)
+{
+    return half2x4(
+        half4(unpackHalf2x16(sBoneMtx[matIdx + 0]), unpackHalf2x16(sBoneMtx[matIdx + 1])),
+        half4(unpackHalf2x16(sBoneMtx[matIdx + 2]), unpackHalf2x16(sBoneMtx[matIdx + 3]))
+    );
+}
+
+half3 DQGetPos(half2x4 dq)
+{
+    return 2.0 * (dq[0].w * dq[1].xyz - dq[1].w * dq[0].xyz + cross(dq[1].xyz, dq[0].xyz));
+}
+
+half2x4 DQFromRotationTranslation(half4 rotation, half3 pos)
+{
+    return half2x4(rotation, QuaternionMul(rotation, half4(pos, 0.0)) * 0.5);
+}
+
+half3 DQTransformPos(half2x4 dq, half3 pos)
+{
+    half3 position = QuaternionRotateVector(dq[0], pos); 
+    return DQGetPos(dq) + position;
+}
+
+// https://users.cs.utah.edu/~ladislav/dq/dqs.cg
+half3 DQBlend4(uint4 bone_indices, half4 bone_weights, half3 pos, uint boneStart)
+{
+    // Fetch bones
+    half2x4 dq0 = GetBoneDualQuat(boneStart + (bone_indices.x << 2));
+    half2x4 dq1 = GetBoneDualQuat(boneStart + (bone_indices.y << 2));
+    half2x4 dq2 = GetBoneDualQuat(boneStart + (bone_indices.z << 2));
+    half2x4 dq3 = GetBoneDualQuat(boneStart + (bone_indices.w << 2));
+    
+    // Ensure all bone transforms are in the same neighbourhood
+    bone_weights.y *= dot(dq0[0], dq1[0]) < 0 ? (half)-1 : (half)1;
+    bone_weights.z *= dot(dq0[0], dq2[0]) < 0 ? (half)-1 : (half)1;
+    bone_weights.w *= dot(dq0[0], dq3[0]) < 0 ? (half)-1 : (half)1;
+
+    half2x4 blendDQ  = bone_weights.x * dq0;
+    blendDQ         += bone_weights.y * dq1;
+    blendDQ         += bone_weights.z * dq2;
+    blendDQ         += bone_weights.w * dq3;
+		
+    blendDQ /= length(blendDQ[0]);
+    blendDQ[1] -= blendDQ[0] * dot(blendDQ[0], blendDQ[1]);
+    return DQTransformPos(blendDQ, pos);
+}
+
 VSOutput main(VSInput input, uint instanceID : SV_InstanceID)
 {
     VSOutput o;
     half3x4 animMat = half3x4(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
-    uint boneStart = instanceID * MaxBonePoses * MatrixNumInt32;
+    uint boneStart  = instanceID * MaxBonePoses * MatrixNumInt32;
+    
     half4 weights;
     weights.xyz = UnpackVec3XY11Z10Unorm(input.aWeights);
     weights.w = max(1.0 - (weights.x + weights.y + weights.z), 0.0);
-    [unroll]
-    for (int i = 0; i < 4; i++)
-    {
-        uint matIdx = input.aJoints[i] * MatrixNumInt32 + boneStart;
-        half4 row0 = half4(unpackHalf2x16(sBoneMtx[matIdx + 0]), unpackHalf2x16(sBoneMtx[matIdx + 1]));
-        half4 row1 = half4(unpackHalf2x16(sBoneMtx[matIdx + 2]), unpackHalf2x16(sBoneMtx[matIdx + 3]));
-        half4 row2 = half4(unpackHalf2x16(sBoneMtx[matIdx + 4]), unpackHalf2x16(sBoneMtx[matIdx + 5]));
-        animMat[0] += row0 * weights[i];
-        animMat[1] += row1 * weights[i];
-        animMat[2] += row2 * weights[i];
-    }
-
-    half4 qtangent; // = UnpackRGBA16Snorm(input.aQTangentXY, input.aQTangentZW);
-    half3x3 tbn; // = Matrix3FromQuaternion(qtangent);
-    tbn[2] = UnpackVec3XY11Z10Snorm(input.aQTangentXY);
-    tbn[1] = UnpackVec3XY11Z10Snorm(input.aQTangentZW);
-    tbn[0] = cross(tbn[2], tbn[1]);
-
-    half4x3 animTransposed = transpose(animMat);
-    tbn[0] = mul(half4(tbn[0], 0.0), animTransposed);
-    tbn[1] = mul(half4(tbn[1], 0.0), animTransposed);
-    tbn[2] = mul(half4(tbn[2], 0.0), animTransposed);
-
-    half3 worldPos = mul(half4(input.aPos.xyz, 1.0), animTransposed);
-    half4 instanceRotation = GetInstanceRotation(instanceID << 1);
-    worldPos = QuaternionRotateVector(instanceRotation, worldPos);
     
     float3 instancePos = sInstancePosition[instanceID].xyz;
+    half3  worldPos = DQBlend4(input.aJoints, weights, input.aPos.xyz, boneStart);
+    half4  instanceRotation = GetInstanceRotation(instanceID << 1);
+    worldPos = QuaternionRotateVector(instanceRotation, worldPos);
+    
+    half3x3 tbn; // = Matrix3FromQuaternion(qtangent);
+    tbn[2] = UnpackVec3XY11Z10Snorm(input.aQTangentXY);
+    // tbn[1] = UnpackVec3XY11Z10Snorm(input.aQTangentZW);
+    // tbn[0] = cross(tbn[2], tbn[1]);
 
     half3x3 instanceRotMat = Matrix3FromQuaternion(instanceRotation);
     tbn = mul(tbn, instanceRotMat);

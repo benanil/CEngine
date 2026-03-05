@@ -517,7 +517,7 @@ purefn float3 VECTORCALL ExtractPosition(Matrix4 matrix)
     return res;
 }
     
-purefn Quaternion VECTORCALL ExtractRotation(Matrix4 M, bool rowNormalize) 
+purefn Quaternion VECTORCALL ExtractRotation(Matrix4 M) 
 {
     Quaternion res;
     QuaternionFromMatrix((float*)&res, &M.m[0][0], 4);

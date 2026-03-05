@@ -55,7 +55,7 @@ Camera g_Camera;
 
 static int characterRootIndex;
 static AnimationController AnimControllers[NUM_ANIMS];
-AX_ALIGN(4) Matrix3x4f16 OutMatrices[MaxBonePoses * NUM_ANIMS];
+AX_ALIGN(4) DualQuaternionHalf OutMatrices[MaxBonePoses * NUM_ANIMS];
 
 ECS ecs;
 
@@ -263,7 +263,7 @@ static void InitScene()
     
     for (int i = 0; i < NUM_ANIMS; i++)
     {
-        Matrix3x4f16* outMatrices = OutMatrices + (i * MaxBonePoses);
+        DualQuaternionHalf* outMatrices = OutMatrices + (i * MaxBonePoses);
         AnimationController_Create(g_SceneBundle, &AnimControllers[i], outMatrices);
     }
         
@@ -273,7 +273,8 @@ static void InitScene()
     
     BasisuSetup();
     // SaveSceneImages(g_SceneBundle, "Assets/Meshes/Paladin2/Paladin.bdc");
-    // "Assets/Meshes/Paladin/PaladinTest.bdc"
+    // "Assets/Meshes/Paladin/PaladinTest.
+    // bdc"
     int imgRes = LoadSceneImages("Assets/Meshes/Paladin2/Paladin.bdc", g_RenderState.textures, g_SceneBundle->numImages, g_GPUDevice);
     
     g_RenderState.sampler = SDL_CreateGPUSampler(g_GPUDevice, &(SDL_GPUSamplerCreateInfo){

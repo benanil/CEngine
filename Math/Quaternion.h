@@ -485,8 +485,8 @@ static inline DualQuaternion DQFromRotationTranslation(Vec4x32f rotation, Vec4x3
     dq.real = rotation;
     dq.dual = VecMulf(QMul(translation, rotation), 0.5f);
     // // enforce q·d = 0
-    // float dotRD = VecDotf(dq.real, dq.dual);
-    // dq.dual = VecSub(dq.dual, VecMulf(dq.real, dotRD));
+    float dotRD = VecDotf(dq.real, dq.dual);
+    dq.dual = VecSub(dq.dual, VecMulf(dq.real, dotRD));
     return dq;
 }
 
