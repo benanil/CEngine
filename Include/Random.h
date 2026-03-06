@@ -11,7 +11,7 @@ extern "C" {
 // Not WangHash actually we can say skeeto hash.
 // developed and highly optimized by Chris Wellons
 // https://github.com/skeeto/hash-prospector https://nullprogram.com/blog/2018/07/31/
-purefn uint32_t WangHash(uint32_t x) { 
+purefn u32 WangHash(u32 x) { 
 	x ^= x >> 16u; x *= 0x7feb352du;
 	x ^= x >> 15u; x *= 0x846ca68bu;
 	return x ^ (x >> 16u);
@@ -20,19 +20,19 @@ purefn uint32_t WangHash(uint32_t x) {
 // given Wang hash returns input value: 
 // WangHash(x) = 234525;
 // x = InverseWangHash(234525);
-purefn uint32_t WangHashInverse(uint32_t x)  {
+purefn u32 WangHashInverse(u32 x)  {
 	x ^= x >> 16u; x *= 0x7feb352du;
 	x ^= x >> 15u; x *= 0x846ca68bu;
 	return x ^ (x >> 16u);
 }
 
-purefn uint64_t MurmurHash(uint64_t x) {
+purefn u64 MurmurHash(u64 x) {
 	x ^= x >> 30ULL; x *= 0xbf58476d1ce4e5b9ULL;
 	x ^= x >> 27ULL; x *= 0x94d049bb133111ebULL;
 	return x ^ (x >> 31ULL);
 }
 
-purefn uint64_t MurmurHashInverse(uint64_t x) {
+purefn u64 MurmurHashInverse(u64 x) {
 	x ^= x >> 31ULL ^ x >> 62ULL; x *= 0x319642b2d24d8ec3ULL;
 	x ^= x >> 27ULL ^ x >> 54ULL; x *= 0x96de1b173f119089ULL;
 	return x ^ (x >> 30ULL ^ x >> 60ULL);
@@ -47,8 +47,8 @@ purefn uint64_t MurmurHashInverse(uint64_t x) {
 
 // these random seeds waay more slower than PCG and MTwister but good choice for random seed
 // also seeds are cryptographic 
-purefn uint32_t Seed32() {
-    uint32_t result;
+purefn u32 Seed32() {
+    u32 result;
     #if !defined(__ANDROID__)
     _rdseed32_step(&result); // or faster __rdtsc
     #else
@@ -57,8 +57,8 @@ purefn uint32_t Seed32() {
     return result;
 }
 
-purefn uint64_t Seed64() {
-    uint64_t result;
+purefn u64 Seed64() {
+    u64 result;
     #if !defined(__ANDROID__)
     _rdseed64_step(&result);// or faster __rdtsc
     #else
@@ -67,15 +67,15 @@ purefn uint64_t Seed64() {
     return result;
 }
 
-purefn float NextFloat01(uint32_t next) {
-    return (float)(next >> 8) / (float)(1 << 24);
+purefn f1 NextFloat01(u32 next) {
+    return (f1)(next >> 8) / (f1)(1 << 24);
 }
 	
-purefn float RepeatMinMaxF32(uint32_t next, float min, float max) {
+purefn f1 RepeatMinMaxF32(u32 next, f1 min, f1 max) {
     return min + (NextFloat01(next) * Absf32(min - max));
 }
 	
-purefn double NextDouble01(uint64_t next) 
+purefn d1 NextDouble01(u64 next) 
 {
     // // https://docs.oracle.com/javase/8/docs/api/java/util/Random.html
     // const int mask = (1 << 27) - 1;
@@ -86,21 +86,21 @@ purefn double NextDouble01(uint64_t next)
     return (next & 0x001FFFFFFFFFFFFF) / 9007199254740992.0;
 }
 	
-purefn double RepatMinMaxF64(uint64_t next, double min, double max) {
+purefn d1 RepatMinMaxF64(u64 next, d1 min, d1 max) {
     return min + (NextDouble01(next) * Absf32(min - max));
 }
 	
-purefn uint32_t RepeatMinMaxU32(uint32_t next, uint32_t min, uint32_t max) { return min + (next % (max - min)); }
-purefn uint64_t RepeatMinMaxU64(uint64_t next, uint64_t min, uint64_t max) { return min + (next % (max - min)); }
-purefn int      RepeatMinMaxI32(int next, int _min, int _max) { return _min + (next % (_max - _min)); }
+purefn u32 RepeatMinMaxU32(u32 next, u32 min, u32 max)   { return min + (next % (max - min)); }
+purefn u64 RepeatMinMaxU64(u64 next, u64 min, u64 max)   { return min + (next % (max - min)); }
+purefn i32 RepeatMinMaxI32(i32 next, i32 _min, i32 _max) { return _min + (next % (_max - _min)); }
 
 // https://www.pcg-random.org/index.html
 // we can also add global state in a cpp file
 // compared to m_MT chace friendly
 typedef struct PCG_
 {
-    uint64_t state;
-    uint64_t inc;
+    u64 state;
+    u64 inc;
 } PCG;
 	
 // usage:
@@ -108,38 +108,38 @@ typedef struct PCG_
 // RepatMINMAX(PCGNext(pcg), 120, 200);
 // RepatMINMAX(Xoroshiro128Plus(xoro), 120ull, 200ull);
 
-purefn uint32_t PCGNext(PCG* pcg)
+purefn u32 PCGNext(PCG* pcg)
 {
-    uint64_t oldstate = pcg->state;
+    u64 oldstate = pcg->state;
     pcg->state = oldstate * 6364136223846793005ULL + (pcg->inc | 1);
-    uint64_t xorshifted = ((oldstate >> 18u) ^ oldstate) >> 27u;
-    uint64_t rot = oldstate >> 59u;
+    u64 xorshifted = ((oldstate >> 18u) ^ oldstate) >> 27u;
+    u64 rot = oldstate >> 59u;
     #pragma warning(disable : 4146) // unary minus warning fix
     // if you get unary minus error disable sdl checks from msvc settings
-    return (uint32_t)((xorshifted >> rot) | (xorshifted << ((-rot) & 31)));
+    return (u32)((xorshifted >> rot) | (xorshifted << ((-rot) & 31)));
 }
 
-purefn uint32_t PCG2Next(uint32_t* rng_state)
+purefn u32 PCG2Next(u32* rng_state)
 {
-    uint32_t state = *rng_state;
+    u32 state = *rng_state;
     *rng_state = state * 747796405u + 2891336453u;
-    uint32_t word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+    u32 word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
     return (word >> 22u) ^ word;
 }
 
-forceinline void PCGInitialize(PCG* pcg, uint64_t initstate, uint64_t seed)
+forceinline void PCGInitialize(PCG* pcg, u64 initstate, u64 seed)
 {
     pcg->state = 0x853c49e6748fea9bULL;
     pcg->inc = 0xda3e39cb94b95bdbULL;
 }
 
-forceinline void Xoroshiro128PlusInit(uint64_t s[2])
+forceinline void Xoroshiro128PlusInit(u64 s[2])
 {
     s[0] += Seed64(); s[1] += Seed64();
     s[0] |= 1; // non zero
 }
 	
-forceinline void Xoroshiro128PlusSeed(uint64_t s[2], uint64_t  seed)
+forceinline void Xoroshiro128PlusSeed(u64 s[2], u64 seed)
 {
     seed |= 1; // non zero
     s[0] = MurmurHash(seed); 
@@ -147,42 +147,42 @@ forceinline void Xoroshiro128PlusSeed(uint64_t s[2], uint64_t  seed)
 }
 	
 // concise hashing function. https://nullprogram.com/blog/2017/09/21/
-purefn uint64_t Xoroshiro128Plus(uint64_t s[2])
+purefn u64 Xoroshiro128Plus(u64 s[2])
 {
-    uint64_t  s0 = s[0];
-    uint64_t  s1 = s[1];
-    uint64_t  result = s0 + s1;
+    u64  s0 = s[0];
+    u64  s1 = s[1];
+    u64  result = s0 + s1;
     s1 ^= s0;
     s[0] = ((s0 << 55) | (s0 >> 9)) ^ s1 ^ (s1 << 14);
     s[1] = (s1 << 36) | (s1 >> 28);
     return result;
 }
 
-purefn uint32_t StringToHash(const char* str, uint32_t hash)
+purefn u32 StringToHash(const u8* str, u32 hash)
 {
 	while (*str)
 		hash = *str++ + (hash << 6u) + (hash << 16u) - hash;
 	return hash;
 }
 
-purefn uint32_t PathToHash(const char* str)
+purefn u32 PathToHash(const u8* str)
 {
-	uint32_t hash = 0u, idx = 0u, shift = 0u;
+	u32 hash = 0u, idx = 0u, shift = 0u;
 	while (str[idx] && idx < 4u)
-		hash |= (uint32_t)(str[idx]) << shift, shift += 8u, idx++;
+		hash |= (u32)(str[idx]) << shift, shift += 8u, idx++;
 	return StringToHash(str + idx, WangHash(hash));
 }
 
 // too see alternative random number generator look at Aditional.hpp for mersene twister pseudo random number generators
 
-// template<typename T> inline void Suffle(T* begin, uint64_t len)
+// template<typename T> inline void Suffle(T* begin, u64 len)
 // {
-//     uint64_t  xoro[2];
+//     u64  xoro[2];
 //     Xoroshiro128PlusInit(xoro);
-//     const uint64_t  halfLen = len / 2;
+//     const u64  halfLen = len / 2;
 // 
 //     // swap %60 of the array
-//     for (uint64_t i = 0; i < (halfLen + (halfLen / 3)); ++i)
+//     for (u64 i = 0; i < (halfLen + (halfLen / 3)); ++i)
 //     {
 //         Swap(begin[Xoroshiro128Plus(xoro) % len],
 //              begin[Xoroshiro128Plus(xoro) % len]);

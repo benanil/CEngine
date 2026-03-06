@@ -29,7 +29,7 @@ enum TexFlags_
     // no filtering or wrapping
     TexFlags_RawData     = TexFlags_Nearest | TexFlags_ClampToEdge
 };
-typedef int TexFlags;
+typedef i32 TexFlags;
 
 enum GraphicType_
 {
@@ -37,15 +37,15 @@ enum GraphicType_
     GraphicType_UnsignedByte, 
     GraphicType_Short,
     GraphicType_UnsignedShort, 
-    GraphicType_Int,
-    GraphicType_UnsignedInt,
+    GraphicType_i32,
+    GraphicType_Unsignedi32,
     GraphicType_Float,
     GraphicType_TwoByte,
     GraphicType_ThreeByte,
     GraphicType_FourByte,
     GraphicType_Double,
     GraphicType_Half, // -> 0x140B in opengl
-    GraphicType_XYZ10W2, // GL_INT_2_10_10_10_REV
+    GraphicType_XYZ10W2, // GL_i32_2_10_10_10_REV
 
     GraphicType_Vector2f,
     GraphicType_Vector3f,
@@ -61,41 +61,41 @@ enum GraphicType_
 
     GraphicType_NormalizeBit = 1 << 31
 };
-typedef int GraphicType;
+typedef i32 GraphicType;
 
 // https://www.yosoygames.com.ar/wp/2018/03/vertex-formats-part-1-compression/
 typedef struct AVertex_
 {
-    float3   position;
-    uint32_t normal;
-    uint32_t tangent;
-    uint32_t texCoord; // half2
+    f3   position;
+    u32  normal;
+    u32  tangent;
+    u32  texCoord; // half2
 } AVertex;
 
 typedef struct ASkinedVertex_
 {
-    uint32_t positionXY;
-    uint32_t positionZW;
-    uint32_t qtangentXYF16;
-    uint32_t qtangentZWF16;
-    uint32_t texCoord; // half2
-    uint32_t joints;  // rgb8u
-    uint32_t weights; // rgb8u
+    u32 positionXY;
+    u32 positionZW;
+    u32 qtangentXYF16;
+    u32 qtangentZWF16;
+    u32 texCoord; // half2
+    u32 joints;  // rgb8u
+    u32 weights; // rgb8u
 } ASkinedVertex;
 
 
 typedef struct GPUMesh_
 {
-    int numVertex, numIndex;
+    i32 numVertex, numIndex;
     // unsigned because opengl accepts unsigned
-    unsigned int vertexLayoutHandle;
-    unsigned int indexHandle;
-    unsigned int indexType;  // uint32, uint64. GL_BYTE + indexType
-    unsigned int vertexHandle; // opengl handles for, POSITION, TexCoord...
+    u32 vertexLayoutHandle;
+    u32 indexHandle;
+    u32 indexType;  // ui3232, ui3264. GL_BYTE + indexType
+    u32 vertexHandle; // opengl handles for, POSITION, TexCoord...
     // usefull for knowing which attributes are there
     // POSITION, TexCoord... AAttribType_ bitmask
-    int attributes;
-    int stride; // size of an vertex of the mesh
+    i32 attributes;
+    i32 stride; // size of an vertex of the mesh
     
     void* vertices;
     void* indices;
@@ -103,7 +103,7 @@ typedef struct GPUMesh_
 
 typedef struct Texture_
 {
-    int width, height;
+    i32 width, height;
     SDL_GPUTexture* handle;
     SDL_GPUTextureFormat format;
     void* buffer;
@@ -112,7 +112,7 @@ typedef struct Texture_
 typedef struct WindowState
 {
 	SDL_GPUTexture* tex_depth, *tex_msaa, *tex_resolve;
-	Uint32 prev_drawablew, prev_drawableh;
+	u32 prev_drawablew, prev_drawableh;
 } WindowState;
 
 typedef struct RenderState
@@ -129,9 +129,9 @@ typedef struct RenderState
 } RenderState;
 
 
-static inline int GetRootNodeIdx(SceneBundle* bundle)
+static inline i32 GetRootNodeIdx(SceneBundle* bundle)
 {
-    int node = 0;
+    i32 node = 0;
     if (bundle->numScenes > 0) {
         AScene defaultScene = bundle->scenes[bundle->defaultSceneIndex];
         node = defaultScene.nodes[0];
@@ -139,37 +139,37 @@ static inline int GetRootNodeIdx(SceneBundle* bundle)
     return node;
 }
 
-// uint8_t rTextureTypeToBytesPerPixel(sg_pixel_format type);
+// ui328_t rTextureTypeToBytesPerPixel(sg_pixel_format type);
 
 void rInit(bool msaa);
 
 void rDestroy();
 
-// int rGetMipmapImageData(sg_image_data* img_data, void* data, int width, int height);
+// i32 rGetMipmapImageData(sg_image_data* img_data, void* data, i32 width, i32 height);
 
 Texture rImportTexture(const char* path, TexFlags flags, const char* label);
 
-Texture rCreateTexture(int width, int height, void* data, SDL_PixelFormat format, TexFlags flags, const char* label);
+Texture rCreateTexture(i32 width, i32 height, void* data, SDL_PixelFormat format, TexFlags flags, const char* label);
 
 void rDeleteTexture(Texture texture);
 
 void rUpdateTexture(Texture texture, void* data);
 
-int GraphicsTypeToSize(GraphicType type);
+i32 GraphicsTypeToSize(GraphicType type);
 
 SDL_GPUBuffer* CreateBuffer(void* buffer, size_t bufferSize, SDL_GPUBufferUsageFlags bufferUsage, const char* debugName);
 
 void UpdateGPUBuffer(SDL_GPUBuffer* buffer, const void* data, size_t bufferSize);
 
-SDL_GPUTexture* CreateDepthTexture(Uint32 drawablew, Uint32 drawableh);
+SDL_GPUTexture* CreateDepthTexture(u32 drawablew, u32 drawableh);
 
-SDL_GPUTexture* CreateMSAATexture(Uint32 drawablew, Uint32 drawableh);
+SDL_GPUTexture* CreateMSAATexture(u32 drawablew, u32 drawableh);
 
-SDL_GPUTexture* CreateResolveTexture(Uint32 drawablew, Uint32 drawableh);
+SDL_GPUTexture* CreateResolveTexture(u32 drawablew, u32 drawableh);
 
 
 // // w value is undefined, it could be anything or trash data
-// static inline Vector4x32f GetPosition(GPUMesh* gpu, int index)
+// static inline Vector4x32f GetPosition(GPUMesh* gpu, i32 index)
 // {
 //     const char* bytePtr = (const char*)gpu->vertices;
 //     bytePtr += gpu->stride * index;
@@ -177,22 +177,22 @@ SDL_GPUTexture* CreateResolveTexture(Uint32 drawablew, Uint32 drawableh);
 // }
 // 
 // // todo GPUMesh GetNormal
-// static inline Vector4x32f GetNormal(GPUMesh* gpu, int index)
+// static inline Vector4x32f GetNormal(GPUMesh* gpu, i32 index)
 // {
 //     const char* bytePtr = (const char*)gpu->vertices;
 //     bytePtr += gpu->stride * index + sizeof(Vec3f); // skip position
-//     uint32_t normalPacked = *(uint32_t *)bytePtr;
+//     ui3232_t normalPacked = *(ui3232_t *)bytePtr;
 //     typedef union S_ { Vector4x32f v; Vec3f s; } S;
-//     S s = (S){ .s = Unpack_INT_2_10_10_10_REV(normalPacked) };
+//     S s = (S){ .s = Unpack_i32_2_10_10_10_REV(normalPacked) };
 //     return s.v; // VecLoad(bytePtr);
 // }
 // 
 // // todo GPUMesh GetNormal
-// static inline Vec2f GetUV(GPUMesh* gpu, int index)
+// static inline Vec2f GetUV(GPUMesh* gpu, i32 index)
 // {
 //     const char* bytePtr = (const char*)gpu->vertices;
-//     bytePtr += gpu->stride * index + sizeof(Vec3f) + sizeof(int) + sizeof(int); // skip normal and tangent
-//     uint32_t uvPacked = *(uint32_t *)bytePtr;
+//     bytePtr += gpu->stride * index + sizeof(Vec3f) + sizeof(i32) + sizeof(i32); // skip normal and tangent
+//     ui3232_t uvPacked = *(ui3232_t *)bytePtr;
 //     Vec2f result;
 //     ConvertHalf2ToFloat2(&result.x, uvPacked); // VecLoad(bytePtr);
 //     return result;

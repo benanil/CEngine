@@ -483,7 +483,7 @@ static void ParseNodesObj(sj_Value sjMeshObj, void* element, GLTFParseContext* c
             node->translation[2] = matrix[14];
             QuaternionFromMatrix(node->rotation, matrix, 4);
 
-            Vec4x32f v = VecMulf(ExtractScaleV(m), ctx->scale);
+            v128f v = VecMulf(ExtractScaleV(m), ctx->scale);
             Vec3Store(node->scale, v);
         }
         else if (StrCMP16(curr, "translation"))

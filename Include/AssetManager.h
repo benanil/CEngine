@@ -20,25 +20,25 @@
 extern "C" {
 #endif
 
-int LoadFBX(const char* path, SceneBundle* fbxScene, float scale);
+i32 LoadFBX(const u8* path, SceneBundle* fbxScene, f1 scale);
 
-int SaveGLTFBinary(const SceneBundle* gltf, const char* path);
+i32 SaveGLTFBinary(const SceneBundle* gltf, const u8* path);
 
-int LoadSceneBundleBinary(const char* path, SceneBundle* gltf);
+i32 LoadSceneBundleBinary(const u8* path, SceneBundle* gltf);
 
 void CreateVerticesIndices(SceneBundle* gltf);
 
 void CreateVerticesIndicesSkined(SceneBundle* gltf);
 
 // ABM = AX binary mesh
-bool IsABMLastVersion(const char* path);
+u8 IsABMLastVersion(const u8* path);
 
-bool IsTextureLastVersion(const char* path);
+u8 IsTextureLastVersion(const u8* path);
 
-void SaveSceneImages(SceneBundle* scene, const char* savePath);
+void SaveSceneImages(SceneBundle* scene, const u8* savePath);
 
 // returns: 0 = noFile, 1 = success, 2 = missingImages, 3 = fileNumImage missmatch
-int LoadSceneImages(const char* texturePath, Texture* textures, int numImages, SDL_GPUDevice* gpuDevice);
+i32 LoadSceneImages(const u8* texturePath, Texture* textures, i32 numImages, SDL_GPUDevice* gpuDevice);
 
 
 #if defined(__cplusplus)

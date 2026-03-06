@@ -34,23 +34,23 @@ extern "C" {
 typedef struct PlatformContext_ 
 {
     // Mouse state
-    float MousePosX, MousePosY;
-    float MouseWheelDelta;
-    float SecondsSinceLastClick;
-    double DeltaTime;
+    f1  MousePosX, MousePosY;
+    f1  MouseWheelDelta;
+    f1  SecondsSinceLastClick;
+    d1  DeltaTime;
     
-    int64_t LastClickTime;
-    int64_t CPUFrequency;
-    int64_t StartupTime;
-    int64_t LastTime;
-    int64_t FrameCount;
+    i64 LastClickTime;
+    i64 CPUFrequency;
+    i64 StartupTime;
+    i64 LastTime;
+    i64 FrameCount;
     
     // Window state
-    int WindowWidth, WindowHeight;
-    int WindowPosX, WindowPosY;
+    i32 WindowWidth, WindowHeight;
+    i32 WindowPosX, WindowPosY;
     
-    int MouseDown, MouseLast, MousePressed, MouseReleased;
-    bool DoubleClicked;
+    i32 MouseDown, MouseLast, MousePressed, MouseReleased;
+    u8  DoubleClicked;
     
 } PlatformContext;
 
@@ -65,48 +65,48 @@ typedef enum MouseButton_ {
 } MouseButton;
 
 // Mouse
-void   GetMousePos(float* x, float* y);
-void   SetMousePos(float x, float y);
-void   wGetMouseWindowPos(float* x, float* y);
-void   wGetMonitorSize(int* width, int* height);
-void   SetMouseWindowPos(float x, float y);
-float  GetMouseWheelDelta();
-bool   GetDoubleClicked();
-bool   AnyMouseKeyDown();
-bool   GetMouseDown(int button);
-bool   GetMouseReleased(int button);
-bool   GetMousePressed(int button);
+void GetMousePos(f1* x, f1* y);
+void SetMousePos(f1 x, f1 y);
+void wGetMouseWindowPos(f1* x, f1* y);
+void wGetMonitorSize(i32* width, i32* height);
+void SetMouseWindowPos(f1 x, f1 y);
+f1   GetMouseWheelDelta();
+u8   GetDoubleClicked();
+u8   AnyMouseKeyDown();
+u8   GetMouseDown(i32 button);
+u8   GetMouseReleased(i32 button);
+u8   GetMousePressed(i32 button);
 
 
 // Keyboard
-bool   AnyKeyDown();
-bool   GetKeyDown(int c);
-bool   GetKeyReleased(int c);
-bool   GetKeyPressed(int c);
+u8   AnyKeyDown();
+u8   GetKeyDown(i32 c);
+u8   GetKeyReleased(i32 c);
+u8   GetKeyPressed(i32 c);
 
-void   SetPressedAndReleasedKeys();
-void   RecordLastKeys();
+void SetPressedAndReleasedKeys();
+void RecordLastKeys();
 
 // forward declare, for sdl dialog file callback
-typedef void (SDLCALL *CP_DialogFileCallback)(void *userdata, const char * const *filelist, int filter);
+typedef void (SDLCALL *CP_DialogFileCallback)(void *userdata, const char * const *filelist, i32 filter);
 
 // Window
-void   wSetWindowSize(int width, int height);
-void   wSetWindowPosition(int x, int y);
-void   wOpenFolder(const char* folderPath, CP_DialogFileCallback callback);
-void   wOpenFile(const char* filePath, CP_DialogFileCallback callback);
+void wSetWindowSize(i32 width, i32 height);
+void wSetWindowPosition(i32 x, i32 y);
+void wOpenFolder(const char* folderPath, CP_DialogFileCallback callback);
+void wOpenFile(const char* filePath, CP_DialogFileCallback callback);
 
 // Time
-double GetDeltaTime();
-double TimeSinceStartup();
+d1   GetDeltaTime();
+d1   TimeSinceStartup();
 
 // time is nanoseconds
-double TimeToSeconds(int64_t time);
-int64_t TimeToMilliseconds(int64_t time);
-int64_t TimeToMicroseconds(int64_t time);
+d1   TimeToSeconds(i64 time);
+i64  TimeToMilliseconds(i64 time);
+i64  TimeToMicroseconds(i64 time);
 
-void   PlatformInit();
-void   PlatformUpdate();
+void PlatformInit();
+void PlatformUpdate();
 
 extern PlatformContext PlatformCtx;
 

@@ -10,7 +10,7 @@
 // write to output the successive differences of input (input[0]-starting_point, input[1]-input[2], ...)
 // there are "length" values in input and output
 // input and output must be distinct
-static inline void DeltaEncodingU32(const uint32_t * __restrict__ input, size_t length, uint32_t * __restrict__ output, uint32_t starting_point) {
+static inline void DeltaEncodingU32(const u32* __restrict__ input, size_t length, u32* __restrict__ output, u32starting_point) {
     __m128i prev = _mm_set1_epi32(starting_point);
     size_t i = 0;
     for(; i  < length/4; i++) {
@@ -19,9 +19,9 @@ static inline void DeltaEncodingU32(const uint32_t * __restrict__ input, size_t 
         _mm_storeu_si128((__m128i*)output + i,delta);
         prev = curr;
     }
-    uint32_t lastprev = _mm_extract_epi32(prev,3);
+    u32lastprev = _mm_extract_epi32(prev,3);
     for(i = 4 * i; i < length; ++i) {
-        uint32_t curr = input[i];
+        u32curr = input[i];
         output[i] = curr - lastprev;
         lastprev = curr;
     }
@@ -29,7 +29,7 @@ static inline void DeltaEncodingU32(const uint32_t * __restrict__ input, size_t 
 
 // write to buffer the successive differences of buffer (buffer[0]-starting_point, buffer[1]-buffer[2], ...)
 // there are "length" values in buffer
-static inline void DeltaEncodingU32Inplace(uint32_t * buffer, size_t length, uint32_t starting_point) {
+static inline void DeltaEncodingU32Inplace(u32* buffer, size_t length, u32starting_point) {
     __m128i prev = _mm_set1_epi32(starting_point);
     size_t i = 0;
     for(; i  < length/4; i++) {
@@ -38,9 +38,9 @@ static inline void DeltaEncodingU32Inplace(uint32_t * buffer, size_t length, uin
         _mm_storeu_si128((__m128i*)buffer + i,delta);
         prev = curr;
     }
-    uint32_t lastprev = _mm_extract_epi32(prev,3);
+    u32lastprev = _mm_extract_epi32(prev,3);
     for(i = 4 * i; i < length; ++i) {
-        uint32_t curr = buffer[i];
+        u32curr = buffer[i];
         buffer[i] = curr - lastprev;
         lastprev = curr;
     }
@@ -49,7 +49,7 @@ static inline void DeltaEncodingU32Inplace(uint32_t * buffer, size_t length, uin
 // write to output the successive differences of input (input[0]-starting_point, input[1]-input[2], ...)
 // there are "length" values in input and output
 // input and output must be distinct
-static inline void PrefixSumU32(const uint32_t * __restrict__ input, size_t length, uint32_t * __restrict__ output, uint32_t starting_point) {
+static inline void PrefixSumU32(const u32* __restrict__ input, size_t length, u32* __restrict__ output, u32starting_point) {
     __m128i prev = _mm_set1_epi32(starting_point);
     size_t i = 0;
     for(; i  < length/4; i++) {
@@ -59,7 +59,7 @@ static inline void PrefixSumU32(const uint32_t * __restrict__ input, size_t leng
         prev = _mm_add_epi32(_tmp2, _mm_shuffle_epi32(prev, 0xff));
         _mm_storeu_si128((__m128i*)output + i,prev);
     }
-    uint32_t lastprev = _mm_extract_epi32(prev,3);
+    u32lastprev = _mm_extract_epi32(prev,3);
     for(i = 4 * i; i < length; ++i) {
         lastprev = lastprev + input[i];
         output[i] = lastprev;
@@ -68,7 +68,7 @@ static inline void PrefixSumU32(const uint32_t * __restrict__ input, size_t leng
 
 // write to buffer the successive differences of buffer (buffer[0]-starting_point, buffer[1]-buffer[2], ...)
 // there are "length" values in buffer
-static inline void PrefixSumU32fInplace(uint32_t * buffer, size_t length, uint32_t starting_point) {
+static inline void PrefixSumU32fInplace(u32* buffer, size_t length, u32starting_point) {
     __m128i prev = _mm_set1_epi32(starting_point);
     size_t i = 0;
     for(; i  < length/4; i++) {
@@ -78,7 +78,7 @@ static inline void PrefixSumU32fInplace(uint32_t * buffer, size_t length, uint32
         prev = _mm_add_epi32(_tmp2, _mm_shuffle_epi32(prev, 0xff));
         _mm_storeu_si128((__m128i*)buffer + i,prev);
     }
-    uint32_t lastprev = _mm_extract_epi32(prev,3);
+    u32lastprev = _mm_extract_epi32(prev,3);
     for(i = 4 * i ; i < length; ++i) {
         lastprev = lastprev + buffer[i];
         buffer[i] = lastprev;
@@ -93,7 +93,7 @@ static inline void PrefixSumU32fInplace(uint32_t * buffer, size_t length, uint32
     #include <arm_neon.h>
 #endif
 
-static inline void DeltaEncodingU32(const uint32_t * __restrict__ input, size_t length, uint32_t * __restrict__ output, uint32_t starting_point) {
+static inline void DeltaEncodingU32(const u32* __restrict__ input, size_t length, u32* __restrict__ output, u32starting_point) {
     uint32x4_t prev = vdupq_n_u32(starting_point);
     size_t i = 0;
     for(; i < length/4; i++) {
@@ -104,15 +104,15 @@ static inline void DeltaEncodingU32(const uint32_t * __restrict__ input, size_t 
         vst1q_u32(output + i * 4, delta);
         prev = curr;
     }
-    uint32_t lastprev = vgetq_lane_u32(prev, 3);
+    u32lastprev = vgetq_lane_u32(prev, 3);
     for(i = 4 * i; i < length; ++i) {
-        uint32_t curr = input[i];
+        u32curr = input[i];
         output[i] = curr - lastprev;
         lastprev = curr;
     }
 }
 
-static inline void DeltaEncodingU32Inplace(uint32_t * buffer, size_t length, uint32_t starting_point) {
+static inline void DeltaEncodingU32Inplace(u32* buffer, size_t length, u32starting_point) {
     uint32x4_t prev = vdupq_n_u32(starting_point);
     size_t i = 0;
     for(; i < length/4; i++) {
@@ -122,15 +122,15 @@ static inline void DeltaEncodingU32Inplace(uint32_t * buffer, size_t length, uin
         vst1q_u32(buffer + i * 4, delta);
         prev = curr;
     }
-    uint32_t lastprev = vgetq_lane_u32(prev, 3);
+    u32lastprev = vgetq_lane_u32(prev, 3);
     for(i = 4 * i; i < length; ++i) {
-        uint32_t curr = buffer[i];
+        u32curr = buffer[i];
         buffer[i] = curr - lastprev;
         lastprev = curr;
     }
 }
 
-static inline void PrefixSumU32(const uint32_t * __restrict__ input, size_t length, uint32_t * __restrict__ output, uint32_t starting_point) {
+static inline void PrefixSumU32(const u32* __restrict__ input, size_t length, u32* __restrict__ output, u32starting_point) {
     uint32x4_t prev = vdupq_n_u32(starting_point);
     size_t i = 0;
     for(; i < length/4; i++) {
@@ -145,14 +145,14 @@ static inline void PrefixSumU32(const uint32_t * __restrict__ input, size_t leng
         prev = vaddq_u32(tmp2, broadcast);
         vst1q_u32(output + i * 4, prev);
     }
-    uint32_t lastprev = vgetq_lane_u32(prev, 3);
+    u32lastprev = vgetq_lane_u32(prev, 3);
     for(i = 4 * i; i < length; ++i) {
         lastprev = lastprev + input[i];
         output[i] = lastprev;
     }
 }
 
-static inline void PrefixSumU32Inplace(uint32_t * buffer, size_t length, uint32_t starting_point) {
+static inline void PrefixSumU32Inplace(u32* buffer, size_t length, u32starting_point) {
     uint32x4_t prev = vdupq_n_u32(starting_point);
     size_t i = 0;
     for(; i < length/4; i++) {
@@ -163,7 +163,7 @@ static inline void PrefixSumU32Inplace(uint32_t * buffer, size_t length, uint32_
         prev = vaddq_u32(tmp2, broadcast);
         vst1q_u32(buffer + i * 4, prev);
     }
-    uint32_t lastprev = vgetq_lane_u32(prev, 3);
+    u32lastprev = vgetq_lane_u32(prev, 3);
     for(i = 4 * i; i < length; ++i) {
         lastprev = lastprev + buffer[i];
         buffer[i] = lastprev;
@@ -172,7 +172,7 @@ static inline void PrefixSumU32Inplace(uint32_t * buffer, size_t length, uint32_
 
 #else
 
-static inline void DeltaEncodingU32(const uint32_t* in, size_t n, uint32_t* out, uint32_t starting_point)
+static inline void DeltaEncodingU32(const uint32_t* in, size_t n, uint32_t* out, u32starting_point)
 {
     if (n == 0) return;
     out[0] = in[0] - starting_point;
@@ -180,31 +180,31 @@ static inline void DeltaEncodingU32(const uint32_t* in, size_t n, uint32_t* out,
         out[i] = in[i] - in[i - 1];
 }
 
-static inline void DeltaEncodingU32Inplace(uint32_t* inout, size_t n, uint32_t starting_point)
+static inline void DeltaEncodingU32Inplace(uint32_t* inout, size_t n, u32starting_point)
 {
     if (n == 0) return;
-    uint32_t prev = starting_point;
+    u32prev = starting_point;
     for (size_t i = 0; i < n; ++i) {
-        uint32_t curr = inout[i];
+        u32curr = inout[i];
         inout[i] = curr - prev;
         prev = curr;
     }
 }
 
-static inline void PrefixSumU32(const uint32_t* in, size_t n, uint32_t* out, uint32_t starting_point)
+static inline void PrefixSumU32(const uint32_t* in, size_t n, uint32_t* out, u32starting_point)
 {
     if (n == 0) return;
-    uint32_t acc = starting_point;
+    u32acc = starting_point;
     for (size_t i = 0; i < n; ++i) {
         acc += in[i];
         out[i] = acc;
     }
 }
 
-static inline void PrefixSumU32Inplace(uint32_t* inout, size_t n, uint32_t starting_point)
+static inline void PrefixSumU32Inplace(uint32_t* inout, size_t n, u32starting_point)
 {
     if (n == 0) return;
-    uint32_t acc = starting_point;
+    u32acc = starting_point;
     for (size_t i = 0; i < n; ++i) {
         acc += inout[i];
         inout[i] = acc;

@@ -17,21 +17,21 @@ typedef struct Camera_
     Matrix4 projection;
     Matrix4 view;
     
-    float verticalFOV;
-    float nearClip;
-    float farClip;
+    f1 verticalFOV;
+    f1 nearClip;
+    f1 farClip;
 
-    int2 viewportSize, monitorSize;
+    i2 viewportSize, monitorSize;
        
-    float3 position;
-    float2 mouseOld;
-    float3 targetPos;
-    float3 Front, Right, Up;
+    f3 position;
+    f2 mouseOld;
+    f3 targetPos;
+    f3 Front, Right, Up;
  
-    float pitch, yaw, senstivity;
-    float speed;
+    f1 pitch, yaw, senstivity;
+    f1 speed;
 
-    bool wasPressing;
+    u8 wasPressing;
  
     FrustumPlanes frustumPlanes;
 
@@ -43,7 +43,7 @@ typedef struct Camera_
 static inline void Camera_RecalculateProjection(Camera* camera, int width, int height)
 {
     camera->viewportSize.x = width; camera->viewportSize.y = height;
-    camera->projection = PerspectiveFovRH(camera->verticalFOV * MATH_DegToRad, (float)width, (float)height, camera->nearClip, camera->farClip);
+    camera->projection = PerspectiveFovRH(camera->verticalFOV * MATH_DegToRad, (f1)width, (f1)height, camera->nearClip, camera->farClip);
     camera->inverseProjection = Matrix4Inverse(camera->projection);
 }
 
@@ -65,18 +65,18 @@ static inline void Camera_CalculateLook(Camera* camera) // from yaw pitch
     camera->Up    = F3Cross(camera->Right, camera->Front);
 }
 
-static inline RayV ScreenPointToRay(Camera* camera, float2 pos)
+static inline RayV ScreenPointToRay(Camera* camera, f2 pos)
 {
-    float2 coord = (float2){ pos.x / (float)camera->viewportSize.x, pos.y / (float)camera->viewportSize.y };
+    f2 coord = (f2){ pos.x / (f1)camera->viewportSize.x, pos.y / (f1)camera->viewportSize.y };
     coord.y = 1.0f - coord.y;    // Flip Y to match the NDC coordinate system
     coord = F2SubF(F2MulF(coord, 2.0f), 1.0f); // Map to range [-1, 1]
 
-    Vec4x32f clipSpacePos = VecSetR(coord.x, coord.y, 1.0f, 1.0f);
-    Vec4x32f viewSpacePos = Vec4Transform(clipSpacePos, camera->inverseProjection.r);
+    v128f clipSpacePos = VecSetR(coord.x, coord.y, 1.0f, 1.0f);
+    v128f viewSpacePos = Vec4Transform(clipSpacePos, camera->inverseProjection.r);
     viewSpacePos = VecDiv(viewSpacePos, VecSplatW(viewSpacePos));
         
-    Vec4x32f worldSpacePos = Vec4Transform(viewSpacePos, camera->inverseView.r);
-    Vec4x32f rayDir = Vec3NormV(VecSub(worldSpacePos, VecLoad(&camera->position.x)));
+    v128f worldSpacePos = Vec4Transform(viewSpacePos, camera->inverseView.r);
+    v128f rayDir = Vec3NormV(VecSub(worldSpacePos, VecLoad(&camera->position.x)));
         
     RayV ray;
     ray.origin = VecLoad(&camera->position.x); 
@@ -101,9 +101,9 @@ static inline void CameraInit(Camera* camera, int width, int height)
     Camera_RecalculateProjection(camera, width, height);
 }
 
-static inline void InfiniteMouse(float2 point)
+static inline void InfiniteMouse(f2 point)
 {
-    int2 monitorSize;
+    i2 monitorSize;
     wGetMonitorSize(&monitorSize.x, &monitorSize.y);
     
     #ifndef __ANDROID__
@@ -115,16 +115,16 @@ static inline void InfiniteMouse(float2 point)
     #endif
 }
 
-static inline void CameraUpdate(Camera* camera, float dt)
+static inline void CameraUpdate(Camera* camera, f1 dt)
 {
     bool pressing = GetMouseDown(MouseButton_Right);
-    float speed = dt * (1.0f + GetKeyDown(SDLK_LSHIFT) * 2.0f) * camera->speed;
+    f1 speed = dt * (1.0f + GetKeyDown(SDLK_LSHIFT) * 2.0f) * camera->speed;
     
     if (!pressing) { camera->wasPressing = false; return; }
         
-    float2 mousePos;
+    f2 mousePos;
     GetMousePos(&mousePos.x, &mousePos.y);
-    float2 diff = F2Sub(mousePos, camera->mouseOld);
+    f2 diff = F2Sub(mousePos, camera->mouseOld);
     
     SDL_Cursor* cursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_MOVE);
     SDL_SetCursor(cursor);

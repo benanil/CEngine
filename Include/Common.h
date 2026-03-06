@@ -465,24 +465,24 @@ static inline void MemCpy(void* dst, const void* RESTRICT src, size_t size)
     {
         switch (simd_count & 3)
         {
-            case 3: VecStoreU((Vec4x32u*)d, VecLoadIU((const Vec4x32u*)s)); s += 16; d += 16;
-            case 2: VecStoreU((Vec4x32u*)d, VecLoadIU((const Vec4x32u*)s)); s += 16; d += 16;
-            case 1: VecStoreU((Vec4x32u*)d, VecLoadIU((const Vec4x32u*)s)); s += 16; d += 16;
+            case 3: VecStoreU((v128u*)d, VecLoadIU((const v128u*)s)); s += 16; d += 16;
+            case 2: VecStoreU((v128u*)d, VecLoadIU((const v128u*)s)); s += 16; d += 16;
+            case 1: VecStoreU((v128u*)d, VecLoadIU((const v128u*)s)); s += 16; d += 16;
             case 0: break;
         }
         
         simd_count >>= 2;
         while (simd_count--)
         {
-            Vec4x32u xmm0 = VecLoadIU((const Vec4x32u*)s);
-            Vec4x32u xmm1 = VecLoadIU((const Vec4x32u*)(s + 16));
-            Vec4x32u xmm2 = VecLoadIU((const Vec4x32u*)(s + 32));
-            Vec4x32u xmm3 = VecLoadIU((const Vec4x32u*)(s + 48));
+            v128u xmm0 = VecLoadIU((const v128u*)s);
+            v128u xmm1 = VecLoadIU((const v128u*)(s + 16));
+            v128u xmm2 = VecLoadIU((const v128u*)(s + 32));
+            v128u xmm3 = VecLoadIU((const v128u*)(s + 48));
             
-            VecStoreU((Vec4x32u*)d, xmm0);
-            VecStoreU((Vec4x32u*)(d + 16), xmm1);
-            VecStoreU((Vec4x32u*)(d + 32), xmm2);
-            VecStoreU((Vec4x32u*)(d + 48), xmm3);
+            VecStoreU((v128u*)d, xmm0);
+            VecStoreU((v128u*)(d + 16), xmm1);
+            VecStoreU((v128u*)(d + 32), xmm2);
+            VecStoreU((v128u*)(d + 48), xmm3);
             s += 64; d += 64;
         }
     }
@@ -498,26 +498,26 @@ static inline void MemSet(void* dst, uint8_t value, size_t size)
 {
     uint8_t* d = (uint8_t*)dst;
     
-    Vec4x32u xmm_value = _mm_set1_epi8(value);
+    v128u xmm_value = _mm_set1_epi8(value);
     size_t simd_count = size >> 4;  // Divide by 16
     
     if (simd_count > 0) 
     {
         switch (simd_count & 3)
         {
-            case 3: VecStoreU((Vec4x32u*)d, xmm_value); d += 16;
-            case 2: VecStoreU((Vec4x32u*)d, xmm_value); d += 16;
-            case 1: VecStoreU((Vec4x32u*)d, xmm_value); d += 16;
+            case 3: VecStoreU((v128u*)d, xmm_value); d += 16;
+            case 2: VecStoreU((v128u*)d, xmm_value); d += 16;
+            case 1: VecStoreU((v128u*)d, xmm_value); d += 16;
             case 0: break;
         }
         
         simd_count >>= 2;
         while (simd_count--)
         {
-            VecStoreU((Vec4x32u*)d, xmm_value);
-            VecStoreU((Vec4x32u*)(d + 16), xmm_value);
-            VecStoreU((Vec4x32u*)(d + 32), xmm_value);
-            VecStoreU((Vec4x32u*)(d + 48), xmm_value);
+            VecStoreU((v128u*)d, xmm_value);
+            VecStoreU((v128u*)(d + 16), xmm_value);
+            VecStoreU((v128u*)(d + 32), xmm_value);
+            VecStoreU((v128u*)(d + 48), xmm_value);
             d += 64;
         }
     }
@@ -609,6 +609,10 @@ static inline void MemSet(void* dst, uint8_t value, size_t size)
     }
 #endif
 
+#define forii(n) for (int ii=0; ii<n; ++ii)
+#define forjj(n) for (int jj=0; jj<n; ++jj)
+#define forkk(n) for (int kk=0; kk<n; ++kk)
+#define forll(n) for (int ll=0; ll<n; ++ll)
 
 purefn const char* GetFileName(const char* path)
 {

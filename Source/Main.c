@@ -53,13 +53,13 @@ RenderState g_RenderState;
 Matrix4* g_NodeTransforms;
 Camera g_Camera;
 
-static int characterRootIndex;
+static i32 characterRootIndex;
 static AnimationController AnimControllers[NUM_ANIMS];
 AX_ALIGN(4) Matrix3x4f16 OutMatrices[MaxBonePoses * NUM_ANIMS];
 
 ECS ecs;
 
-extern int ParseGLTF2(const char* path, SceneBundle* result, float scale);
+extern i32 ParseGLTF2(const char* path, SceneBundle* result, float scale);
 
 static void DestroyPipeline()
 {
@@ -71,7 +71,7 @@ static void DestroyPipeline()
 }
 
 /* Call this instead of exit(), so we can clean up SDL: atexit() is evil. */
-void Quit(int rc)
+void Quit(i32 rc)
 {
     DestroyPipeline();
     rDestroy();
@@ -173,7 +173,7 @@ static void Render()
     
     SDL_PushGPUVertexUniformData(cmd, 0, &viewProj, sizeof(Matrix4));
     
-    int numNodes = g_SceneBundle->numNodes;
+    i32 numNodes = g_SceneBundle->numNodes;
     const bool hasScene = g_SceneBundle->numScenes > 0;
     AScene defaultScene;
     if (hasScene)
@@ -182,12 +182,12 @@ static void Render()
         numNodes = defaultScene.numNodes;
     }
 
-    int stackLen = 0;
-    int nodeStack[256];
+    i32 stackLen = 0;
+    i32 nodeStack[256];
 
     if (hasScene)
     {
-        for (int i = 0; i < defaultScene.numNodes; i++)
+        for (i32 i = 0; i < defaultScene.numNodes; i++)
             nodeStack[stackLen++] = defaultScene.nodes[i];
     }
     else
@@ -197,12 +197,12 @@ static void Render()
 
     while (stackLen > 0)
     {
-        const int nodeIndex = nodeStack[--stackLen];
+        const i32 nodeIndex = nodeStack[--stackLen];
         const ANode* node = &g_SceneBundle->nodes[nodeIndex];
         const AMesh* mesh = g_SceneBundle->meshes + node->index;
     
         if (node->type == 0 && node->index != -1)
-            for (int j = 0; j < mesh->numPrimitives; ++j)
+            for (i32 j = 0; j < mesh->numPrimitives; ++j)
             {
                 const APrimitive* primitive = &mesh->primitives[j];
                 // const bool hasMaterial = sceneBundle->materials && primitive->material != UINT16_MAX;
@@ -211,7 +211,7 @@ static void Render()
                 SDL_DrawGPUIndexedPrimitives(pass, primitive->numIndices, NUM_ANIMS, primitive->indexOffset, 0, 0);
             }
     
-            for (int i = 0; i < node->numChildren; i++)
+            for (i32 i = 0; i < node->numChildren; i++)
             {
                 nodeStack[stackLen++] = node->children[i];
             }
@@ -261,7 +261,7 @@ static void InitScene()
     g_NodeTransforms   = AllocateTLSFGlobal(sizeof(Matrix4) * g_SceneBundle->numNodes);
     characterRootIndex = Prefab_FindAnimRootNodeIndex(g_SceneBundle);
     
-    for (int i = 0; i < NUM_ANIMS; i++)
+    for (i32 i = 0; i < NUM_ANIMS; i++)
     {
         Matrix3x4f16* outMatrices = OutMatrices + (i * MaxBonePoses);
         AnimationController_Create(g_SceneBundle, &AnimControllers[i], outMatrices);
@@ -274,7 +274,7 @@ static void InitScene()
     BasisuSetup();
     // SaveSceneImages(g_SceneBundle, "Assets/Meshes/Paladin2/Paladin.bdc");
     // "Assets/Meshes/Paladin/PaladinTest.bdc"
-    int imgRes = LoadSceneImages("Assets/Meshes/Paladin2/Paladin.bdc", g_RenderState.textures, g_SceneBundle->numImages, g_GPUDevice);
+    i32 imgRes = LoadSceneImages("Assets/Meshes/Paladin2/Paladin.bdc", g_RenderState.textures, g_SceneBundle->numImages, g_GPUDevice);
     
     g_RenderState.sampler = SDL_CreateGPUSampler(g_GPUDevice, &(SDL_GPUSamplerCreateInfo){
         .min_filter      = SDL_GPU_FILTER_LINEAR,
@@ -391,12 +391,12 @@ static void InitPipeline()
     SDL_ReleaseGPUShader(g_GPUDevice, fragment_shader);
 }
 
-static int done = 0;
+static i32 done = 0;
 
 void loop(void)
 {
     SDL_Event event;
-    int i;
+    i32 i;
     /* Check for events */
     while (SDL_PollEvent(&event) && !done)
     {
@@ -410,8 +410,8 @@ void loop(void)
     PlatformUpdate();
     CameraUpdate(&g_Camera, PlatformCtx.DeltaTime);
     const double timeSinceStartup = TimeSinceStartup();
-    Vec4x32f camPos = VecLoad(&g_Camera.position.x);
-    int frameCount = PlatformCtx.FrameCount;
+    v128f camPos = VecLoad(&g_Camera.position.x);
+    i32 frameCount = PlatformCtx.FrameCount;
 
     // #pragma omp parallel for schedule(static) num_threads(8)
     #pragma omp parallel for schedule(static) num_threads(omp_get_num_procs() / 2)
@@ -423,7 +423,7 @@ void loop(void)
         const float FarAnimDistSqr = 120 * 120;
     
         // Determine the update frequency based on distance
-        int updateRate = 1; // Sample every nth frame
+        i32 updateRate = 1; // Sample every nth frame
         if (distSqr > FarAnimDistSqr) updateRate = 8; 
         if (distSqr > MedAnimDistSqr) updateRate = 4;  
 
@@ -434,8 +434,8 @@ void loop(void)
         if (shouldUpdate)
         {
             AnimationController* ac = &AnimControllers[i];
-            const int numAnims = ac->mPrefab->numAnimations;
-            const int animIdx  = Clampi32(WangHash(i + 645) % numAnims, 1, numAnims);
+            const i32 numAnims = ac->mPrefab->numAnimations;
+            const i32 animIdx  = Clampi32(WangHash(i + 645) % numAnims, 1, numAnims);
 
             const double animDuration = (double)ac->mPrefab->animations[animIdx].duration;
             const float animRatio = (float)Fract((timeSinceStartup + (i * 0.1)) / animDuration);
@@ -444,14 +444,14 @@ void loop(void)
         }
     }
     
-    int64_t now = TimeNow();
-    static int64_t lastUpdate = 0;
-    int64_t diff = TimeToMilliseconds(now - lastUpdate);
+    i64 now = TimeNow();
+    static i64 lastUpdate = 0;
+    i64 diff = TimeToMilliseconds(now - lastUpdate);
 
     if (diff >= 256) 
     {
         lastUpdate = now;
-        int64_t elapsedUS = TimeToMicroseconds(now - PlatformCtx.LastTime);
+        i64 elapsedUS = TimeToMicroseconds(now - PlatformCtx.LastTime);
         static char usBuffer[128]; 
         IntToString(usBuffer, elapsedUS, 0); 
         SDL_SetWindowTitle(g_SDLWindow, usBuffer);
@@ -471,9 +471,9 @@ void loop(void)
     PlatformCtx.FrameCount++;
 }
 
-int main(int argc, char* argv[])
+i32 main(i32 argc, char* argv[])
 {
-    int msaa = 0;
+    i32 msaa = 0;
     done = 0;
     
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO))

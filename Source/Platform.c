@@ -21,12 +21,12 @@ PlatformContext PlatformCtx = {0};
 extern Camera g_Camera;
 extern SDL_Window* g_SDLWindow;
 
-static ALIGNAS(SIMD_NUM_BYTES) uint64_t DownKeys[8];
-static ALIGNAS(SIMD_NUM_BYTES) uint64_t LastKeys[8]; 
-static ALIGNAS(SIMD_NUM_BYTES) uint64_t PressedKeys[8];
-static ALIGNAS(SIMD_NUM_BYTES) uint64_t ReleasedKeys[8];
+static ALIGNAS(SIMD_NUM_BYTES) u64 DownKeys[8];
+static ALIGNAS(SIMD_NUM_BYTES) u64 LastKeys[8]; 
+static ALIGNAS(SIMD_NUM_BYTES) u64 PressedKeys[8];
+static ALIGNAS(SIMD_NUM_BYTES) u64 ReleasedKeys[8];
 
-inline static int GetRealKey(int x)
+inline static i32 GetRealKey(i32 x)
 {
     if (x & 0x40000000u) return SDLK_PLUSMINUS + x - 0x40000039u;
     if (x & 0x20000000u) return SDLK_PLUSMINUS + 0x122u + x - 0x20000001u;
@@ -38,7 +38,7 @@ void EventCallback(const SDL_Event* event)
 {
     switch (event->type) {
         case SDL_EVENT_KEY_DOWN: {
-            int vk_code = GetRealKey(event->key.key);
+            i32 vk_code = GetRealKey(event->key.key);
             
             if (vk_code > 0 && vk_code < 512) BitsetSet(DownKeys, vk_code);
             else SDL_Log("unhandelled key code down: %x", vk_code);
@@ -46,7 +46,7 @@ void EventCallback(const SDL_Event* event)
             break;
         }
         case SDL_EVENT_KEY_UP: {
-            int vk_code = GetRealKey(event->key.key);
+            i32 vk_code = GetRealKey(event->key.key);
             
             if (vk_code > 0 && vk_code < 512) BitsetReset(DownKeys, vk_code);
             else SDL_Log("unhandelled key code up: %x", vk_code);
@@ -62,17 +62,17 @@ void EventCallback(const SDL_Event* event)
             break;
             
         case SDL_EVENT_MOUSE_BUTTON_DOWN: {
-            uint32_t button_flag = 1 << (event->button.button);
+            u32 button_flag = 1 << (event->button.button);
             PlatformCtx.MouseDown |= button_flag;
             break;
         }
         case SDL_EVENT_MOUSE_BUTTON_UP: 
         {
-            uint32_t button_flag = 1 << (event->button.button);
-            // Handle double click detection for left button
+            u32 button_flag = 1 << (event->button.button);
+            // Handle d1 click detection for left button
             if (button_flag == MouseButton_Left) {
-                uint64_t current_time = SDL_GetPerformanceCounter();
-                double time_diff = (current_time - PlatformCtx.LastClickTime) / (double)PlatformCtx.CPUFrequency;
+                u64 current_time = SDL_GetPerformanceCounter();
+                d1 time_diff = (current_time - PlatformCtx.LastClickTime) / (double)PlatformCtx.CPUFrequency;
                 PlatformCtx.DoubleClicked = (time_diff < 0.4);
                 PlatformCtx.SecondsSinceLastClick = 0.0f;
                 PlatformCtx.LastClickTime = current_time;
@@ -132,18 +132,18 @@ void SetMouseWindowPos(float x, float y)
     SDL_WarpMouseInWindow(g_SDLWindow, x, y);
 }
 
-bool AnyKeyDown()          { return PopCount512(DownKeys) > 0; }
-bool GetKeyDown(int c)     { return BitsetGet(DownKeys    , GetRealKey(c) & 511); }
-bool GetKeyReleased(int c) { return BitsetGet(ReleasedKeys, GetRealKey(c) & 511); }
-bool GetKeyPressed(int c)  { return BitsetGet(PressedKeys , GetRealKey(c) & 511); }
+u8 AnyKeyDown()          { return PopCount512(DownKeys) > 0; }
+u8 GetKeyDown(i32 c)     { return BitsetGet(DownKeys    , GetRealKey(c) & 511); }
+u8 GetKeyReleased(i32 c) { return BitsetGet(ReleasedKeys, GetRealKey(c) & 511); }
+u8 GetKeyPressed(i32 c)  { return BitsetGet(PressedKeys , GetRealKey(c) & 511); }
 
 // Mouse
-float GetMouseWheelDelta() { return PlatformCtx.MouseWheelDelta; }
-bool GetDoubleClicked()    { return PlatformCtx.DoubleClicked; }
-bool AnyMouseKeyDown()            { return PlatformCtx.MouseDown > 0; }
-bool GetMouseDown(int button)     { return !!(PlatformCtx.MouseDown     & button); }
-bool GetMouseReleased(int button) { return !!(PlatformCtx.MouseReleased & button); }
-bool GetMousePressed(int button)  { return !!(PlatformCtx.MousePressed  & button); }
+f1 GetMouseWheelDelta()  { return PlatformCtx.MouseWheelDelta; }
+u8 GetDoubleClicked()    { return PlatformCtx.DoubleClicked; }
+u8 AnyMouseKeyDown()            { return PlatformCtx.MouseDown > 0; }
+u8 GetMouseDown(i32 button)     { return !!(PlatformCtx.MouseDown     & button); }
+u8 GetMouseReleased(i32 button) { return !!(PlatformCtx.MouseReleased & button); }
+u8 GetMousePressed(i32 button)  { return !!(PlatformCtx.MousePressed  & button); }
 
 
 void SetPressedAndReleasedKeys()
@@ -158,19 +158,19 @@ void SetPressedAndReleasedKeys()
 
 void RecordLastKeys()
 {
-    MemCpy(LastKeys, DownKeys, sizeof(uint64_t) * 8);
+    MemCpy(LastKeys, DownKeys, sizeof(u64) * 8);
     // PlatformCtx.LastKeys  = PlatformCtx.DownKeys;
     PlatformCtx.MouseLast = PlatformCtx.MouseDown;
 }
 
-void wSetWindowSize(int width, int height)
+void wSetWindowSize(i32 width, i32 height)
 {
     SDL_SetWindowSize(g_SDLWindow, width, height);
     PlatformCtx.WindowWidth = width;
     PlatformCtx.WindowHeight = height;
 }
 
-void wSetWindowPosition(int x, int y)
+void wSetWindowPosition(i32 x, i32 y)
 {
     SDL_SetWindowPosition(g_SDLWindow, x, y);
     PlatformCtx.WindowPosX = x;
@@ -188,20 +188,20 @@ void wOpenFile(const char* filePath, SDL_DialogFileCallback callback)
     SDL_ShowOpenFileDialog(callback, NULL, NULL, NULL, 0, filePath, false);
 }
 
-double GetDeltaTime() 
+d1 GetDeltaTime() 
 { 
     return PlatformCtx.DeltaTime; 
 }
 
-int64_t TimeNow()
+i64 TimeNow()
 {
     return SDL_GetPerformanceCounter();
 }
 
 // time is nanoseconds
-double  TimeToSeconds(int64_t t)       { return (double)t / (double)PlatformCtx.CPUFrequency; }
-int64_t TimeToMilliseconds(int64_t t)  { return Int64MulDiv(t, 1000, PlatformCtx.CPUFrequency); }
-int64_t TimeToMicroseconds(int64_t t)  { return Int64MulDiv(t, 1000000, PlatformCtx.CPUFrequency); }
+d1  TimeToSeconds(i64 t)       { return (double)t / (double)PlatformCtx.CPUFrequency; }
+i64 TimeToMilliseconds(i64 t)  { return Int64MulDiv(t, 1000, PlatformCtx.CPUFrequency); }
+i64 TimeToMicroseconds(i64 t)  { return Int64MulDiv(t, 1000000, PlatformCtx.CPUFrequency); }
 
 void PlatformInit()
 {
@@ -214,14 +214,14 @@ void PlatformInit()
 
 void PlatformUpdate()
 {
-    int64_t now = TimeNow();
+    i64 now = TimeNow();
     PlatformCtx.DeltaTime = Clampf64((double)(now - PlatformCtx.LastTime) / (double)PlatformCtx.CPUFrequency, 0.0, 1.0);
     PlatformCtx.LastTime  = now;
     SetPressedAndReleasedKeys();
     RecordLastKeys();
 }
 
-double TimeSinceStartup()
+d1 TimeSinceStartup()
 {
     return (double)(TimeNow() - PlatformCtx.StartupTime) / (double)PlatformCtx.CPUFrequency;
 }

@@ -7,26 +7,26 @@ typedef struct xyzw_ {
     float x, y, z, w; 
 } xyzw;
 
-typedef Vec4x32f Quaternion;
+typedef v128f Quaternion;
 
 #define QIdentity()  VecSetR(0.0f, 0.0f, 0.0f, 1.0f)
 #define QNorm(q)     VecNorm(q)
 #define QNormEst(q)  VecNormEst(q)
 #define MakeQuat(_x, _y, _z, _w)  VecSetR(_x, _y, _z, _w)
 
-static inline Vec4x32f VECTORCALL QMul(Vec4x32f Q1, Vec4x32f Q2) 
+static inline v128f VCALL QMul(v128f Q1, v128f Q2) 
 {
-    const Vec4x32f ControlWZYX = { 1.0f,-1.0f, 1.0f,-1.0f };
-    const Vec4x32f ControlZWXY = { 1.0f, 1.0f,-1.0f,-1.0f };
-    const Vec4x32f ControlYXWZ = { -1.0f, 1.0f, 1.0f,-1.0f };
+    const v128f ControlWZYX = { 1.0f,-1.0f, 1.0f,-1.0f };
+    const v128f ControlZWXY = { 1.0f, 1.0f,-1.0f,-1.0f };
+    const v128f ControlYXWZ = { -1.0f, 1.0f, 1.0f,-1.0f };
     
-    Vec4x32f vResult = VecSplatW(Q2);
-    Vec4x32f Q2X     = VecSplatX(Q2);
-    Vec4x32f Q2Y     = VecSplatY(Q2);
-    Vec4x32f Q2Z     = VecSplatZ(Q2);
+    v128f vResult = VecSplatW(Q2);
+    v128f Q2X     = VecSplatX(Q2);
+    v128f Q2Y     = VecSplatY(Q2);
+    v128f Q2Z     = VecSplatZ(Q2);
     vResult = VecMul(vResult, Q1);
 
-    Vec4x32f Q1Shuffle = Q1;
+    v128f Q1Shuffle = Q1;
     Q1Shuffle = VecRev(Q1Shuffle);
     Q2X       = VecMul(Q2X, Q1Shuffle);
     Q1Shuffle = VecShuffleR(Q1Shuffle, Q1Shuffle, 2, 3, 0, 1);
@@ -43,7 +43,7 @@ static inline Vec4x32f VECTORCALL QMul(Vec4x32f Q1, Vec4x32f Q2)
 }
 
 // Angle should be between -twopi, twopi
-static inline Vec4x32f QFromAxisAngle(float3 axis, float angle)
+static inline v128f QFromAxisAngle(f3 axis, float angle)
 {
     float SinV = Sin(0.5f * angle);
     float CosV = Cos(0.5f * angle);
@@ -52,55 +52,55 @@ static inline Vec4x32f QFromAxisAngle(float3 axis, float angle)
 
 // below 3 function are same as QFromAxisAngle but with single axis, 
 // faster because no normalization and less multipication
-static inline Vec4x32f QFromXAngle(float angle) {
+static inline v128f QFromXAngle(float angle) {
     return VecSetR(Sin(0.5f * angle), 0.0f, 0.0f, Cos(0.5f * angle));
 }
 
-static inline Vec4x32f QFromYAngle(float angle) {
+static inline v128f QFromYAngle(float angle) {
     return VecSetR(0.0f, Sin(0.5f * angle), 0.0f, Cos(0.5f * angle));
 }
 
-static inline Vec4x32f QFromZAngle(float angle) {
+static inline v128f QFromZAngle(float angle) {
     return VecSetR(0.0f, 0.0f, Sin(0.5f * angle), Cos(0.5f * angle));
 }
 
-static inline Vec4x32f VECTORCALL QMulVec3V(Vec4x32f vec, Vec4x32f quat)
+static inline v128f VCALL QMulVec3V(v128f vec, v128f quat)
 {
-    Vec4x32f temp0 = Vec3Cross(quat, vec);
-    Vec4x32f temp1 = VecMul(vec, VecSplatW(quat));
+    v128f temp0 = Vec3Cross(quat, vec);
+    v128f temp1 = VecMul(vec, VecSplatW(quat));
     temp0 = VecAdd(temp0, temp1);
     temp1 = VecMul(Vec3Cross(quat, temp0), VecSet1(2.0f));
     return VecAdd(vec, temp1);
 }
 
-static inline float3 VECTORCALL QMulVec3(float3 vec, Quaternion quat)
+static inline f3 VCALL QMulVec3(f3 vec, Quaternion quat)
 {
-    float3 res;
+    f3 res;
     Vec3Store(&res.x, QMulVec3V(VecSetR(vec.x, vec.y, vec.z, 1.0f), quat));
     return res;
 }
 
 // Common code for computing the scalar coefficients of SLERP
-purefn Vec4x32f QCalculateCoefficient(Vec4x32f vT, Vec4x32f xm1)
+purefn v128f QCalculateCoefficient(v128f vT, v128f xm1)
 {
     const float mu = 1.85298109240830f;
-    Vec4x32f one = VecSet1(1.0f);
+    v128f one = VecSet1(1.0f);
     // Precomputed constants
-    const Vec4x32f u0123 = VecSetR( 1.f / ( 1 * 3 ), 1.f / ( 2 * 5 ), 1.f / ( 3 * 7 ), 1.f / ( 4 * 9 ) );
-    const Vec4x32f u4567 = VecSetR( 1.f / ( 5 * 11 ), 1.f / ( 6 * 13 ), 1.f / ( 7 * 15 ), mu / ( 8 * 17 ) );
-    const Vec4x32f v0123 = VecSetR( 1.f / 3, 2.f / 5, 3.f / 7, 4.f / 9 );
-    const Vec4x32f v4567 = VecSetR( 5.f / 11, 6.f / 13, 7.f / 15, mu * 8 / 17 );
+    const v128f u0123 = VecSetR( 1.f / ( 1 * 3 ), 1.f / ( 2 * 5 ), 1.f / ( 3 * 7 ), 1.f / ( 4 * 9 ) );
+    const v128f u4567 = VecSetR( 1.f / ( 5 * 11 ), 1.f / ( 6 * 13 ), 1.f / ( 7 * 15 ), mu / ( 8 * 17 ) );
+    const v128f v0123 = VecSetR( 1.f / 3, 2.f / 5, 3.f / 7, 4.f / 9 );
+    const v128f v4567 = VecSetR( 5.f / 11, 6.f / 13, 7.f / 15, mu * 8 / 17 );
 
-    Vec4x32f vTSquared = VecMul(vT, vT);
-    Vec4x32f b4567 = VecFmsub(u4567, vTSquared, v4567);
+    v128f vTSquared = VecMul(vT, vT);
+    v128f b4567 = VecFmsub(u4567, vTSquared, v4567);
     b4567 = VecMul(b4567, xm1);
 
-    Vec4x32f c = VecAdd(VecSplatW(b4567), one);
+    v128f c = VecAdd(VecSplatW(b4567), one);
     c = VecFmaddLane(c, b4567, one, 2); // multiply by lane is faster with ARM cpu's
     c = VecFmaddLane(c, b4567, one, 1);
     c = VecFmaddLane(c, b4567, one, 0);
 
-    Vec4x32f b0123 = VecFmsub(u0123, vTSquared, v0123);
+    v128f b0123 = VecFmsub(u0123, vTSquared, v0123);
     b0123 = VecMul(b0123, xm1);
     c = VecFmaddLane(c, b0123, one, 3);
     c = VecFmaddLane(c, b0123, one, 2);
@@ -110,26 +110,26 @@ purefn Vec4x32f QCalculateCoefficient(Vec4x32f vT, Vec4x32f xm1)
     return c;
 }
 
-static inline Quaternion VECTORCALL QSlerp(Quaternion q0, Quaternion q1, float t)
+static inline Quaternion VCALL QSlerp(Quaternion q0, Quaternion q1, float t)
 {
-    const Vec4x32f one = VecSet1(1.0f);
+    const v128f one = VecSet1(1.0f);
     // from paper: "A Fast and Accurate Estimate for SLERP" by David Eberly
     // but I have used fused instructions and I've made optimizations on sign part for ARM cpu's
-    Vec4x32f x = VecDot(q0, q1); // cos ( theta ) in all components
-    Vec4x32f control = VecCmpLt(x, VecZero());
-    Vec4x32f sign = VecSelect(VecOne(), VecNegativeOne(), control);
+    v128f x = VecDot(q0, q1); // cos ( theta ) in all components
+    v128f control = VecCmpLt(x, VecZero());
+    v128f sign = VecSelect(VecOne(), VecNegativeOne(), control);
     q1 = VecMul(sign, q1); // do mul instead of xor
 
-    Vec4x32f xm1 = VecFmsub(x, sign, one);
-    Vec4x32f cT = QCalculateCoefficient(VecSet1(t), xm1);
-    Vec4x32f cD = QCalculateCoefficient(VecSet1(1.0f - t), xm1);
+    v128f xm1 = VecFmsub(x, sign, one);
+    v128f cT = QCalculateCoefficient(VecSet1(t), xm1);
+    v128f cD = QCalculateCoefficient(VecSet1(1.0f - t), xm1);
     return VecFmadd(cD, q0, VecMul(cT, q1));
 }
 
 // faster but less precise, more error prone version of slerp
-purefn Quaternion VECTORCALL QNLerp(Quaternion a, Quaternion b, float t)
+purefn Quaternion VCALL QNLerp(Quaternion a, Quaternion b, float t)
 {
-    Vec4x32i lz = VecCmpLt(VecDot(a, b), VecZero());
+    v128i lz = VecCmpLt(VecDot(a, b), VecZero());
     a = VecSelect(a, VecNeg(a), lz);
     a = VecLerp(a, b, t);
     return VecNormEst(a);
@@ -139,8 +139,8 @@ purefn Quaternion QFromEuler(float x, float y, float z)
 {
     x *= 0.5f; y *= 0.5f; z *= 0.5f;
     float c[4], s[4];
-    Vec4x32f cv;
-    Vec4x32f sv;
+    v128f cv;
+    v128f sv;
     VecSinCos(VecSetR(x, y, z, 1.0f), &sv, &cv);
     VecStore(c, cv);
     VecStore(s, sv);
@@ -153,16 +153,16 @@ purefn Quaternion QFromEuler(float x, float y, float z)
     return q;
 }
 
-purefn Quaternion VECTORCALL QFromEulerVec3(float3 euler)
+purefn Quaternion VCALL QFromEulerVec3(f3 euler)
 {
     return QFromEuler(euler.x, euler.y, euler.z);
 }
 
-purefn float3 QToEulerAngles(Quaternion qu)
+purefn f3 QToEulerAngles(Quaternion qu)
 {
     xyzw q;
     VecStore(&q.x, qu);
-    float3 eulerAngles; // using cstd for trigonometric functions recommended
+    f3 eulerAngles; // using cstd for trigonometric functions recommended
     eulerAngles.x = ATan2(2.0f * (q.y * q.z + q.w * q.x), q.w * q.w - q.x * q.x - q.y * q.y + q.z * q.z);
     eulerAngles.y = ASin(MCLAMP(-2.0f * (q.x * q.z - q.w * q.y), -1.0f, 1.0f));
     eulerAngles.z = ATan2(2.0f * (q.x * q.y + q.w * q.z), q.w * q.w + q.x * q.x - q.y * q.y - q.z * q.z);
@@ -203,14 +203,14 @@ static inline void QuaternionFromMatrix(float* Orientation, const float* m, int 
 }
 
 
-inline Vec4x32f VECTORCALL QuaternionFromMatrix3Vec(Vec4x32f r0, Vec4x32f r1, Vec4x32f r2)
+inline v128f VCALL QuaternionFromMatrix3Vec(v128f r0, v128f r1, v128f r2)
 {
     #if defined(AX_ARM)
-    static const Vec4x32f XMPMMP = { +1.0f, -1.0f, -1.0f, +1.0f };
-    static const Vec4x32f XMMPMP = { -1.0f, +1.0f, -1.0f, +1.0f };
-    static const Vec4x32f XMMMPP = { -1.0f, -1.0f, +1.0f, +1.0f };
-    static const Vec4x32u Select0110 = { 0u, ~0u, ~0u, 0u } ;
-    static const Vec4x32u Select0010 = { 0u,  0u, ~0u, 0u } ;
+    static const v128f XMPMMP = { +1.0f, -1.0f, -1.0f, +1.0f };
+    static const v128f XMMPMP = { -1.0f, +1.0f, -1.0f, +1.0f };
+    static const v128f XMMMPP = { -1.0f, -1.0f, +1.0f, +1.0f };
+    static const v128u Select0110 = { 0u, ~0u, ~0u, 0u } ;
+    static const v128u Select0010 = { 0u,  0u, ~0u, 0u } ;
 
     float32x4_t r00 = vdupq_lane_f32(vget_low_f32(r0), 0);
     float32x4_t r11 = vdupq_lane_f32(vget_low_f32(r1), 1);
@@ -289,42 +289,42 @@ inline Vec4x32f VECTORCALL QuaternionFromMatrix3Vec(Vec4x32f r0, Vec4x32f r1, Ve
     t0 = VecLen(t2);
     return VecDiv(t2, t0);
     #elif defined(AX_SUPPORT_SSE)
-    static const Vec4x32f XMPMMP = { +1.0f, -1.0f, -1.0f, +1.0f };
-    static const Vec4x32f XMMPMP = { -1.0f, +1.0f, -1.0f, +1.0f };
-    static const Vec4x32f XMMMPP = { -1.0f, -1.0f, +1.0f, +1.0f };
+    static const v128f XMPMMP = { +1.0f, -1.0f, -1.0f, +1.0f };
+    static const v128f XMMPMP = { -1.0f, +1.0f, -1.0f, +1.0f };
+    static const v128f XMMMPP = { -1.0f, -1.0f, +1.0f, +1.0f };
 
-    Vec4x32f r00 = VecSplatX(r0);
-    Vec4x32f r11 = VecSplatY(r1);
-    Vec4x32f r22 = VecSplatZ(r2);
-    Vec4x32f r11mr00 = _mm_sub_ps(r11, r00);
-    Vec4x32f x2gey2  = _mm_cmple_ps(r11mr00, VecZero());
-    Vec4x32f r11pr00 = _mm_add_ps(r11, r00);
-    Vec4x32f z2gew2  = _mm_cmple_ps(r11pr00, VecZero());
-    Vec4x32f x2py2gez2pw2 = _mm_cmple_ps(r22, VecZero());
+    v128f r00 = VecSplatX(r0);
+    v128f r11 = VecSplatY(r1);
+    v128f r22 = VecSplatZ(r2);
+    v128f r11mr00 = _mm_sub_ps(r11, r00);
+    v128f x2gey2  = _mm_cmple_ps(r11mr00, VecZero());
+    v128f r11pr00 = _mm_add_ps(r11, r00);
+    v128f z2gew2  = _mm_cmple_ps(r11pr00, VecZero());
+    v128f x2py2gez2pw2 = _mm_cmple_ps(r22, VecZero());
 
-    Vec4x32f t0 = VecFmadd(XMPMMP, r00, VecOne());
-    Vec4x32f t1 = _mm_mul_ps(XMMPMP, r11);
-    Vec4x32f t2 = VecFmadd(XMMMPP, r22, t0);
-    Vec4x32f x2y2z2w2 = _mm_add_ps(t1, t2);
+    v128f t0 = VecFmadd(XMPMMP, r00, VecOne());
+    v128f t1 = _mm_mul_ps(XMMPMP, r11);
+    v128f t2 = VecFmadd(XMMMPP, r22, t0);
+    v128f x2y2z2w2 = _mm_add_ps(t1, t2);
     
     t0 = _mm_shuffle_ps(r0, r1, _MM_SHUFFLE(1, 2, 2, 1));
     t1 = _mm_shuffle_ps(r1, r2, _MM_SHUFFLE(1, 0, 0, 0));
     t1 = _mm_permute_ps(t1, _MM_SHUFFLE(1, 3, 2, 0));
-    Vec4x32f xyxzyz = _mm_add_ps(t0, t1);
+    v128f xyxzyz = _mm_add_ps(t0, t1);
     
     t0 = _mm_shuffle_ps(r2, r1, _MM_SHUFFLE(0, 0, 0, 1));
     t1 = _mm_shuffle_ps(r1, r0, _MM_SHUFFLE(1, 2, 2, 2));
     t1 = _mm_permute_ps(t1, _MM_SHUFFLE(1, 3, 2, 0));
-    Vec4x32f xwywzw = _mm_sub_ps(t0, t1);
+    v128f xwywzw = _mm_sub_ps(t0, t1);
     xwywzw = _mm_mul_ps(XMMPMP, xwywzw);
 
     t0 = _mm_shuffle_ps(x2y2z2w2, xyxzyz, _MM_SHUFFLE(0, 0, 1, 0));
     t1 = _mm_shuffle_ps(x2y2z2w2, xwywzw, _MM_SHUFFLE(0, 2, 3, 2));
     t2 = _mm_shuffle_ps(xyxzyz, xwywzw, _MM_SHUFFLE(1, 0, 2, 1));
-    Vec4x32f tensor0 = _mm_shuffle_ps(t0, t2, _MM_SHUFFLE(2, 0, 2, 0));
-    Vec4x32f tensor1 = _mm_shuffle_ps(t0, t2, _MM_SHUFFLE(3, 1, 1, 2));
-    Vec4x32f tensor2 = _mm_shuffle_ps(t2, t1, _MM_SHUFFLE(2, 0, 1, 0));
-    Vec4x32f tensor3 = _mm_shuffle_ps(t2, t1, _MM_SHUFFLE(1, 2, 3, 2));
+    v128f tensor0 = _mm_shuffle_ps(t0, t2, _MM_SHUFFLE(2, 0, 2, 0));
+    v128f tensor1 = _mm_shuffle_ps(t0, t2, _MM_SHUFFLE(3, 1, 1, 2));
+    v128f tensor2 = _mm_shuffle_ps(t2, t1, _MM_SHUFFLE(2, 0, 1, 0));
+    v128f tensor3 = _mm_shuffle_ps(t2, t1, _MM_SHUFFLE(1, 2, 3, 2));
     
     t0 = _mm_and_ps(x2gey2, tensor0);
     t1 = _mm_andnot_ps(x2gey2, tensor1);
@@ -387,17 +387,17 @@ static inline void Matrix4FromQuaternion(float* mat, Quaternion quat)
     mat[4 * 3 + 3] = 1.0f;
 }
 
-purefn void VECTORCALL PackQuaternionS16Norm(Vec4x32f quat, uint32_t* result)
+purefn void VCALL PackQuaternionS16Norm(v128f quat, uint32_t* result)
 {
     quat = VecNorm(quat);
-    Vec4x32u u32 = VecCvtF32I32(VecMul(quat, VecSet1(INT16_MAX-1)));
-    Vec4x32u u16 = VecNarrowU32U16(u32);
+    v128u u32 = VecCvtF32I32(VecMul(quat, VecSet1(INT16_MAX-1)));
+    v128u u16 = VecNarrowU32U16(u32);
     VecStoreI16(result, u16);
 }
 
-purefn Quaternion QFromLookRotation(float3 direction, float3 up)
+purefn Quaternion QFromLookRotation(f3 direction, f3 up)
 {
-    const float3 matrix[3] = {
+    const f3 matrix[3] = {
         F3Cross(up, direction), up, direction 
     };
     xyzw result;
@@ -405,12 +405,12 @@ purefn Quaternion QFromLookRotation(float3 direction, float3 up)
     return VecLoad(&result.x);
 }
 
-purefn Quaternion VECTORCALL QConjugate(Quaternion vec)
+purefn Quaternion VCALL QConjugate(Quaternion vec)
 {
     return VecMul(vec, VecSetR(-1.0f, -1.0f, -1.0f, 1.0f));
 }
 
-purefn Quaternion VECTORCALL QInverse(Quaternion q)
+purefn Quaternion VCALL QInverse(Quaternion q)
 {
     const float lengthSq = VecDotf(q, q);
     if (AlmostEqualf(lengthSq, 1.0f))
@@ -429,26 +429,26 @@ purefn Quaternion VECTORCALL QInverse(Quaternion q)
     }
 }
 
-static inline float3 VECTORCALL QGetForward(Quaternion vec) {
-    float3 res;
+static inline f3 VCALL QGetForward(Quaternion vec) {
+    f3 res;
     Vec3Store(&res.x, QMulVec3V(VecSetR( 0.0f, 0.0f, 1.0f, 0.0f), QConjugate(vec)));
     return res; 
 }
 
-static inline float3 VECTORCALL QGetRight(Quaternion vec) {
-    float3 res;
+static inline f3 VCALL QGetRight(Quaternion vec) {
+    f3 res;
     Vec3Store(&res.x, QMulVec3V(VecSetR( 1.0f, 0.0f, 0.0f, 0.0f), QConjugate(vec)));
     return res; 
 }
 
-static inline float3 VECTORCALL QGetLeft(Quaternion vec) {
-    float3 res;
+static inline f3 VCALL QGetLeft(Quaternion vec) {
+    f3 res;
     Vec3Store(&res.x, QMulVec3V(VecSetR(-1.0f, 0.0f, 0.0f, 0.0f), QConjugate(vec)));
     return res; 
 }
 
-static inline float3 VECTORCALL QGetUp(Quaternion vec) {
-    float3 res;
+static inline f3 VCALL QGetUp(Quaternion vec) {
+    f3 res;
     Vec3Store(&res.x, QMulVec3V(VecSetR( 0.0f, 1.0f, 0.0f, 0.0f), QConjugate(vec)));
     return res; 
 }
@@ -456,8 +456,8 @@ static inline float3 VECTORCALL QGetUp(Quaternion vec) {
 
 // Dual Quaternion structure
 typedef struct DualQuaternion_ {
-    Vec4x32f real;  // rotation quaternion
-    Vec4x32f dual;  // encodes translation
+    v128f real;  // rotation quaternion
+    v128f dual;  // encodes translation
 } DualQuaternion;
 
 static inline DualQuaternion DQMultiply(DualQuaternion a, DualQuaternion b)
@@ -469,16 +469,16 @@ static inline DualQuaternion DQMultiply(DualQuaternion a, DualQuaternion b)
     return result;
 }
 
-static inline Vec4x32f DQGetTranslation(DualQuaternion dq)
+static inline v128f DQGetTranslation(DualQuaternion dq)
 {
     // t = 2 * dual * conjugate(real)
-    Vec4x32f real_conj = QConjugate(dq.real);
-    Vec4x32f t = QMul(VecMul(dq.dual, VecSet1(2.0f)), real_conj);
+    v128f real_conj = QConjugate(dq.real);
+    v128f t = QMul(VecMul(dq.dual, VecSet1(2.0f)), real_conj);
     VecSetW(t, 0.0f);
     return t;
 }
 
-static inline DualQuaternion DQFromRotationTranslation(Vec4x32f rotation, Vec4x32f translation)
+static inline DualQuaternion DQFromRotationTranslation(v128f rotation, v128f translation)
 {
     VecSetW(translation, 0.0f);
     DualQuaternion dq;
@@ -493,17 +493,17 @@ static inline DualQuaternion DQFromRotationTranslation(Vec4x32f rotation, Vec4x3
 static inline DualQuaternion DQBlend(DualQuaternion x, DualQuaternion y, float a)
 {
     // Check dot product to handle antipodality
-    Vec4x32f k = VecDot(x.real, y.real);
-    Vec4x32i le = VecCmpLe(k, VecZero());
+    v128f k = VecDot(x.real, y.real);
+    v128i le = VecCmpLe(k, VecZero());
     
     // If dot < 0, negate dq1 to take shorter path
-    Vec4x32f neg_one = VecSet1(-1.0f);
+    v128f neg_one = VecSet1(-1.0f);
     y.real = VecBlend(y.real, VecMul(y.real, neg_one), le);
     y.dual = VecBlend(y.dual, VecMul(y.dual, neg_one), le);
     
     // Linear blend
-    Vec4x32f a_vec = VecSet1(a);
-    Vec4x32f one_minus_a = VecSub(VecOne(), a_vec);
+    v128f a_vec = VecSet1(a);
+    v128f one_minus_a = VecSub(VecOne(), a_vec);
     
     DualQuaternion result;
     result.real = VecFmadd(x.real, one_minus_a, VecMul(y.real, k));

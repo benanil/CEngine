@@ -5,19 +5,18 @@
 
 #define MAX_ENTITY 4096
 
-
 typedef struct ECS_
 {
-    Vec4x32f EntityPositions[MAX_ENTITY];
-    uint32_t EntityRotations[MAX_ENTITY * 2];
-    uint32_t EntityData[MAX_ENTITY];
-    uint32_t NumEntities;
+    v128f EntityPositions[MAX_ENTITY];
+    u32 EntityRotations[MAX_ENTITY * 2];
+    u32 EntityData[MAX_ENTITY];
+    u32 NumEntities;
 } ECS;
 
 
-void ECS_Init(Vec4x32f* EntityPositions, uint32_t* EntityRotations);
+void ECS_Init(v128f* EntityPositions, uint32_t* EntityRotations);
 
-void ECS_Update(ECS* ecs, float delta_time);
+void ECS_Update(ECS* ecs, f1 delta_time);
 
 
 

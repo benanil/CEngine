@@ -85,11 +85,11 @@ extern "C" {
 
 
 #ifdef _MSC_VER
-    #define VECTORCALL __vectorcall
+    #define VCALL __vectorcall
 #elif __CLANG__
-    #define VECTORCALL [[clang::vectorcall]] 
+    #define VCALL [[clang::vectorcall]] 
 #elif __GNUC__
-    #define VECTORCALL  
+    #define VCALL  
 #endif
 
 #if defined(_MSC_VER)
@@ -108,15 +108,25 @@ extern "C" {
     #define purefn static inline __attribute__((always_inline))
 #endif
 
+typedef float    f1;
+typedef double   d1;
+typedef uint8_t  u8;
+typedef uint16_t u16;
+typedef uint32_t u32;
+typedef uint64_t u64;
+typedef uint8_t  u8;
+typedef int16_t  i16;
+typedef int32_t  i32;
+typedef int64_t  i64;
 
 #if defined(AX_SUPPORT_SSE) && !defined(AX_ARM)
 /*//////////////////////////////////////////////////////////////////////////*/
 /*                                 SSE                                      */
 /*//////////////////////////////////////////////////////////////////////////*/
 
-typedef __m128  Vec4x32f;
-typedef __m128  Vec4x32i;
-typedef __m128i Vec4x32u;
+typedef __m128  v128f;
+typedef __m128  v128i;
+typedef __m128i v128u;
 
 #define VecZero()                _mm_setzero_ps()
 #define VecNegZero()             _mm_set1_ps(-0.0f)
@@ -131,7 +141,7 @@ typedef __m128i Vec4x32u;
 #define VecLoadA(x)              _mm_load_ps(x)
 #define VecLoadI(x)              _mm_load_si128(x)
 #define VecLoadIU(x)             _mm_loadu_si128(x)
-#define VecStoreU(ptr, x)        _mm_storeu_si128((Vec4x32u*)ptr, x)
+#define VecStoreU(ptr, x)        _mm_storeu_si128((v128u*)ptr, x)
                                 
 #define VecStore(ptr, x)         _mm_storeu_ps(ptr, x)
 #define VecStoreA(ptr, x)        _mm_store_ps(ptr, x)
@@ -305,8 +315,8 @@ typedef __m128i Vec4x32u;
 #define VeciBlend(a, b, c)          _mm_blendv_epi8(a, b, c)
 
 
-static inline Vec4x32f VECTORCALL Vec3Load(void const* x) {
-    Vec4x32f v = _mm_loadu_ps((float const*)x); 
+static inline v128f VCALL Vec3Load(void const* x) {
+    v128f v = _mm_loadu_ps((float const*)x); 
     VecSetW(v, 0.0); return v;
 }
 
@@ -315,9 +325,9 @@ static inline Vec4x32f VECTORCALL Vec3Load(void const* x) {
 /*                                 NEON                                     */
 /*//////////////////////////////////////////////////////////////////////////*/
 
-typedef float32x4_t Vec4x32f;
-typedef uint32x4_t Vec4x32i;
-typedef uint32x4_t Vec4x32u;
+typedef float32x4_t v128f;
+typedef uint32x4_t v128i;
+typedef uint32x4_t v128u;
 
 #define VecZero()                   vdupq_n_f32(0.0f)
 #define VecNegZero()                vdupq_n_f32(-0.0f)
@@ -511,27 +521,27 @@ typedef uint32x4_t Vec4x32u;
 #define VeciUnpackLow16(a, b)       vzip1q_s16(a, b)   /* [a.x, a.y, b.x, b.y] */
 #define VeciBlend(a, b, c)          vbslq_u8(c, b, a)  /* Blend a and b based on mask c */
 
-purefn Vec4x32f ARMVectorRev(Vec4x32f v)
+purefn v128f ARMVectorRev(v128f v)
 {
     float32x4_t rev64 = vrev64q_f32(v);
     return vextq_f32(rev64, rev64, 2);
 }
 
-purefn Vec4x32f ARMVector3Load(float* src) {
+purefn v128f ARMVector3Load(float* src) {
     return vcombine_f32(vld1_f32(src), vld1_lane_f32(src + 2, vdup_n_f32(0), 0));
 }
 
-purefn Vec4x32f ARMCreateVec(float x, float y, float z, float w) {
+purefn v128f ARMCreateVec(float x, float y, float z, float w) {
     AX_ALIGN(16) float v[4] = {x, y, z, w};
     return vld1q_f32(v);
 }
 
-purefn Vec4x32i ARMCreateVecI(uint32_t x, uint32_t y, uint32_t z, uint32_t w) {
+purefn v128i ARMCreateVecI(u32x, u32y, u32z, u32w) {
     return vcombine_u32(vcreate_u32(((uint64_t)x) | (((uint64_t)y) << 32)),
                         vcreate_u32(((uint64_t)z) | (((uint64_t)w) << 32)));
 }
 
-purefn Vec4x32f ARMVector3NormEst(Vec4x32f v) {
+purefn v128f ARMVector3NormEst(v128f v) {
     float32x4_t vTemp = vmulq_f32(v, v);
     float32x2_t v1 = vget_low_f32(vTemp);
     float32x2_t v2 = vget_high_f32(vTemp);
@@ -542,7 +552,7 @@ purefn Vec4x32f ARMVector3NormEst(Vec4x32f v) {
     return vmulq_f32(v, vcombine_f32(v2, v2)); // Normalize
 }
 
-static inline Vec4x32f ARMVector3Norm(Vec4x32f v) {
+static inline v128f ARMVector3Norm(v128f v) {
     // Dot3
     float32x4_t vTemp = vmulq_f32(v, v);
     float32x2_t v1 = vget_low_f32(vTemp);
@@ -559,12 +569,12 @@ static inline Vec4x32f ARMVector3Norm(Vec4x32f v) {
     float32x2_t R1 = vrsqrts_f32(vmul_f32(v1, S1), S1);
     v2 = vmul_f32(S1, R1);
     // Normalize
-    Vec4x32f vResult = vmulq_f32(v, vcombine_f32(v2, v2));
+    v128f vResult = vmulq_f32(v, vcombine_f32(v2, v2));
     vResult = vbslq_f32(vcombine_u32(VEqualsZero, VEqualsZero), vdupq_n_f32(0), vResult);
     return vResult;
 }
 
-purefn Vec4x32f ARMVector3Dot(Vec4x32f a, Vec4x32f b) {
+purefn v128f ARMVector3Dot(v128f a, v128f b) {
     float32x4_t vTemp = vmulq_f32(a, b);
     float32x2_t v1 = vget_low_f32(vTemp);
     float32x2_t v2 = vget_high_f32(vTemp);
@@ -574,7 +584,7 @@ purefn Vec4x32f ARMVector3Dot(Vec4x32f a, Vec4x32f b) {
     return vcombine_f32(v1, v1);
 }
 
-static inline Vec4x32f ARMVector3Length(Vec4x32f v) {
+static inline v128f ARMVector3Length(v128f v) {
     float32x4_t vTemp = vmulq_f32(v, v);
     float32x2_t v1 = vget_low_f32(vTemp);
     float32x2_t v2 = vget_high_f32(vTemp);
@@ -589,7 +599,7 @@ static inline Vec4x32f ARMVector3Length(Vec4x32f v) {
     return vcombine_f32(Result, Result);
 }
 
-static inline Vec4x32f ARMVectorLengthEst(Vec4x32f v) {
+static inline v128f ARMVectorLengthEst(v128f v) {
     float32x4_t vTemp = vmulq_f32(v, v);
     float32x2_t v1 = vget_low_f32(vTemp);
     float32x2_t v2 = vget_high_f32(vTemp);
@@ -603,7 +613,7 @@ static inline Vec4x32f ARMVectorLengthEst(Vec4x32f v) {
     return vcombine_f32(Result, Result);
 }
 
-static inline Vec4x32f ARMVectorLength(Vec4x32f v) {
+static inline v128f ARMVectorLength(v128f v) {
 	// Dot4
     float32x4_t vTemp = vmulq_f32(v, v);
     float32x2_t v1 = vget_low_f32(vTemp);
@@ -625,7 +635,7 @@ static inline Vec4x32f ARMVectorLength(Vec4x32f v) {
     return vcombine_f32(Result, Result);
 }
 
-purefn Vec4x32f ARMVectorDevide(Vec4x32f V1, Vec4x32f V2) {
+purefn v128f ARMVectorDevide(v128f V1, v128f V2) {
     // 2 iterations of Newton-Raphson refinement of reciprocal
     float32x4_t Reciprocal = vrecpeq_f32(V2);
     float32x4_t S = vrecpsq_f32(Reciprocal, V2);
@@ -635,7 +645,7 @@ purefn Vec4x32f ARMVectorDevide(Vec4x32f V1, Vec4x32f V2) {
     return vmulq_f32(V1, Reciprocal);
 }
 
-purefn Vec4x32f ARMVectorDot(Vec4x32f a, Vec4x32f b) {
+purefn v128f ARMVectorDot(v128f a, v128f b) {
     float32x4_t vTemp = vmulq_f32(a, b);
     float32x2_t v1 = vget_low_f32(vTemp);
     float32x2_t v2 = vget_high_f32(vTemp);
@@ -644,7 +654,7 @@ purefn Vec4x32f ARMVectorDot(Vec4x32f a, Vec4x32f b) {
     return vcombine_f32(v1, v1);
 }
 
-purefn Vec4x32f ARMVectorNormEst(Vec4x32f v) {
+purefn v128f ARMVectorNormEst(v128f v) {
     float32x4_t vTemp = vmulq_f32(v, v);
     float32x2_t v1 = vget_low_f32(vTemp);
     float32x2_t v2 = vget_high_f32(vTemp);
@@ -654,12 +664,12 @@ purefn Vec4x32f ARMVectorNormEst(Vec4x32f v) {
     return vmulq_f32(v, vcombine_f32(v2, v2));
 }
 
-purefn Vec4x32f ARMVectorNorm(Vec4x32f v) 
+purefn v128f ARMVectorNorm(v128f v) 
 {
     return ARMVectorDevide(v, ARMVectorLength(v));
 }
 
-purefn int ARMVecMovemask(Vec4x32i v) {
+purefn int ARMVecMovemask(v128i v) {
     const int shiftArr[4] = { 0, 1, 2, 3 };
     int32x4_t shift = vld1q_s32(shiftArr);
     return vaddvq_u32(vshlq_u32(vshrq_n_u32(v, 31), shift));
@@ -668,9 +678,9 @@ purefn int ARMVecMovemask(Vec4x32i v) {
 #endif
 
 #if defined(AX_SUPPORT_AVX2)
-typedef __m256  Vec8x32f;
-typedef __m256i Vec8x32i;
-typedef __m256i Vec8x32u;
+typedef __m256  v256f;
+typedef __m256i v256i;
+typedef __m256i v256u;
 
 #define VecLoadI256(ptr)     _mm256_stream_load_si256((__m256i const *)ptr)
 #define VecStoreI256(ptr, x) _mm256_stream_si256((__m256i *)ptr, x)
@@ -694,43 +704,43 @@ typedef __m256i Vec8x32u;
 #define VecSetBytes256(x)    _mm256_set1_epi8(x)
 
 #else
-typedef struct Vec8x32f_ { Vec4x32f lo, hi; } Vec8x32f;
-typedef struct Vec8x32i_ { Vec4x32i lo, hi; } Vec8x32i;
-typedef struct Vec8x32u_ { Vec4x32u lo, hi; } Vec8x32u;
+typedef struct Vec8x32f_ { v128f lo, hi; } v256f;
+typedef struct Vec8x32i_ { v128i lo, hi; } v256i;
+typedef struct Vec8x32u_ { v128u lo, hi; } v256u;
 
-#define VeciAndNot256(x, y)   (Vec8x32u){ VeciAndNot((x).lo, (y).lo), VeciAndNot((x).hi, (y).hi) }
-#define VeciAnd256(x, y)      (Vec8x32u){ VeciAnd   ((x).lo, (y).lo), VeciAnd   ((x).hi, (y).hi) }
-#define VeciOr256(x, y)       (Vec8x32u){ VeciOr    ((x).lo, (y).lo), VeciOr    ((x).hi, (y).hi) }
-#define VeciXor256(x, y)      (Vec8x32u){ VeciXor   ((x).lo, (y).lo), VeciXor   ((x).hi, (y).hi) }
-#define VeciSrl256(a, b)      (Vec8x32u){ VeciSrl   ((a).lo, (b).lo), VeciSrl   ((a).hi, (b).hi) }
-#define VeciSll256(a, b)      (Vec8x32u){ VeciSll   ((a).lo, (b).lo), VeciSll   ((a).hi, (b).hi) }
-#define VeciSrl32_256(a, b)   (Vec8x32u){ VeciSrl32 ((a).lo, (b).lo), VeciSrl32 ((a).hi, (b).hi) }
-#define VeciSll32_256(a, b)   (Vec8x32u){ VeciSll32 ((a).lo, (b).lo), VeciSll32 ((a).hi, (b).hi) }
-#define VeciAdd256(a, b)      (Vec8x32u){ VeciAdd   ((a).lo, (b).lo), VeciAdd   ((a).hi, (b).hi) }
-#define VeciSub256(a, b)      (Vec8x32u){ VeciSub   ((a).lo, (b).lo), VeciSub   ((a).hi, (b).hi) }
-#define VeciMul256(a, b)      (Vec8x32u){ VeciMul   ((a).lo, (b).lo), VeciMul   ((a).hi, (b).hi) }
-#define VeciDiv256(a, b)      (Vec8x32u){ VeciDiv   ((a).lo, (b).lo), VeciDiv   ((a).hi, (b).hi) }
+#define VeciAndNot256(x, y)   (v256u){ VeciAndNot((x).lo, (y).lo), VeciAndNot((x).hi, (y).hi) }
+#define VeciAnd256(x, y)      (v256u){ VeciAnd   ((x).lo, (y).lo), VeciAnd   ((x).hi, (y).hi) }
+#define VeciOr256(x, y)       (v256u){ VeciOr    ((x).lo, (y).lo), VeciOr    ((x).hi, (y).hi) }
+#define VeciXor256(x, y)      (v256u){ VeciXor   ((x).lo, (y).lo), VeciXor   ((x).hi, (y).hi) }
+#define VeciSrl256(a, b)      (v256u){ VeciSrl   ((a).lo, (b).lo), VeciSrl   ((a).hi, (b).hi) }
+#define VeciSll256(a, b)      (v256u){ VeciSll   ((a).lo, (b).lo), VeciSll   ((a).hi, (b).hi) }
+#define VeciSrl32_256(a, b)   (v256u){ VeciSrl32 ((a).lo, (b).lo), VeciSrl32 ((a).hi, (b).hi) }
+#define VeciSll32_256(a, b)   (v256u){ VeciSll32 ((a).lo, (b).lo), VeciSll32 ((a).hi, (b).hi) }
+#define VeciAdd256(a, b)      (v256u){ VeciAdd   ((a).lo, (b).lo), VeciAdd   ((a).hi, (b).hi) }
+#define VeciSub256(a, b)      (v256u){ VeciSub   ((a).lo, (b).lo), VeciSub   ((a).hi, (b).hi) }
+#define VeciMul256(a, b)      (v256u){ VeciMul   ((a).lo, (b).lo), VeciMul   ((a).hi, (b).hi) }
+#define VeciDiv256(a, b)      (v256u){ VeciDiv   ((a).lo, (b).lo), VeciDiv   ((a).hi, (b).hi) }
 
-#define VecLoadI256(ptr)      (Vec8x32u){ VecLoadI(ptr)    , VecLoadI((char*)(ptr) + 16)     }
-#define VecStoreI256(ptr, x)  (Vec8x32u){ VecStoreI(ptr, x), VecStoreI((char*)(ptr) + 16, x) }
-#define VeciSet1_256(x)       (Vec8x32u){ VeciSet1(x)      , VeciSet1(x)                     }
-#define VecSetBytes256(x)     (Vec8x32u){ VecSetBytes(x)   , VecSetBytes(x)                  }
+#define VecLoadI256(ptr)      (v256u){ VecLoadI(ptr)    , VecLoadI((char*)(ptr) + 16)     }
+#define VecStoreI256(ptr, x)  (v256u){ VecStoreI(ptr, x), VecStoreI((char*)(ptr) + 16, x) }
+#define VeciSet1_256(x)       (v256u){ VeciSet1(x)      , VeciSet1(x)                     }
+#define VecSetBytes256(x)     (v256u){ VecSetBytes(x)   , VecSetBytes(x)                  }
 
 #endif
 
 // shared 
-purefn Vec4x32f VECTORCALL Vec3DistV    (Vec4x32f a, Vec4x32f b) { Vec4x32f x = VecSub(a, b); return Vec3LenV(x);  } 
-purefn float    VECTORCALL Vec3DistfV   (Vec4x32f a, Vec4x32f b) { Vec4x32f x = VecSub(a, b); return Vec3LenfV(x); } 
-purefn float    VECTORCALL Vec3DistSqrfV(Vec4x32f a, Vec4x32f b) { Vec4x32f x = VecSub(a, b); return Vec3DotfV(x, x); } 
+purefn v128f VCALL Vec3DistV    (v128f a, v128f b) { v128f x = VecSub(a, b); return Vec3LenV(x);  } 
+purefn float VCALL Vec3DistfV   (v128f a, v128f b) { v128f x = VecSub(a, b); return Vec3LenfV(x); } 
+purefn float VCALL Vec3DistSqrfV(v128f a, v128f b) { v128f x = VecSub(a, b); return Vec3DotfV(x, x); } 
 
 
 #if defined(AX_SUPPORT_SSE) || defined(AX_ARM)
-static inline float VECTORCALL VecGetN(Vec4x32f v, int n)
+static inline float VCALL VecGetN(v128f v, int n)
 {
     return ((float*)&v)[n & 3];
 }
 
-static inline Vec4x32f VECTORCALL VecSetN(Vec4x32f v, int n, float f)
+static inline v128f VCALL VecSetN(v128f v, int n, float f)
 {
     ((float*)&v)[n & 3] = f;
     return v;

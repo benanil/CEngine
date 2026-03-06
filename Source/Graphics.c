@@ -267,7 +267,7 @@ Texture rImportTexture(const char* path, TexFlags flags, const char* label)
     }
 
     AFile asset = AFileOpen(path, AOpenFlag_ReadBinary);
-    uint64_t size = AFileSize(asset);
+    u64 size = AFileSize(asset);
 
     void* textureLoadBuffer = ArenaPushGlobal(size);
     
@@ -311,13 +311,13 @@ Texture rImportTexture(const char* path, TexFlags flags, const char* label)
     return texture;
 }
 
-static uint64_t CalcMipBytes(uint32_t width, uint32_t height, uint32_t bpp, uint32_t mipLevels)
+static u64 CalcMipBytes(u32 width, u32 height, u32 bpp, u32 mipLevels)
 {
-    uint64_t total = 0;
-    uint64_t w = width;
-    uint64_t h = height;
+    u64 total = 0;
+    u64 w = width;
+    u64 h = height;
 
-    for (uint32_t i = 0; i < mipLevels; ++i)
+    for (u32 i = 0; i < mipLevels; ++i)
     {
         total += w * h * bpp;
         w = w > 1 ? (w >> 1) : 1;

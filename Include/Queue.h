@@ -11,10 +11,10 @@ extern "C" {
 typedef struct Queue_
 {
     void** ptr        ;
-    uint32_t capacity ;  
-    uint32_t front    ;
-    uint32_t rear     ;
-    uint32_t size     ;
+    u32capacity ;  
+    u32front    ;
+    u32rear     ;
+    u32size     ;
 } Queue;
 
 
@@ -28,13 +28,13 @@ static inline bool QueEmpty(Queue *queue);
 
 static inline void QueEnqueue(Queue *queue, const void* value);
 static inline void QueEnqueueRange(Queue *queue, const void** begin, const void* end);
-static inline bool QueTryDequeueArr(Queue *queue, void** result, uint32_t count);
-static inline void QueDequeue(Queue *queue, void* result, uint32_t count);
+static inline bool QueTryDequeueArr(Queue *queue, void** result, u32count);
+static inline void QueDequeue(Queue *queue, void* result, u32count);
 static inline void* QueDequeue(Queue *queue);
 static inline bool QueTryDequeue(Queue *queue, void** out);
-static inline uint32_t QueSize(Queue *queue);
-static inline uint32_t QueIncrementIndex(Queue *queue, uint32_t x);
-static inline void QueGrowIfNecessary(Queue *queue, uint32_t _size);
+static inline u32QueSize(Queue *queue);
+static inline u32QueIncrementIndex(Queue *queue, u32x);
+static inline void QueGrowIfNecessary(Queue *queue, u32_size);
 static inline void PriorityQueue(PriorityQueue* pq, int _size);
 static inline void PriorityQueueRange(PriorityQueue* pq, const void** begin, const void** end);
 
@@ -89,11 +89,11 @@ static inline void QueEnqueue(Queue *queue, const void* value)
 	queue->size++;
 }
 
-static inline void QueEnqueueRange(Queue *queue, const void** begin, uint32_t count)
+static inline void QueEnqueueRange(Queue *queue, const void** begin, u32count)
 {
 	QueGrowIfNecessary(queue, count);
-	uint32_t f = queue->front & (queue->capacity - 1), e = queue->capacity-1;
-	for (uint32_t i = 0; i < count; i++)
+	u32f = queue->front & (queue->capacity - 1), e = queue->capacity-1;
+	for (u32i = 0; i < count; i++)
 	{
 		queue->ptr[f++] = begin[i];
 		f &= e;
@@ -104,15 +104,15 @@ static inline void QueEnqueueRange(Queue *queue, const void** begin, uint32_t co
 
 
 // returns true if size is enough
-static inline bool QueTryDequeueArr(Queue *queue, void** result, uint32_t count)
+static inline bool QueTryDequeueArr(Queue *queue, void** result, u32count)
 {
 	if (QueSize(queue) + count > queue->capacity)
 	{
 		return false;
 	}
-	uint32_t r = queue->rear, e = queue->capacity-1;
+	u32r = queue->rear, e = queue->capacity-1;
 
-	for (uint32_t i = 0; i < count; i++)
+	for (u32i = 0; i < count; i++)
 	{
 		result[i] = queue->ptr[r++];
 		r &= e;
@@ -132,11 +132,11 @@ static inline bool QueTryDequeue(Queue *queue, void** out)
 	return true;
 }
 
-static inline void QueDequeueArr(Queue *queue, void** result, uint32_t count)
+static inline void QueDequeueArr(Queue *queue, void** result, u32count)
 {
     ASSERT(QueSize(queue) + count <= queue->capacity);
-    uint32_t r = queue->rear, e = queue->capacity-1;
-    for (uint32_t i = 0; i < count; i++)
+    u32r = queue->rear, e = queue->capacity-1;
+    for (u32i = 0; i < count; i++)
     {
         result[i] = queue->ptr[r++];
         r &= e; // better than modulo 
@@ -154,17 +154,17 @@ static inline void* QueDequeue(Queue *queue)
     return val; 
 }
 
-static inline uint32_t QueSize(Queue *queue) { return queue->size; }
+static inline u32QueSize(Queue *queue) { return queue->size; }
 
-static inline uint32_t QueIncrementIndex(Queue *queue,uint32_t x) 
+static inline u32QueIncrementIndex(Queue *queue,u32x) 
 {
 	return (x + 1) & (queue->capacity-1);
 }
 
-static inline void QueGrowIfNecessary(Queue *queue, uint32_t _size)
+static inline void QueGrowIfNecessary(Queue *queue, u32_size)
 {
     ASSERT(queue->capacity != (1 << 31)); // max size
-    uint32_t newSize = NextPowerOf2_32((int)(queue->size + _size));
+    u32newSize = NextPowerOf2_32((int)(queue->size + _size));
     
     if (AX_LIKELY(newSize <= queue->capacity))
     {
@@ -172,20 +172,20 @@ static inline void QueGrowIfNecessary(Queue *queue, uint32_t _size)
     }
     
     const int initialSize = 256;
-    const uint32_t newCapacity = newSize <= initialSize ? initialSize : newSize;
+    const u32newCapacity = newSize <= initialSize ? initialSize : newSize;
     if (queue->ptr)  queue->ptr = ReAllocateTLSFGlobal(ptr, newCapacity);
     else      queue->ptr = AllocateTLSFGlobal(newCapacity);
     
     // unify front and rear, if they are seperate.
     if (queue->front < queue->rear)
     {
-        for (uint32_t i = 0; i < queue->front; i++)
+        for (u32i = 0; i < queue->front; i++)
         {
             queue->ptr[queue->capacity++] = queue->ptr[i];
         }
     }
     // move everything to the right
-    for (uint32_t i = 0; i < queue->size; ++i)
+    for (u32i = 0; i < queue->size; ++i)
     {
     	queue->ptr[newCapacity - 1 - i] = queue->ptr[queue->capacity - 1 - i];
     }
