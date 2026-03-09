@@ -3,6 +3,7 @@
 *.o
 *.rdi
 *.exe
+*.spv
 
 # MSVC / Linker artifacts
 *.ilk
