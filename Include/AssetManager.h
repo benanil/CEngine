@@ -20,13 +20,14 @@
 extern "C" {
 #endif
 
-i32 LoadFBX(const u8* path, SceneBundle* fbxScene, f1 scale);
+s32 LoadFBX(const u8* path, SceneBundle* fbxScene, f1 scale);
 
-i32 SaveGLTFBinary(const SceneBundle* gltf, const u8* path);
+s32 SaveGLTFBinary(const SceneBundle* gltf, const u8* path);
 
-i32 LoadSceneBundleBinary(const u8* path, SceneBundle* gltf);
+s32 LoadSceneBundleBinary(const u8* path, SceneBundle* gltf);
 
-void CreateVerticesIndices(SceneBundle* gltf);
+// returns 0 on not enough memory
+s32 CreateVerticesIndices(SceneBundle* gltf);
 
 void CreateVerticesIndicesSkined(SceneBundle* gltf);
 
@@ -38,7 +39,7 @@ u8 IsTextureLastVersion(const u8* path);
 void SaveSceneImages(SceneBundle* scene, const u8* savePath);
 
 // returns: 0 = noFile, 1 = success, 2 = missingImages, 3 = fileNumImage missmatch
-i32 LoadSceneImages(const u8* texturePath, Texture* textures, i32 numImages, SDL_GPUDevice* gpuDevice);
+s32 LoadSceneImages(const u8* texturePath, Texture* textures, s32 numImages, SDL_GPUDevice* gpuDevice);
 
 
 #if defined(__cplusplus)

@@ -1,9 +1,5 @@
 
-
 #define SJ_IMPL
-
-#include <SDL3/SDL_log.h>
-
 #include <Extern/sj.h>
 
 #include "Include/GLTFParser.h"
@@ -14,7 +10,6 @@
 
 #include "Math/Matrix.h"
 #include "Math/Color.h"
-
 
 typedef struct GLTFAccessor_
 {

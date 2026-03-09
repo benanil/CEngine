@@ -8,15 +8,15 @@
 extern "C" {
 #endif
 
-static inline void BitsetSet(u64* bits, i32 idx) {
+static inline void BitsetSet(u64* bits, s32 idx) {
     bits[idx >> 6] |= (1ull << (idx & 63));
 }
 
-static inline bool BitsetGet(const u64* bits, i32 idx) {
+static inline bool BitsetGet(const u64* bits, s32 idx) {
     return (bits[idx >> 6] >> (idx & 63)) & 1ull;
 }
    
-static inline void BitsetReset(u64* bits, i32 idx) {
+static inline void BitsetReset(u64* bits, s32 idx) {
     bits[idx / 64] &= ~(1ull << (idx & 63));
 }
 

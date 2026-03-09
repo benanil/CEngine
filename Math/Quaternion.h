@@ -205,10 +205,10 @@ static inline void QuaternionFromMatrix(float* Orientation, const float* m, int 
 
 inline v128f VCALL QuaternionFromMatrix3Vec(v128f r0, v128f r1, v128f r2)
 {
-    #if defined(AX_ARM)
     static const v128f XMPMMP = { +1.0f, -1.0f, -1.0f, +1.0f };
     static const v128f XMMPMP = { -1.0f, +1.0f, -1.0f, +1.0f };
     static const v128f XMMMPP = { -1.0f, -1.0f, +1.0f, +1.0f };
+    #if defined(AX_ARM)
     static const v128u Select0110 = { 0u, ~0u, ~0u, 0u } ;
     static const v128u Select0010 = { 0u,  0u, ~0u, 0u } ;
 
@@ -255,8 +255,7 @@ inline v128f VCALL QuaternionFromMatrix3Vec(v128f r0, v128f r1, v128f r2)
     t1 = vbslq_f32(Select0110, t2, t3);
 
     // (4*x*w, 4*y*w, 4*z*w, unused)
-    float32x4_t xwywzw = vsubq_f32(t0, t1);
-    xwywzw = vmulq_f32(XMMPMP, xwywzw);
+    float32x4_t xwywzw = vmulq_f32(XMMPMP, vsubq_f32(t0, t1));
 
     // (4*x*x, 4*x*y, 4*x*z, 4*x*w)
     t0 = vextq_f32(xyxzyz, xyxzyz, 3);
@@ -289,9 +288,6 @@ inline v128f VCALL QuaternionFromMatrix3Vec(v128f r0, v128f r1, v128f r2)
     t0 = VecLen(t2);
     return VecDiv(t2, t0);
     #elif defined(AX_SUPPORT_SSE)
-    static const v128f XMPMMP = { +1.0f, -1.0f, -1.0f, +1.0f };
-    static const v128f XMMPMP = { -1.0f, +1.0f, -1.0f, +1.0f };
-    static const v128f XMMMPP = { -1.0f, -1.0f, +1.0f, +1.0f };
 
     v128f r00 = VecSplatX(r0);
     v128f r11 = VecSplatY(r1);
@@ -309,28 +305,23 @@ inline v128f VCALL QuaternionFromMatrix3Vec(v128f r0, v128f r1, v128f r2)
     
     t0 = _mm_shuffle_ps(r0, r1, _MM_SHUFFLE(1, 2, 2, 1));
     t1 = _mm_shuffle_ps(r1, r2, _MM_SHUFFLE(1, 0, 0, 0));
-    t1 = _mm_permute_ps(t1, _MM_SHUFFLE(1, 3, 2, 0));
+    t1 = _mm_permute_ps(t1    , _MM_SHUFFLE(1, 3, 2, 0));
     v128f xyxzyz = _mm_add_ps(t0, t1);
     
     t0 = _mm_shuffle_ps(r2, r1, _MM_SHUFFLE(0, 0, 0, 1));
     t1 = _mm_shuffle_ps(r1, r0, _MM_SHUFFLE(1, 2, 2, 2));
     t1 = _mm_permute_ps(t1, _MM_SHUFFLE(1, 3, 2, 0));
-    v128f xwywzw = _mm_sub_ps(t0, t1);
-    xwywzw = _mm_mul_ps(XMMPMP, xwywzw);
+    v128f xwywzw = _mm_mul_ps(XMMPMP, _mm_sub_ps(t0, t1));
 
     t0 = _mm_shuffle_ps(x2y2z2w2, xyxzyz, _MM_SHUFFLE(0, 0, 1, 0));
     t1 = _mm_shuffle_ps(x2y2z2w2, xwywzw, _MM_SHUFFLE(0, 2, 3, 2));
-    t2 = _mm_shuffle_ps(xyxzyz, xwywzw, _MM_SHUFFLE(1, 0, 2, 1));
-    v128f tensor0 = _mm_shuffle_ps(t0, t2, _MM_SHUFFLE(2, 0, 2, 0));
-    v128f tensor1 = _mm_shuffle_ps(t0, t2, _MM_SHUFFLE(3, 1, 1, 2));
-    v128f tensor2 = _mm_shuffle_ps(t2, t1, _MM_SHUFFLE(2, 0, 1, 0));
-    v128f tensor3 = _mm_shuffle_ps(t2, t1, _MM_SHUFFLE(1, 2, 3, 2));
+    t2 = _mm_shuffle_ps(xyxzyz  , xwywzw, _MM_SHUFFLE(1, 0, 2, 1));
     
-    t0 = _mm_and_ps(x2gey2, tensor0);
-    t1 = _mm_andnot_ps(x2gey2, tensor1);
+    t0 = _mm_and_ps(x2gey2, _mm_shuffle_ps(t0, t2, _MM_SHUFFLE(2, 0, 2, 0)));
+    t1 = _mm_andnot_ps(x2gey2, _mm_shuffle_ps(t0, t2, _MM_SHUFFLE(3, 1, 1, 2)));
     t0 = _mm_or_ps(t0, t1);
-    t1 = _mm_and_ps(z2gew2, tensor2);
-    t2 = _mm_andnot_ps(z2gew2, tensor3);
+    t1 = _mm_and_ps(z2gew2, _mm_shuffle_ps(t2, t1, _MM_SHUFFLE(2, 0, 1, 0)));
+    t2 = _mm_andnot_ps(z2gew2, _mm_shuffle_ps(t2, t1, _MM_SHUFFLE(1, 2, 3, 2)));
     t1 = _mm_or_ps(t1, t2);
     t0 = _mm_and_ps(x2py2gez2pw2, t0);
     t1 = _mm_andnot_ps(x2py2gez2pw2, t1);
@@ -387,18 +378,24 @@ static inline void Matrix4FromQuaternion(float* mat, Quaternion quat)
     mat[4 * 3 + 3] = 1.0f;
 }
 
-purefn void VCALL PackQuaternionS16Norm(v128f quat, uint32_t* result)
+purefn void VCALL PackQuaternionS16Norm(v128f quat, u64* result)
 {
     quat = VecNorm(quat);
-    v128u u32 = VecCvtF32I32(VecMul(quat, VecSet1(INT16_MAX-1)));
-    v128u u16 = VecNarrowU32U16(u32);
-    VecStoreI16(result, u16);
+    v128u u32 = VecF32ToI32(VecMulf(quat, INT16_MAX-1));
+    VecStoreLo64(result, VecPack16(u32));
+}
+
+purefn void VCALL UnpackQuaternionS16Norm2(v128u i16, v128f* q0, v128f* q1)
+{
+    const v128f inv = VecSet1(1.0f / (INT16_MAX - 1));
+    *q0 = VecMul(VecI32ToF32(VecUnpackLo32(i16)), inv);
+    *q1 = VecMul(VecI32ToF32(VecUnpackHi32(i16)), inv);
 }
 
 purefn Quaternion QFromLookRotation(f3 direction, f3 up)
 {
     const f3 matrix[3] = {
-        F3Cross(up, direction), up, direction 
+        F3Cross(&up, &direction), up, direction 
     };
     xyzw result;
     QuaternionFromMatrix(&result.x, &matrix[0].x, 3);

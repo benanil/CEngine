@@ -12,9 +12,15 @@ cbuffer vs_params : register(b0, space1)
     float4x4 uViewProj;
 };
 
-StructuredBuffer<uint>   sBoneMtx          : register(t0);
-StructuredBuffer<float4> sInstancePosition : register(t1);
-StructuredBuffer<uint>   sInstanceRotation : register(t2);
+struct Entity
+{
+    float4   position;
+    uint32_t rotation[2];
+    uint32_t scale[2];
+};
+
+StructuredBuffer<uint>   sBoneMtx  : register(t0);
+StructuredBuffer<Entity> sEntities : register(t1);
 
 static const uint MaxBonePoses = 128;
 static const uint MatrixNumInt32 = 6;
@@ -95,13 +101,16 @@ half3 UnpackVec3XY11Z10Unorm(uint packed) {
     return half3(ux / 2047.0, uy / 2047.0, uz / 1023.0);
 }
 
-half4 GetInstanceRotation(uint instanceID) {
-    return normalize(UnpackRGBA16Snorm(sInstanceRotation[instanceID], sInstanceRotation[instanceID+1]));
-}
-
 VSOutput main(VSInput input, uint instanceID : SV_InstanceID)
 {
     VSOutput o;
+    // per instance data
+    Entity entity     = sEntities[instanceID];
+    half4   insRot    = normalize(UnpackRGBA16Snorm(entity.rotation[0], entity.rotation[1]));
+    half3x3 insRotMat = Matrix3FromQuaternion(insRot);
+    float3  insPos    = entity.position.xyz;
+    half3   insScale  = half3(unpackHalf2x16(entity.scale[0]), asfloat16(uint16_t(entity.scale[1]))); 
+
     half3x4 animMat = half3x4(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
     uint boneStart = instanceID * MaxBonePoses * MatrixNumInt32;
     half4 weights;
@@ -119,7 +128,6 @@ VSOutput main(VSInput input, uint instanceID : SV_InstanceID)
         animMat[2] += row2 * weights[i];
     }
 
-    half4 qtangent; // = UnpackRGBA16Snorm(input.aQTangentXY, input.aQTangentZW);
     half3x3 tbn; // = Matrix3FromQuaternion(qtangent);
     tbn[2] = UnpackVec3XY11Z10Snorm(input.aQTangentXY);
     tbn[1] = UnpackVec3XY11Z10Snorm(input.aQTangentZW);
@@ -129,17 +137,13 @@ VSOutput main(VSInput input, uint instanceID : SV_InstanceID)
     tbn[0] = mul(half4(tbn[0], 0.0), animTransposed);
     tbn[1] = mul(half4(tbn[1], 0.0), animTransposed);
     tbn[2] = mul(half4(tbn[2], 0.0), animTransposed);
+    tbn = mul(tbn, insRotMat);
 
     half3 worldPos = mul(half4(input.aPos.xyz, 1.0), animTransposed);
-    half4 instanceRotation = GetInstanceRotation(instanceID << 1);
-    worldPos = QuaternionRotateVector(instanceRotation, worldPos);
+    worldPos = QuaternionRotateVector(insRot, worldPos);
     
-    float3 instancePos = sInstancePosition[instanceID].xyz;
-
-    half3x3 instanceRotMat = Matrix3FromQuaternion(instanceRotation);
-    tbn = mul(tbn, instanceRotMat);
     o.texCoords = input.aTexCoords;
-    o.position  = mul(uViewProj, float4(float3(worldPos) + instancePos, 1.0));
+    o.position  = mul(uViewProj, float4(insScale * float3(worldPos) + insPos, 1.0));
     o.normal    = normalize(tbn[2]); // Normalize after transformations
     return o;
 }

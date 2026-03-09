@@ -80,9 +80,9 @@ purefn float3x3 Matrix3LookAt(f3 direction, f3 up)
 {
     float3x3 result;
     result.r[2] = direction;
-    f3 Right = F3Cross(up, result.r[2]);
+    f3 Right = F3Cross(&up, &result.r[2]);
     result.r[0] = F3MulF(Right, RSqrtf(MMAX(0.00001f, F3Dot(Right, Right))));
-    result.r[1] = F3Cross(result.r[2], result.r[0]);
+    result.r[1] = F3Cross(&result.r[2], &result.r[0]);
     return result;
 }
 

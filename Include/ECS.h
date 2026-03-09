@@ -3,22 +3,27 @@
 
 #include "SIMD.h" 
 
-#define MAX_ENTITY 4096
+#define MAX_ENTITY UINT16_MAX
+
+typedef struct Entity_
+{
+    v128f position;
+    u64   rotation;
+    u64   scale;
+} Entity;
+
 
 typedef struct ECS_
 {
-    v128f EntityPositions[MAX_ENTITY];
-    u32 EntityRotations[MAX_ENTITY * 2];
-    u32 EntityData[MAX_ENTITY];
-    u32 NumEntities;
+    Entity entities[MAX_ENTITY];
+
+    u64 numEntities;
 } ECS;
 
+void ECS_Init(ECS* ecs);
 
-void ECS_Init(v128f* EntityPositions, uint32_t* EntityRotations);
 
 void ECS_Update(ECS* ecs, f1 delta_time);
-
-
 
 
 

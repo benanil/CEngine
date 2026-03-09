@@ -1,7 +1,6 @@
 #ifndef _GRAPHICS_
 #define _GRAPHICS_
 
-
 #include "Include/FileSystem.h"
 #include "Include/Platform.h"
 #include "Include/Graphics.h"
@@ -34,9 +33,11 @@
 #include "Extern/stb/stb_image_resize2.h"
 
 extern SDL_GPUDevice* g_GPUDevice;
-extern WindowState g_WindowState;
-extern RenderState g_RenderState;
-extern SDL_Window* g_SDLWindow;
+extern WindowState    g_WindowState;
+extern RenderState    g_RenderState;
+extern SDL_Window*    g_SDLWindow;
+
+Graphics gGFX = {};
 
 extern void Quit(int rc);
 
@@ -66,6 +67,9 @@ void rInit(bool msaa)
 	winstate->tex_depth   = CreateDepthTexture(drawablew, drawableh);
 	winstate->tex_msaa    = CreateMSAATexture(drawablew, drawableh);
 	winstate->tex_resolve = CreateResolveTexture(drawablew, drawableh);
+
+    gGFX.VertexBuffer = AllocAligned(sizeof(ASkinedVertex) * MAX_VERTEX, 4);
+    gGFX.IndexBuffer  = AllocAligned(sizeof(u32) * MAX_INDEX + 16, 4); // 16->give little bit of space for memcpy
 }
 
 void rDestroy()
@@ -81,13 +85,13 @@ void rDestroy()
 
 SDL_GPUBuffer* CreateBuffer(void* buffer, size_t bufferSize, SDL_GPUBufferUsageFlags bufferUsage, const char* debugName)
 {
-	SDL_GPUBufferCreateInfo buffer_desc;
+	SDL_GPUBufferCreateInfo         buffer_desc;                       
 	SDL_GPUTransferBufferCreateInfo transfer_buffer_desc;
-	SDL_GPUTransferBuffer* buf_transfer;
-	SDL_GPUCopyPass* copy_pass;
-	SDL_GPUTransferBufferLocation buf_location;
-	SDL_GPUBufferRegion dst_region;
-	SDL_GPUCommandBuffer* cmd;
+	SDL_GPUTransferBuffer*          buf_transfer;
+	SDL_GPUCopyPass*                copy_pass;
+	SDL_GPUTransferBufferLocation   buf_location;
+	SDL_GPUBufferRegion             dst_region;
+	SDL_GPUCommandBuffer*           cmd;
     void* map;
 
     /* Create buffers */
@@ -101,7 +105,7 @@ SDL_GPUBuffer* CreateBuffer(void* buffer, size_t bufferSize, SDL_GPUBufferUsageF
     SDL_DestroyProperties(buffer_desc.props);
 
 	transfer_buffer_desc.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
-	transfer_buffer_desc.size = bufferSize;
+	transfer_buffer_desc.size  = bufferSize;
 	transfer_buffer_desc.props = SDL_CreateProperties();
 	SDL_SetStringProperty(transfer_buffer_desc.props, SDL_PROP_GPU_TRANSFERBUFFER_CREATE_NAME_STRING, "Transfer Buffer");
 	buf_transfer = SDL_CreateGPUTransferBuffer(g_GPUDevice, &transfer_buffer_desc);
@@ -117,9 +121,9 @@ SDL_GPUBuffer* CreateBuffer(void* buffer, size_t bufferSize, SDL_GPUBufferUsageF
 	copy_pass = SDL_BeginGPUCopyPass(cmd);
 	buf_location.transfer_buffer = buf_transfer;
 	buf_location.offset = 0;
-	dst_region.buffer = gpu_buffer;
-	dst_region.offset = 0;
-	dst_region.size = bufferSize;
+	dst_region.buffer   = gpu_buffer;
+	dst_region.offset   = 0;
+	dst_region.size     = bufferSize;
 	SDL_UploadToGPUBuffer(copy_pass, &buf_location, &dst_region, false);
 	SDL_EndGPUCopyPass(copy_pass);
 	SDL_SubmitGPUCommandBuffer(cmd);

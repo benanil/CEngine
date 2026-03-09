@@ -10,18 +10,17 @@
 #include "Include/OS.h"
 #include "Include/Memory.h"
 #include "Include/Random.h"
-#include "Include/ECS.h"
-
 #include "Include/FileSystem.h"
-
-#include "Include/Camera.h"
 #include "Include/Bitset.h"
+#include "Include/Algorithm.h"
+
+#include "Include/ECS.h"
+#include "Include/Camera.h"
 #include "Include/Platform.h"
 #include "Include/Graphics.h"
 #include "Include/GLTFParser.h"
 #include "Include/Animation.h"
 #include "Include/AssetManager.h"
-#include "Include/Algorithm.h"
 #include "Include/BasisBinding.h"
 
 #include "Math/Matrix.h"
@@ -29,9 +28,9 @@
 #if defined(PLATFORM_APPLE)
 #include "Shaders/msl/SkinnedFrag.msl.h"
 #include "Shaders/msl/SkinnedVert.msl.h"
-#define Shaders_SkinnedFrag_spv Shaders_SkinnedFrag_msl
+#define Shaders_SkinnedFrag_spv      Shaders_SkinnedFrag_msl
 #define Shaders_SkinnedFrag_spv_size Shaders_SkinnedFrag_msl_size
-#define Shaders_SkinnedVert_spv Shaders_SkinnedVert_msl
+#define Shaders_SkinnedVert_spv      Shaders_SkinnedVert_msl
 #define Shaders_SkinnedVert_spv_size Shaders_SkinnedVert_msl_size
 #elif defined(PLATFORM_WINDOWS)
 // Shaders_SkinnedFrag_spv
@@ -39,39 +38,40 @@
 #include "Shaders/SkinnedVert.spv.h"
 #endif
 
-#define NUM_ANIMS (32)
+#define NUM_ANIMS (1024)
 
 static Uint32 frames = 0;
 
 SDL_Window*    g_SDLWindow;
 SDL_GPUDevice* g_GPUDevice = NULL;
-SceneBundle*   g_SceneBundle;
+SceneBundle*   gPaladin;
 
 WindowState g_WindowState;
 RenderState g_RenderState;
 
 Matrix4* g_NodeTransforms;
-Camera g_Camera;
+Camera   g_Camera;
 
-static i32 characterRootIndex;
+static s32 characterRootIndex;
 static AnimationController AnimControllers[NUM_ANIMS];
 AX_ALIGN(4) Matrix3x4f16 OutMatrices[MaxBonePoses * NUM_ANIMS];
 
+extern Graphics gGFX;
 ECS ecs;
 
-extern i32 ParseGLTF2(const char* path, SceneBundle* result, float scale);
+extern s32 ParseGLTF2(const char* path, SceneBundle* result, float scale);
 
 static void DestroyPipeline()
 {
-    if (g_RenderState.buf_vertex) SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.buf_vertex);
-    if (g_RenderState.pipeline)   SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.pipeline);
+    if (g_RenderState.vertexBuffer) SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.vertexBuffer);
+    if (g_RenderState.pipeline)     SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.pipeline);
     
     SDL_zero(g_RenderState);
     g_GPUDevice = NULL;
 }
 
 /* Call this instead of exit(), so we can clean up SDL: atexit() is evil. */
-void Quit(i32 rc)
+void Quit(s32 rc)
 {
     DestroyPipeline();
     rDestroy();
@@ -95,7 +95,7 @@ static void Render()
     }
     
     if (swapchainTexture == NULL) {
-        /* Swapchain is unavailable, cancel work */
+        AX_WARN("Failed to acquire swapchain texture");
         SDL_CancelGPUCommandBuffer(cmd);
         return;
     }
@@ -126,14 +126,14 @@ static void Render()
         color_target.cycle_resolve_texture = true;
     }
     else {
-        color_target.load_op = SDL_GPU_LOADOP_CLEAR;
+        color_target.load_op  = SDL_GPU_LOADOP_CLEAR;
         color_target.store_op = SDL_GPU_STOREOP_STORE;
-        color_target.texture = swapchainTexture;
+        color_target.texture  = swapchainTexture;
     }
     
     SDL_GPUDepthStencilTargetInfo depth_target;
     SDL_zero(depth_target);
-    depth_target.clear_depth = 1.0f;
+    depth_target.clear_depth      = 1.0f;
     depth_target.load_op          = SDL_GPU_LOADOP_CLEAR;
     depth_target.store_op         = SDL_GPU_STOREOP_DONT_CARE;
     depth_target.stencil_load_op  = SDL_GPU_LOADOP_DONT_CARE;
@@ -144,25 +144,25 @@ static void Render()
     /* Set up the bindings */
     SDL_GPUBufferBinding vertex_binding;
     SDL_GPUBufferBinding index_binding;
-    vertex_binding.buffer = g_RenderState.buf_vertex;
+    vertex_binding.buffer = g_RenderState.vertexBuffer;
     vertex_binding.offset = 0;
-    index_binding.buffer = g_RenderState.buf_index;
-    index_binding.offset = 0;
+    index_binding.buffer  = g_RenderState.indexBuffer;
+    index_binding.offset  = 0;
     
-    UpdateGPUBuffer(g_RenderState.buf_bones, OutMatrices, sizeof(OutMatrices));
-    UpdateGPUBuffer(g_RenderState.buf_positions, ecs.EntityPositions, sizeof(ecs.EntityPositions));
-    UpdateGPUBuffer(g_RenderState.buf_rotations, ecs.EntityRotations, sizeof(ecs.EntityRotations));
+    UpdateGPUBuffer(g_RenderState.boneBuffer, OutMatrices, sizeof(OutMatrices));
+    UpdateGPUBuffer(g_RenderState.entityBuffer, ecs.entities, sizeof(ecs.entities));
     
     /* Draw */
-    SDL_GPUTexture* tex = g_RenderState.textures[g_SceneBundle->materials[0].baseColorTexture.index].handle;
+    SDL_GPUTexture* tex = g_RenderState.textures[gPaladin->materials[0].baseColorTexture.index].handle;
     Matrix4 viewProj = Matrix4Multiply(g_Camera.view, g_Camera.projection);
-    
+    FrustumPlanes frustumPlanes = CreateFrustumPlanes(viewProj);
+
     SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmd, &color_target, 1, &depth_target);
     SDL_BindGPUGraphicsPipeline(pass, g_RenderState.pipeline);
     SDL_BindGPUVertexBuffers(pass, 0, &vertex_binding, 1);
     SDL_BindGPUIndexBuffer(pass, &index_binding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
     
-    SDL_GPUBuffer* buffers[3] = {g_RenderState.buf_bones, g_RenderState.buf_positions, g_RenderState.buf_rotations };
+    SDL_GPUBuffer* buffers[2] = { g_RenderState.boneBuffer, g_RenderState.entityBuffer} ;
     SDL_BindGPUVertexStorageBuffers(pass, 0, buffers, SDL_arraysize(buffers));
     
     SDL_BindGPUFragmentSamplers(pass, 0,
@@ -173,21 +173,21 @@ static void Render()
     
     SDL_PushGPUVertexUniformData(cmd, 0, &viewProj, sizeof(Matrix4));
     
-    i32 numNodes = g_SceneBundle->numNodes;
-    const bool hasScene = g_SceneBundle->numScenes > 0;
+    s32 numNodes = gPaladin->numNodes;
+    const bool hasScene = gPaladin->numScenes > 0;
     AScene defaultScene;
     if (hasScene)
     {
-        defaultScene = g_SceneBundle->scenes[g_SceneBundle->defaultSceneIndex];
+        defaultScene = gPaladin->scenes[gPaladin->defaultSceneIndex];
         numNodes = defaultScene.numNodes;
     }
 
-    i32 stackLen = 0;
-    i32 nodeStack[256];
+    s32 stackLen = 0;
+    s32 nodeStack[256];
 
     if (hasScene)
     {
-        for (i32 i = 0; i < defaultScene.numNodes; i++)
+        for (s32 i = 0; i < defaultScene.numNodes; i++)
             nodeStack[stackLen++] = defaultScene.nodes[i];
     }
     else
@@ -197,24 +197,24 @@ static void Render()
 
     while (stackLen > 0)
     {
-        const i32 nodeIndex = nodeStack[--stackLen];
-        const ANode* node = &g_SceneBundle->nodes[nodeIndex];
-        const AMesh* mesh = g_SceneBundle->meshes + node->index;
+        const s32 nodeIndex = nodeStack[--stackLen];
+        const ANode* node = gPaladin->nodes + nodeIndex;
+        const AMesh* mesh = gPaladin->meshes + node->index;
     
         if (node->type == 0 && node->index != -1)
-            for (i32 j = 0; j < mesh->numPrimitives; ++j)
-            {
-                const APrimitive* primitive = &mesh->primitives[j];
-                // const bool hasMaterial = sceneBundle->materials && primitive->material != UINT16_MAX;
-                // const AMaterial material = sceneBundle->materials[primitive->material];
-                // const Matrix4 model = nodeTransforms[nodeIndex];
-                SDL_DrawGPUIndexedPrimitives(pass, primitive->numIndices, NUM_ANIMS, primitive->indexOffset, 0, 0);
-            }
+        for (s32 j = 0; j < mesh->numPrimitives; ++j)
+        {
+            const APrimitive* primitive = &mesh->primitives[j];
+            // const bool hasMaterial = sceneBundle->materials && primitive->material != UINT16_MAX;
+            // const AMaterial material = sceneBundle->materials[primitive->material];
+            // const Matrix4 model = nodeTransforms[nodeIndex];
+            SDL_DrawGPUIndexedPrimitives(pass, primitive->numIndices, NUM_ANIMS, primitive->indexOffset, 0, 0);
+        }
     
-            for (i32 i = 0; i < node->numChildren; i++)
-            {
-                nodeStack[stackLen++] = node->children[i];
-            }
+        for (s32 i = 0; i < node->numChildren; i++)    
+        {
+            nodeStack[stackLen++] = node->children[i];
+        }
     }
     
     SDL_EndGPURenderPass(pass);
@@ -244,37 +244,36 @@ static void Render()
 
 static void InitScene()
 {
-    g_SceneBundle = AllocateTLSFGlobal(sizeof(SceneBundle));
+    gPaladin = AllocateTLSFGlobal(sizeof(SceneBundle));
     
     // if (!LoadSceneBundleBinary("Assets/Meshes/Paladin/Paladin.abm", sceneBundle))
     // if (!ParseGLTF2("Assets/Meshes/Paladin/Paladin.gltf", sceneBundle, 1.0f))
-    if (!ParseGLTF2("Assets/Meshes/Paladin2/Paladin.glb", g_SceneBundle, 1.0f))
+    if (!ParseGLTF2("Assets/Meshes/Paladin2/Paladin.glb", gPaladin, 1.0f))
     {
         AX_ERROR("gltf scene load failed2");
         return;
     }
     
-    CreateVerticesIndices(g_SceneBundle);
-    g_RenderState.buf_vertex = CreateBuffer(g_SceneBundle->allVertices, g_SceneBundle->totalVertices * sizeof(ASkinedVertex), SDL_GPU_BUFFERUSAGE_VERTEX, "CPVertexBuffer");
-    g_RenderState.buf_index  = CreateBuffer(g_SceneBundle->allIndices, g_SceneBundle->totalIndices * sizeof(int), SDL_GPU_BUFFERUSAGE_INDEX, "CPIndexBuffer");
+    CreateVerticesIndices(gPaladin);
+    g_RenderState.vertexBuffer = CreateBuffer(gGFX.VertexBuffer, MAX_VERTEX * sizeof(ASkinedVertex), SDL_GPU_BUFFERUSAGE_VERTEX, "CPVertexBuffer");
+    g_RenderState.indexBuffer  = CreateBuffer(gGFX.IndexBuffer , MAX_INDEX * sizeof(int), SDL_GPU_BUFFERUSAGE_INDEX, "CPIndexBuffer");
     
-    g_NodeTransforms   = AllocateTLSFGlobal(sizeof(Matrix4) * g_SceneBundle->numNodes);
-    characterRootIndex = Prefab_FindAnimRootNodeIndex(g_SceneBundle);
+    g_NodeTransforms   = AllocateTLSFGlobal(sizeof(Matrix4) * gPaladin->numNodes);
+    characterRootIndex = Prefab_FindAnimRootNodeIndex(gPaladin);
     
-    for (i32 i = 0; i < NUM_ANIMS; i++)
+    for (s32 i = 0; i < NUM_ANIMS; i++)
     {
         Matrix3x4f16* outMatrices = OutMatrices + (i * MaxBonePoses);
-        AnimationController_Create(g_SceneBundle, &AnimControllers[i], outMatrices);
+        AnimationController_Create(gPaladin, &AnimControllers[i], outMatrices);
     }
         
-    g_RenderState.buf_bones = CreateBuffer(OutMatrices, sizeof(OutMatrices), SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ, "CPJointMatrices");
-    g_RenderState.buf_positions = CreateBuffer(ecs.EntityPositions, sizeof(ecs.EntityPositions), SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ, "CPInstancePositions");
-    g_RenderState.buf_rotations = CreateBuffer(ecs.EntityRotations, sizeof(ecs.EntityRotations), SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ, "CPInstanceRotations");
+    g_RenderState.boneBuffer   = CreateBuffer(OutMatrices , sizeof(OutMatrices) , SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ, "CPJointMatrices");
+    g_RenderState.entityBuffer = CreateBuffer(ecs.entities, sizeof(ecs.entities), SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ, "CPInstancePositions");
     
     BasisuSetup();
     // SaveSceneImages(g_SceneBundle, "Assets/Meshes/Paladin2/Paladin.bdc");
     // "Assets/Meshes/Paladin/PaladinTest.bdc"
-    i32 imgRes = LoadSceneImages("Assets/Meshes/Paladin2/Paladin.bdc", g_RenderState.textures, g_SceneBundle->numImages, g_GPUDevice);
+    s32 imgRes = LoadSceneImages("Assets/Meshes/Paladin2/Paladin.bdc", g_RenderState.textures, gPaladin->numImages, g_GPUDevice);
     
     g_RenderState.sampler = SDL_CreateGPUSampler(g_GPUDevice, &(SDL_GPUSamplerCreateInfo){
         .min_filter      = SDL_GPU_FILTER_LINEAR,
@@ -283,17 +282,17 @@ static void InitScene()
         .address_mode_u  = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
         .address_mode_v  = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
         .address_mode_w  = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
-        .min_lod = 0.0f,
-        .max_lod = 8.0f
+        .min_lod         = 0.0f,
+        .max_lod         = 8.0f
     });
 }
 
 static void InitPipeline()
 {
     SDL_GPUGraphicsPipelineCreateInfo pipelinedesc;
-    SDL_GPUColorTargetDescription color_target_desc;
-    SDL_GPUVertexAttribute vertex_attributes[6];
-    SDL_GPUVertexBufferDescription vertex_buffer_desc;
+    SDL_GPUColorTargetDescription     color_target_desc;
+    SDL_GPUVertexAttribute            vertex_attributes[6];
+    SDL_GPUVertexBufferDescription    vertex_buffer_desc;
     
     /* Create shaders */
     SDL_GPUShader* vertex_shader = SDL_CreateGPUShader(g_GPUDevice, &(SDL_GPUShaderCreateInfo){
@@ -302,7 +301,7 @@ static void InitPipeline()
         .code                = Shaders_SkinnedVert_spv,
         .code_size           = sizeof(Shaders_SkinnedVert_spv),
         .num_samplers        = 0,
-        .num_storage_buffers = 3,
+        .num_storage_buffers = 2,
         .stage               = SDL_GPU_SHADERSTAGE_VERTEX
     });
     
@@ -326,9 +325,9 @@ static void InitPipeline()
     color_target_desc.format = SDL_GetGPUSwapchainTextureFormat(g_GPUDevice, g_SDLWindow);
     
     pipelinedesc.target_info.num_color_targets = 1;
-    pipelinedesc.target_info.color_target_descriptions = &color_target_desc;
-    pipelinedesc.target_info.depth_stencil_format      = SDL_GPU_TEXTUREFORMAT_D24_UNORM;
-    pipelinedesc.target_info.has_depth_stencil_target  = true;
+    pipelinedesc.target_info.color_target_descriptions  = &color_target_desc;
+    pipelinedesc.target_info.depth_stencil_format       = SDL_GPU_TEXTUREFORMAT_D24_UNORM;
+    pipelinedesc.target_info.has_depth_stencil_target   = true;
     
     pipelinedesc.depth_stencil_state.enable_depth_test  = true;
     pipelinedesc.depth_stencil_state.enable_depth_write = true;
@@ -391,13 +390,13 @@ static void InitPipeline()
     SDL_ReleaseGPUShader(g_GPUDevice, fragment_shader);
 }
 
-static i32 done = 0;
+static s32 done = 0;
 
 void loop(void)
 {
     SDL_Event event;
-    i32 i;
-    /* Check for events */
+    s32 i;
+
     while (SDL_PollEvent(&event) && !done)
     {
         if (event.type == SDL_EVENT_QUIT)
@@ -411,19 +410,18 @@ void loop(void)
     CameraUpdate(&g_Camera, PlatformCtx.DeltaTime);
     const double timeSinceStartup = TimeSinceStartup();
     v128f camPos = VecLoad(&g_Camera.position.x);
-    i32 frameCount = PlatformCtx.FrameCount;
-
+    s64 frameCount = PlatformCtx.FrameCount;
     // #pragma omp parallel for schedule(static) num_threads(8)
     #pragma omp parallel for schedule(static) num_threads(omp_get_num_procs() / 2)
     for (i = 0; i < NUM_ANIMS; i++)
     {
-        float distSqr = Vec3DistSqrfV(camPos, ecs.EntityPositions[i]);
+        float distSqr = Vec3DistSqrfV(camPos, ecs.entities[i].position);
     
         const float MedAnimDistSqr = 40 * 40;  
         const float FarAnimDistSqr = 120 * 120;
     
         // Determine the update frequency based on distance
-        i32 updateRate = 1; // Sample every nth frame
+        s32 updateRate = 1; // Sample every nth frame
         if (distSqr > FarAnimDistSqr) updateRate = 8; 
         if (distSqr > MedAnimDistSqr) updateRate = 4;  
 
@@ -434,8 +432,8 @@ void loop(void)
         if (shouldUpdate)
         {
             AnimationController* ac = &AnimControllers[i];
-            const i32 numAnims = ac->mPrefab->numAnimations;
-            const i32 animIdx  = Clampi32(WangHash(i + 645) % numAnims, 1, numAnims);
+            const s32 numAnims = ac->mPrefab->numAnimations;
+            const s32 animIdx  = Clampi32(WangHash(i + 645) % numAnims, 1, numAnims);
 
             const double animDuration = (double)ac->mPrefab->animations[animIdx].duration;
             const float animRatio = (float)Fract((timeSinceStartup + (i * 0.1)) / animDuration);
@@ -444,14 +442,14 @@ void loop(void)
         }
     }
     
-    i64 now = TimeNow();
-    static i64 lastUpdate = 0;
-    i64 diff = TimeToMilliseconds(now - lastUpdate);
+    s64 now = TimeNow();
+    static s64 lastUpdate = 0;
+    s64 diff = TimeToMilliseconds(now - lastUpdate);
 
     if (diff >= 256) 
     {
         lastUpdate = now;
-        i64 elapsedUS = TimeToMicroseconds(now - PlatformCtx.LastTime);
+        s64 elapsedUS = TimeToMicroseconds(now - PlatformCtx.LastTime);
         static char usBuffer[128]; 
         IntToString(usBuffer, elapsedUS, 0); 
         SDL_SetWindowTitle(g_SDLWindow, usBuffer);
@@ -471,9 +469,9 @@ void loop(void)
     PlatformCtx.FrameCount++;
 }
 
-i32 main(i32 argc, char* argv[])
+s32 main(s32 argc, char* argv[])
 {
-    i32 msaa = 0;
+    s32 msaa = 0;
     done = 0;
     
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO))
@@ -487,7 +485,7 @@ i32 main(i32 argc, char* argv[])
     
     const SDL_DisplayMode* mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(window));
     
-    ECS_Init(ecs.EntityPositions, ecs.EntityRotations);
+    ECS_Init(&ecs);
 
     rInit(msaa);
     InitPipeline(msaa);

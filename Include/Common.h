@@ -567,47 +567,41 @@ static inline void MemSet(void* dst, uint8_t value, size_t size)
     }
  #endif
 
-#if defined (_MSC_VER)
-    #define StringLengthSafe(s, maxLen) ((s) ? (int)strnlen_s((s), (maxLen)) : 0)
-#elif defined (__STDC_LIB_EXT1__)  // GCC / Clang with C11 Annex K
-    #define StringLengthSafe(s, maxLen) ((s) ? (int)strnlen_s((s), (maxLen)) : 0)
-#else
-    // Returns -1 if s is NULL or not null-terminated within maxLen
-    static inline int StringLengthSafe(const char* s, size_t maxLen)
-    {
-        if (!s || maxLen == 0) return 0;
+// Returns -1 if s is NULL or not null-terminated within maxLen
+static inline int StringLengthSafe(const char* s, size_t maxLen)
+{
+    if (!s || maxLen == 0) return 0;
 
-        const char* p = s;
-        const size_t wordSize = sizeof(uint64_t);
-        const uint64_t m = 0x7efefefefefefeffull;
-        const uint64_t n = ~m;
-        size_t remaining = maxLen;
+    const char* p = s;
+    const size_t wordSize = sizeof(uint64_t);
+    const uint64_t m = 0x7efefefefefefeffull;
+    const uint64_t n = ~m;
+    size_t remaining = maxLen;
 
-        // Align pointer
-        while (((uintptr_t)p & (wordSize - 1)) && remaining) {
-            if (*p == '\0') return (int)(p - s);
-            p++; remaining--;
-        }
-
-        // Aligned scanning
-        while (remaining >= wordSize) {
-            uint64_t chunk = *(const uint64_t*)p;
-            if (!(((chunk + m) ^ ~chunk) & n)) {
-                p += wordSize; remaining -= wordSize;
-            } else {
-                for (size_t i = 0; i < wordSize && remaining; i++, p++, remaining--)
-                    if (*p == '\0') return (int)(p - s);
-            }
-        }
-
-        // Remaining bytes
-        while (remaining--) {
-            if (*p == '\0') return (int)(p - s);
-            p++;
-        }
-        return 0; // unterminated
+    // Align pointer
+    while (((uintptr_t)p & (wordSize - 1)) && remaining) {
+        if (*p == '\0') return (int)(p - s);
+        p++; remaining--;
     }
-#endif
+
+    // Aligned scanning
+    while (remaining >= wordSize) {
+        uint64_t chunk = *(const uint64_t*)p;
+        if (!(((chunk + m) ^ ~chunk) & n)) {
+            p += wordSize; remaining -= wordSize;
+        } else {
+            for (size_t i = 0; i < wordSize && remaining; i++, p++, remaining--)
+                if (*p == '\0') return (int)(p - s);
+        }
+    }
+
+    // Remaining bytes
+    while (remaining--) {
+        if (*p == '\0') return (int)(p - s);
+        p++;
+    }
+    return 0; // unterminated
+}
 
 #define forii(n) for (int ii=0; ii<n; ++ii)
 #define forjj(n) for (int jj=0; jj<n; ++jj)

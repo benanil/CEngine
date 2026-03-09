@@ -9,27 +9,30 @@
 #define CHECK_CREATE(var, thing) { if (!(var)) { SDL_Log("Failed to create %s: %s", thing, SDL_GetError()); Quit(2); } }
 #define TESTGPU_SUPPORTED_FORMATS (SDL_GPU_SHADERFORMAT_SPIRV | SDL_GPU_SHADERFORMAT_DXBC | SDL_GPU_SHADERFORMAT_DXIL | SDL_GPU_SHADERFORMAT_METALLIB)
 
+#define MAX_VERTEX 1000000
+#define MAX_INDEX (MAX_VERTEX * 5)
+
 #if defined(__cplusplus)
 extern "C" {
 #endif
 
 enum TexFlags_
 {
-    TexFlags_None        = 0,
-    TexFlags_MipMap      = 1,
-    TexFlags_Compressed  = 2,
-    TexFlags_ClampToEdge = 4,
-    TexFlags_Nearest     = 8,
-    TexFlags_Linear      = 16, // default linear in desktop platforms
+    TexFlags_None                = 0,
+    TexFlags_MipMap              = 1,
+    TexFlags_Compressed          = 2,
+    TexFlags_ClampToEdge         = 4,
+    TexFlags_Nearest             = 8,
+    TexFlags_Linear              = 16, // default linear in desktop platforms
     TexFlags_DontDeleteCPUBuffer = 32,
-    TexFlags_DynamicUpdate = 64, // the image content is updated infrequently by the CPU
-    TexFlags_StreamUpdate = 128, // the image content is updated each frame by the CPU via
-    TexFlags_RenderAttachment = 256,
-    TexFlags_StorageAttachment = 512,
+    TexFlags_DynamicUpdate       = 64, // the image content is updated infrequently by the CPU
+    TexFlags_StreamUpdate        = 128, // the image content is updated each frame by the CPU via
+    TexFlags_RenderAttachment    = 256,
+    TexFlags_StorageAttachment   = 512,
     // no filtering or wrapping
     TexFlags_RawData     = TexFlags_Nearest | TexFlags_ClampToEdge
 };
-typedef i32 TexFlags;
+typedef s32 TexFlags;
 
 enum GraphicType_
 {
@@ -61,7 +64,7 @@ enum GraphicType_
 
     GraphicType_NormalizeBit = 1 << 31
 };
-typedef i32 GraphicType;
+typedef s32 GraphicType;
 
 // https://www.yosoygames.com.ar/wp/2018/03/vertex-formats-part-1-compression/
 typedef struct AVertex_
@@ -86,7 +89,7 @@ typedef struct ASkinedVertex_
 
 typedef struct GPUMesh_
 {
-    i32 numVertex, numIndex;
+    s32 numVertex, numIndex;
     // unsigned because opengl accepts unsigned
     u32 vertexLayoutHandle;
     u32 indexHandle;
@@ -94,8 +97,8 @@ typedef struct GPUMesh_
     u32 vertexHandle; // opengl handles for, POSITION, TexCoord...
     // usefull for knowing which attributes are there
     // POSITION, TexCoord... AAttribType_ bitmask
-    i32 attributes;
-    i32 stride; // size of an vertex of the mesh
+    s32 attributes;
+    s32 stride; // size of an vertex of the mesh
     
     void* vertices;
     void* indices;
@@ -103,7 +106,7 @@ typedef struct GPUMesh_
 
 typedef struct Texture_
 {
-    i32 width, height;
+    s32 width, height;
     SDL_GPUTexture* handle;
     SDL_GPUTextureFormat format;
     void* buffer;
@@ -117,11 +120,10 @@ typedef struct WindowState
 
 typedef struct RenderState
 {
-	SDL_GPUBuffer* buf_vertex;
-	SDL_GPUBuffer* buf_index;
-	SDL_GPUBuffer* buf_bones;
-	SDL_GPUBuffer* buf_positions;
-	SDL_GPUBuffer* buf_rotations;
+	SDL_GPUBuffer*  vertexBuffer;
+	SDL_GPUBuffer*  indexBuffer;
+	SDL_GPUBuffer*  boneBuffer;
+	SDL_GPUBuffer*  entityBuffer;
     SDL_GPUSampler* sampler;
     Texture textures[8];
 	SDL_GPUGraphicsPipeline* pipeline;
@@ -129,9 +131,17 @@ typedef struct RenderState
 } RenderState;
 
 
-static inline i32 GetRootNodeIdx(SceneBundle* bundle)
+typedef struct Graphics_
 {
-    i32 node = 0;
+    ASkinedVertex* VertexBuffer;
+    u32*           IndexBuffer ;
+    u32            NumIndices  ;
+    u32            NumVertices ;
+} Graphics;
+
+static inline s32 GetRootNodeIdx(SceneBundle* bundle)
+{
+    s32 node = 0;
     if (bundle->numScenes > 0) {
         AScene defaultScene = bundle->scenes[bundle->defaultSceneIndex];
         node = defaultScene.nodes[0];
@@ -149,13 +159,13 @@ void rDestroy();
 
 Texture rImportTexture(const char* path, TexFlags flags, const char* label);
 
-Texture rCreateTexture(i32 width, i32 height, void* data, SDL_PixelFormat format, TexFlags flags, const char* label);
+Texture rCreateTexture(s32 width, s32 height, void* data, SDL_PixelFormat format, TexFlags flags, const char* label);
 
 void rDeleteTexture(Texture texture);
 
 void rUpdateTexture(Texture texture, void* data);
 
-i32 GraphicsTypeToSize(GraphicType type);
+s32 GraphicsTypeToSize(GraphicType type);
 
 SDL_GPUBuffer* CreateBuffer(void* buffer, size_t bufferSize, SDL_GPUBufferUsageFlags bufferUsage, const char* debugName);
 

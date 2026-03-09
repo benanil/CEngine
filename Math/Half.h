@@ -28,16 +28,20 @@ typedef uint16_t h1;
 typedef u32 h2;
 typedef h1 h4[4];
 
-#define OneFP16       (15360)
-#define MinusOneFP16  (48128)
-#define ZeroFP16      (0)
-#define HalfFP16      (14336) // fp16 0.5
-#define Sqrt2FP16     (15784) // fp16 sqrt(2)
+#define OneFP16       (15360ui16)
+#define MinusOneFP16  (48128ui16)
+#define ZeroFP16      (0ui16)
+#define HalfFP16      (14336ui16) // fp16 0.5
+#define Sqrt2FP16     (15784ui16) // fp16 sqrt(2)
+#define FP16PI        (0x4248ui16)
 #define Half2Up       (OneFP16 << 16u)
 #define Half2Down     (MinusOneFP16 << 16u)
 #define Half2Left     (MinusOneFP16)
 #define Half2Right    (OneFP16)
 #define Half2One      (OneFP16 | (OneFP16 << 16))
+#define Half4One      (u64_(OneFP16)   * 0x0001000100010001ull)
+#define Half4Sqrt2    (u64_(Sqrt2FP16) * 0x0001000100010001ull)
+#define Half4PI       (u64_(FP16PI)    * 0x0001000100010001ull)
 #define Half2Zero     (0)
 
 #define MakeHalf2(x, y) ((x) | ((y) << 16))
@@ -138,7 +142,7 @@ static inline void Half4ToFloat4(f1* result, const h4 half4)
 
     #elif defined(AX_SUPPORT_SSE)
     v128u x4 = VeciLoad64((const u64*)half4);
-    x4 = VeciUnpackLow16(x4, VeciZero());   // [half4.xy, half4.xy, half4.zw, half4.zw] 
+    x4 = VeciUnpackLo16(x4, VeciZero());   // [half4.xy, half4.xy, half4.zw, half4.zw] 
     
     v128u h_e = VeciAnd(x4, VeciSet1(0x00007c00));
     v128u h_m = VeciAnd(x4, VeciSet1(0x000003ff));
@@ -159,9 +163,15 @@ static inline void Half4ToFloat4(f1* result, const h4 half4)
     #endif
 }
 
-static inline void Float4ToHalf4V(h1* result, v128f f4)
+static inline void Float4ToHalf4V(u64* result, v128f f4)
 {
+    #ifdef AX_SUPPORT_AVX2
     *((long long*)result) = _mm_extract_epi64(_mm_cvtps_ph(f4, _MM_FROUND_TO_NEAREST_INT), 0);
+    #elif defined(AX_SUPPORT_NEON)
+    *(float16x4_t*)result = vcvt_f16_f32(f4);
+    #else
+    STATIC_ASSERT(0, "undefined Float4ToHalf4V");
+    #endif
 }
 
 static inline void Float4ToHalf4(h1* result, const f1* f4)
@@ -174,7 +184,7 @@ static inline void Float4ToHalf4(h1* result, const f1* f4)
 
     *(float16x4_t*)result = vcvt_f16_f32(vld1q_f32(f4));
 
-    #elif defined(AX_SUPPORT_SSE)
+    #elif defined(AX_SUPPORT_SSE) || defined(AX_SUPPORT_NEON)
 
     v128u IValue = VeciLoad((const unsigned int*)f4);
     v128u Sign = VeciSrl32(VeciAnd(IValue, VeciSet1(0x80000000u)), 16);
@@ -237,22 +247,41 @@ purefn void Float8ToHalf8(h1* result, const f1* float8)
 
 #endif // AX_SUPPORT_AVX2
 
+static forceinline void RandomHalf4(u64* result, u64 hash, float mn, float mx, float scale)
+{
+    v128f u16MaxHalf = VecSet1((1.0f / f1_(UINT16_MAX)) * scale);
+    v128u vhash    = VecBitcastU32(VecLoadLo64(&hash, VecZero()));
+    v128f unpacked = VecI32ToF32(VecUnpackLo32(vhash));
+    unpacked = VecFmsub(unpacked, u16MaxHalf , VecOne());
+    unpacked = VecClamp(unpacked, VecSet1(mn), VecSet1(mx));
+    Float4ToHalf4V(result, unpacked);
+}
 
-static forceinline void HalfToFloatN(f1* res, const h1* x, const i32 n) 
+static forceinline void RandomHalf4Positive(u64* result, u64 hash, float mn, float mx, float scale)
+{
+    v128f u16MaxHalf = VecSet1((1.0f / f1_(UINT16_MAX)) * scale);
+    v128u vhash    = VecBitcastU32(VecLoadLo64(&hash, VecZero()));
+    v128f unpacked = VecI32ToF32(VecUnpackLo32(vhash));
+    unpacked = VecMul(unpacked, u16MaxHalf);
+    unpacked = VecClamp(unpacked, VecSet1(mn), VecSet1(mx));
+    Float4ToHalf4V(result, unpacked);
+}
+
+static forceinline void HalfToFloatN(f1* res, const h1* x, const s32 n) 
 {   
-    for (i32 i = 0; i < n; i += 8, x += 8, res += 8)
+    for (s32 i = 0; i < n; i += 8, x += 8, res += 8)
         Half8ToFloat8(res, x);
  
-    for (i32 i = 0; i < (n & 7); i++, res++, x++)
+    for (s32 i = 0; i < (n & 7); i++, res++, x++)
         *res = HalfToFloat(*x);
 }
 
-static forceinline void FloatToHalfN(h1* res, const f1* x, const i32 n) 
+static forceinline void FloatToHalfN(h1* res, const f1* x, const s32 n) 
 {   
-    for (i32 i = 0; i < n; i += 8, x += 8, res += 8)
+    for (s32 i = 0; i < n; i += 8, x += 8, res += 8)
         Float8ToHalf8(res, x);
  
-    for (i32 i = 0; i < (n & 7); i++, res++, x++)
+    for (s32 i = 0; i < (n & 7); i++, res++, x++)
         *res = FloatToHalf(*x);
 }
 

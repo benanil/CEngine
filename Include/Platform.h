@@ -37,19 +37,19 @@ typedef struct PlatformContext_
     f1  MousePosX, MousePosY;
     f1  MouseWheelDelta;
     f1  SecondsSinceLastClick;
-    d1  DeltaTime;
+    f1  DeltaTime;
     
-    i64 LastClickTime;
-    i64 CPUFrequency;
-    i64 StartupTime;
-    i64 LastTime;
-    i64 FrameCount;
+    s64 LastClickTime;
+    s64 CPUFrequency;
+    s64 StartupTime;
+    s64 LastTime;
+    s64 FrameCount;
     
     // Window state
-    i32 WindowWidth, WindowHeight;
-    i32 WindowPosX, WindowPosY;
+    s32 WindowWidth, WindowHeight;
+    s32 WindowPosX, WindowPosY;
     
-    i32 MouseDown, MouseLast, MousePressed, MouseReleased;
+    s32 MouseDown, MouseLast, MousePressed, MouseReleased;
     u8  DoubleClicked;
     
 } PlatformContext;
@@ -68,42 +68,42 @@ typedef enum MouseButton_ {
 void GetMousePos(f1* x, f1* y);
 void SetMousePos(f1 x, f1 y);
 void wGetMouseWindowPos(f1* x, f1* y);
-void wGetMonitorSize(i32* width, i32* height);
+void wGetMonitorSize(s32* width, s32* height);
 void SetMouseWindowPos(f1 x, f1 y);
 f1   GetMouseWheelDelta();
 u8   GetDoubleClicked();
 u8   AnyMouseKeyDown();
-u8   GetMouseDown(i32 button);
-u8   GetMouseReleased(i32 button);
-u8   GetMousePressed(i32 button);
+u8   GetMouseDown(s32 button);
+u8   GetMouseReleased(s32 button);
+u8   GetMousePressed(s32 button);
 
 
 // Keyboard
 u8   AnyKeyDown();
-u8   GetKeyDown(i32 c);
-u8   GetKeyReleased(i32 c);
-u8   GetKeyPressed(i32 c);
+u8   GetKeyDown(s32 c);
+u8   GetKeyReleased(s32 c);
+u8   GetKeyPressed(s32 c);
 
 void SetPressedAndReleasedKeys();
 void RecordLastKeys();
 
 // forward declare, for sdl dialog file callback
-typedef void (SDLCALL *CP_DialogFileCallback)(void *userdata, const char * const *filelist, i32 filter);
+typedef void (SDLCALL *CP_DialogFileCallback)(void *userdata, const char * const *filelist, s32 filter);
 
 // Window
-void wSetWindowSize(i32 width, i32 height);
-void wSetWindowPosition(i32 x, i32 y);
+void wSetWindowSize(s32 width, s32 height);
+void wSetWindowPosition(s32 x, s32 y);
 void wOpenFolder(const char* folderPath, CP_DialogFileCallback callback);
 void wOpenFile(const char* filePath, CP_DialogFileCallback callback);
 
 // Time
-d1   GetDeltaTime();
-d1   TimeSinceStartup();
+f1   GetDeltaTime();
+f1   TimeSinceStartup();
 
 // time is nanoseconds
-d1   TimeToSeconds(i64 time);
-i64  TimeToMilliseconds(i64 time);
-i64  TimeToMicroseconds(i64 time);
+f1   TimeToSeconds(s64 time);
+s64  TimeToMilliseconds(s64 time);
+s64  TimeToMicroseconds(s64 time);
 
 void PlatformInit();
 void PlatformUpdate();

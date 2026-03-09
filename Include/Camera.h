@@ -61,8 +61,8 @@ static inline void Camera_CalculateLook(Camera* camera) // from yaw pitch
     camera->Front   = F3Norm(camera->Front);
     // also re-calculate the Right and Up vector
     // normalize the vectors, because their length gets closer to 0 the more you look up or down which results in slower movement.
-    camera->Right = F3NormEst(F3Cross(camera->Front, F3Up()));
-    camera->Up    = F3Cross(camera->Right, camera->Front);
+    VecStore(&camera->Right.x, Vec3NormEstV(Vec3Cross(Vec3Load(&camera->Front.x), VecSetR(0.0f, 1.0f, 0.0f, 0.0f))));
+    camera->Up = F3Cross(&camera->Right, &camera->Front);
 }
 
 static inline RayV ScreenPointToRay(Camera* camera, f2 pos)

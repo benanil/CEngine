@@ -1,16 +1,19 @@
 
 #include "Include/ECS.h"
 #include "Include/Random.h"
+#include "Math/Half.h"
 #include "Math/Matrix.h"
 
-void ECS_Init(v128f* EntityPositions, u32* EntityRotations)
+void ECS_Init(ECS* ecs)
 {
-    for (i32 i = 0; i < MAX_ENTITY; i++)
+    Entity* entities = ecs->entities;
+
+    for (s32 i = 0; i < MAX_ENTITY; i++)
     {
-        EntityPositions[i] = VecMulf(VecSetR((f1)(i & 63), 0.0f, (f1)(i >> 6), 0.0f), 1.5f);
-        u32 rotation = WangHash(i + 123);
-        EntityRotations[i * 2 + 0] = rotation & 0xFFFF0000;  // x=0, y=random
-        EntityRotations[i * 2 + 1] = rotation << 16;         // z=0, w=random
+        u64 hash = MurmurHash(i + 123);
+        entities[i].position = VecMulf(VecSetR(f1_(i & 63), 0.0f, f1_(i >> 6), 0.0f), 1.5f);
+        entities[i].rotation = hash & 0xFFFF0000FFFF0000ull;  // x=0, y=random, z=0, w=random
+        entities[i].scale = Half4One;
     }
 }
 

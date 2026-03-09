@@ -37,10 +37,10 @@ enum eAnimControllerState_
     AnimState_TriggerMask = AnimState_TriggerIn | AnimState_TriggerOut | AnimState_TriggerPlaying
 };
 
-typedef i32 eAnimTriggerOpt;
-typedef i32 eAnimLocation;
-typedef i32 eAnimState;
-typedef i32 eAnimControllerState;
+typedef s32 eAnimTriggerOpt;
+typedef s32 eAnimLocation;
+typedef s32 eAnimState;
+typedef s32 eAnimControllerState;
 
 typedef struct Matrix3x4f16_ {
     h4 x;
@@ -73,8 +73,8 @@ typedef struct AnimationController_
 {
     const SceneBundle* mPrefab;
 
-    i32   mRootNodeIndex;
-    i32   mNumJoints;
+    s32   mRootNodeIndex;
+    s32   mNumJoints;
     f1 mRootScale;
    
     Matrix3x4f16* mOutMatrices;
@@ -92,13 +92,13 @@ typedef struct AnimatedCharacter_
     // this value can change from character to character. 
     // you can detect using 3DVert and GBuffer shader just uncomment lines with vBoneIdx, and it will visualize lower body as white
     // Maybe Add: automatic detect.
-    i32 lowerBodyIdxStart; 
+    s32 lowerBodyIdxStart; 
 
-    i32 mSpineNodeIdx; // < upper body root bone 
-    i32 mNeckNodeIdx;
+    s32 mSpineNodeIdx; // < upper body root bone 
+    s32 mNeckNodeIdx;
  
-    i32 mTriggerredAnim;
-    i32 mLastAnim;
+    s32 mTriggerredAnim;
+    s32 mLastAnim;
    
     f1 mTrigerredNorm;
     f1 mTransitionTime; // trigger transition time
@@ -130,8 +130,8 @@ typedef struct AnimatedCharacter_
     //  #  #  #  <- DiagonalJog , ForwardJog , DiagonalJog
     //  #  #  #  <- DiagonalWalk, ForwardWalk, DiagonalWalk
     //  #  #  #  <- StrafeLeft  , Idle       , StrafeRight 
-    i32 mLocomotionIndices   [4][3];
-    i32 mLocomotionIndicesInv[3][3]; 
+    s32 mLocomotionIndices   [4][3];
+    s32 mLocomotionIndicesInv[3][3]; 
     
     AnimationController controller;
 } AnimatedCharacter;
@@ -147,7 +147,7 @@ void AnimationController_Create(const SceneBundle* prefab,
 
 
 // play the given animation, norm is the animation progress between 0.0 and 1.0
-void AnimationController_PlayAnim(AnimationController* ac, i32 index, f1 norm);
+void AnimationController_PlayAnim(AnimationController* ac, s32 index, f1 norm);
 
 void AnimationController_UploadBoneMatrices(AnimationController* ac);
 
@@ -157,13 +157,13 @@ void AnimationController_Clear(AnimationController* ac);
 ////////            ANIMATED CHARACTER            ////////
 
 
-static inline void AnimatedCharacter_SetAnim(AnimatedCharacter* ac, i32 x, i32 y, i32 index)
+static inline void AnimatedCharacter_SetAnim(AnimatedCharacter* ac, s32 x, s32 y, s32 index)
 {
     if (y >= 0) ac->mLocomotionIndices[y][x] = index;
     else        ac->mLocomotionIndicesInv[Absi32(y-1.0f)][x] = index;
 }
 
-static inline i32 AnimatedCharacter_GetAnim(const AnimatedCharacter* ac, i32 x, i32 y)
+static inline s32 AnimatedCharacter_GetAnim(const AnimatedCharacter* ac, s32 x, s32 y)
 {
     if (y >= 0) return ac->mLocomotionIndices[y][x];
     else        return ac->mLocomotionIndicesInv[Absi32(y)-1][x];
@@ -174,7 +174,7 @@ static inline bool AnimatedCharacter_IsTrigerred(const AnimatedCharacter* ac)
     return (ac->mState & AnimState_TriggerMask) != 0;
 }
 
-void AnimatedCharacter_Create(const SceneBundle* prefab, AnimatedCharacter* result, i32 lowerBodyStart, Matrix3x4f16* outMatrices);
+void AnimatedCharacter_Create(const SceneBundle* prefab, AnimatedCharacter* result, s32 lowerBodyStart, Matrix3x4f16* outMatrices);
 
 // x, y has to be between -1.0 and 1.0 (normalized)
 // xspeed and yspeed is between 0 and infinity speed of animation
@@ -182,12 +182,12 @@ void AnimatedCharacter_Create(const SceneBundle* prefab, AnimatedCharacter* resu
 // runs the walking running etc animations from given inputs
 void AnimatedCharacter_EvaluateLocomotion(AnimatedCharacter* ac, f1 x, f1 y, f1 animSpeed);
 
-bool AnimatedCharacter_TriggerTransition(AnimatedCharacter* ac, f1 dt, i32 targetAnim);
+bool AnimatedCharacter_TriggerTransition(AnimatedCharacter* ac, f1 dt, s32 targetAnim);
 
 // trigger time is the animation transition time
 // standing anims are animations that we can play when walking or running
 // returns true if triggered successfully (wasn't trigerred already)
-bool AnimatedCharacter_Trigger(AnimatedCharacter* ac, i32 animIndex, f1 triggerInTime, f1 triggerOutTime, eAnimTriggerOpt triggerOpt);
+bool AnimatedCharacter_Trigger(AnimatedCharacter* ac, s32 animIndex, f1 triggerInTime, f1 triggerOutTime, eAnimTriggerOpt triggerOpt);
 
 
 ////////              PRIVATE                 ////////  feel free to use
@@ -201,7 +201,7 @@ void AnimationController_UploadPose(AnimationController* ac, const Pose nodeMatr
 void AnimationController_RecurseBoneMatrices(AnimationController* ac);
 
 // use negative normTime to sample animation reversely
-void AnimationController_SampleAnimationPose(const AnimationController* ac, Pose pose[MaxBonePoses], i32 animIdx, f1 normTime);
+void AnimationController_SampleAnimationPose(const AnimationController* ac, Pose pose[MaxBonePoses], s32 animIdx, f1 normTime);
 
 // when we want to play different animations with lower body and upper body
 void AnimatedCharacter_UploadPoseUpperLower(AnimatedCharacter* ac, const Pose lowerPose[MaxBonePoses], const Pose uperPose[MaxBonePoses]);

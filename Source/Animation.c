@@ -25,7 +25,7 @@ void AnimationController_Create(const SceneBundle* prefab, AnimationController* 
     Pose pose;
     AnimNode animNode;
     ANode inputNode;
-    i32 childIndex;
+    s32 childIndex;
     const ASkin* skin = &prefab->skins[0];
 
     if (skin == NULL) {
@@ -46,7 +46,7 @@ void AnimationController_Create(const SceneBundle* prefab, AnimationController* 
     MemSet(result->mChildIndices, 255, sizeof(result->mChildIndices));
 
     childIndex = 0;
-    for (i32 i = 0; i < prefab->numNodes; i++)
+    for (s32 i = 0; i < prefab->numNodes; i++)
     {
         inputNode  = prefab->nodes[i];
         pose.translation = VecLoad(inputNode.translation);
@@ -59,7 +59,7 @@ void AnimationController_Create(const SceneBundle* prefab, AnimationController* 
         result->mAnimNodes[i] = animNode;
         result->mAnimPoseA[i] = pose;
 
-        for (i32 j = 0; j < animNode.numChildren; j++)
+        for (s32 j = 0; j < animNode.numChildren; j++)
         {
             result->mChildIndices[childIndex++] = (u8)inputNode.children[j];
         }
@@ -70,12 +70,12 @@ void AnimationController_RecurseBoneMatrices(AnimationController* ac)
 {
     typedef struct StackNode_ {
         Pose pose;
-        i32  idx;
+        s32  idx;
     } StackNode;
 
     StackNode stack[MaxBonePoses];
-    i32 stackIndex = 0;
-    i32 root = ac->mRootNodeIndex;
+    s32 stackIndex = 0;
+    s32 root = ac->mRootNodeIndex;
     Pose* poses = ac->mAnimPoseA;
     const uint8_t* childIndices = ac->mChildIndices;
     
@@ -88,11 +88,11 @@ void AnimationController_RecurseBoneMatrices(AnimationController* ac)
         const AnimNode* node = &ac->mAnimNodes[sn.idx];
         
         const uint8_t* children = &childIndices[node->childrenStartIndex];
-        i32 count = node->numChildren;
+        s32 count = node->numChildren;
 
-        for (i32 c = 0; c < count; c++)
+        for (s32 c = 0; c < count; c++)
         {
-            i32 child = (i32)children[c];
+            s32 child = (s32)children[c];
             Pose pose = poses[child];
             v128f t = VecMulf(pose.translation, parentScale); 
             t = QMulVec3V(t, sn.pose.rotation);
@@ -113,7 +113,7 @@ void AnimationController_UploadBoneMatrices(AnimationController* ac)
     float rootScale = ac->mPrefab->nodes[ac->mRootNodeIndex].scale[1];
     v128f rootScaleMul = VecSetR(rootScale, rootScale, rootScale, 1.0f);
     
-    for (i32 i = 0; i < skin->numJoints; i++)
+    for (s32 i = 0; i < skin->numJoints; i++)
     {
         const Pose* pose = ac->mAnimPoseA + skin->joints[i];
         v128f pos = pose->translation;
@@ -137,13 +137,13 @@ void AnimationController_UploadPose(AnimationController* ac, const Pose pose[Max
     AnimationController_UploadBoneMatrices(ac);
 }
 
-void AnimationController_PlayAnim(AnimationController* ac, i32 index, f1 norm)
+void AnimationController_PlayAnim(AnimationController* ac, s32 index, f1 norm)
 {   
     AnimationController_SampleAnimationPose(ac, ac->mAnimPoseA, index, norm);
     AnimationController_UploadPose(ac, ac->mAnimPoseA);
 }
 
-void AnimationController_SampleAnimationPose(const AnimationController* ac, Pose pose[MaxBonePoses], i32 animIdx, f1 normTime)
+void AnimationController_SampleAnimationPose(const AnimationController* ac, Pose pose[MaxBonePoses], s32 animIdx, f1 normTime)
 {
     const AAnimation* animation = &ac->mPrefab->animations[animIdx];
     const bool reverse = normTime < 0.0f;
@@ -153,11 +153,11 @@ void AnimationController_SampleAnimationPose(const AnimationController* ac, Pose
 
     float realTime = normTime * animation->duration;
     
-    for (i32 c = 0; c < animation->numChannels; c++)
+    for (s32 c = 0; c < animation->numChannels; c++)
     {
         const AAnimChannel* channel = &animation->channels[c];
         const AAnimSampler* sampler = &animation->samplers[channel->sampler];
-        const i32 targetNode = channel->targetNode;
+        const s32 targetNode = channel->targetNode;
     
         // // morph targets are not supported
         // if (channel->targetPath == AAnimTargetPath_Weight || 
@@ -167,12 +167,12 @@ void AnimationController_SampleAnimationPose(const AnimationController* ac, Pose
         //     continue;
     
         // binary search
-        i32 beginIdx = 0;
-        i32 endIdx   = sampler->count - 1;
+        s32 beginIdx = 0;
+        s32 endIdx   = sampler->count - 1;
 
         while (beginIdx + 1 < endIdx)
         {
-            i32 mid = (beginIdx + endIdx) >> 1;
+            s32 mid = (beginIdx + endIdx) >> 1;
 
             if (realTime < sampler->input[mid])
                 endIdx = mid;
@@ -208,7 +208,7 @@ void AnimationController_SampleAnimationPose(const AnimationController* ac, Pose
 ////////            ANIMATED CHARACTER            ////////
 
 
-void AnimatedCharacter_Create(const SceneBundle* prefab, AnimatedCharacter* result, i32 lowerBodyStart, Matrix3x4f16* outMatrices)
+void AnimatedCharacter_Create(const SceneBundle* prefab, AnimatedCharacter* result, s32 lowerBodyStart, Matrix3x4f16* outMatrices)
 {
     result->lowerBodyIdxStart = lowerBodyStart;
     result->mState = AnimState_Update;
@@ -226,19 +226,19 @@ static inline void RotateNode(Pose* node, float xAngle, float yAngle)
     node->rotation = QMul(QMul(QFromXAngle(xAngle), QFromYAngle(yAngle)), node->rotation);
 }
 
-static void MergeAnims(Pose pose0[MaxBonePoses], const Pose pose1[MaxBonePoses], float animBlend, i32 numNodes)
+static void MergeAnims(Pose pose0[MaxBonePoses], const Pose pose1[MaxBonePoses], float animBlend, s32 numNodes)
 {
-    for (i32 i = 0; i < numNodes; i++)
+    for (s32 i = 0; i < numNodes; i++)
     {
         pose0[i].rotation    = QNLerp(pose0[i].rotation, pose1[i].rotation, animBlend); // slerp+norm?
         pose0[i].translation = VecLerp(pose0[i].translation, pose1[i].translation, animBlend);
     }
 }
 
-static void CopyPoses(Pose* destination, const Pose* pose, i32 begin, i32 numPoses)
+static void CopyPoses(Pose* destination, const Pose* pose, s32 begin, s32 numPoses)
 {
     numPoses += begin;
-    for (i32 i = begin; i < numPoses; i++)
+    for (s32 i = begin; i < numPoses; i++)
     {
         destination[i].translation = pose[i].translation;
         destination[i].rotation    = pose[i].rotation;
@@ -256,7 +256,7 @@ void AnimatedCharacter_UploadPoseUpperLower(AnimatedCharacter* ac, const Pose lo
     AnimationController_UploadBoneMatrices(&ac->controller);
 }
 
-bool AnimatedCharacter_Trigger(AnimatedCharacter* ac, i32 index, float transitionInTime, float transitionOutTime, eAnimTriggerOpt triggerOpt)
+bool AnimatedCharacter_Trigger(AnimatedCharacter* ac, s32 index, float transitionInTime, float transitionOutTime, eAnimTriggerOpt triggerOpt)
 {
     if (AnimatedCharacter_IsTrigerred(ac)) return false; // already trigerred
 
@@ -277,7 +277,7 @@ bool AnimatedCharacter_Trigger(AnimatedCharacter* ac, i32 index, float transitio
     return true;
 }
 
-bool AnimatedCharacter_TriggerTransition(AnimatedCharacter* ac, float deltaTime, i32 targetAnim)
+bool AnimatedCharacter_TriggerTransition(AnimatedCharacter* ac, float deltaTime, s32 targetAnim)
 {
     float newNorm   = Clamp01f32((ac->mTransitionTime - ac->mCurTransitionTime) / ac->mTransitionTime);
     float animDelta = Clamp01f32(deltaTime * (1.0f / MMAX(1.0f - newNorm, MATH_Epsilon)));
@@ -330,13 +330,13 @@ void AnimatedCharacter_EvaluateLocomotion(AnimatedCharacter* ac, float x, float 
         }
     }
 
-    i32 yIndex = AnimatedCharacter_GetAnim(ac, aMiddle, 0);
+    s32 yIndex = AnimatedCharacter_GetAnim(ac, aMiddle, 0);
     // if trigerred animation is not standing, we don't have to sample walking or running animations
     if (!wasTriggerState || (wasTriggerState && !!(ac->mTriggerOpt & eAnimTriggerOpt_Standing) && Absf32(y) > 0.001f))
     {
         // play and blend walking and running anims
         y = Absf32(y); 
-        i32 yi = (int)(y);
+        s32 yi = (int)(y);
         // sample y anim
         ASSERTR(yi <= 3, return); // must be between 1 and 4
         yIndex = AnimatedCharacter_GetAnim(ac, aMiddle, yi);

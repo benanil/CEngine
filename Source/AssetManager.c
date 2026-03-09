@@ -32,13 +32,15 @@
 #include "Extern/sinfl.h"
 #include "Extern/dynarray.h"
 
+extern Graphics gGFX;
+
 static inline u32 PackXY11Z10SnormToU32(v128f v)
 {
     v = VecClamp(v, VecSet1(-1.0f), VecSet1(1.0f));
     v = VecMul(v, VecSetR(1023.f, 1023.f, 511.f, 0.f));
     v = VecRound(v);
 
-    v128u i = VecCvtF32I32(v);
+    v128u i = VecF32ToI32(v);
     i = VeciAnd(i, VeciSetR(0x7FF, 0x7FF, 0x3FF, 0));
     i = VeciSll(i, VeciSetR(0, 11, 22, 0));
 
@@ -53,7 +55,7 @@ static inline u32 PackXY11Z10UnormToU32(v128f v)
     v = VecMul(v, VecSetR(2047.f, 2047.f, 1023.f, 0.f));
     v = VecRound(v);
 
-    v128u i = VecCvtF32I32(v);
+    v128u i = VecF32ToI32(v);
     i = VeciAnd(i, VeciSetR(0x7FF, 0x7FF, 0x3FF, 0));
     i = VeciSll(i, VeciSetR(0, 11, 22, 0));
 
@@ -67,7 +69,7 @@ static void PackTBNIntoQuaternion64(v128f normal, v128f tangent, u32* out)
     v128f binormal = Vec3Cross(tangent, normal);
     v128f quat = QuaternionFromMatrix3Vec(binormal, tangent, normal);
     quat = VecNorm(quat);
-    PackQuaternionS16Norm(quat, out);
+    PackQuaternionS16Norm(quat, (u64*)out);
 }
 
 
@@ -77,7 +79,7 @@ static void PackTBNIntoQuaternion64(v128f normal, v128f tangent, u32* out)
 
 #if !AX_GAME_BUILD
 
-static i32 void_ptr_compare(const void* a, const void* b)
+static s32 void_ptr_compare(const void* a, const void* b)
 {
     const void* const* ptr_a = (const void* const*)a;
     const void* const* ptr_b = (const void* const*)b;
@@ -105,7 +107,7 @@ static u16 GetFBXTexture(const ufbx_material* umaterial,
         
         if (texture)
         {
-            u16 textureIndex = aIndexOf(uscene->textures.data, texture, (i32)uscene->textures.count, sizeof(ufbx_texture*), void_ptr_compare);
+            u16 textureIndex = aIndexOf(uscene->textures.data, texture, (s32)uscene->textures.count, sizeof(ufbx_texture*), void_ptr_compare);
             ASSERT(textureIndex != -1); // we should find in textures
             return textureIndex;
         }
@@ -123,7 +125,7 @@ static char* GetNameFromFBX(ufbx_string ustr, FixedPow2Allocator* stringAllocato
 }
 #endif
 
-i32 LoadFBX(const u8* path, SceneBundle* fbxScene, f1 scale)
+s32 LoadFBX(const u8* path, SceneBundle* fbxScene, f1 scale)
 {
 #if !AX_GAME_BUILD
     ufbx_load_opts opts = { 0 };
@@ -162,7 +164,7 @@ i32 LoadFBX(const u8* path, SceneBundle* fbxScene, f1 scale)
     FixedPow2Allocator_Init(allocator, 2048);
     
     u64 totalIndices  = 0, totalVertices = 0;
-    for (i32 i = 0; i < fbxScene->numMeshes; i++)
+    for (s32 i = 0; i < fbxScene->numMeshes; i++)
     {
         ufbx_mesh* umesh = uscene->meshes.data[i];
         totalIndices  += umesh->num_triangles * 3;
@@ -179,7 +181,7 @@ i32 LoadFBX(const u8* path, SceneBundle* fbxScene, f1 scale)
 
     u32 vertexCursor = 0u, indexCursor = 0u;
     
-    for (i32 i = 0; i < fbxScene->numMeshes; i++)
+    for (s32 i = 0; i < fbxScene->numMeshes; i++)
     {
         AMesh* amesh = &fbxScene->meshes[i];
         ufbx_mesh* umesh = uscene->meshes.data[i];
@@ -188,18 +190,18 @@ i32 LoadFBX(const u8* path, SceneBundle* fbxScene, f1 scale)
         amesh->numPrimitives = 1;
         
         APrimitive* primitive = &amesh->primitives[0];
-        primitive->numIndices  = (i32)umesh->num_triangles * 3;
-        primitive->numVertices = (i32)umesh->num_vertices;
+        primitive->numIndices  = (s32)umesh->num_triangles * 3;
+        primitive->numVertices = (s32)umesh->num_vertices;
         primitive->indexType   = 5; //GraphicType_UnsignedInt;
         primitive->material    = 0; // todo
         primitive->indices     = currentIndex; 
         primitive->vertices    = currentVertex;
        
         primitive->attributes |= AAttribType_POSITION;
-        primitive->attributes |= ((i32)umesh->vertex_uv.exists << 1) & AAttribType_TEXCOORD_0;
-        primitive->attributes |= ((i32)umesh->vertex_normal.exists << 2) & AAttribType_NORMAL;
+        primitive->attributes |= ((s32)umesh->vertex_uv.exists << 1) & AAttribType_TEXCOORD_0;
+        primitive->attributes |= ((s32)umesh->vertex_normal.exists << 2) & AAttribType_NORMAL;
         
-        for (i32 j = 0; j < primitive->numVertices; j++)
+        for (s32 j = 0; j < primitive->numVertices; j++)
         {
             // SmallMemCpy(&currentVertex[j].position.x, &umesh->vertex_position.values.data[j], sizeof(float) * 3);
             if (umesh->vertex_uv.exists)
@@ -221,7 +223,7 @@ i32 LoadFBX(const u8* path, SceneBundle* fbxScene, f1 scale)
         u32* currIndices = (u32*)primitive->indices;
         u32 indices[64] = {0};
         
-        for (i32 j = 0; j < umesh->faces.count; j++)
+        for (s32 j = 0; j < umesh->faces.count; j++)
         {
             ufbx_face face = umesh->faces.data[j];
             u32 num_triangles = ufbx_triangulate_face(indices, ARRAY_SIZE(indices), umesh, face);
@@ -240,7 +242,7 @@ i32 LoadFBX(const u8* path, SceneBundle* fbxScene, f1 scale)
             primitive->attributes |= AAttribType_JOINTS | AAttribType_WEIGHTS;
             ufbx_skin_deformer* deformer = umesh->skin_deformers.data[0];
                 
-            for (i32 j = 0; j < deformer->vertices.count; j++)
+            for (s32 j = 0; j < deformer->vertices.count; j++)
             {
                 u32 weightBegin = deformer->vertices.data[j].weight_begin;
                 u32 weightResult = 0, shift = 0;
@@ -287,7 +289,7 @@ i32 LoadFBX(const u8* path, SceneBundle* fbxScene, f1 scale)
         skin->numJoints = numJoints;
         skin->skeleton = 0;
         skin->inverseBindMatrices = AllocateTLSFGlobal(numJoints * sizeof(Matrix4));
-        skin->joints = FixedPow2Allocator_AllocateUninitialized(allocator, (sizeof(i32) + 1) * numJoints);
+        skin->joints = FixedPow2Allocator_AllocateUninitialized(allocator, (sizeof(s32) + 1) * numJoints);
     
         Matrix4* matrices = (Matrix4*)skin->inverseBindMatrices;
         for (u32 j = 0u; j < numJoints; j++)
@@ -302,14 +304,14 @@ i32 LoadFBX(const u8* path, SceneBundle* fbxScene, f1 scale)
         
         for (u32 j = 0u; j < numJoints; j++)
         {
-            skin->joints[j] = aIndexOf(uscene->nodes.data, deformer->clusters.data[j]->bone_node, (i32)uscene->nodes.count, sizeof(void*), void_ptr_compare);
+            skin->joints[j] = aIndexOf(uscene->nodes.data, deformer->clusters.data[j]->bone_node, (s32)uscene->nodes.count, sizeof(void*), void_ptr_compare);
         }
     }
     
     u16 numImages = (u16)uscene->texture_files.count;
-    AImage* images = dynarray_create_prealloc(AImage, (i32)uscene->texture_files.count);
+    AImage* images = dynarray_create_prealloc(AImage, (s32)uscene->texture_files.count);
     
-    for (i32 i = 0; i < numImages; i++)
+    for (s32 i = 0; i < numImages; i++)
     {
         images[i].path = GetNameFromFBX(uscene->texture_files.data[i].filename, allocator);
     }
@@ -337,7 +339,7 @@ i32 LoadFBX(const u8* path, SceneBundle* fbxScene, f1 scale)
         {
             u8* buffer = FixedPow2Allocator_AllocateUninitialized(allocator, 512);
             MemsetZero(buffer, 512);
-            i32 pathLen = StringLengthSafe(path, 512);
+            s32 pathLen = StringLengthSafe(path, 512);
             SmallMemCpy(buffer, path, pathLen);
             
             u8* fbxPath = PathGoBackwards(buffer, pathLen, false);
@@ -378,7 +380,7 @@ i32 LoadFBX(const u8* path, SceneBundle* fbxScene, f1 scale)
         
         if (normalTexture)
         {
-            u16 normalIndex = aIndexOf(uscene->textures.data, normalTexture, (i32)uscene->textures.count, 8, void_ptr_compare);
+            u16 normalIndex = aIndexOf(uscene->textures.data, normalTexture, (s32)uscene->textures.count, 8, void_ptr_compare);
             ASSERT(normalIndex != -1); // we should find in textures
             amaterial->textures[0].index = normalIndex;
         }
@@ -440,18 +442,18 @@ i32 LoadFBX(const u8* path, SceneBundle* fbxScene, f1 scale)
         fbxScene->nodes = (ANode*)AllocZeroTLSFGlobal(numNodes * 4, sizeof(ANode));
     }
 
-    for (i32 i = 0; i < numNodes; i++)
+    for (s32 i = 0; i < numNodes; i++)
     {
         ANode* anode = &fbxScene->nodes[i];
         ufbx_node* unode = uscene->nodes.data[i];
         anode->type = unode->camera != NULL;
         anode->name = GetNameFromFBX(unode->name, allocator);
-        anode->numChildren = (i32)unode->children.count;
-        anode->children = FixedPow2Allocator_AllocateUninitialized(allocator, (sizeof(i32) + 1 ) * anode->numChildren);
+        anode->numChildren = (s32)unode->children.count;
+        anode->children = FixedPow2Allocator_AllocateUninitialized(allocator, (sizeof(s32) + 1 ) * anode->numChildren);
         
-        for (i32 j = 0; j < anode->numChildren; j++)
+        for (s32 j = 0; j < anode->numChildren; j++)
         {
-            anode->children[j] = aIndexOf(uscene->nodes.data, unode->children.data[j], (i32)uscene->nodes.count, 8, void_ptr_compare);
+            anode->children[j] = aIndexOf(uscene->nodes.data, unode->children.data[j], (s32)uscene->nodes.count, 8, void_ptr_compare);
             ASSERT(anode->children[j] != -1);
         }
         
@@ -461,12 +463,12 @@ i32 LoadFBX(const u8* path, SceneBundle* fbxScene, f1 scale)
         
         if (anode->type == 0)
         {
-            anode->index = aIndexOf(uscene->meshes.data, unode->mesh, (i32)uscene->meshes.count, 8, void_ptr_compare);
+            anode->index = aIndexOf(uscene->meshes.data, unode->mesh, (s32)uscene->meshes.count, 8, void_ptr_compare);
             if (unode->materials.count > 0)
-                fbxScene->meshes[anode->index].primitives[0].material = aIndexOf(uscene->materials.data, unode->materials.data[0], (i32)uscene->materials.count, 8, void_ptr_compare);
+                fbxScene->meshes[anode->index].primitives[0].material = aIndexOf(uscene->materials.data, unode->materials.data[0], (s32)uscene->materials.count, 8, void_ptr_compare);
         }
         else
-            anode->index = aIndexOf(uscene->cameras.data, unode->camera, (i32)uscene->cameras.count, 8, void_ptr_compare);
+            anode->index = aIndexOf(uscene->cameras.data, unode->camera, (s32)uscene->cameras.count, 8, void_ptr_compare);
     }
     
     fbxScene->numImages = dynarray_length(images);
@@ -487,23 +489,23 @@ static void JointsForPrimitive(APrimitive* primitive, ASkinedVertex* currVertex)
 {
     // convert whatever joi32 format to rgb8u
     u8* joints      = (u8*)primitive->vertexAttribs[5];
-    i32 jointSize   = GraphicsTypeToSize(primitive->jointType);
-    i32 jointOffset = Maxi32((i32)(primitive->jointStride - (jointSize * primitive->jointCount)), 0); // stride - sizeof(rgbau16)
+    s32 jointSize   = GraphicsTypeToSize(primitive->jointType);
+    s32 jointOffset = Maxi32((s32)(primitive->jointStride - (jointSize * primitive->jointCount)), 0); // stride - sizeof(rgbau16)
             
     if (joints == NULL) 
     {
         AX_LOG("no joints in skinned mesh renderer");
-        for (i32 j = 0; j < primitive->numVertices; j++)
+        for (s32 j = 0; j < primitive->numVertices; j++)
             currVertex[j].joints = 0;
         return;
     }
 
-    for (i32 j = 0; j < primitive->numVertices; j++)
+    for (s32 j = 0; j < primitive->numVertices; j++)
     {
         // Combine 4 indices into one integer to save space
         u32 packedJoints = 0u;
         // iterate over joi32 indices, most of the time 4 indices
-        for (i32 k = 0, shift = 0; k < primitive->jointCount; k++)
+        for (s32 k = 0, shift = 0; k < primitive->jointCount; k++)
         {
             u32 jointIndex = 0;
             SmallMemCpy(&jointIndex, joints, jointSize); 
@@ -522,20 +524,20 @@ static void WeightsForPrimitive(APrimitive* primitive, ASkinedVertex* currVertex
     const u8* weights = (const u8*)primitive->vertexAttribs[6];
             
     // size and offset in bytes
-    i32 weightSize   = GraphicsTypeToSize(primitive->weightType);
-    i32 weightOffset = Maxi32((i32)(primitive->weightStride - (weightSize * primitive->jointCount)), 0);
+    s32 weightSize   = GraphicsTypeToSize(primitive->weightType);
+    s32 weightOffset = Maxi32((s32)(primitive->weightStride - (weightSize * primitive->jointCount)), 0);
 
     if (weights == NULL)
     {
         AX_LOG("no joints in primitive");
-        for (i32 j = 0; j < primitive->numVertices; j++)
+        for (s32 j = 0; j < primitive->numVertices; j++)
             currVertex[j].weights = 1023;
         return;
     }
  
     if (weightSize == 4) // if float, pack it directly
     {
-        for (i32 j = 0; j < primitive->numVertices; j++)
+        for (s32 j = 0; j < primitive->numVertices; j++)
         {
             u32 packedWeights = PackXY11Z10UnormToU32(Vec3Load((f1*)weights));
             if (packedWeights == 0) packedWeights = 1023;
@@ -545,12 +547,12 @@ static void WeightsForPrimitive(APrimitive* primitive, ASkinedVertex* currVertex
     }
     else
     {
-        for (i32 j = 0; j < primitive->numVertices; j++)
+        for (s32 j = 0; j < primitive->numVertices; j++)
         {
             u32 packedWeights = 0;
             f1 packMax[3] = { 1023.0f, 1023.0f, 511.0f };
             // don't parse w, we will get it from xyz
-            for (i32 k = 0, shift = 0; k < primitive->jointCount && k < 3; k++, shift += 11)
+            for (s32 k = 0, shift = 0; k < primitive->jointCount && k < 3; k++, shift += 11)
             {
                 u32 jointWeight = 0u;
                 SmallMemCpy(&jointWeight, weights, weightSize);
@@ -571,17 +573,17 @@ static void IndicesForPrimitive(APrimitive* primitive, u32* currIndices, const u
     if (primitive->indices == NULL)
     {
         primitive->indices = currIndices;
-        i32* indices = (i32*)primitive->indices;
-        for (i32 i = 0; i < primitive->numIndices; i++)
+        s32* indices = (s32*)primitive->indices;
+        for (s32 i = 0; i < primitive->numIndices; i++)
             indices[i] = i;
         return;
     }
 
     const u8* beforeCopy = (const u8*)primitive->indices;
     primitive->indices = currIndices;
-    i32 indexSize = GraphicsTypeToSize(primitive->indexType);
+    s32 indexSize = GraphicsTypeToSize(primitive->indexType);
 
-    for (i32 i = 0; i < primitive->numIndices; i++)
+    for (s32 i = 0; i < primitive->numIndices; i++)
     {
         u32 index = 0;
         SmallMemCpy(&index, beforeCopy, indexSize);
@@ -600,12 +602,12 @@ static void VerticesForPrimitive(APrimitive* primitive, ASkinedVertex* currVerte
     f3* normals     = (f3*)primitive->vertexAttribs[2];
     v128f* tangents = (v128f*)primitive->vertexAttribs[3];
 
-    for (i32 v = 0; v < primitive->numVertices; v++)
+    for (s32 v = 0; v < primitive->numVertices; v++)
     {
         v128f tangent = tangents  ? tangents[v]  : VecZero();
-        f2 texCoord  = texCoords ? texCoords[v] : (f2){0.0f, 0.0f};
-        f3 normal    = normals   ? normals[v]   : (f3){0.5f, 0.5f, 0.0};
-        f3 position  = positions[v];
+        f2 texCoord   = texCoords ? texCoords[v] : (f2){0.0f, 0.0f};
+        f3 normal     = normals   ? normals[v]   : (f3){0.5f, 0.5f, 0.0};
+        f3 position   = positions[v];
 
         Float4ToHalf4((h1*)&currVertex[v].positionXY, &positions[v].x);
         currVertex[v].texCoord      = Float2ToHalf2(&texCoord.x);
@@ -619,7 +621,7 @@ static void BoundsForPrimitive(APrimitive* primitive)
     f3* positions = (f3*)primitive->vertexAttribs[0];
     v128f min = VecSet1(FLT_MAX);
     v128f max = VecNeg(min);
-    for (i32 i = 0; i < primitive->numVertices; i++)
+    for (s32 i = 0; i < primitive->numVertices; i++)
     {
         v128f v = VecLoad(&positions[i].x);
         min = VecMin(min, v);
@@ -627,8 +629,17 @@ static void BoundsForPrimitive(APrimitive* primitive)
     }
     VecStore(primitive->min, min);
     VecStore(primitive->max, max);
-    SDL_Log("min: %f, %f, %f ", primitive->min[0], primitive->min[1], primitive->min[2]);
-    SDL_Log("max: %f, %f, %f ", primitive->max[0], primitive->max[1], primitive->max[2]);
+    // SDL_Log("min: %f, %f, %f ", primitive->min[0], primitive->min[1], primitive->min[2]);
+    // SDL_Log("max: %f, %f, %f ", primitive->max[0], primitive->max[1], primitive->max[2]);
+}
+
+static void PrintMatrix(Matrix4 mtx)
+{
+    SDL_Log("mtx[3]: %f, %f, %f, %f", mtx.m[3][0], mtx.m[3][1], mtx.m[3][2], mtx.m[3][3]);
+    SDL_Log("mtx[2]: %f, %f, %f, %f", mtx.m[2][0], mtx.m[2][1], mtx.m[2][2], mtx.m[2][3]);
+    SDL_Log("mtx[1]: %f, %f, %f, %f", mtx.m[1][0], mtx.m[1][1], mtx.m[1][2], mtx.m[1][3]);
+    SDL_Log("mtx[0]: %f, %f, %f, %f", mtx.m[0][0], mtx.m[0][1], mtx.m[0][2], mtx.m[0][3]);
+    SDL_Log("--------------------------------------");
 }
 
 static void GetGLTFAnimations(SceneBundle* gltf)
@@ -636,18 +647,18 @@ static void GetGLTFAnimations(SceneBundle* gltf)
     if (gltf->skins == NULL)
         return;
 
-    i32 rootIndex = Prefab_FindAnimRootNodeIndex(gltf);
+    s32 rootIndex = Prefab_FindAnimRootNodeIndex(gltf);
     f1 rootScale = gltf->nodes[rootIndex].scale[1];
     v128f rootScaleMul = VecSetR(rootScale, rootScale, rootScale, 1.0f);
 
-    for (i32 s = 0; s < gltf->numSkins; s++)
+    for (s32 s = 0; s < gltf->numSkins; s++)
     {
         ASkin* skin = &gltf->skins[s];
         Matrix4* inverseBindMatrices = AllocateTLSFGlobal(skin->numJoints * sizeof(Matrix4));
         SmallMemCpy(inverseBindMatrices, skin->inverseBindMatrices, sizeof(Matrix4) * skin->numJoints);
         skin->inverseBindMatrices = (f1*)inverseBindMatrices;
         
-        for (i32 i = 0; i < skin->numJoints; i++)
+        for (s32 i = 0; i < skin->numJoints; i++)
         {
             Matrix4 inv = inverseBindMatrices[i];
             if (i != rootIndex)
@@ -658,28 +669,23 @@ static void GetGLTFAnimations(SceneBundle* gltf)
                 inv.r[3] = VecMul(inv.r[3], rootScaleMul); // VecMul(inv.r[3], VecSetR(0.01f, 0.01f, 0.01f, 1.0f));
                 inverseBindMatrices[i] = inv;
             }
-            SDL_Log("inv[3]: %f, %f, %f, %f", inv.m[3][0], inv.m[3][1], inv.m[3][2], inv.m[3][3]);
-            SDL_Log("inv[2]: %f, %f, %f, %f", inv.m[2][0], inv.m[2][1], inv.m[2][2], inv.m[2][3]);
-            SDL_Log("inv[1]: %f, %f, %f, %f", inv.m[1][0], inv.m[1][1], inv.m[1][2], inv.m[1][3]);
-            SDL_Log("inv[0]: %f, %f, %f, %f", inv.m[0][0], inv.m[0][1], inv.m[0][2], inv.m[0][3]);
-            SDL_Log("--------------------------------------");
         }
     }
 
     if (gltf->numAnimations <= 0)
         return;
     
-    i32 totalSamplerInput = 0;
-    for (i32 a = 0; a < gltf->numAnimations; a++)
-        for (i32 s = 0; s < gltf->animations[a].numSamplers; s++)
+    s32 totalSamplerInput = 0;
+    for (s32 a = 0; a < gltf->numAnimations; a++)
+        for (s32 s = 0; s < gltf->animations[a].numSamplers; s++)
             totalSamplerInput += gltf->animations[a].samplers[s].count;
         
     f1* currSampler = (f1*)AllocZeroTLSFGlobal(totalSamplerInput, 4);
     v128f* currOutput = (v128f*)AllocZeroTLSFGlobal(totalSamplerInput, sizeof(v128f));
 
-    for (i32 a = 0; a < gltf->numAnimations; a++)
+    for (s32 a = 0; a < gltf->numAnimations; a++)
     {
-        for (i32 s = 0; s < gltf->animations[a].numSamplers; s++)
+        for (s32 s = 0; s < gltf->animations[a].numSamplers; s++)
         {
             AAnimSampler* sampler = &gltf->animations[a].samplers[s];
             SmallMemCpy(currSampler, sampler->input, sampler->count * sizeof(f1));
@@ -701,7 +707,7 @@ static void GetGLTFAnimations(SceneBundle* gltf)
             if (sampler->outputType != AComponentType_FLOAT)
                 AX_WARN("unsupported sampler output type: %d", sampler->outputType);
 
-            for (i32 i = 0; i < sampler->count; i++)
+            for (s32 i = 0; i < sampler->count; i++)
             {
                 SmallMemCpy(currOutput + i, sampler->output + (i * sampler->numComponent), sizeof(f1) * sampler->numComponent);
                 currOutput[i] = VecLoad(sampler->output + (i * sampler->numComponent));
@@ -714,25 +720,31 @@ static void GetGLTFAnimations(SceneBundle* gltf)
     }
 }
 
-void CreateVerticesIndices(SceneBundle* gltf)
+s32 CreateVerticesIndices(SceneBundle* gltf)
 {
-    AMesh* meshes = gltf->meshes;
-    // pre allocate all vertices and indices 
-    gltf->allVertices = AllocAligned(sizeof(ASkinedVertex) * gltf->totalVertices, 4);
-    gltf->allIndices  = AllocAligned(gltf->totalIndices * sizeof(u32) + 16, 4); // 16->give little bit of space for memcpy
+    AMesh* meshes    = gltf->meshes;
+    u32 vertexCursor = gGFX.NumVertices;
+    u32 indexCursor  = gGFX.NumIndices;
+
+    if ((gGFX.NumVertices + gltf->totalVertices) > MAX_VERTEX || 
+        (gGFX.NumIndices  + gltf->totalIndices ) > MAX_INDEX)
+        return 0;
+
+    gGFX.NumVertices += gltf->totalVertices;
+    gGFX.NumIndices  += gltf->totalIndices;
+
+    gltf->allVertices = gGFX.VertexBuffer + vertexCursor;
+    gltf->allIndices  = gGFX.IndexBuffer  + indexCursor;
     
     ASkinedVertex* currVertex = (ASkinedVertex*)gltf->allVertices;
+    ASkin* skin = gltf->skins;
     u32* currIndices = (u32*)gltf->allIndices;
     
-    ASkin* skin = gltf->skins;
-    u32 vertexCursor = 0u;
-    u32 indexCursor  = 0u;
-    
-    for (i32 m = 0; m < gltf->numMeshes; ++m)
+    for (s32 m = 0; m < gltf->numMeshes; ++m)
     {
         // get number of vertex, getting first attribute count because all of the others are same
         AMesh mesh = meshes[m];
-        for (i32 p = 0; p < mesh.numPrimitives; p++)
+        for (s32 p = 0; p < mesh.numPrimitives; p++)
         {
             APrimitive* primitive = &mesh.primitives[p];  
             IndicesForPrimitive(primitive, currIndices, vertexCursor);
@@ -749,15 +761,15 @@ void CreateVerticesIndices(SceneBundle* gltf)
         }
     }
 
-    for (i32 i = 0; i < gltf->numNodes; i++)
+    for (s32 i = 0; i < gltf->numNodes; i++)
     {
         ANode inputNode = gltf->nodes[i];
         SDL_Log("node pos: %f, %f, %f, scale: %f", inputNode.translation[0], inputNode.translation[1], inputNode.translation[2], inputNode.scale[1]);
     }
 
     GetGLTFAnimations(gltf);
-
     FreeGLTFBuffers(gltf);
+    return 1;
 }
 
 
@@ -766,29 +778,29 @@ void SaveSceneImages(SceneBundle* scene, const u8* savePath)
     u8 command[2048];
     u8 outputDir[2048] = { 0 };
     
-    i32 pathLen = StringLengthSafe(savePath, sizeof(outputDir));
+    s32 pathLen = StringLengthSafe(savePath, sizeof(outputDir));
     
     // write texture description into .bdc file
     SmallMemCpy(outputDir, savePath, pathLen);
     ChangeExtension(outputDir, pathLen, "bdc");
     AFile file = AFileOpen(outputDir, AOpenFlag_WriteText);
     
-    i32 numDigits = IntToString(command, (i64)scene->numImages, 0);
+    s32 numDigits = IntToString(command, (s64)scene->numImages, 0);
     command[numDigits] = '\n';
     AFileWrite(command, numDigits + 1, file, 1); // num textures 
 
-    for (i32 i = 0; i < scene->numImages; i++)
+    for (s32 i = 0; i < scene->numImages; i++)
     {
         const u8* path = scene->images[i].path;
-        i32 len = (i32)StringLengthSafe(path, sizeof(outputDir)-2);
+        s32 len = (s32)StringLengthSafe(path, sizeof(outputDir)-2);
         SmallMemCpy(outputDir, path, len);
         outputDir[len] = '\n';
         AFileWrite(outputDir, len + 1, file, 1); // write original texture path
      
         PathGoBackwards(outputDir, pathLen, true);
         
-        i32 textureType = 0;
-        for (i32 j = 0; j < scene->numMaterials; j++)
+        s32 textureType = 0;
+        for (s32 j = 0; j < scene->numMaterials; j++)
         {
             AMaterial material = scene->materials[j];
             if (material.textures[0].index < scene->numTextures)
@@ -806,8 +818,8 @@ void SaveSceneImages(SceneBundle* scene, const u8* savePath)
             textureType |= (scene->textures[material.specularTexture.index].source == i) << 1;
         }
 
-        i32 isNormal = (textureType & 1) != 0;
-        i32 isMetallicRoughness = (textureType & 2) != 0;
+        s32 isNormal = (textureType & 1) != 0;
+        s32 isMetallicRoughness = (textureType & 2) != 0;
 
         // choose compression format
         const char* formatFlag = isMetallicRoughness ? "-etc1s" : "-uastc";
@@ -820,14 +832,14 @@ void SaveSceneImages(SceneBundle* scene, const u8* savePath)
                  outputDir);
 
         // compress using basis universal
-        i32 result = system(command);
+        s32 result = system(command);
         if (result != 0)
         {
             printf("Failed to compress: %s\n", path);
         }
 
         // write texture type as text
-        i32 numDigits = IntToString(outputDir, textureType, 0);
+        s32 numDigits = IntToString(outputDir, textureType, 0);
         outputDir[numDigits] = '\n';
         AFileWrite(outputDir, numDigits + 1, file, 1); // num textures 
     }
@@ -836,7 +848,7 @@ void SaveSceneImages(SceneBundle* scene, const u8* savePath)
 }
 
 // result: 1 fine, 2 some file is not exist, 3 not enough images for scene
-i32 LoadSceneImages(const u8* texturePath, Texture* textures, i32 numImages, SDL_GPUDevice* gpuDevice)
+s32 LoadSceneImages(const u8* texturePath, Texture* textures, s32 numImages, SDL_GPUDevice* gpuDevice)
 {
     if (numImages <= 0)
         return 1;
@@ -847,8 +859,8 @@ i32 LoadSceneImages(const u8* texturePath, Texture* textures, i32 numImages, SDL
 
     u8 buffer[2048];
 
-    i32 result = 1;
-    i32 fileNumImages = AFileReadI32(buffer, sizeof(buffer), file); // First line: numImages
+    s32 result = 1;
+    s32 fileNumImages = AFileReadI32(buffer, sizeof(buffer), file); // First line: numImages
     if (fileNumImages != numImages)
     {
         AX_WARN("basis file num images not equal to requested numImages. file: %d, requested: %d", fileNumImages, numImages);
@@ -856,9 +868,9 @@ i32 LoadSceneImages(const u8* texturePath, Texture* textures, i32 numImages, SDL
         result = 3;
     }
 
-    for (i32 i = 0; i < numImages; i++)
+    for (s32 i = 0; i < numImages; i++)
     {
-        i32 pathLen = AFileReadLine(buffer, sizeof(buffer), file);
+        s32 pathLen = AFileReadLine(buffer, sizeof(buffer), file);
         ChangeExtension(buffer, pathLen, "basis");
 
         u64 size = FileSize(buffer);
@@ -874,10 +886,10 @@ i32 LoadSceneImages(const u8* texturePath, Texture* textures, i32 numImages, SDL
         }
 
         void* basisData = ReadAllFile(buffer, mem, size);
-        i32 textureType = AFileReadI32(buffer, sizeof(buffer), file);
+        s32 textureType = AFileReadI32(buffer, sizeof(buffer), file);
 
-        i32 isNormal =  textureType & 1;
-        i32 isMetallicRoughness = (textureType >> 1) & 1;
+        s32 isNormal =  textureType & 1;
+        s32 isMetallicRoughness = (textureType >> 1) & 1;
 
         textures[i].handle = BasisuMakeImage(basisData, size, &textures[i].width, &textures[i].height, &textures[i].format,
                                              gpuDevice, (u8)isNormal, (u8)isMetallicRoughness);
@@ -888,16 +900,16 @@ i32 LoadSceneImages(const u8* texturePath, Texture* textures, i32 numImages, SDL
 
 void GenerateLOD_50_GLTF(SceneBundle* sceneBundle)
 {
-    for (i32 m = 0; m < sceneBundle->numMeshes; m++)
+    for (s32 m = 0; m < sceneBundle->numMeshes; m++)
     {
         AMesh mesh = sceneBundle->meshes[m];
 
-        for (i32 p = 0; p < mesh.numPrimitives; p++)
+        for (s32 p = 0; p < mesh.numPrimitives; p++)
         {
             APrimitive primitive = mesh.primitives[p];
         
             size_t numIndices = (size_t)primitive.numIndices;
-            int* indicesLod0 = ArenaAllocGlobal(numIndices * sizeof(i32));
+            int* indicesLod0 = ArenaAllocGlobal(numIndices * sizeof(s32));
         
             f1 resultError;
             size_t numSimplified = meshopt_simplifySloppy(indicesLod0, 
@@ -912,23 +924,23 @@ void GenerateLOD_50_GLTF(SceneBundle* sceneBundle)
                                                           &resultError);
             primitive.numIndicesLOD50 = numSimplified;
             MemCpy(primitive.lodIndices50, indicesLod0, numSimplified * sizeof(u32));
-            ArenaPopGlobal(numSimplified * sizeof(i32));
+            ArenaPopGlobal(numSimplified * sizeof(s32));
         }
     }
 }
 
 void GenerateLOD_75_GLTF(SceneBundle* sceneBundle)
 {
-    for (i32 m = 0; m < sceneBundle->numMeshes; m++)
+    for (s32 m = 0; m < sceneBundle->numMeshes; m++)
     {
         AMesh mesh = sceneBundle->meshes[m];
 
-        for (i32 p = 0; p < mesh.numPrimitives; p++)
+        for (s32 p = 0; p < mesh.numPrimitives; p++)
         {
             APrimitive primitive = mesh.primitives[p];
         
             size_t numIndices = (size_t)primitive.numIndices;
-            int* indicesLod0 = ArenaAllocGlobal(numIndices * sizeof(i32));
+            int* indicesLod0 = ArenaAllocGlobal(numIndices * sizeof(s32));
         
             f1 resultError;
             size_t numSimplified = meshopt_simplifySloppy(indicesLod0, 
@@ -943,14 +955,14 @@ void GenerateLOD_75_GLTF(SceneBundle* sceneBundle)
                                                           &resultError);
             primitive.numIndicesLOD75 = numSimplified;
             MemCpy(primitive.lodIndices75, indicesLod0, numSimplified * sizeof(u32));
-            ArenaPopGlobal(numSimplified * sizeof(i32));
+            ArenaPopGlobal(numSimplified * sizeof(s32));
         }
     }
 }
 
 void OptimizeMesh(const SceneBundle* gltf)
 {
-    int* remap = ArenaAllocGlobal(gltf->totalIndices * sizeof(i32));
+    int* remap = ArenaAllocGlobal(gltf->totalIndices * sizeof(s32));
     size_t totalVertices = meshopt_generateVertexRemap(remap,
                                                        (const u32 *)gltf->allIndices,
                                                        (size_t)gltf->totalIndices,
@@ -958,7 +970,7 @@ void OptimizeMesh(const SceneBundle* gltf)
                                                        (size_t)gltf->totalVertices,
                                                        sizeof(ASkinedVertex));
 
-    int* temp = ArenaAllocGlobal(gltf->totalIndices * sizeof(i32));
+    int* temp = ArenaAllocGlobal(gltf->totalIndices * sizeof(s32));
     meshopt_remapIndexBuffer(temp, gltf->allIndices, (size_t)gltf->totalIndices, remap);
 
     ASkinedVertex* vertexBufferNew = ArenaAllocGlobal((size_t)gltf->totalVertices * sizeof(ASkinedVertex));
@@ -969,13 +981,13 @@ void OptimizeMesh(const SceneBundle* gltf)
                               remap);
 
     MemSet(gltf->allVertices, 0, (size_t)gltf->totalVertices * sizeof(ASkinedVertex));
-    MemSet(gltf->allIndices , 0, (size_t)gltf->totalIndices * sizeof(i32));
+    MemSet(gltf->allIndices , 0, (size_t)gltf->totalIndices * sizeof(s32));
     
-    MemCpy(gltf->allIndices , temp, (size_t)gltf->totalIndices * sizeof(i32));
+    MemCpy(gltf->allIndices , temp, (size_t)gltf->totalIndices * sizeof(s32));
     MemCpy(gltf->allVertices, vertexBufferNew, (size_t)totalVertices * sizeof(ASkinedVertex));
     
-    ArenaPopGlobal((size_t)gltf->totalIndices * sizeof(i32)); // remap
-    ArenaPopGlobal((size_t)gltf->totalIndices * sizeof(i32)); // temp
+    ArenaPopGlobal((size_t)gltf->totalIndices * sizeof(s32)); // remap
+    ArenaPopGlobal((size_t)gltf->totalIndices * sizeof(s32)); // temp
     ArenaPopGlobal((size_t)gltf->totalVertices * sizeof(ASkinedVertex)); // vertexBufferNew
 
     meshopt_optimizeVertexCache(gltf->allIndices , gltf->allIndices, gltf->totalIndices, (size_t)totalVertices);
@@ -988,7 +1000,7 @@ void OptimizeMesh(const SceneBundle* gltf)
 /*//////////////////////////////////////////////////////////////////////////*/
 
 // ZSTD_CCtx* zstdCompressorCTX = NULL;
-const i32 ABMMeshVersion = 42;
+const s32 ABMMeshVersion = 42;
 
 u8 IsABMLastVersion(const u8* path)
 {
@@ -997,8 +1009,8 @@ u8 IsABMLastVersion(const u8* path)
     AFile file = AFileOpen(path, AOpenFlag_ReadBinary);
     if (AFileSize(file) < sizeof(u16) * 16) 
         return false;
-    i32 version = 0;
-    AFileRead(&version, sizeof(i32), file, 1);
+    s32 version = 0;
+    AFileRead(&version, sizeof(s32), file, 1);
     u64 hex;
     AFileRead(&hex, sizeof(u64), file, 1);
     AFileClose(file);
@@ -1017,18 +1029,18 @@ static void WriteAMaterialTexture(GLTFTexture texture, AFile file)
 
 static void WriteGLTFString(const char* str, AFile file)
 {
-    i32 nameLen = str ? StringLength(str) : 0;
-    AFileWrite(&nameLen, sizeof(i32), file, 1);
+    s32 nameLen = str ? StringLength(str) : 0;
+    AFileWrite(&nameLen, sizeof(s32), file, 1);
     if (str) AFileWrite(str, nameLen + 1, file, 1);
 }
 
-i32 SaveGLTFBinary(const SceneBundle* gltf, const u8* path)
+s32 SaveGLTFBinary(const SceneBundle* gltf, const u8* path)
 {
 #if !AX_GAME_BUILD
     AFile file = AFileOpen(path, AOpenFlag_WriteBinary);
     
-    i32 version = ABMMeshVersion;
-    AFileWrite(&version, sizeof(i32), file, 1);
+    s32 version = ABMMeshVersion;
+    AFileWrite(&version, sizeof(s32), file, 1);
     
     u64 reserved[4] = { 0xABFABF };
     AFileWrite(&reserved, sizeof(u64) * 4, file, 1);
@@ -1050,8 +1062,8 @@ i32 SaveGLTFBinary(const SceneBundle* gltf, const u8* path)
     
     OptimizeMesh(gltf);
 
-    AFileWrite(&gltf->totalIndices, sizeof(i32), file, 1);
-    AFileWrite(&gltf->totalVertices, sizeof(i32), file, 1);
+    AFileWrite(&gltf->totalIndices, sizeof(s32), file, 1);
+    AFileWrite(&gltf->totalVertices, sizeof(s32), file, 1);
     
     u64 vertexSize = isSkined ? sizeof(ASkinedVertex) : sizeof(AVertex);
     u64 allVertexSize = vertexSize * (u64)gltf->totalVertices;
@@ -1072,21 +1084,21 @@ i32 SaveGLTFBinary(const SceneBundle* gltf, const u8* path)
     // DeAllocateTLSFGlobal(compressedBuffer);
     // Note: anim morph targets aren't saved
 
-    for (i32 i = 0; i < gltf->numMeshes; i++)
+    for (s32 i = 0; i < gltf->numMeshes; i++)
     {
         AMesh mesh = gltf->meshes[i];
         WriteGLTFString(mesh.name, file);
         
-        AFileWrite(&mesh.numPrimitives  , sizeof(i32), file, 1);
+        AFileWrite(&mesh.numPrimitives  , sizeof(s32), file, 1);
         
-        for (i32 j = 0; j < mesh.numPrimitives; j++)
+        for (s32 j = 0; j < mesh.numPrimitives; j++)
         {
             APrimitive* primitive = &mesh.primitives[j];
-            AFileWrite(&primitive->attributes , sizeof(i32), file, 1);
-            AFileWrite(&primitive->indexType  , sizeof(i32), file, 1);
-            AFileWrite(&primitive->numIndices , sizeof(i32), file, 1);
-            AFileWrite(&primitive->numVertices, sizeof(i32), file, 1);
-            AFileWrite(&primitive->indexOffset, sizeof(i32), file, 1);
+            AFileWrite(&primitive->attributes , sizeof(s32), file, 1);
+            AFileWrite(&primitive->indexType  , sizeof(s32), file, 1);
+            AFileWrite(&primitive->numIndices , sizeof(s32), file, 1);
+            AFileWrite(&primitive->numVertices, sizeof(s32), file, 1);
+            AFileWrite(&primitive->indexOffset, sizeof(s32), file, 1);
             AFileWrite(&primitive->jointType  , sizeof(u16), file, 1);
             AFileWrite(&primitive->jointCount , sizeof(u16), file, 1);
             AFileWrite(&primitive->jointStride, sizeof(u16), file, 1);
@@ -1094,26 +1106,26 @@ i32 SaveGLTFBinary(const SceneBundle* gltf, const u8* path)
         }
     }
     
-    for (i32 i = 0; i < gltf->numNodes; i++)
+    for (s32 i = 0; i < gltf->numNodes; i++)
     {
         ANode* node = &gltf->nodes[i];
-        AFileWrite(&node->type       , sizeof(i32), file, 1);
-        AFileWrite(&node->index      , sizeof(i32), file, 1);
+        AFileWrite(&node->type       , sizeof(s32), file, 1);
+        AFileWrite(&node->index      , sizeof(s32), file, 1);
         AFileWrite(&node->translation, sizeof(float) * 3, file, 1);
         AFileWrite(&node->rotation   , sizeof(float) * 4, file, 1);
         AFileWrite(&node->scale      , sizeof(float) * 3, file, 1);
-        AFileWrite(&node->numChildren, sizeof(i32), file, 1);
+        AFileWrite(&node->numChildren, sizeof(s32), file, 1);
         
         if (node->numChildren)
-            AFileWrite(node->children, sizeof(i32) * node->numChildren, file, 1);
+            AFileWrite(node->children, sizeof(s32) * node->numChildren, file, 1);
         
         WriteGLTFString(node->name, file);
     }
     
-    for (i32 i = 0; i < gltf->numMaterials; i++)
+    for (s32 i = 0; i < gltf->numMaterials; i++)
     {
         AMaterial* material = &gltf->materials[i];
-        for (i32 j = 0; j < 3; j++)
+        for (s32 j = 0; j < 3; j++)
         {
             WriteAMaterialTexture(material->textures[j], file);
         }
@@ -1135,86 +1147,86 @@ i32 SaveGLTFBinary(const SceneBundle* gltf, const u8* path)
         AFileWrite(&data, sizeof(u64), file, 1);
         
         AFileWrite(&material->alphaCutoff, sizeof(float), file, 1);
-        AFileWrite(&material->alphaMode, sizeof(i32), file, 1);
+        AFileWrite(&material->alphaMode, sizeof(s32), file, 1);
         
         WriteGLTFString(material->name, file);
     }
     
-    for (i32 i = 0; i < gltf->numTextures; i++)
+    for (s32 i = 0; i < gltf->numTextures; i++)
     {
         ATexture texture = gltf->textures[i];
-        AFileWrite(&texture.sampler, sizeof(i32), file, 1);
-        AFileWrite(&texture.source, sizeof(i32), file, 1);
+        AFileWrite(&texture.sampler, sizeof(s32), file, 1);
+        AFileWrite(&texture.source, sizeof(s32), file, 1);
         WriteGLTFString(texture.name , file);
     }
     
-    for (i32 i = 0; i < gltf->numImages; i++)
+    for (s32 i = 0; i < gltf->numImages; i++)
     {
         WriteGLTFString(gltf->images[i].path, file);
     }
     
-    for (i32 i = 0; i < gltf->numSamplers; i++)
+    for (s32 i = 0; i < gltf->numSamplers; i++)
     {
     	AFileWrite(&gltf->samplers[i], sizeof(ASampler), file, 1);
     }
     
-    for (i32 i = 0; i < gltf->numCameras; i++)
+    for (s32 i = 0; i < gltf->numCameras; i++)
     {
         ACamera camera = gltf->cameras[i];
         AFileWrite(&camera.aspectRatio, sizeof(float), file, 1);
         AFileWrite(&camera.yFov, sizeof(float), file, 1);
         AFileWrite(&camera.zFar, sizeof(float), file, 1);
         AFileWrite(&camera.zNear, sizeof(float), file, 1);
-        AFileWrite(&camera.type, sizeof(i32), file, 1);
+        AFileWrite(&camera.type, sizeof(s32), file, 1);
         WriteGLTFString(camera.name , file);
     }
-    for (i32 i = 0; i < gltf->numScenes; i++)
+    for (s32 i = 0; i < gltf->numScenes; i++)
     {
         AScene scene = gltf->scenes[i];
         WriteGLTFString(scene.name, file);
-        AFileWrite(&scene.numNodes, sizeof(i32), file, 1);
-        AFileWrite(scene.nodes, sizeof(i32) * scene.numNodes, file, 1);
+        AFileWrite(&scene.numNodes, sizeof(s32), file, 1);
+        AFileWrite(scene.nodes, sizeof(s32) * scene.numNodes, file, 1);
     }
     
-    for (i32 i = 0; i < gltf->numSkins; i++)
+    for (s32 i = 0; i < gltf->numSkins; i++)
     {
         ASkin skin = gltf->skins[i];
-        AFileWrite(&skin.skeleton, sizeof(i32), file, 1);
-        AFileWrite(&skin.numJoints, sizeof(i32), file, 1);
+        AFileWrite(&skin.skeleton, sizeof(s32), file, 1);
+        AFileWrite(&skin.numJoints, sizeof(s32), file, 1);
         AFileWrite(skin.inverseBindMatrices, sizeof(Matrix4) * skin.numJoints, file, 1);
-        AFileWrite(skin.joints, sizeof(i32) * skin.numJoints, file, 1);
+        AFileWrite(skin.joints, sizeof(s32) * skin.numJoints, file, 1);
     }
     
-    i32 totalAnimSamplerInput = 0;
+    s32 totalAnimSamplerInput = 0;
     if (gltf->numAnimations > 0)
     {
-        for (i32 a = 0; a < gltf->numAnimations; a++)
-            for (i32 s = 0; s < gltf->animations[a].numSamplers; s++)
+        for (s32 a = 0; a < gltf->numAnimations; a++)
+            for (s32 s = 0; s < gltf->animations[a].numSamplers; s++)
                 totalAnimSamplerInput += gltf->animations[a].samplers[s].count;
     }
 
-    AFileWrite(&totalAnimSamplerInput, sizeof(i32), file, 1);
+    AFileWrite(&totalAnimSamplerInput, sizeof(s32), file, 1);
     if (totalAnimSamplerInput > 0) {
         // all sampler input and outputs are allocated in one buffer each. at the end of the CreateVerticesIndicesSkined function
         AFileWrite(gltf->animations[0].samplers[0].input, sizeof(float) * totalAnimSamplerInput, file, 1);
         AFileWrite(gltf->animations[0].samplers[0].output, sizeof(v128f) * totalAnimSamplerInput, file, 1);
     }
 
-    for (i32 i = 0; i < gltf->numAnimations; i++)
+    for (s32 i = 0; i < gltf->numAnimations; i++)
     {
         AAnimation animation = gltf->animations[i];
-        AFileWrite(&animation.numSamplers, sizeof(i32), file, 1);
-        AFileWrite(&animation.numChannels, sizeof(i32), file, 1);
+        AFileWrite(&animation.numSamplers, sizeof(s32), file, 1);
+        AFileWrite(&animation.numChannels, sizeof(s32), file, 1);
         AFileWrite(&animation.duration, sizeof(float), file, 1);
         AFileWrite(&animation.speed, sizeof(float), file, 1);
         WriteGLTFString(animation.name, file);
 
         AFileWrite(animation.channels, sizeof(AAnimChannel) * animation.numChannels, file, 1);
         
-        for (i32 j = 0; j < animation.numSamplers; j++)
+        for (s32 j = 0; j < animation.numSamplers; j++)
         {
-            AFileWrite(&animation.samplers[j].count, sizeof(i32), file, 1);
-            AFileWrite(&animation.samplers[j].numComponent, sizeof(i32), file, 1);
+            AFileWrite(&animation.samplers[j].count, sizeof(s32), file, 1);
+            AFileWrite(&animation.samplers[j].numComponent, sizeof(s32), file, 1);
             AFileWrite(&animation.samplers[j].interpolation, sizeof(float), file, 1);
         }
     }
@@ -1242,8 +1254,8 @@ void ReadAMaterialTexture(GLTFTexture* texture, AFile file)
 
 void ReadGLTFString(char** str, AFile file, FixedPow2Allocator* stringAllocator)
 {
-    i32 nameLen = 0;
-    AFileRead(&nameLen, sizeof(i32), file, 1);
+    s32 nameLen = 0;
+    AFileRead(&nameLen, sizeof(s32), file, 1);
     if (nameLen)    
     {
         *str = FixedPow2Allocator_AllocateUninitialized(stringAllocator, nameLen + 1);
@@ -1251,7 +1263,7 @@ void ReadGLTFString(char** str, AFile file, FixedPow2Allocator* stringAllocator)
         (*str)[nameLen + 1] = 0;
     }}
 
-i32 LoadSceneBundleBinary(const u8* path, SceneBundle* gltf)
+s32 LoadSceneBundleBinary(const u8* path, SceneBundle* gltf)
 {
     AFile file = AFileOpen(path, AOpenFlag_ReadBinary);
     if (!AFileExist(file))
@@ -1263,8 +1275,8 @@ i32 LoadSceneBundleBinary(const u8* path, SceneBundle* gltf)
     FixedPow2Allocator* allocator = AllocateTLSFGlobal(sizeof(FixedPow2Allocator));
     FixedPow2Allocator_Init(allocator, 1024);
 
-    i32 version = ABMMeshVersion;
-    AFileRead(&version, sizeof(i32), file, 1);
+    s32 version = ABMMeshVersion;
+    AFileRead(&version, sizeof(s32), file, 1);
     ASSERT(version == ABMMeshVersion);
     
     u64 reserved[4];
@@ -1285,8 +1297,8 @@ i32 LoadSceneBundleBinary(const u8* path, SceneBundle* gltf)
     u16 isSkined;
     AFileRead(&isSkined, sizeof(u16), file, 1);
     
-    AFileRead(&gltf->totalIndices, sizeof(i32), file, 1);
-    AFileRead(&gltf->totalVertices, sizeof(i32), file, 1);
+    AFileRead(&gltf->totalIndices, sizeof(s32), file, 1);
+    AFileRead(&gltf->totalVertices, sizeof(s32), file, 1);
     
     size_t vertexSize = sizeof(ASkinedVertex);
     size_t vertexAlignment = 4;
@@ -1316,23 +1328,23 @@ i32 LoadSceneBundleBinary(const u8* path, SceneBundle* gltf)
     char* currIndices = (char*)gltf->allIndices;
     
     if (gltf->numMeshes > 0) gltf->meshes = AllocZeroTLSFGlobal(gltf->numMeshes, sizeof(AMesh));
-    for (i32 i = 0; i < gltf->numMeshes; i++)
+    for (s32 i = 0; i < gltf->numMeshes; i++)
     {
         AMesh* mesh = &gltf->meshes[i];
         ReadGLTFString(&mesh->name, file, allocator);
         
-        AFileRead(&mesh->numPrimitives, sizeof(i32), file, 1);
+        AFileRead(&mesh->numPrimitives, sizeof(s32), file, 1);
         
         mesh->primitives = dynarray_create_prealloc(APrimitive, mesh->numPrimitives);
         
-        for (i32 j = 0; j < mesh->numPrimitives; j++)
+        for (s32 j = 0; j < mesh->numPrimitives; j++)
         {
             APrimitive* primitive = &mesh->primitives[j];
-            AFileRead(&primitive->attributes , sizeof(i32), file, 1);
-            AFileRead(&primitive->indexType  , sizeof(i32), file, 1);
-            AFileRead(&primitive->numIndices , sizeof(i32), file, 1);
-            AFileRead(&primitive->numVertices, sizeof(i32), file, 1);
-            AFileRead(&primitive->indexOffset, sizeof(i32), file, 1);
+            AFileRead(&primitive->attributes , sizeof(s32), file, 1);
+            AFileRead(&primitive->indexType  , sizeof(s32), file, 1);
+            AFileRead(&primitive->numIndices , sizeof(s32), file, 1);
+            AFileRead(&primitive->numVertices, sizeof(s32), file, 1);
+            AFileRead(&primitive->indexOffset, sizeof(s32), file, 1);
             AFileRead(&primitive->jointType, sizeof(u16), file, 1);
             AFileRead(&primitive->jointCount, sizeof(u16), file, 1);
             AFileRead(&primitive->jointStride, sizeof(u16), file, 1);
@@ -1351,30 +1363,30 @@ i32 LoadSceneBundleBinary(const u8* path, SceneBundle* gltf)
     
     if (gltf->numNodes > 0) gltf->nodes = AllocZeroTLSFGlobal(gltf->numNodes, sizeof(ANode));
     
-    for (i32 i = 0; i < gltf->numNodes; i++)
+    for (s32 i = 0; i < gltf->numNodes; i++)
     {
         ANode* node = &gltf->nodes[i];
-        AFileRead(&node->type       , sizeof(i32), file, 1);
-        AFileRead(&node->index      , sizeof(i32), file, 1);
+        AFileRead(&node->type       , sizeof(s32), file, 1);
+        AFileRead(&node->index      , sizeof(s32), file, 1);
         AFileRead(&node->translation, sizeof(float) * 3, file, 1);
         AFileRead(&node->rotation   , sizeof(float) * 4, file, 1);
         AFileRead(&node->scale      , sizeof(float) * 3, file, 1);
-        AFileRead(&node->numChildren, sizeof(i32), file, 1);
+        AFileRead(&node->numChildren, sizeof(s32), file, 1);
         
         if (node->numChildren)
         {
-            node->children = FixedPow2Allocator_AllocateUninitialized(allocator, sizeof(i32) * (node->numChildren+1));
-            AFileRead(node->children, sizeof(i32) * node->numChildren, file, 1);
+            node->children = FixedPow2Allocator_AllocateUninitialized(allocator, sizeof(s32) * (node->numChildren+1));
+            AFileRead(node->children, sizeof(s32) * node->numChildren, file, 1);
         }
         
         ReadGLTFString(&node->name, file, allocator);
     }
     
     if (gltf->numMaterials > 0) gltf->materials = AllocZeroTLSFGlobal(gltf->numMaterials, sizeof(AMaterial));
-    for (i32 i = 0; i < gltf->numMaterials; i++)
+    for (s32 i = 0; i < gltf->numMaterials; i++)
     {
         AMaterial* material = &gltf->materials[i];
-        for (i32 j = 0; j < 3; j++)
+        for (s32 j = 0; j < 3; j++)
         {
             ReadAMaterialTexture(&material->textures[j], file);
         }
@@ -1400,67 +1412,67 @@ i32 LoadSceneBundleBinary(const u8* path, SceneBundle* gltf)
         material->doubleSided     = data & 0x1;
         
         AFileRead(&material->alphaCutoff, sizeof(float), file, 1);
-        AFileRead(&material->alphaMode, sizeof(i32), file, 1);
+        AFileRead(&material->alphaMode, sizeof(s32), file, 1);
         
         ReadGLTFString(&material->name, file, allocator);
     }
     
     if (gltf->numTextures > 0) gltf->textures = (ATexture*)AllocZeroTLSFGlobal(gltf->numTextures, sizeof(ATexture));
-    for (i32 i = 0; i < gltf->numTextures; i++)
+    for (s32 i = 0; i < gltf->numTextures; i++)
     {
         ATexture* texture = &gltf->textures[i];
-        AFileRead(&texture->sampler, sizeof(i32), file, 1);
-        AFileRead(&texture->source, sizeof(i32), file, 1);
+        AFileRead(&texture->sampler, sizeof(s32), file, 1);
+        AFileRead(&texture->source, sizeof(s32), file, 1);
         ReadGLTFString(&texture->name, file, allocator);
     }
     if (gltf->numImages > 0) gltf->images = (AImage*)AllocZeroTLSFGlobal(gltf->numImages, sizeof(AImage));
-    for (i32 i = 0; i < gltf->numImages; i++)
+    for (s32 i = 0; i < gltf->numImages; i++)
     {
         ReadGLTFString(&gltf->images[i].path, file, allocator);
     }
     
     if (gltf->numSamplers > 0) gltf->samplers = (ASampler*)AllocZeroTLSFGlobal(gltf->numSamplers, sizeof(ASampler));
-    for (i32 i = 0; i < gltf->numSamplers; i++)
+    for (s32 i = 0; i < gltf->numSamplers; i++)
     {
         AFileRead(&gltf->samplers[i], sizeof(ASampler), file, 1);
     }
     
     if (gltf->numCameras > 0) gltf->cameras = (ACamera*)AllocZeroTLSFGlobal(gltf->numCameras, sizeof(ACamera));
-    for (i32 i = 0; i < gltf->numCameras; i++)
+    for (s32 i = 0; i < gltf->numCameras; i++)
     {
         ACamera* camera = &gltf->cameras[i];
         AFileRead(&camera->aspectRatio, sizeof(float), file, 1);
         AFileRead(&camera->yFov, sizeof(float), file, 1);
         AFileRead(&camera->zFar, sizeof(float), file, 1);
         AFileRead(&camera->zNear, sizeof(float), file, 1);
-        AFileRead(&camera->type, sizeof(i32), file, 1);
+        AFileRead(&camera->type, sizeof(s32), file, 1);
         ReadGLTFString(&camera->name, file, allocator);
     }
     
     if (gltf->numScenes > 0) gltf->scenes = (AScene*)AllocZeroTLSFGlobal(gltf->numScenes, sizeof(AScene));
-    for (i32 i = 0; i < gltf->numScenes; i++)
+    for (s32 i = 0; i < gltf->numScenes; i++)
     {
         AScene* scene = &gltf->scenes[i];
         ReadGLTFString(&scene->name, file, allocator);
-        AFileRead(&scene->numNodes, sizeof(i32), file, 1);
-        scene->nodes = FixedPow2Allocator_AllocateUninitialized(allocator, scene->numNodes * sizeof(i32));
-        AFileRead(scene->nodes, sizeof(i32) * scene->numNodes, file, 1);
+        AFileRead(&scene->numNodes, sizeof(s32), file, 1);
+        scene->nodes = FixedPow2Allocator_AllocateUninitialized(allocator, scene->numNodes * sizeof(s32));
+        AFileRead(scene->nodes, sizeof(s32) * scene->numNodes, file, 1);
     }
 
     if (gltf->numSkins > 0) gltf->skins = (ASkin*)AllocZeroTLSFGlobal(gltf->numSkins, sizeof(ASkin));
-    for (i32 i = 0; i < gltf->numSkins; i++)
+    for (s32 i = 0; i < gltf->numSkins; i++)
     {
         ASkin* skin = &gltf->skins[i];
-        AFileRead(&skin->skeleton, sizeof(i32), file, 1);
-        AFileRead(&skin->numJoints, sizeof(i32), file, 1);
+        AFileRead(&skin->skeleton, sizeof(s32), file, 1);
+        AFileRead(&skin->numJoints, sizeof(s32), file, 1);
         skin->inverseBindMatrices = (f1*)AllocateTLSFGlobal(sizeof(Matrix4) * skin->numJoints);
-        skin->joints = FixedPow2Allocator_AllocateUninitialized(allocator, skin->numJoints * sizeof(i32));
+        skin->joints = FixedPow2Allocator_AllocateUninitialized(allocator, skin->numJoints * sizeof(s32));
         AFileRead(skin->inverseBindMatrices, sizeof(Matrix4) * skin->numJoints, file, 1);
-        AFileRead(skin->joints, sizeof(i32) * skin->numJoints, file, 1);
+        AFileRead(skin->joints, sizeof(s32) * skin->numJoints, file, 1);
     }
 
-    i32 totalAnimSamplerInput = 0;
-    AFileRead(&totalAnimSamplerInput, sizeof(i32), file, 1);
+    s32 totalAnimSamplerInput = 0;
+    AFileRead(&totalAnimSamplerInput, sizeof(s32), file, 1);
     f1* currSamplerInput = NULL;
     v128f* currSamplerOutput = NULL;
 
@@ -1472,12 +1484,12 @@ i32 LoadSceneBundleBinary(const u8* path, SceneBundle* gltf)
     }
 
     if (gltf->numAnimations) gltf->animations = AllocZeroTLSFGlobal(gltf->numAnimations, sizeof(AAnimation));
-    for (i32 i = 0; i < gltf->numAnimations; i++)
+    for (s32 i = 0; i < gltf->numAnimations; i++)
     {
         AAnimation* animation = &gltf->animations[i];
 
-        AFileRead(&animation->numSamplers, sizeof(i32), file, 1);
-        AFileRead(&animation->numChannels, sizeof(i32), file, 1);
+        AFileRead(&animation->numSamplers, sizeof(s32), file, 1);
+        AFileRead(&animation->numChannels, sizeof(s32), file, 1);
         AFileRead(&animation->duration, sizeof(float), file, 1);
         AFileRead(&animation->speed, sizeof(float), file, 1);
         ReadGLTFString(&animation->name, file, allocator);
@@ -1485,12 +1497,12 @@ i32 LoadSceneBundleBinary(const u8* path, SceneBundle* gltf)
         AFileRead(animation->channels, sizeof(AAnimChannel) * animation->numChannels, file, 1);
         animation->samplers = AllocateTLSFGlobal(animation->numSamplers * sizeof(AAnimSampler));
 
-        for (i32 j = 0; j < animation->numSamplers; j++)
+        for (s32 j = 0; j < animation->numSamplers; j++)
         {
-            AFileRead(&animation->samplers[j].count, sizeof(i32), file, 1);
-            AFileRead(&animation->samplers[j].numComponent, sizeof(i32), file, 1);
+            AFileRead(&animation->samplers[j].count, sizeof(s32), file, 1);
+            AFileRead(&animation->samplers[j].numComponent, sizeof(s32), file, 1);
             AFileRead(&animation->samplers[j].interpolation, sizeof(float), file, 1);
-            i32 count = animation->samplers[j].count;
+            s32 count = animation->samplers[j].count;
             animation->samplers[j].input = currSamplerInput;
             animation->samplers[j].output = (f1*)currSamplerOutput;
             currSamplerInput += count;

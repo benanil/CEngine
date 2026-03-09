@@ -75,7 +75,7 @@ purefn f1 RepeatMinMaxF32(u32 next, f1 min, f1 max) {
     return min + (NextFloat01(next) * Absf32(min - max));
 }
 	
-purefn d1 NextDouble01(u64 next) 
+purefn f1 NextDouble01(u64 next) 
 {
     // // https://docs.oracle.com/javase/8/docs/api/java/util/Random.html
     // const int mask = (1 << 27) - 1;
@@ -86,13 +86,13 @@ purefn d1 NextDouble01(u64 next)
     return (next & 0x001FFFFFFFFFFFFF) / 9007199254740992.0;
 }
 	
-purefn d1 RepatMinMaxF64(u64 next, d1 min, d1 max) {
+purefn f1 RepatMinMaxF64(u64 next, f1 min, f1 max) {
     return min + (NextDouble01(next) * Absf32(min - max));
 }
 	
 purefn u32 RepeatMinMaxU32(u32 next, u32 min, u32 max)   { return min + (next % (max - min)); }
 purefn u64 RepeatMinMaxU64(u64 next, u64 min, u64 max)   { return min + (next % (max - min)); }
-purefn i32 RepeatMinMaxI32(i32 next, i32 _min, i32 _max) { return _min + (next % (_max - _min)); }
+purefn s32 RepeatMinMaxI32(s32 next, s32 _min, s32 _max) { return _min + (next % (_max - _min)); }
 
 // https://www.pcg-random.org/index.html
 // we can also add global state in a cpp file

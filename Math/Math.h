@@ -63,13 +63,6 @@ purefn f1 VCALL Max3(v128f ab)
 
 #define VecClamp01(v) VecClamp(v, VecZero(), VecOne())
 
-purefn v128f VCALL VecClamp(v128f v, v128f vmin, v128f vmax)
-{
-    v = VecSelect(v, vmax, VecCmpGt(v, vmax));
-    v = VecSelect(v, vmin, VecCmpLt(v, vmin));
-    return v;
-}
-
 static forceinline void VCALL Vec3Store(float* f, v128f v)
 {
     f[0] = VecGetX(v);
@@ -77,18 +70,40 @@ static forceinline void VCALL Vec3Store(float* f, v128f v)
     f[2] = VecGetZ(v);
 }
 
+purefn v128f Vec3Reflect(v128f in, v128f normal) 
+{
+    return VecSub(in, VecMul(normal, VecMulf(VecDot(normal, in), 2.0f)));
+}
+
+// Valid input range -1..1 output is -pi..pi
+purefn v128f ACosV(v128f x)   
+{
+    // Lagarde 2014, "Inverse trigonometric functions GPU optimization for AMD GCN architecture"
+    // This is the approximation of degree 1, with a max absolute error of 9.0x10^-3
+    v128f y = VecFabs(x);
+    v128f p = VecFmadd(VecSet1(-0.1565827f), y, VecSet1(1.570796f));
+    p = VecMul(p, VecSqrt(VecSub(VecOne(), y)));
+    return VecSelect(p, VecSub(VecSet1(MATH_PI), p),VecCmpGe(x, VecZero()));
+}
+
+purefn v128f Vec3Proj(v128f v, v128f n)
+{
+    float num = Vec3DotfV(n, n);
+    if (num < MATH_Epsilon) return v;
+    float num2 = Vec3DotfV(v, n);
+    return VecSub(v, VecMulf(n, num2 / num));
+}
+
+purefn f1 Vec3Angle(v128f a, v128f b) {
+    v128f dot = VecMul(Vec3DotV(a, b), VecRSqrt(VecMul(Vec3DotV(a, a), Vec3DotV(b, b))));
+    dot = VecClamp(dot, VecSet1(-1.0f), VecSet1(1.0f));
+    return VecGetX(ACosV(dot));
+}
+
 purefn v128f VCALL VecHSum(v128f v) {
     v = VecHadd(v, v); // high half -> low half
     return VecHadd(v, v);
 }
-
-#if defined(AX_ARM)
-    #define VecFabs(x) vabsq_f32(x)
-#elif defined(AX_SUPPORT_SSE)
-    #define VecFabs(x) VecAnd(x, VecFromInt1(0x7fffffff))
-#else
-    #define VecFabs(v) MakeVec4(Abs(v.x), Abs(v.y), Abs(v.z), Abs(v.w))
-#endif
 
 purefn v128f VCALL VecCopySign(v128f x, v128f y)
 {
@@ -115,7 +130,7 @@ purefn v128f VCALL VecFract(v128f x)
 
 //------------------------------------------------------------------------------
 
-static inline v128f VecModAngles(v128f angles)
+purefn v128f VCALL VecModAngles(v128f angles)
 {
     v128f twoPi       = VecSet1(2.0f * MATH_PI);
     v128f recipTwoPi  = VecSet1(1.0f / (2.0f * MATH_PI));
@@ -293,20 +308,20 @@ purefn u8 AlmostEqualf(f1 x, f1 y) {
 
 purefn f1 Signf(f1 x) {
     f1 one = 1.0f;
-    i32 res = BitCast(i32, one);
-    i32 r1 = BitCast(i32, x);
+    s32 res = BitCast(s32, one);
+    s32 r1 = BitCast(s32, x);
     res |= r1 & 0x80000000;
     return BitCast(f1, res);
 } 
 
-purefn i32 Sign32(i32 x) {
+purefn s32 Sign32(s32 x) {
     return x < 0 ? -1 : 1; // equal to above f1 version
 } 
 
 purefn f1 CopySignf(f1 x, f1 y) {
-    i32 ix = BitCast(i32, x) & 0x7fffffff;
-    i32 iy = BitCast(i32, y) & 0x80000000;
-    i32 ir = ix | iy;
+    s32 ix = BitCast(s32, x) & 0x7fffffff;
+    s32 iy = BitCast(s32, y) & 0x80000000;
+    s32 ir = ix | iy;
     return BitCast(f1, ir);
 }
 
@@ -317,64 +332,64 @@ purefn u8 IsNanf(f1 f) {
     return (exponent == 0xFF) && (fraction != 0);
 }
 
-purefn i64 Int64MulDiv(i64 value, i64 numer, i64 denom) {
-    i64 q = value / denom;
-    i64 r = value % denom;
+purefn s64 Int64MulDiv(s64 value, s64 numer, s64 denom) {
+    s64 q = value / denom;
+    s64 r = value % denom;
     return q * numer + r * numer / denom;
 }
 
 purefn f1 FModf(f1 x, f1 y) 
 {
     f1 quotient = x / y;
-    i32 whole = (i32)quotient;  // truncate toward zero
+    s32 whole = (s32)quotient;  // truncate toward zero
     f1 remainder = x - (f1)whole * y;
     if (remainder < 0.0f) remainder += y;
     return remainder;
 }
 
-purefn d1 FMod(d1 x, d1 y) 
+purefn f1 FMod(f1 x, f1 y) 
 {
-    d1 quotient = x / y;
-    i64 whole = (i64)quotient;  // truncate toward zero
-    d1 remainder = x - (d1)whole * y;
+    f1 quotient = x / y;
+    s64 whole = (s64)quotient;  // truncate toward zero
+    f1 remainder = x - (f1)whole * y;
     if (remainder < 0.0) remainder += y;
     return remainder;
 }
 
 purefn f1 Floorf(f1 x) {
-    f1 whole = (f1)(i32)x;  // truncate quotient to integer
+    f1 whole = (f1)(s32)x;  // truncate quotient to integer
     return x - (x-whole);
 }
 
 purefn f1 Ceilf(f1 x) {
-    f1 whole = (f1)(i32)x;  // truncate quotient to integer
+    f1 whole = (f1)(s32)x;  // truncate quotient to integer
     return whole + (f1)(x > whole);
 }
 
 purefn f1 Fractf(f1 a) {
-    return a - (i32)(a); 
+    return a - (s32)(a); 
 }
 
-purefn d1 Fract(d1 a) {
-    return a - (i64)(a); 
+purefn f1 Fract(f1 a) {
+    return a - (s64)(a); 
 }
 
 // https://github.com/id-Software/DOOM-3/blob/master/neo/idlib/math/Math.h
 purefn f1 Expf(f1 f) {
-    const i32 IEEE_FLT_MANTISSA_BITS  =	23;
-    const i32 IEEE_FLT_EXPONENT_BITS  =	8;
-    const i32 IEEE_FLT_EXPONENT_BIAS  =	127;
-    const i32 IEEE_FLT_SIGN_BIT       =	31;
+    const s32 IEEE_FLT_MANTISSA_BITS  =	23;
+    const s32 IEEE_FLT_EXPONENT_BITS  =	8;
+    const s32 IEEE_FLT_EXPONENT_BIAS  =	127;
+    const s32 IEEE_FLT_SIGN_BIT       =	31;
     
     f1 x = f * 1.44269504088896340f; // multiply with ( 1 / log( 2 ) )
     
-    i32 i = BitCast(i32, x);
-    i32 s = ( i >> IEEE_FLT_SIGN_BIT );
-    i32 e = ( ( i >> IEEE_FLT_MANTISSA_BITS ) & ( ( 1 << IEEE_FLT_EXPONENT_BITS ) - 1 ) ) - IEEE_FLT_EXPONENT_BIAS;
-    i32 m = ( i & ( ( 1 << IEEE_FLT_MANTISSA_BITS ) - 1 ) ) | ( 1 << IEEE_FLT_MANTISSA_BITS );
+    s32 i = BitCast(s32, x);
+    s32 s = ( i >> IEEE_FLT_SIGN_BIT );
+    s32 e = ( ( i >> IEEE_FLT_MANTISSA_BITS ) & ( ( 1 << IEEE_FLT_EXPONENT_BITS ) - 1 ) ) - IEEE_FLT_EXPONENT_BIAS;
+    s32 m = ( i & ( ( 1 << IEEE_FLT_MANTISSA_BITS ) - 1 ) ) | ( 1 << IEEE_FLT_MANTISSA_BITS );
     i = ( ( m >> ( IEEE_FLT_MANTISSA_BITS - e ) ) & ~( e >> 31 ) ) ^ s;
     
-    i32 exponent = ( i + IEEE_FLT_EXPONENT_BIAS ) << IEEE_FLT_MANTISSA_BITS;
+    s32 exponent = ( i + IEEE_FLT_EXPONENT_BIAS ) << IEEE_FLT_MANTISSA_BITS;
     f1 y = BitCast(f1, exponent);
     x -= (f1) i;
     if ( x >= 0.5f ) {
@@ -393,12 +408,12 @@ purefn f1 Expf(f1 f) {
 // should be much more precise with large b
 purefn f1 Powf(f1 a, f1 b) {
     // calculate approximation with fraction of the exponent
-    i32 e = (i32) b;
+    s32 e = (s32) b;
     union {
-        d1 d;
-        i32 x[2];
-    } u = { (d1)a };
-    u.x[1] = (i32)((b - e) * (u.x[1] - 1072632447) + 1072632447.0f);
+        f1 d;
+        s32 x[2];
+    } u = { (f1)a };
+    u.x[1] = (s32)((b - e) * (u.x[1] - 1072632447) + 1072632447.0f);
     u.x[0] = 0;
     
     // exponentiation by squaring with the exponent's integer part
@@ -417,7 +432,7 @@ purefn f1 Powf(f1 a, f1 b) {
 
 // https://github.com/ekmett/approximate/blob/master/cbits/fast.c#L81 <--you can find d1 versions
 purefn f1 Logf(f1 x) {
-    return (BitCast(i32, x) - 1064866805) * 8.262958405176314e-8f;
+    return (BitCast(s32, x) - 1064866805) * 8.262958405176314e-8f;
 }
 
 // if you want log10 for integer you can look at Algorithms.hpp
@@ -429,7 +444,7 @@ purefn f1 Log10f(f1 x) {
 // https://tech.ebayinc.com/engineering/fast-approximate-logarithms-part-i-the-basics/
 // A Collection of f1 Tricks pdf
 purefn f1 Log2f(f1 val) {
-    f1 result = (f1)*((i32*)&val);
+    f1 result = (f1)*((s32*)&val);
     result *= 1.0f / (1 << 23);
     result = result - 127.0f;
     f1 tmp = result - Floorf(result);
@@ -460,7 +475,7 @@ purefn u32 Log10_32(u32 v) {
     return t - (v < PowersOf10[t]);                                                      
 }                            
 
-static inline u64 Pow10Table64(i32 numDigits)
+static inline u64 Pow10Table64(s32 numDigits)
 {
     const u64 Pow10Table[20] = {
         1ULL,
@@ -487,10 +502,10 @@ static inline u64 Pow10Table64(i32 numDigits)
     return Pow10Table[numDigits];
 }
 
-static inline i32 Log10_64(u64 v)
+static inline s32 Log10_64(u64 v)
 {
-    i32 l2 = 63 - LeadingZeroCount64(v);
-    i32 d = (i32)((l2 + 1) * 0.30103);
+    s32 l2 = 63 - LeadingZeroCount64(v);
+    s32 d = (s32)((l2 + 1) * 0.30103);
     return d + (v >= Pow10Table64(d));
 }
 
