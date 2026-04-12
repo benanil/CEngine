@@ -488,7 +488,7 @@ s32 LoadFBX(const u8* path, SceneBundle* fbxScene, f1 scale)
 static void JointsForPrimitive(APrimitive* primitive, ASkinedVertex* currVertex)
 {
     // convert whatever joi32 format to rgb8u
-    u8* joints      = (u8*)primitive->vertexAttribs[5];
+    const u8* joints      = (const u8*)primitive->vertexAttribs[AAttribIdx_JOINTS];
     s32 jointSize   = GraphicsTypeToSize(primitive->jointType);
     s32 jointOffset = Maxi32((s32)(primitive->jointStride - (jointSize * primitive->jointCount)), 0); // stride - sizeof(rgbau16)
             
@@ -521,7 +521,7 @@ static void JointsForPrimitive(APrimitive* primitive, ASkinedVertex* currVertex)
 
 static void WeightsForPrimitive(APrimitive* primitive, ASkinedVertex* currVertex)
 {
-    const u8* weights = (const u8*)primitive->vertexAttribs[6];
+    const u8* weights = (const u8*)primitive->vertexAttribs[AAttribIdx_WEIGHTS];
             
     // size and offset in bytes
     s32 weightSize   = GraphicsTypeToSize(primitive->weightType);
@@ -597,10 +597,10 @@ static void VerticesForPrimitive(APrimitive* primitive, ASkinedVertex* currVerte
 {
     // https://www.yosoygames.com.ar/wp/2018/03/vertex-formats-part-1-compression/
     primitive->vertices = currVertex;
-    f3* positions   = (f3*)primitive->vertexAttribs[0];
-    f2* texCoords   = (f2*)primitive->vertexAttribs[1];
-    f3* normals     = (f3*)primitive->vertexAttribs[2];
-    v128f* tangents = (v128f*)primitive->vertexAttribs[3];
+    const f3* positions   = (const f3*)primitive->vertexAttribs[AAttribIdx_POSITION];
+    const f2* texCoords   = (const f2*)primitive->vertexAttribs[AAttribIdx_TEXCOORD_0];
+    const f3* normals     = (const f3*)primitive->vertexAttribs[AAttribIdx_NORMAL];
+    const v128f* tangents = (const v128f*)primitive->vertexAttribs[AAttribIdx_TANGENT];
 
     for (s32 v = 0; v < primitive->numVertices; v++)
     {
@@ -618,7 +618,7 @@ static void VerticesForPrimitive(APrimitive* primitive, ASkinedVertex* currVerte
 
 static void BoundsForPrimitive(APrimitive* primitive)
 {
-    f3* positions = (f3*)primitive->vertexAttribs[0];
+    f3* positions = (f3*)primitive->vertexAttribs[AAttribIdx_POSITION];
     v128f min = VecSet1(FLT_MAX);
     v128f max = VecNeg(min);
     for (s32 i = 0; i < primitive->numVertices; i++)
@@ -773,7 +773,7 @@ s32 CreateVerticesIndices(SceneBundle* gltf)
 }
 
 
-void SaveSceneImages(SceneBundle* scene, const u8* savePath)
+void SaveSceneImages(SceneBundle* scene, const u8* savePath, bool deleteRemaining)
 {
     u8 command[2048];
     u8 outputDir[2048] = { 0 };
@@ -842,6 +842,7 @@ void SaveSceneImages(SceneBundle* scene, const u8* savePath)
         s32 numDigits = IntToString(outputDir, textureType, 0);
         outputDir[numDigits] = '\n';
         AFileWrite(outputDir, numDigits + 1, file, 1); // num textures 
+        if (deleteRemaining) RemoveFile(path);
     }
 
     AFileClose(file);
@@ -896,6 +897,27 @@ s32 LoadSceneImages(const u8* texturePath, Texture* textures, s32 numImages)
         ArenaPopGlobal(size);
     }
     return result;
+}
+
+s32 LoadGLTFCached(const char* path, SceneBundle* scene, Texture* textures)
+{
+    char buffer[1024];
+    size_t pathLen = StringLength(path);
+    MemCpy(buffer, path, pathLen + 1);
+    int newLen = ChangeExtension(buffer, pathLen, "abm");
+    s32 result = 1;
+    if (FileExist(buffer)) {
+        result = LoadSceneBundleBinary(buffer, scene);
+    }
+    else if (ParseGLTF2(path, scene, 1.0f)) {
+        CreateVerticesIndices(scene);
+        SaveGLTFBinary(scene, buffer);
+        ChangeExtension(buffer, newLen, "bdc");
+        SaveSceneImages(scene, buffer, FileHasExtension(path, pathLen,".glb"));
+    }
+    else return 0;
+    ChangeExtension(buffer, newLen, "bdc");
+    return result && (LoadSceneImages(buffer, textures, scene->numImages) != 0);
 }
 
 void GenerateLOD_50_GLTF(SceneBundle* sceneBundle)

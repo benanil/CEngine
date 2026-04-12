@@ -36,11 +36,12 @@ u8 IsABMLastVersion(const u8* path);
 
 u8 IsTextureLastVersion(const u8* path);
 
-void SaveSceneImages(SceneBundle* scene, const u8* savePath);
+void SaveSceneImages(SceneBundle* scene, const u8* savePath, bool deleteRemaining);
 
 // returns: 0 = noFile, 1 = success, 2 = missingImages, 3 = fileNumImage missmatch
 s32 LoadSceneImages(const u8* texturePath, Texture* textures, s32 numImages);
 
+s32 LoadGLTFCached(const char* path, SceneBundle* scene, Texture* textures);
 
 #if defined(__cplusplus)
 }

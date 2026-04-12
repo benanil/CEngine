@@ -23,6 +23,19 @@ enum AAttribType_
 };
 typedef int AAttribType;
 
+enum AAttribIdx_
+{
+    AAttribIdx_POSITION   = 0,
+    AAttribIdx_TEXCOORD_0 = 1,
+    AAttribIdx_NORMAL     = 2,
+    AAttribIdx_TANGENT    = 3,
+    AAttribIdx_TEXCOORD_1 = 4,
+    AAttribIdx_JOINTS     = 5,
+    AAttribIdx_WEIGHTS    = 6,
+    AAttribIdx_Count      = 7,
+};
+typedef int AAttribIdx;
+
 enum AErrorType_
 {
     AError_NONE,
