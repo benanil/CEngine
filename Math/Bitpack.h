@@ -3,6 +3,11 @@
 
 #include "../Include/Common.h"
 
+#define cOneOverSqrt2 (0.70710678f)
+#define cNumBits      (9)
+#define c9Mask        ((1u << cNumBits) - 1)
+#define c9MaxValue    (c9Mask - 1)
+
 purefn u32 VCALL PackXY11Z10SnormToU32(v128f v)
 {
     v = VecClamp(v, VecSet1(-1.0f), VecSet1(1.0f));
@@ -43,11 +48,13 @@ static inline void VCALL UnpackQuaternionS16Norm2(v128u i16, v128f* q0, v128f* q
     *q1 = VecMul(VecI32ToF32(VecUnpackHi32(i16)), inv);
 }
 
-
-#define cOneOverSqrt2 (0.70710678f)
-#define cNumBits      (9)
-#define c9Mask        ((1u << cNumBits) - 1)
-#define c9MaxValue    (c9Mask - 1)
+static inline void PackTBNIntoQuaternion64(v128f normal, v128f tangent, u32* out)
+{
+    v128f binormal = Vec3Cross(tangent, normal);
+    v128f quat = QuaternionFromM33Vec(binormal, tangent, normal);
+    quat = VecNorm(quat);
+    PackQuaternionS16Norm(quat, (u64*)out);
+}
 
 static inline u32 VCALL PackQuat(v128f v)
 {

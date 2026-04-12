@@ -40,7 +40,9 @@
 
 #define NUM_ANIMS (1024)
 
-static Uint32 frames = 0;
+
+extern Graphics gGFX;
+extern ECS ecs;
 
 SDL_Window*    g_SDLWindow;
 SDL_GPUDevice* g_GPUDevice = NULL;
@@ -52,12 +54,10 @@ RenderState g_RenderState;
 m44* g_NodeTransforms;
 Camera   g_Camera;
 
+static Uint32 frames = 0;
 static s32 characterRootIndex;
 static AnimationController AnimControllers[NUM_ANIMS];
 AX_ALIGN(4) half3x4 OutMatrices[MaxBonePoses * NUM_ANIMS];
-
-extern Graphics gGFX;
-ECS ecs;
 
 extern s32 ParseGLTF2(const char* path, SceneBundle* result, float scale);
 

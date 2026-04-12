@@ -3,6 +3,7 @@
 #include "Include/Random.h"
 #include "Math/Half.h"
 #include "Math/Matrix.h"
+#include "Math/Bitpack.h"
 
 ECS ecs;
 
@@ -49,7 +50,7 @@ u32 AddSceneBundle(const SceneBundle* sceneBundle)
             group->valid         = 1;
             group->numEntities   = 0;
             group->capacity      = 0;
-            group->boneStart     = sceneBundle->boneOffset;
+            // group->boneStart     = sceneBundle->boneOffset;
             group->numIndices    = primitive->numIndices;
             group->indexOffset   = primitive->indexOffset;
             group->entityOffset  = 0;

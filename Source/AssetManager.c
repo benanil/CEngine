@@ -35,14 +35,6 @@
 
 extern Graphics gGFX;
 
-static void PackTBNIntoQuaternion64(v128f normal, v128f tangent, u32* out)
-{
-    v128f binormal = Vec3Cross(tangent, normal);
-    v128f quat = QuaternionFromM33Vec(binormal, tangent, normal);
-    quat = VecNorm(quat);
-    PackQuaternionS16Norm(quat, (u64*)out);
-}
-
 
 /*//////////////////////////////////////////////////////////////////////////*/
 /*                              FBX LOAD                                    */
@@ -54,17 +46,11 @@ static s32 void_ptr_compare(const void* a, const void* b)
 {
     const void* const* ptr_a = (const void* const*)a;
     const void* const* ptr_b = (const void* const*)b;
-
     if (*ptr_a < *ptr_b) return -1;
-    if (*ptr_a > *ptr_b) return 1;
-    return 0;
+    return *ptr_a > *ptr_b ? 1 : 0;
 }
 
-static u16 GetFBXTexture(const ufbx_material* umaterial,
-                         const ufbx_scene* uscene, 
-                         const ufbx_material_feature feature,
-                         const ufbx_material_pbr_map pbr,
-                         const ufbx_material_fbx_map fbx)
+static u16 GetFBXTexture(const ufbx_material* umaterial, const ufbx_scene* uscene, ufbx_material_feature feature, ufbx_material_pbr_map pbr, ufbx_material_fbx_map fbx)
 {
     if (umaterial->features.features[feature].enabled)
     {
@@ -521,7 +507,7 @@ static void WeightsForPrimitive(APrimitive* primitive, ASkinedVertex* currVertex
         for (s32 j = 0; j < primitive->numVertices; j++)
         {
             u32 packedWeights = 0;
-            f1 packMax[3] = { 1023.0f, 1023.0f, 511.0f };
+            const f1 packMax[3] = { 1023.0f, 1023.0f, 511.0f };
             // don't parse w, we will get it from xyz
             for (s32 k = 0, shift = 0; k < primitive->jointCount && k < 3; k++, shift += 11)
             {
@@ -589,7 +575,7 @@ static void VerticesForPrimitive(APrimitive* primitive, ASkinedVertex* currVerte
 
 static void BoundsForPrimitive(APrimitive* primitive)
 {
-    f3* positions = (f3*)primitive->vertexAttribs[AAttribIdx_POSITION];
+    const f3* positions = (const f3*)primitive->vertexAttribs[AAttribIdx_POSITION];
     v128f min = VecSet1(FLT_MAX);
     v128f max = VecNeg(min);
     for (s32 i = 0; i < primitive->numVertices; i++)
