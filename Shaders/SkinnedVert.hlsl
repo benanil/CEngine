@@ -104,13 +104,6 @@ half3 UnpackVec3XY11Z10Unorm(uint packed) {
 VSOutput main(VSInput input, uint instanceID : SV_InstanceID)
 {
     VSOutput o;
-    // per instance data
-    Entity entity     = sEntities[instanceID];
-    half4   insRot    = normalize(UnpackRGBA16Snorm(entity.rotation[0], entity.rotation[1]));
-    half3x3 insRotMat = Matrix3FromQuaternion(insRot);
-    float3  insPos    = entity.position.xyz;
-    half3   insScale  = half3(unpackHalf2x16(entity.scale[0]), asfloat16(uint16_t(entity.scale[1]))); 
-
     half3x4 animMat = half3x4(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
     uint boneStart = instanceID * MaxBonePoses * MatrixNumInt32;
     half4 weights;
@@ -127,6 +120,12 @@ VSOutput main(VSInput input, uint instanceID : SV_InstanceID)
         animMat[1] += row1 * weights[i];
         animMat[2] += row2 * weights[i];
     }
+    
+    Entity  entity    = sEntities[instanceID];
+    half4   insRot    = normalize(UnpackRGBA16Snorm(entity.rotation[0], entity.rotation[1]));
+    half3x3 insRotMat = Matrix3FromQuaternion(insRot);
+    float3  insPos    = entity.position.xyz;
+    half3   insScale  = UnpackVec3XY11Z10Unorm(entity.scale[0]) * 10.0; // half3(unpackHalf2x16(entity.scale[0]), asfloat16(uint16_t(entity.scale[1]))); 
 
     half3x3 tbn; // = Matrix3FromQuaternion(qtangent);
     tbn[2] = UnpackVec3XY11Z10Snorm(input.aQTangentXY);

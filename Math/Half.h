@@ -19,15 +19,6 @@
 /*                             Half                                         */
 /*//////////////////////////////////////////////////////////////////////////*/
 
-#ifdef AX_SUPPORT_NEON
-typedef float16_t h1;
-#else
-typedef uint16_t h1;
-#endif
-
-typedef u32 h2;
-typedef h1 h4[4];
-
 #define OneFP16       (15360ui16)
 #define MinusOneFP16  (48128ui16)
 #define ZeroFP16      (0ui16)
@@ -47,6 +38,15 @@ typedef h1 h4[4];
 #define MakeHalf2(x, y) ((x) | ((y) << 16))
 #define Half2SetX(v, x) (v &= 0xFFFF0000u, v |= x;)
 #define Half2SetY(v, y) (v &= 0x0000FFFFu, v |= y;)
+
+#ifdef AX_SUPPORT_NEON
+typedef float16_t h1;
+#else
+typedef uint16_t h1;
+#endif
+
+typedef u32 h2;
+typedef h1 h4[4];
 
 // todo better check for half support
 purefn float HalfToFloat(h1 x) 
