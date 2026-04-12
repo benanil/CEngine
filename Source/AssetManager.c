@@ -22,6 +22,7 @@
 
 #include "Math/Matrix.h"
 #include "Math/Color.h"
+#include "Math/Bitpack.h"
 #include "Include/FileSystem.h"
 #include "Include/Common.h"
 #include "Include/BasisBinding.h"
@@ -33,36 +34,6 @@
 #include "Extern/dynarray.h"
 
 extern Graphics gGFX;
-
-static inline u32 PackXY11Z10SnormToU32(v128f v)
-{
-    v = VecClamp(v, VecSet1(-1.0f), VecSet1(1.0f));
-    v = VecMul(v, VecSetR(1023.f, 1023.f, 511.f, 0.f));
-    v = VecRound(v);
-
-    v128u i = VecF32ToI32(v);
-    i = VeciAnd(i, VeciSetR(0x7FF, 0x7FF, 0x3FF, 0));
-    i = VeciSll(i, VeciSetR(0, 11, 22, 0));
-
-    u32 lanes[4];
-    VecStoreU((v128u*)lanes, i);
-    return lanes[0] | lanes[1] | lanes[2];
-}
-
-static inline u32 PackXY11Z10UnormToU32(v128f v)
-{
-    v = VecClamp01(v);
-    v = VecMul(v, VecSetR(2047.f, 2047.f, 1023.f, 0.f));
-    v = VecRound(v);
-
-    v128u i = VecF32ToI32(v);
-    i = VeciAnd(i, VeciSetR(0x7FF, 0x7FF, 0x3FF, 0));
-    i = VeciSll(i, VeciSetR(0, 11, 22, 0));
-
-    u32 lanes[4];
-    VecStoreU((v128u*)lanes, i);
-    return lanes[0] | lanes[1] | lanes[2];
-}
 
 static void PackTBNIntoQuaternion64(v128f normal, v128f tangent, u32* out)
 {

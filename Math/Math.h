@@ -70,6 +70,14 @@ static forceinline void VCALL Vec3Store(float* f, v128f v)
     f[2] = VecGetZ(v);
 }
 
+purefn v128f Vec3Proj(v128f v, v128f n)
+{
+    float num = Vec3DotfV(n, n);
+    if (num < MATH_Epsilon) return v;
+    float num2 = Vec3DotfV(v, n);
+    return VecSub(v, VecMulf(n, num2 / num));
+}
+
 purefn v128f Vec3Reflect(v128f in, v128f normal) 
 {
     return VecSub(in, VecMul(normal, VecMulf(VecDot(normal, in), 2.0f)));
@@ -84,14 +92,6 @@ purefn v128f ACosV(v128f x)
     v128f p = VecFmadd(VecSet1(-0.1565827f), y, VecSet1(1.570796f));
     p = VecMul(p, VecSqrt(VecSub(VecOne(), y)));
     return VecSelect(p, VecSub(VecSet1(MATH_PI), p),VecCmpGe(x, VecZero()));
-}
-
-purefn v128f Vec3Proj(v128f v, v128f n)
-{
-    float num = Vec3DotfV(n, n);
-    if (num < MATH_Epsilon) return v;
-    float num2 = Vec3DotfV(v, n);
-    return VecSub(v, VecMulf(n, num2 / num));
 }
 
 purefn f1 Vec3Angle(v128f a, v128f b) {

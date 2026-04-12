@@ -38,8 +38,7 @@ static inline v128f VCALL QMul(v128f Q1, v128f Q2)
     vResult   = VecAdd(vResult, Q2X);
     Q2Z       = VecMul(Q2Z, ControlYXWZ);
     Q2Y       = VecAdd(Q2Y, Q2Z);
-    vResult   = VecAdd(vResult, Q2Y);
-    return vResult;
+    return VecAdd(vResult, Q2Y);
 }
 
 // Angle should be between -twopi, twopi
@@ -106,8 +105,7 @@ purefn v128f QCalculateCoefficient(v128f vT, v128f xm1)
     c = VecFmaddLane(c, b0123, one, 2);
     c = VecFmaddLane(c, b0123, one, 1);
     c = VecFmaddLane(c, b0123, one, 0);
-    c = VecMul(c, vT);
-    return c;
+    return VecMul(c, vT);
 }
 
 static inline Quaternion VCALL QSlerp(Quaternion q0, Quaternion q1, float t)
@@ -144,13 +142,11 @@ purefn Quaternion QFromEuler(float x, float y, float z)
     VecSinCos(VecSetR(x, y, z, 1.0f), &sv, &cv);
     VecStore(c, cv);
     VecStore(s, sv);
-    
-    Quaternion q = VecSetR(
+    return VecSetR(
         s[0] * c[1] * c[2] - c[0] * s[1] * s[2],
         c[0] * s[1] * c[2] + s[0] * c[1] * s[2],
         c[0] * c[1] * s[2] - s[0] * s[1] * c[2],
         c[0] * c[1] * c[2] + s[0] * s[1] * s[2]);
-    return q;
 }
 
 purefn Quaternion VCALL QFromEulerVec3(f3 euler)
@@ -378,20 +374,6 @@ static inline void M44FromQuaternion(float* mat, Quaternion quat)
     mat[4 * 3 + 3] = 1.0f;
 }
 
-purefn void VCALL PackQuaternionS16Norm(v128f quat, u64* result)
-{
-    quat = VecNorm(quat);
-    v128u u32 = VecF32ToI32(VecMulf(quat, INT16_MAX-1));
-    VecStoreLo64(result, VecPack16(u32));
-}
-
-purefn void VCALL UnpackQuaternionS16Norm2(v128u i16, v128f* q0, v128f* q1)
-{
-    const v128f inv = VecSet1(1.0f / (INT16_MAX - 1));
-    *q0 = VecMul(VecI32ToF32(VecUnpackLo32(i16)), inv);
-    *q1 = VecMul(VecI32ToF32(VecUnpackHi32(i16)), inv);
-}
-
 purefn Quaternion QFromLookRotation(f3 direction, f3 up)
 {
     const f3 matrix[3] = {
@@ -481,7 +463,7 @@ static inline DualQuaternion DQFromRotationTranslation(v128f rotation, v128f tra
     DualQuaternion dq;
     dq.real = rotation;
     dq.dual = VecMulf(QMul(translation, rotation), 0.5f);
-    // // enforce q·d = 0
+    // // enforce q*d = 0
     // float dotRD = VecDotf(dq.real, dq.dual);
     // dq.dual = VecSub(dq.dual, VecMulf(dq.real, dotRD));
     return dq;

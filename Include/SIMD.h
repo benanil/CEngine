@@ -12,6 +12,16 @@
 
 #include <stdint.h>
 
+#if defined(_MSC_VER)       /* MSVC */
+#  define AX_ALIGN(N) __declspec(align(N))
+#elif defined(__GNUC__)     /* GCC, Clang */
+#  define AX_ALIGN(N) __attribute__((aligned(N)))
+#elif defined(__INTEL_COMPILER) /* Intel C Compiler */
+#  define AX_ALIGN(N) __attribute__((aligned(N)))
+#else                       /* Unknown compiler, no alignment */
+#  define ALIGN(N)
+#endif
+
 #if defined(__cplusplus)
 extern "C" {
 #endif
@@ -172,7 +182,12 @@ typedef __m128i v128u;
 #define VecGetY(v)               _mm_cvtss_f32(VecSplatY(v))  /* return v.y */
 #define VecGetZ(v)               _mm_cvtss_f32(VecSplatZ(v))  /* return v.z */
 #define VecGetW(v)               _mm_cvtss_f32(VecSplatW(v))  /* return v.w */
-                          
+
+#define VeciGetX(v)    ((u32)_mm_cvtsi128_si32(v))
+#define VeciGetY(v)    ((u32)_mm_cvtsi128_si32(_mm_shuffle_epi32((v), _MM_SHUFFLE(1,1,1,1))))
+#define VeciGetZ(v)    ((u32)_mm_cvtsi128_si32(_mm_shuffle_epi32((v), _MM_SHUFFLE(2,2,2,2))))
+#define VeciGetW(v)    ((u32)_mm_cvtsi128_si32(_mm_shuffle_epi32((v), _MM_SHUFFLE(3,3,3,3))))
+
 // SSE4.1                 
 #define VecSetX(v, x)     ((v) = _mm_move_ss  ((v), _mm_set_ss(x)))
 #define VecSetY(v, y)     ((v) = _mm_insert_ps((v), _mm_set_ss(y), 0x10))
@@ -212,6 +227,7 @@ typedef __m128i v128u;
 #define VecNormEst(v)            _mm_mul_ps(_mm_rsqrt_ps(_mm_dp_ps(v, v, 0xff)), v)
 #define VecLenf(v)               _mm_cvtss_f32(_mm_sqrt_ss(_mm_dp_ps(v, v, 0xff)))
 #define VecLen(v)                _mm_sqrt_ps(_mm_dp_ps(v, v, 0xff))
+#define VecLenSq(v)              _mm_dp_ps(v, v, 0xff)
 
 #define Vec3DotV(a, b)           _mm_dp_ps(a, b, 0x7f)
 #define Vec3DotfV(a, b)          _mm_cvtss_f32(_mm_dp_ps(a, b, 0x7f))
@@ -227,12 +243,12 @@ typedef __m128i v128u;
 #define VecSelect1011  _mm_castsi128_ps(_mm_setr_epi32(0xFFFFFFFF, 0x00000000, 0xFFFFFFFF, 0xFFFFFFFF))
 #define VecSelect1111  _mm_castsi128_ps(_mm_setr_epi32(0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF))
 
-#define VecMaskXY _mm_castsi128_ps(_mm_setr_epi32(0xFFFFFFFF, 0xFFFFFFFF, 0x00000000, 0x00000000))
-#define VecMask3  _mm_castsi128_ps(_mm_setr_epi32(0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0x00000000))
-#define VecMaskX  _mm_castsi128_ps(_mm_setr_epi32(0xFFFFFFFF, 0x00000000, 0x00000000, 0x00000000))
-#define VecMaskY  _mm_castsi128_ps(_mm_setr_epi32(0x00000000, 0xFFFFFFFF, 0x00000000, 0x00000000))
-#define VecMaskZ  _mm_castsi128_ps(_mm_setr_epi32(0x00000000, 0x00000000, 0xFFFFFFFF, 0x00000000))
-#define VecMaskW  _mm_castsi128_ps(_mm_setr_epi32(0x00000000, 0x00000000, 0x00000000, 0xFFFFFFFF))
+#define VecMaskXY      _mm_castsi128_ps(_mm_setr_epi32(0xFFFFFFFF, 0xFFFFFFFF, 0x00000000, 0x00000000))
+#define VecMask3       _mm_castsi128_ps(_mm_setr_epi32(0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0x00000000))
+#define VecMaskX       _mm_castsi128_ps(_mm_setr_epi32(0xFFFFFFFF, 0x00000000, 0x00000000, 0x00000000))
+#define VecMaskY       _mm_castsi128_ps(_mm_setr_epi32(0x00000000, 0xFFFFFFFF, 0x00000000, 0x00000000))
+#define VecMaskZ       _mm_castsi128_ps(_mm_setr_epi32(0x00000000, 0x00000000, 0xFFFFFFFF, 0x00000000))
+#define VecMaskW       _mm_castsi128_ps(_mm_setr_epi32(0x00000000, 0x00000000, 0x00000000, 0xFFFFFFFF))
 
 // vec(0, 1, 2, 3) -> (vec[x], vec[y], vec[z], vec[w])
 #define VecSwizzleMask(vec, msk)    _mm_shuffle_ps(vec, vec, msk)
@@ -241,10 +257,18 @@ typedef __m128i v128u;
 // return (vec1[x], vec1[y], vec2[z], vec2[w])
 #define VecShuffle(vec1, vec2, x, y, z, w)  _mm_shuffle_ps(vec1, vec2, MakeShuffleMask(x,y,z,w))
 #define VecShuffleR(vec1, vec2, x, y, z, w) _mm_shuffle_ps(vec1, vec2, MakeShuffleMask(w,z,y,x))
+
 // Special shuffle
 #define VecShuffle_0101(vec1, vec2) _mm_movelh_ps(vec1, vec2)
 #define VecShuffle_2323(vec1, vec2) _mm_movehl_ps(vec2, vec1)
 #define VecRev(v) VecShuffle((v), (v), 3, 2, 1, 0)
+
+// Pairwise swap (0<->1, 2<->3)
+#define VecSwapPairs(v)             _mm_shuffle_ps(v,v,_MM_SHUFFLE(2,3,0,1))
+#define VecSwapPairsU(a)            _mm_shuffle_epi32((a), _MM_SHUFFLE(2,3,0,1))
+// Half swap (0123 -> 2301)
+#define VecSwapHalves(v)            _mm_shuffle_ps(v,v,_MM_SHUFFLE(1,0,3,2))
+#define VecSwapHalvesU(a)           _mm_shuffle_epi32((a), _MM_SHUFFLE(1,0,3,2))
 
 // Logical
 #define VecNot(a)                   _mm_andnot_ps(a, VecSelect1111)
@@ -262,6 +286,7 @@ typedef __m128i v128u;
 #define VecCmpGe(a, b)              _mm_cmpge_ps(a, b) /* greater or equal */
 #define VecCmpLt(a, b)              _mm_cmplt_ps(a, b) /* less than */
 #define VecCmpLe(a, b)              _mm_cmple_ps(a, b) /* less or equal */
+#define VecCmpEq(a, b)              _mm_cmpeq_ps(a, b)
 #define VecMovemask(a)              _mm_movemask_ps(a) /* */
 
 #define VecSelect(V1, V2, Control)  _mm_blendv_ps(V1, V2, Control)
@@ -324,6 +349,7 @@ typedef __m128i v128u;
 #define VecF32ToI32(x)              _mm_cvtps_epi32(x)                         /* f32[4] -> i32[4] (round) | NEON: vcvtq_s32_f32 | scalar: (int)roundf */
 #define VecF32ToU32(x)              _mm_cvtps_epu32(x)                         /* f32[4] -> u32[4] (round) | NEON: vcvtq_u32_f32 */
 #define VecI32ToF32(x)              _mm_cvtepi32_ps(x)                         /* i32[4] -> f32[4]         | NEON: vcvtq_f32_s32 */
+#define VecU32ToF32(x)              _mm_cvtepu32_ps(x)                         /* i32[4] -> f32[4]         | NEON: vcvtq_f32_s32 */
                                                                                
 #define VecZipLo32(a, b)            _mm_unpacklo_epi32(a, b)                   /* interleave low i32: [a0 b0 a1 b1] | NEON: vzip1q_s32 */
 #define VecZipLo16(a, b)            _mm_unpacklo_epi16(a, b)                   /* interleave low i16  | NEON: vzip1q_s16 */
@@ -362,9 +388,9 @@ typedef uint32x4_t v128u;
 #define VecSetR(x, y, z, w)         ARMCreateVec(x, y, z, w) /* -> {x, y, z, w} */
 #define VecLoad(x)                  vld1q_f32(x)
 #define VecLoadA(x)                 vld1q_f32(x)
-#define VecLoadI(x)                 vld1q_s32(x)
-#define VecLoadIU(x)                vld1q_u32(x)
-#define VecStoreU(ptr, x)           vst1q_u32(ptr, x)
+#define VecLoadI(x)                 vld1q_s32((const s32*)x)
+#define VecLoadIU(x)                vld1q_u32((const u32*)x)
+#define VecStoreU(ptr, x)           vst1q_u32((u32*)ptr, x)
 #define VecSetBytes(x)              vdupq_n_u8(x)
                                     
 #define Vec3Load(x)                 ARMVector3Load(x)
@@ -372,6 +398,7 @@ typedef uint32x4_t v128u;
 #define VecF32ToI32(x)              vcvtq_s32_f32(x)             /* f32[4] -> i32[4] round */
 #define VecF32ToU32(x)              vcvtq_u32_f32(x)             /* f32[4] -> u32[4] round */
 #define VecI32ToF32(x)              vcvtq_f32_s32(x)             /* i32[4] -> f32[4] */
+#define VecU32ToF32(x)              vcvtq_f32_u32(x)             /* i32[4] -> f32[4] */
                                     
 #define VecZipLo32(a, b)            vzip1q_s32(a, b)             /* interleave low i32: [a0 b0 a1 b1] */
 #define VecZipLo16(a, b)            vzip1q_s16(a, b)             /* interleave low i16 lanes */
@@ -397,6 +424,11 @@ typedef uint32x4_t v128u;
 #define VecGetZ(v)                  vgetq_lane_f32(v, 2)
 #define VecGetW(v)                  vgetq_lane_f32(v, 3)
                                     
+#define VeciGetX(v)                 vgetq_lane_u32((v), 0)
+#define VeciGetY(v)                 vgetq_lane_u32((v), 1)
+#define VeciGetZ(v)                 vgetq_lane_u32((v), 2)
+#define VeciGetW(v)                 vgetq_lane_u32((v), 3)
+
 #define VecSetX(v, x)               ((v) = vsetq_lane_f32(x, v, 0))
 #define VecSetY(v, y)               ((v) = vsetq_lane_f32(y, v, 1))
 #define VecSetZ(v, z)               ((v) = vsetq_lane_f32(z, v, 2))
@@ -417,7 +449,7 @@ typedef uint32x4_t v128u;
 // a * b[l] + c                     
 #define VecFmaddLane(a, b, c, l)    vfmaq_laneq_f32(c, a, b, l)
 #define VecFmadd(a, b, c)           vfmaq_f32(c, a, b)
-#define VecFmsub(a, b, c)           vfmsq_f32(c, a, b)
+#define VecFmsub(a, b, c)           vnegq_f32(vfmsq_f32(c, a, b))
 #define VecNegMulSub(a, b, c)       VecFmsub(c, a, b) 
 #define VecHadd(a, b)               vpaddq_f32(a, b)
 #define VecSqrt(a)                  vsqrtq_f32(a)
@@ -431,6 +463,7 @@ typedef uint32x4_t v128u;
 #define VecNormEst(v)               ARMVectorNormEst(v)
 #define VecLenf(v)                  VecGetX(ARMVectorLength(v))
 #define VecLen(v)                   ARMVectorLength(v)
+#define VecLenSq(v)                 ARMVectorSqrLength(v)
                                     
 #define Vec3DotV(a, b)              ARMVector3Dot(a, b)
 #define Vec3DotfV(a, b)             VecGetX(ARMVector3Dot(a, b))
@@ -455,6 +488,23 @@ typedef uint32x4_t v128u;
         vgetq_lane_f32((v1), (E3))  \
     )
 
+#define ARMVectorU32Swizzle(E0, E1, E2, E3, v) \
+VecSetR( \
+    vgetq_lane_u32((v), (E0)), \
+    vgetq_lane_u32((v), (E1)), \
+    vgetq_lane_u32((v), (E2)), \
+    vgetq_lane_u32((v), (E3))  \
+)
+
+#define ARMVectorU32Shuffle(E0, E1, E2, E3, v0, v1) \
+    VecSetR( \
+        vgetq_lane_f32((v0), (E0)), \
+        vgetq_lane_f32((v0), (E1)), \
+        vgetq_lane_f32((v1), (E2)), \
+        vgetq_lane_f32((v1), (E3))  \
+    )
+
+
 // vec(0, 1, 2, 3) -> (vec[x], vec[y], vec[z], vec[w])
 #define VecSwizzle(vec, x, y, z, w)         ARMVectorSwizzle(x, y, z, w, vec)
 
@@ -465,6 +515,12 @@ typedef uint32x4_t v128u;
 #define VecShuffle_0101(vec1, vec2) vcombine_f32(vget_low_f32(vec1), vget_low_f32(vec2))
 #define VecShuffle_2323(vec1, vec2) vcombine_f32(vget_high_f32(vec1), vget_high_f32(vec2))
 #define VecRev(v) ARMVectorRev(v)
+// Pairwise swap (0<->1, 2<->3)
+#define VecSwapPairs(v)             vrev64q_f32(v)
+#define VecSwapPairsU(a)            vrev64q_u32(a)
+// Half swap (0123 -> 2301)         
+#define VecSwapHalves(v)            vextq_f32(v,v,2)
+#define VecSwapHalvesU(a)           vcombine_u32(vget_high_u32(a), vget_low_u32(a))
 
 #define VecNot(a)                   vreinterpretq_f32_u32(vmvnq_u32(vreinterpretq_u32_f32(a)))
 #define VecAnd(a, b)                vreinterpretq_f32_u32(vandq_u32(vreinterpretq_u32_f32(a), b))
@@ -482,6 +538,7 @@ typedef uint32x4_t v128u;
 #define VecCmpGe(a, b)              vcgeq_f32(a, b) // greater or equal
 #define VecCmpLt(a, b)              vcltq_f32(a, b) // less than
 #define VecCmpLe(a, b)              vcleq_f32(a, b) // less or equal
+#define VecCmpEq(a, b)              vceqq_f32(a, b) // less or equal
 #define VecMovemask(a)              ARMVecMovemask(a) /* not done */
 
 #define VecSelect(V1, V2, Control)  vbslq_f32(Control, V2, V1)
@@ -565,7 +622,7 @@ purefn v128f ARMCreateVec(float x, float y, float z, float w) {
     return vld1q_f32(v);
 }
 
-purefn v128i ARMCreateVecI(u32x, u32y, u32z, u32w) {
+purefn v128i ARMCreateVecI(u32 x, u32 y, u32 z, u32 w) {
     return vcombine_u32(vcreate_u32(((uint64_t)x) | (((uint64_t)y) << 32)),
                         vcreate_u32(((uint64_t)z) | (((uint64_t)w) << 32)));
 }
@@ -640,6 +697,16 @@ static inline v128f ARMVectorLengthEst(v128f v) {
     Result = vmul_f32(v1, Result);
     Result = vbsl_f32(VEqualsZero, zero, Result);
     return vcombine_f32(Result, Result);
+}
+
+static inline v128f ARMVectorSqrLength(v128f v) {
+	// Dot4
+    float32x4_t vTemp = vmulq_f32(v, v);
+    float32x2_t v1 = vget_low_f32(vTemp);
+    float32x2_t v2 = vget_high_f32(vTemp);
+    v1 = vadd_f32(v1, v2);
+    v1 = vadd_f32(v1, vrev64_f32(v1));
+    return vcombine_f32(v1, v1);
 }
 
 static inline v128f ARMVectorLength(v128f v) {
@@ -767,8 +834,17 @@ purefn f1 VCALL Vec3DistSqrfV(f4 a, f4 b) { f4 x = VecSub(a, b); return Vec3Dotf
 purefn v128f VCALL VecClamp(v128f v, v128f vmin, v128f vmax)
 {
     v = VecSelect(v, vmax, VecCmpGt(v, vmax));
-    v = VecSelect(v, vmin, VecCmpLt(v, vmin));
-    return v;
+    return VecSelect(v, vmin, VecCmpLt(v, vmin));
+}
+
+purefn u32 VCALL VecMaxElement(v128f a)
+{
+    v128f t = VecSwapPairs(a);
+    v128f m = VecMax(a, t);
+    t = VecSwapHalves(m);
+    v128f max_val = VecMax(m, t);
+    u32 mask = (u32)VecMovemask(VecCmpGe(a, max_val));
+    return TrailingZeroCount32(mask);
 }
 
 #if defined(AX_SUPPORT_SSE) || defined(AX_ARM)
@@ -780,6 +856,17 @@ static inline float VCALL VecGetN(v128f v, int n)
 static inline v128f VCALL VecSetN(v128f v, int n, float f)
 {
     ((float*)&v)[n & 3] = f;
+    return v;
+}
+
+static inline int VCALL VeciGetN(v128f v, int n)
+{
+    return ((int*)&v)[n & 3];
+}
+
+static inline v128i VCALL VeciSetN(v128i v, int n, int i)
+{
+    ((int*)&v)[n & 3] = i;
     return v;
 }
 #endif 
