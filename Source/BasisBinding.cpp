@@ -57,6 +57,7 @@ static SDL_GPUTextureFormat BasisToSDLPixelFormat(basist::transcoder_texture_for
 
 extern "C"
 {
+extern SDL_GPUDevice* g_GPUDevice;
 
 void BasisuSetup(void)
 {
@@ -79,7 +80,6 @@ SDL_GPUTexture* BasisuMakeImage(
     int* width,
     int* height, 
     SDL_GPUTextureFormat* format,
-    SDL_GPUDevice* gpuDevice,
     bool isNormal, 
     bool isMetallicRoughness) 
 {
@@ -97,6 +97,7 @@ SDL_GPUTexture* BasisuMakeImage(
     SDL_GPUTransferBufferCreateInfo transferBufferCreateInfo;
     SDL_GPUTextureTransferInfo      textureTransferInfo;
     SDL_GPUTextureRegion            textureRegion;
+    SDL_GPUDevice* gpuDevice = g_GPUDevice;
     
     Uint8* textureTransferPtr;
     Uint8* ptr;

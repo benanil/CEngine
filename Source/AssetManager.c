@@ -848,7 +848,7 @@ void SaveSceneImages(SceneBundle* scene, const u8* savePath)
 }
 
 // result: 1 fine, 2 some file is not exist, 3 not enough images for scene
-s32 LoadSceneImages(const u8* texturePath, Texture* textures, s32 numImages, SDL_GPUDevice* gpuDevice)
+s32 LoadSceneImages(const u8* texturePath, Texture* textures, s32 numImages)
 {
     if (numImages <= 0)
         return 1;
@@ -892,7 +892,7 @@ s32 LoadSceneImages(const u8* texturePath, Texture* textures, s32 numImages, SDL
         s32 isMetallicRoughness = (textureType >> 1) & 1;
 
         textures[i].handle = BasisuMakeImage(basisData, size, &textures[i].width, &textures[i].height, &textures[i].format,
-                                             gpuDevice, (u8)isNormal, (u8)isMetallicRoughness);
+                                             (u8)isNormal, (u8)isMetallicRoughness);
         ArenaPopGlobal(size);
     }
     return result;

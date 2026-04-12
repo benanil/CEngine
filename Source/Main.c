@@ -273,7 +273,7 @@ static void InitScene()
     BasisuSetup();
     // SaveSceneImages(g_SceneBundle, "Assets/Meshes/Paladin2/Paladin.bdc");
     // "Assets/Meshes/Paladin/PaladinTest.bdc"
-    s32 imgRes = LoadSceneImages("Assets/Meshes/Paladin2/Paladin.bdc", g_RenderState.textures, gPaladin->numImages, g_GPUDevice);
+    s32 imgRes = LoadSceneImages("Assets/Meshes/Paladin2/Paladin.bdc", g_RenderState.textures, gPaladin->numImages);
     
     g_RenderState.sampler = SDL_CreateGPUSampler(g_GPUDevice, &(SDL_GPUSamplerCreateInfo){
         .min_filter      = SDL_GPU_FILTER_LINEAR,

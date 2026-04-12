@@ -322,9 +322,6 @@
 						<Path>Source/AssetManager.c</Path>
 					</File>
 					<File>
-						<Path>Source/BasisSokol.cpp</Path>
-					</File>
-					<File>
 						<Path>Source/ECS.c</Path>
 					</File>
 					<File>
@@ -356,6 +353,9 @@
 					</File>
 					<File>
 						<Path>Source/GLTFParser.c</Path>
+					</File>
+					<File>
+						<Path>Source/BasisBinding.cpp</Path>
 					</File>
 				</Children>
 			</Folder>

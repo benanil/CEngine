@@ -39,7 +39,7 @@ u8 IsTextureLastVersion(const u8* path);
 void SaveSceneImages(SceneBundle* scene, const u8* savePath);
 
 // returns: 0 = noFile, 1 = success, 2 = missingImages, 3 = fileNumImage missmatch
-s32 LoadSceneImages(const u8* texturePath, Texture* textures, s32 numImages, SDL_GPUDevice* gpuDevice);
+s32 LoadSceneImages(const u8* texturePath, Texture* textures, s32 numImages);
 
 
 #if defined(__cplusplus)

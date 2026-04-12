@@ -17,7 +17,6 @@ SDL_GPUTexture* BasisuMakeImage(
     int* width,
     int* height, 
     SDL_GPUTextureFormat* format,
-    SDL_GPUDevice* gpuDevice,
     bool isNormal, 
     bool isMetallicRoughness);
 

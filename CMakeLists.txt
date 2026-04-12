@@ -55,7 +55,7 @@ target_sources(${EXECUTABLE_NAME} PRIVATE
 	Source/Animation.c
 	Source/Algorithm.c
 	Source/AssetManager.c
-	Source/BasisSokol.cpp 
+	Source/BasisBinding.cpp 
 	Extern/ExternAll.cpp
 )
 
