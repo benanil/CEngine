@@ -203,7 +203,7 @@ static inline void QuaternionFromMatrix(float* Orientation, const float* m, int 
 }
 
 
-inline v128f VCALL QuaternionFromMatrix3Vec(v128f r0, v128f r1, v128f r2)
+inline v128f VCALL QuaternionFromM33Vec(v128f r0, v128f r1, v128f r2)
 {
     static const v128f XMPMMP = { +1.0f, -1.0f, -1.0f, +1.0f };
     static const v128f XMMPMP = { -1.0f, +1.0f, -1.0f, +1.0f };
@@ -333,7 +333,7 @@ inline v128f VCALL QuaternionFromMatrix3Vec(v128f r0, v128f r1, v128f r2)
     #endif
 }
 
-static inline void Matrix3FromQuaternion(float* mat, Quaternion quat)
+static inline void M33FromQuaternion(float* mat, Quaternion quat)
 {
     xyzw q;
     VecStore(&q.x, quat);
@@ -356,7 +356,7 @@ static inline void Matrix3FromQuaternion(float* mat, Quaternion quat)
     mat[3 * 2 + 2] = 1.0f - (2.0f * (num8 + num9));
 }
 
-static inline void Matrix4FromQuaternion(float* mat, Quaternion quat)
+static inline void M44FromQuaternion(float* mat, Quaternion quat)
 {
     xyzw q;
     VecStore(&q.x, quat);

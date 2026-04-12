@@ -466,19 +466,19 @@ static void ParseNodesObj(sj_Value sjMeshObj, void* element, GLTFParseContext* c
         }
         else if (StrCMP16(curr, "matrix"))
         {
-            Matrix4 m;
+            m44 m;
             float* matrix = &m.m[0][0];
             
             for (int i = 0; i < 16; i++)
                 curr = ParseFloat(curr, &matrix[i]);
             
-            m = Matrix4Transpose(m);
+            m = M44Transpose(m);
             node->translation[0] = matrix[12];
             node->translation[1] = matrix[13];
             node->translation[2] = matrix[14];
             QuaternionFromMatrix(node->rotation, matrix, 4);
 
-            v128f v = VecMulf(ExtractScaleV(m), ctx->scale);
+            v128f v = VecMulf(M44ExtractScaleV(m), ctx->scale);
             Vec3Store(node->scale, v);
         }
         else if (StrCMP16(curr, "translation"))

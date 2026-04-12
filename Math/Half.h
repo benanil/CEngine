@@ -285,12 +285,12 @@ static forceinline void FloatToHalfN(h1* res, const f1* x, const s32 n)
         *res = FloatToHalf(*x);
 }
 
-static forceinline void Float3ToHalf3(f1* f, h1* res) {
+static forceinline void F3ToHalf3(f1* f, h1* res) {
     *(u32*)res = Float2ToHalf2(f); 
     res[2] = FloatToHalf(f[2]); 
 }
 
-// purefn Vec3f ConvertHalf3ToFloat3(half* h) {
+// purefn Vec3f ConvertHalf3ToF3(half* h) {
 // 	Vec3f res; 
 //     ConvertHalf2ToFloat2(&res.x, *(u32*)h); 
 //     res.z = ConvertHalfToFloat(h[2]); 

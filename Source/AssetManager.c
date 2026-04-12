@@ -67,7 +67,7 @@ static inline u32 PackXY11Z10UnormToU32(v128f v)
 static void PackTBNIntoQuaternion64(v128f normal, v128f tangent, u32* out)
 {
     v128f binormal = Vec3Cross(tangent, normal);
-    v128f quat = QuaternionFromMatrix3Vec(binormal, tangent, normal);
+    v128f quat = QuaternionFromM33Vec(binormal, tangent, normal);
     quat = VecNorm(quat);
     PackQuaternionS16Norm(quat, (u64*)out);
 }
@@ -288,10 +288,10 @@ s32 LoadFBX(const u8* path, SceneBundle* fbxScene, f1 scale)
         u32 numJoints = (u32)deformer->clusters.count;
         skin->numJoints = numJoints;
         skin->skeleton = 0;
-        skin->inverseBindMatrices = AllocateTLSFGlobal(numJoints * sizeof(Matrix4));
+        skin->inverseBindMatrices = AllocateTLSFGlobal(numJoints * sizeof(m44));
         skin->joints = FixedPow2Allocator_AllocateUninitialized(allocator, (sizeof(s32) + 1) * numJoints);
     
-        Matrix4* matrices = (Matrix4*)skin->inverseBindMatrices;
+        m44* matrices = (m44*)skin->inverseBindMatrices;
         for (u32 j = 0u; j < numJoints; j++)
         {
             ufbx_matrix uMatrix = deformer->clusters.data[j]->geometry_to_bone;
@@ -633,7 +633,7 @@ static void BoundsForPrimitive(APrimitive* primitive)
     // SDL_Log("max: %f, %f, %f ", primitive->max[0], primitive->max[1], primitive->max[2]);
 }
 
-static void PrintMatrix(Matrix4 mtx)
+static void PrintMatrix(m44 mtx)
 {
     SDL_Log("mtx[3]: %f, %f, %f, %f", mtx.m[3][0], mtx.m[3][1], mtx.m[3][2], mtx.m[3][3]);
     SDL_Log("mtx[2]: %f, %f, %f, %f", mtx.m[2][0], mtx.m[2][1], mtx.m[2][2], mtx.m[2][3]);
@@ -654,13 +654,13 @@ static void GetGLTFAnimations(SceneBundle* gltf)
     for (s32 s = 0; s < gltf->numSkins; s++)
     {
         ASkin* skin = &gltf->skins[s];
-        Matrix4* inverseBindMatrices = AllocateTLSFGlobal(skin->numJoints * sizeof(Matrix4));
-        SmallMemCpy(inverseBindMatrices, skin->inverseBindMatrices, sizeof(Matrix4) * skin->numJoints);
+        m44* inverseBindMatrices = AllocateTLSFGlobal(skin->numJoints * sizeof(m44));
+        SmallMemCpy(inverseBindMatrices, skin->inverseBindMatrices, sizeof(m44) * skin->numJoints);
         skin->inverseBindMatrices = (f1*)inverseBindMatrices;
         
         for (s32 i = 0; i < skin->numJoints; i++)
         {
-            Matrix4 inv = inverseBindMatrices[i];
+            m44 inv = inverseBindMatrices[i];
             if (i != rootIndex)
             {
                 inv.r[0] = VecNorm(inv.r[0]);
@@ -1193,7 +1193,7 @@ s32 SaveGLTFBinary(const SceneBundle* gltf, const u8* path)
         ASkin skin = gltf->skins[i];
         AFileWrite(&skin.skeleton, sizeof(s32), file, 1);
         AFileWrite(&skin.numJoints, sizeof(s32), file, 1);
-        AFileWrite(skin.inverseBindMatrices, sizeof(Matrix4) * skin.numJoints, file, 1);
+        AFileWrite(skin.inverseBindMatrices, sizeof(m44) * skin.numJoints, file, 1);
         AFileWrite(skin.joints, sizeof(s32) * skin.numJoints, file, 1);
     }
     
@@ -1465,9 +1465,9 @@ s32 LoadSceneBundleBinary(const u8* path, SceneBundle* gltf)
         ASkin* skin = &gltf->skins[i];
         AFileRead(&skin->skeleton, sizeof(s32), file, 1);
         AFileRead(&skin->numJoints, sizeof(s32), file, 1);
-        skin->inverseBindMatrices = (f1*)AllocateTLSFGlobal(sizeof(Matrix4) * skin->numJoints);
+        skin->inverseBindMatrices = (f1*)AllocateTLSFGlobal(sizeof(m44) * skin->numJoints);
         skin->joints = FixedPow2Allocator_AllocateUninitialized(allocator, skin->numJoints * sizeof(s32));
-        AFileRead(skin->inverseBindMatrices, sizeof(Matrix4) * skin->numJoints, file, 1);
+        AFileRead(skin->inverseBindMatrices, sizeof(m44) * skin->numJoints, file, 1);
         AFileRead(skin->joints, sizeof(s32) * skin->numJoints, file, 1);
     }
 

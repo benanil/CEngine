@@ -42,11 +42,11 @@ typedef s32 eAnimLocation;
 typedef s32 eAnimState;
 typedef s32 eAnimControllerState;
 
-typedef struct Matrix3x4f16_ {
+typedef struct half3x4_ {
     h4 x;
     h4 y;
     h4 z;
-} Matrix3x4f16;
+} half3x4;
 
 typedef struct DualQuaternionHalf_ {
     h4 real;
@@ -77,7 +77,7 @@ typedef struct AnimationController_
     s32   mNumJoints;
     f1 mRootScale;
    
-    Matrix3x4f16* mOutMatrices;
+    half3x4* mOutMatrices;
 
     AnimNode mAnimNodes[MaxBonePoses * 2];
     Pose     mAnimPoseA[MaxBonePoses * 2]; // < the result bone array that we send to GPU
@@ -143,7 +143,7 @@ typedef struct AnimatedCharacter_
 // bool humanoid = true, i32 lowerBodyStart = 58, animId = global animation controllerIndex 
 void AnimationController_Create(const SceneBundle* prefab, 
                                 AnimationController* animController, 
-                                Matrix3x4f16* outMatrices);
+                                half3x4* outMatrices);
 
 
 // play the given animation, norm is the animation progress between 0.0 and 1.0
@@ -174,7 +174,7 @@ static inline bool AnimatedCharacter_IsTrigerred(const AnimatedCharacter* ac)
     return (ac->mState & AnimState_TriggerMask) != 0;
 }
 
-void AnimatedCharacter_Create(const SceneBundle* prefab, AnimatedCharacter* result, s32 lowerBodyStart, Matrix3x4f16* outMatrices);
+void AnimatedCharacter_Create(const SceneBundle* prefab, AnimatedCharacter* result, s32 lowerBodyStart, half3x4* outMatrices);
 
 // x, y has to be between -1.0 and 1.0 (normalized)
 // xspeed and yspeed is between 0 and infinity speed of animation

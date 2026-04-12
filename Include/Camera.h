@@ -14,8 +14,8 @@ extern "C" {
 
 typedef struct Camera_
 {
-    Matrix4 projection;
-    Matrix4 view;
+    m44 projection;
+    m44 view;
     
     f1 verticalFOV;
     f1 nearClip;
@@ -35,8 +35,8 @@ typedef struct Camera_
  
     FrustumPlanes frustumPlanes;
 
-    Matrix4 inverseProjection;
-    Matrix4 inverseView;
+    m44 inverseProjection;
+    m44 inverseView;
 } Camera;
 
 
@@ -44,13 +44,13 @@ static inline void Camera_RecalculateProjection(Camera* camera, int width, int h
 {
     camera->viewportSize.x = width; camera->viewportSize.y = height;
     camera->projection = PerspectiveFovRH(camera->verticalFOV * MATH_DegToRad, (f1)width, (f1)height, camera->nearClip, camera->farClip);
-    camera->inverseProjection = Matrix4Inverse(camera->projection);
+    camera->inverseProjection = M44Inverse(camera->projection);
 }
 
 static inline void Camera_RecalculateView(Camera* camera)
 {
-    camera->view = LookAtRH(camera->position, camera->Front, camera->Up);
-    camera->inverseView = Matrix4Inverse(camera->view);
+    camera->view = M44LookAtRH(camera->position, camera->Front, camera->Up);
+    camera->inverseView = M44Inverse(camera->view);
 }
 
 static inline void Camera_CalculateLook(Camera* camera) // from yaw pitch

@@ -57,10 +57,10 @@ enum GraphicType_
     GraphicType_Vector2i,
     GraphicType_Vector3i,
     GraphicType_Vector4i,
-
-    GraphicType_Matrix2,
-    GraphicType_Matrix3,
-    GraphicType_Matrix4,
+    // matrix types
+    GraphicType_M22,
+    GraphicType_M33,
+    GraphicType_M44,
 
     GraphicType_NormalizeBit = 1 << 31
 };

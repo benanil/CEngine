@@ -5,7 +5,7 @@
 
 /*********************************************************************************
     *    Description:                                                                *
-    *        Row major right handed vectorized Matrix3x3 and Matrix4x4 structures.   *
+    *        Row major right handed vectorized M33x3 and M44x4 structures.   *
     *        That is capable of creating and manipulating position, rotation, scale, *
     *        view and projection matrices.                                           * 
     *    Note:                                                                       *
@@ -14,28 +14,28 @@
     *        Anilcan Gulkaya 2025 anilcangulkaya7@gmail.com github @benanil          *
     *********************************************************************************/
 
-typedef union Matrix4_ {
+typedef union M44_ {
     v128f r[4];
     f1 m[4][4];
-} Matrix4;
+} m44;
 
 
-typedef union Matrix3_ {
+typedef union M33_ {
     f3 r[3];
-} float3x3;
+} m33;
 
 typedef union float3x4_ {
     f3 r[4];
-} float3x4;
+} m34;
 
 typedef struct FrustumPlanes_ {
     v128f planes[6];
 } FrustumPlanes;
 
 
-purefn float3x3 Matrix3Multiply(float3x3 a, float3x3 b)
+purefn m33 M33Multiply(m33 a, m33 b)
 {
-    float3x3 result;
+    m33 result;
     f3 vx = F3Mul(b.r[0], a.r[0]);
     f3 vy = F3Mul(b.r[1], a.r[0]);
     f3 vz = F3Mul(b.r[2], a.r[0]);
@@ -53,32 +53,32 @@ purefn float3x3 Matrix3Multiply(float3x3 a, float3x3 b)
     return result;
 }
 
-purefn f3 Matrix3MultiplyFloat3(float3x3 m, f3 v)
+purefn f3 M33MultiplyF3(m33 m, f3 v)
 {
     return F3Add(F3Add(F3MulF(m.r[0], v.x), F3MulF(m.r[1], v.y)), F3MulF(m.r[2], v.z));
 }
     
-static inline float3x3 TBN(f3 normal, f3 tangent, f3 bitangent)
+static inline m33 TBN(f3 normal, f3 tangent, f3 bitangent)
 {
-    float3x3 M;
+    m33 M;
     M.r[0] = normal;
     M.r[1] = tangent;
     M.r[2] = bitangent;
     return M;
 }
 
-static inline float3x3 Identity()
+static inline m33 Identity()
 {
-    float3x3 result;
+    m33 result;
     result.r[0] = (f3){1.0f, 0.0f, 0.0f};
     result.r[1] = (f3){0.0f, 1.0f, 0.0f};
     result.r[2] = (f3){0.0f, 0.0f, 1.0f};
     return result;
 }
 
-purefn float3x3 Matrix3LookAt(f3 direction, f3 up)
+purefn m33 M33LookAt(f3 direction, f3 up)
 {
-    float3x3 result;
+    m33 result;
     result.r[2] = direction;
     f3 Right = F3Cross(&up, &result.r[2]);
     result.r[0] = F3MulF(Right, RSqrtf(MMAX(0.00001f, F3Dot(Right, Right))));
@@ -86,16 +86,16 @@ purefn float3x3 Matrix3LookAt(f3 direction, f3 up)
     return result;
 }
 
-purefn Quaternion Matrix3ToQuaternion(float3x3 m)
+purefn Quaternion M33ToQuaternion(m33 m)
 {
     Quaternion Orientation;
     QuaternionFromMatrix((float*)&Orientation, &m.r[0].x, 3);
     return Orientation;
 }
 
-purefn Matrix4 VCALL Matrix4Identity()
+purefn m44 VCALL M44Identity()
 {
-    Matrix4 M;
+    m44 M;
     M.r[0] = VecIdentityR0;
     M.r[1] = VecIdentityR1;
     M.r[2] = VecIdentityR2;
@@ -103,9 +103,9 @@ purefn Matrix4 VCALL Matrix4Identity()
     return M;
 }
 
-purefn Matrix4 MatrixFromPosition(f1 x, f1 y, f1 z)
+purefn m44 M44FromPosition(f1 x, f1 y, f1 z)
 {
-    Matrix4 M;
+    m44 M;
     M.r[0] = VecIdentityR0;
     M.r[1] = VecIdentityR1;
     M.r[2] = VecIdentityR2;
@@ -113,19 +113,19 @@ purefn Matrix4 MatrixFromPosition(f1 x, f1 y, f1 z)
     return M;
 }
 
-purefn Matrix4 MatrixFromPositionPtr(const f1* vec3)
+purefn m44 M44FromPositionPtr(const f1* vec3)
 {
-    return MatrixFromPosition(vec3[0], vec3[1], vec3[2]);
+    return M44FromPosition(vec3[0], vec3[1], vec3[2]);
 }
     
-purefn Matrix4 MatrixFromPositionFloat3(f3 vec3)
+purefn m44 M44FromPositionF3(f3 vec3)
 {
-    return MatrixFromPosition(vec3.x, vec3.y, vec3.z);
+    return M44FromPosition(vec3.x, vec3.y, vec3.z);
 }
 
-purefn Matrix4 MatrixFromScale(f1 ScaleX, f1 ScaleY, f1 ScaleZ)
+purefn m44 M44FromScale(f1 ScaleX, f1 ScaleY, f1 ScaleZ)
 {
-    Matrix4 M;
+    m44 M;
     M.r[0] = VecSetR(ScaleX, 0.0f, 0.0f, 0.0f);
     M.r[1] = VecSetR(0.0f, ScaleY, 0.0f, 0.0f);
     M.r[2] = VecSetR(0.0f, 0.0f, ScaleZ, 0.0f);
@@ -133,24 +133,24 @@ purefn Matrix4 MatrixFromScale(f1 ScaleX, f1 ScaleY, f1 ScaleZ)
     return M;
 }
     
-purefn Matrix4 MatrixFromScaleVec(f3 vec3)
+purefn m44 M44FromScaleVec(f3 vec3)
 {
-    return MatrixFromScale(vec3.x, vec3.y, vec3.z);
+    return M44FromScale(vec3.x, vec3.y, vec3.z);
 }
     
-purefn Matrix4 MatrixFromScalePtr(f1* vec3)
+purefn m44 M44FromScalePtr(f1* vec3)
 {
-    return MatrixFromScale(vec3[0], vec3[1], vec3[2]);
+    return M44FromScale(vec3[0], vec3[1], vec3[2]);
 }
     
-purefn Matrix4 MatrixFromScalef(f1 scale)
+purefn m44 M44FromScalef(f1 scale)
 {
-    return MatrixFromScale(scale, scale, scale);
+    return M44FromScale(scale, scale, scale);
 }
 
-purefn Matrix4 MatrixCreateRotation(f3 right, f3 up, f3 forward)
+purefn m44 M44CreateRotation(f3 right, f3 up, f3 forward)
 {
-    Matrix4 m;
+    m44 m;
     m.r[0] = Vec3Load(&right.x);
     m.r[1] = Vec3Load(&up.x);
     m.r[2] = Vec3Load(&forward.x);
@@ -159,9 +159,9 @@ purefn Matrix4 MatrixCreateRotation(f3 right, f3 up, f3 forward)
 }
 
 // this will not work on camera matrix this is for only transformation matricies
-static inline Matrix4 VCALL InverseTransform(Matrix4 inM)
+static inline m44 VCALL InverseTransform(m44 inM)
 {
-    Matrix4 out;
+    m44 out;
     // transpose 3x3, we know m03 = m13 = m23 = 0
     v128f t0 = VecShuffle_0101(inM.r[0], inM.r[1]); // 00, 01, 10, 11
     v128f t1 = VecShuffle_2323(inM.r[0], inM.r[1]); // 02, 03, 12, 13
@@ -220,7 +220,7 @@ purefn v128f VCALL Mat2MulAdj(v128f vec1, v128f vec2)
                   VecMul(VecSwizzle(vec1, 1, 0, 3, 2), VecSwizzle(vec2, 2, 1, 2, 1)));
 }
 
-static inline Matrix4 VCALL Matrix4Inverse(Matrix4 m)
+static inline m44 VCALL M44Inverse(m44 m)
 {
     v128f A = VecShuffle_0101(m.r[0], m.r[1]);
     v128f B = VecShuffle_2323(m.r[0], m.r[1]);
@@ -259,7 +259,7 @@ static inline Matrix4 VCALL Matrix4Inverse(Matrix4 m)
     Z_ = VecMul(Z_, rDetM);
     W_ = VecMul(W_, rDetM);
         
-    Matrix4 out;
+    m44 out;
     out.r[0] = VecShuffle(X_, Y_, 3, 1, 3, 1);
     out.r[1] = VecShuffle(X_, Y_, 2, 0, 2, 0);
     out.r[2] = VecShuffle(Z_, W_, 3, 1, 3, 1);
@@ -267,7 +267,7 @@ static inline Matrix4 VCALL Matrix4Inverse(Matrix4 m)
     return out;
 }
 #else
-static inline Matrix4 VCALL Matrix4Inverse(Matrix4 mat)
+static inline m44 VCALL M44Inverse(m44 mat)
 {
     float32x4_t v0, v1, v2, v3,
     t0, t1, t2, t3, t4, t5,
@@ -328,7 +328,7 @@ static inline Matrix4 VCALL Matrix4Inverse(Matrix4 mat)
     x0 = vcombine_f32(vget_low_f32(vzipq_f32(v0, v1).val[0]),
                       vget_low_f32(vzipq_f32(v2, v3).val[0]));
 
-    Matrix4 dest;
+    m44 dest;
     x0 = VecRcp(VecHSum(vmulq_f32(x0, mat.r[0]))); // dot?
     dest.r[0] = vmulq_f32(v0, x0);
     dest.r[1] = vmulq_f32(v1, x0);
@@ -338,7 +338,7 @@ static inline Matrix4 VCALL Matrix4Inverse(Matrix4 mat)
 }
 #endif
 
-purefn Matrix4 VCALL Matrix4Multiply(Matrix4 in0, const Matrix4 in1)
+purefn m44 VCALL M44Multiply(m44 in0, const m44 in1)
 {
     v128f m0, m1, m2, m3;
     m0 = VecMul(in1.r[0], VecSplatX(in0.r[0]));
@@ -376,7 +376,7 @@ purefn v128f VCALL Vec4Transform(v128f v, const v128f r[4])
     return VecFmaddLane(r[3], v, m0, 3);
 }
 
-purefn v128f VCALL Vector3Transform(v128f vec, const v128f r[4])
+purefn v128f VCALL Vec3Transform(v128f vec, const v128f r[4])
 {
     v128f m0;
     m0 = VecMul(r[0], VecSplatX(vec));
@@ -385,13 +385,13 @@ purefn v128f VCALL Vector3Transform(v128f vec, const v128f r[4])
     return VecAdd(r[3], m0);
 }
 
-purefn Matrix4 PerspectiveFovRH(f1 fov, f1 width, f1 height, f1 zNear, f1 zFar)
+purefn m44 PerspectiveFovRH(f1 fov, f1 width, f1 height, f1 zNear, f1 zFar)
 {
     f1 rad = Sin0pi(0.5f * fov);
     AX_ASSUME(rad > 0.01f);
     f1 h = Sqrtf(1.0f - (rad * rad)) / rad;
     f1 w = h * height / width; /// max(width , Height) / min(width , Height)?
-    Matrix4 M = {0};
+    m44 M = {0};
     M.m[0][0] = w;
     M.m[1][1] = h;
     M.m[2][2] = -(zFar + zNear) / (zFar - zNear);
@@ -401,9 +401,9 @@ purefn Matrix4 PerspectiveFovRH(f1 fov, f1 width, f1 height, f1 zNear, f1 zFar)
     return M;
 }
 
-purefn Matrix4 VCALL Matrix4Transpose(Matrix4 M)
+purefn m44 VCALL M44Transpose(m44 M)
 {
-    Matrix4 mResult;
+    m44 mResult;
     #ifdef AX_ARM
     float32x4x2_t P0 = vzipq_f32(M.r[0], M.r[2]);
     float32x4x2_t P1 = vzipq_f32(M.r[1], M.r[3]);
@@ -426,7 +426,7 @@ purefn Matrix4 VCALL Matrix4Transpose(Matrix4 M)
     return mResult;
 }
 
-purefn Matrix4 VCALL LookAtRH(const f3 eye, const f3 center, const f3 up)
+purefn m44 VCALL M44LookAtRH(const f3 eye, const f3 center, const f3 up)
 {
     v128f EyePosition  = VecLoad(&eye.x);
     v128f EyeDirection = VecSub(VecZero(), VecLoad(&center.x));
@@ -443,18 +443,18 @@ purefn Matrix4 VCALL LookAtRH(const f3 eye, const f3 center, const f3 up)
     v128f D1 = Vec3DotV(R1, NegEyePosition);
     v128f D2 = Vec3DotV(EyeDirection, NegEyePosition);
     
-    Matrix4 M;
+    m44 M;
     v128i test = VecSelect1110;
     M.r[0] = VecSelect(D0, R0, test); // no need select ?
     M.r[1] = VecSelect(D1, R1, test);
     M.r[2] = VecSelect(D2, EyeDirection, test);
     M.r[3] = VecIdentityR3;
-    return Matrix4Transpose(M);
+    return M44Transpose(M);
 }
 
-purefn Matrix4 OrthoRH(f1 left, f1 right, f1 bottom, f1 top, f1 zNear, f1 zFar)
+purefn m44 M44OrthoRH(f1 left, f1 right, f1 bottom, f1 top, f1 zNear, f1 zFar)
 {
-    Matrix4 Result = {0};
+    m44 Result = {0};
     Result.m[0][0] =  2.0f / (right - left);
     Result.m[1][1] =  2.0f / (top - bottom);
     Result.m[2][2] = -2.0f / (zFar - zNear);
@@ -465,11 +465,11 @@ purefn Matrix4 OrthoRH(f1 left, f1 right, f1 bottom, f1 top, f1 zNear, f1 zFar)
     return Result;
 }
 
-purefn Matrix4 PositionRotationScaleVec(v128f position, Quaternion rotation, v128f scale)
+purefn m44 M44PositionRotationScaleVec(v128f position, Quaternion rotation, v128f scale)
 {
-    Matrix4 res;
+    m44 res;
     // Export rotation to matrix
-    Matrix4FromQuaternion(&res.m[0][0], rotation);
+    M44FromQuaternion(&res.m[0][0], rotation);
     // Scale 3x3 matrix by given scale
     res.r[0] = VecMul(res.r[0], VecSplatX(scale));
     res.r[1] = VecMul(res.r[1], VecSplatY(scale));
@@ -480,25 +480,25 @@ purefn Matrix4 PositionRotationScaleVec(v128f position, Quaternion rotation, v12
     return res; 
 }
 
-purefn Matrix4 PositionRotationVec(v128f position, Quaternion rotation)
+purefn m44 M44PositionRotationVec(v128f position, Quaternion rotation)
 {
-    Matrix4 res;
-    Matrix4FromQuaternion(&res.m[0][0], rotation);
+    m44 res;
+    M44FromQuaternion(&res.m[0][0], rotation);
     res.r[3] = position;
     VecSetW(res.r[3], 1.0f);
     return res; 
 }
 
-purefn Matrix4 PositionRotationScale(f3 position, Quaternion rotation, f3 scale)
+purefn m44 M44PositionRotationScale(f3 position, Quaternion rotation, f3 scale)
 {
-    return PositionRotationScaleVec(VecLoad(&position.x), rotation, VecSetR(scale.x, scale.y, scale.z, 0.0f)); 
+    return M44PositionRotationScaleVec(VecLoad(&position.x), rotation, VecSetR(scale.x, scale.y, scale.z, 0.0f)); 
 }
 
-purefn Matrix4 PositionRotationScalePtr(const f1* position, const f1* rotation, const f1* scale)
+purefn m44 M44PositionRotationScalePtr(const f1* position, const f1* rotation, const f1* scale)
 {
-    Matrix4 res = {0};
+    m44 res = {0};
     // Export rotation to matrix
-    Matrix4FromQuaternion(&res.m[0][0], VecLoad(rotation));
+    M44FromQuaternion(&res.m[0][0], VecLoad(rotation));
     // Scale 3x3 matrix by given scale
     v128f vecScale = VecLoad(scale);
     res.r[0] = VecMul(res.r[0], VecSplatX(vecScale));
@@ -510,39 +510,39 @@ purefn Matrix4 PositionRotationScalePtr(const f1* position, const f1* rotation, 
     return res; 
 }
 
-purefn f3 VCALL ExtractPosition(Matrix4 matrix)
+purefn f3 VCALL M44ExtractPosition(m44 matrix)
 {
     f3 res;
     Vec3Store(&res.x, matrix.r[3]);
     return res;
 }
     
-purefn Quaternion VCALL ExtractRotation(Matrix4 M, u8 rowNormalize) 
+purefn Quaternion VCALL M44ExtractRotation(m44 M, u8 rowNormalize) 
 {
     Quaternion res;
     QuaternionFromMatrix((f1*)&res, &M.m[0][0], 4);
     return res;
 }
     
-purefn f3 VCALL ExtractScale(Matrix4 matrix) 
+purefn f3 VCALL M44ExtractScale(m44 matrix) 
 {
     return (f3){ Vec3LenfV(matrix.r[0]), Vec3LenfV(matrix.r[2]), Vec3LenfV(matrix.r[1]) };
 }
 
-purefn v128f VCALL ExtractScaleV(Matrix4 matrix) 
+purefn v128f VCALL M44ExtractScaleV(m44 matrix) 
 {
     return VecSetR(Vec3LenfV(matrix.r[0]), Vec3LenfV(matrix.r[2]), Vec3LenfV(matrix.r[1]), 0.0f);
 }
 
-inline Matrix4 VCALL MatrixFromQuaternionV(Quaternion q)
+inline m44 VCALL M44FromQuaternionV(Quaternion q)
 {
     #if defined(AX_ARM)
-    Matrix4 mat = {};
-    Matrix4FromQuaternion(&mat.m[0][0], q);
+    m44 mat = {};
+    M44FromQuaternion(&mat.m[0][0], q);
     mat.m[3][3] = 1.0f;
     return mat;
     #else
-    Matrix4 M;
+    m44 M;
     const v128f  Constant1110 = VecSetR(1.0f, 1.0f, 1.0f, 0.0f);
         
     v128f Q0 = VecAdd(q, q);
@@ -583,13 +583,13 @@ inline Matrix4 VCALL MatrixFromQuaternionV(Quaternion q)
     #endif
 }
     
-static inline Matrix4 VCALL MatrixFromQuaternionF(const f1* quaternion)
+static inline m44 VCALL M44FromQuaternionF(const f1* quaternion)
 {
-    return MatrixFromQuaternionV(MakeQuat(quaternion[0], quaternion[1], quaternion[2], quaternion[3]));
+    return M44FromQuaternionV(MakeQuat(quaternion[0], quaternion[1], quaternion[2], quaternion[3]));
 }
 
-purefn Matrix4 Matrix4RotationX(f1 angleRadians) {
-    Matrix4 out_matrix;
+purefn m44 M44RotationX(f1 angleRadians) {
+    m44 out_matrix;
     f1 s, c;
     SinCos(angleRadians, &s, &c);
     out_matrix.r[0] = VecIdentityR0;
@@ -600,8 +600,8 @@ purefn Matrix4 Matrix4RotationX(f1 angleRadians) {
     return out_matrix;
 }
     
-purefn Matrix4 Matrix4RotationY(f1 angleRadians) {
-    Matrix4 out_matrix = Matrix4Identity();
+purefn m44 M44RotationY(f1 angleRadians) {
+    m44 out_matrix = M44Identity();
     f1 s, c;
     SinCos(angleRadians, &s, &c);
     out_matrix.m[0][0] = c;
@@ -611,8 +611,8 @@ purefn Matrix4 Matrix4RotationY(f1 angleRadians) {
     return out_matrix;
 }
     
-purefn Matrix4 Matrix4RotationZ(f1 angleRadians) {
-    Matrix4 out_matrix = Matrix4Identity();
+purefn m44 M44RotationZ(f1 angleRadians) {
+    m44 out_matrix = M44Identity();
     f1 s, c;
     SinCos(angleRadians, &s, &c);
     out_matrix.m[0][0] = c;
@@ -622,10 +622,10 @@ purefn Matrix4 Matrix4RotationZ(f1 angleRadians) {
     return out_matrix;
 }
 
-purefn FrustumPlanes VCALL CreateFrustumPlanes(Matrix4 viewProjection)
+purefn FrustumPlanes VCALL CreateFrustumPlanes(m44 viewProjection)
 {
     FrustumPlanes result; // normalize each plane if you want to do sphere or cone intersection
-    Matrix4 C = Matrix4Transpose(viewProjection);
+    m44 C = M44Transpose(viewProjection);
     result.planes[0] = VecAdd(C.r[3], C.r[0]); // m_left_plane
     result.planes[1] = VecSub(C.r[3], C.r[0]); // m_right_plane
     result.planes[2] = VecAdd(C.r[3], C.r[1]); // m_bottom_plane
@@ -651,9 +651,9 @@ static inline bool VCALL CheckAABBCulled(v128f min, v128f max, const v128f frust
     return true;
 }
 
-static inline bool isPointCulled(f3 _point, Matrix4 matrix, const v128f frustumPlanes[6])
+static inline bool isPointCulled(f3 _point, m44 matrix, const v128f frustumPlanes[6])
 {
-    v128f point = Vector3Transform(VecLoad(&_point.x), matrix.r);
+    v128f point = Vec3Transform(VecLoad(&_point.x), matrix.r);
     if (VecDotf(frustumPlanes[0], point) < 0.0f) return false;
     if (VecDotf(frustumPlanes[1], point) < 0.0f) return false;
     if (VecDotf(frustumPlanes[2], point) < 0.0f) return false;
@@ -662,26 +662,26 @@ static inline bool isPointCulled(f3 _point, Matrix4 matrix, const v128f frustumP
     return true;
 }
 
-static inline f2 WorldToNDC(Matrix4 viewProj, f3 worldPos)
+static inline f2 WorldToNDC(m44 viewProj, f3 worldPos)
 {
     v128f pos = VecLoad(&worldPos.x);
-    v128f clipCoords = Vector3Transform(pos, viewProj.r);
+    v128f clipCoords = Vec3Transform(pos, viewProj.r);
     pos = VecDiv(clipCoords, VecSplatW(clipCoords));
     Vec3Store(&worldPos.x, pos);
     return (f2){ worldPos.x, worldPos.y };
 }
 
-static inline f2 WorldToScreenCoord(Matrix4 viewProj, f3 worldPos, int width, int height)
+static inline f2 WorldToScreenCoord(m44 viewProj, f3 worldPos, int width, int height)
 {
     f2 ndc = WorldToNDC(viewProj, worldPos);
     return (f2){ (width  * ndc.x), (height * ndc.y) };
 }
 
-purefn Matrix4 DQToMatrix(DualQuaternion dq)
+purefn m44 DQToMatrix(DualQuaternion dq)
 {
-    Matrix4 m = Matrix4Identity();
+    m44 m = M44Identity();
     // Build rotation matrix from real part
-    Matrix4FromQuaternion(&m.m[0][0], dq.real);
+    M44FromQuaternion(&m.m[0][0], dq.real);
     
     // Extract translation: t = 2 * dual * conjugate(real)
     v128f real_conj = QConjugate(dq.real);

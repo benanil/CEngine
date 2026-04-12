@@ -6,7 +6,7 @@
 *    Can Rotate The Head and Spine of humanoid character independently,                   *
 *    Allows to look around and turn the body                                              *
 *  Good To Know:                                                                          *
-*    Stores bone matrices into Matrix3x4Half format and sends to GPU within Textures      *
+*    Stores bone matrices into M33x4Half format and sends to GPU within Textures      *
 *    Scale interpolation is disabled for now                                              *
 *  Author:                                                                                *
 *    Anilcan Gulkaya 2024 anilcangulkaya7@gmail.com github @benanil                       *
@@ -20,7 +20,7 @@
 #include "Include/FileSystem.h"
 #include "Math/Half.h"
 
-void AnimationController_Create(const SceneBundle* prefab, AnimationController* result, Matrix3x4f16* outMatrices)
+void AnimationController_Create(const SceneBundle* prefab, AnimationController* result, half3x4* outMatrices)
 {
     Pose pose;
     AnimNode animNode;
@@ -107,9 +107,9 @@ void AnimationController_RecurseBoneMatrices(AnimationController* ac)
 
 void AnimationController_UploadBoneMatrices(AnimationController* ac)
 {
-    Matrix4 mat;
+    m44 mat;
     const ASkin* skin = &ac->mPrefab->skins[0];
-    const Matrix4* invMatrices = (const Matrix4*)skin->inverseBindMatrices;
+    const m44* invMatrices = (const m44*)skin->inverseBindMatrices;
     float rootScale = ac->mPrefab->nodes[ac->mRootNodeIndex].scale[1];
     v128f rootScaleMul = VecSetR(rootScale, rootScale, rootScale, 1.0f);
     
@@ -122,9 +122,9 @@ void AnimationController_UploadBoneMatrices(AnimationController* ac)
             pos = VecMul(pos, rootScaleMul);
         }
 
-        mat = PositionRotationVec(pos, pose->rotation);
-        mat = Matrix4Multiply(invMatrices[i], mat);
-        mat = Matrix4Transpose(mat);
+        mat = M44PositionRotationVec(pos, pose->rotation);
+        mat = M44Multiply(invMatrices[i], mat);
+        mat = M44Transpose(mat);
         // with AVX F16C this is single instruction! vcvtps2ph 
         Float8ToHalf8(ac->mOutMatrices[i].x, &mat.m[0][0]);
         Float4ToHalf4(ac->mOutMatrices[i].z, &mat.m[2][0]); // this is single instruction with it as well
@@ -208,7 +208,7 @@ void AnimationController_SampleAnimationPose(const AnimationController* ac, Pose
 ////////            ANIMATED CHARACTER            ////////
 
 
-void AnimatedCharacter_Create(const SceneBundle* prefab, AnimatedCharacter* result, s32 lowerBodyStart, Matrix3x4f16* outMatrices)
+void AnimatedCharacter_Create(const SceneBundle* prefab, AnimatedCharacter* result, s32 lowerBodyStart, half3x4* outMatrices)
 {
     result->lowerBodyIdxStart = lowerBodyStart;
     result->mState = AnimState_Update;

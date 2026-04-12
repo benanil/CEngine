@@ -49,12 +49,12 @@ SceneBundle*   gPaladin;
 WindowState g_WindowState;
 RenderState g_RenderState;
 
-Matrix4* g_NodeTransforms;
+m44* g_NodeTransforms;
 Camera   g_Camera;
 
 static s32 characterRootIndex;
 static AnimationController AnimControllers[NUM_ANIMS];
-AX_ALIGN(4) Matrix3x4f16 OutMatrices[MaxBonePoses * NUM_ANIMS];
+AX_ALIGN(4) half3x4 OutMatrices[MaxBonePoses * NUM_ANIMS];
 
 extern Graphics gGFX;
 ECS ecs;
@@ -154,7 +154,7 @@ static void Render()
     
     /* Draw */
     SDL_GPUTexture* tex = g_RenderState.textures[gPaladin->materials[0].baseColorTexture.index].handle;
-    Matrix4 viewProj = Matrix4Multiply(g_Camera.view, g_Camera.projection);
+    m44 viewProj = M44Multiply(g_Camera.view, g_Camera.projection);
     FrustumPlanes frustumPlanes = CreateFrustumPlanes(viewProj);
 
     SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmd, &color_target, 1, &depth_target);
@@ -171,7 +171,7 @@ static void Render()
                                     .sampler = g_RenderState.sampler
                                 }, 1);
     
-    SDL_PushGPUVertexUniformData(cmd, 0, &viewProj, sizeof(Matrix4));
+    SDL_PushGPUVertexUniformData(cmd, 0, &viewProj, sizeof(m44));
     
     s32 numNodes = gPaladin->numNodes;
     const bool hasScene = gPaladin->numScenes > 0;
@@ -207,7 +207,7 @@ static void Render()
             const APrimitive* primitive = &mesh->primitives[j];
             // const bool hasMaterial = sceneBundle->materials && primitive->material != UINT16_MAX;
             // const AMaterial material = sceneBundle->materials[primitive->material];
-            // const Matrix4 model = nodeTransforms[nodeIndex];
+            // const M44 model = nodeTransforms[nodeIndex];
             SDL_DrawGPUIndexedPrimitives(pass, primitive->numIndices, NUM_ANIMS, primitive->indexOffset, 0, 0);
         }
     
@@ -258,12 +258,12 @@ static void InitScene()
     g_RenderState.vertexBuffer = CreateBuffer(gGFX.VertexBuffer, MAX_VERTEX * sizeof(ASkinedVertex), SDL_GPU_BUFFERUSAGE_VERTEX, "CPVertexBuffer");
     g_RenderState.indexBuffer  = CreateBuffer(gGFX.IndexBuffer , MAX_INDEX * sizeof(int), SDL_GPU_BUFFERUSAGE_INDEX, "CPIndexBuffer");
     
-    g_NodeTransforms   = AllocateTLSFGlobal(sizeof(Matrix4) * gPaladin->numNodes);
+    g_NodeTransforms   = AllocateTLSFGlobal(sizeof(m44) * gPaladin->numNodes);
     characterRootIndex = Prefab_FindAnimRootNodeIndex(gPaladin);
     
     for (s32 i = 0; i < NUM_ANIMS; i++)
     {
-        Matrix3x4f16* outMatrices = OutMatrices + (i * MaxBonePoses);
+        half3x4* outMatrices = OutMatrices + (i * MaxBonePoses);
         AnimationController_Create(gPaladin, &AnimControllers[i], outMatrices);
     }
         
