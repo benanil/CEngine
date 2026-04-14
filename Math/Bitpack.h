@@ -56,23 +56,25 @@ static inline void PackTBNIntoQuaternion64(v128f normal, v128f tangent, u32* out
     PackQuaternionS16Norm(quat, (u64*)out);
 }
 
-static inline u32 VCALL PackQuat(v128f v)
+static u32 VCALL PackQuat(v128f v)
 {
     static const u32 shifts[4][4] = {
         { 32,  0,  9, 18 },
         {  0, 32,  9, 18 },
         {  0,  9, 32, 18 },
-        {  0,  9, 18, 32 } 
+        {  0,  9, 18, 32 }
     };
 
-    v128f cScale = VecSet1((float)(c9MaxValue) / (2.0f * cOneOverSqrt2));
+    v128f cScale  = VecSet1((float)c9MaxValue / (2.0f * cOneOverSqrt2));
+    v128f absV    = VecFabs(v);
+    u32 maxElement = VecMaxElement(absV);
 
-    u32 maxElement = VecMaxElement(VecFabs(v));
-    float maxVal   = VecGetN(v, maxElement);
+    v128u signBits = VeciAnd(VecBitcastU32(v), VeciSet1(0x80000000u));
+    u32 maxSign    = (u32)((u32*)&signBits)[maxElement & 3];
+    v128u flipMask = VeciSet1(maxSign);
+    v = VecXor(v, VeciBitcastF32(flipMask));
 
-    u32 value = (u32)BitCast(u32, maxVal) & 0x80000000u;
-    v = VecXor(v, VeciBitcastF32(VeciSet1(value)));
-    value |= maxElement << 29;
+    u32 value = maxSign | (maxElement << 29);
 
     v = VecFmadd(v, cScale, VecSet1((float)c9MaxValue * 0.5f + 0.5f));
     v = VecClamp(v, VecZero(), VecSet1((float)c9MaxValue));
@@ -84,52 +86,37 @@ static inline u32 VCALL PackQuat(v128f v)
     return value | VeciGetX(i);
 }
 
-static inline v128f VCALL UnpackQuat(u32 inValue)
+static v128f VCALL UnpackQuat(u32 inValue)
 {
-    static const u32 shifts[4][4] = {
-        { 32,  0,  9, 18 }, 
-        {  0, 32,  9, 18 }, 
-        {  0,  9, 32, 18 }, 
-        {  0,  9, 18, 32 }  
-    };
+    v128f cScale  = VecSet1(2.0f * cOneOverSqrt2 / (float)c9MaxValue);
+    v128f cOffset = VecSet1(cOneOverSqrt2);
 
-    static const u32 signMasks[4][4] = {
-        { 0x80000000u, 0, 0, 0 },
-        { 0, 0x80000000u, 0, 0 },
-        { 0, 0, 0x80000000u, 0 },
-        { 0, 0, 0, 0x80000000u }
-    };
-
-    static const u32 laneMasks[4][4] = {
-        { 0, ~0u, ~0u, ~0u },
-        { ~0u, 0, ~0u, ~0u },
-        { ~0u, ~0u, 0, ~0u },
-        { ~0u, ~0u, ~0u, 0 }
-    };
-
-    static const u32 andMasks[4][4] = {
-        { 0,       c9Mask, c9Mask, c9Mask },
-        { c9Mask,  0,      c9Mask, c9Mask },
-        { c9Mask,  c9Mask, 0,      c9Mask },
-        { c9Mask,  c9Mask, c9Mask, 0      }
-    };
-
-    v128f cScale = VecSet1(2.0f * cOneOverSqrt2 / (float)(c9MaxValue));
     u32 maxIndex = (inValue >> 29) & 3;
-    
-    v128u x = VeciSet1(inValue);
-    v128u s = VeciAnd(VeciSet1(inValue & 0x80000000u), VeciLoad(signMasks[maxIndex]));
+    u32 signBit  = inValue & 0x80000000u;
 
-    x = VeciSrl(x, VeciLoad(shifts[maxIndex]));
-    x = VeciAnd(x, VeciLoad(andMasks[maxIndex]));
+    v128u raw     = VeciSet1(inValue);
+    v128u laneIdx = VeciSetR(0, 1, 2, 3);
+    v128u maxLane = VeciSet1(maxIndex);
+    v128u isMax   = VeciCmpEq(laneIdx, maxLane);
 
-    v128f v = VecU32ToF32(x);
-    v = VecFmsub(v, cScale, VecSet1(cOneOverSqrt2));
-    v = VecAnd(v, VeciBitcastF32(VeciLoad(laneMasks[maxIndex])));
+    v128u gt     = VeciCmpGt(laneIdx, maxLane);
+    v128u order  = VeciSub(laneIdx, VeciAnd(gt, VeciSet1(1u)));
+    v128u shAmts = VeciMul(order, VeciSet1(9u));
+    shAmts       = VeciBlend(shAmts, VeciSet1(0u), isMax);
 
-    float missing = Sqrtf(Maxf32(1.0f - VecGetX(VecDot(v, v)), 0.0f));
-    v = VecSetN(v, maxIndex, missing);
-    return VeciBitcastF32(VeciXor(VecBitcastU32(v), s));
+    v128u extracted = VeciSrl(raw, shAmts);
+    extracted       = VeciAnd(extracted, VeciSet1(c9Mask));
+    extracted       = VeciAndNot(isMax, extracted);
+
+    v128f v = VecU32ToF32(extracted);
+    v       = VecFmsub(v, cScale, cOffset);
+    v       = VecAndNot(VeciBitcastF32(isMax), v);
+
+    v128f sq4     = VecDot(v, v);
+    v128f clamped = VecMax(VecSub(VecOne(), sq4), VecZero());
+    v128f missing = VecSqrt(clamped);
+    v128f blended = VecBlend(v, missing, VeciBitcastF32(isMax));
+    return VecXor(blended, VecFromInt1((s32)signBit));
 }
 
 #endif

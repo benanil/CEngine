@@ -335,6 +335,7 @@ typedef __m128i v128u;
 #define VeciCmpLe(a, b)             _mm_cmple_epi32(a, b)
 #define VeciCmpGt(a, b)             _mm_cmpgt_epi32(a, b)
 #define VeciCmpGe(a, b)             _mm_cmpge_epi32(a, b)
+#define VeciCmpEq(a, b)             _mm_cmpeq_epi32(a, b)
                                     
 #define VeciBlend(a, b, c)          _mm_blendv_epi8(a, b, c)
 #define VecFabs(x)                  VecAnd(x, VecFromInt1(0x7fffffff))
@@ -565,6 +566,9 @@ VecSetR( \
 
 #define VecBitcastU32(x)            vreinterpretq_f32_u32(x)
 #define VeciBitcastF32(x)           vreinterpretq_u32_f32(x)
+#define VecFromInt(x, y, z, w)      VeciBitcastF32(ARMCreateVecI(x, y, z, w))
+#define VecFromInt1(x)              VeciBitcastF32(vdupq_n_u32(x))
+
 // Swizzling Masking
 #define VecSelect1000  ARMCreateVecI(0xFFFFFFFFu, 0x00000000u, 0x00000000u, 0x00000000u)
 #define VecSelect1100  ARMCreateVecI(0xFFFFFFFFu, 0xFFFFFFFFu, 0x00000000u, 0x00000000u)
@@ -603,6 +607,7 @@ VecSetR( \
 #define VeciCmpLe(a, b)             vclte_u32(a, b)
 #define VeciCmpGt(a, b)             vcgtq_u32(a, b)
 #define VeciCmpGe(a, b)             vcgeq_u32(a, b)
+#define VeciCmpEq(a, b)             vceq_u32(a, b)
 
 #define VeciBlend(a, b, c)          vbslq_u8(c, b, a)  /* Blend a and b based on mask c */
 #define VecFabs(x)                  vabsq_f32(x)

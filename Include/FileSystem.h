@@ -79,7 +79,7 @@ bool     HasAnySubdir    (const char* path);
 void     RemoveFolder    (const char* path, void* unused);
 bool     CreateFolder    (const char* folderName);
 bool     IsFolder        (const char* path);
-
+void     EnsurePath      (const char* path);
 
 #if defined(__cplusplus)
 }

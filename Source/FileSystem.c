@@ -684,6 +684,33 @@ bool HasAnySubdir(const char* path)
     return false;
 }
 
+void EnsurePath(const char* path)
+{
+    char temp[1024];
+    int lastSeparator = -1;
+    for (int i = 0; path[i] != '\0' && i < 1023; ++i)
+    {
+        if (path[i] == '/' || path[i] == '\\') lastSeparator = i;
+        temp[i] = path[i];
+    }
+
+    if (lastSeparator <= 0) return;
+
+    for (int i = 0; i <= lastSeparator; ++i)
+    {
+        if (temp[i] == '/' || temp[i] == '\\')
+        {
+            char originalChar = temp[i];
+            temp[i] = '\0'; // Temporarily terminate to check this specific folder
+            
+            if (!IsFolder(temp))
+                CreateFolder(temp);
+            
+            temp[i] = originalChar; // Restore separator
+        }
+    }
+}
+
 void RemoveFolder(const char* path, void* unused) 
 {
     (void)unused;

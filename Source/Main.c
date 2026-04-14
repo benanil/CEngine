@@ -38,7 +38,7 @@
 #include "Shaders/SkinnedVert.spv.h"
 #endif
 
-#define NUM_ANIMS (1024)
+#define NUM_ANIMS (8000)
 
 
 extern Graphics gGFX;
@@ -248,7 +248,7 @@ static void InitScene()
     
     // if (!LoadSceneBundleBinary("Assets/Meshes/Paladin/Paladin.abm", sceneBundle))
     // if (!ParseGLTF2("Assets/Meshes/Paladin/Paladin.gltf", sceneBundle, 1.0f))
-    if (!ParseGLTF2("Assets/Meshes/Paladin2/Paladin.glb", gPaladin, 1.0f))
+    if (!ParseGLTF2("Assets/Meshes/Paladin/Paladin.gltf", gPaladin, 1.0f))
     {
         AX_ERROR("gltf scene load failed2");
         return;

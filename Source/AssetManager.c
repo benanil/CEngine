@@ -153,7 +153,7 @@ s32 LoadFBX(const u8* path, SceneBundle* fbxScene, f1 scale)
         primitive->material    = 0; // todo
         primitive->indices     = currentIndex; 
         primitive->vertices    = currentVertex;
-       
+        
         primitive->attributes |= AAttribType_POSITION;
         primitive->attributes |= ((s32)umesh->vertex_uv.exists << 1) & AAttribType_TEXCOORD_0;
         primitive->attributes |= ((s32)umesh->vertex_normal.exists << 2) & AAttribType_NORMAL;

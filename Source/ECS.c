@@ -13,7 +13,7 @@ void ECS_Init()
     ecs.numGroups   = 0u;
     ecs.numBundles  = 0u;
     Entity* entities = ecs.entities;
-    u32 packedScale = PackXY11Z10UnormToU32(VecSet1(0.1f));
+    u32 packedScale = PackXY11Z10UnormToU32(VecSet1(0.01f));
 
     for (s32 i = 0; i < MAX_ENTITY; i++)
     {

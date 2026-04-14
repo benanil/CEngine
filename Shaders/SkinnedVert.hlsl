@@ -103,7 +103,6 @@ half3 UnpackVec3XY11Z10Unorm(uint packed) {
 
 VSOutput main(VSInput input, uint instanceID : SV_InstanceID)
 {
-    VSOutput o;
     half3x4 animMat = half3x4(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
     uint boneStart = instanceID * MaxBonePoses * MatrixNumInt32;
     half4 weights;
@@ -141,6 +140,7 @@ VSOutput main(VSInput input, uint instanceID : SV_InstanceID)
     half3 worldPos = mul(half4(input.aPos.xyz, 1.0), animTransposed);
     worldPos = QuaternionRotateVector(insRot, worldPos);
     
+    VSOutput o;
     o.texCoords = input.aTexCoords;
     o.position  = mul(uViewProj, float4(insScale * float3(worldPos) + insPos, 1.0));
     o.normal    = normalize(tbn[2]); // Normalize after transformations
