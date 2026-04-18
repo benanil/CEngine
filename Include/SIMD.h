@@ -10,7 +10,7 @@
 // and macro's allows many more optimizations that compiler can do.
 // a bit more explanation here: https://medium.com/@anilcangulkaya7/what-is-simd-and-how-to-use-it-3d1125faac89
 
-#include <stdint.h>
+#include "IntFloat.h"
 
 #if defined(_MSC_VER)       /* MSVC */
 #  define AX_ALIGN(N) __declspec(align(N))
@@ -117,29 +117,6 @@ extern "C" {
 #else
     #define purefn static inline __attribute__((always_inline))
 #endif
-
-typedef float    f1;
-typedef double   d1;
-typedef uint8_t  u8;
-typedef uint16_t u16;
-typedef uint32_t u32;
-typedef uint64_t u64;
-typedef int8_t   s8;
-typedef int16_t  s16;
-typedef int32_t  s32;
-typedef int64_t  s64;
-
-// less typing for casting, Timothy Lottes way
-#define  f1_(x)  ((f1)(x))
-#define  d1_(x)  ((d1)(x))
-#define  u8_(x)  ((u8)(x))
-#define u16_(x) ((u16)(x))
-#define u32_(x) ((u32)(x))
-#define u64_(x) ((u64)(x))
-#define  s8_(x)  ((s8)(x))
-#define s16_(x) ((s16)(x))
-#define s32_(x) ((s32)(x))
-#define s64_(x) ((s64)(x))
 
 
 #if defined(AX_SUPPORT_SSE) && !defined(AX_ARM)
@@ -298,6 +275,7 @@ typedef __m128i v128u;
 #define VeciSet1(x)                 _mm_set1_epi32(x)
 #define VeciSet(x, y, z, w)         _mm_set_epi32(x, y, z, w)
 #define VeciSetR(x, y, z, w)        _mm_setr_epi32(x, y, z, w)
+#define VeciDup64(x)                _mm_set1_epi64x(x)
 #define VeciLoadA(x)                _mm_load_epi32(x)
 #define VeciLoad(x)                 _mm_loadu_epi32(x)
 #define VeciLoad64(qword)           _mm_loadu_si64(qword)     /* loads 64bit integer to first 8 bytes of register */
@@ -551,6 +529,8 @@ VecSetR( \
 #define VeciSet1(x)                 vdupq_n_u32(x)
 #define VeciSetR(x, y, z, w)        ARMCreateVecI(x, y, z, w)
 #define VeciSet(x, y, z, w)         ARMCreateVecI(w, z, y, x)
+#define VeciDup64(x)                vreinterpretq_u32_u64(vdupq_n_u64(x))
+
 #define VeciLoadA(x)                vld1q_u32(x)
 #define VeciLoad(x)                 vld1q_u32(x)
 #define VeciLoad64(qword)           vcombine_u32(vcreate_u32(qword), vcreate_u32(0ull)) /* loads 64bit integer to first 8 bytes of register */
@@ -853,23 +833,23 @@ purefn u32 VCALL VecMaxElement(v128f a)
 }
 
 #if defined(AX_SUPPORT_SSE) || defined(AX_ARM)
-static inline float VCALL VecGetN(v128f v, int n)
+purefn float VCALL VecGetN(v128f v, int n)
 {
     return ((float*)&v)[n & 3];
 }
 
-static inline v128f VCALL VecSetN(v128f v, int n, float f)
+purefn v128f VCALL VecSetN(v128f v, int n, float f)
 {
     ((float*)&v)[n & 3] = f;
     return v;
 }
 
-static inline int VCALL VeciGetN(v128f v, int n)
+purefn int VCALL VeciGetN(v128u v, int n)
 {
     return ((int*)&v)[n & 3];
 }
 
-static inline v128i VCALL VeciSetN(v128i v, int n, int i)
+purefn v128u VCALL VeciSetN(v128u v, int n, int i)
 {
     ((int*)&v)[n & 3] = i;
     return v;

@@ -16,10 +16,10 @@ extern "C" {
 typedef struct Node_
 {
     // first bit used to determine red or black
-	struct Node_*  parent; 
-	struct Node_*  left;
-	struct Node_*  right;
-	void* value;
+    struct Node_*  parent; 
+    struct Node_*  left;
+    struct Node_*  right;
+    void* value;
 } Node;
 
 typedef struct RBTree_
@@ -67,7 +67,7 @@ void RBRotateLeft(RBTree* tree, Node* node);
 void RBRotateRight(RBTree* tree, Node* node);
 
 Node* RBAllocateNode(void* data, Node* parent);
-	
+
 void RBFreeNode(Node* n, bool recursive);
 
 

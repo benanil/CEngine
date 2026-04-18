@@ -43,6 +43,8 @@ typedef struct Range_
 typedef struct ECS_
 {
     Entity             entities[MAX_ENTITY];
+    u32                sparseID[MAX_ENTITY];
+
     PrimitiveGroup     primitiveGroups[MAX_GROUP];
 
     Range              bundleRange[MAX_BUNDLES];
@@ -75,7 +77,5 @@ u32 GetNumPrimitivesInBundle(u32 bundleIdx);
 void ECS_CompactEntities();
 
 void ECS_Update(f1 delta_time);
-
-
 
 #endif

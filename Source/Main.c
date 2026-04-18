@@ -38,7 +38,7 @@
 #include "Shaders/SkinnedVert.spv.h"
 #endif
 
-#define NUM_ANIMS (8000)
+#define NUM_ANIMS (2048)
 
 
 extern Graphics gGFX;

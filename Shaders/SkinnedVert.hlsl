@@ -146,3 +146,4 @@ VSOutput main(VSInput input, uint instanceID : SV_InstanceID)
     o.normal    = normalize(tbn[2]); // Normalize after transformations
     return o;
 }
+

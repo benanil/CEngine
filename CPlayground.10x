@@ -278,6 +278,9 @@
 					<File>
 						<Path>Include/dirent.h</Path>
 					</File>
+					<File>
+						<Path>Include/IntFloat.h</Path>
+					</File>
 				</Children>
 			</Folder>
 			<Folder>
@@ -356,6 +359,12 @@
 					</File>
 					<File>
 						<Path>Source/BasisBinding.cpp</Path>
+					</File>
+					<File>
+						<Path>Source/HashMap.h</Path>
+					</File>
+					<File>
+						<Path>Source/SparseSet.h</Path>
 					</File>
 				</Children>
 			</Folder>

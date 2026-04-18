@@ -388,7 +388,7 @@ void RBRotateRight(RBTree* tree, Node* node)
             GetParent(node)->left = leftChild;
     else
         GetParent(node)->right = leftChild;
-		
+    
     leftChild->right = node;
     SetParent(node, leftChild);
 }

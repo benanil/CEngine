@@ -586,17 +586,17 @@ static void BoundsForPrimitive(APrimitive* primitive)
     }
     VecStore(primitive->min, min);
     VecStore(primitive->max, max);
-    // SDL_Log("min: %f, %f, %f ", primitive->min[0], primitive->min[1], primitive->min[2]);
-    // SDL_Log("max: %f, %f, %f ", primitive->max[0], primitive->max[1], primitive->max[2]);
+    // AX_LOG("min: %f, %f, %f ", primitive->min[0], primitive->min[1], primitive->min[2]);
+    // AX_LOG("max: %f, %f, %f ", primitive->max[0], primitive->max[1], primitive->max[2]);
 }
 
 static void PrintMatrix(m44 mtx)
 {
-    SDL_Log("mtx[3]: %f, %f, %f, %f", mtx.m[3][0], mtx.m[3][1], mtx.m[3][2], mtx.m[3][3]);
-    SDL_Log("mtx[2]: %f, %f, %f, %f", mtx.m[2][0], mtx.m[2][1], mtx.m[2][2], mtx.m[2][3]);
-    SDL_Log("mtx[1]: %f, %f, %f, %f", mtx.m[1][0], mtx.m[1][1], mtx.m[1][2], mtx.m[1][3]);
-    SDL_Log("mtx[0]: %f, %f, %f, %f", mtx.m[0][0], mtx.m[0][1], mtx.m[0][2], mtx.m[0][3]);
-    SDL_Log("--------------------------------------");
+    AX_LOG("mtx[3]: %f, %f, %f, %f", mtx.m[3][0], mtx.m[3][1], mtx.m[3][2], mtx.m[3][3]);
+    AX_LOG("mtx[2]: %f, %f, %f, %f", mtx.m[2][0], mtx.m[2][1], mtx.m[2][2], mtx.m[2][3]);
+    AX_LOG("mtx[1]: %f, %f, %f, %f", mtx.m[1][0], mtx.m[1][1], mtx.m[1][2], mtx.m[1][3]);
+    AX_LOG("mtx[0]: %f, %f, %f, %f", mtx.m[0][0], mtx.m[0][1], mtx.m[0][2], mtx.m[0][3]);
+    AX_LOG("--------------------------------------");
 }
 
 static void GetGLTFAnimations(SceneBundle* gltf)

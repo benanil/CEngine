@@ -111,7 +111,8 @@ static void RecursePushScene(Range range, const SceneBundle* bundle, s32 nodeInd
 {
     const ANode* node = bundle->nodes + nodeIndex;
     const AMesh* mesh = bundle->meshes + node->index;
-    
+    rotation = VecNorm(rotation);
+
     if (node->type == 0 && node->index != -1)
     for (s32 j = 0; j < mesh->numPrimitives; ++j)
     {
