@@ -1,7 +1,7 @@
 #ifndef A_BITPACK
 #define A_BITPACK
 
-#include "../Include/Common.h"
+#include "Math.h"
 
 #define cOneOverSqrt2 (0.70710678f)
 #define cNumBits      (9)
@@ -60,6 +60,50 @@ static inline void PackTBNIntoQuaternion64(v128f normal, v128f tangent, u32* out
     v128f binormal = Vec3Cross(tangent, normal);
     v128f quat = QuaternionFromM33Vec(binormal, tangent, normal);
     PackQuaternionS16Norm(quat, (u64*)out);
+}
+
+// https://github.com/Global-Illuminati/Precomputed-Light-Field-Probes/blob/master/src/shaders/octahedral.glsl
+static inline v128f OctWrap(v128f v)
+{
+    v128f absSwap  = VecFabs(VecSwapPairs(v));
+    v128f oneMinus = VecSub(VecSet1(1.0f), absSwap);
+    v128f sign     = VecOr(VecAnd(v, VecSet1(-0.0f)), VecSet1(1.0f));
+    return VecMul(oneMinus, sign);
+}
+
+static inline v128f OctEncode(v128f n)
+{
+    VecSetW(n, 0.0f);
+    v128f absSum  = VecHSum(VecFabs(n));
+    n             = VecDiv(n, absSum);
+    v128f wrapped = OctWrap(n);
+    v128i negZ    = VecCmpLt(VecSplatZ(n), VecZero());
+    return VecBlend(n, wrapped, negZ);
+}
+
+// https://www.jeremyong.com/graphics/2023/01/09/tangent-spaces-and-diamond-encoding/
+static inline float EncodeTangentDiamond(v128f normal, v128f tangent)
+{
+    v128f t1;
+    if (Absf32(VecGetY(normal)) > Absf32(VecGetZ(normal)))
+        t1 = VecSetR(VecGetY(normal), -VecGetX(normal), 0.0f, 0.0f);
+    else
+        t1 = VecSetR(VecGetZ(normal), 0.0f, -VecGetX(normal), 0.0f);
+    t1 = Vec3NormV(t1);
+    v128f  t2  = Vec3Cross(t1, normal);
+    float  tx  = Vec3DotfV(tangent, t1);
+    float  ty  = Vec3DotfV(tangent, t2);
+    float  x   = tx / (Absf32(tx) + Absf32(ty));
+    float  pys = Signf(ty);
+    return -pys * 0.25f * x + 0.5f + pys * 0.25f;
+}
+
+purefn u32 VCALL PackNormalTangent(v128f normal, v128f tangent)
+{
+    v128f oct          = OctEncode(normal);
+    float diamond      = EncodeTangentDiamond(normal, tangent);
+    float diamondSnorm = diamond * 2.0f - 1.0f;
+    return PackXY11Z10SnormToU32(VecSetR(VecGetX(oct), VecGetY(oct), diamondSnorm, 0.0f));
 }
 
 // 9 bit per channel xyz, and 2 bit for max index, and 1 bit for max val sign, reconstruct w afterwards
@@ -181,6 +225,13 @@ static inline v128f VCALL UnpackQuat10(u32 inValue)
     v128f clamped = VecMax(VecSub(VecOne(), sq4), VecZero());
     v128f missing = VecSqrt(clamped);
     return VecBlend(v, missing, VeciBitcastF32(isMax));
+}
+
+static inline u32 PackTBNIntoQuaternion32(v128f normal, v128f tangent)
+{
+    v128f binormal = VecNeg(Vec3Cross(tangent, normal));
+    v128f quat = QuaternionFromM33Vec(binormal, tangent, normal);
+    return PackQuat(quat);
 }
 
 #endif

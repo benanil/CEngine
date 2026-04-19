@@ -326,7 +326,7 @@ typedef __m128i v128u;
 #define VeciBitcastF32(x)           _mm_castsi128_ps(x)
                                     
 #define VecF32ToI32(x)              _mm_cvtps_epi32(x)                         /* f32[4] -> i32[4] (round) | NEON: vcvtq_s32_f32 | scalar: (int)roundf */
-#define VecF32ToU32(x)              _mm_cvtps_epu32(x)                         /* f32[4] -> u32[4] (round) | NEON: vcvtq_u32_f32 */
+#define VecF32ToU32(x)              _mm_cvttps_epi32(x)                         /* f32[4] -> u32[4] (round) | NEON: vcvtq_u32_f32 */
 #define VecI32ToF32(x)              _mm_cvtepi32_ps(x)                         /* i32[4] -> f32[4]         | NEON: vcvtq_f32_s32 */
 #define VecU32ToF32(x)              _mm_cvtepu32_ps(x)                         /* i32[4] -> f32[4]         | NEON: vcvtq_f32_s32 */
                                                                                
@@ -820,16 +820,6 @@ purefn v128f VCALL VecClamp(v128f v, v128f vmin, v128f vmax)
 {
     v = VecSelect(v, vmax, VecCmpGt(v, vmax));
     return VecSelect(v, vmin, VecCmpLt(v, vmin));
-}
-
-purefn u32 VCALL VecMaxElement(v128f a)
-{
-    v128f t = VecSwapPairs(a);
-    v128f m = VecMax(a, t);
-    t = VecSwapHalves(m);
-    v128f max_val = VecMax(m, t);
-    u32 mask = (u32)VecMovemask(VecCmpGe(a, max_val));
-    return TrailingZeroCount32(mask);
 }
 
 #if defined(AX_SUPPORT_SSE) || defined(AX_ARM)

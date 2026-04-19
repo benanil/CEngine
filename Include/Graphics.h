@@ -70,8 +70,7 @@ typedef s32 GraphicType;
 typedef struct AVertex_
 {
     f3  position;
-    u32 qtangentXYF16;
-    u32 qtangentZWF16;
+    u32 quaternion;
     u32 texCoord; // half2
 } AVertex;
 
@@ -79,8 +78,7 @@ typedef struct ASkinedVertex_
 {
     u32 positionXY;
     u32 positionZW;
-    u32 qtangentXYF16;
-    u32 qtangentZWF16;
+    u32 quaternion;
     u32 texCoord; // half2
     u32 joints;  // rgb8u
     u32 weights; // rgb8u

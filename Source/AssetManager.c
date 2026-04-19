@@ -568,9 +568,8 @@ static void VerticesForPrimitive(APrimitive* primitive, ASkinedVertex* currVerte
         f3 position   = positions[v];
 
         Float4ToHalf4((h1*)&currVertex[v].positionXY, &positions[v].x);
-        currVertex[v].texCoord      = Float2ToHalf2(&texCoord.x);
-        currVertex[v].qtangentXYF16 = PackXY11Z10SnormToU32(Vec3Load(&normal.x));
-        currVertex[v].qtangentZWF16 = PackXY11Z10SnormToU32(tangent);
+        currVertex[v].texCoord   = Float2ToHalf2(&texCoord.x);
+        currVertex[v].quaternion = PackNormalTangent(Vec3Load(&normal.x), tangent);
     }
 }
 
@@ -980,7 +979,7 @@ void OptimizeMesh(const SceneBundle* gltf)
 /*//////////////////////////////////////////////////////////////////////////*/
 
 // ZSTD_CCtx* zstdCompressorCTX = NULL;
-const s32 ABMMeshVersion = 42;
+const s32 ABMMeshVersion = 43;
 
 u8 IsABMLastVersion(const u8* path)
 {
@@ -1070,7 +1069,6 @@ s32 SaveGLTFBinary(const SceneBundle* gltf, const u8* path)
     AFileWrite(deflateOutput, afterCompSize, file, 1);
 
     ArenaPopGlobal(tempSize);
-    // DeAllocateTLSFGlobal(compressedBuffer);
     // Note: anim morph targets aren't saved
 
     for (s32 i = 0; i < gltf->numMeshes; i++)

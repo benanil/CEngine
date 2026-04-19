@@ -616,6 +616,16 @@ purefn const char* GetFileName(const char* path)
     return path + length;
 }
 
+purefn u32 VCALL VecMaxElement(v128f a)
+{
+    v128f t = VecSwapPairs(a);
+    v128f m = VecMax(a, t);
+    t = VecSwapHalves(m);
+    v128f max_val = VecMax(m, t);
+    u32 mask = (u32)VecMovemask(VecCmpGe(a, max_val));
+    return TrailingZeroCount32(mask);
+}
+
 #if defined(__cplusplus)
 }
 #endif

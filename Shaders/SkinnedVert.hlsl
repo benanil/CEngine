@@ -27,12 +27,11 @@ static const uint MatrixNumInt32 = 6;
 
 struct VSInput
 {
-    half4  aPos        : POSITION0;
-    uint   aQTangentXY : TANGENT0;
-    uint   aQTangentZW : TANGENT1;
-    half2  aTexCoords  : TEXCOORD0;
-    uint4  aJoints     : BLENDINDICES0;
-    uint   aWeights    : BLENDWEIGHT0;
+    half4  aPos          : POSITION0;
+    uint   aTangentSpace : TANGENT0;
+    half2  aTexCoords    : TEXCOORD0;
+    uint4  aJoints       : BLENDINDICES0;
+    uint   aWeights      : BLENDWEIGHT0;
 };
 
 struct VSOutput
@@ -47,6 +46,59 @@ half4 QuaternionMul(half4 Q1, half4 Q2) {
                  (Q2.w * Q1.y) - (Q2.x * Q1.z) + (Q2.y * Q1.w) + (Q2.z * Q1.x),
                  (Q2.w * Q1.z) + (Q2.x * Q1.y) - (Q2.y * Q1.x) + (Q2.z * Q1.w),
                  (Q2.w * Q1.w) - (Q2.x * Q1.x) - (Q2.y * Q1.y) - (Q2.z * Q1.z));
+}
+
+half3 UnpackVec3XY11Z10Snorm(uint packed) {
+    int16_t sx = int16_t((int)( packed << 21) >> 21); // 32 - 11
+    int16_t sy = int16_t((int)((packed >> 11) << 21) >> 21);
+    int16_t sz = int16_t((int)((packed >> 22) << 22) >> 22); // 32 - 10
+    return half3(sx * (1.0 / 1023.0), sy * (1.0 / 1023.0), sz * (1.0 / 511.0));
+}
+
+half3 OctDecode(half2 f)
+{
+    // https://twitter.com/Stubbesaurus/status/937994790553227264
+    half3 n = half3(f.x, f.y, 1.0 - abs(f.x) - abs(f.y));
+    half  t = saturate(-n.z);
+    n.xy   += select(n.xy >= 0.0, -t, t);
+    return normalize(n);
+}
+
+half2 decode_diamond(half p)
+{
+    half2 v;
+    half p_sign = half(sign(p - 0.5));
+    v.x = -p_sign * 4.0 * p + 1.0 + p_sign * 2.0;
+    v.y = p_sign * (1.0 - abs(v.x));
+    return normalize(v);
+}
+
+// https://www.jeremyong.com/graphics/2023/01/09/tangent-spaces-and-diamond-encoding/
+half3 decode_tangent(half3 normal, half diamond_tangent)
+{
+    half3 t1;
+    if (abs(normal.y) > abs(normal.z))
+    {
+        t1 = half3(normal.y, -normal.x, 0.f);
+    }
+    else
+    {
+        t1 = half3(normal.z, 0.f, -normal.x);
+    }
+    t1 = normalize(t1);
+
+    half3 t2 = cross(t1, normal);
+    half2 packed_tangent = decode_diamond(diamond_tangent);
+    return packed_tangent.x * t1 + packed_tangent.y * t2;
+}
+
+void UnpackNormalTangent(uint packed, out half3 normal, out half3 tangent, out half3 binormal)
+{
+    half3 oct     = UnpackVec3XY11Z10Snorm(packed);
+    normal        = OctDecode(oct.xy);
+    half diamond  = oct.z * 0.5 + 0.5;
+    tangent       = decode_tangent(normal, diamond);
+    binormal      = cross(normal, tangent);
 }
 
 half3 QuaternionRotateVector(half4 quat, half3 vec) {
@@ -87,13 +139,6 @@ half4 UnpackRGBA16Snorm(uint xy, uint zw) {
     return half4(half4(raw) / half4(32767.0, 32767.0, 32767.0, 32767.0));
 }
 
-half3 UnpackVec3XY11Z10Snorm(uint packed) {
-    int16_t sx = int16_t((int)( packed << 21) >> 21); // 32 - 11
-    int16_t sy = int16_t((int)((packed >> 11) << 21) >> 21);
-    int16_t sz = int16_t((int)((packed >> 22) << 22) >> 22); // 32 - 10
-    return half3(sx * (1.0 / 1023.0), sy * (1.0 / 1023.0), sz * (1.0 / 511.0));
-}
-
 half3 UnpackVec3XY11Z10Unorm(uint packed) {
     uint16_t ux = uint16_t( packed        & 0x7FFu);
     uint16_t uy = uint16_t((packed >> 11) & 0x7FFu);
@@ -105,7 +150,7 @@ VSOutput main(VSInput input, uint instanceID : SV_InstanceID)
 {
     half3x4 animMat = half3x4(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
     uint boneStart = instanceID * MaxBonePoses * MatrixNumInt32;
-    half4 weights;
+    half4 weights; // = half4(1.0, 0.0, 0.0, 0.0);
     weights.xyz = UnpackVec3XY11Z10Unorm(input.aWeights);
     weights.w = max(1.0 - (weights.x + weights.y + weights.z), 0.0);
     [unroll]
@@ -125,25 +170,28 @@ VSOutput main(VSInput input, uint instanceID : SV_InstanceID)
     half3x3 insRotMat = Matrix3FromQuaternion(insRot);
     float3  insPos    = entity.position.xyz;
     half3   insScale  = UnpackVec3XY11Z10Unorm(entity.scale[0]) * 10.0; // half3(unpackHalf2x16(entity.scale[0]), asfloat16(uint16_t(entity.scale[1]))); 
+    VSOutput o;
+    o.texCoords = input.aTexCoords;
 
-    half3x3 tbn; // = Matrix3FromQuaternion(qtangent);
-    tbn[2] = UnpackVec3XY11Z10Snorm(input.aQTangentXY);
-    tbn[1] = UnpackVec3XY11Z10Snorm(input.aQTangentZW);
-    tbn[0] = cross(tbn[2], tbn[1]);
+    half3x3 tbn; 
+    UnpackNormalTangent(input.aTangentSpace, tbn[2], tbn[1], tbn[0]);
 
     half4x3 animTransposed = transpose(animMat);
     tbn[0] = mul(half4(tbn[0], 0.0), animTransposed);
     tbn[1] = mul(half4(tbn[1], 0.0), animTransposed);
     tbn[2] = mul(half4(tbn[2], 0.0), animTransposed);
-    tbn = mul(tbn, insRotMat);
+
+    // instance rotation (missing in your code)
+    tbn[0] = mul(insRotMat, tbn[0]);
+    tbn[2] = mul(insRotMat, tbn[2]);
+    // re-orthonormalization
+    tbn[1] = normalize(cross(tbn[2], tbn[0]));
 
     half3 worldPos = mul(half4(input.aPos.xyz, 1.0), animTransposed);
-    worldPos = QuaternionRotateVector(insRot, worldPos);
-    
-    VSOutput o;
-    o.texCoords = input.aTexCoords;
-    o.position  = mul(uViewProj, float4(insScale * float3(worldPos) + insPos, 1.0));
-    o.normal    = normalize(tbn[2]); // Normalize after transformations
+    worldPos = mul(insRotMat, worldPos); // use matrix, not quaternion, to match TBN path
+
+    o.position = mul(uViewProj, float4(insScale * float3(worldPos) + insPos, 1.0));
+    o.normal   = normalize(tbn[2]);
     return o;
 }
 

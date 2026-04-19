@@ -38,7 +38,7 @@
 #include "Shaders/SkinnedVert.spv.h"
 #endif
 
-#define NUM_ANIMS (128)
+#define NUM_ANIMS (1024)
 
 
 extern Graphics gGFX;
@@ -283,7 +283,7 @@ static void InitPipeline()
 {
     SDL_GPUGraphicsPipelineCreateInfo pipelinedesc;
     SDL_GPUColorTargetDescription     color_target_desc;
-    SDL_GPUVertexAttribute            vertex_attributes[6];
+    SDL_GPUVertexAttribute            vertex_attributes[5];
     SDL_GPUVertexBufferDescription    vertex_buffer_desc;
     
     /* Create shaders */
@@ -348,24 +348,19 @@ static void InitPipeline()
     vertex_attributes[1].offset      = sizeof(int) * 2;
     
     vertex_attributes[2].buffer_slot = 0;
-    vertex_attributes[2].format      = SDL_GPU_VERTEXELEMENTFORMAT_UINT;
+    vertex_attributes[2].format      = SDL_GPU_VERTEXELEMENTFORMAT_HALF2;
     vertex_attributes[2].location    = 2;
     vertex_attributes[2].offset      = vertex_attributes[1].offset + sizeof(int);
     
     vertex_attributes[3].buffer_slot = 0;
-    vertex_attributes[3].format      = SDL_GPU_VERTEXELEMENTFORMAT_HALF2;
+    vertex_attributes[3].format      = SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4;
     vertex_attributes[3].location    = 3;
     vertex_attributes[3].offset      = vertex_attributes[2].offset + sizeof(int);
     
     vertex_attributes[4].buffer_slot = 0;
-    vertex_attributes[4].format      = SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4;
+    vertex_attributes[4].format      = SDL_GPU_VERTEXELEMENTFORMAT_UINT;
     vertex_attributes[4].location    = 4;
     vertex_attributes[4].offset      = vertex_attributes[3].offset + sizeof(int);
-    
-    vertex_attributes[5].buffer_slot = 0;
-    vertex_attributes[5].format      = SDL_GPU_VERTEXELEMENTFORMAT_UINT;
-    vertex_attributes[5].location    = 5;
-    vertex_attributes[5].offset      = vertex_attributes[4].offset + sizeof(int);
     
     pipelinedesc.vertex_input_state.num_vertex_buffers = 1;
     pipelinedesc.vertex_input_state.vertex_buffer_descriptions = &vertex_buffer_desc;
