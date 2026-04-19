@@ -1,4 +1,3 @@
-
 #include "Include/Common.h"
 #include "Include/Algorithm.h"
 #include "Include/TLSF.h"
@@ -7,98 +6,154 @@
 #include "Include/OS.h"
 
 Arena GlobalArena = { 0, 0, 0 };
-char ArenaMemory[ARENA_MEMORY_SIZE];
+char  ArenaMemory[ARENA_MEMORY_SIZE];
 
+void InitGlobalArena()
+{
+    GlobalArena.buf = ArenaMemory;
+    GlobalArena.buffLen = ARENA_MEMORY_SIZE;
+    GlobalArena.currOffset = 0;
+}
 
-/* //////////////////////////////////////////////////////////////////////////// */
-/*                                    MemAdress                                 */
-/* //////////////////////////////////////////////////////////////////////////// */
+Arena* GetGlobalArena()
+{
+    return &GlobalArena;
+}
 
-// Shift the given address upwards if/as necessary to// ensure it is aligned to the given number of bytes.
 uint64_t AlignAddress(uint64_t addr, uint64_t align)
 {
     const uint64_t mask = align - 1;
-    ASSERT((align & mask) == 0); // pwr of 2
+    ASSERT((align & mask) == 0);
     return (addr + mask) & ~mask;
 }
 
-// IMPORTANT: 'align' must be a power of 2 (typically 4, 8 or 16).
+void* AlignPointer(void* ptr, uint64_t align)
+{
+    return (void*)AlignAddress((uint64_t)ptr, align);
+}
+
 void* AllocAligned(uint64_t bytes, uint64_t align)
 {
-    uint64_t  actualBytes = bytes + align;
-    uint8_t* pRawMem = (uint8_t*)SDL_malloc(actualBytes);
-    uint8_t* pAlignedMem = AlignPointer(pRawMem, align);
-    
+    uint64_t actualBytes = bytes + align;
+    uint8_t* pRawMem     = (uint8_t*)SDL_malloc(actualBytes);
+    uint8_t* pAlignedMem = (uint8_t*)AlignPointer(pRawMem, align);
+
     if (pAlignedMem == pRawMem)
         pAlignedMem += align;
 
-    uint8_t shift = (uint8_t)(pAlignedMem - pRawMem);
-    pAlignedMem[-1] = (uint8_t)(shift & 0xFF);
+    uint8_t shift      = (uint8_t)(pAlignedMem - pRawMem);
+    pAlignedMem[-1]    = (uint8_t)(shift & 0xFF);
     return pAlignedMem;
 }
 
 void FreeAligned(void* pMem)
 {
     uint8_t* pAlignedMem = (uint8_t*)pMem;
-    uint64_t shift = pAlignedMem[-1];
+    uint64_t shift       = pAlignedMem[-1];
 
     if (shift == 0)
         shift = 256;
+
     uint8_t* pRawMem = pAlignedMem - shift;
     SDL_free(pRawMem);
 }
 
-/* //////////////////////////////////////////////////////////////////////////// */
-/*                                    TLSF                                     */
-/* //////////////////////////////////////////////////////////////////////////// */
-
-void* AllocZeroTLSFGlobal(size_t count, size_t size) 
-{
-    return SDL_calloc(count, size); 
-}
-
-void* AllocateTLSFGlobal(size_t size) 
-{
-    void* ptr = SDL_malloc(size); 
-    MemSet(ptr, 0xCD, size);
-    return ptr;
-}
-
-void* ReAllocateTLSFGlobal(void* ptr, size_t size)
-{
-    return SDL_realloc(ptr, size); 
-}
-
-void DeAllocateTLSFGlobal(void* buff)
-{
-    SDL_free(buff); 
-}
-
-/* //////////////////////////////////////////////////////////////////////////// */
-/*                                    Arena                                     */
-/* //////////////////////////////////////////////////////////////////////////// */
-
-static inline void CheckArenaSize()
+static inline void CheckArenaSize(void)
 {
     if (GlobalArena.buf == NULL)
     {
-        GlobalArena.buf = ArenaMemory;
-        GlobalArena.buffLen = ARENA_MEMORY_SIZE;
+        GlobalArena.buf        = ArenaMemory;
+        GlobalArena.buffLen    = ARENA_MEMORY_SIZE;
         GlobalArena.currOffset = 0;
     }
 }
 
-uint64_t ArenaRemainingCurrent()
+void ArenaInit(Arena* a, size_t backing_buffer_length)
+{
+    size_t aligned_size = OSRoundToPage(backing_buffer_length);
+    a->buf        = (char*)OSAlloc(aligned_size);
+    a->buffLen    = aligned_size;
+    a->currOffset = 0;
+}
+
+void ArenaFree(Arena* a)
+{
+    if (a->buf)
+    {
+        OSFree(a->buf, a->buffLen);
+        a->buf        = NULL;
+        a->buffLen    = 0;
+        a->currOffset = 0;
+    }
+}
+
+void ArenaReset(Arena* a)
+{
+    a->currOffset = 0;
+}
+
+void* ArenaAllocAlign(Arena* a, size_t size, size_t align)
+{
+    size_t curr_ptr = (size_t)a->buf + a->currOffset;
+    size_t offset   = AlignAddress(curr_ptr, align);
+    offset         -= (size_t)a->buf;
+
+    ASSERT(offset + size <= a->buffLen);
+    void* ptr      = &a->buf[offset];
+    a->currOffset  = offset + size;
+    return ptr;
+}
+
+void ArenaPopAligned(Arena* a, void* ptr, size_t size, size_t align)
+{
+    size_t curr_ptr = (size_t)a->buf + a->currOffset;
+    size_t aligned  = AlignAddress((size_t)a->buf + (a->currOffset - size), align);
+    size_t padded   = curr_ptr - aligned;
+    ASSERT(a->currOffset >= padded);
+    a->currOffset -= padded;
+}
+
+void* ArenaAlloc(Arena* a, size_t size)
+{
+    return ArenaAllocAlign(a, size, DEFAULT_ALIGN);
+}
+
+void* ArenaAllocZero(Arena* a, size_t size)
+{
+    void* ptr = ArenaAllocAlign(a, size, DEFAULT_ALIGN);
+    MemSet(ptr, 0, size);
+    return ptr;
+}
+
+size_t ArenaRemaining(Arena* a)
+{
+    return a->buffLen - a->currOffset;
+}
+
+ArenaMark ArenaSave(Arena* a)
+{
+    ArenaMark mark;
+    mark.offset = a->currOffset;
+    return mark;
+}
+
+void ArenaRestore(Arena* a, ArenaMark mark)
+{
+    ASSERT(mark.offset <= a->currOffset);
+    a->currOffset = mark.offset;
+}
+
+uint64_t ArenaRemainingCurrent(void)
 {
     return GlobalArena.buffLen - GlobalArena.currOffset;
 }
 
-uint64_t ArenaGetCurrentOfset()
+uint64_t ArenaGetCurrentOffset(void)
 {
     return GlobalArena.currOffset;
 }
 
-void ArenaSetCurrentOfset(size_t offset)
+void ArenaSetCurrentOffset(size_t offset)
 {
     GlobalArena.currOffset = offset;
 }
@@ -108,11 +163,11 @@ void* ArenaPushGlobal(uint64_t size)
     CheckArenaSize();
     if (GlobalArena.currOffset + size > GlobalArena.buffLen)
     {
-        AX_ERROR("Arena Get Current Failed!");
+        AX_ERROR("Arena push failed: out of memory");
         ASSERT(0);
         return NULL;
     }
-    void* result = GlobalArena.buf + GlobalArena.currOffset;
+    void* result           = GlobalArena.buf + GlobalArena.currOffset;
     GlobalArena.currOffset += size;
     return result;
 }
@@ -121,32 +176,33 @@ void ArenaPopGlobal(uint64_t size)
 {
     if (GlobalArena.currOffset < size)
     {
-        AX_WARN("arena trying to free more than necessarry!");
+        AX_WARN("arena trying to free more than allocated");
         size = GlobalArena.currOffset;
     }
     GlobalArena.currOffset -= size;
 }
 
-void ArenaInit(Arena *a, size_t backing_buffer_length) 
+void* AllocZeroTLSFGlobal(size_t count, size_t size)
 {
-	size_t aligned_size = OSRoundToPage(backing_buffer_length);
-    a->buf = (char*)OSAlloc(aligned_size);
-	a->buffLen = aligned_size;
-	a->currOffset = 0;
+    return SDL_calloc(count, size);
 }
 
-void* ArenaAllocAlign(Arena *a, size_t size, size_t align)
+void* AllocateTLSFGlobal(size_t size)
 {
-	size_t curr_ptr = (size_t)a->buf + a->currOffset;
-	size_t offset = AlignAddress(curr_ptr, align);
-	offset -= (size_t)a->buf; // Change to relative offset
-
-	ASSERT(offset + size <= a->buffLen);
-	void *ptr = &a->buf[offset];
-	a->currOffset = offset + size;
-	return ptr;
+    void* ptr = SDL_malloc(size);
+    MemSet(ptr, 0xCD, size);
+    return ptr;
 }
 
+void* ReAllocateTLSFGlobal(void* ptr, size_t size)
+{
+    return SDL_realloc(ptr, size);
+}
+
+void DeAllocateTLSFGlobal(void* buff)
+{
+    SDL_free(buff);
+}
 
 /*//////////////////////////////////////////////////////////////////////////*/
 /*                          FixedPow2Allocator                              */

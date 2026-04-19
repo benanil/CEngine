@@ -69,10 +69,10 @@ typedef s32 GraphicType;
 // https://www.yosoygames.com.ar/wp/2018/03/vertex-formats-part-1-compression/
 typedef struct AVertex_
 {
-    f3   position;
-    u32  normal;
-    u32  tangent;
-    u32  texCoord; // half2
+    f3  position;
+    u32 qtangentXYF16;
+    u32 qtangentZWF16;
+    u32 texCoord; // half2
 } AVertex;
 
 typedef struct ASkinedVertex_
@@ -85,7 +85,6 @@ typedef struct ASkinedVertex_
     u32 joints;  // rgb8u
     u32 weights; // rgb8u
 } ASkinedVertex;
-
 
 typedef struct GPUMesh_
 {

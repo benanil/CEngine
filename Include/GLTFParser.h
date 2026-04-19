@@ -313,6 +313,7 @@ typedef struct SceneBundle_
     int numBuffers;
     int numAnimations;
     int numSkins;
+    int rootNode;
 
     AErrorType error;
 

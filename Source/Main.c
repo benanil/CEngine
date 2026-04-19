@@ -38,7 +38,7 @@
 #include "Shaders/SkinnedVert.spv.h"
 #endif
 
-#define NUM_ANIMS (2048)
+#define NUM_ANIMS (128)
 
 
 extern Graphics gGFX;
@@ -55,11 +55,10 @@ m44* g_NodeTransforms;
 Camera   g_Camera;
 
 static Uint32 frames = 0;
-static s32 characterRootIndex;
 static AnimationController AnimControllers[NUM_ANIMS];
 AX_ALIGN(4) half3x4 OutMatrices[MaxBonePoses * NUM_ANIMS];
 
-extern s32 ParseGLTF2(const char* path, SceneBundle* result, float scale);
+extern s32 ParseGLTF(const char* path, SceneBundle* result, float scale);
 
 static void DestroyPipeline()
 {
@@ -211,7 +210,7 @@ static void Render()
             SDL_DrawGPUIndexedPrimitives(pass, primitive->numIndices, NUM_ANIMS, primitive->indexOffset, 0, 0);
         }
     
-        for (s32 i = 0; i < node->numChildren; i++)    
+        for (s32 i = 0; i < node->numChildren; i++)
         {
             nodeStack[stackLen++] = node->children[i];
         }
@@ -248,32 +247,25 @@ static void InitScene()
     
     // if (!LoadSceneBundleBinary("Assets/Meshes/Paladin/Paladin.abm", sceneBundle))
     // if (!ParseGLTF2("Assets/Meshes/Paladin/Paladin.gltf", sceneBundle, 1.0f))
-    if (!ParseGLTF2("Assets/Meshes/Paladin/Paladin.gltf", gPaladin, 1.0f))
+    if (!LoadGLTFCached("Assets/Meshes/Paladin/Paladin.gltf", gPaladin, g_RenderState.textures))
     {
         AX_ERROR("gltf scene load failed2");
         return;
     }
     
-    CreateVerticesIndices(gPaladin);
     g_RenderState.vertexBuffer = CreateBuffer(gGFX.VertexBuffer, MAX_VERTEX * sizeof(ASkinedVertex), SDL_GPU_BUFFERUSAGE_VERTEX, "CPVertexBuffer");
     g_RenderState.indexBuffer  = CreateBuffer(gGFX.IndexBuffer , MAX_INDEX * sizeof(int), SDL_GPU_BUFFERUSAGE_INDEX, "CPIndexBuffer");
     
-    g_NodeTransforms   = AllocateTLSFGlobal(sizeof(m44) * gPaladin->numNodes);
-    characterRootIndex = Prefab_FindAnimRootNodeIndex(gPaladin);
+    g_NodeTransforms = AllocateTLSFGlobal(sizeof(m44) * gPaladin->numNodes);
     
     for (s32 i = 0; i < NUM_ANIMS; i++)
     {
         half3x4* outMatrices = OutMatrices + (i * MaxBonePoses);
         AnimationController_Create(gPaladin, &AnimControllers[i], outMatrices);
     }
-        
+    
     g_RenderState.boneBuffer   = CreateBuffer(OutMatrices , sizeof(OutMatrices) , SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ, "CPJointMatrices");
     g_RenderState.entityBuffer = CreateBuffer(ecs.entities, sizeof(ecs.entities), SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ, "CPInstancePositions");
-    
-    BasisuSetup();
-    // SaveSceneImages(g_SceneBundle, "Assets/Meshes/Paladin2/Paladin.bdc");
-    // "Assets/Meshes/Paladin/PaladinTest.bdc"
-    s32 imgRes = LoadSceneImages("Assets/Meshes/Paladin2/Paladin.bdc", g_RenderState.textures, gPaladin->numImages);
     
     g_RenderState.sampler = SDL_CreateGPUSampler(g_GPUDevice, &(SDL_GPUSamplerCreateInfo){
         .min_filter      = SDL_GPU_FILTER_LINEAR,
@@ -477,6 +469,9 @@ s32 main(s32 argc, char* argv[])
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO))
         return 0;
     
+    BasisuSetup();
+    InitGlobalArena();
+
     SDL_Window* window = SDL_CreateWindow("SDL Minimal Sample", 1920, 1080, SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
     g_SDLWindow = window;
     

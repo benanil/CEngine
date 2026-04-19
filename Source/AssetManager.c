@@ -26,6 +26,7 @@
 #include "Include/FileSystem.h"
 #include "Include/Common.h"
 #include "Include/BasisBinding.h"
+#include "Include/FastDelta.h"
 
 #define SINFL_IMPLEMENTATION
 #define SDEFL_IMPLEMENTATION
@@ -866,7 +867,7 @@ s32 LoadGLTFCached(const char* path, SceneBundle* scene, Texture* textures)
     if (FileExist(buffer)) {
         result = LoadSceneBundleBinary(buffer, scene);
     }
-    else if (ParseGLTF2(path, scene, 1.0f)) {
+    else if (ParseGLTF(path, scene, 1.0f)) {
         CreateVerticesIndices(scene);
         SaveGLTFBinary(scene, buffer);
         ChangeExtension(buffer, newLen, "bdc");
@@ -986,7 +987,7 @@ u8 IsABMLastVersion(const u8* path)
     if (!FileExist(path))
         return false;
     AFile file = AFileOpen(path, AOpenFlag_ReadBinary);
-    if (AFileSize(file) < sizeof(u16) * 16) 
+    if (AFileSize(file) < sizeof(s32) + sizeof(u64))
         return false;
     s32 version = 0;
     AFileRead(&version, sizeof(s32), file, 1);
@@ -999,8 +1000,8 @@ u8 IsABMLastVersion(const u8* path)
 static void WriteAMaterialTexture(GLTFTexture texture, AFile file)
 {
     u64 data = texture.scale; data <<= sizeof(uint16_t) * 8;
-    data |= texture.strength;      data <<= sizeof(uint16_t) * 8;
-    data |= texture.index;         data <<= sizeof(uint16_t) * 8;
+    data |= texture.strength; data <<= sizeof(uint16_t) * 8;
+    data |= texture.index;    data <<= sizeof(uint16_t) * 8;
     data |= texture.texCoord;
     
     AFileWrite(&data, sizeof(u64), file, 1);
@@ -1010,14 +1011,14 @@ static void WriteGLTFString(const char* str, AFile file)
 {
     s32 nameLen = str ? StringLength(str) : 0;
     AFileWrite(&nameLen, sizeof(s32), file, 1);
-    if (str) AFileWrite(str, nameLen + 1, file, 1);
+    if (str) AFileWrite(str, (uint64_t)(nameLen + 1), file, 1);
 }
 
 s32 SaveGLTFBinary(const SceneBundle* gltf, const u8* path)
 {
 #if !AX_GAME_BUILD
+    EnsurePath(path);
     AFile file = AFileOpen(path, AOpenFlag_WriteBinary);
-    
     s32 version = ABMMeshVersion;
     AFileWrite(&version, sizeof(s32), file, 1);
     
@@ -1044,22 +1045,31 @@ s32 SaveGLTFBinary(const SceneBundle* gltf, const u8* path)
     AFileWrite(&gltf->totalIndices, sizeof(s32), file, 1);
     AFileWrite(&gltf->totalVertices, sizeof(s32), file, 1);
     
-    u64 vertexSize = isSkined ? sizeof(ASkinedVertex) : sizeof(AVertex);
+    u64 vertexSize    = isSkined ? sizeof(ASkinedVertex) : sizeof(AVertex);
     u64 allVertexSize = vertexSize * (u64)gltf->totalVertices;
-    u64 allIndexSize = (u64)gltf->totalIndices * sizeof(u32);
-    
-    // Compress and write, vertices and indices
-    u64 compressedSize = (u64)(allVertexSize * 0.9);
-    char* compressedBuffer = ArenaPushGlobal(compressedSize); // global_arena.buf + global_arena.curr_offset;
-    
-    struct sdefl sdfl;
-    size_t afterCompSize = zsdeflate(&sdfl, compressedBuffer, gltf->allVertices, allVertexSize, 5);
+    u64 allIndexSize  = (u64)gltf->totalIndices * sizeof(u32);
+
+    // layout: [deflate output | delta indices]
+    // deflate output must fit in max(allVertexSize, allIndexSize) bytes
+    // delta indices need allIndexSize bytes
+    u64 deflateSlotSize = Maxu64(allVertexSize, allIndexSize);
+    u64 tempSize        = deflateSlotSize + allIndexSize;
+    char* compressedBuffer = ArenaPushGlobal(tempSize);
+
+    char* deflateOutput = compressedBuffer;
+    u32*  deltaPtr      = (u32*)(compressedBuffer + deflateSlotSize);
+
+    static struct sdefl sdfl;
+    u64 afterCompSize = zsdeflate(&sdfl, deflateOutput, gltf->allVertices, allVertexSize, 5);
     AFileWrite(&afterCompSize, sizeof(u64), file, 1);
-    AFileWrite(compressedBuffer, afterCompSize, file, 1);
-    
-    afterCompSize = zsdeflate(&sdfl, compressedBuffer, gltf->allIndices, allIndexSize, 5);
+    AFileWrite(deflateOutput, afterCompSize, file, 1);
+
+    DeltaEncodingU32(gltf->allIndices, gltf->totalIndices, deltaPtr, 0);
+    afterCompSize = zsdeflate(&sdfl, deflateOutput, deltaPtr, allIndexSize, 5);
     AFileWrite(&afterCompSize, sizeof(u64), file, 1);
-    AFileWrite(compressedBuffer, afterCompSize, file, 1);
+    AFileWrite(deflateOutput, afterCompSize, file, 1);
+
+    ArenaPopGlobal(tempSize);
     // DeAllocateTLSFGlobal(compressedBuffer);
     // Note: anim morph targets aren't saved
 
@@ -1206,12 +1216,12 @@ s32 SaveGLTFBinary(const SceneBundle* gltf, const u8* path)
         {
             AFileWrite(&animation.samplers[j].count, sizeof(s32), file, 1);
             AFileWrite(&animation.samplers[j].numComponent, sizeof(s32), file, 1);
-            AFileWrite(&animation.samplers[j].interpolation, sizeof(float), file, 1);
+            AFileWrite(&animation.samplers[j].interpolation, sizeof(ASamplerInterpolation), file, 1);
         }
     }
     
+    AFileWrite(&gltf->rootNode, sizeof(int), file, 1);
     AFileClose(file);
-    ArenaPopGlobal(compressedSize);
 #endif
     return 1;
 }
@@ -1239,39 +1249,41 @@ void ReadGLTFString(char** str, AFile file, FixedPow2Allocator* stringAllocator)
     {
         *str = FixedPow2Allocator_AllocateUninitialized(stringAllocator, nameLen + 1);
         AFileRead(*str, nameLen + 1, file, 1);
-        (*str)[nameLen + 1] = 0;
-    }}
+        (*str)[nameLen] = 0;
+    }
+}
 
 s32 LoadSceneBundleBinary(const u8* path, SceneBundle* gltf)
 {
     AFile file = AFileOpen(path, AOpenFlag_ReadBinary);
     if (!AFileExist(file))
     {
-        perror("Failed to open file for writing");
+        AX_WARN("Failed to open file for reading: %s", path);
         return 0;
     }
     
+    MemsetZero(gltf, sizeof(SceneBundle));
     FixedPow2Allocator* allocator = AllocateTLSFGlobal(sizeof(FixedPow2Allocator));
     FixedPow2Allocator_Init(allocator, 1024);
 
-    s32 version = ABMMeshVersion;
+    s32 version = 0;
     AFileRead(&version, sizeof(s32), file, 1);
     ASSERT(version == ABMMeshVersion);
     
     u64 reserved[4];
     AFileRead(&reserved, sizeof(u64) * 4, file, 1);
     
-    AFileRead(&gltf->scale, sizeof(float), file, 1);
-    AFileRead(&gltf->numMeshes, sizeof(u16), file, 1);
-    AFileRead(&gltf->numNodes, sizeof(u16), file, 1);
-    AFileRead(&gltf->numMaterials, sizeof(u16), file, 1);
-    AFileRead(&gltf->numTextures, sizeof(u16), file, 1);
-    AFileRead(&gltf->numImages, sizeof(u16), file, 1);
-    AFileRead(&gltf->numSamplers, sizeof(u16), file, 1);
-    AFileRead(&gltf->numCameras, sizeof(u16), file, 1);
-    AFileRead(&gltf->numScenes, sizeof(u16), file, 1);
-    AFileRead(&gltf->numSkins, sizeof(u16), file, 1);
-    AFileRead(&gltf->numAnimations, sizeof(u16), file, 1);
+    AFileRead(&gltf->scale            , sizeof(float), file, 1);
+    AFileRead(&gltf->numMeshes        , sizeof(u16), file, 1); if (gltf->numMeshes     == 0xCDCD) { AX_WARN("numMeshes     UNDEFINED"); gltf->numMeshes     = 0; }
+    AFileRead(&gltf->numNodes         , sizeof(u16), file, 1); if (gltf->numNodes      == 0xCDCD) { AX_WARN("numNodes      UNDEFINED"); gltf->numNodes      = 0; }
+    AFileRead(&gltf->numMaterials     , sizeof(u16), file, 1); if (gltf->numMaterials  == 0xCDCD) { AX_WARN("numMaterials  UNDEFINED"); gltf->numMaterials  = 0; }
+    AFileRead(&gltf->numTextures      , sizeof(u16), file, 1); if (gltf->numTextures   == 0xCDCD) { AX_WARN("numTextures   UNDEFINED"); gltf->numTextures   = 0; }
+    AFileRead(&gltf->numImages        , sizeof(u16), file, 1); if (gltf->numImages     == 0xCDCD) { AX_WARN("numImages     UNDEFINED"); gltf->numImages     = 0; }
+    AFileRead(&gltf->numSamplers      , sizeof(u16), file, 1); if (gltf->numSamplers   == 0xCDCD) { AX_WARN("numSamplers   UNDEFINED"); gltf->numSamplers   = 0; }
+    AFileRead(&gltf->numCameras       , sizeof(u16), file, 1); if (gltf->numCameras    == 0xCDCD) { AX_WARN("numCameras    UNDEFINED"); gltf->numCameras    = 0; }
+    AFileRead(&gltf->numScenes        , sizeof(u16), file, 1); if (gltf->numScenes     == 0xCDCD) { AX_WARN("numScenes     UNDEFINED"); gltf->numScenes     = 0; }
+    AFileRead(&gltf->numSkins         , sizeof(u16), file, 1); if (gltf->numSkins      == 0xCDCD) { AX_WARN("numSkins      UNDEFINED"); gltf->numSkins      = 0; }
+    AFileRead(&gltf->numAnimations    , sizeof(u16), file, 1); if (gltf->numAnimations == 0xCDCD) { AX_WARN("numAnimations UNDEFINED"); gltf->numAnimations = 0; }
     AFileRead(&gltf->defaultSceneIndex, sizeof(u16), file, 1);
     u16 isSkined;
     AFileRead(&isSkined, sizeof(u16), file, 1);
@@ -1283,24 +1295,42 @@ s32 LoadSceneBundleBinary(const u8* path, SceneBundle* gltf)
     size_t vertexAlignment = 4;
 
     {
+        u32 vertexCursor = gGFX.NumVertices;
+        u32 indexCursor  = gGFX.NumIndices;
+
+        if ((gGFX.NumVertices + gltf->totalVertices) > MAX_VERTEX ||
+            (gGFX.NumIndices + gltf->totalIndices) > MAX_INDEX)
+        {
+            AX_ERROR("VERTEX buffer size is not enough for %s", path);
+            return 0;
+        }
+
+
+        gGFX.NumVertices += gltf->totalVertices;
+        gGFX.NumIndices  += gltf->totalIndices;
+
+        gltf->allVertices = gGFX.VertexBuffer + vertexCursor; // AlignAddress(u64_(gGFX.VertexBuffer + vertexCursor), 4);
+        gltf->allIndices  = gGFX.IndexBuffer + indexCursor;  // AlignAddress(u64_(gGFX.IndexBuffer + indexCursor), 4);
+
         u64 allVertexSize = gltf->totalVertices * vertexSize;
         u64 allIndexSize  = gltf->totalIndices * sizeof(u32);
-        
-        gltf->allVertices = AllocAligned(vertexSize * gltf->totalVertices, vertexAlignment); // divide / 4 to get number of floats
-        gltf->allIndices = AllocAligned(allIndexSize, 4);
-        
+
+        u64 deflateSlotSize = Maxu64(allVertexSize, allIndexSize);
+        u64 tempSize        = deflateSlotSize + allIndexSize;
+        char* compressedBuffer = ArenaPushGlobal(tempSize);
+
         u64 compressedSize;
+
         AFileRead(&compressedSize, sizeof(u64), file, 1);
-        char* compressedBuffer = ArenaPushGlobal(compressedSize); // global_arena.buf + global_arena.curr_offset; //  AllocateTLSFGlobal(allVertexSize);
         AFileRead(compressedBuffer, compressedSize, file, 1);
-       
         zsinflate(gltf->allVertices, allVertexSize, compressedBuffer, compressedSize);
 
         AFileRead(&compressedSize, sizeof(u64), file, 1);
         AFileRead(compressedBuffer, compressedSize, file, 1);
         zsinflate(gltf->allIndices, allIndexSize, compressedBuffer, compressedSize);
-    
-        ArenaPopGlobal(compressedSize);
+        PrefixSumU32fInplace(gltf->allIndices, gltf->totalIndices, 0);
+
+        ArenaPopGlobal(tempSize);
     }
     
     char* currVertices = (char*)gltf->allVertices;
@@ -1314,7 +1344,7 @@ s32 LoadSceneBundleBinary(const u8* path, SceneBundle* gltf)
         
         AFileRead(&mesh->numPrimitives, sizeof(s32), file, 1);
         
-        mesh->primitives = dynarray_create_prealloc(APrimitive, mesh->numPrimitives);
+        mesh->primitives = FixedPow2Allocator_AllocateUninitialized(allocator, sizeof(APrimitive) * mesh->numPrimitives);
         
         for (s32 j = 0; j < mesh->numPrimitives; j++)
         {
@@ -1324,8 +1354,8 @@ s32 LoadSceneBundleBinary(const u8* path, SceneBundle* gltf)
             AFileRead(&primitive->numIndices , sizeof(s32), file, 1);
             AFileRead(&primitive->numVertices, sizeof(s32), file, 1);
             AFileRead(&primitive->indexOffset, sizeof(s32), file, 1);
-            AFileRead(&primitive->jointType, sizeof(u16), file, 1);
-            AFileRead(&primitive->jointCount, sizeof(u16), file, 1);
+            AFileRead(&primitive->jointType  , sizeof(u16), file, 1);
+            AFileRead(&primitive->jointCount , sizeof(u16), file, 1);
             AFileRead(&primitive->jointStride, sizeof(u16), file, 1);
             
             u64 indexSize = (u64)(GraphicsTypeToSize(primitive->indexType)) * primitive->numIndices;
@@ -1480,7 +1510,7 @@ s32 LoadSceneBundleBinary(const u8* path, SceneBundle* gltf)
         {
             AFileRead(&animation->samplers[j].count, sizeof(s32), file, 1);
             AFileRead(&animation->samplers[j].numComponent, sizeof(s32), file, 1);
-            AFileRead(&animation->samplers[j].interpolation, sizeof(float), file, 1);
+            AFileRead(&animation->samplers[j].interpolation, sizeof(ASamplerInterpolation), file, 1);
             s32 count = animation->samplers[j].count;
             animation->samplers[j].input = currSamplerInput;
             animation->samplers[j].output = (f1*)currSamplerOutput;
@@ -1488,6 +1518,8 @@ s32 LoadSceneBundleBinary(const u8* path, SceneBundle* gltf)
             currSamplerOutput += count;
         }
     }
+    
+    AFileRead(&gltf->rootNode, sizeof(int), file, 1);
 
     AFileClose(file);
     gltf->allocator = allocator;

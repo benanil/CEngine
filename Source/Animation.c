@@ -20,13 +20,13 @@
 #include "Include/FileSystem.h"
 #include "Math/Half.h"
 
-void AnimationController_Create(const SceneBundle* prefab, AnimationController* result, half3x4* outMatrices)
+void AnimationController_Create(const SceneBundle* gltfScene, AnimationController* result, half3x4* outMatrices)
 {
     Pose pose;
     AnimNode animNode;
     ANode inputNode;
     s32 childIndex;
-    const ASkin* skin = &prefab->skins[0];
+    const ASkin* skin = &gltfScene->skins[0];
 
     if (skin == NULL) {
         AX_WARN("skin is null"); return;
@@ -36,19 +36,19 @@ void AnimationController_Create(const SceneBundle* prefab, AnimationController* 
         return; 
     }
     result->mOutMatrices   = outMatrices;
-    result->mRootNodeIndex = Prefab_FindAnimRootNodeIndex(prefab);
-    result->mPrefab        = prefab;
+    result->mRootNodeIndex = gltfScene->rootNode; // Prefab_FindAnimRootNodeIndex(prefab);
+    result->mPrefab        = gltfScene;
     result->mNumJoints     = skin->numJoints;
-    result->mRootScale     = prefab->nodes[result->mRootNodeIndex].scale[0]; // 0.1610, rcp: 6.2111
+    result->mRootScale     = gltfScene->nodes[result->mRootNodeIndex].scale[0]; // 0.1610, rcp: 6.2111
     
     ASSERT(result->mRootNodeIndex < MaxBonePoses);
-    ASSERT(prefab->nodes[result->mRootNodeIndex].numChildren > 0); // root node has to have children nodes
+    ASSERT(gltfScene->nodes[result->mRootNodeIndex].numChildren > 0); // root node has to have children nodes
     MemSet(result->mChildIndices, 255, sizeof(result->mChildIndices));
 
     childIndex = 0;
-    for (s32 i = 0; i < prefab->numNodes; i++)
+    for (s32 i = 0; i < gltfScene->numNodes; i++)
     {
-        inputNode  = prefab->nodes[i];
+        inputNode  = gltfScene->nodes[i];
         pose.translation = VecLoad(inputNode.translation);
         pose.rotation    = VecLoad(inputNode.rotation);
         pose.rotation    = QNorm(pose.rotation);

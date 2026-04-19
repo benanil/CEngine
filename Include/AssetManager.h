@@ -43,6 +43,12 @@ s32 LoadSceneImages(const u8* texturePath, Texture* textures, s32 numImages);
 
 s32 LoadGLTFCached(const char* path, SceneBundle* scene, Texture* textures);
 
+void OptimizeMesh(const SceneBundle* gltf);
+
+void GenerateLOD_75_GLTF(SceneBundle* sceneBundle);
+
+void GenerateLOD_50_GLTF(SceneBundle* sceneBundle);
+
 #if defined(__cplusplus)
 }
 #endif

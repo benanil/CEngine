@@ -880,7 +880,7 @@ static char* ParseGLBHeader(const char* path, SceneBundle* result, uint64_t* jso
     return source;
 }
 
-int ParseGLTF2(const char* path, SceneBundle* result, float scale)
+int ParseGLTF(const char* path, SceneBundle* result, float scale)
 {
     ASSERT(result && path);
     uint64_t sourceSize = 0;
@@ -895,9 +895,11 @@ int ParseGLTF2(const char* path, SceneBundle* result, float scale)
     if (source == NULL)
         source = ReadAllTextAlloc(path, &sourceSize, NULL);
         
-    WriteAllBytes("C:/Users/Administrator/Desktop/Fox.json", source, sourceSize);
-
-    if (source == NULL) { result->error = AError_FILE_NOT_FOUND; ASSERT(0); return 0; }
+    if (source == NULL) {
+        result->error = AError_FILE_NOT_FOUND; 
+        AX_WARN("mesh file is not exist %s", path); 
+        return 0;
+    }
 
     FixedPow2Allocator* allocator = AllocateTLSFGlobal(sizeof(FixedPow2Allocator));
     FixedPow2Allocator_Init(allocator, 2048 * 2);
@@ -1079,6 +1081,7 @@ int ParseGLTF2(const char* path, SceneBundle* result, float scale)
     result->totalVertices = totalVertexCount;
 
     result->allocator = allocator;
+    result->rootNode = Prefab_FindAnimRootNodeIndex(result);
     result->scale = scale;
     result->error = AError_NONE;
     return 1;

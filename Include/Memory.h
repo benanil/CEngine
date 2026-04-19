@@ -6,13 +6,15 @@
 #include "TLSF.h"
 
 #ifndef TLSF_MEMORY_SIZE
-    // 512 mb
     #define TLSF_MEMORY_SIZE (512 * 1000 * 1000)
 #endif
 
 #ifndef ARENA_MEMORY_SIZE
-    // 32 mb
-    #define ARENA_MEMORY_SIZE (32 * 1024 * 1024)
+    #define ARENA_MEMORY_SIZE (256 * 1024 * 1024) /* 256 mb */ 
+#endif
+
+#ifndef DEFAULT_ALIGN
+    #define DEFAULT_ALIGN (2 * sizeof(void*))
 #endif
 
 #define DEFER(_end_) for(int (_defer_##__LINE__) = 0; (_defer_##__LINE__) < 1; (_defer_##__LINE__)++, _end_)
@@ -22,54 +24,61 @@ extern "C" {
 #endif
 
 typedef struct Arena_ {
-	char *buf;
-	size_t         buffLen;
-	size_t         currOffset;
+    char*  buf;
+    size_t buffLen;
+    size_t currOffset;
 } Arena;
 
-typedef struct FixedFragment_
-{
+typedef struct ArenaMark_ {
+    size_t offset;
+} ArenaMark;
+
+typedef struct FixedFragment_ {
     struct FixedFragment_* next;
-    char* ptr;
-    size_t size; // used like an index until we fill the fragment (in bytes)
+    char*  ptr;
+    size_t size;
 } FixedFragment;
 
-typedef struct FixedPow2Allocator_
-{
-    size_t currentCapacity;   // capacity in bytes
+typedef struct FixedPow2Allocator_ {
+    size_t         currentCapacity;
     FixedFragment* base;
     FixedFragment* current;
 } FixedPow2Allocator;
 
-
 extern Arena GlobalArena;
 
-// Alignment
-uint64_t AlignAddress(uint64_t addr, uint64_t align);
-void*    AlignPointer(void* ptr, uint64_t align);
-void*    AllocAligned(uint64_t bytes, uint64_t align); // 'align' must be a power of 2 (typically 4, 8 or 16).
-void     FreeAligned(void* pMem);
+uint64_t  AlignAddress(uint64_t addr, uint64_t align);
+void*     AlignPointer(void* ptr, uint64_t align);
+void*     AllocAligned(uint64_t bytes, uint64_t align);
+void      FreeAligned(void* pMem);
 
-// Arena allocator
-void     ArenaInit(Arena *a, size_t backing_buffer_length);
-void*    ArenaAllocAlign(Arena *a, size_t size, size_t align);
-void*    ArenaAlloc(Arena *a, size_t size);
-void*    ArenaPushGlobal(uint64_t size);
-void     ArenaPopGlobal(uint64_t size);
-uint64_t ArenaRemainingCurrent();
-uint64_t ArenaGetCurrentOfset();
-void     ArenaSetCurrentOfset(size_t offset);
+void      ArenaInit(Arena* a, size_t backing_buffer_length);
+void      ArenaFree(Arena* a);
+void      ArenaReset(Arena* a);
+void*     ArenaAllocAlign(Arena* a, size_t size, size_t align);
+void      ArenaPopAligned(Arena* a, void* ptr, size_t size, size_t align);
+void*     ArenaAlloc(Arena* a, size_t size);
+void*     ArenaAllocZero(Arena* a, size_t size);
+size_t    ArenaRemaining(Arena* a);
+ArenaMark ArenaSave(Arena* a);
+void      ArenaRestore(Arena* a, ArenaMark mark);
 
-#define ArenaStruct(arena, type)       (ArenaAllocAlign(arena, sizeof(type), ALIGNOF(type)))
-#define ArenaArray(arena, type, cnt)   (ArenaAllocAlign(arena, sizeof(type) * cnt, ALIGNOF(type)))
-#define AlignPointer(ptr, align) (void*)AlignAddress((uint64_t)ptr, align);
-#define ArenaAllocGlobal(cnt)          (ArenaAllocAlign(&GlobalArena, (cnt), 2 * sizeof(void*)))
+void      InitGlobalArena();
+Arena*    GetGlobalArena();
+void*     ArenaPushGlobal(uint64_t size);
+void      ArenaPopGlobal(uint64_t size);
+uint64_t  ArenaRemainingCurrent(void);
+uint64_t  ArenaGetCurrentOffset(void);
+void      ArenaSetCurrentOffset(size_t offset);
 
-// TLSF Allocator
-void*   AllocateTLSFGlobal(size_t size);
-void*   ReAllocateTLSFGlobal(void* ptr, size_t size);
-void    DeAllocateTLSFGlobal(void* ptr);
-void*   AllocZeroTLSFGlobal(size_t count, size_t size);
+#define ArenaStruct(arena, type)     ((type*)ArenaAllocAlign(arena, sizeof(type), _Alignof(type)))
+#define ArenaArray(arena, type, cnt) ((type*)ArenaAllocAlign(arena, sizeof(type) * (cnt), _Alignof(type)))
+#define ArenaAllocGlobal(cnt)        (ArenaAllocAlign(&GlobalArena, (cnt), DEFAULT_ALIGN))
+
+void* AllocateTLSFGlobal(size_t size);
+void* ReAllocateTLSFGlobal(void* ptr, size_t size);
+void  DeAllocateTLSFGlobal(void* ptr);
+void* AllocZeroTLSFGlobal(size_t count, size_t size);
 
 // FixedPow2Allocator
 void  FixedPow2Allocator_Init(FixedPow2Allocator* alloc, size_t initialSize);
@@ -79,9 +88,9 @@ void* FixedPow2Allocator_AllocateUninitialized(FixedPow2Allocator* alloc, size_t
 void  FixedPow2Allocator_Copy(FixedPow2Allocator* alloc, const FixedPow2Allocator* other);
 void* FixedPow2Allocator_TakeOwnership(FixedPow2Allocator* alloc);
 void  FixedPow2Allocator_Destroy(FixedPow2Allocator* alloc);
-
+    
 #if defined(__cplusplus)
 }
 #endif
-
 #endif
+
