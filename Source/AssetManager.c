@@ -569,7 +569,7 @@ static void VerticesForPrimitive(APrimitive* primitive, ASkinedVertex* currVerte
 
         Float4ToHalf4((h1*)&currVertex[v].positionXY, &positions[v].x);
         currVertex[v].texCoord   = Float2ToHalf2(&texCoord.x);
-        currVertex[v].quaternion = PackNormalTangent(Vec3Load(&normal.x), tangent);
+        currVertex[v].octTbn = PackNormalTangent(Vec3Load(&normal.x), tangent);
     }
 }
 

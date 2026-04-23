@@ -59,6 +59,15 @@ target_sources(${EXECUTABLE_NAME} PRIVATE
 	Extern/ExternAll.cpp
 )
 
+# if(WIN32)
+#     target_compile_definitions(${EXECUTABLE_NAME} PRIVATE SDL_GPU_D3D12=1)
+#     
+#     set(SDL_GPU_DXGI ON CACHE BOOL "" FORCE)
+#     set(SDL_GPU_D3D12 ON CACHE BOOL "" FORCE)
+#     
+#     target_link_libraries(${EXECUTABLE_NAME} PUBLIC d3d12 dxgi dxguid)
+# endif()
+
 # Configure SDL by calling its CMake file.
 # we use EXCLUDE_FROM_ALL so that its install targets and configs don't
 # pollute upwards into our configuration.

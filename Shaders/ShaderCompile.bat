@@ -17,6 +17,7 @@ echo [1/2] Compiling shaders...
 for %%S in (%SHADERS%) do (
     for /f "tokens=1,2 delims=:" %%A in ("%%S") do (
         rem %CROSS% %SHADER_DIR%\%%A.hlsl -s HLSL -d SPIRV -t %%B -o %SHADER_DIR%\%%A.spv
+        rem Shaders\dxc.exe -spirv -T %%B_6_6 -E main -enable-16bit-types -D VULKAN=1 %SHADER_DIR%\%%A.hlsl -Fo %SHADER_DIR%\%%A.spv
         Shaders\dxc.exe -spirv -T %%B_6_6 -E main -enable-16bit-types %SHADER_DIR%\%%A.hlsl -Fo %SHADER_DIR%\%%A.spv
         if !ERRORLEVEL! neq 0 (
             echo [ERROR] Failed to compile %%A.hlsl to SPIR-V

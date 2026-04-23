@@ -6,7 +6,7 @@
 #include "../Math/Vector.h"
 #include "GLTFParser.h"
 
-#define CHECK_CREATE(var, thing) { if (!(var)) { SDL_Log("Failed to create %s: %s", thing, SDL_GetError()); Quit(2); } }
+#define CHECK_CREATE(var, thing) { if (!(var)) { AX_ERROR("Failed to create %s: %s", thing, SDL_GetError()); Quit(2); } }
 #define TESTGPU_SUPPORTED_FORMATS (SDL_GPU_SHADERFORMAT_SPIRV | SDL_GPU_SHADERFORMAT_DXBC | SDL_GPU_SHADERFORMAT_DXIL | SDL_GPU_SHADERFORMAT_METALLIB)
 
 #define MAX_VERTEX 1000000
@@ -70,7 +70,7 @@ typedef s32 GraphicType;
 typedef struct AVertex_
 {
     f3  position;
-    u32 quaternion;
+    u32 octTbn;
     u32 texCoord; // half2
 } AVertex;
 
@@ -78,10 +78,10 @@ typedef struct ASkinedVertex_
 {
     u32 positionXY;
     u32 positionZW;
-    u32 quaternion;
+    u32 octTbn;   // XY11Z10
     u32 texCoord; // half2
-    u32 joints;  // rgb8u
-    u32 weights; // rgb8u
+    u32 joints;   // rgb8u
+    u32 weights;  // rgb8u
 } ASkinedVertex;
 
 typedef struct GPUMesh_

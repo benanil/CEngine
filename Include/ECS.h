@@ -42,14 +42,14 @@ typedef struct Range_
 
 typedef struct ECS_
 {
-    Entity             entities[MAX_ENTITY];
-    u32                sparseID[MAX_ENTITY];
+    Entity              entities[MAX_ENTITY];
+    u32                 sparseID[MAX_ENTITY];
+    
+    PrimitiveGroup      primitiveGroups[MAX_GROUP];
 
-    PrimitiveGroup     primitiveGroups[MAX_GROUP];
-
-    Range              bundleRange[MAX_BUNDLES];
-    const SceneBundle* bundles[MAX_BUNDLES];
-
+    Range               bundleRange[MAX_BUNDLES];
+    const SceneBundle*  bundles[MAX_BUNDLES];
+    
     u32 numEntities;
     u32 numGroups;
     u32 numBundles;

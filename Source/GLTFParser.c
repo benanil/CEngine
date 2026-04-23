@@ -731,8 +731,8 @@ static void ParseMaterialsObj(sj_Value sjMaterialObj, void* element, GLTFParseCo
     material->textures[0].index = UINT16_MAX;
     material->textures[1].index = UINT16_MAX;
     material->textures[2].index = UINT16_MAX;
-    material->metallicFactor = PackUnorm16(1.0f);
-    material->roughnessFactor = PackUnorm16(1.0f);
+    material->metallicFactor    = PackUnorm16(1.0f);
+    material->roughnessFactor   = PackUnorm16(1.0f);
 
     sj_Value key, val;
     while (sj_iter_object(ctx->sj, sjMaterialObj, &key, &val))

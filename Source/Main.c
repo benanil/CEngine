@@ -51,7 +51,7 @@ SceneBundle*   gPaladin;
 WindowState g_WindowState;
 RenderState g_RenderState;
 
-m44* g_NodeTransforms;
+m44*     g_NodeTransforms;
 Camera   g_Camera;
 
 static Uint32 frames = 0;
@@ -399,6 +399,7 @@ void loop(void)
     v128f camPos = VecLoad(&g_Camera.position.x);
     s64 frameCount = PlatformCtx.FrameCount;
     // #pragma omp parallel for schedule(static) num_threads(8)
+    
     #pragma omp parallel for schedule(static) num_threads(omp_get_num_procs() / 2)
     for (i = 0; i < NUM_ANIMS; i++)
     {
@@ -497,3 +498,4 @@ s32 main(s32 argc, char* argv[])
 #endif
     return 0;
 }
+
