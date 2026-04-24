@@ -3,7 +3,6 @@
 
 #include <stddef.h>
 #include <stdint.h>
-#include "TLSF.h"
 
 #ifndef TLSF_MEMORY_SIZE
     #define TLSF_MEMORY_SIZE (512 * 1000 * 1000)

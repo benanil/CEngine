@@ -1,18 +1,22 @@
+#include "Include/Memory.h"
 #include "Include/Common.h"
 #include "Include/Algorithm.h"
-#include "Include/TLSF.h"
-#include "Include/Memory.h"
 #include "Include/Platform.h"
 #include "Include/OS.h"
 
+#include "Extern/tlsf.h"
+
 Arena GlobalArena = { 0, 0, 0 };
+tlsf_t GlobalTLSF = NULL;
 char  ArenaMemory[ARENA_MEMORY_SIZE];
+char  TLSFMemory[TLSF_MEMORY_SIZE];
 
 void InitGlobalArena()
 {
     GlobalArena.buf = ArenaMemory;
     GlobalArena.buffLen = ARENA_MEMORY_SIZE;
     GlobalArena.currOffset = 0;
+    GlobalTLSF = tlsf_create_with_pool(TLSFMemory, TLSF_MEMORY_SIZE);
 }
 
 Arena* GetGlobalArena()
@@ -27,6 +31,16 @@ uint64_t AlignAddress(uint64_t addr, uint64_t align)
     return (addr + mask) & ~mask;
 }
 
+static bool CheckTLSFFail(void* ptr)
+{
+    if (ptr == NULL)
+    {
+        AX_ERROR("TLSF Memory Allocating failed not enough memory total tlsf size:%d mb", TLSF_MEMORY_SIZE/1024/1024);
+        return false;
+    }
+    return true;
+}
+
 void* AlignPointer(void* ptr, uint64_t align)
 {
     return (void*)AlignAddress((uint64_t)ptr, align);
@@ -35,7 +49,8 @@ void* AlignPointer(void* ptr, uint64_t align)
 void* AllocAligned(uint64_t bytes, uint64_t align)
 {
     uint64_t actualBytes = bytes + align;
-    uint8_t* pRawMem     = (uint8_t*)SDL_malloc(actualBytes);
+    uint8_t* pRawMem     = (uint8_t*)tlsf_malloc(GlobalTLSF, actualBytes);
+    if (!CheckTLSFFail(pRawMem)) return NULL;
     uint8_t* pAlignedMem = (uint8_t*)AlignPointer(pRawMem, align);
 
     if (pAlignedMem == pRawMem)
@@ -50,12 +65,38 @@ void FreeAligned(void* pMem)
 {
     uint8_t* pAlignedMem = (uint8_t*)pMem;
     uint64_t shift       = pAlignedMem[-1];
-
-    if (shift == 0)
-        shift = 256;
+    if (shift == 0) shift = 256;
 
     uint8_t* pRawMem = pAlignedMem - shift;
-    SDL_free(pRawMem);
+    tlsf_free(GlobalTLSF, pRawMem);
+}
+
+void* AllocZeroTLSFGlobal(size_t count, size_t size)
+{
+    void* ptr = tlsf_malloc(GlobalTLSF, count * size);
+    if (!CheckTLSFFail(ptr)) return NULL;
+    MemsetZero(ptr, count * size);
+    return ptr;
+}
+
+void* AllocateTLSFGlobal(size_t size)
+{
+    void* ptr = tlsf_malloc(GlobalTLSF, size);
+    if (!CheckTLSFFail(ptr)) return NULL;
+    MemSet(ptr, 0xCD, size);
+    return ptr;
+}
+
+void* ReAllocateTLSFGlobal(void* ptr, size_t size)
+{
+    void* res = tlsf_realloc(GlobalTLSF, ptr, size);
+    if (!CheckTLSFFail(res)) return NULL;
+    return res;
+}
+
+void DeAllocateTLSFGlobal(void* buff)
+{
+    tlsf_free(GlobalTLSF, buff);
 }
 
 static inline void CheckArenaSize(void)
@@ -164,7 +205,6 @@ void* ArenaPushGlobal(uint64_t size)
     if (GlobalArena.currOffset + size > GlobalArena.buffLen)
     {
         AX_ERROR("Arena push failed: out of memory");
-        ASSERT(0);
         return NULL;
     }
     void* result           = GlobalArena.buf + GlobalArena.currOffset;
@@ -182,27 +222,6 @@ void ArenaPopGlobal(uint64_t size)
     GlobalArena.currOffset -= size;
 }
 
-void* AllocZeroTLSFGlobal(size_t count, size_t size)
-{
-    return SDL_calloc(count, size);
-}
-
-void* AllocateTLSFGlobal(size_t size)
-{
-    void* ptr = SDL_malloc(size);
-    MemSet(ptr, 0xCD, size);
-    return ptr;
-}
-
-void* ReAllocateTLSFGlobal(void* ptr, size_t size)
-{
-    return SDL_realloc(ptr, size);
-}
-
-void DeAllocateTLSFGlobal(void* buff)
-{
-    SDL_free(buff);
-}
 
 /*//////////////////////////////////////////////////////////////////////////*/
 /*                          FixedPow2Allocator                              */

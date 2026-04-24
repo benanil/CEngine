@@ -45,7 +45,7 @@ target_sources(${EXECUTABLE_NAME} PRIVATE
 	Source/Main.c
 	Source/OS.c
 	Extern/dynarray.c 
-	Source/TLSF.c
+	Extern/tlsf.c
 	Source/Memory.c
 	Source/ECS.c
 	Source/FileSystem.c
