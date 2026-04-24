@@ -272,9 +272,6 @@
 						<Path>Include/Platform.h</Path>
 					</File>
 					<File>
-						<Path>Include/OS.h</Path>
-					</File>
-					<File>
 						<Path>Include/Random.h</Path>
 					</File>
 					<File>
@@ -348,9 +345,6 @@
 						<Path>Source/Memory.c</Path>
 					</File>
 					<File>
-						<Path>Source/OS.c</Path>
-					</File>
-					<File>
 						<Path>Source/Platform.c</Path>
 					</File>
 					<File>
@@ -367,9 +361,6 @@
 					</File>
 					<File>
 						<Path>Source/Rendering.c</Path>
-					</File>
-					<File>
-						<Path>Source/TLSF.c</Path>
 					</File>
 				</Children>
 			</Folder>

@@ -7,16 +7,16 @@
 #include "Extern/tlsf.h"
 
 #ifndef PLATFORM_WINDOWS
-#include <sys/mman.h>
-#include <unistd.h>
-#include <errno.h>
+    #include <sys/mman.h>
+    #include <unistd.h>
+    #include <errno.h>
 #else
 #ifndef NOMINMAX
-#  define NOMINMAX
-#  define WIN32_LEAN_AND_MEAN 
-#  define VC_EXTRALEAN
+    #define NOMINMAX
+    #define WIN32_LEAN_AND_MEAN 
+    #define VC_EXTRALEAN
 #endif
-#include <Windows.h>
+    #include <Windows.h>
 #endif
 
 Arena GlobalArena = { 0, 0, 0 };
@@ -25,7 +25,6 @@ char  ArenaMemory[ARENA_MEMORY_SIZE];
 char  TLSFMemory[TLSF_MEMORY_SIZE];
 
 size_t OSGetPageSize(void) {
-    SDL_GetSystemPageSize
     #ifdef PLATFORM_WINDOWS
     SYSTEM_INFO si;
     GetSystemInfo(&si);
