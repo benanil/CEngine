@@ -19,8 +19,8 @@
 #define Shaders_SkinnedVert_spv_size Shaders_SkinnedVert_msl_size
 #elif defined(PLATFORM_WINDOWS)
 // Shaders_SkinnedFrag_spv
-#include "Shaders/SkinnedFrag.spv.h"
-#include "Shaders/SkinnedVert.spv.h"
+#include "Shaders/spv/SkinnedFrag.spv.h"
+#include "Shaders/spv/SkinnedVert.spv.h"
 #endif
 
 #define TESTGPU_SUPPORTED_FORMATS (SDL_GPU_SHADERFORMAT_SPIRV | SDL_GPU_SHADERFORMAT_DXBC | SDL_GPU_SHADERFORMAT_DXIL | SDL_GPU_SHADERFORMAT_METALLIB)

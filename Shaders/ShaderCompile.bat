@@ -39,8 +39,8 @@ for %%S in (%SHADERS%) do (
     for /f "tokens=1,2 delims=:" %%A in ("%%S") do (
         %BIN2C% -o %SHADER_DIR%\%%A.spv.h %SHADER_DIR%\%%A.spv
         if !ERRORLEVEL! neq 0 goto :bin_error
-        copy /Y %SHADER_DIR%\%%A.spv %SPV_DIR%\%%A.spv >NUL
-        copy /Y %SHADER_DIR%\%%A.spv.h %SPV_DIR%\%%A.spv.h >NUL
+        del %SHADER_DIR%\%%A.spv
+        move /Y %SHADER_DIR%\%%A.spv.h %SPV_DIR%\%%A.spv.h >NUL
         %BIN2C% -o %MSL_DIR%\%%A.msl.h %MSL_DIR%\%%A.msl
         if !ERRORLEVEL! neq 0 goto :bin_error
     )
