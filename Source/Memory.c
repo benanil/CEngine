@@ -2,7 +2,6 @@
 #include "Include/Common.h"
 #include "Include/Algorithm.h"
 #include "Include/Platform.h"
-#include "Include/OS.h"
 
 #include "Extern/tlsf.h"
 
@@ -19,10 +18,10 @@
     #include <Windows.h>
 #endif
 
-Arena GlobalArena = { 0, 0, 0 };
+Arena  GlobalArena = { 0, 0, 0 };
 tlsf_t GlobalTLSF = NULL;
-char  ArenaMemory[ARENA_MEMORY_SIZE];
-char  TLSFMemory[TLSF_MEMORY_SIZE];
+char   ArenaMemory[ARENA_MEMORY_SIZE];
+char   TLSFMemory[TLSF_MEMORY_SIZE];
 
 size_t OSGetPageSize(void) {
     #ifdef PLATFORM_WINDOWS

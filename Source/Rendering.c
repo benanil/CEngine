@@ -23,6 +23,8 @@
 #include "Shaders/SkinnedVert.spv.h"
 #endif
 
+#define TESTGPU_SUPPORTED_FORMATS (SDL_GPU_SHADERFORMAT_SPIRV | SDL_GPU_SHADERFORMAT_DXBC | SDL_GPU_SHADERFORMAT_DXIL | SDL_GPU_SHADERFORMAT_METALLIB)
+
 #define NUM_ANIMS (1024)
 
 static AnimationController AnimControllers[NUM_ANIMS];

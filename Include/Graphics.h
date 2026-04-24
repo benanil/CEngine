@@ -2,12 +2,11 @@
 #define _H_GRAPHICS_
 
 #include <SDL3/SDL_gpu.h>
-#include "../Math/Half.h"
-#include "../Math/Vector.h"
+#include "Math/Half.h"
+#include "Math/Vector.h"
 #include "GLTFParser.h"
 
 #define CHECK_CREATE(var, thing) { if (!(var)) { AX_ERROR("Failed to create %s: %s", thing, SDL_GetError()); Quit(2); } }
-#define TESTGPU_SUPPORTED_FORMATS (SDL_GPU_SHADERFORMAT_SPIRV | SDL_GPU_SHADERFORMAT_DXBC | SDL_GPU_SHADERFORMAT_DXIL | SDL_GPU_SHADERFORMAT_METALLIB)
 
 #define MAX_VERTEX 1000000
 #define MAX_INDEX (MAX_VERTEX * 5)
@@ -111,20 +110,20 @@ typedef struct Texture_
 
 typedef struct WindowState
 {
-	SDL_GPUTexture* tex_depth, *tex_msaa, *tex_resolve;
-	u32 prev_drawablew, prev_drawableh;
+    SDL_GPUTexture* tex_depth, *tex_msaa, *tex_resolve;
+    u32 prev_drawablew, prev_drawableh;
 } WindowState;
 
 typedef struct RenderState
 {
-	SDL_GPUBuffer*  vertexBuffer;
-	SDL_GPUBuffer*  indexBuffer;
-	SDL_GPUBuffer*  boneBuffer;
-	SDL_GPUBuffer*  entityBuffer;
+    SDL_GPUBuffer*  vertexBuffer;
+    SDL_GPUBuffer*  indexBuffer;
+    SDL_GPUBuffer*  boneBuffer;
+    SDL_GPUBuffer*  entityBuffer;
     SDL_GPUSampler* sampler;
-    Texture textures[8];
-	SDL_GPUGraphicsPipeline* pipeline;
-	SDL_GPUSampleCount sample_count;
+    Texture textures[128];
+    SDL_GPUGraphicsPipeline* pipeline;
+    SDL_GPUSampleCount sample_count;
 } RenderState;
 
 
@@ -146,13 +145,9 @@ static inline s32 GetRootNodeIdx(SceneBundle* bundle)
     return node;
 }
 
-// ui328_t rTextureTypeToBytesPerPixel(sg_pixel_format type);
-
 void GraphicsInit(bool msaa);
 
 void GraphicsDestroy();
-
-// i32 rGetMipmapImageData(sg_image_data* img_data, void* data, i32 width, i32 height);
 
 Texture rImportTexture(const char* path, TexFlags flags, const char* label);
 
@@ -173,37 +168,6 @@ SDL_GPUTexture* CreateDepthTexture(u32 drawablew, u32 drawableh);
 SDL_GPUTexture* CreateMSAATexture(u32 drawablew, u32 drawableh);
 
 SDL_GPUTexture* CreateResolveTexture(u32 drawablew, u32 drawableh);
-
-
-// // w value is undefined, it could be anything or trash data
-// static inline Vector4x32f GetPosition(GPUMesh* gpu, i32 index)
-// {
-//     const char* bytePtr = (const char*)gpu->vertices;
-//     bytePtr += gpu->stride * index;
-//     return VecLoad((const float*)bytePtr);
-// }
-// 
-// // todo GPUMesh GetNormal
-// static inline Vector4x32f GetNormal(GPUMesh* gpu, i32 index)
-// {
-//     const char* bytePtr = (const char*)gpu->vertices;
-//     bytePtr += gpu->stride * index + sizeof(Vec3f); // skip position
-//     ui3232_t normalPacked = *(ui3232_t *)bytePtr;
-//     typedef union S_ { Vector4x32f v; Vec3f s; } S;
-//     S s = (S){ .s = Unpack_i32_2_10_10_10_REV(normalPacked) };
-//     return s.v; // VecLoad(bytePtr);
-// }
-// 
-// // todo GPUMesh GetNormal
-// static inline Vec2f GetUV(GPUMesh* gpu, i32 index)
-// {
-//     const char* bytePtr = (const char*)gpu->vertices;
-//     bytePtr += gpu->stride * index + sizeof(Vec3f) + sizeof(i32) + sizeof(i32); // skip normal and tangent
-//     ui3232_t uvPacked = *(ui3232_t *)bytePtr;
-//     Vec2f result;
-//     ConvertHalf2ToFloat2(&result.x, uvPacked); // VecLoad(bytePtr);
-//     return result;
-// }
 
 #if defined(__cplusplus)
 }

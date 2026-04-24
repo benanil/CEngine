@@ -289,9 +289,6 @@
 					<File>
 						<Path>Include/Rendering.h</Path>
 					</File>
-					<File>
-						<Path>Include/TLSF.h</Path>
-					</File>
 				</Children>
 			</Folder>
 			<Folder>
