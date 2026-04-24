@@ -148,9 +148,9 @@ static inline s32 GetRootNodeIdx(SceneBundle* bundle)
 
 // ui328_t rTextureTypeToBytesPerPixel(sg_pixel_format type);
 
-void rInit(bool msaa);
+void GraphicsInit(bool msaa);
 
-void rDestroy();
+void GraphicsDestroy();
 
 // i32 rGetMipmapImageData(sg_image_data* img_data, void* data, i32 width, i32 height);
 

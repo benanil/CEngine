@@ -47,7 +47,7 @@ Graphics gGFX = {};
 
 extern void Quit(int rc);
 
-void rInit(bool msaa)
+void GraphicsInit(bool msaa)
 {
     VkPhysicalDeviceVulkan12Features vk12_features = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
@@ -71,10 +71,6 @@ void rInit(bool msaa)
         .feature_list = &vk11_features,
         .vulkan_10_physical_device_features = &vk10_features
     };
-
-    vk12_features.shaderFloat16 = VK_TRUE;
-    // vk11_features.storageInputOutput16 = VK_TRUE;
-    vk10_features.shaderInt16 = VK_TRUE;
 
     SDL_PropertiesID props = SDL_CreateProperties();
     SDL_SetHint(SDL_HINT_GPU_DRIVER, "vulkan");
@@ -112,7 +108,7 @@ void rInit(bool msaa)
     gGFX.IndexBuffer  = AllocAligned(sizeof(u32) * MAX_INDEX + 16, 4); // 16->give little bit of space for memcpy
 }
 
-void rDestroy()
+void GraphicsDestroy()
 {
     WindowState* winstate = &g_WindowState;
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_depth);

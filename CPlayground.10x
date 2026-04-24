@@ -10,6 +10,7 @@
 		<IsFolder>false</IsFolder>
 		<UseVisualStudioEnvBat>false</UseVisualStudioEnvBat>
 		<CaptureExeOutput>false</CaptureExeOutput>
+		<AllowAutoErrorUnderlining>true</AllowAutoErrorUnderlining>
 		<Configurations>
 			<Configuration>Release</Configuration>
 			<Configuration>Debug</Configuration>
@@ -281,6 +282,9 @@
 					<File>
 						<Path>Include/IntFloat.h</Path>
 					</File>
+					<File>
+						<Path>Include/Rendering.h</Path>
+					</File>
 				</Children>
 			</Folder>
 			<Folder>
@@ -365,6 +369,9 @@
 					</File>
 					<File>
 						<Path>Source/SparseSet.h</Path>
+					</File>
+					<File>
+						<Path>Source/Rendering.c</Path>
 					</File>
 				</Children>
 			</Folder>
