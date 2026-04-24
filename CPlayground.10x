@@ -321,12 +321,6 @@
 				<IncludeFilesWithoutExt>false</IncludeFilesWithoutExt>
 				<Children>
 					<File>
-						<Path>Source/AOC.c</Path>
-					</File>
-					<File>
-						<Path>Source/AOC0.txt</Path>
-					</File>
-					<File>
 						<Path>Source/Algorithm.c</Path>
 					</File>
 					<File>
