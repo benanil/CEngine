@@ -70,6 +70,11 @@ uint64_t  ArenaRemainingCurrent(void);
 uint64_t  ArenaGetCurrentOffset(void);
 void      ArenaSetCurrentOffset(size_t offset);
 
+size_t OSGetPageSize(void);
+size_t OSRoundToPage(size_t size);
+void*  OSAlloc(size_t size);
+int    OSFree(void *ptr, size_t size);
+
 #define ArenaStruct(arena, type)     ((type*)ArenaAllocAlign(arena, sizeof(type), _Alignof(type)))
 #define ArenaArray(arena, type, cnt) ((type*)ArenaAllocAlign(arena, sizeof(type) * (cnt), _Alignof(type)))
 #define ArenaAllocGlobal(cnt)        (ArenaAllocAlign(&GlobalArena, (cnt), DEFAULT_ALIGN))

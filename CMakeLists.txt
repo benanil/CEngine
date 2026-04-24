@@ -43,7 +43,6 @@ endif()
 # Add your sources to the target
 target_sources(${EXECUTABLE_NAME} PRIVATE
 	Source/Main.c
-	Source/OS.c
 	Extern/dynarray.c 
 	Extern/tlsf.c
 	Source/Memory.c
