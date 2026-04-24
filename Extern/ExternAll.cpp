@@ -20,4 +20,5 @@
 #define BASISD_SUPPORT_ATC    (0)
 #define BASISD_SUPPORT_KTX2   (0)
 
-#include "Extern/basis_universal/basisu_transcoder.cpp"
+#define BASISD_SUPPORT_KTX2_ZSTD 0
+#include "Extern/basis_universal/transcoder/basisu_transcoder.cpp"

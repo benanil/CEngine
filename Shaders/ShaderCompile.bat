@@ -41,8 +41,9 @@ for %%S in (%SHADERS%) do (
         if !ERRORLEVEL! neq 0 goto :bin_error
         del %SHADER_DIR%\%%A.spv
         move /Y %SHADER_DIR%\%%A.spv.h %SPV_DIR%\%%A.spv.h >NUL
-        %BIN2C% -o %MSL_DIR%\%%A.msl.h %MSL_DIR%\%%A.msl
-        if !ERRORLEVEL! neq 0 goto :bin_error
+        rem %BIN2C% -o %MSL_DIR%\%%A.msl.h %MSL_DIR%\%%A.msl
+        rem if !ERRORLEVEL! neq 0 goto :bin_error
+        rem del %MSL_DIR%\%%A.msl
     )
 )
 

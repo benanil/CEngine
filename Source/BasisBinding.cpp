@@ -1,7 +1,7 @@
 
 #include <SDL3/SDL_gpu.h>
 #include "Include/Memory.h"
-#include "Extern/basis_universal/basisu_transcoder.h"
+#include "Extern/basis_universal/transcoder/basisu_transcoder.h"
 
 static basist::transcoder_texture_format BasisTexToTranscoderFormat(basist::basis_tex_format fmt, 
                                                                     bool hasAlpha, bool isNormal, bool isMetalicRoughness)
@@ -19,7 +19,7 @@ static basist::transcoder_texture_format BasisTexToTranscoderFormat(basist::basi
         return hasAlpha ? basist::transcoder_texture_format::cTFBC3_RGBA : basist::transcoder_texture_format::cTFBC1_RGB;
         #endif
     }
-    else if (fmt == basist::basis_tex_format::cUASTC4x4)
+    else if (fmt == basist::basis_tex_format::cUASTC_LDR_4x4)
     {
         #ifdef __ANDROID__
         return basist::transcoder_texture_format::cTFASTC_4x4_RGBA
