@@ -34,6 +34,8 @@
 #include "Extern/sinfl.h"
 #include "Extern/dynarray.h"
 
+#include "Extern/BasisCompressWrapper.h"
+
 extern Graphics gGFX;
 
 
@@ -729,77 +731,85 @@ s32 CreateVerticesIndices(SceneBundle* gltf)
     return 1;
 }
 
-
 void SaveSceneImages(SceneBundle* scene, const u8* savePath, bool deleteRemaining)
 {
-    u8 command[2048];
-    u8 outputDir[2048] = { 0 };
-    
-    s32 pathLen = StringLengthSafe(savePath, sizeof(outputDir));
-    
-    // write texture description into .bdc file
-    SmallMemCpy(outputDir, savePath, pathLen);
-    ChangeExtension(outputDir, pathLen, "bdc");
-    AFile file = AFileOpen(outputDir, AOpenFlag_WriteText);
-    
-    s32 numDigits = IntToString(command, (s64)scene->numImages, 0);
-    command[numDigits] = '\n';
-    AFileWrite(command, numDigits + 1, file, 1); // num textures 
+    u8 pathBuf[2048], baseDir[2048], name[512];
+
+    // .bdc path
+    s32 len = StringLengthSafe(savePath, sizeof(pathBuf));
+    SmallMemCpy(pathBuf, savePath, len);
+    ChangeExtension(pathBuf, len, "bdc");
+
+    AFile file = AFileOpen(pathBuf, AOpenFlag_WriteText);
+    GetBaseDir(savePath, baseDir);
+
+    // write count
+    s32 n = IntToString(pathBuf, scene->numImages, 0);
+    pathBuf[n++] = '\n';
+    AFileWrite(pathBuf, n, file, 1);
+
+    basis_encoder_init();
 
     for (s32 i = 0; i < scene->numImages; i++)
     {
-        const u8* path = scene->images[i].path;
-        s32 len = (s32)StringLengthSafe(path, sizeof(outputDir)-2);
-        SmallMemCpy(outputDir, path, len);
-        outputDir[len] = '\n';
-        AFileWrite(outputDir, len + 1, file, 1); // write original texture path
-     
-        PathGoBackwards(outputDir, pathLen, true);
-        
-        s32 textureType = 0;
+        const u8* src = scene->images[i].path;
+
+        // write original path
+        s32 l = (s32)StringLengthSafe(src, sizeof(pathBuf) - 2);
+        SmallMemCpy(pathBuf, src, l);
+        pathBuf[l++] = '\n';
+        AFileWrite(pathBuf, l, file, 1);
+
+        // build output path = baseDir + name + ".basis"
+        s32 baseLen = (s32)StringLengthSafe(baseDir, sizeof(baseDir));
+        SmallMemCpy(pathBuf, baseDir, baseLen);
+
+        s32 nameLen = GetFileNameNoExt(src, name);
+        SmallMemCpy(pathBuf + baseLen, name, nameLen);
+        SmallMemCpy(pathBuf + baseLen + nameLen, ".basis", 7);
+
+        bool isNormal = false;
+        bool isMR     = false;
+
         for (s32 j = 0; j < scene->numMaterials; j++)
         {
-            AMaterial material = scene->materials[j];
-            if (material.textures[0].index < scene->numTextures)
-            textureType |= scene->textures[material.textures[0].index].source == i;
-            
-            if (material.baseColorTexture.index < scene->numTextures)
-            // if an normal map used as base color, unmark it. (causing problems on sponza)
-            textureType &= ~(scene->textures[material.baseColorTexture.index].source == i);
-            
-            if (material.metallicRoughnessTexture.index < scene->numTextures)
-            textureType |= (scene->textures[material.metallicRoughnessTexture.index].source == i) << 1;
-            // mixamo animations are exporting specular instead of metallic roughness, 
-            // in our engine we don't use specular but using metallic roughess with our engine specular means metallic roughness
-            if (material.specularTexture.index < scene->numTextures)
-            textureType |= (scene->textures[material.specularTexture.index].source == i) << 1;
+            AMaterial m = scene->materials[j];
+
+            if (m.textures[0].index < scene->numTextures)
+                isNormal |= (scene->textures[m.textures[0].index].source == i);
+
+            if (m.metallicRoughnessTexture.index < scene->numTextures)
+                isMR |= (scene->textures[m.metallicRoughnessTexture.index].source == i);
+
+            if (m.specularTexture.index < scene->numTextures)
+                isMR |= (scene->textures[m.specularTexture.index].source == i);
         }
 
-        s32 isNormal = (textureType & 1) != 0;
-        s32 isMetallicRoughness = (textureType & 2) != 0;
-
-        // choose compression format
-        const char* formatFlag = isMetallicRoughness ? "-etc1s" : "-uastc";
-
-        snprintf(command, sizeof(command),
-                 "Extern\\basis_universal\\basisu.exe \"%s\" %s -basis -mipmap -mip_smallest 256 %s -output_path \"%s\"",
-                 path,
-                 formatFlag,
-                 isNormal ? " -normal_map" : "",
-                 outputDir);
-
-        // compress using basis universal
-        s32 result = system(command);
-        if (result != 0)
+        // baseColor wins -> it's neither normal nor MR
+        for (s32 j = 0; j < scene->numMaterials; j++)
         {
-            printf("Failed to compress: %s\n", path);
+            AMaterial m = scene->materials[j];
+
+            if (m.baseColorTexture.index < scene->numTextures &&
+                scene->textures[m.baseColorTexture.index].source == i)
+            {
+                isNormal = false;
+                isMR     = false;
+                break;
+            }
         }
 
-        // write texture type as text
-        s32 numDigits = IntToString(outputDir, textureType, 0);
-        outputDir[numDigits] = '\n';
-        AFileWrite(outputDir, numDigits + 1, file, 1); // num textures 
-        if (deleteRemaining) RemoveFile(path);
+        s32 type = (isNormal ? 1 : 0) | (isMR ? 2 : 0);
+        AX_LOG("output path: %s", pathBuf);
+
+        s32 r = basis_compress_file((const char*)src, (const char*)pathBuf, type, 256, -1, -1);
+        if (r) AX_ERROR("Failed: %s (%d)\n", src, r);
+
+        n = IntToString(pathBuf, type, 0);
+        pathBuf[n++] = '\n';
+        AFileWrite(pathBuf, n, file, 1);
+
+        if (deleteRemaining) RemoveFile(src);
     }
 
     AFileClose(file);

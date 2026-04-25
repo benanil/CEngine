@@ -89,6 +89,51 @@ bool FileHasExtension(const char* path, int size, const char* extension)
     return true;
 }
 
+void GetBaseDir(const u8* path, u8* out)
+{
+    s32 len = (s32)StringLengthSafe(path, 2048);
+    for (s32 i = len - 1; i >= 0; --i)
+    {
+        if (path[i] == '/' || path[i] == '\\')
+        {
+            SmallMemCpy(out, path, i + 1);
+            out[i + 1] = 0;
+            return;
+        }
+    }
+    SmallMemCpy(out, "./", 3);
+}
+
+s32 GetFileNameNoExt(const u8* path, u8* out)
+{
+    s32 len = (s32)StringLengthSafe(path, 512);
+    s32 start = 0;
+
+    for (s32 i = len - 1; i >= 0; --i)
+    {
+        if (path[i] == '/' || path[i] == '\\')
+        {
+            start = i + 1; 
+            break; 
+        }
+    }
+
+    s32 end = len;
+    for (s32 i = len - 1; i >= start; --i)
+    {
+        if (path[i] == '.') 
+        { 
+            end = i; 
+            break; 
+        }
+    }
+
+    s32 n = end - start;
+    SmallMemCpy(out, path + start, n);
+    out[n] = 0;
+    return n;
+}
+
 // returns pointer to the end of the new path
 char* PathGoBackwards(char* path, int end, bool skipSeparator)
 {

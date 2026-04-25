@@ -25,9 +25,9 @@
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_RESIZE_IMPLEMENTATION
 
-#define STBI_MALLOC(size)           ( AllocateTLSFGlobal(size) )
-#define STBI_FREE(ptr)              ( DeAllocateTLSFGlobal(ptr) )
-#define STBI_REALLOC(ptr, size)     ( ReAllocateTLSFGlobal(ptr, size) )
+// #define STBI_MALLOC(size)           ( AllocateTLSFGlobal(size) )
+// #define STBI_FREE(ptr)              ( DeAllocateTLSFGlobal(ptr) )
+// #define STBI_REALLOC(ptr, size)     ( ReAllocateTLSFGlobal(ptr, size) )
 
 #define STBIR_MALLOC(size, c)       ( AllocateTLSFGlobal(size) )
 #define STBIR_FREE(ptr, c)          ( (void)(c), DeAllocateTLSFGlobal(ptr) )

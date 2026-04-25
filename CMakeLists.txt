@@ -40,24 +40,74 @@ if (OPENMP_FOUND)
     set (CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}")
 endif()
 
-# Add your sources to the target
-target_sources(${EXECUTABLE_NAME} PRIVATE
-	Source/Main.c
-	Extern/dynarray.c 
-	Extern/tlsf.c
-	Source/Memory.c
-	Source/ECS.c
-	Source/FileSystem.c
-	Source/Platform.c 
-	Source/Graphics.c 
-	Source/Rendering.c 
-	Source/GLTFParser.c 
-	Source/Animation.c
-	Source/Algorithm.c
-	Source/AssetManager.c
-	Source/BasisBinding.cpp 
-	Extern/ExternAll.cpp
+set(BASIS_ENCODER_SOURCES
+    Extern/basis_universal/encoder/basisu_enc.cpp
+    Extern/basis_universal/encoder/basisu_comp.cpp
+    Extern/basis_universal/encoder/basisu_frontend.cpp
+    Extern/basis_universal/encoder/basisu_backend.cpp
+    Extern/basis_universal/encoder/basisu_basis_file.cpp
+    Extern/basis_universal/encoder/basisu_etc.cpp
+    Extern/basis_universal/encoder/basisu_gpu_texture.cpp
+    Extern/basis_universal/encoder/basisu_pvrtc1_4.cpp
+    Extern/basis_universal/encoder/basisu_resampler.cpp
+    Extern/basis_universal/encoder/basisu_resample_filters.cpp
+    Extern/basis_universal/encoder/basisu_ssim.cpp
+    Extern/basis_universal/encoder/basisu_uastc_enc.cpp
+    Extern/basis_universal/encoder/basisu_astc_ldr_common.cpp
+    Extern/basis_universal/encoder/basisu_astc_ldr_encode.cpp
+    Extern/basis_universal/encoder/basisu_astc_hdr_common.cpp
+    Extern/basis_universal/encoder/basisu_astc_hdr_6x6_enc.cpp
+    Extern/basis_universal/encoder/basisu_uastc_hdr_4x4_enc.cpp
+    Extern/basis_universal/encoder/basisu_bc7enc.cpp
+    Extern/basis_universal/encoder/basisu_kernels_sse.cpp
+    Extern/basis_universal/encoder/basisu_tinyexr.cpp
+    Extern/basis_universal/encoder/jpgd.cpp
+    Extern/basis_universal/encoder/pvpngreader.cpp
+    Extern/basis_universal/encoder/basisu_opencl.cpp
+    Extern/BasisCompressWrapper.cpp
+    Extern/basis_universal/transcoder/basisu_transcoder.cpp
+    Extern/basis_universal/encoder/3rdparty/android_astc_decomp.cpp
+    # Extern/basis_universal/encoder/3rdparty/exr_reader.hh
+    # Extern/basis_universal/encoder/3rdparty/qoi.h
+    # Extern/basis_universal/encoder/3rdparty/streamreader.hh
+    # Extern/basis_universal/encoder/3rdparty/tinydds.h
+    # Extern/basis_universal/encoder/3rdparty/tinyexr.h
 )
+
+foreach(src ${BASIS_ENCODER_SOURCES})
+    set_source_files_properties(${src} PROPERTIES
+        COMPILE_DEFINITIONS "NOMINMAX;BASISU_SUPPORT_ZSTD=0;BASISD_SUPPORT_KTX2_ZSTD=0"
+        COMPILE_OPTIONS "/wd4244;/wd4267;/wd4018;/wd4005"
+    )
+endforeach()
+
+set_source_files_properties(
+    Extern/basis_universal/transcoder/basisu_transcoder.cpp
+    PROPERTIES COMPILE_DEFINITIONS
+    "NOMINMAX;BASISD_SUPPORT_BC7=0;BASISD_SUPPORT_PVRTC2=0;BASISD_SUPPORT_FXT1=0;BASISD_SUPPORT_ATC=0;BASISD_SUPPORT_KTX2_ZSTD=0;BASISU_SUPPORT_ZSTD=0"
+)
+
+target_sources(${EXECUTABLE_NAME} PRIVATE
+    Source/Main.c
+    Extern/dynarray.c
+    Extern/tlsf.c
+    Source/Memory.c
+    Source/ECS.c
+    Source/FileSystem.c
+    Source/Platform.c
+    Source/Graphics.c
+    Source/Rendering.c
+    Source/GLTFParser.c
+    Source/Animation.c
+    Source/Algorithm.c
+    Source/AssetManager.c
+    Source/BasisBinding.cpp
+    Extern/ExternAll.cpp
+    ${BASIS_ENCODER_SOURCES}
+)
+
+set_property(TARGET ${EXECUTABLE_NAME} PROPERTY CXX_STANDARD 17)
+set_property(TARGET ${EXECUTABLE_NAME} PROPERTY CXX_STANDARD_REQUIRED ON)
 
 # if(WIN32)
 #     target_compile_definitions(${EXECUTABLE_NAME} PRIVATE SDL_GPU_D3D12=1)
@@ -73,6 +123,15 @@ target_sources(${EXECUTABLE_NAME} PRIVATE
 # pollute upwards into our configuration.
 add_subdirectory(Extern/SDL3 EXCLUDE_FROM_ALL)
 
+target_include_directories(${EXECUTABLE_NAME} PRIVATE
+    Extern/basis_universal
+    Extern/basis_universal/encoder
+    Extern/basis_universal/transcoder
+)
+
+target_compile_definitions(${EXECUTABLE_NAME} PRIVATE
+    BASISU_NO_ITERATOR_DEBUG_LEVEL
+)
 # Link SDL to our executable. This also makes its include directory available to us. 
 target_link_libraries(${EXECUTABLE_NAME} PUBLIC SDL3::SDL3) # If using satelite libraries, SDL must be the last item in the list. 
 

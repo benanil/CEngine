@@ -179,8 +179,8 @@ void Render()
     SDL_GPUBuffer* buffers[2] = { g_RenderState.boneBuffer, g_RenderState.entityBuffer} ;
     SDL_BindGPUVertexStorageBuffers(pass, 0, buffers, SDL_arraysize(buffers));
     
-    SDL_BindGPUFragmentSamplers(pass, 0,
-                                &(SDL_GPUTextureSamplerBinding){
+    SDL_BindGPUFragmentSamplers(pass, 0, 
+       &(SDL_GPUTextureSamplerBinding){
         .texture = tex, 
         .sampler = g_RenderState.sampler
     }, 1);
@@ -260,7 +260,7 @@ s32 InitScene()
 {
     gPaladin = (SceneBundle*)AllocateTLSFGlobal(sizeof(SceneBundle));
     
-    if (!LoadGLTFCached("Assets/Meshes/Paladin/Paladin.glb", gPaladin, g_RenderState.textures))
+    if (!LoadGLTFCached("Assets/Meshes/Paladin/Paladin.gltf", gPaladin, g_RenderState.textures))
     {
         AX_ERROR("gltf scene load failed");
         return 0;
