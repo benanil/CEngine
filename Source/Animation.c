@@ -68,40 +68,39 @@ void AnimationController_Create(const SceneBundle* gltfScene, AnimationControlle
 
 void AnimationController_RecurseBoneMatrices(AnimationController* ac)
 {
-    typedef struct StackNode_ {
-        Pose pose;
-        s32  idx;
-    } StackNode;
-
-    StackNode stack[MaxBonePoses];
+    s32 stack[MaxBonePoses];
     s32 stackIndex = 0;
+
     s32 root = ac->mRootNodeIndex;
     Pose* poses = ac->mAnimPoseA;
     const uint8_t* childIndices = ac->mChildIndices;
-    
-    stack[stackIndex++] = (StackNode){ ac->mAnimPoseA[root], root };
-    f1 parentScale = VecGetW(stack[0].pose.translation);
+
+    stack[stackIndex++] = root;
+    f1 parentScale = VecGetW(poses[root].translation); // hack for now
 
     while (stackIndex)
     {
-        StackNode sn = stack[--stackIndex];
-        const AnimNode* node = &ac->mAnimNodes[sn.idx];
-        
-        const uint8_t* children = &childIndices[node->childrenStartIndex];
-        s32 count = node->numChildren;
+        s32 idx = stack[--stackIndex];
+        Pose parent = poses[idx];
 
-        for (s32 c = 0; c < count; c++)
+        const AnimNode* node = &ac->mAnimNodes[idx];
+        const uint8_t* children = &childIndices[node->childrenStartIndex];
+
+        for (s32 c = 0; c < node->numChildren; c++)
         {
             s32 child = (s32)children[c];
             Pose pose = poses[child];
-            v128f t = VecMulf(pose.translation, parentScale); 
-            t = QMulVec3V(t, sn.pose.rotation);
-            pose.translation = VecAdd(t, sn.pose.translation);
-            pose.rotation = QMul(pose.rotation, sn.pose.rotation);
+
+            v128f t = VecMulf(pose.translation, parentScale);
+            t = QMulVec3V(t, parent.rotation);
+            pose.translation = VecAdd(t, parent.translation);
+            pose.rotation = QMul(pose.rotation, parent.rotation);
+
             poses[child] = pose;
-            stack[stackIndex++] = (StackNode){ pose, child };
+            stack[stackIndex++] = child;
         }
-        parentScale = 1.0f;
+
+        parentScale = 1.0f; // to be changed
     }
 }
 
@@ -148,7 +147,7 @@ void AnimationController_SampleAnimationPose(const AnimationController* ac, Pose
     const AAnimation* animation = &ac->mPrefab->animations[animIdx];
     const bool reverse = normTime < 0.0f;
 
-    normTime = Absf32(normTime);
+    normTime = Minf32(Absf32(normTime), 1.0f);
     if (reverse) normTime = MMAX(1.0f - normTime, 0.0f);
 
     float realTime = normTime * animation->duration;
