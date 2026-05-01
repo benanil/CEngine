@@ -108,21 +108,6 @@ void AnimationController_UploadBoneMatrices(AnimationController* ac)
     const m44* invMatrices = (const m44*)skin->inverseBindMatrices;
     float rootScale = ac->mPrefab->nodes[ac->mRootNodeIndex].scale[1];
     v128f rootScaleMul = VecSetR(rootScale, rootScale, rootScale, 1.0f);
-    // AX_LOG("rootScale: %f ", rootScale); // 0.161000
-    static bool logged = false;
-    if (false) // !logged)
-    {
-        printf("anim poses\n");
-        Pose* poses = ac->mAnimPoseA;
-        for (s32 i = 0; i < skin->numJoints; i++)
-        {
-            float* pos = poses[i].translation.m128_f32;
-            float* rot = poses[i].rotation.m128_f32;
-            printf("%f, %f, %f, %f\n", pos[0], pos[1], pos[2], pos[3]);
-            printf("%f, %f, %f, %f\n", rot[0], rot[1], rot[2], rot[3]);
-        }
-        printf("anim out\n");
-    }
 
     for (s32 i = 0; i < skin->numJoints; i++)
     {
@@ -137,18 +122,11 @@ void AnimationController_UploadBoneMatrices(AnimationController* ac)
         mat = M44Multiply(invMatrices[i], mat);
         mat = M44Transpose(mat);
         
-        if (!logged)
-        {
-            printf("%f, %f, %f, %f\n", mat.m[0][0], mat.m[0][1], mat.m[0][2], mat.m[0][3]);
-            printf("%f, %f, %f, %f\n", mat.m[1][0], mat.m[1][1], mat.m[1][2], mat.m[1][3]);
-            printf("%f, %f, %f, %f\n", mat.m[2][0], mat.m[2][1], mat.m[2][2], mat.m[2][3]);
-        }
         // with AVX F16C this is single instruction! vcvtps2ph 
         Float8ToHalf8(ac->mOutMatrices[i].x, &mat.m[0][0]);
         Float4ToHalf4(ac->mOutMatrices[i].z, &mat.m[2][0]); // this is single instruction with it as well
     }
 
-    logged = true;
 }
 
 void AnimationController_UploadPose(AnimationController* ac, const Pose pose[MaxBonePoses])

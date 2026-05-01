@@ -19,16 +19,6 @@ StructuredBuffer<Entity>       sEntities : register(t1);
 static const uint MaxBonePoses   = 128;
 static const uint MatrixNumInt32 = 6;
 
-f16_3x4 LoadBone(uint idx)
-{
-    uint base = idx * MatrixNumInt32;
-    f16_3x4 bone;
-    bone[0] = f16_4(UnpackHalf2(sBoneMtx[base + 0]), UnpackHalf2(sBoneMtx[base + 1]));
-    bone[1] = f16_4(UnpackHalf2(sBoneMtx[base + 2]), UnpackHalf2(sBoneMtx[base + 3]));
-    bone[2] = f16_4(UnpackHalf2(sBoneMtx[base + 4]), UnpackHalf2(sBoneMtx[base + 5]));
-    return bone;
-}
-
 struct VSInput
 {
     f16_4_io  aPos          : POSITION0;
@@ -44,6 +34,16 @@ struct VSOutput
     f16_2_io texCoords : TEXCOORD0;
     f16_3_io normal    : NORMAL;
 };
+
+f16_3x4 LoadBone(uint idx)
+{
+    uint base = idx * MatrixNumInt32;
+    f16_3x4 bone;
+    bone[0] = f16_4(UnpackHalf2(sBoneMtx[base + 0]), UnpackHalf2(sBoneMtx[base + 1]));
+    bone[1] = f16_4(UnpackHalf2(sBoneMtx[base + 2]), UnpackHalf2(sBoneMtx[base + 3]));
+    bone[2] = f16_4(UnpackHalf2(sBoneMtx[base + 4]), UnpackHalf2(sBoneMtx[base + 5]));
+    return bone;
+}
 
 VSOutput main(VSInput input, uint instanceID : SV_InstanceID)
 {

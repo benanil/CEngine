@@ -125,10 +125,11 @@ typedef struct RenderState
     // anim
     SDL_GPUBuffer*  boneBuffer;
     SDL_GPUBuffer*  animPoseBuffer;
-    SDL_GPUBuffer*  animNodeBuffer;
-    SDL_GPUBuffer*  childIndicesBuffer;
+    SDL_GPUBuffer*  animHierarchyBuffer;
+    SDL_GPUBuffer*  animDataBuffer;
     SDL_GPUBuffer*  jointsBuffer;
     SDL_GPUBuffer*  invBindBuffer;
+    SDL_GPUBuffer*  animInstanceBuffer;
     Texture textures[128];
 } RenderState;
 

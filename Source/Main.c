@@ -30,7 +30,6 @@ static void MainLoop(void)
     SetPressedAndReleasedKeys();
     PlatformUpdate();
     CameraUpdate(&g_Camera, PlatformCtx.DeltaTime);
-    // UpdateAnimations();
 
     if (!done) Render();
     // else emscripten_cancel_main_loop();

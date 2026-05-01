@@ -8,7 +8,7 @@
 // make 192 or 256 if we use more joints
 #define MaxBonePoses      128
 #define MaxBoneDepth      32
-#define NUM_ANIMS         16
+#define NUM_ANIMS         2048
 #define ANIM_NUM_FRAMES   24
 #define MAX_ANIM_DURATION 8
 #define MAX_ANIM_COUNT    128
@@ -181,6 +181,7 @@ static inline bool AnimatedCharacter_IsTrigerred(const AnimatedCharacter* ac)
 }
 
 void AnimatedCharacter_Create(const SceneBundle* prefab, AnimatedCharacter* result, s32 lowerBodyStart, half3x4* outMatrices);
+
 
 // x, y has to be between -1.0 and 1.0 (normalized)
 // xspeed and yspeed is between 0 and infinity speed of animation

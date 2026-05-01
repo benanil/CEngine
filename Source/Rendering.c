@@ -8,6 +8,7 @@
 #include "Include/Random.h"
 #include "Include/Camera.h"
 #include "Include/Memory.h"
+#include "Math/Half.h"
 #include "Include/ECS.h"
 
 #if defined(PLATFORM_APPLE)
@@ -44,168 +45,118 @@ SDL_GPUDevice*      g_GPUDevice = NULL;
 
 static SDL_GPUComputePipeline* g_AnimComputePipeline = NULL;
 
-extern SDL_Window*  g_SDLWindow; // main
+extern SDL_Window*  g_SDLWindow; // main    
 extern Camera       g_Camera; // main
 extern Graphics     gGFX;
 extern ECS          ecs;
 extern bool         g_UseGPUComputeAnimation;
 
 #define ANIM_POSE_NUM_INT32 4
-Pose        animPoses[MaxBonePoses * ANIM_NUM_FRAMES * MAX_ANIM_DURATION * MAX_ANIM_COUNT];
-u32         animNodes[MaxBonePoses * MAX_SKIN_COUNT  * 2];
-u32        animJoints[MaxBonePoses * MAX_SKIN_COUNT  * 2];
-f16_3x4    outBoneMtx[MaxBonePoses * NUM_ANIMS];
-m44   invBindMatrices[MaxBonePoses * MAX_SKIN_COUNT  * 2];
-u32  animChildIndices[MaxBonePoses * MAX_SKIN_COUNT  * 2];
+#define ANIM_MATRIX_NUM_INT32 8
+#define MAX_GPU_ANIM_FRAMES (ANIM_NUM_FRAMES * MAX_ANIM_DURATION * MAX_ANIM_COUNT)
+#define ANIM_NODE_COUNT (MaxBonePoses * 2)
+#define ANIM_CHILD_PACKED_COUNT ((ANIM_NODE_COUNT + 3) / 4)
 
-#define AnimIDX 0
-int AnimationGetGPUData(AnimationController* ac)
+typedef struct GPUAnimationInstance_
 {
-    const AAnimation* animation = &ac->mPrefab->animations[AnimIDX];
+    u32 animIdx;
+    f32 timeOffset;
+} GPUAnimationInstance;
+
+typedef struct GPUAnimationData_
+{
+    u32 frameOffset;
+    u32 numFrames;
+    u32 rootNodeIndex;
+    u32 numJoints;
+    f32 duration;
+    f32 rootScale;
+} GPUAnimationData;
+
+u32     animPoses[MaxBonePoses * ANIM_NUM_FRAMES * MAX_ANIM_DURATION * MAX_ANIM_COUNT * ANIM_POSE_NUM_INT32];
+u32     animHierarchy[ANIM_NODE_COUNT + ANIM_CHILD_PACKED_COUNT];
+u32     animJoints[MaxBonePoses * MAX_SKIN_COUNT  * 2];
+f16_3x4 outBoneMtx[MaxBonePoses * NUM_ANIMS]; // only for cpu
+u32     invBindMatrices[MaxBonePoses * MAX_SKIN_COUNT  * 2 * ANIM_MATRIX_NUM_INT32];
+GPUAnimationInstance animInstances[NUM_ANIMS];
+GPUAnimationData animData[MAX_ANIM_COUNT];
+u32 numGPUAnimations;
+
+static void StoreHalf4(u32* dst, const f32* src)
+{
+    f16 h[4];
+    Float4ToHalf4(h, src);
+    dst[0] = (u32)h[0] | ((u32)h[1] << 16);
+    dst[1] = (u32)h[2] | ((u32)h[3] << 16);
+}
+
+int AnimationGetGPUData(AnimationController* ac, int animIdx, int frameOffset)
+{
+    const AAnimation* animation = &ac->mPrefab->animations[animIdx];
     const ASkin*      skin      = &ac->mPrefab->skins[0];
     const int framePerSecond    = ANIM_NUM_FRAMES;
     int numFrames = (int)(animation->duration * framePerSecond);
-    int numPose   = 0;
+    int numPose   = frameOffset * MaxBonePoses;
+    MemsetZero(animHierarchy, sizeof(animHierarchy));
 
-    // for (s32 i = 0; i < MaxBonePoses; i++)
-    // {
-    //     const float* pos = ac->mAnimPoseA[i].translation.m128_f32;
-    //     const float* rot = ac->mAnimPoseA[i].rotation.m128_f32;
-    //     printf("%f, %f, %f, %f\n", pos[0], pos[1], pos[2], pos[3]);
-    //     printf("%f, %f, %f, %f\n", rot[0], rot[1], rot[2], rot[3]);
-    // }
-
-    for (int i = 0; i <= numFrames; i++)
+    for (int i = 0; i < numFrames; i++)
     {
-        float norm = 0.0f; // (float)i / (float)numFrames;
-        AnimationController_SampleAnimationPose(ac, ac->mAnimPoseA, AnimIDX, norm);
-        MemCopy(animPoses + numPose, ac->mAnimPoseA, MaxBonePoses * sizeof(Pose));
+        float norm = (float)i / (float)numFrames;
+        AnimationController_SampleAnimationPose(ac, ac->mAnimPoseA, animIdx, norm);
+        for (int poseIdx = 0; poseIdx < MaxBonePoses; poseIdx++)
+        {
+            u32* outPose = animPoses + ((numPose + poseIdx) * ANIM_POSE_NUM_INT32);
+            StoreHalf4(outPose, ac->mAnimPoseA[poseIdx].translation.m128_f32);
+            StoreHalf4(outPose + 2, ac->mAnimPoseA[poseIdx].rotation.m128_f32);
+        }
         numPose += MaxBonePoses;
     }
 
-    for (int i = 0; i < ac->mNumJoints * 2; i++)
+    animData[animIdx] = (GPUAnimationData){
+        .frameOffset = (u32)frameOffset,
+        .numFrames = (u32)numFrames,
+        .rootNodeIndex = (u32)ac->mRootNodeIndex,
+        .numJoints = (u32)skin->numJoints,
+        .duration = animation->duration,
+        .rootScale = ac->mRootScale,
+    };
+
+    for (int i = 0; i < ANIM_NODE_COUNT; i++)
     {
         uint8_t  start = ac->mAnimNodes[i].childrenStartIndex;
         uint8_t  count = ac->mAnimNodes[i].numChildren;
-        animNodes[i] = ((u32)count << 16) | (u32)start;
+        animHierarchy[i] = (u32)start | ((u32)count << 8);
     }
 
-    for (int i = 0; i < MaxBonePoses * 2; i++)
-        animChildIndices[i] = (u32)ac->mChildIndices[i];
+    for (int i = 0; i < ANIM_NODE_COUNT; i++)
+    {
+        u32 child = (u32)ac->mChildIndices[i];
+        animHierarchy[ANIM_NODE_COUNT + (i >> 2)] |= child << ((i & 3) * 8);
+    }
 
     for (int i = 0; i < skin->numJoints; i++)
         animJoints[i] = (u32)skin->joints[i];
 
     const m44* inv = (const m44*)skin->inverseBindMatrices;
-    MemCopy(invBindMatrices, inv, sizeof(m44) * skin->numJoints);
+    for (int i = 0; i < skin->numJoints; i++)
+    {
+        u32* outMtx = invBindMatrices + (i * ANIM_MATRIX_NUM_INT32);
+        StoreHalf4(outMtx + 0, inv[i].m[0]);
+        StoreHalf4(outMtx + 2, inv[i].m[1]);
+        StoreHalf4(outMtx + 4, inv[i].m[2]);
+        StoreHalf4(outMtx + 6, inv[i].m[3]);
+    }
     return numFrames;
 }
 
-void InitBuffers()
-{
-    /* Create anim buffers */
-    const Uint32 readRasterBit   = SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ;
-    const Uint32 writeComputeBit = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE;
-    const Uint32 readCompute     = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ;
-
-    g_RenderState.entityBuffer   = CreateBuffer(ecs.entities   , sizeof(ecs.entities)   , readRasterBit, "CPInstancePositions");
-    // g_RenderState.boneBufferGPU  = CreateBuffer(outBoneMtx     , sizeof(outBoneMtx)  , readRasterBit | writeComputeBit, "CPJointMatricesGPU");
-    g_RenderState.boneBuffer     = CreateBuffer(OutMatrices    , sizeof(OutMatrices)    , readRasterBit | writeComputeBit, "CPJointMatrices");
-    g_RenderState.animPoseBuffer = CreateBuffer(animPoses      , sizeof(animPoses)      , readCompute, "CPAnimPoses");
-    g_RenderState.animNodeBuffer = CreateBuffer(animNodes      , sizeof(animNodes)      , readCompute, "CPanimNodeBuffer");
-    g_RenderState.jointsBuffer   = CreateBuffer(animJoints     , sizeof(animJoints)     , readCompute, "CPjointsBuffer ");
-    g_RenderState.invBindBuffer  = CreateBuffer(invBindMatrices, sizeof(invBindMatrices), readCompute, "CPinvBindBuffer");
-    g_RenderState.childIndicesBuffer = CreateBuffer(animChildIndices, sizeof(animChildIndices), readCompute, "CPchildIndicesBuffer");
-
-    /* Create skined */
-    g_RenderState.vertexBuffer = CreateBuffer(gGFX.VertexBuffer, MAX_VERTEX * sizeof(ASkinedVertex), SDL_GPU_BUFFERUSAGE_VERTEX, "CPVertexBuffer");
-    g_RenderState.indexBuffer  = CreateBuffer(gGFX.IndexBuffer , MAX_INDEX * sizeof(int), SDL_GPU_BUFFERUSAGE_INDEX, "CPIndexBuffer");
-}
-
-static void InitAnimationComputePipeline()
-{
-    g_AnimComputePipeline = SDL_CreateGPUComputePipeline(g_GPUDevice, &(SDL_GPUComputePipelineCreateInfo){
-        .code                          = Shaders_AnimationCompute_spv,
-        .code_size                     = sizeof(Shaders_AnimationCompute_spv),
-        .entrypoint                    = "main",
-        .format                        = SDL_GetGPUShaderFormats(g_GPUDevice),
-        .num_uniform_buffers           = 1,
-        .num_readonly_storage_buffers  = 5,
-        .num_readwrite_storage_buffers = 1,
-        .threadcount_x                 = 32,
-        .threadcount_y                 = 1,
-        .threadcount_z                 = 1,
-    });
-    CHECK_CREATE(g_AnimComputePipeline, "Animation Compute Pipeline")
-}
-
-void DispatchAnimationCompute(SDL_GPUCommandBuffer* cmd)
-{
-    struct {
-        float timeSinceStartup;
-        float animDuration;
-        float numFrames;
-        int   rootNodeIndex;
-        int   numInstances;
-    } params;
-    params.timeSinceStartup = 0.0f; // (float)TimeSinceStartup();
-    params.animDuration     = AnimControllers[0].mPrefab->animations[AnimIDX].duration;
-    params.numFrames        = params.animDuration * ANIM_NUM_FRAMES;
-    params.rootNodeIndex    = AnimControllers[0].mRootNodeIndex;
-    params.numInstances     = NUM_ANIMS;
-    
-    SDL_GPUStorageBufferReadWriteBinding rw_binding = {
-        .buffer = g_RenderState.boneBuffer,
-        .cycle  = true,
-    };
-
-    SDL_GPUBuffer* ro_buffers[5] = {
-        g_RenderState.animPoseBuffer,
-        g_RenderState.animNodeBuffer,
-        g_RenderState.childIndicesBuffer,
-        g_RenderState.jointsBuffer,
-        g_RenderState.invBindBuffer
-    };
-
-    SDL_GPUComputePass* pass = SDL_BeginGPUComputePass(cmd, NULL, 0, &rw_binding, 1);
-    SDL_BindGPUComputePipeline(pass, g_AnimComputePipeline);
-    SDL_BindGPUComputeStorageBuffers(pass, 0, ro_buffers, 5);
-    SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
-
-    SDL_DispatchGPUCompute(pass, (NUM_ANIMS + 31) / 32, 1, 1);
-    SDL_EndGPUComputePass(pass);
-}
-
-// this is going to be in main or something
-s32 InitScene()
-{
-    gPaladin = (SceneBundle*)AllocateTLSFGlobal(sizeof(SceneBundle));
-    
-    if (!LoadGLTFCached("Assets/Meshes/Paladin/Paladin.gltf", gPaladin, g_RenderState.textures))
-    {
-        AX_ERROR("gltf scene load failed");
-        return 0;
-    }
-    
-    for (s32 i = 0; i < NUM_ANIMS; i++)
-    {
-        half3x4* outMatrices = OutMatrices + (i * MaxBonePoses);
-        AnimationController_Create(gPaladin, &AnimControllers[i], outMatrices);
-    }
-    AnimationGetGPUData(&AnimControllers[0]);
-    // UpdateAnimations();
-    InitBuffers();
-    return 1;
-}
 
 void UpdateAnimations()
 {
-    const double timeSinceStartup = 0.0; // TimeSinceStartup();
+    const double timeSinceStartup = TimeSinceStartup();
     v128f camPos = VecLoad(&g_Camera.position.x);
     s64 frameCount = PlatformCtx.FrameCount;
     int i = 0;
-    // #pragma omp parallel for schedule(static) num_threads(8)
-    // #pragma omp parallel for schedule(static) num_threads(omp_get_num_procs() / 2)
+    #pragma omp parallel for schedule(static) num_threads(omp_get_num_procs() / 2)
     for (i = 0; i < NUM_ANIMS; i++)
     {
         float distSqr = Vec3DistSqrfV(camPos, ecs.entities[i].position);
@@ -225,14 +176,136 @@ void UpdateAnimations()
         if (shouldUpdate)
         {
             AnimationController* ac = &AnimControllers[i];
-            const s32 numAnims = ac->mPrefab->numAnimations;
-            const s32 animIdx = AnimIDX; // Clampi32(WangHash(i + 645) % numAnims, 1, numAnims);
+            const s32 animIdx = (s32)animInstances[i].animIdx;
 
-            const float animRatio = 0.0f;
+            const double animDuration = (double)animData[animIdx].duration;
+            const float animRatio = (float)Fract((timeSinceStartup + animInstances[i].timeOffset) / animDuration);
 
             AnimationController_PlayAnim(ac, animIdx, animRatio);
         }
     }
+}
+
+static void InitAnimationComputePipeline()
+{
+    g_AnimComputePipeline = SDL_CreateGPUComputePipeline(g_GPUDevice, &(SDL_GPUComputePipelineCreateInfo){
+        .code                          = Shaders_AnimationCompute_spv,
+        .code_size                     = sizeof(Shaders_AnimationCompute_spv),
+        .entrypoint                    = "main",
+        .format                        = SDL_GetGPUShaderFormats(g_GPUDevice),
+        .num_uniform_buffers           = 1,
+        .num_readonly_storage_buffers  = 6,
+        .num_readwrite_storage_buffers = 1,
+        .threadcount_x                 = 32,
+        .threadcount_y                 = 1,
+        .threadcount_z                 = 1,
+    });
+    CHECK_CREATE(g_AnimComputePipeline, "Animation Compute Pipeline")
+}
+
+void DispatchAnimationCompute(SDL_GPUCommandBuffer* cmd)
+{
+    struct {
+        float timeSinceStartup;
+        int   numInstances;
+    } params;
+    params.timeSinceStartup = (float)TimeSinceStartup();
+    params.numInstances     = NUM_ANIMS;
+    
+    SDL_GPUStorageBufferReadWriteBinding rw_binding = {
+        .buffer = g_RenderState.boneBuffer,
+        .cycle  = true,
+    };
+
+    SDL_GPUBuffer* ro_buffers[6] = {
+        g_RenderState.animPoseBuffer,
+        g_RenderState.animHierarchyBuffer,
+        g_RenderState.animDataBuffer,
+        g_RenderState.jointsBuffer,
+        g_RenderState.invBindBuffer,
+        g_RenderState.animInstanceBuffer
+    };
+
+    SDL_GPUComputePass* pass = SDL_BeginGPUComputePass(cmd, NULL, 0, &rw_binding, 1);
+    SDL_BindGPUComputePipeline(pass, g_AnimComputePipeline);
+    SDL_BindGPUComputeStorageBuffers(pass, 0, ro_buffers, 6);
+    SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
+
+    SDL_DispatchGPUCompute(pass, (NUM_ANIMS + 31) / 32, 1, 1);
+    SDL_EndGPUComputePass(pass);
+}
+
+static void InitAnimationInstances(void)
+{
+    for (u32 i = 0; i < NUM_ANIMS; i++)
+    {
+        u32 hash = WangHash(i + 645u);
+        u32 animIdx = numGPUAnimations ? (hash % numGPUAnimations) : 0u;
+        f32 duration = animData[animIdx].duration;
+
+        animInstances[i] = (GPUAnimationInstance){
+            .animIdx = animIdx,
+            .timeOffset = NextFloat01(WangHash(hash + 911u)) * duration,
+        };
+    }
+}
+
+static void InitAnimationFrames(AnimationController* ac)
+{
+    int frameOffset = 0;
+    numGPUAnimations = (u32)MMIN(gPaladin->numAnimations, MAX_ANIM_COUNT);
+    for (u32 animIdx = 0; animIdx < numGPUAnimations; animIdx++)
+    {
+        int numFrames = (int)(gPaladin->animations[animIdx].duration * ANIM_NUM_FRAMES);
+        if (frameOffset + numFrames > MAX_GPU_ANIM_FRAMES)
+        {
+            numGPUAnimations = animIdx;
+            break;
+        }
+        numFrames = AnimationGetGPUData(ac, (int)animIdx, frameOffset);
+        frameOffset += numFrames;
+    }
+}
+
+void InitBuffers()
+{
+    /* Create anim buffers */
+    const Uint32 readRasterBit   = SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ;
+    const Uint32 writeComputeBit = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE;
+    const Uint32 readCompute     = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ;
+
+    g_RenderState.entityBuffer   = CreateBuffer(ecs.entities   , sizeof(ecs.entities)   , readRasterBit, "CPInstancePositions");
+    // g_RenderState.boneBufferGPU  = CreateBuffer(outBoneMtx     , sizeof(outBoneMtx)  , readRasterBit | writeComputeBit, "CPJointMatricesGPU");
+    g_RenderState.boneBuffer     = CreateBuffer(OutMatrices    , sizeof(OutMatrices)    , readRasterBit | writeComputeBit, "CPJointMatrices");
+    g_RenderState.animPoseBuffer      = CreateBuffer(animPoses      , sizeof(animPoses)      , readCompute, "CPAnimPoses");
+    g_RenderState.animHierarchyBuffer = CreateBuffer(animHierarchy  , sizeof(animHierarchy)  , readCompute, "CPAnimHierarchy");
+    g_RenderState.animDataBuffer      = CreateBuffer(animData       , sizeof(animData)       , readCompute, "CPAnimationData");
+    g_RenderState.jointsBuffer        = CreateBuffer(animJoints     , sizeof(animJoints)     , readCompute, "CPjointsBuffer ");
+    g_RenderState.invBindBuffer       = CreateBuffer(invBindMatrices, sizeof(invBindMatrices), readCompute, "CPinvBindBuffer");
+    g_RenderState.animInstanceBuffer = CreateBuffer(animInstances, sizeof(animInstances), readCompute, "CPAnimationInstances");
+
+    /* Create skined */
+    g_RenderState.vertexBuffer = CreateBuffer(gGFX.VertexBuffer, MAX_VERTEX * sizeof(ASkinedVertex), SDL_GPU_BUFFERUSAGE_VERTEX, "CPVertexBuffer");
+    g_RenderState.indexBuffer  = CreateBuffer(gGFX.IndexBuffer , MAX_INDEX * sizeof(int), SDL_GPU_BUFFERUSAGE_INDEX, "CPIndexBuffer");
+}
+
+// this is going to be in main or something
+s32 InitScene()
+{
+    gPaladin = (SceneBundle*)AllocateTLSFGlobal(sizeof(SceneBundle));
+    
+    if (!LoadGLTFCached("Assets/Meshes/Paladin/Paladin.gltf", gPaladin, g_RenderState.textures))
+    {
+        AX_ERROR("gltf scene load failed");
+        return 0;
+    }
+    
+    AnimationController* ac = &AnimControllers[0];
+    AnimationController_Create(gPaladin, ac, OutMatrices);
+    InitAnimationFrames(ac);
+    InitAnimationInstances();
+    InitBuffers();
+    return 1;
 }
 
 void Render()
@@ -300,6 +373,8 @@ void Render()
     
     if (g_UseGPUComputeAnimation)
         DispatchAnimationCompute(cmd);
+    else
+        UpdateGPUBuffer(g_RenderState.boneBuffer, outBoneMtx, sizeof(outBoneMtx));
     /* Set up the bindings */
     SDL_GPUBufferBinding vertex_binding;
     SDL_GPUBufferBinding index_binding;
@@ -307,8 +382,6 @@ void Render()
     vertex_binding.offset = 0;
     index_binding.buffer  = g_RenderState.indexBuffer;
     index_binding.offset  = 0;
-    // UpdateGPUBuffer(g_RenderState.boneBuffer, OutMatrices, sizeof(OutMatrices));
-    // UpdateGPUBuffer(g_RenderState.boneBuffer, outBoneMtx, sizeof(outBoneMtx));
     UpdateGPUBuffer(g_RenderState.entityBuffer, ecs.entities, sizeof(ecs.entities));
     /* Draw */
     SDL_GPUTexture* tex = g_RenderState.textures[gPaladin->materials[0].baseColorTexture.index].handle;
