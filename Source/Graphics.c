@@ -119,52 +119,61 @@ void GraphicsDestroy()
     SDL_DestroyGPUDevice(g_GPUDevice);
 }
 
-SDL_GPUBuffer* CreateBuffer(void* buffer, size_t bufferSize, SDL_GPUBufferUsageFlags bufferUsage, const char* debugName)
+SDL_GPUBuffer* CreateBuffer(
+    const void*          buffer,       // may be NULL
+    size_t               bufferSize,
+    SDL_GPUBufferUsageFlags bufferUsage,
+    const char*          debugName)
 {
-    SDL_GPUBufferCreateInfo         buffer_desc;                       
-    SDL_GPUTransferBufferCreateInfo transfer_buffer_desc;
-    SDL_GPUTransferBuffer*          buf_transfer;
-    SDL_GPUCopyPass*                copy_pass;
-    SDL_GPUTransferBufferLocation   buf_location;
-    SDL_GPUBufferRegion             dst_region;
-    SDL_GPUCommandBuffer*           cmd;
-    void* map;
-    
-    /* Create buffers */
-    buffer_desc.usage = bufferUsage;
-    buffer_desc.size = bufferSize;
-    buffer_desc.props = SDL_CreateProperties();
+    // Create the GPU buffer (no initial data)
+    SDL_GPUBufferCreateInfo buffer_desc = {
+        .usage = bufferUsage,
+        .size  = bufferSize,
+        .props = SDL_CreateProperties()
+    };
     SDL_SetStringProperty(buffer_desc.props, SDL_PROP_GPU_BUFFER_CREATE_NAME_STRING, debugName);
     SDL_GPUBuffer* gpu_buffer = SDL_CreateGPUBuffer(g_GPUDevice, &buffer_desc);
-    
-    CHECK_CREATE(gpu_buffer, "Static buffer")
+    CHECK_CREATE(gpu_buffer, debugName);
     SDL_DestroyProperties(buffer_desc.props);
-    
-    transfer_buffer_desc.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
-    transfer_buffer_desc.size  = bufferSize;
-    transfer_buffer_desc.props = SDL_CreateProperties();
-    SDL_SetStringProperty(transfer_buffer_desc.props, SDL_PROP_GPU_TRANSFERBUFFER_CREATE_NAME_STRING, "Transfer Buffer");
-    buf_transfer = SDL_CreateGPUTransferBuffer(g_GPUDevice, &transfer_buffer_desc);
-    CHECK_CREATE(buf_transfer, "transfer buffer")
-    SDL_DestroyProperties(transfer_buffer_desc.props);
-    
-    /* We just need to upload the static data once. */
-    map = SDL_MapGPUTransferBuffer(g_GPUDevice, buf_transfer, false);
+
+    // If no initial data was provided, we're done
+    if (buffer == NULL) {
+        return gpu_buffer;
+    }
+
+    // --- Upload initial data using a transfer buffer ---
+    SDL_GPUTransferBufferCreateInfo transfer_desc = {
+        .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
+        .size  = bufferSize,
+        .props = SDL_CreateProperties()
+    };
+    SDL_SetStringProperty(transfer_desc.props, SDL_PROP_GPU_TRANSFERBUFFER_CREATE_NAME_STRING, "Upload Transfer");
+    SDL_GPUTransferBuffer* upload_buf = SDL_CreateGPUTransferBuffer(g_GPUDevice, &transfer_desc);
+    CHECK_CREATE(upload_buf, "Transfer buffer");
+    SDL_DestroyProperties(transfer_desc.props);
+
+    // Map and copy data
+    void* map = SDL_MapGPUTransferBuffer(g_GPUDevice, upload_buf, false);
     SDL_memcpy(map, buffer, bufferSize);
-    SDL_UnmapGPUTransferBuffer(g_GPUDevice, buf_transfer);
-    
-    cmd = SDL_AcquireGPUCommandBuffer(g_GPUDevice);
-    copy_pass = SDL_BeginGPUCopyPass(cmd);
-    buf_location.transfer_buffer = buf_transfer;
-    buf_location.offset = 0;
-    dst_region.buffer   = gpu_buffer;
-    dst_region.offset   = 0;
-    dst_region.size     = bufferSize;
-    SDL_UploadToGPUBuffer(copy_pass, &buf_location, &dst_region, false);
+    SDL_UnmapGPUTransferBuffer(g_GPUDevice, upload_buf);
+
+    // Copy to GPU buffer
+    SDL_GPUCommandBuffer* cmd = SDL_AcquireGPUCommandBuffer(g_GPUDevice);
+    SDL_GPUCopyPass* copy_pass = SDL_BeginGPUCopyPass(cmd);
+    SDL_GPUTransferBufferLocation src_location = {
+        .transfer_buffer = upload_buf,
+        .offset = 0
+    };
+    SDL_GPUBufferRegion dst_region = {
+        .buffer = gpu_buffer,
+        .offset = 0,
+        .size   = bufferSize
+    };
+    SDL_UploadToGPUBuffer(copy_pass, &src_location, &dst_region, false);
     SDL_EndGPUCopyPass(copy_pass);
     SDL_SubmitGPUCommandBuffer(cmd);
-    
-    SDL_ReleaseGPUTransferBuffer(g_GPUDevice, buf_transfer);
+
+    SDL_ReleaseGPUTransferBuffer(g_GPUDevice, upload_buf);
     return gpu_buffer;
 }
 
@@ -185,7 +194,7 @@ void UpdateGPUBuffer(SDL_GPUBuffer* buffer, const void* data, size_t bufferSize)
     
     boneTransferBuffer = SDL_CreateGPUTransferBuffer(g_GPUDevice, &transferBufferCreateInfo);
     boneTransferPtr = (Uint8*)SDL_MapGPUTransferBuffer(g_GPUDevice, boneTransferBuffer, true);
-    MemCpy(boneTransferPtr, data, bufferSize);
+    MemCopy(boneTransferPtr, data, bufferSize);
     SDL_UnmapGPUTransferBuffer(g_GPUDevice, boneTransferBuffer);
 
     SDL_UploadToGPUBuffer(copyPass,
@@ -197,7 +206,6 @@ void UpdateGPUBuffer(SDL_GPUBuffer* buffer, const void* data, size_t bufferSize)
                               .size = bufferSize
                           }, 
                           true);
-    
     
     SDL_EndGPUCopyPass(copyPass);
     
@@ -337,7 +345,7 @@ Texture rImportTexture(const char* path, TexFlags flags, const char* label)
         textureLoadBuffer = ArenaPushGlobal(size);
         MakeRGBAFromRGB(image, textureLoadBuffer, numBytes);
         STBI_REALLOC(image, numBytes);
-        MemCpy(image, textureLoadBuffer, numBytes);
+        MemCopy(image, textureLoadBuffer, numBytes);
         ArenaPopGlobal(numBytes);
     }
     Texture texture = rCreateTexture(width, height, image, numCompToFormat[channels], flags, label); 
@@ -402,7 +410,7 @@ Texture rCreateTexture(int width, int height, void* data, SDL_GPUTextureFormat f
 
         SDL_GPUTransferBuffer* textureTransferBuffer = SDL_CreateGPUTransferBuffer(g_GPUDevice, &transferBufferCreateInfo);
         Uint8* textureTransferPtr = (Uint8*)SDL_MapGPUTransferBuffer(g_GPUDevice, textureTransferBuffer, false);
-        MemCpy(textureTransferPtr, data, transferBufferCreateInfo.size);
+        MemCopy(textureTransferPtr, data, transferBufferCreateInfo.size);
         SDL_UnmapGPUTransferBuffer(g_GPUDevice, textureTransferBuffer);
         
         SDL_GPUTextureRegion textureRegion = {

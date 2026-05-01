@@ -3,8 +3,8 @@
 
 #include <stdint.h>
 
-typedef float    f1;
-typedef double   d1;
+typedef float    f32;
+typedef double   f64;
 typedef uint8_t  u8;
 typedef uint16_t u16;
 typedef uint32_t u32;
@@ -15,8 +15,8 @@ typedef int32_t  s32;
 typedef int64_t  s64;
 
 // less typing for casting, Timothy Lottes way
-#define  f1_(x)  ((f1)(x))
-#define  d1_(x)  ((d1)(x))
+#define  f1_(x)  ((f32)(x))
+#define  d1_(x)  ((f64)(x))
 #define  u8_(x)  ((u8)(x))
 #define u16_(x) ((u16)(x))
 #define u32_(x) ((u32)(x))

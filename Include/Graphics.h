@@ -68,7 +68,7 @@ typedef s32 GraphicType;
 // https://www.yosoygames.com.ar/wp/2018/03/vertex-formats-part-1-compression/
 typedef struct AVertex_
 {
-    f3  position;
+    fv3  position;
     u32 octTbn;
     u32 texCoord; // half2
 } AVertex;
@@ -116,14 +116,20 @@ typedef struct WindowState
 
 typedef struct RenderState
 {
-    SDL_GPUBuffer*  vertexBuffer;
-    SDL_GPUBuffer*  indexBuffer;
-    SDL_GPUBuffer*  boneBuffer;
-    SDL_GPUBuffer*  entityBuffer;
-    SDL_GPUSampler* sampler;
-    Texture textures[128];
     SDL_GPUGraphicsPipeline* pipeline;
     SDL_GPUSampleCount sample_count;
+    SDL_GPUSampler* sampler;
+    SDL_GPUBuffer*  vertexBuffer;
+    SDL_GPUBuffer*  indexBuffer;
+    SDL_GPUBuffer*  entityBuffer;
+    // anim
+    SDL_GPUBuffer*  boneBuffer;
+    SDL_GPUBuffer*  animPoseBuffer;
+    SDL_GPUBuffer*  animNodeBuffer;
+    SDL_GPUBuffer*  childIndicesBuffer;
+    SDL_GPUBuffer*  jointsBuffer;
+    SDL_GPUBuffer*  invBindBuffer;
+    Texture textures[128];
 } RenderState;
 
 

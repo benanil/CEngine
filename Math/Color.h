@@ -11,31 +11,31 @@ purefn u32 MakeRGBAGrayScale(u8 gray) {
     return (u32)(gray) * 0x01010101u;
 }
 
-purefn u32 PackColorToUint3Float(f1 r, f1 g, f1 b) {
+purefn u32 PackColorToUint3Float(f32 r, f32 g, f32 b) {
     return (u32)(r * 255.0f) | ((u32)(g * 255.0f) << 8) | ((u32)(b * 255.0f) << 16);
 }
 
-purefn u32 PackColor3PtrToUint(f1* c) {
+purefn u32 PackColor3PtrToUint(f32* c) {
     return (u32)(*c * 255.0f) | ((u32)(c[1] * 255.0f) << 8) | ((u32)(c[2] * 255.0f) << 16);
 }
 
-purefn u32 PackColor4PtrToUint(f1* c) {
+purefn u32 PackColor4PtrToUint(f32* c) {
     return (u32)(*c * 255.0f) | ((u32)(c[1] * 255.0f) << 8) | ((u32)(c[2] * 255.0f) << 16) | ((u32)(c[3] * 255.0f) << 24);
 }
 
-forceinline void UnpackColor3Uint(u32 color, f1* colorf) {
-    const f1 tof1 = 1.0f / 255.0f;
-    colorf[0] = (f1)(color >> 0  & 0xFF) * tof1;
-    colorf[1] = (f1)(color >> 8  & 0xFF) * tof1;
-    colorf[2] = (f1)(color >> 16 & 0xFF) * tof1;
+forceinline void UnpackColor3Uint(u32 color, f32* colorf) {
+    const f32 tof1 = 1.0f / 255.0f;
+    colorf[0] = (f32)(color >> 0  & 0xFF) * tof1;
+    colorf[1] = (f32)(color >> 8  & 0xFF) * tof1;
+    colorf[2] = (f32)(color >> 16 & 0xFF) * tof1;
 }
 
-forceinline void UnpackColor4Uint(u32 color, f1* colorf) {
-    const f1 tof1 = 1.0f / 255.0f;
-    colorf[0] = (f1)(color >> 0  & 0xFF) * tof1;
-    colorf[1] = (f1)(color >> 8  & 0xFF) * tof1;
-    colorf[2] = (f1)(color >> 16 & 0xFF) * tof1;
-    colorf[3] = (f1)(color >> 24) * tof1;
+forceinline void UnpackColor4Uint(u32 color, f32* colorf) {
+    const f32 tof1 = 1.0f / 255.0f;
+    colorf[0] = (f32)(color >> 0  & 0xFF) * tof1;
+    colorf[1] = (f32)(color >> 8  & 0xFF) * tof1;
+    colorf[2] = (f32)(color >> 16 & 0xFF) * tof1;
+    colorf[3] = (f32)(color >> 24) * tof1;
 }
 
 purefn u32 MultiplyU32Colors(u32 a, u32 b)
@@ -47,26 +47,26 @@ purefn u32 MultiplyU32Colors(u32 a, u32 b)
     return result;
 }
 
-purefn f3 HUEToRGB(f1 h) {
-    f1 r = Clamp01f32(Absf32(h * 6.0f - 3.0f) - 1.0f);
-    f1 g = Clamp01f32(2.0f - Absf32(h * 6.0f - 2.0f));
-    f1 b = Clamp01f32(2.0f - Absf32(h * 6.0f - 4.0f));
-    return (f3){ r, g, b };
+purefn fv3 HUEToRGB(f32 h) {
+    f32 r = Clamp01f32(Absf32(h * 6.0f - 3.0f) - 1.0f);
+    f32 g = Clamp01f32(2.0f - Absf32(h * 6.0f - 2.0f));
+    f32 b = Clamp01f32(2.0f - Absf32(h * 6.0f - 4.0f));
+    return (fv3){ r, g, b };
 }
 
 // converts hue to rgb color
-purefn u32 HUEToRGBU32(f1 h) {
-    f3 v3 = HUEToRGB(h);
+purefn u32 HUEToRGBU32(f32 h) {
+    fv3 v3 = HUEToRGB(h);
     u32 res = PackColor3PtrToUint(&v3.x);
     return res | 0xFF000000u; // make the alpha 255
 }
 
-purefn f3 RGBToHSV(f3 rgb)
+purefn fv3 RGBToHSV(fv3 rgb)
 {
-    f1 r = rgb.x, g = rgb.y, b = rgb.z;
-    f1 K = 0.0f;
+    f32 r = rgb.x, g = rgb.y, b = rgb.z;
+    f32 K = 0.0f;
     if (g < b) {
-        f1 t = g;
+        f32 t = g;
         g = b;
         b = t;
         // Swap(g, b);
@@ -74,21 +74,21 @@ purefn f3 RGBToHSV(f3 rgb)
     }
 
     if (r < g) {
-        f1 t = g;
+        f32 t = g;
         g = r;
         r = t;
         //Swap(r, g);
         K = -2.0f / 6.0f - K;
     }
-    const f1 chroma = r - (g < b ? g : b);
-    return (f3){
+    const f32 chroma = r - (g < b ? g : b);
+    return (fv3){
         Absf32(K + (g - b) / (6.0f * chroma + 1e-20f)),
         chroma / (r + 1e-20f),
         r
     };
 }
 
-forceinline void HSVToRGB(f3 hsv, f1* dst)
+forceinline void HSVToRGB(fv3 hsv, f32* dst)
 {
     const v128f K = VecSetR(1.0f, 2.0f / 3.0f, 1.0f / 3.0f, 3.0f);
     v128f p  = VecFabs(VecSub(VecMul(VecFract(VecAdd(VecSet1(hsv.x), K)), VecSet1(6.0f)), VecSet1(3.0f)));

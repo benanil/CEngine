@@ -85,7 +85,7 @@ static char* GetNameFromFBX(ufbx_string ustr, FixedPow2Allocator* stringAllocato
 }
 #endif
 
-s32 LoadFBX(const u8* path, SceneBundle* fbxScene, f1 scale)
+s32 LoadFBX(const u8* path, SceneBundle* fbxScene, f32 scale)
 {
 #if !AX_GAME_BUILD
     ufbx_load_opts opts = { 0 };
@@ -166,7 +166,7 @@ s32 LoadFBX(const u8* path, SceneBundle* fbxScene, f1 scale)
             // SmallMemCpy(&currentVertex[j].position.x, &umesh->vertex_position.values.data[j], sizeof(float) * 3);
             if (umesh->vertex_uv.exists)
             {
-                currentVertex[j].texCoord = Float2ToHalf2((f1*)(umesh->vertex_uv.values.data + j));
+                currentVertex[j].texCoord = Float2ToHalf2((f32*)(umesh->vertex_uv.values.data + j));
             }
             if (umesh->vertex_normal.exists) 
             {
@@ -174,7 +174,7 @@ s32 LoadFBX(const u8* path, SceneBundle* fbxScene, f1 scale)
             }
             if (umesh->vertex_tangent.exists)
             {
-                v128f tangent = Vec3Load((f1*)(umesh->vertex_tangent.values.data + j));
+                v128f tangent = Vec3Load((f32*)(umesh->vertex_tangent.values.data + j));
                 VecSetW(tangent, 1.0f);
                 // currentVertex[j].qtangentZWF16 = PackVec3XYZ10BitToInt(tangent);
             }
@@ -211,7 +211,7 @@ s32 LoadFBX(const u8* path, SceneBundle* fbxScene, f1 scale)
                 for (u32 w = 0; w < deformer->vertices.data[j].num_weights && w < 4; w++, shift += 8)
                 {
                     ufbx_skin_weight skinWeight = deformer->weights.data[weightBegin + w];
-                    f1  weight = skinWeight.weight;
+                    f32  weight = skinWeight.weight;
                     u32 index  = skinWeight.cluster_index;
                     ASSERT(index < 255 && weight <= 1.0f);
                     weightResult |= (u32)(weight * 255.0f) << shift;
@@ -417,9 +417,9 @@ s32 LoadFBX(const u8* path, SceneBundle* fbxScene, f1 scale)
             ASSERT(anode->children[j] != -1);
         }
         
-        SmallMemCpy(anode->translation, &unode->world_transform.translation.x, sizeof(f3));
+        SmallMemCpy(anode->translation, &unode->world_transform.translation.x, sizeof(fv3));
         SmallMemCpy(anode->rotation, &unode->world_transform.rotation.x, sizeof(v128f));
-        SmallMemCpy(anode->scale, &unode->world_transform.scale.x, sizeof(f3));
+        SmallMemCpy(anode->scale, &unode->world_transform.scale.x, sizeof(fv3));
         
         if (anode->type == 0)
         {
@@ -499,7 +499,7 @@ static void WeightsForPrimitive(APrimitive* primitive, ASkinedVertex* currVertex
     {
         for (s32 j = 0; j < primitive->numVertices; j++)
         {
-            u32 packedWeights = PackXY11Z10UnormToU32(Vec3Load((f1*)weights));
+            u32 packedWeights = PackXY11Z10UnormToU32(Vec3Load((f32*)weights));
             if (packedWeights == 0) packedWeights = 1023;
             currVertex[j].weights = packedWeights;
             weights += sizeof(v128f) + weightOffset;
@@ -510,14 +510,14 @@ static void WeightsForPrimitive(APrimitive* primitive, ASkinedVertex* currVertex
         for (s32 j = 0; j < primitive->numVertices; j++)
         {
             u32 packedWeights = 0;
-            const f1 packMax[3] = { 1023.0f, 1023.0f, 511.0f };
+            const f32 packMax[3] = { 1023.0f, 1023.0f, 511.0f };
             // don't parse w, we will get it from xyz
             for (s32 k = 0, shift = 0; k < primitive->jointCount && k < 3; k++, shift += 11)
             {
                 u32 jointWeight = 0u;
                 SmallMemCpy(&jointWeight, weights, weightSize);
-                f1 weightMax = (f1)((1u << (weightSize * 8)) - 1);
-                f1 norm = (f1)jointWeight / weightMax; // divide by 255 or 65535
+                f32 weightMax = (f32)((1u << (weightSize * 8)) - 1);
+                f32 norm = (f32)jointWeight / weightMax; // divide by 255 or 65535
                 packedWeights |= (u32)(norm * packMax[k]) << shift;
                 weights += weightSize;
             }
@@ -557,19 +557,19 @@ static void VerticesForPrimitive(APrimitive* primitive, ASkinedVertex* currVerte
 {
     // https://www.yosoygames.com.ar/wp/2018/03/vertex-formats-part-1-compression/
     primitive->vertices = currVertex;
-    const f3* positions   = (const f3*)primitive->vertexAttribs[AAttribIdx_POSITION];
-    const f2* texCoords   = (const f2*)primitive->vertexAttribs[AAttribIdx_TEXCOORD_0];
-    const f3* normals     = (const f3*)primitive->vertexAttribs[AAttribIdx_NORMAL];
+    const fv3* positions   = (const fv3*)primitive->vertexAttribs[AAttribIdx_POSITION];
+    const fv2* texCoords   = (const fv2*)primitive->vertexAttribs[AAttribIdx_TEXCOORD_0];
+    const fv3* normals     = (const fv3*)primitive->vertexAttribs[AAttribIdx_NORMAL];
     const v128f* tangents = (const v128f*)primitive->vertexAttribs[AAttribIdx_TANGENT];
 
     for (s32 v = 0; v < primitive->numVertices; v++)
     {
         v128f tangent = tangents  ? tangents[v]  : VecZero();
-        f2 texCoord   = texCoords ? texCoords[v] : (f2){0.0f, 0.0f};
-        f3 normal     = normals   ? normals[v]   : (f3){0.5f, 0.5f, 0.0};
-        f3 position   = positions[v];
+        fv2 texCoord   = texCoords ? texCoords[v] : (fv2){0.0f, 0.0f};
+        fv3 normal     = normals   ? normals[v]   : (fv3){0.5f, 0.5f, 0.0};
+        fv3 position   = positions[v];
 
-        Float4ToHalf4((h1*)&currVertex[v].positionXY, &positions[v].x);
+        Float4ToHalf4((f16*)&currVertex[v].positionXY, &positions[v].x);
         currVertex[v].texCoord   = Float2ToHalf2(&texCoord.x);
         currVertex[v].octTbn = PackNormalTangent(Vec3Load(&normal.x), tangent);
     }
@@ -577,7 +577,7 @@ static void VerticesForPrimitive(APrimitive* primitive, ASkinedVertex* currVerte
 
 static void BoundsForPrimitive(APrimitive* primitive)
 {
-    const f3* positions = (const f3*)primitive->vertexAttribs[AAttribIdx_POSITION];
+    const fv3* positions = (const fv3*)primitive->vertexAttribs[AAttribIdx_POSITION];
     v128f min = VecSet1(FLT_MAX);
     v128f max = VecNeg(min);
     for (s32 i = 0; i < primitive->numVertices; i++)
@@ -607,7 +607,7 @@ static void GetGLTFAnimations(SceneBundle* gltf)
         return;
 
     s32 rootIndex = Prefab_FindAnimRootNodeIndex(gltf);
-    f1 rootScale = gltf->nodes[rootIndex].scale[1];
+    f32 rootScale = gltf->nodes[rootIndex].scale[1];
     v128f rootScaleMul = VecSetR(rootScale, rootScale, rootScale, 1.0f);
 
     for (s32 s = 0; s < gltf->numSkins; s++)
@@ -615,7 +615,7 @@ static void GetGLTFAnimations(SceneBundle* gltf)
         ASkin* skin = &gltf->skins[s];
         m44* inverseBindMatrices = AllocateTLSFGlobal(skin->numJoints * sizeof(m44));
         SmallMemCpy(inverseBindMatrices, skin->inverseBindMatrices, sizeof(m44) * skin->numJoints);
-        skin->inverseBindMatrices = (f1*)inverseBindMatrices;
+        skin->inverseBindMatrices = (f32*)inverseBindMatrices;
         
         for (s32 i = 0; i < skin->numJoints; i++)
         {
@@ -639,7 +639,7 @@ static void GetGLTFAnimations(SceneBundle* gltf)
         for (s32 s = 0; s < gltf->animations[a].numSamplers; s++)
             totalSamplerInput += gltf->animations[a].samplers[s].count;
         
-    f1* currSampler = (f1*)AllocZeroTLSFGlobal(totalSamplerInput, 4);
+    f32* currSampler = (f32*)AllocZeroTLSFGlobal(totalSamplerInput, 4);
     v128f* currOutput = (v128f*)AllocZeroTLSFGlobal(totalSamplerInput, sizeof(v128f));
 
     for (s32 a = 0; a < gltf->numAnimations; a++)
@@ -647,7 +647,7 @@ static void GetGLTFAnimations(SceneBundle* gltf)
         for (s32 s = 0; s < gltf->animations[a].numSamplers; s++)
         {
             AAnimSampler* sampler = &gltf->animations[a].samplers[s];
-            SmallMemCpy(currSampler, sampler->input, sampler->count * sizeof(f1));
+            SmallMemCpy(currSampler, sampler->input, sampler->count * sizeof(f32));
             sampler->input = currSampler;
             currSampler += sampler->count;
                 
@@ -668,12 +668,12 @@ static void GetGLTFAnimations(SceneBundle* gltf)
 
             for (s32 i = 0; i < sampler->count; i++)
             {
-                SmallMemCpy(currOutput + i, sampler->output + (i * sampler->numComponent), sizeof(f1) * sampler->numComponent);
+                SmallMemCpy(currOutput + i, sampler->output + (i * sampler->numComponent), sizeof(f32) * sampler->numComponent);
                 currOutput[i] = VecLoad(sampler->output + (i * sampler->numComponent));
                 if (sampler->numComponent == 3) currOutput[i] = VecSetW(currOutput[i], 0.0f);
             }
 
-            sampler->output = (f1*)currOutput;
+            sampler->output = (f32*)currOutput;
             currOutput += sampler->count;
         }
     }
@@ -870,7 +870,7 @@ s32 LoadGLTFCached(const char* path, SceneBundle* scene, Texture* textures)
 {
     char buffer[1024];
     size_t pathLen = StringLength(path);
-    MemCpy(buffer, path, pathLen + 1);
+    MemCopy(buffer, path, pathLen + 1);
     int newLen = ChangeExtension(buffer, pathLen, "abm");
     s32 result = 1;
     if (FileExist(buffer)) {
@@ -900,11 +900,11 @@ void GenerateLOD_50_GLTF(SceneBundle* sceneBundle)
             size_t numIndices = (size_t)primitive.numIndices;
             int* indicesLod0 = ArenaAllocGlobal(numIndices * sizeof(s32));
         
-            f1 resultError;
+            f32 resultError;
             size_t numSimplified = meshopt_simplifySloppy(indicesLod0, 
                                                           (const u32*)primitive.indices, 
                                                           numIndices, 
-                                                          (const f1*)sceneBundle->allVertices, 
+                                                          (const f32*)sceneBundle->allVertices, 
                                                           (size_t)sceneBundle->totalVertices,
                                                           sizeof(ASkinedVertex),
                                                           NULL,
@@ -912,7 +912,7 @@ void GenerateLOD_50_GLTF(SceneBundle* sceneBundle)
                                                           0.04f,
                                                           &resultError);
             primitive.numIndicesLOD50 = numSimplified;
-            MemCpy(primitive.lodIndices50, indicesLod0, numSimplified * sizeof(u32));
+            MemCopy(primitive.lodIndices50, indicesLod0, numSimplified * sizeof(u32));
             ArenaPopGlobal(numSimplified * sizeof(s32));
         }
     }
@@ -931,11 +931,11 @@ void GenerateLOD_75_GLTF(SceneBundle* sceneBundle)
             size_t numIndices = (size_t)primitive.numIndices;
             int* indicesLod0 = ArenaAllocGlobal(numIndices * sizeof(s32));
         
-            f1 resultError;
+            f32 resultError;
             size_t numSimplified = meshopt_simplifySloppy(indicesLod0, 
                                                           (const u32*)primitive.indices, 
                                                           numIndices, 
-                                                          (const f1*)sceneBundle->allVertices, 
+                                                          (const f32*)sceneBundle->allVertices, 
                                                           (size_t)sceneBundle->totalVertices,
                                                           sizeof(ASkinedVertex),
                                                           NULL,
@@ -943,7 +943,7 @@ void GenerateLOD_75_GLTF(SceneBundle* sceneBundle)
                                                           0.04f,
                                                           &resultError);
             primitive.numIndicesLOD75 = numSimplified;
-            MemCpy(primitive.lodIndices75, indicesLod0, numSimplified * sizeof(u32));
+            MemCopy(primitive.lodIndices75, indicesLod0, numSimplified * sizeof(u32));
             ArenaPopGlobal(numSimplified * sizeof(s32));
         }
     }
@@ -972,8 +972,8 @@ void OptimizeMesh(const SceneBundle* gltf)
     MemSet(gltf->allVertices, 0, (size_t)gltf->totalVertices * sizeof(ASkinedVertex));
     MemSet(gltf->allIndices , 0, (size_t)gltf->totalIndices * sizeof(s32));
     
-    MemCpy(gltf->allIndices , temp, (size_t)gltf->totalIndices * sizeof(s32));
-    MemCpy(gltf->allVertices, vertexBufferNew, (size_t)totalVertices * sizeof(ASkinedVertex));
+    MemCopy(gltf->allIndices , temp, (size_t)gltf->totalIndices * sizeof(s32));
+    MemCopy(gltf->allVertices, vertexBufferNew, (size_t)totalVertices * sizeof(ASkinedVertex));
     
     ArenaPopGlobal((size_t)gltf->totalIndices * sizeof(s32)); // remap
     ArenaPopGlobal((size_t)gltf->totalIndices * sizeof(s32)); // temp
@@ -1482,7 +1482,7 @@ s32 LoadSceneBundleBinary(const u8* path, SceneBundle* gltf)
         ASkin* skin = &gltf->skins[i];
         AFileRead(&skin->skeleton, sizeof(s32), file, 1);
         AFileRead(&skin->numJoints, sizeof(s32), file, 1);
-        skin->inverseBindMatrices = (f1*)AllocateTLSFGlobal(sizeof(m44) * skin->numJoints);
+        skin->inverseBindMatrices = (f32*)AllocateTLSFGlobal(sizeof(m44) * skin->numJoints);
         skin->joints = FixedPow2Allocator_AllocateUninitialized(allocator, skin->numJoints * sizeof(s32));
         AFileRead(skin->inverseBindMatrices, sizeof(m44) * skin->numJoints, file, 1);
         AFileRead(skin->joints, sizeof(s32) * skin->numJoints, file, 1);
@@ -1490,11 +1490,11 @@ s32 LoadSceneBundleBinary(const u8* path, SceneBundle* gltf)
 
     s32 totalAnimSamplerInput = 0;
     AFileRead(&totalAnimSamplerInput, sizeof(s32), file, 1);
-    f1* currSamplerInput = NULL;
+    f32* currSamplerInput = NULL;
     v128f* currSamplerOutput = NULL;
 
     if (totalAnimSamplerInput) {
-        currSamplerInput  = (f1*)AllocZeroTLSFGlobal(totalAnimSamplerInput, sizeof(float));
+        currSamplerInput  = (f32*)AllocZeroTLSFGlobal(totalAnimSamplerInput, sizeof(float));
         currSamplerOutput = (v128f*)AllocZeroTLSFGlobal(totalAnimSamplerInput, sizeof(v128f));
         AFileRead(currSamplerInput, sizeof(float) * totalAnimSamplerInput, file, 1);
         AFileRead(currSamplerOutput, sizeof(v128f) * totalAnimSamplerInput, file, 1);
@@ -1521,7 +1521,7 @@ s32 LoadSceneBundleBinary(const u8* path, SceneBundle* gltf)
             AFileRead(&animation->samplers[j].interpolation, sizeof(ASamplerInterpolation), file, 1);
             s32 count = animation->samplers[j].count;
             animation->samplers[j].input = currSamplerInput;
-            animation->samplers[j].output = (f1*)currSamplerOutput;
+            animation->samplers[j].output = (f32*)currSamplerOutput;
             currSamplerInput += count;
             currSamplerOutput += count;
         }

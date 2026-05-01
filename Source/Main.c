@@ -13,6 +13,7 @@
 
 static Uint32 frames = 0;
 static s32 done = 0;
+bool g_UseGPUComputeAnimation = true;
 
 Camera       g_Camera;
 SDL_Window*  g_SDLWindow;
@@ -29,7 +30,7 @@ static void MainLoop(void)
     SetPressedAndReleasedKeys();
     PlatformUpdate();
     CameraUpdate(&g_Camera, PlatformCtx.DeltaTime);
-    UpdateAnimations();
+    // UpdateAnimations();
 
     if (!done) Render();
     // else emscripten_cancel_main_loop();
@@ -42,6 +43,12 @@ s32 main(s32 argc, char* argv[])
 {
     s32 msaa = 0;
     done = 0;
+
+    for (s32 i = 1; i < argc; i++)
+    {
+        if (SDL_strcmp(argv[i], "--cpu-skin") == 0)
+            g_UseGPUComputeAnimation = false;
+    }
     
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO))
         return 0;
@@ -56,15 +63,14 @@ s32 main(s32 argc, char* argv[])
     }
     
     InitGlobalArena();
+    PlatformInit();
     BasisuSetup();
     ECS_Init();
 
     GraphicsInit(msaa);
     RendererInit(msaa);
     if (!InitScene()) return 0;
-    InitBuffers();
-
-    PlatformInit();
+    
     CameraInit(&g_Camera, 1920, 1080);
     
     // emscripten_set_main_loop(MainLoop, 0, 1);

@@ -69,10 +69,10 @@ void EventCallback(const SDL_Event* event)
         case SDL_EVENT_MOUSE_BUTTON_UP: 
         {
             u32 button_flag = 1 << (event->button.button);
-            // Handle d1 click detection for left button
+            // Handle f64 click detection for left button
             if (button_flag == MouseButton_Left) {
                 u64 current_time = SDL_GetPerformanceCounter();
-                f1 time_diff = (current_time - PlatformCtx.LastClickTime) / (double)PlatformCtx.CPUFrequency;
+                f32 time_diff = (current_time - PlatformCtx.LastClickTime) / (double)PlatformCtx.CPUFrequency;
                 PlatformCtx.DoubleClicked = (time_diff < 0.4);
                 PlatformCtx.SecondsSinceLastClick = 0.0f;
                 PlatformCtx.LastClickTime = current_time;
@@ -138,7 +138,7 @@ u8 GetKeyReleased(s32 c) { return BitsetGet(ReleasedKeys, GetRealKey(c) & 511); 
 u8 GetKeyPressed(s32 c)  { return BitsetGet(PressedKeys , GetRealKey(c) & 511); }
 
 // Mouse
-f1 GetMouseWheelDelta()  { return PlatformCtx.MouseWheelDelta; }
+f32 GetMouseWheelDelta()  { return PlatformCtx.MouseWheelDelta; }
 u8 GetDoubleClicked()    { return PlatformCtx.DoubleClicked; }
 u8 AnyMouseKeyDown()            { return PlatformCtx.MouseDown > 0; }
 u8 GetMouseDown(s32 button)     { return !!(PlatformCtx.MouseDown     & button); }
@@ -158,7 +158,7 @@ void SetPressedAndReleasedKeys()
 
 void RecordLastKeys()
 {
-    MemCpy(LastKeys, DownKeys, sizeof(u64) * 8);
+    MemCopy(LastKeys, DownKeys, sizeof(u64) * 8);
     // PlatformCtx.LastKeys  = PlatformCtx.DownKeys;
     PlatformCtx.MouseLast = PlatformCtx.MouseDown;
 }
@@ -188,7 +188,7 @@ void wOpenFile(const char* filePath, SDL_DialogFileCallback callback)
     SDL_ShowOpenFileDialog(callback, NULL, NULL, NULL, 0, filePath, false);
 }
 
-f1 GetDeltaTime() 
+f32 GetDeltaTime() 
 { 
     return PlatformCtx.DeltaTime; 
 }
@@ -199,7 +199,7 @@ s64 TimeNow()
 }
 
 // time is nanoseconds
-f1  TimeToSeconds(s64 t)       { return (double)t / (double)PlatformCtx.CPUFrequency; }
+f32  TimeToSeconds(s64 t)       { return (double)t / (double)PlatformCtx.CPUFrequency; }
 s64 TimeToMilliseconds(s64 t)  { return Int64MulDiv(t, 1000, PlatformCtx.CPUFrequency); }
 s64 TimeToMicroseconds(s64 t)  { return Int64MulDiv(t, 1000000, PlatformCtx.CPUFrequency); }
 
@@ -221,7 +221,7 @@ void PlatformUpdate()
     RecordLastKeys();
 }
 
-f1 TimeSinceStartup()
+f32 TimeSinceStartup()
 {
     return (double)(TimeNow() - PlatformCtx.StartupTime) / (double)PlatformCtx.CPUFrequency;
 }

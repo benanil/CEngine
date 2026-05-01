@@ -40,6 +40,9 @@
     #define inout
 #endif
 
+typedef float f32;
+typedef int   s32;
+
 #if INT16_SUPPORTED
     typedef int16_t   s16;
     typedef uint16_t  u16;
@@ -61,53 +64,57 @@
 #endif
 
 #if FLOAT16_SUPPORTED && !PLATFORM_VULKAN
-    typedef float16_t    fp16;
-    typedef float16_t2   fp16_2;
-    typedef float16_t3   fp16_3;
-    typedef float16_t4   fp16_4;
-    typedef float16_t3x3 fp16_3x3;
-    typedef float16_t3x4 fp16_3x4;
-    typedef float16_t4x4 fp16_4x4;
-    typedef float16_t4x3 fp16_4x3;
+    typedef float16_t    f16;
+    typedef float16_t2   f16_2;
+    typedef float16_t3   f16_3;
+    typedef float16_t4   f16_4;
+    typedef float16_t2x4 f16_2x4;
+    typedef float16_t3x3 f16_3x3;
+    typedef float16_t3x4 f16_3x4;
+    typedef float16_t4x4 f16_4x4;
+    typedef float16_t4x3 f16_4x3;
 #elif FLOAT16_SUPPORTED
-    typedef half    fp16;
-    typedef half2   fp16_2;
-    typedef half3   fp16_3;
-    typedef half4   fp16_4;
-    typedef half3x3 fp16_3x3;
-    typedef half3x4 fp16_3x4;
-    typedef half4x4 fp16_4x4;
-    typedef half4x3 fp16_4x3;
+    typedef half    f16;
+    typedef half2   f16_2;
+    typedef half3   f16_3;
+    typedef half4   f16_4;
+    typedef half2x4 f16_2x4;
+    typedef half3x3 f16_3x3;
+    typedef half3x4 f16_3x4;
+    typedef half4x4 f16_4x4;
+    typedef half4x3 f16_4x3;
 #elif !PLATFORM_VULKAN && !defined(__DXC_VERSION_MAJOR)
-    typedef min16float    fp16;
-    typedef min16float2   fp16_2;
-    typedef min16float3   fp16_3;
-    typedef min16float4   fp16_4;
-    typedef min16float3x3 fp16_3x3;
-    typedef min16float3x4 fp16_3x4;
-    typedef min16float4x4 fp16_4x4;
-    typedef min16float4x3 fp16_4x3;
+    typedef min16float    f16;
+    typedef min16float2   f16_2;
+    typedef min16float3   f16_3;
+    typedef min16float4   f16_4;
+    typedef min16float2x4 f16_2x4;
+    typedef min16float3x3 f16_3x3;
+    typedef min16float3x4 f16_3x4;
+    typedef min16float4x4 f16_4x4;
+    typedef min16float4x3 f16_4x3;
 #else
-    typedef float    fp16;
-    typedef float2   fp16_2;
-    typedef float3   fp16_3;
-    typedef float4   fp16_4;
-    typedef float3x3 fp16_3x3;
-    typedef float3x4 fp16_3x4;
-    typedef float4x4 fp16_4x4;
-    typedef float4x3 fp16_4x3;
+    typedef float    f16;
+    typedef float2   f16_2;
+    typedef float3   f16_3;
+    typedef float4   f16_4;
+    typedef float2x4 f16_2x4;
+    typedef float3x3 f16_3x3;
+    typedef float3x4 f16_3x4;
+    typedef float4x4 f16_4x4;
+    typedef float4x3 f16_4x3;
 #endif
 
 #if FLOAT16_IO_SUPPORTED
-    typedef fp16   fp16_io;
-    typedef fp16_2 fp16_2_io;
-    typedef fp16_3 fp16_3_io;
-    typedef fp16_4 fp16_4_io;
+    typedef f16    f16_io;
+    typedef fp16_2 f16_2_io;
+    typedef fp16_3 f16_3_io;
+    typedef fp16_4 f16_4_io;
 #else
-    typedef float  fp16_io;
-    typedef float2 fp16_2_io;
-    typedef float3 fp16_3_io;
-    typedef float4 fp16_4_io;
+    typedef float  f16_io;
+    typedef float2 f16_2_io;
+    typedef float3 f16_3_io;
+    typedef float4 f16_4_io;
 #endif
 
 #if INT16_IO_SUPPORTED
@@ -126,4 +133,256 @@
     typedef uint4 u16x4_io;
 #endif
 
-#endif // HLSL_COMMON_H
+#define VecLerp(a, b, t)      lerp(a, b, t)
+                             
+#define MMIN(a, b)            min(a, b)
+#define MMAX(a, b)            max(a, b)
+                             
+#define MCLAMP(x, mn, mx)     clamp(x, mn, mx)
+#define MCLAMP01(x)           saturate(x)
+                             
+#define Clamp01f32(x)         saturate(x)
+
+#define Clampf32(x, min, max) clamp(x, min, max)
+#define Clampi32(x, min, max) clamp(x, min, max)
+
+#define Minf32(a, b)          min(a, b) 
+#define Maxf32(a, b)          max(a, b) 
+#define Mini32(a, b)          min(a, b) 
+#define Maxi32(a, b)          max(a, b)
+
+#define Absi32(x)             abs(x)
+#define Absf32(x)             abs(x)
+#define Floorf(x)             floor(x)
+#define Ceilf(x)              ceil(x)
+#define Fractf(a)             frac(a)
+#define Fract(a)              frac(a)
+
+#define M44Transpose(m) transpose(m)
+#define VecXY(v) v.xy
+#define VecZW(v) v.zw
+#define VecCombine(a, b) f16_4(a, b)
+
+#if defined(__HLSL_VERSION)
+
+// -----------------------------------------------------------------------------
+// Types
+// -----------------------------------------------------------------------------
+typedef float4 v128f;
+typedef int4   v128i;
+typedef uint4  v128u;
+
+// -----------------------------------------------------------------------------
+// Helpers
+// -----------------------------------------------------------------------------
+#define _VEC4_GET(v, i) ((i) == 0 ? (v).x : ((i) == 1 ? (v).y : ((i) == 2 ? (v).z : (v).w)))
+
+#define _U32_TO_MASK(b) ((b) ? 0xFFFFFFFFu : 0u)
+#define _I32_TO_MASK(b) ((b) ? -1 : 0)
+
+#define _VEC4_CMP_MASK_4(a, b, op) \
+    uint4(_U32_TO_MASK((a).x op (b).x), _U32_TO_MASK((a).y op (b).y), _U32_TO_MASK((a).z op (b).z), _U32_TO_MASK((a).w op (b).w))
+
+#define _VEC4_CMP_IMASK_4(a, b, op) \
+    int4(_I32_TO_MASK((a).x op (b).x), _I32_TO_MASK((a).y op (b).y), _I32_TO_MASK((a).z op (b).z), _I32_TO_MASK((a).w op (b).w))
+
+// -----------------------------------------------------------------------------
+// Float vectors
+// -----------------------------------------------------------------------------
+#define VecZero()               float4(0.0, 0.0, 0.0, 0.0)
+#define VecNegZero()            asfloat(uint4(0x80000000u, 0x80000000u, 0x80000000u, 0x80000000u))
+#define VecOne()                float4(1.0, 1.0, 1.0, 1.0)
+#define VecNegativeOne()        float4(-1.0, -1.0, -1.0, -1.0)
+#define VecSet1(x)              float4((x), (x), (x), (x))
+#define VecSetBytes(x)          uint4((x), (x), (x), (x))
+
+#define VecSet(x, y, z, w)      float4((x), (y), (z), (w))
+#define VecSetR(x, y, z, w)     float4((x), (y), (z), (w))
+
+// Pointer-less HLSL note:
+// use buffer Load/Store in calling code, or wrap these to your own memory API.
+#define VecLoad(x)              (*(v128f*)(x))
+#define VecLoadA(x)             (*(v128f*)(x))
+#define VecLoadI(x)             asfloat(*(v128u*)(x))
+#define VecLoadIU(x)            asfloat(*(v128u*)(x))
+
+#define VecStoreU(ptr, x)       (*(v128u*)(ptr) = asuint(x))
+#define VecStore(ptr, x)        (*(v128f*)(ptr) = (x))
+#define VecStoreA(ptr, x)       (*(v128f*)(ptr) = (x))
+
+#define MakeShuffleMask(x,y,z,w)  0
+
+#define VecSplatX(v)            ((v).xxxx)
+#define VecSplatY(v)            ((v).yyyy)
+#define VecSplatZ(v)            ((v).zzzz)
+#define VecSplatW(v)            ((v).wwww)
+
+#define VecGetX(v)              ((v).x)
+#define VecGetY(v)              ((v).y)
+#define VecGetZ(v)              ((v).z)
+#define VecGetW(v)              ((v).w)
+
+#define VecSetX(v, x)           ((v).x = (x))
+#define VecSetY(v, y)           ((v).y = (y))
+#define VecSetZ(v, z)           ((v).z = (z))
+#define VecSetW(v, w)           ((v).w = (w))
+
+// Arithmetic
+#define VecAdd(a, b)            ((a) + (b))
+#define VecSub(a, b)            ((a) - (b))
+#define VecMul(a, b)            ((a) * (b))
+#define VecDiv(a, b)            ((a) / (b))
+
+#define VecAddf(a, b)           ((a) + b)
+#define VecSubf(a, b)           ((a) - b)
+#define VecMulf(a, b)           ((a) * b)
+#define VecDivf(a, b)           ((a) / b)
+
+#define VecRound(v)             round(v)
+
+#define VecFmaddLane(a, b, c, l) ((a) * VecSet1(_VEC4_GET(b, l)) + (c))
+#define VecFmadd(a, b, c)       ((a) * (b) + (c))
+#define VecFmsub(a, b, c)       ((a) * (b) - (c))
+#define VecNegMulSub(a, b, c)   ((c) - ((a) * (b)))
+#define VecHadd(a, b)           float4((a).x + (a).y, (a).z + (a).w, (b).x + (b).y, (b).z + (b).w)
+
+#define VecNeg(a)               (-(a))
+#define VecRcp(a)               rcp(a)
+#define VecSqrt(a)              sqrt(a)
+#define VecRSqrt(a)             rsqrt(a)
+
+// Vector Math
+#define VecDot(a, b)            VecSet1(dot((a), (b)))
+#define VecDotf(a, b)           dot((a), (b))
+#define VecNorm(v)              ((v) * rsqrt(dot((v), (v))))
+#define VecNormEst(v)           ((v) * rsqrt(dot((v), (v))))
+#define VecLenf(v)              sqrt(dot((v), (v)))
+#define VecLen(v)               VecSet1(sqrt(dot((v), (v))))
+#define VecLenSq(v)             VecSet1(dot((v), (v)))
+
+#define Vec3DotV(a, b)          VecSet1(dot((a).xyz, (b).xyz))
+#define Vec3DotfV(a, b)         dot((a).xyz, (b).xyz)
+#define Vec3NormV(v)            float4(((v).xyz * rsqrt(dot((v).xyz, (v).xyz))), (v).w)
+#define Vec3NormEstV(v)         float4(((v).xyz * rsqrt(dot((v).xyz, (v).xyz))), (v).w)
+#define Vec3LenfV(v)            sqrt(dot((v).xyz, (v).xyz))
+#define Vec3LenV(v)             VecSet1(sqrt(dot((v).xyz, (v).xyz)))
+
+// Swizzling / shuffling
+#define VecSwizzle(vec, x, y, z, w)         float4(_VEC4_GET(vec, x), _VEC4_GET(vec, y), _VEC4_GET(vec, z), _VEC4_GET(vec, w))
+#define VecShuffle(vec1, vec2, x, y, z, w)  float4(_VEC4_GET(vec1, x), _VEC4_GET(vec1, y), _VEC4_GET(vec2, z), _VEC4_GET(vec2, w))
+#define VecShuffleR(vec1, vec2, x, y, z, w) float4(_VEC4_GET(vec1, w), _VEC4_GET(vec1, z), _VEC4_GET(vec2, y), _VEC4_GET(vec2, x))
+
+#define VecShuffle_0101(vec1, vec2)     float4((vec1).x, (vec1).y, (vec2).x, (vec2).y)
+#define VecShuffle_2323(vec1, vec2)     float4((vec1).z, (vec1).w, (vec2).z, (vec2).w)
+#define VecRev(v)                       float4((v).w, (v).z, (v).y, (v).x)
+
+#define VecSwapPairs(v)                 float4((v).y, (v).x, (v).w, (v).z)
+#define VecSwapHalves(v)                float4((v).z, (v).w, (v).x, (v).y)
+
+// Logical / bitwise
+#define VecNot(a)                       asfloat(~asuint(a))
+#define VecAnd(a, b)                    asfloat(asuint(a) & asuint(b))
+#define VecAndNot(a, b)                 asfloat((~asuint(a)) & asuint(b))
+#define VecOr(a, b)                     asfloat(asuint(a) | asuint(b))
+#define VecXor(a, b)                    asfloat(asuint(a) ^ asuint(b))
+#define VecMask(a, msk)                 asfloat(asuint(a) & asuint(msk))
+
+#define VecMax(a, b)                    max((a), (b))
+#define VecMin(a, b)                    min((a), (b))
+#define VecFloor(a)                     floor(a)
+
+#define VecCmpGt(a, b)                  _VEC4_CMP_MASK_4(a, b, >)
+#define VecCmpGe(a, b)                  _VEC4_CMP_MASK_4(a, b, >=)
+#define VecCmpLt(a, b)                  _VEC4_CMP_MASK_4(a, b, <)
+#define VecCmpLe(a, b)                  _VEC4_CMP_MASK_4(a, b, <=)
+#define VecCmpEq(a, b)                  _VEC4_CMP_MASK_4(a, b, ==)
+
+#define VecMovemask(a)                  (((asuint(a).x >> 31) & 1u) | (((asuint(a).y >> 31) & 1u) << 1) | (((asuint(a).z >> 31) & 1u) << 2) | (((asuint(a).w >> 31) & 1u) << 3))
+
+#define VecSelect(V1, V2, Control)      asfloat((asuint(V1) & ~asuint(Control)) | (asuint(V2) & asuint(Control)))
+#define VecBlend(a, b, c)               VecSelect(a, b, c)
+
+// -----------------------------------------------------------------------------
+// Integer vectors
+// -----------------------------------------------------------------------------
+#define VeciZero()                      int4(0, 0, 0, 0)
+#define VeciSet1(x)                     int4((x), (x), (x), (x))
+#define VeciSet(x, y, z, w)             int4((x), (y), (z), (w))
+#define VeciSetR(x, y, z, w)            int4((x), (y), (z), (w))
+#define VeciDup64(x)                    int2((x), (x))   // no real 64-bit SIMD lane model in HLSL
+#define VeciLoadA(x)                    (*(int4*)(x))
+#define VeciLoad(x)                     (*(int4*)(x))
+#define VeciLoad64(qword)               (*(int2*)(qword))
+
+#define VeciSetX(v, x)                  ((v).x = (x))
+#define VeciSetY(v, y)                  ((v).y = (y))
+#define VeciSetZ(v, z)                  ((v).z = (z))
+#define VeciSetW(v, w)                  ((v).w = (w))
+
+#define VeciSelect1111                  int4(-1, -1, -1, -1)
+
+#define VecIdentityR0                   float4(1.0, 0.0, 0.0, 0.0)
+#define VecIdentityR1                   float4(0.0, 1.0, 0.0, 0.0)
+#define VecIdentityR2                   float4(0.0, 0.0, 1.0, 0.0)
+#define VecIdentityR3                   float4(0.0, 0.0, 0.0, 1.0)
+
+#define VeciAdd(a, b)                   ((a) + (b))
+#define VeciSub(a, b)                   ((a) - (b))
+#define VeciMul(a, b)                   ((a) * (b))
+
+#define VeciNot(a)                      (~(a))
+#define VeciAnd(a, b)                   ((a) & (b))
+#define VeciOr(a, b)                    ((a) | (b))
+#define VeciXor(a, b)                   ((a) ^ (b))
+
+#define VeciAndNot(a, b)                ((~(a)) & (b))
+#define VeciSrl(a, b)                   ((uint4(a) >> (b)))
+#define VeciSll(a, b)                   ((uint4(a) << (b)))
+#define VeciSrl32(a, b)                 ((uint4(a) >> (b)))
+#define VeciSll32(a, b)                 ((uint4(a) << (b)))
+#define VeciToVecf(a)                   asfloat(uint4(a))
+
+#define VeciCmpLt(a, b)                 _VEC4_CMP_IMASK_4(a, b, <)
+#define VeciCmpLe(a, b)                 _VEC4_CMP_IMASK_4(a, b, <=)
+
+#define VeciCmpGt(a, b)                 _VEC4_CMP_IMASK_4(a, b, >)
+#define VeciCmpGe(a, b)                 _VEC4_CMP_IMASK_4(a, b, >=)
+#define VeciCmpEq(a, b)                 _VEC4_CMP_IMASK_4(a, b, ==)
+
+#define VeciBlend(a, b, c)              asint(VecSelect(asfloat(a), asfloat(b), asuint(c)))
+#define VecFabs(x)                      VecAnd(x, VecFromInt1(0x7fffffff))
+
+#define VecFromInt(x, y, z, w)          asfloat(uint4((x), (y), (z), (w)))
+#define VecFromInt1(x)                  asfloat(uint4((x), (x), (x), (x)))
+#define VecToInt(x)                     x
+
+#define VecBitcastU32(x)                asuint(x)
+#define VeciBitcastF32(x)               asfloat(x)
+
+#define VecF32ToI32(x)                  int4(round(x))
+#define VecF32ToU32(x)                  uint4(x)
+#define VecI32ToF32(x)                  float4(x)
+#define VecU32ToF32(x)                  float4(x)
+
+#define VecZipLo32(a, b)                int4((a).x, (b).x, (a).y, (b).y)
+#define VecZipLo16(a, b)                int4((a).x, (b).x, (a).y, (b).y)
+#define VecZipHi16(a, b)                int4((a).z, (b).z, (a).w, (b).w)
+
+#define VecUnpackLo32(x)                int4((x).x, (x).y, 0, 0)
+#define VecUnpackHi32(x)                int4((x).z, (x).w, 0, 0)
+
+#define VecPack16(x)                    uint4(saturate(float4(x)))   // approximate
+
+#define VecStoreLo64(p, v)              (*(uint2*)(p) = asuint((v).xy))
+#define VecStoreHi64(p, v)              (*(uint2*)(p) = asuint((v).zw))
+#define VecLoadLo64(p, v)               asfloat(uint4(*(uint2*)(p), 0, 0))
+#define VecLoadHi64(p, v)               asfloat(uint4(0, 0, *(uint2*)(p).x, *(uint2*)(p).y))
+
+// In HLSL, do this inline at the call site:
+#define Vec3Load(x)                     float4(asfloat(*(float3*)(x)).xyz, 0.0)
+
+#else
+
+// keep your existing SSE/C99 branch here
+#endif
+#endif // HLSL_COMMON_HN_HON_H

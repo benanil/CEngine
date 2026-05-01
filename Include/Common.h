@@ -423,6 +423,29 @@ purefn double Absf64(double x)
     return BitCast(double, ix);
 }
 
+purefn f32 Floorf(f32 x) {
+    f32 whole = (f32)(s32)x;  // truncate quotient to integer
+    return x - (x-whole);
+}
+
+purefn f64 Floor(f64 x) {
+    f64 whole = (f64)(s64)x;  // truncate quotient to integer
+    return x - (x - whole);
+}
+
+purefn f32 Ceilf(f32 x) {
+    f32 whole = (f32)(s32)x;  // truncate quotient to integer
+    return whole + (f32)(x > whole);
+}
+
+purefn f32 Fractf(f32 a) {
+    return a - Floorf(a);
+}
+
+purefn f64 Fract(f64 a) {
+    return a - Floor(a); 
+}
+
 purefn bool InRange(float x, float start, float length)
 {
     return x > start && x < start + length;
@@ -455,7 +478,7 @@ purefn int CalculateArrayGrowth(int _size)
 }
 
 // almost same performance with memcpy
-static inline void MemCpy(void* dst, const void* RESTRICT src, size_t size) 
+static inline void MemCopy(void* dst, const void* RESTRICT src, size_t size) 
 {
     const uint8_t* s = (const uint8_t*)src;
     uint8_t* d = (uint8_t*)dst;
@@ -614,16 +637,6 @@ purefn const char* GetFileName(const char* path)
     while (path[length-1] != '\\' && path[length-1] != '/' && length > 0) 
         length--;
     return path + length;
-}
-
-purefn u32 VCALL VecMaxElement(v128f a)
-{
-    v128f t = VecSwapPairs(a);
-    v128f m = VecMax(a, t);
-    t = VecSwapHalves(m);
-    v128f max_val = VecMax(m, t);
-    u32 mask = (u32)VecMovemask(VecCmpGe(a, max_val));
-    return TrailingZeroCount32(mask);
 }
 
 #if defined(__cplusplus)

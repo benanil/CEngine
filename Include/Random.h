@@ -67,15 +67,15 @@ purefn u64 Seed64() {
     return result;
 }
 
-purefn f1 NextFloat01(u32 next) {
-    return (f1)(next >> 8) / (f1)(1 << 24);
+purefn f32 NextFloat01(u32 next) {
+    return (f32)(next >> 8) / (f32)(1 << 24);
 }
 	
-purefn f1 RepeatMinMaxF32(u32 next, f1 min, f1 max) {
+purefn f32 RepeatMinMaxF32(u32 next, f32 min, f32 max) {
     return min + (NextFloat01(next) * Absf32(min - max));
 }
 	
-purefn f1 NextDouble01(u64 next) 
+purefn f32 NextDouble01(u64 next) 
 {
     // // https://docs.oracle.com/javase/8/docs/api/java/util/Random.html
     // const int mask = (1 << 27) - 1;
@@ -86,7 +86,7 @@ purefn f1 NextDouble01(u64 next)
     return (next & 0x001FFFFFFFFFFFFF) / 9007199254740992.0;
 }
 	
-purefn f1 RepatMinMaxF64(u64 next, f1 min, f1 max) {
+purefn f32 RepatMinMaxF64(u64 next, f32 min, f32 max) {
     return min + (NextDouble01(next) * Absf32(min - max));
 }
 	

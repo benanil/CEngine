@@ -20,7 +20,7 @@
 extern "C" {
 #endif
 
-s32 LoadFBX(const u8* path, SceneBundle* fbxScene, f1 scale);
+s32 LoadFBX(const u8* path, SceneBundle* fbxScene, f32 scale);
 
 s32 SaveGLTFBinary(const SceneBundle* gltf, const u8* path);
 

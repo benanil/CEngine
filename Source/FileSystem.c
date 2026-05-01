@@ -645,7 +645,7 @@ int VisitFolder(const char* root, FolderVisitFn visitFn, void* data, bool recurs
     if (rootLen <= 0)
         return 0;
 
-    MemCpy(buffer + bufPos, root, rootLen);
+    MemCopy(buffer + bufPos, root, rootLen);
     buffer[bufPos + rootLen] = '\0';
 
     stack[sp++] = bufPos;
@@ -690,7 +690,7 @@ int VisitFolder(const char* root, FolderVisitFn visitFn, void* data, bool recurs
 
                 if (sp < (int)ARRAY_SIZE(stack) && (bufPos + len) <= ArenaRemainingCurrent())
                 {
-                    MemCpy(buffer + bufPos, combined, len);
+                    MemCopy(buffer + bufPos, combined, len);
                     stack[sp++] = bufPos;
                     bufPos += len;
                 }
@@ -768,7 +768,7 @@ void RemoveFolder(const char* path, void* unused)
     }
 }
 
-static void WriteFloat4(v128f v, AFile file0)
+void WriteFloat4(v128f v, AFile file0)
 {
     char buff[128];
     int sizeLen = FloatToString(buff, VecGetX(v), 4);

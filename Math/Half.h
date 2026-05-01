@@ -40,16 +40,13 @@
 #define Half2SetY(v, y) (v &= 0x0000FFFFu, v |= y;)
 
 #ifdef AX_SUPPORT_NEON
-typedef float16_t h1;
+typedef float16_t f16;
 #else
-typedef uint16_t h1;
+typedef uint16_t f16;
 #endif
 
-typedef u32 h2;
-typedef h1 h4[4];
-
 // todo better check for half support
-purefn float HalfToFloat(h1 x) 
+purefn float HalfToFloat(f16 x) 
 {
     #if defined(AX_SUPPORT_AVX2) 
     return _mm_cvtss_f32(_mm_cvtph_ps(_mm_set1_epi16(x))); 
@@ -69,7 +66,7 @@ purefn float HalfToFloat(h1 x)
     #endif
 }
 
-purefn h1 FloatToHalf(float Value) 
+purefn f16 FloatToHalf(float Value) 
 {
     #if defined(AX_SUPPORT_AVX2)
     return _mm_extract_epi16(_mm_cvtps_ph(_mm_set_ss(Value), 0), 0);
@@ -89,11 +86,11 @@ purefn h1 FloatToHalf(float Value)
     
     IValue = (mask & a) | (~mask & b);
     Result = ((IValue + 0x0FFFu + ((IValue >> 13u) & 1u)) >> 13u) & 0x7FFFu; 
-    return (h1)(Result | Sign);
+    return (f16)(Result | Sign);
     #endif
 }
 
-static inline void Half2ToFloat2(f1* result, u32 h) 
+static inline void Half2ToFloat2(f32* result, u32 h) 
 {
     #if defined(AX_SUPPORT_AVX2)
     _mm_storel_pi((__m64 *)result, _mm_cvtph_ps(_mm_set1_epi16(h)));
@@ -111,19 +108,19 @@ static inline void Half2ToFloat2(f1* result, u32 h)
     u64 f_m  = h_m        << 0x0000000dull;
     u64 f_result = f_s | f_e | f_m;
         
-    result[0] = BitCast(f1, (u32)(f_result & 0xFFFFFFFFu));
-    result[1] = BitCast(f1, (u32)(f_result >> 32ull));
+    result[0] = BitCast(f32, (u32)(f_result & 0xFFFFFFFFu));
+    result[1] = BitCast(f32, (u32)(f_result >> 32ull));
     #endif
 }
 
-static inline u32 Float2ToHalf2(const f1* float2)
+static inline u32 Float2ToHalf2(const f32* float2)
 {
     #if defined(AX_SUPPORT_NEON)
     float32x2_t x = vld1_dup_f32(float2);
     float32x4_t x4 = vcombine_f32(x, x);
     return vget_lane_u32(vreinterpret_u32_f16(vcvt_f16_f32(x4)), 0);
     #elif defined(AX_SUPPORT_AVX)
-    return _mm_extract_epi32(_mm_cvtps_ph(_mm_set_ss(float2), 0), 0);
+    return _mm_extract_epi32(_mm_cvtps_ph(_mm_setr_ps(float2[0], float2[1], 0.0f, 0.0f), 0), 0);
     #endif
     u32 result = 0;
     result  = FloatToHalf(float2[0]);
@@ -132,7 +129,7 @@ static inline u32 Float2ToHalf2(const f1* float2)
 }
 
 // input half4 is 4x 16 bit integer for example it can be uint64_t
-static inline void Half4ToFloat4(f1* result, const h4 half4)
+static inline void Half4ToFloat4(f32* result, const f16 half4[4])
 {
     #ifdef AX_SUPPORT_AVX2
     _mm_storeu_ps(result, _mm_cvtph_ps(_mm_loadu_si64(half4)));
@@ -166,24 +163,20 @@ static inline void Half4ToFloat4(f1* result, const h4 half4)
 static inline void Float4ToHalf4V(u64* result, v128f f4)
 {
     #ifdef AX_SUPPORT_AVX2
-    *((long long*)result) = _mm_extract_epi64(_mm_cvtps_ph(f4, _MM_FROUND_TO_NEAREST_INT), 0);
+    _mm_storel_pi((__m64*)result, _mm_castsi128_ps(_mm_cvtps_ph(f4, _MM_FROUND_TO_NEAREST_INT)));
     #elif defined(AX_SUPPORT_NEON)
-    *(float16x4_t*)result = vcvt_f16_f32(f4);
+    vst1_f16(result, vcvt_f16_f32(f4);
     #else
     STATIC_ASSERT(0, "undefined Float4ToHalf4V");
     #endif
 }
 
-static inline void Float4ToHalf4(h1* result, const f1* f4)
+static inline void Float4ToHalf4(f16* result, const f32* f4)
 {
     #ifdef AX_SUPPORT_AVX2
-
-    *((long long*)result) = _mm_extract_epi64(_mm_cvtps_ph(_mm_loadu_ps(f4), _MM_FROUND_TO_NEAREST_INT), 0);
-
+    _mm_storel_pi((__m64*)result, _mm_castsi128_ps(_mm_cvtps_ph(_mm_loadu_ps(f4), _MM_FROUND_TO_NEAREST_INT)));
     #elif defined(AX_SUPPORT_NEON)
-
-    *(float16x4_t*)result = vcvt_f16_f32(vld1q_f32(f4));
-
+    vst1_f16(result, vcvt_f16_f32(vld1q_f32(f4)));
     #elif defined(AX_SUPPORT_SSE) || defined(AX_SUPPORT_NEON)
 
     v128u IValue = VeciLoad((const unsigned int*)f4);
@@ -233,13 +226,13 @@ static inline void Float4ToHalf4(h1* result, const f1* f4)
 
 #else
 
-purefn void Half8ToFloat8(f1* float8, const h1* half8)
+purefn void Half8ToFloat8(f32* float8, const f16* half8)
 {
     Half4ToFloat4(float8    , half8);
     Half4ToFloat4(float8 + 4, half8 + 4);
 }
 
-purefn void Float8ToHalf8(h1* result, const f1* float8)
+purefn void Float8ToHalf8(f16* result, const f32* float8)
 {
     Float4ToHalf4(result    , float8);
     Float4ToHalf4(result + 4, float8 + 4);
@@ -267,7 +260,7 @@ static forceinline void RandomHalf4Positive(u64* result, u64 hash, float mn, flo
     Float4ToHalf4V(result, unpacked);
 }
 
-static forceinline void HalfToFloatN(f1* res, const h1* x, const s32 n) 
+static forceinline void HalfToFloatN(f32* res, const f16* x, const s32 n) 
 {   
     for (s32 i = 0; i < n; i += 8, x += 8, res += 8)
         Half8ToFloat8(res, x);
@@ -276,7 +269,7 @@ static forceinline void HalfToFloatN(f1* res, const h1* x, const s32 n)
         *res = HalfToFloat(*x);
 }
 
-static forceinline void FloatToHalfN(h1* res, const f1* x, const s32 n) 
+static forceinline void FloatToHalfN(f16* res, const f32* x, const s32 n) 
 {   
     for (s32 i = 0; i < n; i += 8, x += 8, res += 8)
         Float8ToHalf8(res, x);
@@ -285,7 +278,7 @@ static forceinline void FloatToHalfN(h1* res, const f1* x, const s32 n)
         *res = FloatToHalf(*x);
 }
 
-static forceinline void F3ToHalf3(f1* f, h1* res) {
+static forceinline void F3ToHalf3(f32* f, f16* res) {
     *(u32*)res = Float2ToHalf2(f); 
     res[2] = FloatToHalf(f[2]); 
 }

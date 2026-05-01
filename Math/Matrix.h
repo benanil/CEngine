@@ -16,29 +16,36 @@
 
 typedef union M44_ {
     v128f r[4];
-    f1 m[4][4];
+    f32 m[4][4];
 } m44;
 
 
 typedef union M33_ {
-    f3 r[3];
+    fv3 r[3];
 } m33;
 
 typedef union float3x4_ {
-    f3 r[4];
+    fv3 r[4];
 } m34;
 
 typedef struct FrustumPlanes_ {
     v128f planes[6];
 } FrustumPlanes;
 
+typedef struct f16_2x4_
+{
+    f16_4 x, y;
+} f16_2x4;
+
+typedef v128f f16_3x4[3];
+typedef m44 f16_4x4;
 
 purefn m33 M33Multiply(m33 a, m33 b)
 {
     m33 result;
-    f3 vx = F3Mul(b.r[0], a.r[0]);
-    f3 vy = F3Mul(b.r[1], a.r[0]);
-    f3 vz = F3Mul(b.r[2], a.r[0]);
+    fv3 vx = F3Mul(b.r[0], a.r[0]);
+    fv3 vy = F3Mul(b.r[1], a.r[0]);
+    fv3 vz = F3Mul(b.r[2], a.r[0]);
     result.r[0] = F3Add(F3Add(vx, vy), vz);
         
     vx = F3Mul(b.r[0], a.r[1]);
@@ -53,12 +60,12 @@ purefn m33 M33Multiply(m33 a, m33 b)
     return result;
 }
 
-purefn f3 M33MultiplyF3(m33 m, f3 v)
+purefn fv3 M33MultiplyF3(m33 m, fv3 v)
 {
     return F3Add(F3Add(F3MulF(m.r[0], v.x), F3MulF(m.r[1], v.y)), F3MulF(m.r[2], v.z));
 }
     
-static inline m33 TBN(f3 normal, f3 tangent, f3 bitangent)
+static inline m33 TBN(fv3 normal, fv3 tangent, fv3 bitangent)
 {
     m33 M;
     M.r[0] = normal;
@@ -70,17 +77,17 @@ static inline m33 TBN(f3 normal, f3 tangent, f3 bitangent)
 static inline m33 Identity()
 {
     m33 result;
-    result.r[0] = (f3){1.0f, 0.0f, 0.0f};
-    result.r[1] = (f3){0.0f, 1.0f, 0.0f};
-    result.r[2] = (f3){0.0f, 0.0f, 1.0f};
+    result.r[0] = (fv3){1.0f, 0.0f, 0.0f};
+    result.r[1] = (fv3){0.0f, 1.0f, 0.0f};
+    result.r[2] = (fv3){0.0f, 0.0f, 1.0f};
     return result;
 }
 
-purefn m33 M33LookAt(f3 direction, f3 up)
+purefn m33 M33LookAt(fv3 direction, fv3 up)
 {
     m33 result;
     result.r[2] = direction;
-    f3 Right = F3Cross(&up, &result.r[2]);
+    fv3 Right = F3Cross(&up, &result.r[2]);
     result.r[0] = F3MulF(Right, RSqrtf(MMAX(0.00001f, F3Dot(Right, Right))));
     result.r[1] = F3Cross(&result.r[2], &result.r[0]);
     return result;
@@ -103,7 +110,7 @@ purefn m44 VCALL M44Identity()
     return M;
 }
 
-purefn m44 M44FromPosition(f1 x, f1 y, f1 z)
+purefn m44 M44FromPosition(f32 x, f32 y, f32 z)
 {
     m44 M;
     M.r[0] = VecIdentityR0;
@@ -113,17 +120,17 @@ purefn m44 M44FromPosition(f1 x, f1 y, f1 z)
     return M;
 }
 
-purefn m44 M44FromPositionPtr(const f1* vec3)
+purefn m44 M44FromPositionPtr(const f32* vec3)
 {
     return M44FromPosition(vec3[0], vec3[1], vec3[2]);
 }
     
-purefn m44 M44FromPositionF3(f3 vec3)
+purefn m44 M44FromPositionF3(fv3 vec3)
 {
     return M44FromPosition(vec3.x, vec3.y, vec3.z);
 }
 
-purefn m44 M44FromScale(f1 ScaleX, f1 ScaleY, f1 ScaleZ)
+purefn m44 M44FromScale(f32 ScaleX, f32 ScaleY, f32 ScaleZ)
 {
     m44 M;
     M.r[0] = VecSetR(ScaleX, 0.0f, 0.0f, 0.0f);
@@ -133,22 +140,22 @@ purefn m44 M44FromScale(f1 ScaleX, f1 ScaleY, f1 ScaleZ)
     return M;
 }
     
-purefn m44 M44FromScaleVec(f3 vec3)
+purefn m44 M44FromScaleVec(fv3 vec3)
 {
     return M44FromScale(vec3.x, vec3.y, vec3.z);
 }
     
-purefn m44 M44FromScalePtr(f1* vec3)
+purefn m44 M44FromScalePtr(f32* vec3)
 {
     return M44FromScale(vec3[0], vec3[1], vec3[2]);
 }
     
-purefn m44 M44FromScalef(f1 scale)
+purefn m44 M44FromScalef(f32 scale)
 {
     return M44FromScale(scale, scale, scale);
 }
 
-purefn m44 M44CreateRotation(f3 right, f3 up, f3 forward)
+purefn m44 M44CreateRotation(fv3 right, fv3 up, fv3 forward)
 {
     m44 m;
     m.r[0] = Vec3Load(&right.x);
@@ -385,12 +392,12 @@ purefn v128f VCALL Vec3Transform(v128f vec, const v128f r[4])
     return VecAdd(r[3], m0);
 }
 
-purefn m44 PerspectiveFovRH(f1 fov, f1 width, f1 height, f1 zNear, f1 zFar)
+purefn m44 PerspectiveFovRH(f32 fov, f32 width, f32 height, f32 zNear, f32 zFar)
 {
-    f1 rad = Sin0pi(0.5f * fov);
+    f32 rad = Sin0pi(0.5f * fov);
     AX_ASSUME(rad > 0.01f);
-    f1 h = Sqrtf(1.0f - (rad * rad)) / rad;
-    f1 w = h * height / width; /// max(width , Height) / min(width , Height)?
+    f32 h = Sqrtf(1.0f - (rad * rad)) / rad;
+    f32 w = h * height / width; /// max(width , Height) / min(width , Height)?
     m44 M = {0};
     M.m[0][0] = w;
     M.m[1][1] = h;
@@ -426,7 +433,7 @@ purefn m44 VCALL M44Transpose(m44 M)
     return mResult;
 }
 
-purefn m44 VCALL M44LookAtRH(const f3 eye, const f3 center, const f3 up)
+purefn m44 VCALL M44LookAtRH(const fv3 eye, const fv3 center, const fv3 up)
 {
     v128f EyePosition  = VecLoad(&eye.x);
     v128f EyeDirection = VecSub(VecZero(), VecLoad(&center.x));
@@ -452,7 +459,7 @@ purefn m44 VCALL M44LookAtRH(const f3 eye, const f3 center, const f3 up)
     return M44Transpose(M);
 }
 
-purefn m44 M44OrthoRH(f1 left, f1 right, f1 bottom, f1 top, f1 zNear, f1 zFar)
+purefn m44 M44OrthoRH(f32 left, f32 right, f32 bottom, f32 top, f32 zNear, f32 zFar)
 {
     m44 Result = {0};
     Result.m[0][0] =  2.0f / (right - left);
@@ -489,12 +496,12 @@ purefn m44 M44PositionRotationVec(v128f position, Quaternion rotation)
     return res; 
 }
 
-purefn m44 M44PositionRotationScale(f3 position, Quaternion rotation, f3 scale)
+purefn m44 M44PositionRotationScale(fv3 position, Quaternion rotation, fv3 scale)
 {
     return M44PositionRotationScaleVec(VecLoad(&position.x), rotation, VecSetR(scale.x, scale.y, scale.z, 0.0f)); 
 }
 
-purefn m44 M44PositionRotationScalePtr(const f1* position, const f1* rotation, const f1* scale)
+purefn m44 M44PositionRotationScalePtr(const f32* position, const f32* rotation, const f32* scale)
 {
     m44 res = {0};
     // Export rotation to matrix
@@ -510,9 +517,9 @@ purefn m44 M44PositionRotationScalePtr(const f1* position, const f1* rotation, c
     return res; 
 }
 
-purefn f3 VCALL M44ExtractPosition(m44 matrix)
+purefn fv3 VCALL M44ExtractPosition(m44 matrix)
 {
-    f3 res;
+    fv3 res;
     Vec3Store(&res.x, matrix.r[3]);
     return res;
 }
@@ -520,13 +527,13 @@ purefn f3 VCALL M44ExtractPosition(m44 matrix)
 purefn Quaternion VCALL M44ExtractRotation(m44 M, u8 rowNormalize) 
 {
     Quaternion res;
-    QuaternionFromMatrix((f1*)&res, &M.m[0][0], 4);
+    QuaternionFromMatrix((f32*)&res, &M.m[0][0], 4);
     return res;
 }
     
-purefn f3 VCALL M44ExtractScale(m44 matrix) 
+purefn fv3 VCALL M44ExtractScale(m44 matrix) 
 {
-    return (f3){ Vec3LenfV(matrix.r[0]), Vec3LenfV(matrix.r[2]), Vec3LenfV(matrix.r[1]) };
+    return (fv3){ Vec3LenfV(matrix.r[0]), Vec3LenfV(matrix.r[2]), Vec3LenfV(matrix.r[1]) };
 }
 
 purefn v128f VCALL M44ExtractScaleV(m44 matrix) 
@@ -583,14 +590,14 @@ inline m44 VCALL M44FromQuaternionV(Quaternion q)
     #endif
 }
     
-static inline m44 VCALL M44FromQuaternionF(const f1* quaternion)
+static inline m44 VCALL M44FromQuaternionF(const f32* quaternion)
 {
     return M44FromQuaternionV(MakeQuat(quaternion[0], quaternion[1], quaternion[2], quaternion[3]));
 }
 
-purefn m44 M44RotationX(f1 angleRadians) {
+purefn m44 M44RotationX(f32 angleRadians) {
     m44 out_matrix;
-    f1 s, c;
+    f32 s, c;
     SinCos(angleRadians, &s, &c);
     out_matrix.r[0] = VecIdentityR0;
     out_matrix.m[1][1] = c;
@@ -600,9 +607,9 @@ purefn m44 M44RotationX(f1 angleRadians) {
     return out_matrix;
 }
     
-purefn m44 M44RotationY(f1 angleRadians) {
+purefn m44 M44RotationY(f32 angleRadians) {
     m44 out_matrix = M44Identity();
-    f1 s, c;
+    f32 s, c;
     SinCos(angleRadians, &s, &c);
     out_matrix.m[0][0] = c;
     out_matrix.m[0][2] = -s;
@@ -611,9 +618,9 @@ purefn m44 M44RotationY(f1 angleRadians) {
     return out_matrix;
 }
     
-purefn m44 M44RotationZ(f1 angleRadians) {
+purefn m44 M44RotationZ(f32 angleRadians) {
     m44 out_matrix = M44Identity();
-    f1 s, c;
+    f32 s, c;
     SinCos(angleRadians, &s, &c);
     out_matrix.m[0][0] = c;
     out_matrix.m[0][1] = s;
@@ -651,7 +658,7 @@ static inline bool VCALL CheckAABBCulled(v128f min, v128f max, const v128f frust
     return true;
 }
 
-static inline bool isPointCulled(f3 _point, m44 matrix, const v128f frustumPlanes[6])
+static inline bool isPointCulled(fv3 _point, m44 matrix, const v128f frustumPlanes[6])
 {
     v128f point = Vec3Transform(VecLoad(&_point.x), matrix.r);
     if (VecDotf(frustumPlanes[0], point) < 0.0f) return false;
@@ -662,19 +669,19 @@ static inline bool isPointCulled(f3 _point, m44 matrix, const v128f frustumPlane
     return true;
 }
 
-static inline f2 WorldToNDC(m44 viewProj, f3 worldPos)
+static inline fv2 WorldToNDC(m44 viewProj, fv3 worldPos)
 {
     v128f pos = VecLoad(&worldPos.x);
     v128f clipCoords = Vec3Transform(pos, viewProj.r);
     pos = VecDiv(clipCoords, VecSplatW(clipCoords));
     Vec3Store(&worldPos.x, pos);
-    return (f2){ worldPos.x, worldPos.y };
+    return (fv2){ worldPos.x, worldPos.y };
 }
 
-static inline f2 WorldToScreenCoord(m44 viewProj, f3 worldPos, int width, int height)
+static inline fv2 WorldToScreenCoord(m44 viewProj, fv3 worldPos, int width, int height)
 {
-    f2 ndc = WorldToNDC(viewProj, worldPos);
-    return (f2){ (width  * ndc.x), (height * ndc.y) };
+    fv2 ndc = WorldToNDC(viewProj, worldPos);
+    return (fv2){ (width  * ndc.x), (height * ndc.y) };
 }
 
 purefn m44 DQToMatrix(DualQuaternion dq)

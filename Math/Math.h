@@ -49,13 +49,13 @@ purefn v128f VCALL Vec3Cross(v128f vec0, v128f vec1)
 #endif
 }
 
-purefn f1 VCALL Min3(v128f ab)
+purefn f32 VCALL Min3(v128f ab)
 {
     v128f xy = VecMin(VecSplatX(ab), VecSplatY(ab));
     return VecGetX(VecMin(xy, VecSplatZ(ab)));
 }
 
-purefn f1 VCALL Max3(v128f ab)
+purefn f32 VCALL Max3(v128f ab)
 {
     v128f xy = VecMax(VecSplatX(ab), VecSplatY(ab));
     return VecGetX(VecMax(xy, VecSplatZ(ab)));
@@ -94,7 +94,7 @@ purefn v128f ACosV(v128f x)
     return VecSelect(p, VecSub(VecSet1(MATH_PI), p),VecCmpGe(x, VecZero()));
 }
 
-purefn f1 Vec3Angle(v128f a, v128f b) {
+purefn f32 Vec3Angle(v128f a, v128f b) {
     v128f dot = VecMul(Vec3DotV(a, b), VecRSqrt(VecMul(Vec3DotV(a, a), Vec3DotV(b, b))));
     dot = VecClamp(dot, VecSet1(-1.0f), VecSet1(1.0f));
     return VecGetX(ACosV(dot));
@@ -113,7 +113,7 @@ purefn v128f VCALL VecCopySign(v128f x, v128f y)
     return VeciBitcastF32(res);
 }
 
-purefn v128f VCALL VecLerp(v128f x, v128f y, f1 t)
+purefn v128f VCALL VecLerp(v128f x, v128f y, f32 t)
 {
     return VecFmadd(VecSub(y, x), VecSet1(t), x);
 }
@@ -222,7 +222,7 @@ purefn void VCALL VecSinCos(v128f V, v128f* pSin, v128f* pCos)
 
 purefn v128f VCALL VecAtan(v128f x)
 {
-    const f1 sa1 =  0.99997726f, sa3 = -0.33262347f, sa5  = 0.19354346f,
+    const f32 sa1 =  0.99997726f, sa3 = -0.33262347f, sa5  = 0.19354346f,
     sa7 = -0.11643287f, sa9 =  0.05265332f, sa11 = -0.01172120f;
       
     const v128f xx = VecMul(x, x);
@@ -246,13 +246,13 @@ purefn v128f VCALL VecAtan2(v128f y, v128f x)
     return VecCopySign(th, y);
 }
 
-purefn f1 VCALL Min3v(v128f ab)
+purefn f32 VCALL Min3v(v128f ab)
 {
     v128f xy = VecMin(VecSplatX(ab), VecSplatY(ab));
     return VecGetX(VecMin(xy, VecSplatZ(ab)));
 }
 
-purefn f1 VCALL Max3v(v128f ab)
+purefn f32 VCALL Max3v(v128f ab)
 {
     v128f xy = VecMax(VecSplatX(ab), VecSplatY(ab));
     return VecGetX(VecMax(xy, VecSplatZ(ab)));
@@ -270,23 +270,23 @@ purefn u8 IsPointInsideAABB(v128f point, v128f aabbMin, v128f aabbMax)
     return (movemask & 0b111) == 0b111;
 }
 
-purefn f1 VCALL IntersectAABB(v128f origin, v128f invDir, v128f aabbMin, v128f aabbMax, f1 minSoFar)
+purefn f32 VCALL IntersectAABB(v128f origin, v128f invDir, v128f aabbMin, v128f aabbMax, f32 minSoFar)
 {
     if (IsPointInsideAABB(origin, aabbMin, aabbMax)) return 0.1f;
     v128f tmin = VecMul(VecSub(aabbMin, origin), invDir);
     v128f tmax = VecMul(VecSub(aabbMax, origin), invDir);
-    f1 tnear = Max3v(VecMin(tmin, tmax));
-    f1 tfar  = Min3v(VecMax(tmin, tmax));
+    f32 tnear = Max3v(VecMin(tmin, tmax));
+    f32 tfar  = Min3v(VecMax(tmin, tmax));
     // return tnear < tfar && tnear > 0.0f && tnear < minSoFar;
     if (tnear < tfar && tnear > 0.0f && tnear < minSoFar)
         return tnear; else return 1e30f;
 }
 
-purefn f1 Sqrf(f1 x) {
+purefn f32 Sqrf(f32 x) {
     return x * x;
 }
 
-purefn f1 Sqrtf(f1 a) {
+purefn f32 Sqrtf(f32 a) {
     #if defined(AX_SUPPORT_SSE) || defined(AX_SUPPORT_NEON)
     return VecGetX(VecSqrt(VecSet1(a)));
     #else
@@ -294,38 +294,38 @@ purefn f1 Sqrtf(f1 a) {
     #endif
 }
 
-purefn f1 Lerpf(f1 x, f1 y, f1 t) {
+purefn f32 Lerpf(f32 x, f32 y, f32 t) {
     return x + (y - x) * t;
 }
 
-purefn u8 IsZerof(f1 x) {
+purefn u8 IsZerof(f32 x) {
     return Absf32(x) <= 0.0001f; 
 }
 
-purefn u8 AlmostEqualf(f1 x, f1 y) {
+purefn u8 AlmostEqualf(f32 x, f32 y) {
     return Absf32(x-y) <= 0.001f;
 }
 
-purefn f1 Signf(f1 x) {
-    f1 one = 1.0f;
+purefn f32 Signf(f32 x) {
+    f32 one = 1.0f;
     s32 res = BitCast(s32, one);
     s32 r1 = BitCast(s32, x);
     res |= r1 & 0x80000000;
-    return BitCast(f1, res);
+    return BitCast(f32, res);
 } 
 
 purefn s32 Sign32(s32 x) {
     return x < 0 ? -1 : 1; // equal to above f1 version
 } 
 
-purefn f1 CopySignf(f1 x, f1 y) {
+purefn f32 CopySignf(f32 x, f32 y) {
     s32 ix = BitCast(s32, x) & 0x7fffffff;
     s32 iy = BitCast(s32, y) & 0x80000000;
     s32 ir = ix | iy;
-    return BitCast(f1, ir);
+    return BitCast(f32, ir);
 }
 
-purefn u8 IsNanf(f1 f) {
+purefn u8 IsNanf(f32 f) {
     u32 intValue = BitCast(u32, f);
     u32 exponent = (intValue >> 23) & 0xFF;
     u32 fraction = intValue & 0x7FFFFF;
@@ -338,50 +338,32 @@ purefn s64 Int64MulDiv(s64 value, s64 numer, s64 denom) {
     return q * numer + r * numer / denom;
 }
 
-purefn f1 FModf(f1 x, f1 y) 
+purefn f32 FModf(f32 x, f32 y) 
 {
-    f1 quotient = x / y;
+    f32 quotient = x / y;
     s32 whole = (s32)quotient;  // truncate toward zero
-    f1 remainder = x - (f1)whole * y;
+    f32 remainder = x - (f32)whole * y;
     if (remainder < 0.0f) remainder += y;
     return remainder;
 }
 
-purefn f1 FMod(f1 x, f1 y) 
+purefn f32 FMod(f32 x, f32 y) 
 {
-    f1 quotient = x / y;
+    f32 quotient = x / y;
     s64 whole = (s64)quotient;  // truncate toward zero
-    f1 remainder = x - (f1)whole * y;
+    f32 remainder = x - (f32)whole * y;
     if (remainder < 0.0) remainder += y;
     return remainder;
 }
 
-purefn f1 Floorf(f1 x) {
-    f1 whole = (f1)(s32)x;  // truncate quotient to integer
-    return x - (x-whole);
-}
-
-purefn f1 Ceilf(f1 x) {
-    f1 whole = (f1)(s32)x;  // truncate quotient to integer
-    return whole + (f1)(x > whole);
-}
-
-purefn f1 Fractf(f1 a) {
-    return a - (s32)(a); 
-}
-
-purefn f1 Fract(f1 a) {
-    return a - (s64)(a); 
-}
-
 // https://github.com/id-Software/DOOM-3/blob/master/neo/idlib/math/Math.h
-purefn f1 Expf(f1 f) {
+purefn f32 Expf(f32 f) {
     const s32 IEEE_FLT_MANTISSA_BITS  =	23;
     const s32 IEEE_FLT_EXPONENT_BITS  =	8;
     const s32 IEEE_FLT_EXPONENT_BIAS  =	127;
     const s32 IEEE_FLT_SIGN_BIT       =	31;
     
-    f1 x = f * 1.44269504088896340f; // multiply with ( 1 / log( 2 ) )
+    f32 x = f * 1.44269504088896340f; // multiply with ( 1 / log( 2 ) )
     
     s32 i = BitCast(s32, x);
     s32 s = ( i >> IEEE_FLT_SIGN_BIT );
@@ -390,15 +372,15 @@ purefn f1 Expf(f1 f) {
     i = ( ( m >> ( IEEE_FLT_MANTISSA_BITS - e ) ) & ~( e >> 31 ) ) ^ s;
     
     s32 exponent = ( i + IEEE_FLT_EXPONENT_BIAS ) << IEEE_FLT_MANTISSA_BITS;
-    f1 y = BitCast(f1, exponent);
-    x -= (f1) i;
+    f32 y = BitCast(f32, exponent);
+    x -= (f32) i;
     if ( x >= 0.5f ) {
         x -= 0.5f;
         y *= 1.4142135623730950488f;	// multiply with sqrt( 2 )
     }
-    f1 x2 = x * x;
-    f1 p = x * ( 7.2152891511493f + x2 * 0.0576900723731f );
-    f1 q = 20.8189237930062f + x2;
+    f32 x2 = x * x;
+    f32 p = x * ( 7.2152891511493f + x2 * 0.0576900723731f );
+    f32 q = 20.8189237930062f + x2;
     x = y * ( q + p ) / ( q - p );
     return x;
 }
@@ -406,19 +388,19 @@ purefn f1 Expf(f1 f) {
 // https://martin.ankerl.com/2012/01/25/optimized-approximative-pow-in-c-and-cpp/
 // https://github.com/ekmett/approximate/blob/master/cbits/fast.c#L81
 // should be much more precise with large b
-purefn f1 Powf(f1 a, f1 b) {
+purefn f32 Powf(f32 a, f32 b) {
     // calculate approximation with fraction of the exponent
     s32 e = (s32) b;
     union {
-        f1 d;
+        f32 d;
         s32 x[2];
-    } u = { (f1)a };
+    } u = { (f32)a };
     u.x[1] = (s32)((b - e) * (u.x[1] - 1072632447) + 1072632447.0f);
     u.x[0] = 0;
     
     // exponentiation by squaring with the exponent's integer part
     // d1 r = u.d makes everything much slower, not sure why
-    f1 r = 1.0;
+    f32 r = 1.0;
     while (e) {
         if (e & 1) {
             r *= a;
@@ -427,27 +409,27 @@ purefn f1 Powf(f1 a, f1 b) {
         e >>= 1;
     }
     
-    return (f1)(u.d * r);
+    return (f32)(u.d * r);
 }
 
 // https://github.com/ekmett/approximate/blob/master/cbits/fast.c#L81 <--you can find d1 versions
-purefn f1 Logf(f1 x) {
+purefn f32 Logf(f32 x) {
     return (BitCast(s32, x) - 1064866805) * 8.262958405176314e-8f;
 }
 
 // if you want log10 for integer you can look at Algorithms.hpp
-purefn f1 Log10f(f1 x) { 
+purefn f32 Log10f(f32 x) { 
     return Logf(x) / 2.30258509299f; // ln(x) / ln(10)
 } 
 
 // you might look at this link as well: 
 // https://tech.ebayinc.com/engineering/fast-approximate-logarithms-part-i-the-basics/
 // A Collection of f1 Tricks pdf
-purefn f1 Log2f(f1 val) {
-    f1 result = (f1)*((s32*)&val);
+purefn f32 Log2f(f32 val) {
+    f32 result = (f32)*((s32*)&val);
     result *= 1.0f / (1 << 23);
     result = result - 127.0f;
-    f1 tmp = result - Floorf(result);
+    f32 tmp = result - Floorf(result);
     tmp = (tmp - tmp*tmp) * 0.346607f;
     return tmp + result; // ln(x) / ln(2) 
 }
@@ -515,50 +497,50 @@ static inline s32 Log10_64(u64 v)
 /*//////////////////////////////////////////////////////////////////////////*/
 
 // https://mazzo.li/posts/vectorized-atan2.html
-purefn f1 ATan(f1 x) 
+purefn f32 ATan(f32 x) 
 {
     return VecGetX(VecAtan(VecSet1(x)));
 }
 
 // Warning! if y and x is zero this will return HalfPI instead of 0.0f unlike cstdlib
-purefn f1 ATan2(f1 y, f1 x) {
+purefn f32 ATan2(f32 y, f32 x) {
     
     return VecGetX(VecAtan2(VecSet1(x), VecSet1(y)));
 }
 
 // Valid input range -1..1 output is -pi..pi
-purefn f1 ACos(f1 x)   
+purefn f32 ACos(f32 x)   
 {
     // Lagarde 2014, "Inverse trigonometric functions GPU optimization for AMD GCN architecture"
     // This is the approximation of degree 1, with a max absolute error of 9.0x10^-3
-    f1 y = Absf32(x);
-    f1 p = -0.1565827f * y + 1.570796f;
+    f32 y = Absf32(x);
+    f32 p = -0.1565827f * y + 1.570796f;
     p *= Sqrtf(1.0f - y);
     return x >= 0.0f ? p : MATH_PI - p;
 }
 
-purefn f1 ACosPositive(f1 x)
+purefn f32 ACosPositive(f32 x)
 {
-    f1 p = -0.1565827f * x + 1.570796f;
+    f32 p = -0.1565827f * x + 1.570796f;
     return p * Sqrtf(1.0f - x);
 }
 
 // Same cost as Acos + 1 FR Same error
 // input [-1, 1] and output [-PI/2, PI/2]
-purefn f1 ASin(f1 x) {
+purefn f32 ASin(f32 x) {
     return MATH_HalfPI - ACos(x);
 }
 
 // https://en.wikipedia.org/wiki/Sine_and_cosine
 // warning: accepts input between -TwoPi and TwoPi  if (Abs(x) > TwoPi) use x = FMod(x + PI, TwoPI) - PI;
 
-purefn f1 RepeatPI(f1 x) {
+purefn f32 RepeatPI(f32 x) {
     return FModf(x + MATH_PI, MATH_TwoPI) - MATH_PI;
 }
 
 // https://en.wikipedia.org/wiki/Fast_inverse_square_root
 // https://rrrola.wz.cz/inv_sqrt.html   <- fast and 2.5x accurate
-purefn f1 RSqrtf(f1 x) {
+purefn f32 RSqrtf(f32 x) {
     #ifdef AX_SUPPORT_SSE
     // when I compile with godbolt -O1 expands to one instruction vrsqrtss
     // which is approximately equal latency as mulps.
@@ -569,55 +551,55 @@ purefn f1 RSqrtf(f1 x) {
     #elif defined(AX_SUPPORT_NEON)
     return vget_lane_f32(vrsqrte_f32(vdup_n_f32(x)), 0);
     #else
-    f1 f = x;
+    f32 f = x;
     u32 i = BitCast(u32, f);
     i = (u32)(0x5F1FFFF9ul - (i >> 1));
-    f = BitCast(f1, i);
+    f = BitCast(f32, i);
     return 0.703952253f * f * (2.38924456f - x * f * f);
     #endif
 }
 
 // cbrt
-purefn f1 CubeRootf(f1 val)
+purefn f32 CubeRootf(f32 val)
 {
-    const f1 fPower = 0.25f;
-    const f1 fScale = 1.0f;
-    const f1 oneRepresentationAsf1 = (f1)(0x3f800000);
-    f1 magicValue = (f1)((*((const u32*)&fScale))) - (oneRepresentationAsf1 * fPower);
-    f1 tmp = (f1)*((u32*)&val);
+    const f32 fPower = 0.25f;
+    const f32 fScale = 1.0f;
+    const f32 oneRepresentationAsf1 = (f32)(0x3f800000);
+    f32 magicValue = (f32)((*((const u32*)&fScale))) - (oneRepresentationAsf1 * fPower);
+    f32 tmp = (f32)*((u32*)&val);
     tmp = (tmp * fPower) + magicValue;
     u32 tmp2 = (u32)tmp;
-    return *(f1*)&tmp2;
+    return *(f32*)&tmp2;
 }
 
-purefn f1 Sin0pi(f1 x) {
+purefn f32 Sin0pi(f32 x) {
     x *= 0.63655f; // constant founded using desmos
     x *= 2.0f - x;
     return x * (0.225f * x + 0.775f); 
 }
 
-purefn f1 Sin(f1 x) 
+purefn f32 Sin(f32 x) 
 {
     return VecGetX(VecSin(VecSet1(x)));
 }
 
 // Accepts input between -TwoPi and TwoPi, use CosR if value is bigger than this range  
-purefn f1 Cos(f1 x)
+purefn f32 Cos(f32 x)
 {
     return VecGetX(VecCos(VecSet1(x)));
 }
 
 // R suffix allows us to use with greater range than -TwoPI, TwoPI
-purefn f1 SinR(f1 x) {
+purefn f32 SinR(f32 x) {
     return Sin(FModf(x + MATH_PI, MATH_TwoPI) - MATH_PI);
 }
 
 // R suffix allows us to use with greater range than -TwoPI, TwoPI
-purefn f1 CosR(f1 x) {
+purefn f32 CosR(f32 x) {
     return Cos(FModf(x + MATH_PI, MATH_TwoPI) - MATH_PI);
 }
 
-static forceinline void SinCos(f1 x, f1* sp, f1* cp) 
+static forceinline void SinCos(f32 x, f32* sp, f32* cp) 
 {
     *sp = Sin(x);
     *cp = Cos(x);
@@ -625,8 +607,8 @@ static forceinline void SinCos(f1 x, f1* sp, f1* cp)
 
 // https://github.com/id-Software/DOOM-3/blob/master/neo/idlib/math/Math.h
 // tanf equivalent
-purefn f1 Tan(f1 a) {
-    f1 s = 0.0f;
+purefn f32 Tan(f32 a) {
+    f32 s = 0.0f;
     u8 reciprocal = false;
 
     if (( a < 0.0f ) || (a >= MATH_PI)) {
@@ -650,61 +632,61 @@ purefn f1 Tan(f1 a) {
 
 // inspired from Casey Muratori's performance aware programming
 // this functions makes the code more readable. OpenCL and Cuda has the same functions as well
-purefn f1 ATan2PI(f1 y, f1 x) { return ATan2(y, x) / MATH_PI; }
-purefn f1 ASinPI(f1 z) { return ASin(z) / MATH_PI; }
-purefn f1 ACosPI(f1 x) { return ACos(x) / MATH_PI; }
-purefn f1 CosPI(f1 x)  { return Cos(x) / MATH_PI; }
-purefn f1 SinPI(f1 x)  { return Sin(x) / MATH_PI; }
+purefn f32 ATan2PI(f32 y, f32 x) { return ATan2(y, x) / MATH_PI; }
+purefn f32 ASinPI(f32 z) { return ASin(z) / MATH_PI; }
+purefn f32 ACosPI(f32 x) { return ACos(x) / MATH_PI; }
+purefn f32 CosPI(f32 x)  { return Cos(x) / MATH_PI; }
+purefn f32 SinPI(f32 x)  { return Sin(x) / MATH_PI; }
 
 ///////////////////////////////////////////////////////////////////////////
 // Packing
 
 // packs -1,1 range f1 to short
-purefn u16 PackSnorm16(f1 x) {
-    return (u16)Clampf32(x * (f1)INT16_MAX, (f1)INT16_MIN, (f1)INT16_MAX);
+purefn u16 PackSnorm16(f32 x) {
+    return (u16)Clampf32(x * (f32)INT16_MAX, (f32)INT16_MIN, (f32)INT16_MAX);
 }
 
-purefn f1 UnpackSnorm16(u16 x) {
-    return (f1)x / (f1)INT16_MAX;
+purefn f32 UnpackSnorm16(u16 x) {
+    return (f32)x / (f32)INT16_MAX;
 }
 
 // packs 0,1 range f1 to short
-purefn u16 PackUnorm16(f1 x) {
-    return (u16)Clampf32(x * (f1)INT16_MAX, (f1)INT16_MIN, (f1)INT16_MAX);
+purefn u16 PackUnorm16(f32 x) {
+    return (u16)Clampf32(x * (f32)INT16_MAX, (f32)INT16_MIN, (f32)INT16_MAX);
 }
 
-purefn f1 UnpackUnorm16(u16 x) {
-    return (f1)x / (f1)UINT16_MAX;
+purefn f32 UnpackUnorm16(u16 x) {
+    return (f32)x / (f32)UINT16_MAX;
 }
 
 ///////////////////////////////////////////////////////////////////////////
 // Easing
 
 // to see visually: https://easings.net/ 
-purefn f1 EaseIn(f1 x) {
+purefn f32 EaseIn(f32 x) {
     return x * x;
 }
 
-purefn f1 EaseOut(f1 x) { 
-    f1 r = 1.0f - x;
+purefn f32 EaseOut(f32 x) { 
+    f32 r = 1.0f - x;
     return 1.0f - (r * r); 
 }
 
-purefn f1 EaseInOut(f1 x) {
+purefn f32 EaseInOut(f32 x) {
     return x < 0.5f ? 2.0f * x * x : 1.0f - Sqrf(-2.0f * x + 2.0f) / 2.0f;
 }
 
 // integral symbol shaped interpolation, similar to EaseInOut
-purefn f1 SmoothStep(f1 edge0, f1 edge1, f1 x) {
-    f1 t = Clamp01f32((x - edge0) / (edge1 - edge0));
+purefn f32 SmoothStep(f32 edge0, f32 edge1, f32 x) {
+    f32 t = Clamp01f32((x - edge0) / (edge1 - edge0));
     return t * t * (3.0f - t * 2.0f);
 }
 
-purefn f1 EaseInSine(f1 x) {
+purefn f32 EaseInSine(f32 x) {
     return 1.0f - Cos((x * MATH_PI) * 0.5f);
 }
 
-purefn f1 EaseOutSine(f1 x) {
+purefn f32 EaseOutSine(f32 x) {
     return Sin((x * MATH_PI) * 0.5f);
 }
 
@@ -713,25 +695,25 @@ purefn f1 EaseOutSine(f1 x) {
 // Other
 
 // Gradually changes a value towards a desired goal over time.
-purefn f1 SmoothDamp(f1 current, f1 target, f1* currentVelocity, f1 smoothTime, f1 maxSpeed, f1 deltaTime)
+purefn f32 SmoothDamp(f32 current, f32 target, f32* currentVelocity, f32 smoothTime, f32 maxSpeed, f32 deltaTime)
 {
     // Based on Game Programming Gems 4 Chapter 1.10
     smoothTime = MMAX(0.0001f, smoothTime);
-    f1 omega = 2.0f / smoothTime;
+    f32 omega = 2.0f / smoothTime;
 
-    f1 x = omega * deltaTime;
-    f1 exp = 1.0f / (1.0f + x + 0.48f * x * x + 0.235f * x * x * x);
-    f1 change = current - target;
-    f1 originalTo = target;
+    f32 x = omega * deltaTime;
+    f32 exp = 1.0f / (1.0f + x + 0.48f * x * x + 0.235f * x * x * x);
+    f32 change = current - target;
+    f32 originalTo = target;
 
     // Clamp maximum speed
-    f1 maxChange = maxSpeed * smoothTime;
+    f32 maxChange = maxSpeed * smoothTime;
     change = Clampf32(change, -maxChange, maxChange);
     target = current - change;
 
-    f1 temp = (*currentVelocity + omega * change) * deltaTime;
+    f32 temp = (*currentVelocity + omega * change) * deltaTime;
     *currentVelocity = (*currentVelocity - omega * temp) * exp;
-    f1 output = target + (change + temp) * exp;
+    f32 output = target + (change + temp) * exp;
 
     // Prevent overshooting
     if (originalTo - current > 0.0f == output > originalTo)
@@ -743,26 +725,26 @@ purefn f1 SmoothDamp(f1 current, f1 target, f1* currentVelocity, f1 smoothTime, 
     return output;
 }
 
-purefn f1 Remap(f1 in, f1 inMin, f1 inMax, f1 outMin, f1 outMax)
+purefn f32 Remap(f32 in, f32 inMin, f32 inMax, f32 outMin, f32 outMax)
 {
     return outMin + (in - inMin) * (outMax - outMin) / (inMax - inMin);
 }
 
-purefn f1 Repeat(f1 t, f1 length)
+purefn f32 Repeat(f32 t, f32 length)
 {
     return Clampf32(t - Floorf(t / length) * length, 0.0f, length);
 }
 
-purefn f1 Step(f1 edge, f1 x)
+purefn f32 Step(f32 edge, f32 x)
 {
-    return (f1)(x > edge);
+    return (f32)(x > edge);
 }
 
 // https://en.wikipedia.org/wiki/Distance_from_a_point_to_a_line
 // position(x0, y0), linePos1(x1, y1), linePos2(x2, y2) 
-purefn f1 LineDistance(f1 x0, f1 y0, f1 x1, f1 y1, f1 x2, f1 y2)
+purefn f32 LineDistance(f32 x0, f32 y0, f32 x1, f32 y1, f32 x2, f32 y2)
 {
-    f1 a = ((x2 - x1) * (y0 - y1)) - ((x0 - x1) * (y2 - y1));
+    f32 a = ((x2 - x1) * (y0 - y1)) - ((x0 - x1) * (y2 - y1));
     return Absf32(a) * RSqrtf(Sqrf(x2 - x1) + Sqrf(y2 - y1));
 }
 

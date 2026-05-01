@@ -6,7 +6,13 @@
 #include "../Math/Matrix.h"
 
 // make 192 or 256 if we use more joints
-#define MaxBonePoses  128
+#define MaxBonePoses      128
+#define MaxBoneDepth      32
+#define NUM_ANIMS         16
+#define ANIM_NUM_FRAMES   24
+#define MAX_ANIM_DURATION 8
+#define MAX_ANIM_COUNT    128
+#define MAX_SKIN_COUNT    128
 
 #if defined(__cplusplus)
 extern "C" {
@@ -43,14 +49,14 @@ typedef s32 eAnimState;
 typedef s32 eAnimControllerState;
 
 typedef struct half3x4_ {
-    h4 x;
-    h4 y;
-    h4 z;
+    f16 x[4];
+    f16 y[4];
+    f16 z[4];
 } half3x4;
 
 typedef struct DualQuaternionHalf_ {
-    h4 real;
-    h4 dual;
+    f16 real[4];
+    f16 dual[4];
 } DualQuaternionHalf;
 
 typedef struct Pose_ {
@@ -59,8 +65,8 @@ typedef struct Pose_ {
 } Pose;
 
 typedef struct HalfPose_ {
-    h4 position;
-    h4 rotation;
+    u64 position;
+    u64 rotation;
 } HalfPose;
 
 typedef struct AnimNode_
@@ -73,9 +79,9 @@ typedef struct AnimationController_
 {
     const SceneBundle* mPrefab;
 
-    s32   mRootNodeIndex;
-    s32   mNumJoints;
-    f1 mRootScale;
+    s32      mRootNodeIndex;
+    s32      mNumJoints;
+    f32       mRootScale;
    
     half3x4* mOutMatrices;
 
@@ -100,10 +106,10 @@ typedef struct AnimatedCharacter_
     s32 mTriggerredAnim;
     s32 mLastAnim;
    
-    f1 mTrigerredNorm;
-    f1 mTransitionTime; // trigger transition time
-    f1 mTransitionOutTime;
-    f1 mCurTransitionTime;
+    f32 mTrigerredNorm;
+    f32 mTransitionTime; // trigger transition time
+    f32 mTransitionOutTime;
+    f32 mCurTransitionTime;
 
     eAnimTriggerOpt mTriggerOpt;
     eAnimState mState;
@@ -111,12 +117,12 @@ typedef struct AnimatedCharacter_
     // angle's recomended values are between (-PI/3, PI/3)
     // calculate the angle between target and player, then clamp the value between the limits
     // to enable spine or neck additive rotation you just have to set angle's any value which is not zero
-    f1 mSpineYAngle;
-    f1 mNeckYAngle;
-    f1 mSpineXAngle; // < will rotate around this axis (normalized) default vec3::up
-    f1 mNeckXAngle;  // < will rotate around this axis (normalized) default vec3::up
+    f32 mSpineYAngle;
+    f32 mNeckYAngle;
+    f32 mSpineXAngle; // < will rotate around this axis (normalized) default vec3::up
+    f32 mNeckXAngle;  // < will rotate around this axis (normalized) default vec3::up
     
-    f2 mAnimTime;
+    fv2 mAnimTime;
 
     Pose mAnimPoseB[MaxBonePoses]; // < blend target
     // two posses for blending
@@ -147,7 +153,7 @@ void AnimationController_Create(const SceneBundle* prefab,
 
 
 // play the given animation, norm is the animation progress between 0.0 and 1.0
-void AnimationController_PlayAnim(AnimationController* ac, s32 index, f1 norm);
+void AnimationController_PlayAnim(AnimationController* ac, s32 index, f32 norm);
 
 void AnimationController_UploadBoneMatrices(AnimationController* ac);
 
@@ -180,14 +186,14 @@ void AnimatedCharacter_Create(const SceneBundle* prefab, AnimatedCharacter* resu
 // xspeed and yspeed is between 0 and infinity speed of animation
 // normTime should be between 0 and 1
 // runs the walking running etc animations from given inputs
-void AnimatedCharacter_EvaluateLocomotion(AnimatedCharacter* ac, f1 x, f1 y, f1 animSpeed);
+void AnimatedCharacter_EvaluateLocomotion(AnimatedCharacter* ac, f32 x, f32 y, f32 animSpeed);
 
-bool AnimatedCharacter_TriggerTransition(AnimatedCharacter* ac, f1 dt, s32 targetAnim);
+bool AnimatedCharacter_TriggerTransition(AnimatedCharacter* ac, f32 dt, s32 targetAnim);
 
 // trigger time is the animation transition time
 // standing anims are animations that we can play when walking or running
 // returns true if triggered successfully (wasn't trigerred already)
-bool AnimatedCharacter_Trigger(AnimatedCharacter* ac, s32 animIndex, f1 triggerInTime, f1 triggerOutTime, eAnimTriggerOpt triggerOpt);
+bool AnimatedCharacter_Trigger(AnimatedCharacter* ac, s32 animIndex, f32 triggerInTime, f32 triggerOutTime, eAnimTriggerOpt triggerOpt);
 
 
 ////////              PRIVATE                 ////////  feel free to use
@@ -201,7 +207,7 @@ void AnimationController_UploadPose(AnimationController* ac, const Pose nodeMatr
 void AnimationController_RecurseBoneMatrices(AnimationController* ac);
 
 // use negative normTime to sample animation reversely
-void AnimationController_SampleAnimationPose(const AnimationController* ac, Pose pose[MaxBonePoses], s32 animIdx, f1 normTime);
+void AnimationController_SampleAnimationPose(const AnimationController* ac, Pose pose[MaxBonePoses], s32 animIdx, f32 normTime);
 
 // when we want to play different animations with lower body and upper body
 void AnimatedCharacter_UploadPoseUpperLower(AnimatedCharacter* ac, const Pose lowerPose[MaxBonePoses], const Pose uperPose[MaxBonePoses]);

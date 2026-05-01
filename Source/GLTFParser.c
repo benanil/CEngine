@@ -97,7 +97,7 @@ static char* CopySJString(sj_Value key, FixedPow2Allocator* allocator)
 {
     size_t len = (size_t)(key.end - key.start);
     char* res = (char*)FixedPow2Allocator_Allocate(allocator, len + 1);
-    MemCpy(res, key.start, len);
+    MemCopy(res, key.start, len);
     return res;
 }
 

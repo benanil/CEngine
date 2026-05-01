@@ -68,27 +68,24 @@ void AnimationController_Create(const SceneBundle* gltfScene, AnimationControlle
 
 void AnimationController_RecurseBoneMatrices(AnimationController* ac)
 {
-    s32 stack[MaxBonePoses];
+    s32 stack[32];
     s32 stackIndex = 0;
 
     s32 root = ac->mRootNodeIndex;
     Pose* poses = ac->mAnimPoseA;
-    const uint8_t* childIndices = ac->mChildIndices;
 
     stack[stackIndex++] = root;
-    f1 parentScale = VecGetW(poses[root].translation); // hack for now
-
+    f32 parentScale = 0.161000; // ac->mRootScale; // VecGetW(poses[root].translation); // hack for now
+    
     while (stackIndex)
     {
         s32 idx = stack[--stackIndex];
         Pose parent = poses[idx];
+        AnimNode node = ac->mAnimNodes[idx];
 
-        const AnimNode* node = &ac->mAnimNodes[idx];
-        const uint8_t* children = &childIndices[node->childrenStartIndex];
-
-        for (s32 c = 0; c < node->numChildren; c++)
+        for (s32 c = 0; c < node.numChildren; c++)
         {
-            s32 child = (s32)children[c];
+            s32 child = (s32)ac->mChildIndices[node.childrenStartIndex + c];
             Pose pose = poses[child];
 
             v128f t = VecMulf(pose.translation, parentScale);
@@ -111,23 +108,47 @@ void AnimationController_UploadBoneMatrices(AnimationController* ac)
     const m44* invMatrices = (const m44*)skin->inverseBindMatrices;
     float rootScale = ac->mPrefab->nodes[ac->mRootNodeIndex].scale[1];
     v128f rootScaleMul = VecSetR(rootScale, rootScale, rootScale, 1.0f);
-    
+    // AX_LOG("rootScale: %f ", rootScale); // 0.161000
+    static bool logged = false;
+    if (false) // !logged)
+    {
+        printf("anim poses\n");
+        Pose* poses = ac->mAnimPoseA;
+        for (s32 i = 0; i < skin->numJoints; i++)
+        {
+            float* pos = poses[i].translation.m128_f32;
+            float* rot = poses[i].rotation.m128_f32;
+            printf("%f, %f, %f, %f\n", pos[0], pos[1], pos[2], pos[3]);
+            printf("%f, %f, %f, %f\n", rot[0], rot[1], rot[2], rot[3]);
+        }
+        printf("anim out\n");
+    }
+
     for (s32 i = 0; i < skin->numJoints; i++)
     {
-        const Pose* pose = ac->mAnimPoseA + skin->joints[i];
-        v128f pos = pose->translation;
+        Pose pose = ac->mAnimPoseA[skin->joints[i]];
+        v128f pos = pose.translation;
         if (i != ac->mRootNodeIndex)
         {
             pos = VecMul(pos, rootScaleMul);
         }
 
-        mat = M44PositionRotationVec(pos, pose->rotation);
+        mat = M44PositionRotationVec(pos, pose.rotation);
         mat = M44Multiply(invMatrices[i], mat);
         mat = M44Transpose(mat);
+        
+        if (!logged)
+        {
+            printf("%f, %f, %f, %f\n", mat.m[0][0], mat.m[0][1], mat.m[0][2], mat.m[0][3]);
+            printf("%f, %f, %f, %f\n", mat.m[1][0], mat.m[1][1], mat.m[1][2], mat.m[1][3]);
+            printf("%f, %f, %f, %f\n", mat.m[2][0], mat.m[2][1], mat.m[2][2], mat.m[2][3]);
+        }
         // with AVX F16C this is single instruction! vcvtps2ph 
         Float8ToHalf8(ac->mOutMatrices[i].x, &mat.m[0][0]);
         Float4ToHalf4(ac->mOutMatrices[i].z, &mat.m[2][0]); // this is single instruction with it as well
     }
+
+    logged = true;
 }
 
 void AnimationController_UploadPose(AnimationController* ac, const Pose pose[MaxBonePoses])
@@ -136,13 +157,13 @@ void AnimationController_UploadPose(AnimationController* ac, const Pose pose[Max
     AnimationController_UploadBoneMatrices(ac);
 }
 
-void AnimationController_PlayAnim(AnimationController* ac, s32 index, f1 norm)
+void AnimationController_PlayAnim(AnimationController* ac, s32 index, f32 norm)
 {   
     AnimationController_SampleAnimationPose(ac, ac->mAnimPoseA, index, norm);
     AnimationController_UploadPose(ac, ac->mAnimPoseA);
 }
 
-void AnimationController_SampleAnimationPose(const AnimationController* ac, Pose pose[MaxBonePoses], s32 animIdx, f1 normTime)
+void AnimationController_SampleAnimationPose(const AnimationController* ac, Pose pose[MaxBonePoses], s32 animIdx, f32 normTime)
 {
     const AAnimation* animation = &ac->mPrefab->animations[animIdx];
     const bool reverse = normTime < 0.0f;
@@ -150,7 +171,7 @@ void AnimationController_SampleAnimationPose(const AnimationController* ac, Pose
     normTime = Minf32(Absf32(normTime), 1.0f);
     if (reverse) normTime = MMAX(1.0f - normTime, 0.0f);
 
-    float realTime = normTime * animation->duration;
+    f32 realTime = normTime * animation->duration;
     
     for (s32 c = 0; c < animation->numChannels; c++)
     {

@@ -146,7 +146,6 @@ typedef __m128i v128u;
 #define VecStore(ptr, x)         _mm_storeu_ps(ptr, x)
 #define VecStoreA(ptr, x)        _mm_store_ps(ptr, x)
 
-
 #define MakeShuffleMask(x,y,z,w)     (x | (y<<2) | (z<<4) | (w<<6)) /* internal use only */
 // Get Set
 // _mm_permute_ps is avx only
@@ -342,7 +341,7 @@ typedef __m128i v128u;
 #define VecStoreLo64(p, v)          _mm_storel_pi((__m64*)(p), _mm_castsi128_ps(v)) /* store lower 64 bits | NEON: vst1 */
 #define VecStoreHi64(p, v)          _mm_storeh_pi((__m64*)(p), _mm_castsi128_ps(v)) /* store lower 64 bits | NEON: vst1 */
 #define VecLoadLo64(p, v)           _mm_loadl_pi(v, (__m64*)(p))  /* store lower 64 bits | NEON: vst1 */
-#define VecLoadHi64(p, v)           _mm_loadh_pi(v, (__m64*)(p))  /* store lower 64 bits | NEON: vst1 */
+#define VecLoadHi64(p, v)           _mm_loadh_pi(v, (__m64*)(p))  /* store high 64 bits | NEON: vst1 */
 
 static inline v128f VCALL Vec3Load(void const* x) {
     v128f v = _mm_loadu_ps((float const*)x); 
@@ -813,13 +812,23 @@ typedef v128i i4;
 
 // shared 
 purefn f4 VCALL Vec3DistV    (f4 a, f4 b) { f4 x = VecSub(a, b); return Vec3LenV(x);  } 
-purefn f1 VCALL Vec3DistfV   (f4 a, f4 b) { f4 x = VecSub(a, b); return Vec3LenfV(x); } 
-purefn f1 VCALL Vec3DistSqrfV(f4 a, f4 b) { f4 x = VecSub(a, b); return Vec3DotfV(x, x); } 
+purefn f32 VCALL Vec3DistfV   (f4 a, f4 b) { f4 x = VecSub(a, b); return Vec3LenfV(x); } 
+purefn f32 VCALL Vec3DistSqrfV(f4 a, f4 b) { f4 x = VecSub(a, b); return Vec3DotfV(x, x); } 
 
 purefn v128f VCALL VecClamp(v128f v, v128f vmin, v128f vmax)
 {
     v = VecSelect(v, vmax, VecCmpGt(v, vmax));
     return VecSelect(v, vmin, VecCmpLt(v, vmin));
+}
+
+purefn u32 VCALL VecMaxElement(v128f a)
+{
+    v128f t = VecSwapPairs(a);
+    v128f m = VecMax(a, t);
+    t = VecSwapHalves(m);
+    v128f max_val = VecMax(m, t);
+    u32 mask = (u32)VecMovemask(VecCmpGe(a, max_val));
+    return TrailingZeroCount32(mask);
 }
 
 #if defined(AX_SUPPORT_SSE) || defined(AX_ARM)

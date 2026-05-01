@@ -30,8 +30,8 @@ typedef struct PrimitiveGroup_
     u32 numIndices;
     u32 indexOffset;
     u32 valid;
-    h4  aabbMin;
-    h4  aabbMax;
+    f16 aabbMin[4];
+    f16 aabbMax[4];
 } PrimitiveGroup;
 
 typedef struct Range_
@@ -76,6 +76,6 @@ u32 GetNumPrimitivesInBundle(u32 bundleIdx);
 
 void ECS_CompactEntities();
 
-void ECS_Update(f1 delta_time);
+void ECS_Update(f32 delta_time);
 
 #endif

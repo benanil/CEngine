@@ -17,19 +17,19 @@ typedef struct Camera_
     m44 projection;
     m44 view;
     
-    f1 verticalFOV;
-    f1 nearClip;
-    f1 farClip;
+    f32 verticalFOV;
+    f32 nearClip;
+    f32 farClip;
 
-    i2 viewportSize, monitorSize;
+    iv2 viewportSize, monitorSize;
        
-    f3 position;
-    f2 mouseOld;
-    f3 targetPos;
-    f3 Front, Right, Up;
+    fv3 position;
+    fv2 mouseOld;
+    fv3 targetPos;
+    fv3 Front, Right, Up;
  
-    f1 pitch, yaw, senstivity;
-    f1 speed;
+    f32 pitch, yaw, senstivity;
+    f32 speed;
 
     u8 wasPressing;
  
@@ -40,10 +40,10 @@ typedef struct Camera_
 } Camera;
 
 
-static inline void Camera_RecalculateProjection(Camera* camera, int width, int height)
+static inline void Camera_RecalculateProjection(Camera* camera, s32 width, s32 height)
 {
     camera->viewportSize.x = width; camera->viewportSize.y = height;
-    camera->projection = PerspectiveFovRH(camera->verticalFOV * MATH_DegToRad, (f1)width, (f1)height, camera->nearClip, camera->farClip);
+    camera->projection = PerspectiveFovRH(camera->verticalFOV * MATH_DegToRad, (f32)width, (f32)height, camera->nearClip, camera->farClip);
     camera->inverseProjection = M44Inverse(camera->projection);
 }
 
@@ -65,9 +65,9 @@ static inline void Camera_CalculateLook(Camera* camera) // from yaw pitch
     camera->Up = F3Cross(&camera->Right, &camera->Front);
 }
 
-static inline RayV ScreenPointToRay(Camera* camera, f2 pos)
+static inline RayV ScreenPointToRay(Camera* camera, fv2 pos)
 {
-    f2 coord = (f2){ pos.x / (f1)camera->viewportSize.x, pos.y / (f1)camera->viewportSize.y };
+    fv2 coord = (fv2){ pos.x / (f32)camera->viewportSize.x, pos.y / (f32)camera->viewportSize.y };
     coord.y = 1.0f - coord.y;    // Flip Y to match the NDC coordinate system
     coord = F2SubF(F2MulF(coord, 2.0f), 1.0f); // Map to range [-1, 1]
 
@@ -101,9 +101,9 @@ static inline void CameraInit(Camera* camera, int width, int height)
     Camera_RecalculateProjection(camera, width, height);
 }
 
-static inline void InfiniteMouse(f2 point)
+static inline void InfiniteMouse(fv2 point)
 {
-    i2 monitorSize;
+    iv2 monitorSize;
     wGetMonitorSize(&monitorSize.x, &monitorSize.y);
     
     #ifndef __ANDROID__
@@ -115,16 +115,16 @@ static inline void InfiniteMouse(f2 point)
     #endif
 }
 
-static inline void CameraUpdate(Camera* camera, f1 dt)
+static inline void CameraUpdate(Camera* camera, f32 dt)
 {
     bool pressing = GetMouseDown(MouseButton_Right);
-    f1 speed = dt * (1.0f + GetKeyDown(SDLK_LSHIFT) * 2.0f) * camera->speed;
+    f32 speed = dt * (1.0f + GetKeyDown(SDLK_LSHIFT) * 2.0f) * camera->speed;
     
     if (!pressing) { camera->wasPressing = false; return; }
         
-    f2 mousePos;
+    fv2 mousePos;
     GetMousePos(&mousePos.x, &mousePos.y);
-    f2 diff = F2Sub(mousePos, camera->mouseOld);
+    fv2 diff = F2Sub(mousePos, camera->mouseOld);
     
     SDL_Cursor* cursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_MOVE);
     SDL_SetCursor(cursor);

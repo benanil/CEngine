@@ -34,10 +34,10 @@ extern "C" {
 typedef struct PlatformContext_ 
 {
     // Mouse state
-    f1  MousePosX, MousePosY;
-    f1  MouseWheelDelta;
-    f1  SecondsSinceLastClick;
-    f1  DeltaTime;
+    f32  MousePosX, MousePosY;
+    f32  MouseWheelDelta;
+    f32  SecondsSinceLastClick;
+    f32  DeltaTime;
     
     s64 LastClickTime;
     s64 CPUFrequency;
@@ -65,12 +65,12 @@ typedef enum MouseButton_ {
 } MouseButton;
 
 // Mouse
-void GetMousePos(f1* x, f1* y);
-void SetMousePos(f1 x, f1 y);
-void wGetMouseWindowPos(f1* x, f1* y);
+void GetMousePos(f32* x, f32* y);
+void SetMousePos(f32 x, f32 y);
+void wGetMouseWindowPos(f32* x, f32* y);
 void wGetMonitorSize(s32* width, s32* height);
-void SetMouseWindowPos(f1 x, f1 y);
-f1   GetMouseWheelDelta();
+void SetMouseWindowPos(f32 x, f32 y);
+f32   GetMouseWheelDelta();
 u8   GetDoubleClicked();
 u8   AnyMouseKeyDown();
 u8   GetMouseDown(s32 button);
@@ -97,11 +97,11 @@ void wOpenFolder(const char* folderPath, CP_DialogFileCallback callback);
 void wOpenFile(const char* filePath, CP_DialogFileCallback callback);
 
 // Time
-f1   GetDeltaTime();
-f1   TimeSinceStartup();
+f32   GetDeltaTime();
+f32   TimeSinceStartup();
 
 // time is nanoseconds
-f1   TimeToSeconds(s64 time);
+f32   TimeToSeconds(s64 time);
 s64  TimeToMilliseconds(s64 time);
 s64  TimeToMicroseconds(s64 time);
 
