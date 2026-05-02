@@ -16,8 +16,8 @@ struct Pose {
 };
 
 struct AnimNode {
-    uint childrenStartIndex;
-    uint numChildren;
+    u16 childrenStartIndex;
+    u16 numChildren;
 };
 
 struct AnimationInstance {
@@ -78,18 +78,16 @@ f16_2x4 LoadPose(int i, int frameOffset, int frame)
 
 AnimNode GetAnimNode(int idx)
 {
-    uint packed = animHierarchy[idx];
+    u16 packed = animHierarchy[idx];
     AnimNode node;
     node.childrenStartIndex = packed & 0xFF;
     node.numChildren        = (packed >> 8) & 0xFF;
     return node;
 }
 
-uint GetChildIndex(uint idx)
+u16 GetChildIndex(u16 idx)
 {
-    const uint ChildPackOffset = MaxBonePoses * 2;
-    uint packed = animHierarchy[ChildPackOffset + (idx >> 2)];
-    return (packed >> ((idx & 3) * 8)) & 0xFF;
+    return (animHierarchy[idx] >> 16) & 0xff;
 }
 
 f16_4x4 LoadMatrix(int idx)
@@ -104,23 +102,23 @@ f16_4x4 LoadMatrix(int idx)
     return result;
 }
 
-void RecurseBoneMatrices(uint rootNodeIndex, f16 rootScale, inout Pose poses[MaxBonePoses])
+void RecurseBoneMatrices(u16 rootNodeIndex, f16 rootScale, inout Pose poses[MaxBonePoses])
 {
-    s32 stack[32];
-    s32 stackIndex = 0;
+    u16 stack[32];
+    u16 stackIndex = 0;
     stack[stackIndex++] = rootNodeIndex;
     f16 parentScale = rootScale;
-    const s32 skinOffset = 0;
+    const u16 skinOffset = 0;
 
     while (stackIndex)
     {
-        s32 idx = stack[--stackIndex];
+        u16 idx = stack[--stackIndex];
         Pose parent = poses[idx];
         AnimNode node = GetAnimNode(skinOffset + idx);
 
-        for (s32 c = 0; c < node.numChildren; c++)
+        for (u16 c = 0; c < node.numChildren; c++)
         {
-            s32 child = (s32)GetChildIndex(skinOffset + node.childrenStartIndex + c);
+            u16 child = (u16)GetChildIndex(skinOffset + node.childrenStartIndex + c);
             Pose pose = poses[child];
 
             f16_4 t = VecMulf(pose.translation, parentScale);
@@ -161,11 +159,11 @@ void main(uint3 GlobalInvocationID : SV_DispatchThreadID)
         poses[i].rotation    = QNlerp(a[1], b[1], animProgress);
     }
 
-    RecurseBoneMatrices(data.rootNodeIndex, f16(data.rootScale), poses);
+    RecurseBoneMatrices((u16)data.rootNodeIndex, f16(data.rootScale), poses);
 
     f16 rootScale = f16(data.rootScale);
     int numJoints = int(data.numJoints);
-    for (s32 i = 0; i < numJoints; i++)
+    for (s16 i = 0; i < numJoints; i++)
     {
         Pose pose = poses[joints[i]];
         f16_4 pos = pose.translation;

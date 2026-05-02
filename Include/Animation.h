@@ -6,9 +6,9 @@
 #include "../Math/Matrix.h"
 
 // make 192 or 256 if we use more joints
-#define MaxBonePoses      128
+#define MAX_BONES         128
 #define MaxBoneDepth      32
-#define NUM_ANIMS         2048
+#define MAX_ANIM_INSTANCES  2048
 #define ANIM_NUM_FRAMES   24
 #define MAX_ANIM_DURATION 8
 #define MAX_ANIM_COUNT    128
@@ -85,9 +85,9 @@ typedef struct AnimationController_
    
     half3x4* mOutMatrices;
 
-    AnimNode mAnimNodes[MaxBonePoses * 2];
-    Pose     mAnimPoseA[MaxBonePoses * 2]; // < the result bone array that we send to GPU
-    u8       mChildIndices[MaxBonePoses * 2];
+    AnimNode mAnimNodes[MAX_BONES * 2];
+    Pose     mAnimPoseA[MAX_BONES * 2]; // < the result bone array that we send to GPU
+    u8       mChildIndices[MAX_BONES * 2];
 
 } AnimationController;
 
@@ -124,10 +124,10 @@ typedef struct AnimatedCharacter_
     
     fv2 mAnimTime;
 
-    Pose mAnimPoseB[MaxBonePoses]; // < blend target
+    Pose mAnimPoseB[MAX_BONES]; // < blend target
     // two posses for blending
-    Pose mAnimPoseC[MaxBonePoses]; // < Trigerred animations result
-    Pose mAnimPoseD[MaxBonePoses]; // < Trigerred Animations blend target
+    Pose mAnimPoseC[MAX_BONES]; // < Trigerred animations result
+    Pose mAnimPoseD[MAX_BONES]; // < Trigerred Animations blend target
 
     // animation indexes to blend coordinates
     // Given xy blend coordinates, we will blend animations.
@@ -201,17 +201,17 @@ bool AnimatedCharacter_Trigger(AnimatedCharacter* ac, s32 animIndex, f32 trigger
 
 
 // upload to gpu. internal usage only for now
-void AnimationController_UploadPose(AnimationController* ac, const Pose nodeMatrices[MaxBonePoses]);
+void AnimationController_UploadPose(AnimationController* ac, const Pose nodeMatrices[MAX_BONES]);
     
 // void AnimationController_RecurseBoneMatrices(AnimationController* ac); 
 
 void AnimationController_RecurseBoneMatrices(AnimationController* ac);
 
 // use negative normTime to sample animation reversely
-void AnimationController_SampleAnimationPose(const AnimationController* ac, Pose pose[MaxBonePoses], s32 animIdx, f32 normTime);
+void AnimationController_SampleAnimationPose(const AnimationController* ac, Pose pose[MAX_BONES], s32 animIdx, f32 normTime);
 
 // when we want to play different animations with lower body and upper body
-void AnimatedCharacter_UploadPoseUpperLower(AnimatedCharacter* ac, const Pose lowerPose[MaxBonePoses], const Pose uperPose[MaxBonePoses]);
+void AnimatedCharacter_UploadPoseUpperLower(AnimatedCharacter* ac, const Pose lowerPose[MAX_BONES], const Pose uperPose[MAX_BONES]);
 
 
 #if defined(__cplusplus)

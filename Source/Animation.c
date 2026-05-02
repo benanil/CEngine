@@ -31,7 +31,7 @@ void AnimationController_Create(const SceneBundle* gltfScene, AnimationControlle
     if (skin == NULL) {
         AX_WARN("skin is null"); return;
     }
-    if (skin->numJoints > MaxBonePoses) {
+    if (skin->numJoints > MAX_BONES) {
         AX_WARN("number of joints is greater than max capacity"); 
         return; 
     }
@@ -41,7 +41,7 @@ void AnimationController_Create(const SceneBundle* gltfScene, AnimationControlle
     result->mNumJoints     = skin->numJoints;
     result->mRootScale     = gltfScene->nodes[result->mRootNodeIndex].scale[0]; // 0.1610, rcp: 6.2111
     
-    ASSERT(result->mRootNodeIndex < MaxBonePoses);
+    ASSERT(result->mRootNodeIndex < MAX_BONES);
     ASSERT(gltfScene->nodes[result->mRootNodeIndex].numChildren > 0); // root node has to have children nodes
     MemSet(result->mChildIndices, 255, sizeof(result->mChildIndices));
 
@@ -129,7 +129,7 @@ void AnimationController_UploadBoneMatrices(AnimationController* ac)
 
 }
 
-void AnimationController_UploadPose(AnimationController* ac, const Pose pose[MaxBonePoses])
+void AnimationController_UploadPose(AnimationController* ac, const Pose pose[MAX_BONES])
 {
     AnimationController_RecurseBoneMatrices(ac);
     AnimationController_UploadBoneMatrices(ac);
@@ -141,7 +141,7 @@ void AnimationController_PlayAnim(AnimationController* ac, s32 index, f32 norm)
     AnimationController_UploadPose(ac, ac->mAnimPoseA);
 }
 
-void AnimationController_SampleAnimationPose(const AnimationController* ac, Pose pose[MaxBonePoses], s32 animIdx, f32 normTime)
+void AnimationController_SampleAnimationPose(const AnimationController* ac, Pose pose[MAX_BONES], s32 animIdx, f32 normTime)
 {
     const AAnimation* animation = &ac->mPrefab->animations[animIdx];
     const bool reverse = normTime < 0.0f;
@@ -224,7 +224,7 @@ static inline void RotateNode(Pose* node, float xAngle, float yAngle)
     node->rotation = QMul(QMul(QFromXAngle(xAngle), QFromYAngle(yAngle)), node->rotation);
 }
 
-static void MergeAnims(Pose pose0[MaxBonePoses], const Pose pose1[MaxBonePoses], float animBlend, s32 numNodes)
+static void MergeAnims(Pose pose0[MAX_BONES], const Pose pose1[MAX_BONES], float animBlend, s32 numNodes)
 {
     for (s32 i = 0; i < numNodes; i++)
     {
@@ -244,7 +244,7 @@ static void CopyPoses(Pose* destination, const Pose* pose, s32 begin, s32 numPos
 }
 
 // when we want to play different animations with lower body and upper body
-void AnimatedCharacter_UploadPoseUpperLower(AnimatedCharacter* ac, const Pose lowerPose[MaxBonePoses], const Pose uperPose[MaxBonePoses])
+void AnimatedCharacter_UploadPoseUpperLower(AnimatedCharacter* ac, const Pose lowerPose[MAX_BONES], const Pose uperPose[MAX_BONES])
 {
     // apply posess to lower body and upper body seperately, so both of it has diferrent animations
     CopyPoses(ac->controller.mAnimPoseA, lowerPose, ac->lowerBodyIdxStart, ac->controller.mNumJoints - ac->lowerBodyIdxStart);

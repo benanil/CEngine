@@ -34,8 +34,8 @@
 
 #define TESTGPU_SUPPORTED_FORMATS (SDL_GPU_SHADERFORMAT_SPIRV | SDL_GPU_SHADERFORMAT_DXBC | SDL_GPU_SHADERFORMAT_DXIL | SDL_GPU_SHADERFORMAT_METALLIB)
 
-static AnimationController AnimControllers[NUM_ANIMS];
-AX_ALIGN(4) half3x4 OutMatrices[MaxBonePoses * NUM_ANIMS]; // for cpu only
+static AnimationController AnimControllers[MAX_ANIM_INSTANCES];
+AX_ALIGN(4) half3x4 OutMatrices[MAX_BONES * MAX_ANIM_INSTANCES]; // for cpu only
 
 SceneBundle*        gPaladin;
 
@@ -51,10 +51,10 @@ extern Graphics     gGFX;
 extern ECS          ecs;
 extern bool         g_UseGPUComputeAnimation;
 
-#define ANIM_POSE_NUM_INT32 4
-#define ANIM_MATRIX_NUM_INT32 8
-#define MAX_GPU_ANIM_FRAMES (ANIM_NUM_FRAMES * MAX_ANIM_DURATION * MAX_ANIM_COUNT)
-#define ANIM_NODE_COUNT (MaxBonePoses * 2)
+#define ANIM_POSE_NUM_INT32     4
+#define ANIM_MATRIX_NUM_INT32   8
+#define MAX_GPU_ANIM_FRAMES     (ANIM_NUM_FRAMES * MAX_ANIM_DURATION * MAX_ANIM_COUNT)
+#define ANIM_NODE_COUNT         (MAX_BONES * 2)
 #define ANIM_CHILD_PACKED_COUNT ((ANIM_NODE_COUNT + 3) / 4)
 
 typedef struct GPUAnimationInstance_
@@ -73,12 +73,12 @@ typedef struct GPUAnimationData_
     f32 rootScale;
 } GPUAnimationData;
 
-u32     animPoses[MaxBonePoses * ANIM_NUM_FRAMES * MAX_ANIM_DURATION * MAX_ANIM_COUNT * ANIM_POSE_NUM_INT32];
+u32     animPoses[MAX_BONES * ANIM_NUM_FRAMES * MAX_ANIM_DURATION * MAX_ANIM_COUNT * ANIM_POSE_NUM_INT32];
 u32     animHierarchy[ANIM_NODE_COUNT + ANIM_CHILD_PACKED_COUNT];
-u32     animJoints[MaxBonePoses * MAX_SKIN_COUNT  * 2];
-f16_3x4 outBoneMtx[MaxBonePoses * NUM_ANIMS]; // only for cpu
-u32     invBindMatrices[MaxBonePoses * MAX_SKIN_COUNT  * 2 * ANIM_MATRIX_NUM_INT32];
-GPUAnimationInstance animInstances[NUM_ANIMS];
+u32     animJoints[MAX_BONES * MAX_SKIN_COUNT  * 2];
+f16_3x4 outBoneMtx[MAX_BONES * MAX_ANIM_INSTANCES]; // only for cpu
+u32     invBindMatrices[MAX_BONES * MAX_SKIN_COUNT  * 2 * ANIM_MATRIX_NUM_INT32];
+GPUAnimationInstance animInstances[MAX_ANIM_INSTANCES];
 GPUAnimationData animData[MAX_ANIM_COUNT];
 u32 numGPUAnimations;
 
@@ -96,20 +96,20 @@ int AnimationGetGPUData(AnimationController* ac, int animIdx, int frameOffset)
     const ASkin*      skin      = &ac->mPrefab->skins[0];
     const int framePerSecond    = ANIM_NUM_FRAMES;
     int numFrames = (int)(animation->duration * framePerSecond);
-    int numPose   = frameOffset * MaxBonePoses;
+    int numPose   = frameOffset * MAX_BONES;
     MemsetZero(animHierarchy, sizeof(animHierarchy));
 
     for (int i = 0; i < numFrames; i++)
     {
         float norm = (float)i / (float)numFrames;
         AnimationController_SampleAnimationPose(ac, ac->mAnimPoseA, animIdx, norm);
-        for (int poseIdx = 0; poseIdx < MaxBonePoses; poseIdx++)
+        for (int poseIdx = 0; poseIdx < MAX_BONES; poseIdx++)
         {
             u32* outPose = animPoses + ((numPose + poseIdx) * ANIM_POSE_NUM_INT32);
             StoreHalf4(outPose, ac->mAnimPoseA[poseIdx].translation.m128_f32);
             StoreHalf4(outPose + 2, ac->mAnimPoseA[poseIdx].rotation.m128_f32);
         }
-        numPose += MaxBonePoses;
+        numPose += MAX_BONES;
     }
 
     animData[animIdx] = (GPUAnimationData){
@@ -123,15 +123,10 @@ int AnimationGetGPUData(AnimationController* ac, int animIdx, int frameOffset)
 
     for (int i = 0; i < ANIM_NODE_COUNT; i++)
     {
-        uint8_t  start = ac->mAnimNodes[i].childrenStartIndex;
-        uint8_t  count = ac->mAnimNodes[i].numChildren;
-        animHierarchy[i] = (u32)start | ((u32)count << 8);
-    }
-
-    for (int i = 0; i < ANIM_NODE_COUNT; i++)
-    {
+        u32 start = (u32)ac->mAnimNodes[i].childrenStartIndex;
+        u32 count = (u32)ac->mAnimNodes[i].numChildren;
         u32 child = (u32)ac->mChildIndices[i];
-        animHierarchy[ANIM_NODE_COUNT + (i >> 2)] |= child << ((i & 3) * 8);
+        animHierarchy[i] = start | (count << 8) | (child << 16);
     }
 
     for (int i = 0; i < skin->numJoints; i++)
@@ -157,7 +152,7 @@ void UpdateAnimations()
     s64 frameCount = PlatformCtx.FrameCount;
     int i = 0;
     #pragma omp parallel for schedule(static) num_threads(omp_get_num_procs() / 2)
-    for (i = 0; i < NUM_ANIMS; i++)
+    for (i = 0; i < MAX_ANIM_INSTANCES; i++)
     {
         float distSqr = Vec3DistSqrfV(camPos, ecs.entities[i].position);
     
@@ -210,7 +205,7 @@ void DispatchAnimationCompute(SDL_GPUCommandBuffer* cmd)
         int   numInstances;
     } params;
     params.timeSinceStartup = (float)TimeSinceStartup();
-    params.numInstances     = NUM_ANIMS;
+    params.numInstances     = MAX_ANIM_INSTANCES;
     
     SDL_GPUStorageBufferReadWriteBinding rw_binding = {
         .buffer = g_RenderState.boneBuffer,
@@ -231,13 +226,13 @@ void DispatchAnimationCompute(SDL_GPUCommandBuffer* cmd)
     SDL_BindGPUComputeStorageBuffers(pass, 0, ro_buffers, 6);
     SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
 
-    SDL_DispatchGPUCompute(pass, (NUM_ANIMS + 31) / 32, 1, 1);
+    SDL_DispatchGPUCompute(pass, (MAX_ANIM_INSTANCES + 31) / 32, 1, 1);
     SDL_EndGPUComputePass(pass);
 }
 
 static void InitAnimationInstances(void)
 {
-    for (u32 i = 0; i < NUM_ANIMS; i++)
+    for (u32 i = 0; i < MAX_ANIM_INSTANCES; i++)
     {
         u32 hash = WangHash(i + 645u);
         u32 animIdx = numGPUAnimations ? (hash % numGPUAnimations) : 0u;
@@ -438,7 +433,7 @@ void Render()
                 // const bool hasMaterial = sceneBundle->materials && primitive->material != UINT16_MAX;
                 // const AMaterial material = sceneBundle->materials[primitive->material];
                 // const Matrix4 model = nodeTransforms[nodeIndex];
-                SDL_DrawGPUIndexedPrimitives(pass, primitive->numIndices, NUM_ANIMS, primitive->indexOffset, 0, 0);
+                SDL_DrawGPUIndexedPrimitives(pass, primitive->numIndices, MAX_ANIM_INSTANCES, primitive->indexOffset, 0, 0);
             }
     
             for (s32 i = 0; i < node->numChildren; i++)    
