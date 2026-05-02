@@ -100,9 +100,11 @@ f16_4x4 LoadMatrix(int idx)
 
 void FlattenBoneMatrices(uint numNodes, inout Pose poses[MAX_BONES])
 {
+    // 0 is root node
     for (u16 idx = 1; idx < numNodes; idx++)
     {
         u16 parentIdx = GetParentIndex(idx);
+        // if (parentIdx == 0xFFFFu) continue;
         Pose parent = poses[parentIdx];
         Pose pose = poses[idx];
         f16_4 t = QMulVec3V(parent.rotation, pose.translation);
@@ -128,7 +130,7 @@ void main(uint3 GlobalInvocationID : SV_DispatchThreadID)
     
     Pose poses[MAX_BONES];
     f16 animProgress = f16(Fractf(animT));
-    for (int i = 0; i < MAX_BONES; i++)
+    for (int i = 0; i < data.numNodes; i++)
     {
         f16_2x4 a = LoadPose(i, int(data.frameOffset), frameAIdx);
         f16_2x4 b = LoadPose(i, int(data.frameOffset), frameBIdx);

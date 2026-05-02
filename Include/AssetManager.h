@@ -22,32 +22,38 @@ extern "C" {
 
 s32 LoadFBX(const u8* path, SceneBundle* fbxScene, f32 scale);
 
+/* Binary asset cache */
 s32 SaveGLTFBinary(const SceneBundle* gltf, const u8* path);
 
 s32 LoadSceneBundleBinary(const u8* path, SceneBundle* gltf);
 
-// returns 0 on not enough memory
-s32 CreateVerticesIndices(SceneBundle* gltf);
-
-void CreateVerticesIndicesSkined(SceneBundle* gltf);
+s32 LoadGLTFCached(const char* path, SceneBundle* scene, Texture* textures);
 
 // ABM = AX binary mesh
 u8 IsABMLastVersion(const u8* path);
 
-u8 IsTextureLastVersion(const u8* path);
-
-void SaveSceneImages(SceneBundle* scene, const u8* savePath, bool deleteRemaining);
-
-// returns: 0 = noFile, 1 = success, 2 = missingImages, 3 = fileNumImage missmatch
-s32 LoadSceneImages(const u8* texturePath, Texture* textures, s32 numImages);
-
-s32 LoadGLTFCached(const char* path, SceneBundle* scene, Texture* textures);
+/* Mesh baking */
+// returns 0 on not enough memory
+s32 CreateVerticesIndices(SceneBundle* gltf);
 
 void OptimizeMesh(const SceneBundle* gltf);
 
 void GenerateLOD_75_GLTF(SceneBundle* sceneBundle);
 
 void GenerateLOD_50_GLTF(SceneBundle* sceneBundle);
+
+/* Animation baking */
+void BakeGLTFAnimations(SceneBundle* gltf);
+
+void CreateVerticesIndicesSkined(SceneBundle* gltf);
+
+/* Texture/image cache */
+u8 IsTextureLastVersion(const u8* path);
+
+void SaveSceneImages(SceneBundle* scene, const u8* savePath, bool deleteRemaining);
+
+// returns: 0 = noFile, 1 = success, 2 = missingImages, 3 = fileNumImage missmatch
+s32 LoadSceneImages(const u8* texturePath, Texture* textures, s32 numImages);
 
 #if defined(__cplusplus)
 }

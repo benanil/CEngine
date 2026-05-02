@@ -301,6 +301,12 @@
 					<File>
 						<Path>Include/SceneNormalize.h</Path>
 					</File>
+					<File>
+						<Path>Include/AnimationBake.h</Path>
+					</File>
+					<File>
+						<Path>Include/MeshBake.h</Path>
+					</File>
 				</Children>
 			</Folder>
 			<Folder>
@@ -425,6 +431,12 @@
 					</File>
 					<File>
 						<Path>Source/SceneNormalize.c</Path>
+					</File>
+					<File>
+						<Path>Source/AnimationBake.c</Path>
+					</File>
+					<File>
+						<Path>Source/MeshBake.c</Path>
 					</File>
 				</Children>
 			</Folder>

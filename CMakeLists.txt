@@ -99,6 +99,8 @@ target_sources(${EXECUTABLE_NAME} PRIVATE
     Source/Rendering.c
     Source/GLTFParser.c
     Source/SceneNormalize.c
+    Source/AnimationBake.c
+    Source/MeshBake.c
     Source/Animation.c
     Source/Algorithm.c
     Source/AssetManager.c

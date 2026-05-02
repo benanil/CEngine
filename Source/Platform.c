@@ -215,10 +215,14 @@ void PlatformInit()
 void PlatformUpdate()
 {
     s64 now = TimeNow();
-    PlatformCtx.DeltaTime = Clampf64((double)(now - PlatformCtx.LastTime) / (double)PlatformCtx.CPUFrequency, 0.0, 1.0);
+    s64 elapsed = now - PlatformCtx.LastTime;
+    PlatformCtx.DeltaTime = Clampf64((double)(elapsed) / (double)PlatformCtx.CPUFrequency, 0.0, 1.0);
     PlatformCtx.LastTime  = now;
     SetPressedAndReleasedKeys();
     RecordLastKeys();
+    char buff[128] = {0};
+    IntToString(buff, (int64_t)TimeToMilliseconds(elapsed), 0);
+    SDL_SetWindowTitle(g_SDLWindow, buff);
 }
 
 f32 TimeSinceStartup()

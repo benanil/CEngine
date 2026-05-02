@@ -1,4 +1,4 @@
-#include "Include/SceneNormalize.h"
+#include "Include/GLTFParser.h"
 #include "Include/Animation.h"
 #include "Include/Memory.h"
 #include "Include/Platform.h"

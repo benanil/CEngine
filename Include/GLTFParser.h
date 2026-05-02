@@ -372,6 +372,12 @@ int Prefab_FindAnimRootNodeIndex(const SceneBundle* prefab);
 
 int Prefab_FindNodeFromName(const SceneBundle* prefab, const char* name);
 
+/* Scene normalization */
+void SceneBundle_BuildParentIndices(SceneBundle* scene);
+void SceneBundle_FlattenNodes(SceneBundle* scene);
+void SceneBundle_ValidateNodeHierarchy(const SceneBundle* scene);
+void SceneBundle_Normalize(SceneBundle* scene);
+
 static inline int GraphicsTypeToSize(AComponentType type)
 {
     // BYTE, UNSIGNED_BYTE, SHORT, UNSIGNED_SHORT, INT, UNSIGNED_INT, FLOAT 

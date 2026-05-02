@@ -3,7 +3,6 @@
 #include <Extern/sj.h>
 
 #include "Include/GLTFParser.h"
-#include "Include/SceneNormalize.h"
 #include "Include/FileSystem.h"
 #include "Include/Algorithm.h"
 #include "Include/Memory.h"
