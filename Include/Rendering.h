@@ -5,8 +5,6 @@ void DestroyPipeline();
 
 void Quit(int rc);
 
-void UpdateAnimations();
-
 void Render();
 
 int InitScene();

@@ -34,23 +34,6 @@
 
 #define TESTGPU_SUPPORTED_FORMATS (SDL_GPU_SHADERFORMAT_SPIRV | SDL_GPU_SHADERFORMAT_DXBC | SDL_GPU_SHADERFORMAT_DXIL | SDL_GPU_SHADERFORMAT_METALLIB)
 
-static AnimationController AnimControllers[MAX_ANIM_INSTANCES];
-AX_ALIGN(4) half3x4 OutMatrices[MAX_BONES * MAX_ANIM_INSTANCES]; // for cpu only
-
-SceneBundle*        gPaladin;
-
-WindowState         g_WindowState;
-RenderState         g_RenderState;
-SDL_GPUDevice*      g_GPUDevice = NULL;
-
-static SDL_GPUComputePipeline* g_AnimComputePipeline = NULL;
-
-extern SDL_Window*  g_SDLWindow; // main    
-extern Camera       g_Camera; // main
-extern Graphics     gGFX;
-extern ECS          ecs;
-extern bool         g_UseGPUComputeAnimation;
-
 #define ANIM_POSE_NUM_INT32     4
 #define ANIM_MATRIX_NUM_INT32   8
 #define MAX_GPU_ANIM_FRAMES     (ANIM_NUM_FRAMES * MAX_ANIM_DURATION * MAX_ANIM_COUNT)
@@ -73,14 +56,28 @@ typedef struct GPUAnimationData_
     f32 rootScale;
 } GPUAnimationData;
 
-u32     animPoses[MAX_BONES * ANIM_NUM_FRAMES * MAX_ANIM_DURATION * MAX_ANIM_COUNT * ANIM_POSE_NUM_INT32];
-u32     animHierarchy[ANIM_NODE_COUNT + ANIM_CHILD_PACKED_COUNT];
-u32     animJoints[MAX_BONES * MAX_SKIN_COUNT  * 2];
-f16_3x4 outBoneMtx[MAX_BONES * MAX_ANIM_INSTANCES]; // only for cpu
-u32     invBindMatrices[MAX_BONES * MAX_SKIN_COUNT  * 2 * ANIM_MATRIX_NUM_INT32];
+
+SceneBundle*        gPaladin;
+
+WindowState         g_WindowState;
+RenderState         g_RenderState;
+SDL_GPUDevice*      g_GPUDevice = NULL;
+
+u32 animPoses[MAX_BONES * MAX_GPU_ANIM_FRAMES * ANIM_POSE_NUM_INT32]; // 32mb
+u32 animHierarchy[ANIM_NODE_COUNT + ANIM_CHILD_PACKED_COUNT];
+u32 animJoints[MAX_BONES * MAX_SKIN_COUNT  * 2];
+u32 invBindMatrices[MAX_BONES * MAX_SKIN_COUNT  * 2 * ANIM_MATRIX_NUM_INT32];
 GPUAnimationInstance animInstances[MAX_ANIM_INSTANCES];
 GPUAnimationData animData[MAX_ANIM_COUNT];
 u32 numGPUAnimations;
+
+static AnimationController AnimControllers[MAX_ANIM_INSTANCES];
+static SDL_GPUComputePipeline* g_AnimComputePipeline = NULL;
+
+extern SDL_Window*  g_SDLWindow; // main    
+extern Camera       g_Camera; // main
+extern Graphics     gGFX;
+extern ECS          ecs;
 
 static void StoreHalf4(u32* dst, const f32* src)
 {
@@ -113,12 +110,12 @@ int AnimationGetGPUData(AnimationController* ac, int animIdx, int frameOffset)
     }
 
     animData[animIdx] = (GPUAnimationData){
-        .frameOffset = (u32)frameOffset,
-        .numFrames = (u32)numFrames,
+        .frameOffset   = (u32)frameOffset,
+        .numFrames     = (u32)numFrames,
         .rootNodeIndex = (u32)ac->mRootNodeIndex,
-        .numJoints = (u32)skin->numJoints,
-        .duration = animation->duration,
-        .rootScale = ac->mRootScale,
+        .numJoints     = (u32)skin->numJoints,
+        .duration      = animation->duration,
+        .rootScale     = ac->mRootScale
     };
 
     for (int i = 0; i < ANIM_NODE_COUNT; i++)
@@ -144,42 +141,6 @@ int AnimationGetGPUData(AnimationController* ac, int animIdx, int frameOffset)
     return numFrames;
 }
 
-
-void UpdateAnimations()
-{
-    const double timeSinceStartup = TimeSinceStartup();
-    v128f camPos = VecLoad(&g_Camera.position.x);
-    s64 frameCount = PlatformCtx.FrameCount;
-    int i = 0;
-    #pragma omp parallel for schedule(static) num_threads(omp_get_num_procs() / 2)
-    for (i = 0; i < MAX_ANIM_INSTANCES; i++)
-    {
-        float distSqr = Vec3DistSqrfV(camPos, ecs.entities[i].position);
-    
-        const float MedAnimDistSqr = 40 * 40;
-        const float FarAnimDistSqr = 120 * 120;
-    
-        // Determine the update frequency based on distance
-        s32 updateRate = 1; // Sample every nth frame
-        if (distSqr > FarAnimDistSqr) updateRate = 8;
-        if (distSqr > MedAnimDistSqr) updateRate = 4;
-
-        // Logic: Only update if (CurrentFrame + EntityIndex) % UpdateRate == 0
-        // This staggers the updates so the CPU doesn't spike all at once.
-        bool shouldUpdate = (timeSinceStartup < 1.0) || ((frameCount + i) % updateRate == 0);
-
-        if (shouldUpdate)
-        {
-            AnimationController* ac = &AnimControllers[i];
-            const s32 animIdx = (s32)animInstances[i].animIdx;
-
-            const double animDuration = (double)animData[animIdx].duration;
-            const float animRatio = (float)Fract((timeSinceStartup + animInstances[i].timeOffset) / animDuration);
-
-            AnimationController_PlayAnim(ac, animIdx, animRatio);
-        }
-    }
-}
 
 static void InitAnimationComputePipeline()
 {
@@ -207,10 +168,7 @@ void DispatchAnimationCompute(SDL_GPUCommandBuffer* cmd)
     params.timeSinceStartup = (float)TimeSinceStartup();
     params.numInstances     = MAX_ANIM_INSTANCES;
     
-    SDL_GPUStorageBufferReadWriteBinding rw_binding = {
-        .buffer = g_RenderState.boneBuffer,
-        .cycle  = true,
-    };
+    SDL_GPUStorageBufferReadWriteBinding rw_binding = { g_RenderState.boneBuffer };
 
     SDL_GPUBuffer* ro_buffers[6] = {
         g_RenderState.animPoseBuffer,
@@ -235,12 +193,12 @@ static void InitAnimationInstances(void)
     for (u32 i = 0; i < MAX_ANIM_INSTANCES; i++)
     {
         u32 hash = WangHash(i + 645u);
-        u32 animIdx = numGPUAnimations ? (hash % numGPUAnimations) : 0u;
+        u32 animIdx = hash % numGPUAnimations;
         f32 duration = animData[animIdx].duration;
 
         animInstances[i] = (GPUAnimationInstance){
             .animIdx = animIdx,
-            .timeOffset = NextFloat01(WangHash(hash + 911u)) * duration,
+            .timeOffset = NextFloat01(hash) * duration,
         };
     }
 }
@@ -260,6 +218,7 @@ static void InitAnimationFrames(AnimationController* ac)
         numFrames = AnimationGetGPUData(ac, (int)animIdx, frameOffset);
         frameOffset += numFrames;
     }
+    AX_LOG("num animation: %d", numGPUAnimations);
 }
 
 void InitBuffers()
@@ -268,10 +227,10 @@ void InitBuffers()
     const Uint32 readRasterBit   = SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ;
     const Uint32 writeComputeBit = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE;
     const Uint32 readCompute     = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ;
+    const size_t maxBoneMatrices = sizeof(half3x4) * MAX_BONES * MAX_ANIM_INSTANCES;
 
-    g_RenderState.entityBuffer   = CreateBuffer(ecs.entities   , sizeof(ecs.entities)   , readRasterBit, "CPInstancePositions");
-    // g_RenderState.boneBufferGPU  = CreateBuffer(outBoneMtx     , sizeof(outBoneMtx)  , readRasterBit | writeComputeBit, "CPJointMatricesGPU");
-    g_RenderState.boneBuffer     = CreateBuffer(OutMatrices    , sizeof(OutMatrices)    , readRasterBit | writeComputeBit, "CPJointMatrices");
+    g_RenderState.boneBuffer = CreateBuffer(NULL, maxBoneMatrices , readRasterBit | writeComputeBit, "CPJointMatrices");
+    g_RenderState.entityBuffer        = CreateBuffer(ecs.entities   , sizeof(ecs.entities)   , readRasterBit, "CPInstancePositions");
     g_RenderState.animPoseBuffer      = CreateBuffer(animPoses      , sizeof(animPoses)      , readCompute, "CPAnimPoses");
     g_RenderState.animHierarchyBuffer = CreateBuffer(animHierarchy  , sizeof(animHierarchy)  , readCompute, "CPAnimHierarchy");
     g_RenderState.animDataBuffer      = CreateBuffer(animData       , sizeof(animData)       , readCompute, "CPAnimationData");
@@ -296,7 +255,7 @@ s32 InitScene()
     }
     
     AnimationController* ac = &AnimControllers[0];
-    AnimationController_Create(gPaladin, ac, OutMatrices);
+    AnimationController_Create(gPaladin, ac);
     InitAnimationFrames(ac);
     InitAnimationInstances();
     InitBuffers();
@@ -366,10 +325,7 @@ void Render()
     depth_target.texture          = winstate->tex_depth;
     depth_target.cycle            = true;
     
-    if (g_UseGPUComputeAnimation)
-        DispatchAnimationCompute(cmd);
-    else
-        UpdateGPUBuffer(g_RenderState.boneBuffer, outBoneMtx, sizeof(outBoneMtx));
+    DispatchAnimationCompute(cmd);
     /* Set up the bindings */
     SDL_GPUBufferBinding vertex_binding;
     SDL_GPUBufferBinding index_binding;
