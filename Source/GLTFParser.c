@@ -837,6 +837,125 @@ static void ParseMaterialsObj(sj_Value sjMaterialObj, void* element, GLTFParseCo
     }
 }
 
+static void EmitRemappedNode(const SceneBundle* gltf, s32 oldNode, s32* nodeRemap, s32* oldFromNew, s32* numRemapped)
+{
+    const s32 numNodes = gltf->numNodes;
+    s32* stack = (s32*)ArenaPushGlobal(numNodes * sizeof(s32));
+    s32 stackIndex = 0;
+    if (oldNode < 0 || oldNode >= numNodes)
+    {
+        AX_WARN("EmitRemappedNode index out of bounds %d", oldNode);
+        ArenaPopGlobal(numNodes * sizeof(s32));
+        return;
+    }
+    stack[stackIndex++] = oldNode;
+    while (stackIndex > 0)
+    {
+        s32 nodeIdx = stack[--stackIndex];
+        if (nodeIdx < 0 || nodeIdx >= numNodes)
+        {
+            AX_WARN("EmitRemappedNode index out of bounds %d", nodeIdx);
+            continue;
+        }
+        if (nodeRemap[nodeIdx] != -1)
+            continue;
+        s32 newNode = (*numRemapped)++;
+        nodeRemap[nodeIdx] = newNode;
+        oldFromNew[newNode] = nodeIdx;
+        const ANode* node = &gltf->nodes[nodeIdx];
+        // Push in reverse so DFS preserves the original child order.
+        for (s32 i = node->numChildren - 1; i >= 0; i--)
+        {
+            s32 child = node->children[i];
+            if (stackIndex < numNodes)
+                stack[stackIndex++] = child;
+            else
+                AX_WARN("EmitRemappedNode stack overflow");
+        }
+    }
+    ArenaPopGlobal(numNodes * sizeof(s32));
+}
+
+static void FlattenSceneNodes(SceneBundle* gltf)
+{
+    s32 numNodes = gltf->numNodes;
+    if (gltf->numSkins > 0 && numNodes > 96) {
+        AX_WARN("cplayground doesn't support skined mesh that has more than 96 nodes!! numNodes: %d", numNodes);
+        return;
+    }
+
+    uint64_t arenaStart = ArenaGetCurrentOffset();
+    s32* nodeRemap  = (s32*)ArenaPushGlobal(numNodes * sizeof(s32));
+    s32* oldFromNew = (s32*)ArenaPushGlobal(numNodes * sizeof(s32));
+    for (s32 i = 0; i < numNodes; i++)
+    {
+        nodeRemap[i] = -1;
+        oldFromNew[i] = -1;
+    }
+
+    for (s32 i = 0; i < numNodes; i++)
+        gltf->nodes[i].parent = -1;
+
+    for (s32 i = 0; i < numNodes; i++)
+    {
+        const ANode* node = &gltf->nodes[i];
+        for (s32 c = 0; c < node->numChildren; c++)
+        {
+            s32 child = node->children[c];
+            if (child >= 0 && child < numNodes)
+                gltf->nodes[child].parent = i;
+        }
+    }
+
+    s32 numRemapped = 0;
+    EmitRemappedNode(gltf, gltf->rootNode, nodeRemap, oldFromNew, &numRemapped);
+
+    for (s32 s = 0; s < gltf->numScenes; s++)
+        for (s32 i = 0; i < gltf->scenes[s].numNodes; i++)
+            EmitRemappedNode(gltf, gltf->scenes[s].nodes[i], nodeRemap, oldFromNew, &numRemapped);
+
+    for (s32 i = 0; i < numNodes; i++)
+        EmitRemappedNode(gltf, i, nodeRemap, oldFromNew, &numRemapped);
+    
+    ASSERT(numRemapped == numNodes);
+    ANode* newNodes = (ANode*)ArenaPushGlobal(numNodes * sizeof(ANode));
+    for (s32 newIdx = 0; newIdx < numNodes; newIdx++)
+    {
+        s32 oldIdx = oldFromNew[newIdx];
+        ASSERT(oldIdx >= 0);
+        newNodes[newIdx] = gltf->nodes[oldIdx];
+
+        s32 oldParent = gltf->nodes[oldIdx].parent;
+        newNodes[newIdx].parent = oldParent >= 0 ? nodeRemap[oldParent] : -1;
+
+        for (s32 c = 0; c < newNodes[newIdx].numChildren; c++)
+            newNodes[newIdx].children[c] = nodeRemap[newNodes[newIdx].children[c]];
+    }
+
+    SmallMemCpy(gltf->nodes, newNodes, sizeof(ANode) * numNodes);
+    gltf->rootNode = nodeRemap[gltf->rootNode];
+
+    for (s32 s = 0; s < gltf->numScenes; s++)
+        for (s32 i = 0; i < gltf->scenes[s].numNodes; i++)
+            gltf->scenes[s].nodes[i] = nodeRemap[gltf->scenes[s].nodes[i]];
+
+    for (s32 s = 0; s < gltf->numSkins; s++)
+    {
+        ASkin* skin = &gltf->skins[s];
+        if (skin->skeleton >= 0)
+            skin->skeleton = nodeRemap[skin->skeleton];
+        for (s32 i = 0; i < skin->numJoints; i++)
+            skin->joints[i] = nodeRemap[skin->joints[i]];
+    }
+
+    for (s32 a = 0; a < gltf->numAnimations; a++)
+    {
+        AAnimation* animation = &gltf->animations[a];
+        for (s32 c = 0; c < animation->numChannels; c++)
+            animation->channels[c].targetNode = nodeRemap[animation->channels[c].targetNode];
+    }
+    ArenaSetCurrentOffset(arenaStart);
+}
 
 static char* ParseGLBHeader(const char* path, SceneBundle* result, uint64_t* jsonSize)
 {
@@ -1078,13 +1197,15 @@ int ParseGLTF(const char* path, SceneBundle* result, float scale)
         }
     }
     
+    result->rootNode = Prefab_FindAnimRootNodeIndex(result);
     result->totalIndices  = totalIndexCount;
     result->totalVertices = totalVertexCount;
 
     result->allocator = allocator;
-    result->rootNode = Prefab_FindAnimRootNodeIndex(result);
     result->scale = scale;
     result->error = AError_NONE;
+
+    FlattenSceneNodes(result);
     return 1;
 }
 
