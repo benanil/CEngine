@@ -30,3 +30,6 @@
 
 *.spv
 *.opencode
+*.abm
+*.bdc
+*.basis
