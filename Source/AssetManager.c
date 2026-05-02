@@ -448,9 +448,9 @@ s32 LoadFBX(const u8* path, SceneBundle* fbxScene, f32 scale)
 static void JointsForPrimitive(APrimitive* primitive, ASkinedVertex* currVertex)
 {
     // convert whatever joi32 format to rgb8u
-    const u8* joints      = (const u8*)primitive->vertexAttribs[AAttribIdx_JOINTS];
-    s32 jointSize   = GraphicsTypeToSize(primitive->jointType);
-    s32 jointOffset = Maxi32((s32)(primitive->jointStride - (jointSize * primitive->jointCount)), 0); // stride - sizeof(rgbau16)
+    const u8* joints = (const u8*)primitive->vertexAttribs[AAttribIdx_JOINTS];
+    s32 jointSize    = GraphicsTypeToSize(primitive->jointType);
+    s32 jointOffset  = Maxi32((s32)(primitive->jointStride - (jointSize * primitive->jointCount)), 0); // stride - sizeof(rgbau16)
             
     if (joints == NULL) 
     {
@@ -560,7 +560,7 @@ static void VerticesForPrimitive(APrimitive* primitive, ASkinedVertex* currVerte
     const fv3* positions   = (const fv3*)primitive->vertexAttribs[AAttribIdx_POSITION];
     const fv2* texCoords   = (const fv2*)primitive->vertexAttribs[AAttribIdx_TEXCOORD_0];
     const fv3* normals     = (const fv3*)primitive->vertexAttribs[AAttribIdx_NORMAL];
-    const v128f* tangents = (const v128f*)primitive->vertexAttribs[AAttribIdx_TANGENT];
+    const v128f* tangents  = (const v128f*)primitive->vertexAttribs[AAttribIdx_TANGENT];
 
     for (s32 v = 0; v < primitive->numVertices; v++)
     {
@@ -601,6 +601,27 @@ static void PrintMatrix(m44 mtx)
     AX_LOG("--------------------------------------");
 }
 
+// mark all bone nodex to 1 except root
+static void MarkScaledNodes(const SceneBundle* gltf, s32 rootIndex, u8 scaledNodes[MAX_BONES * 2])
+{
+    for (s32 i = 0; i < gltf->numNodes; i++)
+        for (s32 j = 0; j < gltf->nodes[i].numChildren; j++)
+            if (i != rootIndex) scaledNodes[gltf->nodes[i].children[j]] = 1;
+}
+
+static bool ShouldScaleTranslationSampler(const AAnimation* animation, const u8 scaledNodes[MAX_BONES * 2], s32 samplerIndex)
+{
+    for (s32 c = 0; c < animation->numChannels; c++)
+    {
+        const AAnimChannel* channel = &animation->channels[c];
+        if (channel->sampler == samplerIndex &&
+            channel->targetPath == AAnimTargetPath_Translation &&
+            scaledNodes[channel->targetNode])
+            return true;
+    }
+    return false;
+}
+
 static void GetGLTFAnimations(SceneBundle* gltf)
 {
     if (gltf->skins == NULL)
@@ -609,6 +630,22 @@ static void GetGLTFAnimations(SceneBundle* gltf)
     s32 rootIndex = Prefab_FindAnimRootNodeIndex(gltf);
     f32 rootScale = gltf->nodes[rootIndex].scale[1];
     v128f rootScaleMul = VecSetR(rootScale, rootScale, rootScale, 1.0f);
+    u8 scaledNodes[MAX_BONES * 2] = {0};
+
+    MarkScaledNodes(gltf, rootIndex, scaledNodes);
+
+    for (s32 i = 0; i < gltf->numNodes; i++)
+    {
+        if (!scaledNodes[i])
+            continue;
+
+        v128f translation = VecMulf(VecLoad(gltf->nodes[i].translation), rootScale);
+        VecStore(gltf->nodes[i].translation, translation);
+    }
+
+    gltf->nodes[rootIndex].scale[0] = 1.0f;
+    gltf->nodes[rootIndex].scale[1] = 1.0f;
+    gltf->nodes[rootIndex].scale[2] = 1.0f;
 
     for (s32 s = 0; s < gltf->numSkins; s++)
     {
@@ -616,18 +653,18 @@ static void GetGLTFAnimations(SceneBundle* gltf)
         m44* inverseBindMatrices = AllocateTLSFGlobal(skin->numJoints * sizeof(m44));
         SmallMemCpy(inverseBindMatrices, skin->inverseBindMatrices, sizeof(m44) * skin->numJoints);
         skin->inverseBindMatrices = (f32*)inverseBindMatrices;
-        
+
         for (s32 i = 0; i < skin->numJoints; i++)
         {
+            if (skin->joints[i] == rootIndex)
+                continue;
+
             m44 inv = inverseBindMatrices[i];
-            if (i != rootIndex)
-            {
-                inv.r[0] = VecNorm(inv.r[0]);
-                inv.r[1] = VecNorm(inv.r[1]);
-                inv.r[2] = VecNorm(inv.r[2]);
-                inv.r[3] = VecMul(inv.r[3], rootScaleMul); // VecMul(inv.r[3], VecSetR(0.01f, 0.01f, 0.01f, 1.0f));
-                inverseBindMatrices[i] = inv;
-            }
+            inv.r[0] = VecNorm(inv.r[0]);
+            inv.r[1] = VecNorm(inv.r[1]);
+            inv.r[2] = VecNorm(inv.r[2]);
+            inv.r[3] = VecMul(inv.r[3], rootScaleMul);
+            inverseBindMatrices[i] = inv;
         }
     }
 
@@ -646,6 +683,7 @@ static void GetGLTFAnimations(SceneBundle* gltf)
     {
         for (s32 s = 0; s < gltf->animations[a].numSamplers; s++)
         {
+            const bool scaleTranslation = ShouldScaleTranslationSampler(&gltf->animations[a], scaledNodes, s);
             AAnimSampler* sampler = &gltf->animations[a].samplers[s];
             SmallMemCpy(currSampler, sampler->input, sampler->count * sizeof(f32));
             sampler->input = currSampler;
@@ -671,6 +709,8 @@ static void GetGLTFAnimations(SceneBundle* gltf)
                 SmallMemCpy(currOutput + i, sampler->output + (i * sampler->numComponent), sizeof(f32) * sampler->numComponent);
                 currOutput[i] = VecLoad(sampler->output + (i * sampler->numComponent));
                 if (sampler->numComponent == 3) currOutput[i] = VecSetW(currOutput[i], 0.0f);
+                if (scaleTranslation)
+                    currOutput[i] = VecMulf(currOutput[i], rootScale);
             }
 
             sampler->output = (f32*)currOutput;
@@ -873,7 +913,7 @@ s32 LoadGLTFCached(const char* path, SceneBundle* scene, Texture* textures)
     MemCopy(buffer, path, pathLen + 1);
     int newLen = ChangeExtension(buffer, pathLen, "abm");
     s32 result = 1;
-    if (FileExist(buffer)) {
+    if (IsABMLastVersion(buffer)) {
         result = LoadSceneBundleBinary(buffer, scene);
     }
     else if (ParseGLTF(path, scene, 1.0f)) {
@@ -989,7 +1029,7 @@ void OptimizeMesh(const SceneBundle* gltf)
 /*//////////////////////////////////////////////////////////////////////////*/
 
 // ZSTD_CCtx* zstdCompressorCTX = NULL;
-const s32 ABMMeshVersion = 43;
+const s32 ABMMeshVersion = 44;
 
 u8 IsABMLastVersion(const u8* path)
 {

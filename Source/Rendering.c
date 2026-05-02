@@ -53,7 +53,6 @@ typedef struct GPUAnimationData_
     u32 rootNodeIndex;
     u32 numJoints;
     f32 duration;
-    f32 rootScale;
 } GPUAnimationData;
 
 
@@ -114,8 +113,7 @@ int AnimationGetGPUData(AnimationController* ac, int animIdx, int frameOffset)
         .numFrames     = (u32)numFrames,
         .rootNodeIndex = (u32)ac->mRootNodeIndex,
         .numJoints     = (u32)skin->numJoints,
-        .duration      = animation->duration,
-        .rootScale     = ac->mRootScale
+        .duration      = animation->duration
     };
 
     for (int i = 0; i < ANIM_NODE_COUNT; i++)

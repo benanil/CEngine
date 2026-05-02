@@ -81,8 +81,7 @@ typedef struct AnimationController_
 
     s32      mRootNodeIndex;
     s32      mNumJoints;
-    f32      mRootScale;
-   
+    
     AnimNode mAnimNodes[MAX_BONES * 2];
     Pose     mAnimPoseA[MAX_BONES * 2]; // < the result bone array that we send to GPU
     u8       mChildIndices[MAX_BONES * 2];

@@ -38,7 +38,6 @@ void AnimationController_Create(const SceneBundle* gltfScene, AnimationControlle
     result->mRootNodeIndex = gltfScene->rootNode; // Prefab_FindAnimRootNodeIndex(prefab);
     result->mPrefab        = gltfScene;
     result->mNumJoints     = skin->numJoints;
-    result->mRootScale     = gltfScene->nodes[result->mRootNodeIndex].scale[0]; // 0.1610, rcp: 6.2111
     
     ASSERT(result->mRootNodeIndex < MAX_BONES);
     ASSERT(gltfScene->nodes[result->mRootNodeIndex].numChildren > 0); // root node has to have children nodes

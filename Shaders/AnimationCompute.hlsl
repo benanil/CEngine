@@ -31,7 +31,6 @@ struct AnimationData {
     uint rootNodeIndex;
     uint numJoints;
     float duration;
-    float rootScale;
 };
 
 StructuredBuffer<uint>               animPoses            : register(t0); // per bone * frame
@@ -102,12 +101,11 @@ f16_4x4 LoadMatrix(int idx)
     return result;
 }
 
-void RecurseBoneMatrices(u16 rootNodeIndex, f16 rootScale, inout Pose poses[MaxBonePoses])
+void RecurseBoneMatrices(u16 rootNodeIndex, inout Pose poses[MaxBonePoses])
 {
     u16 stack[32];
     u16 stackIndex = 0;
     stack[stackIndex++] = rootNodeIndex;
-    f16 parentScale = rootScale;
     const u16 skinOffset = 0;
 
     while (stackIndex)
@@ -121,17 +119,14 @@ void RecurseBoneMatrices(u16 rootNodeIndex, f16 rootScale, inout Pose poses[MaxB
             u16 child = (u16)GetChildIndex(skinOffset + node.childrenStartIndex + c);
             Pose pose = poses[child];
 
-            f16_4 t = VecMulf(pose.translation, parentScale);
+            f16_4 t = pose.translation;
             t = QMulVec3V(parent.rotation, t);
-            // pose.translation = t + parent.translation.xyz;
             pose.translation = VecAdd(t, parent.translation); 
             pose.rotation = QMul(pose.rotation, parent.rotation);
 
             poses[child] = pose;
             stack[stackIndex++] = child;
         }
-
-        parentScale = 1.0f; // to be changed
     }
 }
 
@@ -159,18 +154,13 @@ void main(uint3 GlobalInvocationID : SV_DispatchThreadID)
         poses[i].rotation    = QNlerp(a[1], b[1], animProgress);
     }
 
-    RecurseBoneMatrices((u16)data.rootNodeIndex, f16(data.rootScale), poses);
+    RecurseBoneMatrices((u16)data.rootNodeIndex, poses);
 
-    f16 rootScale = f16(data.rootScale);
     int numJoints = int(data.numJoints);
     for (s16 i = 0; i < numJoints; i++)
     {
         Pose pose = poses[joints[i]];
-        f16_4 pos = pose.translation;
-        if (i != int(data.rootNodeIndex))
-             pos = VecMulf(pos, rootScale);
-         
-        f16_4x4 mat = M44PositionRotationVec(pos, pose.rotation);
+        f16_4x4 mat = M44PositionRotationVec(pose.translation, pose.rotation);
         mat = M44Multiply(LoadMatrix(i), mat);
         int outIdx = instanceIdx * MaxBonePoses + i;
         WriteBone((f16_3x4)M44Transpose(mat), outIdx);

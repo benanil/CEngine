@@ -1138,7 +1138,7 @@ int Prefab_FindAnimRootNodeIndex(const SceneBundle* prefab)
         }
     }
     
-    int skeletonNode = armatureIdx != -1 ? armatureIdx : maxChilds;
+    int skeletonNode = armatureIdx != -1 ? armatureIdx : maxChildIdx;
     return skeletonNode;
 }
 
