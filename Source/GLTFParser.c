@@ -3,6 +3,7 @@
 #include <Extern/sj.h>
 
 #include "Include/GLTFParser.h"
+#include "Include/SceneNormalize.h"
 #include "Include/FileSystem.h"
 #include "Include/Algorithm.h"
 #include "Include/Memory.h"
@@ -837,126 +838,6 @@ static void ParseMaterialsObj(sj_Value sjMaterialObj, void* element, GLTFParseCo
     }
 }
 
-static void EmitRemappedNode(const SceneBundle* gltf, s32 oldNode, s32* nodeRemap, s32* oldFromNew, s32* numRemapped)
-{
-    const s32 numNodes = gltf->numNodes;
-    s32* stack = (s32*)ArenaPushGlobal(numNodes * sizeof(s32));
-    s32 stackIndex = 0;
-    if (oldNode < 0 || oldNode >= numNodes)
-    {
-        AX_WARN("EmitRemappedNode index out of bounds %d", oldNode);
-        ArenaPopGlobal(numNodes * sizeof(s32));
-        return;
-    }
-    stack[stackIndex++] = oldNode;
-    while (stackIndex > 0)
-    {
-        s32 nodeIdx = stack[--stackIndex];
-        if (nodeIdx < 0 || nodeIdx >= numNodes)
-        {
-            AX_WARN("EmitRemappedNode index out of bounds %d", nodeIdx);
-            continue;
-        }
-        if (nodeRemap[nodeIdx] != -1)
-            continue;
-        s32 newNode = (*numRemapped)++;
-        nodeRemap[nodeIdx] = newNode;
-        oldFromNew[newNode] = nodeIdx;
-        const ANode* node = &gltf->nodes[nodeIdx];
-        // Push in reverse so DFS preserves the original child order.
-        for (s32 i = node->numChildren - 1; i >= 0; i--)
-        {
-            s32 child = node->children[i];
-            if (stackIndex < numNodes)
-                stack[stackIndex++] = child;
-            else
-                AX_WARN("EmitRemappedNode stack overflow");
-        }
-    }
-    ArenaPopGlobal(numNodes * sizeof(s32));
-}
-
-static void FlattenSceneNodes(SceneBundle* gltf)
-{
-    s32 numNodes = gltf->numNodes;
-    if (gltf->numSkins > 0 && numNodes > 96) {
-        AX_WARN("cplayground doesn't support skined mesh that has more than 96 nodes!! numNodes: %d", numNodes);
-        return;
-    }
-
-    uint64_t arenaStart = ArenaGetCurrentOffset();
-    s32* nodeRemap  = (s32*)ArenaPushGlobal(numNodes * sizeof(s32));
-    s32* oldFromNew = (s32*)ArenaPushGlobal(numNodes * sizeof(s32));
-    for (s32 i = 0; i < numNodes; i++)
-    {
-        nodeRemap[i] = -1;
-        oldFromNew[i] = -1;
-    }
-
-    for (s32 i = 0; i < numNodes; i++)
-        gltf->nodes[i].parent = -1;
-
-    for (s32 i = 0; i < numNodes; i++)
-    {
-        const ANode* node = &gltf->nodes[i];
-        for (s32 c = 0; c < node->numChildren; c++)
-        {
-            s32 child = node->children[c];
-            if (child >= 0 && child < numNodes)
-                gltf->nodes[child].parent = i;
-        }
-    }
-
-    s32 numRemapped = 0;
-    EmitRemappedNode(gltf, gltf->rootNode, nodeRemap, oldFromNew, &numRemapped);
-
-    for (s32 s = 0; s < gltf->numScenes; s++)
-        for (s32 i = 0; i < gltf->scenes[s].numNodes; i++)
-            EmitRemappedNode(gltf, gltf->scenes[s].nodes[i], nodeRemap, oldFromNew, &numRemapped);
-
-    for (s32 i = 0; i < numNodes; i++)
-        EmitRemappedNode(gltf, i, nodeRemap, oldFromNew, &numRemapped);
-    
-    ASSERT(numRemapped == numNodes);
-    ANode* newNodes = (ANode*)ArenaPushGlobal(numNodes * sizeof(ANode));
-    for (s32 newIdx = 0; newIdx < numNodes; newIdx++)
-    {
-        s32 oldIdx = oldFromNew[newIdx];
-        ASSERT(oldIdx >= 0);
-        newNodes[newIdx] = gltf->nodes[oldIdx];
-
-        s32 oldParent = gltf->nodes[oldIdx].parent;
-        newNodes[newIdx].parent = oldParent >= 0 ? nodeRemap[oldParent] : -1;
-
-        for (s32 c = 0; c < newNodes[newIdx].numChildren; c++)
-            newNodes[newIdx].children[c] = nodeRemap[newNodes[newIdx].children[c]];
-    }
-
-    SmallMemCpy(gltf->nodes, newNodes, sizeof(ANode) * numNodes);
-    gltf->rootNode = nodeRemap[gltf->rootNode];
-
-    for (s32 s = 0; s < gltf->numScenes; s++)
-        for (s32 i = 0; i < gltf->scenes[s].numNodes; i++)
-            gltf->scenes[s].nodes[i] = nodeRemap[gltf->scenes[s].nodes[i]];
-
-    for (s32 s = 0; s < gltf->numSkins; s++)
-    {
-        ASkin* skin = &gltf->skins[s];
-        if (skin->skeleton >= 0)
-            skin->skeleton = nodeRemap[skin->skeleton];
-        for (s32 i = 0; i < skin->numJoints; i++)
-            skin->joints[i] = nodeRemap[skin->joints[i]];
-    }
-
-    for (s32 a = 0; a < gltf->numAnimations; a++)
-    {
-        AAnimation* animation = &gltf->animations[a];
-        for (s32 c = 0; c < animation->numChannels; c++)
-            animation->channels[c].targetNode = nodeRemap[animation->channels[c].targetNode];
-    }
-    ArenaSetCurrentOffset(arenaStart);
-}
-
 static char* ParseGLBHeader(const char* path, SceneBundle* result, uint64_t* jsonSize)
 {
     char* source = NULL;
@@ -994,6 +875,7 @@ static char* ParseGLBHeader(const char* path, SceneBundle* result, uint64_t* jso
                 AFileRead(result->buffers[0].uri, chunk1Len, file, 1);
             }
         }
+        else return 0;
 
         AFileClose(file);
     }
@@ -1010,6 +892,12 @@ int ParseGLTF(const char* path, SceneBundle* result, float scale)
     if (FileHasExtension(path, StringLength(path), ".glb"))
     {
         source = ParseGLBHeader(path, result, &sourceSize);
+        if (source == NULL)
+        {
+            result->error = AError_GLB_PARSING_FAILED;
+            AX_WARN("glb header parse failed", path); 
+            return 0; // json must exist
+        }
     }
 
     if (source == NULL)
@@ -1067,6 +955,28 @@ int ParseGLTF(const char* path, SceneBundle* result, float scale)
         *key.end = beforeChar;
     }
 
+    if (result->numMeshes     == 0xCDCDCDCD) { AX_WARN("numMeshes     undefined"); result->numMeshes     = 0; }
+    if (result->numNodes      == 0xCDCDCDCD) { AX_WARN("numNodes      undefined"); result->numNodes      = 0; }
+    if (result->numMaterials  == 0xCDCDCDCD) { AX_WARN("numMaterials  undefined"); result->numMaterials  = 0; }
+    if (result->numTextures   == 0xCDCDCDCD) { AX_WARN("numTextures   undefined"); result->numTextures   = 0; }
+    if (result->numImages     == 0xCDCDCDCD) { AX_WARN("numImages     undefined"); result->numImages     = 0; }
+    if (result->numSamplers   == 0xCDCDCDCD) { AX_WARN("numSamplers   undefined"); result->numSamplers   = 0; }
+    if (result->numCameras    == 0xCDCDCDCD) { AX_WARN("numCameras    undefined"); result->numCameras    = 0; }
+    if (result->numScenes     == 0xCDCDCDCD) { AX_WARN("numScenes     undefined"); result->numScenes     = 0; }
+    if (result->numSkins      == 0xCDCDCDCD) { AX_WARN("numSkins      undefined"); result->numSkins      = 0; }
+    if (result->numAnimations == 0xCDCDCDCD) { AX_WARN("numAnimations undefined"); result->numAnimations = 0; }
+
+    AX_LOG("gltf parse: %s nodes=%d meshes=%d skins=%d animations=%d scenes=%d",
+           path, result->numNodes, result->numMeshes, result->numSkins, result->numAnimations, result->numScenes);
+
+    if (result->nodes == NULL || result->numNodes <= 0)
+        AX_WARN("gltf has no nodes: %s", path);
+    if (result->meshes == NULL || result->numMeshes <= 0)
+        AX_WARN("gltf has no meshes: %s", path);
+    if (result->numScenes <= 0)
+        AX_WARN("gltf has no scenes; normalization will fall back to root/loose nodes: %s", path);
+
+    // Resolve accessor indices into direct buffer pointers used by the asset baking stage.
     for (int m = 0; m < result->numMeshes; ++m)
     {
         // get number of vertex, getting first attribute count because all of the others are same
@@ -1074,6 +984,9 @@ int ParseGLTF(const char* path, SceneBundle* result, float scale)
         for (int p = 0; p < mesh.numPrimitives; p++)
         {
             APrimitive* primitive = &mesh.primitives[p];
+            if ((primitive->attributes & AAttribType_POSITION) == 0)
+                AX_WARN("mesh %d primitive %d has no POSITION attribute", m, p);
+
             // get position attrib's count because all attributes same
             int numVertex = accessors[(int)(size_t)primitive->vertexAttribs[0]].count; 
             primitive->numVertices = numVertex;
@@ -1124,8 +1037,17 @@ int ParseGLTF(const char* path, SceneBundle* result, float scale)
     for (int s = 0; s < result->numSkins; s++)
     {
         ASkin* skin = &result->skins[s];
+        if (skin->inverseBindMatrices == NULL)
+        {
+            AX_WARN("skin %d has no inverse bind matrices", s);
+            continue;
+        }
+
         size_t skinIndex = (size_t)skin->inverseBindMatrices;
         GLTFAccessor   accessor  = accessors[(int)skinIndex];
+        if (accessor.count != skin->numJoints)
+            AX_WARN("skin %d inverse bind count %d does not match joint count %d", s, accessor.count, skin->numJoints);
+
         GLTFBufferView view      = bufferViews[accessor.bufferView];
         int64_t        offset    = (int64_t)(accessor.byteOffset) + view.byteOffset;
         skin->inverseBindMatrices = (float*)((char*)result->buffers[view.buffer].uri + offset);
@@ -1151,10 +1073,13 @@ int ParseGLTF(const char* path, SceneBundle* result, float scale)
         AX_LOG("written image into: %s", image->path);
     }
 
+    // Animation samplers still reference accessors here; resolve them before normalization remaps target nodes.
     for (int a = 0; a < result->numAnimations; a++)
     {
         AAnimation* animation = &result->animations[a];
         animation->duration = 0.0f;
+        if (animation->numChannels <= 0)
+            AX_WARN("animation %d has no channels", a);
 
         for (int s = 0; s < animation->numSamplers; s++)
         {
@@ -1167,6 +1092,8 @@ int ParseGLTF(const char* path, SceneBundle* result, float scale)
             sampler->input     = (float*)((char*)result->buffers[view.buffer].uri + offset);
             sampler->count     = accessor.count;
             sampler->inputType = accessor.componentType;
+            if (sampler->inputType != AComponentType_FLOAT)
+                AX_WARN("animation %d sampler %d input type is not FLOAT: %d", a, s, sampler->inputType);
 
             size_t outputIndex = (size_t)sampler->output;
             accessor = accessors[(int)outputIndex];
@@ -1177,6 +1104,10 @@ int ParseGLTF(const char* path, SceneBundle* result, float scale)
             sampler->count  = accessor.count;
             sampler->outputType = accessor.componentType;
             sampler->numComponent = accessor.type;
+            if (sampler->outputType != AComponentType_FLOAT)
+                AX_WARN("animation %d sampler %d output type is not FLOAT: %d", a, s, sampler->outputType);
+            if (sampler->numComponent != 3 && sampler->numComponent != 4)
+                AX_WARN("animation %d sampler %d output component count is unsupported: %d", a, s, sampler->numComponent);
            
             animation->duration = MMAX(animation->duration, sampler->input[sampler->count - 1]);
         }
@@ -1205,7 +1136,8 @@ int ParseGLTF(const char* path, SceneBundle* result, float scale)
     result->scale = scale;
     result->error = AError_NONE;
 
-    FlattenSceneNodes(result);
+    // Normalization owns semantic remapping: flattened node order, parent indices, skin joints, animation targets.
+    SceneBundle_Normalize(result);
     return 1;
 }
 

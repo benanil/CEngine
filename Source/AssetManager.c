@@ -13,6 +13,7 @@
 #include "Include/Algorithm.h"
 #include "Include/Animation.h" // maxBonePoses
 #include "Include/Memory.h"
+#include "Include/SceneNormalize.h"
 
 // #include "Scene.h"
 
@@ -88,7 +89,11 @@ static char* GetNameFromFBX(ufbx_string ustr, FixedPow2Allocator* stringAllocato
 s32 LoadFBX(const u8* path, SceneBundle* fbxScene, f32 scale)
 {
 #if !AX_GAME_BUILD
+    MemsetZero(fbxScene, sizeof(SceneBundle));
+    AX_LOG("fbx import: %s scale=%f", path, scale);
+
     ufbx_load_opts opts = { 0 };
+    // FBX is currently imported as static/non-animated scene data; animation stacks are intentionally ignored.
     opts.evaluate_skinning = false;
     opts.evaluate_caches = false;
     opts.load_external_files = false;
@@ -118,7 +123,14 @@ s32 LoadFBX(const u8* path, SceneBundle* fbxScene, f32 scale)
     fbxScene->numCameras    = (u16)uscene->cameras.count;
     fbxScene->totalVertices = 0;
     fbxScene->totalIndices  = 0;
-    fbxScene->numScenes     = 0; // todo
+    fbxScene->numScenes     = 1;
+    fbxScene->defaultSceneIndex = 0;
+    fbxScene->numAnimations = 0;
+    AX_LOG("fbx parse: nodes=%d meshes=%d materials=%d textures=%d cameras=%d skins=%d",
+           fbxScene->numNodes, fbxScene->numMeshes, fbxScene->numMaterials,
+           fbxScene->numTextures, fbxScene->numCameras, (s32)uscene->skin_deformers.count);
+    if (uscene->skin_deformers.count > 0)
+        AX_WARN("fbx contains skin deformers, but this importer is intended for non-skinned meshes only: %s", path);
     
     FixedPow2Allocator* allocator = AllocateTLSFGlobal(sizeof(FixedPow2Allocator));
     FixedPow2Allocator_Init(allocator, 2048);
@@ -127,6 +139,8 @@ s32 LoadFBX(const u8* path, SceneBundle* fbxScene, f32 scale)
     for (s32 i = 0; i < fbxScene->numMeshes; i++)
     {
         ufbx_mesh* umesh = uscene->meshes.data[i];
+        if (umesh->num_triangles == 0 || umesh->num_vertices == 0)
+            AX_WARN("fbx mesh %d has no renderable triangles/vertices", i);
         totalIndices  += umesh->num_triangles * 3;
         totalVertices += umesh->num_vertices;
     }
@@ -135,6 +149,7 @@ s32 LoadFBX(const u8* path, SceneBundle* fbxScene, f32 scale)
     fbxScene->allIndices  = AllocAligned(sizeof(u32) * totalIndices, 4);
     
     if (fbxScene->numMeshes) fbxScene->meshes = (AMesh*)AllocZeroTLSFGlobal(fbxScene->numMeshes, sizeof(AMesh));
+    fbxScene->scenes = (AScene*)AllocZeroTLSFGlobal(1, sizeof(AScene));
     
     u32* currentIndex = (u32*)fbxScene->allIndices;
     ASkinedVertex* currentVertex = (ASkinedVertex*)fbxScene->allVertices;
@@ -160,6 +175,8 @@ s32 LoadFBX(const u8* path, SceneBundle* fbxScene, f32 scale)
         primitive->attributes |= AAttribType_POSITION;
         primitive->attributes |= ((s32)umesh->vertex_uv.exists << 1) & AAttribType_TEXCOORD_0;
         primitive->attributes |= ((s32)umesh->vertex_normal.exists << 2) & AAttribType_NORMAL;
+        if (!umesh->vertex_uv.exists)
+            AX_WARN("fbx mesh %d (%s) has no UVs", i, amesh->name ? amesh->name : "<unnamed>");
         
         for (s32 j = 0; j < primitive->numVertices; j++)
         {
@@ -310,7 +327,6 @@ s32 LoadFBX(const u8* path, SceneBundle* fbxScene, f32 scale)
             AFileWrite(utexture->content.data, utexture->content.size, file, 1);
             atexture->source = dynarray_length(images);
             dynarray_push(images, (AImage) { buffer });
-            dynarray_push(images, (AImage){ buffer });
         }
         
         atexture->sampler = i;
@@ -394,22 +410,30 @@ s32 LoadFBX(const u8* path, SceneBundle* fbxScene, f32 scale)
         }
     }
     
-    // copy nodes
+    // Copy local node transforms; SceneBundle_Normalize() will flatten hierarchy and build parent indices.
     u16 numNodes = (u16)uscene->nodes.count;
     fbxScene->numNodes = numNodes;
     
-    if (numNodes) {
-        fbxScene->nodes = (ANode*)AllocZeroTLSFGlobal(numNodes * 4, sizeof(ANode));
-    }
+    if (numNodes)
+        fbxScene->nodes = (ANode*)AllocZeroTLSFGlobal(numNodes, sizeof(ANode));
+
+    fbxScene->rootNode = aIndexOf(uscene->nodes.data, uscene->root_node, (s32)uscene->nodes.count, sizeof(void*), void_ptr_compare);
+    if (fbxScene->rootNode < 0) fbxScene->rootNode = 0;
+    fbxScene->scenes[0].numNodes = 1;
+    fbxScene->scenes[0].nodes = FixedPow2Allocator_AllocateUninitialized(allocator, sizeof(s32));
+    fbxScene->scenes[0].nodes[0] = fbxScene->rootNode;
 
     for (s32 i = 0; i < numNodes; i++)
     {
         ANode* anode = &fbxScene->nodes[i];
         ufbx_node* unode = uscene->nodes.data[i];
-        anode->type = unode->camera != NULL;
+        anode->type = unode->camera ? 1 : 0;
+        anode->index = -1;
+        anode->parent = -1;
         anode->name = GetNameFromFBX(unode->name, allocator);
         anode->numChildren = (s32)unode->children.count;
-        anode->children = FixedPow2Allocator_AllocateUninitialized(allocator, (sizeof(s32) + 1 ) * anode->numChildren);
+        if (anode->numChildren > 0)
+            anode->children = FixedPow2Allocator_AllocateUninitialized(allocator, sizeof(s32) * anode->numChildren);
         
         for (s32 j = 0; j < anode->numChildren; j++)
         {
@@ -417,23 +441,27 @@ s32 LoadFBX(const u8* path, SceneBundle* fbxScene, f32 scale)
             ASSERT(anode->children[j] != -1);
         }
         
-        SmallMemCpy(anode->translation, &unode->world_transform.translation.x, sizeof(fv3));
-        SmallMemCpy(anode->rotation, &unode->world_transform.rotation.x, sizeof(v128f));
-        SmallMemCpy(anode->scale, &unode->world_transform.scale.x, sizeof(fv3));
+        SmallMemCpy(anode->translation, &unode->local_transform.translation.x, sizeof(fv3));
+        SmallMemCpy(anode->rotation, &unode->local_transform.rotation.x, sizeof(v128f));
+        SmallMemCpy(anode->scale, &unode->local_transform.scale.x, sizeof(fv3));
         
-        if (anode->type == 0)
+        if (unode->mesh)
         {
             anode->index = aIndexOf(uscene->meshes.data, unode->mesh, (s32)uscene->meshes.count, 8, void_ptr_compare);
-            if (unode->materials.count > 0)
+            if (anode->index >= 0 && unode->materials.count > 0)
                 fbxScene->meshes[anode->index].primitives[0].material = aIndexOf(uscene->materials.data, unode->materials.data[0], (s32)uscene->materials.count, 8, void_ptr_compare);
         }
-        else
+        else if (unode->camera)
             anode->index = aIndexOf(uscene->cameras.data, unode->camera, (s32)uscene->cameras.count, 8, void_ptr_compare);
     }
     
     fbxScene->numImages = dynarray_length(images);
     fbxScene->images    = images;
     fbxScene->allocator = allocator;
+    fbxScene->scale = scale;
+    fbxScene->error = AError_NONE;
+    SceneBundle_Normalize(fbxScene);
+    AX_LOG("fbx import complete: %s", path);
     ufbx_free_scene(uscene);
 #endif // android
     return 1;
@@ -640,12 +668,20 @@ static void GetGLTFAnimations(SceneBundle* gltf)
         return;
 
     s32 rootIndex = Prefab_FindAnimRootNodeIndex(gltf);
+    if (rootIndex < 0 || rootIndex >= gltf->numNodes)
+    {
+        AX_WARN("animation root index out of bounds %d", rootIndex);
+        return;
+    }
+
     f32 rootScale = gltf->nodes[rootIndex].scale[1];
     v128f rootScaleMul = VecSetR(rootScale, rootScale, rootScale, 1.0f);
     u8 scaledNodes[MAX_BONES * 2] = {0};
+    AX_LOG("animation bake: root=%d rootScale=%f skins=%d animations=%d", rootIndex, rootScale, gltf->numSkins, gltf->numAnimations);
 
     MarkScaledNodes(gltf, rootIndex, scaledNodes);
 
+    // Import-time root-scale compensation keeps runtime animation shaders free of asset-specific scale hacks.
     for (s32 i = 0; i < gltf->numNodes; i++)
     {
         if (!scaledNodes[i]) continue;
@@ -660,6 +696,9 @@ static void GetGLTFAnimations(SceneBundle* gltf)
     for (s32 s = 0; s < gltf->numSkins; s++)
     {
         ASkin* skin = &gltf->skins[s];
+        if (skin->numJoints > MAX_BONES)
+            AX_WARN("skin %d has %d joints, max GPU bone count is %d", s, skin->numJoints, MAX_BONES);
+
         m44* inverseBindMatrices = AllocateTLSFGlobal(skin->numJoints * sizeof(m44));
         SmallMemCpy(inverseBindMatrices, skin->inverseBindMatrices, sizeof(m44) * skin->numJoints);
         skin->inverseBindMatrices = (f32*)inverseBindMatrices;
@@ -693,6 +732,12 @@ static void GetGLTFAnimations(SceneBundle* gltf)
         {
             const bool scaleTranslation = ShouldScaleTranslationSampler(&gltf->animations[a], scaledNodes, s);
             AAnimSampler* sampler = &gltf->animations[a].samplers[s];
+            if (sampler->count <= 0)
+            {
+                AX_WARN("animation %d sampler %d has no keys", a, s);
+                continue;
+            }
+
             SmallMemCpy(currSampler, sampler->input, sampler->count * sizeof(f32));
             sampler->input = currSampler;
             currSampler += sampler->count;
@@ -729,13 +774,19 @@ static void GetGLTFAnimations(SceneBundle* gltf)
 
 s32 CreateVerticesIndices(SceneBundle* gltf)
 {
+    AX_LOG("mesh bake: meshes=%d vertices=%d indices=%d skins=%d", gltf->numMeshes, gltf->totalVertices, gltf->totalIndices, gltf->numSkins);
     AMesh* meshes    = gltf->meshes;
     u32 vertexCursor = gGFX.NumVertices;
     u32 indexCursor  = gGFX.NumIndices;
 
     if ((gGFX.NumVertices + gltf->totalVertices) > MAX_VERTEX || 
         (gGFX.NumIndices  + gltf->totalIndices ) > MAX_INDEX)
+    {
+        AX_WARN("mesh bake failed: vertex/index buffer capacity exceeded vertices=%d/%d indices=%d/%d",
+                gGFX.NumVertices + gltf->totalVertices, MAX_VERTEX,
+                gGFX.NumIndices + gltf->totalIndices, MAX_INDEX);
         return 0;
+    }
 
     gGFX.NumVertices += gltf->totalVertices;
     gGFX.NumIndices  += gltf->totalIndices;
@@ -754,6 +805,9 @@ s32 CreateVerticesIndices(SceneBundle* gltf)
         for (s32 p = 0; p < mesh.numPrimitives; p++)
         {
             APrimitive* primitive = &mesh.primitives[p];  
+            if (primitive->numVertices <= 0 || primitive->numIndices <= 0)
+                AX_WARN("mesh %d primitive %d has empty geometry vertices=%d indices=%d", m, p, primitive->numVertices, primitive->numIndices);
+
             IndicesForPrimitive(primitive, currIndices, vertexCursor);
             VerticesForPrimitive(primitive, currVertex);
             JointsForPrimitive(primitive, currVertex);
@@ -776,6 +830,7 @@ s32 CreateVerticesIndices(SceneBundle* gltf)
 
     GetGLTFAnimations(gltf);
     FreeGLTFBuffers(gltf);
+    AX_LOG("mesh bake complete: vertices=%d indices=%d", gltf->totalVertices, gltf->totalIndices);
     return 1;
 }
 
@@ -922,17 +977,25 @@ s32 LoadGLTFCached(const char* path, SceneBundle* scene, Texture* textures)
     int newLen = ChangeExtension(buffer, pathLen, "abm");
     s32 result = 1;
     if (IsABMLastVersion(buffer)) {
+        AX_LOG("asset cache hit: %s", buffer);
         result = LoadSceneBundleBinary(buffer, scene);
     }
     else if (ParseGLTF(path, scene, 1.0f)) {
+        AX_LOG("asset cache rebuild: %s -> %s", path, buffer);
         CreateVerticesIndices(scene);
         SaveGLTFBinary(scene, buffer);
         ChangeExtension(buffer, newLen, "bdc");
         SaveSceneImages(scene, buffer, FileHasExtension(path, pathLen,".glb"));
     }
-    else return 0;
+    else {
+        AX_WARN("asset import failed: %s", path);
+        return 0;
+    }
     ChangeExtension(buffer, newLen, "bdc");
-    return result && (LoadSceneImages(buffer, textures, scene->numImages) != 0);
+    s32 imageResult = LoadSceneImages(buffer, textures, scene->numImages);
+    if (imageResult == 0)
+        AX_WARN("scene image load failed: %s", buffer);
+    return result && (imageResult != 0);
 }
 
 void GenerateLOD_50_GLTF(SceneBundle* sceneBundle)
@@ -1042,15 +1105,28 @@ const s32 ABMMeshVersion = 50;
 u8 IsABMLastVersion(const u8* path)
 {
     if (!FileExist(path))
+    {
+        AX_LOG("abm cache miss: %s does not exist", path);
         return false;
+    }
+
     AFile file = AFileOpen(path, AOpenFlag_ReadBinary);
     if (AFileSize(file) < sizeof(s32) + sizeof(u64))
+    {
+        AX_WARN("abm cache invalid: %s is too small", path);
+        AFileClose(file);
         return false;
+    }
+
     s32 version = 0;
     AFileRead(&version, sizeof(s32), file, 1);
     u64 hex;
     AFileRead(&hex, sizeof(u64), file, 1);
     AFileClose(file);
+    if (hex != 0xABFABF)
+        AX_WARN("abm cache invalid: %s has wrong magic", path);
+    else if (version != ABMMeshVersion)
+        AX_LOG("abm cache stale: %s version=%d expected=%d", path, version, ABMMeshVersion);
     return version == ABMMeshVersion && hex == 0xABFABF;
 }
 
@@ -1074,6 +1150,8 @@ static void WriteGLTFString(const char* str, AFile file)
 s32 SaveGLTFBinary(const SceneBundle* gltf, const u8* path)
 {
 #if !AX_GAME_BUILD
+    AX_LOG("abm save: %s version=%d meshes=%d nodes=%d skins=%d animations=%d",
+           path, ABMMeshVersion, gltf->numMeshes, gltf->numNodes, gltf->numSkins, gltf->numAnimations);
     EnsurePath(path);
     AFile file = AFileOpen(path, AOpenFlag_WriteBinary);
     s32 version = ABMMeshVersion;
@@ -1127,7 +1205,7 @@ s32 SaveGLTFBinary(const SceneBundle* gltf, const u8* path)
     AFileWrite(deflateOutput, afterCompSize, file, 1);
 
     ArenaPopGlobal(tempSize);
-    // Note: anim morph targets aren't saved
+    // Cache stores runtime-ready mesh/animation data. Morph target animation is intentionally not serialized yet.
 
     for (s32 i = 0; i < gltf->numMeshes; i++)
     {
@@ -1281,6 +1359,7 @@ s32 SaveGLTFBinary(const SceneBundle* gltf, const u8* path)
     
     AFileWrite(&gltf->rootNode, sizeof(int), file, 1);
     AFileClose(file);
+    AX_LOG("abm save complete: %s vertices=%d indices=%d", path, gltf->totalVertices, gltf->totalIndices);
 #endif
     return 1;
 }
@@ -1314,6 +1393,7 @@ void ReadGLTFString(char** str, AFile file, FixedPow2Allocator* stringAllocator)
 
 s32 LoadSceneBundleBinary(const u8* path, SceneBundle* gltf)
 {
+    AX_LOG("abm load: %s", path);
     AFile file = AFileOpen(path, AOpenFlag_ReadBinary);
     if (!AFileExist(file))
     {
@@ -1327,22 +1407,24 @@ s32 LoadSceneBundleBinary(const u8* path, SceneBundle* gltf)
 
     s32 version = 0;
     AFileRead(&version, sizeof(s32), file, 1);
+    if (version != ABMMeshVersion)
+        AX_WARN("abm version mismatch: %s version=%d expected=%d", path, version, ABMMeshVersion);
     ASSERT(version == ABMMeshVersion);
     
     u64 reserved[4];
     AFileRead(&reserved, sizeof(u64) * 4, file, 1);
     
     AFileRead(&gltf->scale            , sizeof(float), file, 1);
-    AFileRead(&gltf->numMeshes        , sizeof(u16), file, 1); if (gltf->numMeshes     == 0xCDCD) { AX_WARN("numMeshes     UNDEFINED"); gltf->numMeshes     = 0; }
-    AFileRead(&gltf->numNodes         , sizeof(u16), file, 1); if (gltf->numNodes      == 0xCDCD) { AX_WARN("numNodes      UNDEFINED"); gltf->numNodes      = 0; }
-    AFileRead(&gltf->numMaterials     , sizeof(u16), file, 1); if (gltf->numMaterials  == 0xCDCD) { AX_WARN("numMaterials  UNDEFINED"); gltf->numMaterials  = 0; }
-    AFileRead(&gltf->numTextures      , sizeof(u16), file, 1); if (gltf->numTextures   == 0xCDCD) { AX_WARN("numTextures   UNDEFINED"); gltf->numTextures   = 0; }
-    AFileRead(&gltf->numImages        , sizeof(u16), file, 1); if (gltf->numImages     == 0xCDCD) { AX_WARN("numImages     UNDEFINED"); gltf->numImages     = 0; }
-    AFileRead(&gltf->numSamplers      , sizeof(u16), file, 1); if (gltf->numSamplers   == 0xCDCD) { AX_WARN("numSamplers   UNDEFINED"); gltf->numSamplers   = 0; }
-    AFileRead(&gltf->numCameras       , sizeof(u16), file, 1); if (gltf->numCameras    == 0xCDCD) { AX_WARN("numCameras    UNDEFINED"); gltf->numCameras    = 0; }
-    AFileRead(&gltf->numScenes        , sizeof(u16), file, 1); if (gltf->numScenes     == 0xCDCD) { AX_WARN("numScenes     UNDEFINED"); gltf->numScenes     = 0; }
-    AFileRead(&gltf->numSkins         , sizeof(u16), file, 1); if (gltf->numSkins      == 0xCDCD) { AX_WARN("numSkins      UNDEFINED"); gltf->numSkins      = 0; }
-    AFileRead(&gltf->numAnimations    , sizeof(u16), file, 1); if (gltf->numAnimations == 0xCDCD) { AX_WARN("numAnimations UNDEFINED"); gltf->numAnimations = 0; }
+    AFileRead(&gltf->numMeshes        , sizeof(u16), file, 1);
+    AFileRead(&gltf->numNodes         , sizeof(u16), file, 1);
+    AFileRead(&gltf->numMaterials     , sizeof(u16), file, 1);
+    AFileRead(&gltf->numTextures      , sizeof(u16), file, 1);
+    AFileRead(&gltf->numImages        , sizeof(u16), file, 1);
+    AFileRead(&gltf->numSamplers      , sizeof(u16), file, 1);
+    AFileRead(&gltf->numCameras       , sizeof(u16), file, 1);
+    AFileRead(&gltf->numScenes        , sizeof(u16), file, 1);
+    AFileRead(&gltf->numSkins         , sizeof(u16), file, 1);
+    AFileRead(&gltf->numAnimations    , sizeof(u16), file, 1);
     AFileRead(&gltf->defaultSceneIndex, sizeof(u16), file, 1);
     u16 isSkined;
     AFileRead(&isSkined, sizeof(u16), file, 1);
@@ -1585,5 +1667,7 @@ s32 LoadSceneBundleBinary(const u8* path, SceneBundle* gltf)
 
     AFileClose(file);
     gltf->allocator = allocator;
+    AX_LOG("abm load complete: %s meshes=%d nodes=%d skins=%d animations=%d",
+           path, gltf->numMeshes, gltf->numNodes, gltf->numSkins, gltf->numAnimations);
     return 1;
 }

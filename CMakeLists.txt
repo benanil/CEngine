@@ -98,6 +98,7 @@ target_sources(${EXECUTABLE_NAME} PRIVATE
     Source/Graphics.c
     Source/Rendering.c
     Source/GLTFParser.c
+    Source/SceneNormalize.c
     Source/Animation.c
     Source/Algorithm.c
     Source/AssetManager.c

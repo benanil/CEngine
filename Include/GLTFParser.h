@@ -58,6 +58,7 @@ enum AErrorType_
     AError_NON_UTF8,
     AError_EXT_NOT_SUPPORTED, // scenes other than GLTF, OBJ or Fbx
     AError_CloseBrackets,
+    AError_GLB_PARSING_FAILED,
     AError_MAX
 };
 typedef int AErrorType;
