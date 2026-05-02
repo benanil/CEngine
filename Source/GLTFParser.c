@@ -451,6 +451,7 @@ static void ParseNodesObj(sj_Value sjMeshObj, void* element, GLTFParseContext* c
     node->rotation[3] = 1.0f;
     node->scale[0] = node->scale[1] = node->scale[2] = ctx->scale; 
     node->index = -1;
+    node->parent = -1;
 
     sj_Value key, val;
     while (sj_iter_object(ctx->sj, sjMeshObj, &key, &val))

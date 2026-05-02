@@ -34,11 +34,6 @@
 
 #define TESTGPU_SUPPORTED_FORMATS (SDL_GPU_SHADERFORMAT_SPIRV | SDL_GPU_SHADERFORMAT_DXBC | SDL_GPU_SHADERFORMAT_DXIL | SDL_GPU_SHADERFORMAT_METALLIB)
 
-#define ANIM_POSE_NUM_INT32     4
-#define ANIM_MATRIX_NUM_INT32   8
-#define MAX_GPU_ANIM_FRAMES     (ANIM_NUM_FRAMES * MAX_ANIM_DURATION * MAX_ANIM_COUNT)
-#define ANIM_NODE_COUNT         (MAX_BONES * 2)
-#define ANIM_CHILD_PACKED_COUNT ((ANIM_NODE_COUNT + 3) / 4)
 
 typedef struct GPUAnimationInstance_
 {
@@ -52,6 +47,7 @@ typedef struct GPUAnimationData_
     u32 numFrames;
     u32 rootNodeIndex;
     u32 numJoints;
+    u32 numNodes;
     f32 duration;
 } GPUAnimationData;
 
@@ -113,15 +109,15 @@ int AnimationGetGPUData(AnimationController* ac, int animIdx, int frameOffset)
         .numFrames     = (u32)numFrames,
         .rootNodeIndex = (u32)ac->mRootNodeIndex,
         .numJoints     = (u32)skin->numJoints,
+        .numNodes      = (u32)ac->mPrefab->numNodes,
         .duration      = animation->duration
     };
 
     for (int i = 0; i < ANIM_NODE_COUNT; i++)
     {
-        u32 start = (u32)ac->mAnimNodes[i].childrenStartIndex;
-        u32 count = (u32)ac->mAnimNodes[i].numChildren;
-        u32 child = (u32)ac->mChildIndices[i];
-        animHierarchy[i] = start | (count << 8) | (child << 16);
+        const ANode* node = i < ac->mPrefab->numNodes ? &ac->mPrefab->nodes[i] : NULL;
+        u32 parent = node && node->parent >= 0 ? (u32)node->parent : 0xFFFFu;
+        animHierarchy[i] = parent;
     }
 
     for (int i = 0; i < skin->numJoints; i++)

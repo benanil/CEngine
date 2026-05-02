@@ -16,7 +16,6 @@ struct Entity
 StructuredBuffer<uint>         sBoneMtx  : register(t0);
 StructuredBuffer<Entity>       sEntities : register(t1);
 
-static const uint MaxBonePoses   = 128;
 static const uint MatrixNumInt32 = 6;
 
 struct VSInput
@@ -47,7 +46,7 @@ f16_3x4 LoadBone(uint idx)
 
 VSOutput main(VSInput input, uint instanceID : SV_InstanceID)
 {
-    uint boneStart = instanceID * MaxBonePoses; // * MatrixNumInt32;
+    uint boneStart = instanceID * MAX_BONES; // * MatrixNumInt32;
 
     f16_4 weights;
     weights.xyz = UnpackVec3XY11Z10Unorm(input.aWeights);

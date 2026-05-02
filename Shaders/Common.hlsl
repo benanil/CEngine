@@ -133,6 +133,10 @@ typedef int   s32;
     typedef uint4 u16x4_io;
 #endif
 
+
+#define MAX_BONES    96
+
+    
 #define VecLerp(a, b, t)      lerp(a, b, t)
                              
 #define MMIN(a, b)            min(a, b)

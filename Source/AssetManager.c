@@ -604,9 +604,21 @@ static void PrintMatrix(m44 mtx)
 // mark all bone nodex to 1 except root
 static void MarkScaledNodes(const SceneBundle* gltf, s32 rootIndex, u8 scaledNodes[MAX_BONES * 2])
 {
-    for (s32 i = 0; i < gltf->numNodes; i++)
-        for (s32 j = 0; j < gltf->nodes[i].numChildren; j++)
-            if (i != rootIndex) scaledNodes[gltf->nodes[i].children[j]] = 1;
+    s32 stack[MAX_BONES * 2];
+    s32 stackIndex = 0;
+
+    for (s32 i = 0; i < gltf->nodes[rootIndex].numChildren; i++)
+        stack[stackIndex++] = gltf->nodes[rootIndex].children[i];
+
+    while (stackIndex > 0)
+    {
+        s32 nodeIndex = stack[--stackIndex];
+        const ANode* node = &gltf->nodes[nodeIndex];
+        scaledNodes[nodeIndex] = 1;
+
+        for (s32 i = 0; i < node->numChildren; i++)
+            stack[stackIndex++] = node->children[i];
+    }
 }
 
 static bool ShouldScaleTranslationSampler(const AAnimation* animation, const u8 scaledNodes[MAX_BONES * 2], s32 samplerIndex)
@@ -620,6 +632,95 @@ static bool ShouldScaleTranslationSampler(const AAnimation* animation, const u8 
             return true;
     }
     return false;
+}
+
+static void EmitRemappedNode(const SceneBundle* gltf, s32 oldNode, s32* nodeRemap, s32* oldFromNew, s32* numRemapped)
+{
+    if (oldNode < 0 || oldNode >= gltf->numNodes || nodeRemap[oldNode] != -1)
+        return;
+
+    s32 newNode = (*numRemapped)++;
+    nodeRemap[oldNode] = newNode;
+    oldFromNew[newNode] = oldNode;
+
+    const ANode* node = &gltf->nodes[oldNode];
+    for (s32 i = 0; i < node->numChildren; i++)
+        EmitRemappedNode(gltf, node->children[i], nodeRemap, oldFromNew, numRemapped);
+}
+
+static void RemapAnimationNodes(SceneBundle* gltf)
+{
+    if (gltf->numNodes <= 0 || gltf->numNodes > MAX_BONES * 2)
+        return;
+
+    s32 nodeRemap[MAX_BONES * 2];
+    s32 oldFromNew[MAX_BONES * 2];
+    for (s32 i = 0; i < MAX_BONES * 2; i++)
+    {
+        nodeRemap[i] = -1;
+        oldFromNew[i] = -1;
+    }
+
+    for (s32 i = 0; i < gltf->numNodes; i++)
+        gltf->nodes[i].parent = -1;
+
+    for (s32 i = 0; i < gltf->numNodes; i++)
+    {
+        const ANode* node = &gltf->nodes[i];
+        for (s32 c = 0; c < node->numChildren; c++)
+        {
+            s32 child = node->children[c];
+            if (child >= 0 && child < gltf->numNodes)
+                gltf->nodes[child].parent = i;
+        }
+    }
+
+    s32 numRemapped = 0;
+    EmitRemappedNode(gltf, gltf->rootNode, nodeRemap, oldFromNew, &numRemapped);
+
+    for (s32 s = 0; s < gltf->numScenes; s++)
+        for (s32 i = 0; i < gltf->scenes[s].numNodes; i++)
+            EmitRemappedNode(gltf, gltf->scenes[s].nodes[i], nodeRemap, oldFromNew, &numRemapped);
+
+    for (s32 i = 0; i < gltf->numNodes; i++)
+        EmitRemappedNode(gltf, i, nodeRemap, oldFromNew, &numRemapped);
+
+    ANode newNodes[MAX_BONES * 2];
+    for (s32 newIdx = 0; newIdx < gltf->numNodes; newIdx++)
+    {
+        s32 oldIdx = oldFromNew[newIdx];
+        ASSERT(oldIdx >= 0);
+        newNodes[newIdx] = gltf->nodes[oldIdx];
+
+        s32 oldParent = gltf->nodes[oldIdx].parent;
+        newNodes[newIdx].parent = oldParent >= 0 ? nodeRemap[oldParent] : -1;
+
+        for (s32 c = 0; c < newNodes[newIdx].numChildren; c++)
+            newNodes[newIdx].children[c] = nodeRemap[newNodes[newIdx].children[c]];
+    }
+
+    SmallMemCpy(gltf->nodes, newNodes, sizeof(ANode) * gltf->numNodes);
+    gltf->rootNode = nodeRemap[gltf->rootNode];
+
+    for (s32 s = 0; s < gltf->numScenes; s++)
+        for (s32 i = 0; i < gltf->scenes[s].numNodes; i++)
+            gltf->scenes[s].nodes[i] = nodeRemap[gltf->scenes[s].nodes[i]];
+
+    for (s32 s = 0; s < gltf->numSkins; s++)
+    {
+        ASkin* skin = &gltf->skins[s];
+        if (skin->skeleton >= 0)
+            skin->skeleton = nodeRemap[skin->skeleton];
+        for (s32 i = 0; i < skin->numJoints; i++)
+            skin->joints[i] = nodeRemap[skin->joints[i]];
+    }
+
+    for (s32 a = 0; a < gltf->numAnimations; a++)
+    {
+        AAnimation* animation = &gltf->animations[a];
+        for (s32 c = 0; c < animation->numChannels; c++)
+            animation->channels[c].targetNode = nodeRemap[animation->channels[c].targetNode];
+    }
 }
 
 static void GetGLTFAnimations(SceneBundle* gltf)
@@ -721,6 +822,8 @@ static void GetGLTFAnimations(SceneBundle* gltf)
 
 s32 CreateVerticesIndices(SceneBundle* gltf)
 {
+    RemapAnimationNodes(gltf);
+
     AMesh* meshes    = gltf->meshes;
     u32 vertexCursor = gGFX.NumVertices;
     u32 indexCursor  = gGFX.NumIndices;
@@ -1029,7 +1132,7 @@ void OptimizeMesh(const SceneBundle* gltf)
 /*//////////////////////////////////////////////////////////////////////////*/
 
 // ZSTD_CCtx* zstdCompressorCTX = NULL;
-const s32 ABMMeshVersion = 44;
+const s32 ABMMeshVersion = 46;
 
 u8 IsABMLastVersion(const u8* path)
 {
@@ -1152,6 +1255,7 @@ s32 SaveGLTFBinary(const SceneBundle* gltf, const u8* path)
         AFileWrite(&node->rotation   , sizeof(float) * 4, file, 1);
         AFileWrite(&node->scale      , sizeof(float) * 3, file, 1);
         AFileWrite(&node->numChildren, sizeof(s32), file, 1);
+        AFileWrite(&node->parent     , sizeof(s32), file, 1);
         
         if (node->numChildren)
             AFileWrite(node->children, sizeof(s32) * node->numChildren, file, 1);
@@ -1429,6 +1533,7 @@ s32 LoadSceneBundleBinary(const u8* path, SceneBundle* gltf)
         AFileRead(&node->rotation   , sizeof(float) * 4, file, 1);
         AFileRead(&node->scale      , sizeof(float) * 3, file, 1);
         AFileRead(&node->numChildren, sizeof(s32), file, 1);
+        AFileRead(&node->parent     , sizeof(s32), file, 1);
         
         if (node->numChildren)
         {

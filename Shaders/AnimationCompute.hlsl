@@ -8,7 +8,6 @@
 #define MAX_ANIM_COUNT    64
 #define MaxBoneDepth      32
 
-#define MaxBonePoses    128
 
 struct Pose {
     f16_4 translation;
@@ -30,6 +29,7 @@ struct AnimationData {
     uint numFrames;
     uint rootNodeIndex;
     uint numJoints;
+    uint numNodes;
     float duration;
 };
 
@@ -68,7 +68,7 @@ f16_4 GetHalf4(StructuredBuffer<uint> buffer, uint idx)
 f16_2x4 LoadPose(int i, int frameOffset, int frame)
 {
     const int AnimPoseSize = 4;
-    int pose = ((frameOffset + frame) * MaxBonePoses + i) * AnimPoseSize;
+    int pose = ((frameOffset + frame) * MAX_BONES + i) * AnimPoseSize;
     f16_2x4 result;
     result[0] = GetHalf4(animPoses, pose + 0);
     result[1] = GetHalf4(animPoses, pose + 2);
@@ -84,10 +84,7 @@ AnimNode GetAnimNode(int idx)
     return node;
 }
 
-u16 GetChildIndex(u16 idx)
-{
-    return (animHierarchy[idx] >> 16) & 0xff;
-}
+u16 GetParentIndex(u16 idx) { return (u16)(animHierarchy[idx] & 0xFFFF); }
 
 f16_4x4 LoadMatrix(int idx)
 {
@@ -101,32 +98,17 @@ f16_4x4 LoadMatrix(int idx)
     return result;
 }
 
-void RecurseBoneMatrices(u16 rootNodeIndex, inout Pose poses[MaxBonePoses])
+void FlattenBoneMatrices(uint numNodes, inout Pose poses[MAX_BONES])
 {
-    u16 stack[32];
-    u16 stackIndex = 0;
-    stack[stackIndex++] = rootNodeIndex;
-    const u16 skinOffset = 0;
-
-    while (stackIndex)
+    for (u16 idx = 1; idx < numNodes; idx++)
     {
-        u16 idx = stack[--stackIndex];
-        Pose parent = poses[idx];
-        AnimNode node = GetAnimNode(skinOffset + idx);
-
-        for (u16 c = 0; c < node.numChildren; c++)
-        {
-            u16 child = (u16)GetChildIndex(skinOffset + node.childrenStartIndex + c);
-            Pose pose = poses[child];
-
-            f16_4 t = pose.translation;
-            t = QMulVec3V(parent.rotation, t);
-            pose.translation = VecAdd(t, parent.translation); 
-            pose.rotation = QMul(pose.rotation, parent.rotation);
-
-            poses[child] = pose;
-            stack[stackIndex++] = child;
-        }
+        u16 parentIdx = GetParentIndex(idx);
+        Pose parent = poses[parentIdx];
+        Pose pose = poses[idx];
+        f16_4 t = QMulVec3V(parent.rotation, pose.translation);
+        pose.translation = VecAdd(t, parent.translation);
+        pose.rotation = QMul(pose.rotation, parent.rotation);
+        poses[idx] = pose;
     }
 }
 
@@ -134,8 +116,8 @@ void RecurseBoneMatrices(u16 rootNodeIndex, inout Pose poses[MaxBonePoses])
 void main(uint3 GlobalInvocationID : SV_DispatchThreadID)
 {
     int instanceIdx = int(GlobalInvocationID.x);
-    // if (instanceIdx >= numInstances)
-    //     return;
+    if (instanceIdx >= numInstances)
+        return;
 
     AnimationInstance anim = animInstances[instanceIdx];
     AnimationData data = animData[anim.animIdx];
@@ -144,9 +126,9 @@ void main(uint3 GlobalInvocationID : SV_DispatchThreadID)
     int frameAIdx   = int(Floorf(animT));
     int frameBIdx   = int(Ceilf(animT)) % int(data.numFrames);
     
-    Pose poses[MaxBonePoses];
+    Pose poses[MAX_BONES];
     f16 animProgress = f16(Fractf(animT));
-    for (int i = 0; i < MaxBonePoses; i++)
+    for (int i = 0; i < MAX_BONES; i++)
     {
         f16_2x4 a = LoadPose(i, int(data.frameOffset), frameAIdx);
         f16_2x4 b = LoadPose(i, int(data.frameOffset), frameBIdx);
@@ -154,7 +136,7 @@ void main(uint3 GlobalInvocationID : SV_DispatchThreadID)
         poses[i].rotation    = QNlerp(a[1], b[1], animProgress);
     }
 
-    RecurseBoneMatrices((u16)data.rootNodeIndex, poses);
+    FlattenBoneMatrices(data.numNodes, poses);
 
     int numJoints = int(data.numJoints);
     for (s16 i = 0; i < numJoints; i++)
@@ -162,7 +144,7 @@ void main(uint3 GlobalInvocationID : SV_DispatchThreadID)
         Pose pose = poses[joints[i]];
         f16_4x4 mat = M44PositionRotationVec(pose.translation, pose.rotation);
         mat = M44Multiply(LoadMatrix(i), mat);
-        int outIdx = instanceIdx * MaxBonePoses + i;
+        int outIdx = instanceIdx * MAX_BONES + i;
         WriteBone((f16_3x4)M44Transpose(mat), outIdx);
     }
 }

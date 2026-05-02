@@ -138,6 +138,7 @@ typedef struct ANode_
     int   index; // index of mesh or camera, -1 if node doesn't have mesh or camera
     int   skin; 
     int   numChildren;
+    int   parent;
     char* name;
     int*  children;
 } ANode;
