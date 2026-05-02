@@ -298,15 +298,6 @@
 					<File>
 						<Path>Include/Rendering.h</Path>
 					</File>
-					<File>
-						<Path>Include/SceneNormalize.h</Path>
-					</File>
-					<File>
-						<Path>Include/AnimationBake.h</Path>
-					</File>
-					<File>
-						<Path>Include/MeshBake.h</Path>
-					</File>
 				</Children>
 			</Folder>
 			<Folder>

@@ -34,7 +34,7 @@ u8 IsABMLastVersion(const u8* path);
 
 /* Mesh baking */
 // returns 0 on not enough memory
-s32 CreateVerticesIndices(SceneBundle* gltf);
+s32 BakeSceneMeshesAndAnimations(SceneBundle* gltf);
 
 void OptimizeMesh(const SceneBundle* gltf);
 
