@@ -179,7 +179,7 @@ SDL_GPUBuffer* CreateBuffer(
     return gpu_buffer;
 }
 
-void UpdateGPUBuffer(SDL_GPUBuffer* buffer, const void* data, size_t bufferSize)
+void UpdateGPUBuffer(SDL_GPUBuffer* buffer, const void* data, size_t bufferSize, size_t offset)
 {
     SDL_GPUTransferBufferCreateInfo transferBufferCreateInfo;
     transferBufferCreateInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
@@ -204,7 +204,7 @@ void UpdateGPUBuffer(SDL_GPUBuffer* buffer, const void* data, size_t bufferSize)
                           &(SDL_GPUBufferRegion) 
                           {
                               .buffer = buffer, 
-                              .offset = 0, 
+                              .offset = offset, 
                               .size = bufferSize
                           }, 
                           true);

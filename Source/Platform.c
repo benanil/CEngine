@@ -188,6 +188,16 @@ void wOpenFile(const char* filePath, SDL_DialogFileCallback callback)
     SDL_ShowOpenFileDialog(callback, NULL, NULL, NULL, 0, filePath, false);
 }
 
+static void EnableConsoleColors(void)
+{
+    #if defined(_WIN32)
+    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    DWORD dwMode = 0;
+    GetConsoleMode(hOut, &dwMode);
+    SetConsoleMode(hOut, dwMode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+    #endif
+}
+
 f32 GetDeltaTime() 
 { 
     return PlatformCtx.DeltaTime; 
@@ -205,6 +215,7 @@ s64 TimeToMicroseconds(s64 t)  { return Int64MulDiv(t, 1000000, PlatformCtx.CPUF
 
 void PlatformInit()
 {
+    EnableConsoleColors();
     PlatformCtx.SecondsSinceLastClick = 0.0f;
     PlatformCtx.CPUFrequency          = SDL_GetPerformanceFrequency();
     PlatformCtx.StartupTime           = SDL_GetPerformanceCounter();

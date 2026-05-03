@@ -6,19 +6,18 @@
 
 #if defined(AX_ENABLE_LOGGING) || defined(_DEBUG) || defined(DEBUG) || defined(Debug)
     #include <SDL3/SDL_log.h>
-    
-    #define AX_LOG(format, ...)  SDL_Log("axInfo: %s -line:%i " format, GetFileName(__FILE__), __LINE__, ##__VA_ARGS__)
-    #define AX_WARN(format, ...) SDL_LogWarn(SDL_LOG_PRIORITY_WARN, "axWarn: %s -line:%i " format, GetFileName(__FILE__), __LINE__, ##__VA_ARGS__)
 
-    #if !(defined(__GNUC__) || defined(__GNUG__))
-    #   define AX_ERROR(format, ...) SDL_LogError(SDL_LOG_PRIORITY_ERROR, "%s -line:%i " format, GetFileName(__FILE__), __LINE__, ##__VA_ARGS__)
-    #else                                                             
-    #   define AX_ERROR(format, ...) SDL_LogError(SDL_LOG_PRIORITY_ERROR, "%s -line:%i " format, GetFileName(__FILE__), __LINE__,##__VA_ARGS__)
-    #endif
+    #define AX_ANSI_RESET  "\033[0m"
+    #define AX_ANSI_GREEN  "\033[32m"
+    #define AX_ANSI_YELLOW "\033[33m"
+    #define AX_ANSI_RED    "\033[31m"
 
+    #define AX_LOG(format, ...)  SDL_Log(AX_ANSI_GREEN  "axInfo: %s -line:%i " format AX_ANSI_RESET, GetFileName(__FILE__), __LINE__, ##__VA_ARGS__)
+    #define AX_WARN(format, ...) SDL_LogWarn(SDL_LOG_PRIORITY_WARN,  AX_ANSI_YELLOW "axWarn: %s -line:%i " format AX_ANSI_RESET, GetFileName(__FILE__), __LINE__, ##__VA_ARGS__)
+    #define AX_ERROR(format, ...) SDL_LogError(SDL_LOG_PRIORITY_ERROR, AX_ANSI_RED "axError: %s -line:%i " format AX_ANSI_RESET, GetFileName(__FILE__), __LINE__, ##__VA_ARGS__)
 #else
     #define AX_ERROR(format, ...)
-    #define AX_LOG(format, ...)  
+    #define AX_LOG(format, ...)
     #define AX_WARN(format, ...)
 #endif
 
