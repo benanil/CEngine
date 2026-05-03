@@ -11,8 +11,8 @@
 #include "Include/Rendering.h"
 #include "Include/Graphics.h"
 #include "Include/ECS.h"
-#include "Include/Random.h"
 #include "Include/Memory.h"
+#include "Include/Random.h"
 #include "Include/AssetManager.h"
 
 static Uint32 frames = 0;
@@ -65,7 +65,7 @@ s32 InitScene()
     u32 skinnedBundle = ECS_AddSceneBundle(&ecsSkinned, gPaladin);
     // u32 staticBundle  = ECS_AddSceneBundle(&ecsStatic, gPaladin);
 
-    for (s32 i = 0; i < 4096; i++)
+    for (s32 i = 0; i < MAX_ANIM_INSTANCES; i++)
     {
         u64 hash = MurmurHash(i + 123);
         v128f pos = VecMulf(VecSetR(f32_(i & 63), 0.0f, f32_(i >> 6), 0.0f), 1.5f);

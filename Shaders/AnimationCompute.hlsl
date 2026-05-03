@@ -1,13 +1,9 @@
 #define INT16_SUPPORTED 0
 
+#include "../Include/RenderLimits.h"
 #include "Bitpack.hlsl"
 #include "Math.hlsl"
-
-#define ANIM_NUM_FRAMES   24
-#define MAX_ANIM_DURATION 8
-#define MAX_ANIM_COUNT    64
-#define MaxBoneDepth      32
-
+#include "CommonStructs.hlsl"
 
 struct Pose {
     f16_4 translation;
@@ -39,8 +35,12 @@ StructuredBuffer<AnimationData>      animData             : register(t2); // per
 StructuredBuffer<uint>               joints               : register(t3); // per instance * bone
 StructuredBuffer<uint>               inverseBindMatrices  : register(t4); // per skin * bone
 StructuredBuffer<AnimationInstance>  animInstances        : register(t5); // per instance 
+StructuredBuffer<PrimitiveGroup>     primitiveGroups      : register(t6);
+StructuredBuffer<uint>               denseToPrimitiveIndex: register(t7);
 
-RWStructuredBuffer<uint> outBoneMtx : register(u0, space1); // per instance * bone
+RWStructuredBuffer<uint> outBoneMtx             : register(u0, space1); // per instance * bone
+RWStructuredBuffer<uint> drawDenseIndices       : register(u1, space1);
+RWStructuredBuffer<uint> numVisibleInPrimitive  : register(u2, space1);
 
 cbuffer params : register(b0, space2)
 {
@@ -117,9 +117,18 @@ void FlattenBoneMatrices(uint numNodes, inout Pose poses[MAX_BONES])
 [numthreads(32, 1, 1)]
 void main(uint3 GlobalInvocationID : SV_DispatchThreadID)
 {
-    int instanceIdx = int(GlobalInvocationID.x);
-    if (instanceIdx >= numInstances)
+    uint visibleSlot = GlobalInvocationID.x;
+    if (visibleSlot >= uint(numInstances))
         return;
+
+    uint primitiveIdx = denseToPrimitiveIndex[visibleSlot];
+    PrimitiveGroup group = primitiveGroups[primitiveIdx];
+    uint localVisibleSlot = visibleSlot - group.entityOffset;
+    if (localVisibleSlot >= numVisibleInPrimitive[primitiveIdx])
+        return;
+
+    uint denseIdx = drawDenseIndices[visibleSlot];
+    int instanceIdx = int(denseIdx % MAX_ANIM_INSTANCES);
 
     AnimationInstance anim = animInstances[instanceIdx];
     AnimationData data = animData[anim.animIdx];

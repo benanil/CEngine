@@ -42,6 +42,7 @@
 
 typedef float f32;
 typedef int   s32;
+typedef uint  u32;
 
 #if INT16_SUPPORTED
     typedef int16_t   s16;
@@ -134,9 +135,6 @@ typedef int   s32;
 #endif
 
 
-#define MAX_BONES    96
-
-    
 #define VecLerp(a, b, t)      lerp(a, b, t)
                              
 #define MMIN(a, b)            min(a, b)

@@ -18,7 +18,132 @@
 #include "Include/Graphics.h"
 #include "Include/GLTFParser.h"
 #include "Include/FileSystem.h"
+#include "Include/Random.h"
 #include "Math/Half.h"
+
+extern RenderState  g_RenderState;
+
+u32 animPoses[MAX_BONES * MAX_GPU_ANIM_FRAMES * ANIM_POSE_NUM_INT32]; // 32mb
+u32 animHierarchy[ANIM_NODE_COUNT + ANIM_CHILD_PACKED_COUNT];
+u32 animJoints[MAX_BONES * MAX_SKIN_COUNT  * 2];
+u32 invBindMatrices[MAX_BONES * MAX_SKIN_COUNT  * 2 * ANIM_MATRIX_NUM_INT32];
+GPUAnimationInstance animInstances[MAX_ANIM_INSTANCES];
+GPUAnimationData animData[MAX_ANIM_COUNT];
+u32 numGPUAnimations;
+
+static void StoreHalf4(u32* dst, const f32* src)
+{
+    f16 h[4];
+    Float4ToHalf4(h, src);
+    dst[0] = (u32)h[0] | ((u32)h[1] << 16);
+    dst[1] = (u32)h[2] | ((u32)h[3] << 16);
+}
+
+void AnimInitBuffers()
+{
+    const Uint32 readRasterBit   = SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ;
+    const Uint32 writeComputeBit = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE;
+    const Uint32 readCompute     = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ;
+    const size_t maxBoneMatrices = sizeof(half3x4) * MAX_BONES * MAX_ANIM_INSTANCES;
+    g_RenderState.boneBuffer  = CreateBuffer(NULL, maxBoneMatrices , readRasterBit | writeComputeBit, "CPJointMatrices");
+    g_RenderState.animPoseBuffer      = CreateBuffer(animPoses      , sizeof(animPoses)      , readCompute, "CPAnimPoses");
+    g_RenderState.animHierarchyBuffer = CreateBuffer(animHierarchy  , sizeof(animHierarchy)  , readCompute, "CPAnimHierarchy");
+    g_RenderState.animDataBuffer      = CreateBuffer(animData       , sizeof(animData)       , readCompute, "CPAnimationData");
+    g_RenderState.jointsBuffer        = CreateBuffer(animJoints     , sizeof(animJoints)     , readCompute, "CPjointsBuffer ");
+    g_RenderState.invBindBuffer       = CreateBuffer(invBindMatrices, sizeof(invBindMatrices), readCompute, "CPinvBindBuffer");
+    g_RenderState.animInstanceBuffer  = CreateBuffer(animInstances  , sizeof(animInstances), readCompute, "CPAnimationInstances");
+}
+
+static void UpdateBuffers()
+{
+}
+
+int AnimationGetGPUData(AnimationController* ac, int animIdx, int frameOffset)
+{
+    const AAnimation* animation = &ac->mPrefab->animations[animIdx];
+    const ASkin*      skin      = &ac->mPrefab->skins[0];
+    const int framePerSecond    = ANIM_NUM_FRAMES;
+    int numFrames = (int)(animation->duration * framePerSecond);
+    int numPose   = frameOffset * MAX_BONES;
+    MemsetZero(animHierarchy, sizeof(animHierarchy));
+
+    for (int i = 0; i < numFrames; i++)
+    {
+        float norm = (float)i / (float)numFrames;
+        AnimationController_SampleAnimationPose(ac, ac->mAnimPoseA, animIdx, norm);
+        for (int poseIdx = 0; poseIdx < MAX_BONES; poseIdx++)
+        {
+            u32* outPose = animPoses + ((numPose + poseIdx) * ANIM_POSE_NUM_INT32);
+            StoreHalf4(outPose, ac->mAnimPoseA[poseIdx].translation.m128_f32);
+            StoreHalf4(outPose + 2, ac->mAnimPoseA[poseIdx].rotation.m128_f32);
+        }
+        numPose += MAX_BONES;
+    }
+
+    animData[animIdx] = (GPUAnimationData){
+        .frameOffset   = (u32)frameOffset,
+        .numFrames     = (u32)numFrames,
+        .rootNodeIndex = (u32)ac->mRootNodeIndex,
+        .numJoints     = (u32)skin->numJoints,
+        .numNodes      = (u32)ac->mPrefab->numNodes,
+        .duration      = animation->duration
+    };
+
+    for (int i = 0; i < ANIM_NODE_COUNT; i++)
+    {
+        const ANode* node = i < ac->mPrefab->numNodes ? &ac->mPrefab->nodes[i] : NULL;
+        u32 parent = node && node->parent >= 0 ? (u32)node->parent : 0xFFFFu;
+        animHierarchy[i] = parent;
+    }
+
+    for (int i = 0; i < skin->numJoints; i++)
+        animJoints[i] = (u32)skin->joints[i];
+
+    const m44* inv = (const m44*)skin->inverseBindMatrices;
+    for (int i = 0; i < skin->numJoints; i++)
+    {
+        u32* outMtx = invBindMatrices + (i * ANIM_MATRIX_NUM_INT32);
+        StoreHalf4(outMtx + 0, inv[i].m[0]);
+        StoreHalf4(outMtx + 2, inv[i].m[1]);
+        StoreHalf4(outMtx + 4, inv[i].m[2]);
+        StoreHalf4(outMtx + 6, inv[i].m[3]);
+    }
+    return numFrames;
+}
+
+void InitAnimationInstances(void)
+{
+    for (u32 i = 0; i < MAX_ANIM_INSTANCES; i++)
+    {
+        u32 hash = WangHash(i + 645u);
+        u32 animIdx = hash % numGPUAnimations;
+        f32 duration = animData[animIdx].duration;
+
+        animInstances[i] = (GPUAnimationInstance){
+            .animIdx = animIdx,
+            .timeOffset = NextFloat01(hash) * duration,
+        };
+    }
+}
+
+void InitAnimationFrames(AnimationController* ac)
+{
+    int frameOffset = 0;
+    const SceneBundle* bundle = ac->mPrefab;
+    numGPUAnimations = (u32)MMIN(bundle->numAnimations, MAX_ANIM_COUNT);
+    for (u32 animIdx = 0; animIdx < numGPUAnimations; animIdx++)
+    {
+        int numFrames = (int)(bundle->animations[animIdx].duration * ANIM_NUM_FRAMES);
+        if (frameOffset + numFrames > MAX_GPU_ANIM_FRAMES)
+        {
+            numGPUAnimations = animIdx;
+            break;
+        }
+        numFrames = AnimationGetGPUData(ac, (int)animIdx, frameOffset);
+        frameOffset += numFrames;
+    }
+    AX_LOG("num animation: %d", numGPUAnimations);
+}
 
 void AnimationController_Create(const SceneBundle* gltfScene, AnimationController* result)
 {

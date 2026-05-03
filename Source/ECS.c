@@ -2,6 +2,7 @@
 #include "Include/ECS.h"
 #include "Include/Memory.h"
 #include "Include/Random.h"
+#include "Include/Platform.h"
 #include "Math/Half.h"
 #include "Math/Matrix.h"
 #include "Math/Bitpack.h"
@@ -30,7 +31,7 @@ void ECS_InitSet(ECS* ecs, u32 maxEntities, u32 maxGroups, u32 maxBundles)
 void ECS_Init()
 {
     ECS_InitSet(&ecsSkinned, MAX_ENTITY, MAX_GROUP, MAX_BUNDLES);
-    ECS_InitSet(&ecsStatic,  MAX_ENTITY, MAX_GROUP, MAX_BUNDLES);
+    ECS_InitSet(&ecsStatic,  MAX_ANIM_INSTANCES, MAX_GROUP, MAX_BUNDLES);
 }
 
 u32 ECS_AddSceneBundle(ECS* ecs, const SceneBundle* sceneBundle)
@@ -71,11 +72,6 @@ u32 ECS_AddSceneBundle(ECS* ecs, const SceneBundle* sceneBundle)
     return bundleIdx;
 }
 
-u32 AddSceneBundle(const SceneBundle* sceneBundle)
-{
-    return ECS_AddSceneBundle(&ecsSkinned, sceneBundle);
-}
-
 static u32 FindPrimitiveGroup(ECS* ecs, Range range, u32 meshIndex, u32 primitiveIndex)
 {
     for (u32 i = range.start; i < range.start + range.count; i++)
@@ -84,6 +80,7 @@ static u32 FindPrimitiveGroup(ECS* ecs, Range range, u32 meshIndex, u32 primitiv
         if (group->valid && group->meshIndex == meshIndex && group->primitiveIndex == primitiveIndex)
             return i;
     }
+    AX_WARN("primitive group couldnt found: %d", primitiveIndex);
     return INVALID_GROUP;
 }
 
@@ -101,7 +98,11 @@ static u32 LeaveSpaceForEntities(ECS* ecs, u32 primitiveIdx, u32 numAdded)
 {
     PrimitiveGroup* group = &ecs->primitiveGroups[primitiveIdx];
     const u32 entityStart = group->entityOffset + group->numEntities;
-    if (ecs->numEntities + numAdded > ecs->maxEntities) return INVALID_ENTITY;
+    if (ecs->numEntities + numAdded > ecs->maxEntities)
+    {
+        AX_WARN("maximum entity reached: %d", ecs->maxEntities);
+        return INVALID_ENTITY;
+    }
 
     for (s32 i = (s32)ecs->numGroups - 1; i > (s32)primitiveIdx; i--)
     {
@@ -146,19 +147,9 @@ u32 ECS_AddEntities(ECS* ecs, u32 primitiveIdx, u32 numAdded, const Entity* data
     return startIdx;
 }
 
-u32 AddEntities(u32 primitiveIdx, u32 numAdded, const Entity* data)
-{
-    return ECS_AddEntities(&ecsSkinned, primitiveIdx, numAdded, data);
-}
-
 u32 ECS_AddEntity(ECS* ecs, u32 primitiveIdx, const Entity* data)
 {
     return ECS_AddEntities(ecs, primitiveIdx, 1, data);
-}
-
-u32 AddEntity(u32 primitiveIdx, const Entity* data)
-{
-    return ECS_AddEntity(&ecsSkinned, primitiveIdx, data);
 }
 
 static u32 AddNodeEntity(ECS* ecs, Range range, const SceneBundle* bundle, u32 meshIndex, v128f position, v128f rotation, v128f scale)
@@ -183,11 +174,19 @@ static u32 AddNodeEntity(ECS* ecs, Range range, const SceneBundle* bundle, u32 m
 
 u32 ECS_AddScene(ECS* ecs, u32 bundleIdx, v128f position, v128f rotation, v128f scale, bool wantSkinned)
 {
-    if (bundleIdx >= ecs->numBundles || ecs->bundles[bundleIdx] == NULL) return 0;
+    if (bundleIdx >= ecs->numBundles || ecs->bundles[bundleIdx] == NULL)
+    {
+        AX_WARN("add scene bundle bounds check failed!");
+        return 0;
+    }
 
     Range range = ecs->bundleRange[bundleIdx];
     const SceneBundle* bundle = ecs->bundles[bundleIdx];
-    if (bundle->numNodes <= 0) return 0;
+    if (bundle->numNodes <= 0)
+    {
+        AX_WARN("no nodes in bundle to add!");
+        return 0;
+    }
 
     typedef struct NodeTransform_
     {
@@ -196,8 +195,9 @@ u32 ECS_AddScene(ECS* ecs, u32 bundleIdx, v128f position, v128f rotation, v128f 
         v128f scale;
     } NodeTransform;
 
-    NodeTransform* world = (NodeTransform*)AllocateTLSFGlobal(sizeof(NodeTransform) * (u32)bundle->numNodes);
     rotation = VecNorm(rotation);
+    NodeTransform sceneTransform = { position, rotation, scale };
+    NodeTransform* world = (NodeTransform*)ArenaPushGlobal(sizeof(NodeTransform) * (u32)bundle->numNodes);
     for (u32 i = 0; i < (u32)bundle->numNodes; i++)
     {
         const ANode* node = bundle->nodes + i;
@@ -205,19 +205,10 @@ u32 ECS_AddScene(ECS* ecs, u32 bundleIdx, v128f position, v128f rotation, v128f 
         v128f localRot   = VecNorm(VecLoad(node->rotation));
         v128f localScale = VecLoad(node->scale);
 
-        if (node->parent >= 0)
-        {
-            NodeTransform parent = world[node->parent];
-            world[i].position = VecAdd(QMulVec3V(VecMul(localPos, parent.scale), parent.rotation), parent.position);
-            world[i].rotation = VecNorm(QMul(localRot, parent.rotation));
-            world[i].scale = VecMul(localScale, parent.scale);
-        }
-        else
-        {
-            world[i].position = VecAdd(QMulVec3V(VecMul(localPos, scale), rotation), position);
-            world[i].rotation = VecNorm(QMul(localRot, rotation));
-            world[i].scale = VecMul(localScale, scale);
-        }
+        NodeTransform parent = node->parent >= 0 ? world[node->parent] : sceneTransform;
+        world[i].position = VecAdd(QMulVec3V(VecMul(localPos, parent.scale), parent.rotation), parent.position);
+        world[i].rotation = VecNorm(QMul(localRot, parent.rotation));
+        world[i].scale = VecMul(localScale, parent.scale);
     }
 
     u32 added = 0;
@@ -230,13 +221,8 @@ u32 ECS_AddScene(ECS* ecs, u32 bundleIdx, v128f position, v128f rotation, v128f 
         added += AddNodeEntity(ecs, range, bundle, (u32)node->index, world[i].position, world[i].rotation, world[i].scale);
     }
 
-    DeAllocateTLSFGlobal(world);
+    ArenaPopGlobal(sizeof(NodeTransform) * (u32)bundle->numNodes);
     return added;
-}
-
-u32 AddScene(u32 bundleIdx, v128f position, v128f rotation, v128f scale)
-{
-    return ECS_AddScene(&ecsSkinned, bundleIdx, position, rotation, scale, true);
 }
 
 u32 GetNumPrimitivesInBundle(u32 bundleIdx)
@@ -246,10 +232,6 @@ u32 GetNumPrimitivesInBundle(u32 bundleIdx)
 }
 
 void ECS_CompactEntities()
-{
-}
-
-void CompactEntities()
 {
 }
 

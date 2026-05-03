@@ -4,10 +4,7 @@
 #include "GLTFParser.h"
 #include "SIMD.h"
 #include "../Math/Half.h" 
-
-#define MAX_ENTITY UINT16_MAX
-#define MAX_GROUP   (MAX_ENTITY >> 1)
-#define MAX_BUNDLES (MAX_ENTITY >> 2)
+#include "RenderLimits.h"
 
 #define INVALID_ENTITY  (~0u)
 #define INVALID_GROUP   (~0u)
@@ -69,16 +66,12 @@ void ECS_Init();
 void ECS_InitSet(ECS* ecs, u32 maxEntities, u32 maxGroups, u32 maxBundles);
 
 // out: groupIdx, ~0u outherwise
-u32 AddSceneBundle(const SceneBundle* sceneBundle);
 u32 ECS_AddSceneBundle(ECS* ecs, const SceneBundle* sceneBundle);
 // out: entityBegin, entityCount
-u32 AddScene(u32 bundleIdx, v128f position, v128f rotation, v128f scale);
 u32 ECS_AddScene(ECS* ecs, u32 bundleIdx, v128f position, v128f rotation, v128f scale, bool wantSkinned);
 
-u32 AddEntity(u32 primitiveIdx, const Entity* data);
 u32 ECS_AddEntity(ECS* ecs, u32 primitiveIdx, const Entity* data);
 
-u32 AddEntities(u32 primitiveIdx, u32 numAdded, const Entity* data);
 u32 ECS_AddEntities(ECS* ecs, u32 primitiveIdx, u32 numAdded, const Entity* data);
 
 u32 RemoveEntity(u32 entityIdx, u32 groupIdx);

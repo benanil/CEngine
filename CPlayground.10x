@@ -298,6 +298,9 @@
 					<File>
 						<Path>Include/Rendering.h</Path>
 					</File>
+					<File>
+						<Path>Include/RenderLimits.h</Path>
+					</File>
 				</Children>
 			</Folder>
 			<Folder>
@@ -372,6 +375,9 @@
 					</File>
 					<File>
 						<Path>Shaders/CullDrawArgsCompute.hlsl</Path>
+					</File>
+					<File>
+						<Path>Shaders/CommonStructs.hlsl</Path>
 					</File>
 				</Children>
 			</Folder>

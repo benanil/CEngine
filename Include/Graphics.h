@@ -114,25 +114,26 @@ typedef struct WindowState
     u32 prev_drawablew, prev_drawableh;
 } WindowState;
 
+typedef struct ECS_GraphicsBuffers_
+{
+    SDL_GPUBuffer* primitiveGroup;
+    SDL_GPUBuffer* drawDenseIndices;
+    SDL_GPUBuffer* drawArgs;
+    SDL_GPUBuffer* denseToPrimitive;
+    SDL_GPUBuffer* numVisible;
+    SDL_GPUBuffer* entity;
+} ECS_GraphicsBuffers;
+
 typedef struct RenderState
 {
     SDL_GPUGraphicsPipeline* pipeline;
-    SDL_GPUSampleCount sample_count;
     SDL_GPUSampler* sampler;
-    SDL_GPUBuffer*  vertexBuffer;
-    SDL_GPUBuffer*  indexBuffer;
-    SDL_GPUBuffer*  entityBuffer;
-    SDL_GPUBuffer*  skinnedPrimitiveGroupBuffer;
-    SDL_GPUBuffer*  skinnedDrawDenseIndicesBuffer;
-    SDL_GPUBuffer*  skinnedDrawArgsBuffer;
-    SDL_GPUBuffer*  skinnedDenseToPrimitiveBuffer;
-    SDL_GPUBuffer*  skinnedNumVisibleBuffer;
-    SDL_GPUBuffer*  staticEntityBuffer;
-    SDL_GPUBuffer*  staticPrimitiveGroupBuffer;
-    SDL_GPUBuffer*  staticDrawDenseIndicesBuffer;
-    SDL_GPUBuffer*  staticDrawArgsBuffer;
-    SDL_GPUBuffer*  staticDenseToPrimitiveBuffer;
-    SDL_GPUBuffer*  staticNumVisibleBuffer;
+    SDL_GPUBuffer* vertexBuffer;
+    SDL_GPUBuffer* indexBuffer;
+    ECS_GraphicsBuffers skinnedBuffers;
+    ECS_GraphicsBuffers staticBuffers;
+    
+    SDL_GPUSampleCount sample_count;
     // anim
     SDL_GPUBuffer*  boneBuffer;
     SDL_GPUBuffer*  animPoseBuffer;
@@ -179,7 +180,7 @@ s32 GraphicsTypeToSize(GraphicType type);
 
 SDL_GPUBuffer* CreateBuffer(void* buffer, size_t bufferSize, SDL_GPUBufferUsageFlags bufferUsage, const char* debugName);
 
-void UpdateGPUBuffer(SDL_GPUBuffer* buffer, const void* data, size_t bufferSize);
+void UpdateGPUBuffer(SDL_GPUBuffer* buffer, const void* data, size_t bufferSize, size_t offset);
 
 SDL_GPUTexture* CreateDepthTexture(u32 drawablew, u32 drawableh);
 

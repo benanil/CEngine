@@ -85,7 +85,8 @@ f16_3x3 M33FromQuaternion(f16_4 q)
     return mat;
 }
 
-f16_4x4 M44FromQuaternion(f16_4 q) 
+
+f16_4x4 M44FromQuaternion(f16_4 q)
 {
     f16_4x4 mat = (f16_4x4)0;
     const f16 num9 = q.x * q.x, num8 = q.y * q.y,

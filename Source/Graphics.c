@@ -53,6 +53,8 @@ void GraphicsInit(bool msaa)
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
         .pNext = NULL,
         .shaderFloat16 = VK_TRUE,
+        .shaderSubgroupExtendedTypes = VK_TRUE,
+        .subgroupBroadcastDynamicId = VK_TRUE,
     };
 
     VkPhysicalDeviceVulkan11Features vk11_features = {

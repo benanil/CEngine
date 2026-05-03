@@ -18,4 +18,6 @@ void InitAnimationInstances();
 
 void InitAnimationFrames(AnimationController* ac);
 
+void AnimInitBuffers();
+
 #endif

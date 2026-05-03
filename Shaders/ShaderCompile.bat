@@ -14,7 +14,7 @@ if not exist %MSL_DIR% mkdir %MSL_DIR%
 echo [1/2] Compiling shaders...
 for %%S in (%SHADERS%) do (
     for /f "tokens=1,2 delims=:" %%A in ("%%S") do (
-        Shaders\Build\dxc.exe -spirv -T %%B_6_6 -E main -enable-16bit-types %SHADER_DIR%\%%A.hlsl -Fo %SHADER_DIR%\%%A.spv
+        Shaders\Build\dxc.exe -spirv -fspv-target-env=vulkan1.1 -T %%B_6_6 -E main -enable-16bit-types %SHADER_DIR%\%%A.hlsl -Fo %SHADER_DIR%\%%A.spv
         if !ERRORLEVEL! neq 0 (
             echo [ERROR] Failed to compile %%A.hlsl to SPIR-V
             pause
@@ -25,7 +25,7 @@ for %%S in (%SHADERS%) do (
 
 for %%S in (%COMPUTE_SHADERS%) do (
     for /f "tokens=1,2 delims=:" %%A in ("%%S") do (
-        Shaders\Build\dxc.exe -spirv -T %%B_6_6 -E main -enable-16bit-types %SHADER_DIR%\%%A.hlsl -Fo %SHADER_DIR%\%%A.spv
+        Shaders\Build\dxc.exe -spirv -fspv-target-env=vulkan1.1 -T %%B_6_6 -E main -enable-16bit-types %SHADER_DIR%\%%A.hlsl -Fo %SHADER_DIR%\%%A.spv
         if !ERRORLEVEL! neq 0 (
             echo [ERROR] Failed to compile %%A.hlsl to SPIR-V
             pause

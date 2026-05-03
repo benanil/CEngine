@@ -1,19 +1,12 @@
+#include "../Include/RenderLimits.h"
+#include "CommonStructs.hlsl"
 #include "Bitpack.hlsl"
 #include "Math.hlsl"
-
-#define MAX_ANIM_INSTANCES 2048
 
 cbuffer vs_params : register(b0, space1)
 {
     float4x4 uViewProj;
     uint     uVisibleOffset;
-};
-
-struct Entity
-{
-    float4   position;
-    uint32_t rotation[2];
-    uint32_t scale[2];
 };
 
 StructuredBuffer<uint>         sBoneMtx  : register(t0);
@@ -71,7 +64,7 @@ VSOutput main(VSInput input, uint instanceID : SV_InstanceID)
 
     Entity entity   = sEntities[denseIdx];
     f16_4 insRot   = normalize(UnpackRGBA16Snorm(entity.rotation[0], entity.rotation[1]));
-    f16_3 insScale = UnpackVec3XY11Z10Unorm(entity.scale[0]) * f16(10.0);
+    f16_3 insScale = UnpackVec3XY11Z10Unorm(entity.scaleSparse[0]) * f16(10.0);
 
     f16_3x3 tbn;
     UnpackNormalTangent(input.aTangentSpace, tbn[2], tbn[1]);
