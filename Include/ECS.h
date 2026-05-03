@@ -29,6 +29,9 @@ typedef struct PrimitiveGroup_
     u32 boneStart;
     u32 numIndices;
     u32 indexOffset;
+    u32 vertexOffset;
+    u32 meshIndex;
+    u32 primitiveIndex;
     u32 valid;
     f16 aabbMin[4];
     f16 aabbMax[4];
@@ -42,29 +45,41 @@ typedef struct Range_
 
 typedef struct ECS_
 {
-    Entity              entities[MAX_ENTITY];
-    u32                 sparseID[MAX_ENTITY];
+    Entity*             entities;
+    u32*                sparseID;
+    u32*                denseToPrimitiveIndex;
     
-    PrimitiveGroup      primitiveGroups[MAX_GROUP];
+    PrimitiveGroup*     primitiveGroups;
 
-    Range               bundleRange[MAX_BUNDLES];
-    const SceneBundle*  bundles[MAX_BUNDLES];
+    Range*              bundleRange;
+    const SceneBundle** bundles;
     
+    u32 maxEntities;
+    u32 maxGroups;
+    u32 maxBundles;
     u32 numEntities;
     u32 numGroups;
     u32 numBundles;
 } ECS;
 
+extern ECS ecsSkinned;
+extern ECS ecsStatic;
+
 void ECS_Init();
+void ECS_InitSet(ECS* ecs, u32 maxEntities, u32 maxGroups, u32 maxBundles);
 
 // out: groupIdx, ~0u outherwise
 u32 AddSceneBundle(const SceneBundle* sceneBundle);
+u32 ECS_AddSceneBundle(ECS* ecs, const SceneBundle* sceneBundle);
 // out: entityBegin, entityCount
 u32 AddScene(u32 bundleIdx, v128f position, v128f rotation, v128f scale);
+u32 ECS_AddScene(ECS* ecs, u32 bundleIdx, v128f position, v128f rotation, v128f scale, bool wantSkinned);
 
 u32 AddEntity(u32 primitiveIdx, const Entity* data);
+u32 ECS_AddEntity(ECS* ecs, u32 primitiveIdx, const Entity* data);
 
 u32 AddEntities(u32 primitiveIdx, u32 numAdded, const Entity* data);
+u32 ECS_AddEntities(ECS* ecs, u32 primitiveIdx, u32 numAdded, const Entity* data);
 
 u32 RemoveEntity(u32 entityIdx, u32 groupIdx);
 

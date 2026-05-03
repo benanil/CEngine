@@ -122,6 +122,17 @@ typedef struct RenderState
     SDL_GPUBuffer*  vertexBuffer;
     SDL_GPUBuffer*  indexBuffer;
     SDL_GPUBuffer*  entityBuffer;
+    SDL_GPUBuffer*  skinnedPrimitiveGroupBuffer;
+    SDL_GPUBuffer*  skinnedDrawDenseIndicesBuffer;
+    SDL_GPUBuffer*  skinnedDrawArgsBuffer;
+    SDL_GPUBuffer*  skinnedDenseToPrimitiveBuffer;
+    SDL_GPUBuffer*  skinnedNumVisibleBuffer;
+    SDL_GPUBuffer*  staticEntityBuffer;
+    SDL_GPUBuffer*  staticPrimitiveGroupBuffer;
+    SDL_GPUBuffer*  staticDrawDenseIndicesBuffer;
+    SDL_GPUBuffer*  staticDrawArgsBuffer;
+    SDL_GPUBuffer*  staticDenseToPrimitiveBuffer;
+    SDL_GPUBuffer*  staticNumVisibleBuffer;
     // anim
     SDL_GPUBuffer*  boneBuffer;
     SDL_GPUBuffer*  animPoseBuffer;

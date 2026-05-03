@@ -1,9 +1,12 @@
 #include "Bitpack.hlsl"
 #include "Math.hlsl"
 
+#define MAX_ANIM_INSTANCES 2048
+
 cbuffer vs_params : register(b0, space1)
 {
     float4x4 uViewProj;
+    uint     uVisibleOffset;
 };
 
 struct Entity
@@ -15,6 +18,7 @@ struct Entity
 
 StructuredBuffer<uint>         sBoneMtx  : register(t0);
 StructuredBuffer<Entity>       sEntities : register(t1);
+StructuredBuffer<uint>         sDrawDenseIndices : register(t2);
 
 static const uint MatrixNumInt32 = 6;
 
@@ -46,7 +50,8 @@ f16_3x4 LoadBone(uint idx)
 
 VSOutput main(VSInput input, uint instanceID : SV_InstanceID)
 {
-    uint boneStart = instanceID * MAX_BONES; // * MatrixNumInt32;
+    uint denseIdx = sDrawDenseIndices[uVisibleOffset + instanceID];
+    uint boneStart = (denseIdx % MAX_ANIM_INSTANCES) * MAX_BONES; // animation palette is independent from entity index
 
     f16_4 weights;
     weights.xyz = UnpackVec3XY11Z10Unorm(input.aWeights);
@@ -64,7 +69,7 @@ VSOutput main(VSInput input, uint instanceID : SV_InstanceID)
 
     f16_4x3 animT = transpose(animMat);
 
-    Entity entity   = sEntities[instanceID];
+    Entity entity   = sEntities[denseIdx];
     f16_4 insRot   = normalize(UnpackRGBA16Snorm(entity.rotation[0], entity.rotation[1]));
     f16_3 insScale = UnpackVec3XY11Z10Unorm(entity.scale[0]) * f16(10.0);
 

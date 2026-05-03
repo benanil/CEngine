@@ -6,7 +6,7 @@ set SHADER_DIR=Shaders
 set SPV_DIR=Shaders\spv
 set MSL_DIR=Shaders\msl
 set SHADERS=SkinnedFrag:ps SkinnedVert:vs
-set COMPUTE_SHADERS=AnimationCompute:cs
+set COMPUTE_SHADERS=AnimationCompute:cs CullDrawArgsCompute:cs
 
 if not exist %SPV_DIR% mkdir %SPV_DIR%
 if not exist %MSL_DIR% mkdir %MSL_DIR%

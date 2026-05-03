@@ -370,6 +370,9 @@
 					<File>
 						<Path>Shaders/AnimationCompute.hlsl</Path>
 					</File>
+					<File>
+						<Path>Shaders/CullDrawArgsCompute.hlsl</Path>
+					</File>
 				</Children>
 			</Folder>
 			<Folder>
@@ -386,9 +389,6 @@
 					</File>
 					<File>
 						<Path>Source/AssetManager.c</Path>
-					</File>
-					<File>
-						<Path>Source/ECS.c</Path>
 					</File>
 					<File>
 						<Path>Source/FileSystem.c</Path>
@@ -428,6 +428,9 @@
 					</File>
 					<File>
 						<Path>Source/MeshBake.c</Path>
+					</File>
+					<File>
+						<Path>Source/ECS.c</Path>
 					</File>
 				</Children>
 			</Folder>

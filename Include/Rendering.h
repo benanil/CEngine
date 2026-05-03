@@ -1,5 +1,6 @@
 #ifndef CP_RENDERING
 #define CP_RENDERING
+#include "Animation.h"
 
 void DestroyPipeline();
 
@@ -12,5 +13,9 @@ int InitScene();
 void InitBuffers();
 
 void RendererInit();
+
+void InitAnimationInstances();
+
+void InitAnimationFrames(AnimationController* ac);
 
 #endif
