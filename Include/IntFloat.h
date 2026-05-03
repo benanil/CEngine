@@ -15,8 +15,8 @@ typedef int32_t  s32;
 typedef int64_t  s64;
 
 // less typing for casting, Timothy Lottes way
-#define  f1_(x)  ((f32)(x))
-#define  d1_(x)  ((f64)(x))
+#define f32_(x) ((f32)(x))
+#define f64_(x) ((f64)(x))
 #define  u8_(x)  ((u8)(x))
 #define u16_(x) ((u16)(x))
 #define u32_(x) ((u32)(x))

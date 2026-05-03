@@ -15,7 +15,7 @@ SamplerState Sampler : register(s0, space2);
 
 float4 main(VSOutput input) : SV_Target0
 {
-    f16_3 sunDir = f16_3(-0.5, -0.5, 0.0f);
-    f16_io ndl = dot(input.normal, sunDir);
+    f16_3 sunDir = f16_3(0.5, -0.5, 0.0f);
+    f16_io ndl = dot(input.normal, -sunDir);
     return Texture.Sample(Sampler, input.texCoords) * max(ndl, 0.1);
 }

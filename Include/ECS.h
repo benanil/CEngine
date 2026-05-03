@@ -18,7 +18,7 @@ typedef struct Entity_
     v128f position;
     u64   rotation;
     u32   scale; // xyz10
-    u32   packed;
+    u32   sparseIdx;
 } Entity;
 
 typedef struct PrimitiveGroup_

@@ -197,9 +197,6 @@
 						<Path>Extern/sj.h</Path>
 					</File>
 					<File>
-						<Path>Extern/sdefl.h</Path>
-					</File>
-					<File>
 						<Path>Extern/sinfl.h</Path>
 					</File>
 					<File>
@@ -216,6 +213,9 @@
 					</File>
 					<File>
 						<Path>Extern/cslug.h</Path>
+					</File>
+					<File>
+						<Path>Extern/sdefl.h</Path>
 					</File>
 				</Children>
 			</Folder>

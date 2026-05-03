@@ -15,11 +15,13 @@
     #else                                                             
     #   define AX_ERROR(format, ...) SDL_LogError(SDL_LOG_PRIORITY_ERROR, "%s -line:%i " format, GetFileName(__FILE__), __LINE__,##__VA_ARGS__)
     #endif
+
 #else
     #define AX_ERROR(format, ...)
     #define AX_LOG(format, ...)  
     #define AX_WARN(format, ...)
 #endif
+
 
 #include "Bitset.h"
 #include <SDL3/SDL_events.h>
@@ -70,7 +72,7 @@ void SetMousePos(f32 x, f32 y);
 void wGetMouseWindowPos(f32* x, f32* y);
 void wGetMonitorSize(s32* width, s32* height);
 void SetMouseWindowPos(f32 x, f32 y);
-f32   GetMouseWheelDelta();
+f32  GetMouseWheelDelta();
 u8   GetDoubleClicked();
 u8   AnyMouseKeyDown();
 u8   GetMouseDown(s32 button);

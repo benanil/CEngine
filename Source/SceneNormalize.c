@@ -3,31 +3,25 @@
 #include "Include/Memory.h"
 #include "Include/Platform.h"
 
+#define CHECK_RETURN(cond, message)   if (cond) { message; return; }
+#define CHECK_CONTINUE(cond, message) if (cond) { message; continue; }
 
 static void EmitRemappedNode(const SceneBundle* scene, s32 oldNode, s32* nodeRemap, s32* oldFromNew, s32* numRemapped, s32* stack)
 {
     const s32 numNodes = scene->numNodes;
     s32 stackIndex = 0;
 
-    if (oldNode < 0 || oldNode >= numNodes)
-    {
-        AX_WARN("EmitRemappedNode index out of bounds %d", oldNode);
-        return;
-    }
+    CHECK_RETURN(oldNode < 0 || oldNode >= numNodes, AX_WARN("EmitRemappedNode index out of bounds %d", oldNode));
 
     stack[stackIndex++] = oldNode;
     while (stackIndex > 0)
     {
         s32 nodeIdx = stack[--stackIndex];
-        if (nodeIdx < 0 || nodeIdx >= numNodes)
-        {
-            AX_WARN("EmitRemappedNode index out of bounds %d", nodeIdx);
-            continue;
-        }
+        CHECK_CONTINUE(nodeIdx < 0 || nodeIdx >= numNodes, AX_WARN("EmitRemappedNode index out of bounds %d", nodeIdx));
 
         if (nodeRemap[nodeIdx] != -1)
             continue;
-
+ 
         s32 newNode = (*numRemapped)++;
         nodeRemap[nodeIdx] = newNode;
         oldFromNew[newNode] = nodeIdx;
@@ -35,10 +29,8 @@ static void EmitRemappedNode(const SceneBundle* scene, s32 oldNode, s32* nodeRem
         const ANode* node = &scene->nodes[nodeIdx];
         for (s32 i = node->numChildren - 1; i >= 0; i--)
         {
-            if (stackIndex < numNodes)
-                stack[stackIndex++] = node->children[i];
-            else
-                AX_WARN("EmitRemappedNode stack overflow");
+            CHECK_CONTINUE(stackIndex >= numNodes, AX_WARN("EmitRemappedNode stack overflow"));
+            stack[stackIndex++] = node->children[i];
         }
     }
 }
@@ -54,15 +46,8 @@ void SceneBundle_BuildParentIndices(SceneBundle* scene)
         for (s32 c = 0; c < node->numChildren; c++)
         {
             s32 child = node->children[c];
-            if (child < 0 || child >= scene->numNodes)
-            {
-                AX_WARN("node %d child index out of bounds %d", i, child);
-                continue;
-            }
-
-            if (scene->nodes[child].parent != -1)
-                AX_WARN("node %d has multiple parents: %d and %d", child, scene->nodes[child].parent, i);
-
+            CHECK_CONTINUE(child < 0 || child >= scene->numNodes, AX_WARN("node %d child index out of bounds %d", i, child));
+            CHECK_CONTINUE(scene->nodes[child].parent != -1, AX_WARN("node %d has multiple parents: %d and %d", child, scene->nodes[child].parent, i));
             scene->nodes[child].parent = i;
         }
     }
@@ -72,7 +57,10 @@ void SceneBundle_FlattenNodes(SceneBundle* scene)
 {
     const s32 numNodes = scene->numNodes;
     if (numNodes <= 0 || scene->nodes == NULL)
+    {
+        AX_WARN("Scene nodes invalid cannot flatten");
         return;
+    }
 
     if (scene->rootNode < 0 || scene->rootNode >= numNodes)
     {
@@ -95,12 +83,15 @@ void SceneBundle_FlattenNodes(SceneBundle* scene)
     SceneBundle_BuildParentIndices(scene);
 
     s32 numRemapped = 0;
+    // Pass 1: emit root node 
     EmitRemappedNode(scene, scene->rootNode, nodeRemap, oldFromNew, &numRemapped, stack);
 
+    // Pass 2: nodes referenced by named scenes get next indices
     for (s32 s = 0; s < scene->numScenes; s++)
         for (s32 i = 0; i < scene->scenes[s].numNodes; i++)
             EmitRemappedNode(scene, scene->scenes[s].nodes[i], nodeRemap, oldFromNew, &numRemapped, stack);
 
+    // Pass 3: everything else, in original order, gets whatever's left
     for (s32 i = 0; i < numNodes; i++)
         EmitRemappedNode(scene, i, nodeRemap, oldFromNew, &numRemapped, stack);
 
@@ -121,7 +112,7 @@ void SceneBundle_FlattenNodes(SceneBundle* scene)
     }
 
     // Keep original node allocation ownership; only rewrite its contents in flattened order.
-    SmallMemCpy(scene->nodes, newNodes, sizeof(ANode) * numNodes);
+    MemCopy(scene->nodes, newNodes, sizeof(ANode) * numNodes);
     scene->rootNode = nodeRemap[scene->rootNode];
 
     for (s32 s = 0; s < scene->numScenes; s++)
@@ -219,15 +210,10 @@ void SceneBundle_ValidateNodeHierarchy(const SceneBundle* scene)
 
             for (s32 i = 0; i < skin->numJoints; i++)
             {
-                if (skin->joints[i] < 0 || skin->joints[i] >= scene->numNodes)
-                {
-                    AX_WARN("skin %d joint %d points to invalid node %d", s, i, skin->joints[i]);
-                    continue;
-                }
+                CHECK_CONTINUE(skin->joints[i] < 0 || skin->joints[i] >= scene->numNodes, AX_WARN("skin %d joint %d points to invalid node %d", s, i, skin->joints[i]));
 
                 if (skin->skeleton >= 0 && !NodeIsDescendantOf(scene, skin->joints[i], skin->skeleton))
-                    AX_WARN("skin %d joint %d node %d (%s) is outside skeleton root %d (%s)",
-                            s, i, skin->joints[i], NodeName(scene, skin->joints[i]), skin->skeleton, NodeName(scene, skin->skeleton));
+                    AX_WARN("skin %d joint %d node %d (%s) is outside skeleton root %d (%s)", s, i, skin->joints[i], NodeName(scene, skin->joints[i]), skin->skeleton, NodeName(scene, skin->skeleton));
             }
         }
 
@@ -293,8 +279,7 @@ static void SceneBundle_ReportImport(const SceneBundle* scene)
     for (s32 s = 0; s < scene->numSkins; s++)
     {
         const ASkin* skin = &scene->skins[s];
-        AX_LOG("asset import report: skin[%d] joints=%d skeleton=%d (%s)",
-               s, skin->numJoints, skin->skeleton, NodeName(scene, skin->skeleton));
+        AX_LOG("asset import report: skin[%d] joints=%d skeleton=%d (%s)", s, skin->numJoints, skin->skeleton, NodeName(scene, skin->skeleton));
     }
 
     for (s32 a = 0; a < scene->numAnimations; a++)

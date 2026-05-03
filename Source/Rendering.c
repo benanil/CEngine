@@ -256,6 +256,83 @@ s32 InitScene()
     return 1;
 }
 
+static void RenderScene(SDL_GPUCommandBuffer* cmd, 
+                        SDL_GPUColorTargetInfo* color_target, 
+                        SDL_GPUDepthStencilTargetInfo* depth_target)
+{
+    SDL_GPUTexture* tex = g_RenderState.textures[gPaladin->materials[0].baseColorTexture.index].handle;
+    m44 viewProj = M44Multiply(g_Camera.view, g_Camera.projection);
+    FrustumPlanes frustumPlanes = CreateFrustumPlanes(viewProj);
+
+    /* Set up the bindings */
+    SDL_GPUBufferBinding vertex_binding;
+    SDL_GPUBufferBinding index_binding;
+    vertex_binding.buffer = g_RenderState.vertexBuffer;
+    vertex_binding.offset = 0;
+    index_binding.buffer  = g_RenderState.indexBuffer;
+    index_binding.offset  = 0;
+
+    SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmd, color_target, 1, depth_target);
+    SDL_BindGPUGraphicsPipeline(pass, g_RenderState.pipeline);
+    SDL_BindGPUVertexBuffers(pass, 0, &vertex_binding, 1);
+    SDL_BindGPUIndexBuffer(pass, &index_binding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
+    
+    SDL_GPUBuffer* buffers[2] = { g_RenderState.boneBuffer, g_RenderState.entityBuffer};
+    SDL_BindGPUVertexStorageBuffers(pass, 0, buffers, SDL_arraysize(buffers));
+    
+    SDL_BindGPUFragmentSamplers(pass, 0, &(SDL_GPUTextureSamplerBinding){
+        .texture = tex, 
+        .sampler = g_RenderState.sampler
+    }, 1);
+    
+    SDL_PushGPUVertexUniformData(cmd, 0, &viewProj, sizeof(m44));    
+
+    s32 numNodes = gPaladin->numNodes;
+    const bool hasScene = gPaladin->numScenes > 0;
+    AScene defaultScene;
+    if (hasScene)
+    {
+        defaultScene = gPaladin->scenes[gPaladin->defaultSceneIndex];
+        numNodes = defaultScene.numNodes;
+    }
+
+    s32 stackLen = 0;
+    s32 nodeStack[256];
+
+    if (hasScene)
+    {
+        for (s32 i = 0; i < defaultScene.numNodes; i++)
+            nodeStack[stackLen++] = defaultScene.nodes[i];
+    }
+    else
+    {
+        nodeStack[stackLen++] = 0; // No scene defined, traverse all top-level nodes
+    }
+
+    while (stackLen > 0)
+    {
+        const s32 nodeIndex = nodeStack[--stackLen];
+        const ANode* node = gPaladin->nodes + nodeIndex;
+        const AMesh* mesh = gPaladin->meshes + node->index;
+    
+        if (node->type == 0 && node->index != -1)
+            for (s32 j = 0; j < mesh->numPrimitives; ++j)
+            {
+                const APrimitive* primitive = &mesh->primitives[j];
+                // const bool hasMaterial = sceneBundle->materials && primitive->material != UINT16_MAX;
+                // const AMaterial material = sceneBundle->materials[primitive->material];
+                // const Matrix4 model = nodeTransforms[nodeIndex];
+                SDL_DrawGPUIndexedPrimitives(pass, primitive->numIndices, MAX_ANIM_INSTANCES, primitive->indexOffset, 0, 0);
+            }
+    
+            for (s32 i = 0; i < node->numChildren; i++)    
+            {
+                nodeStack[stackLen++] = node->children[i];
+            }
+    }
+    SDL_EndGPURenderPass(pass);
+}
+
 void Render()
 {
     /* Acquire the swapchain texture */
@@ -319,80 +396,11 @@ void Render()
     depth_target.texture          = winstate->tex_depth;
     depth_target.cycle            = true;
     
-    DispatchAnimationCompute(cmd);
-    /* Set up the bindings */
-    SDL_GPUBufferBinding vertex_binding;
-    SDL_GPUBufferBinding index_binding;
-    vertex_binding.buffer = g_RenderState.vertexBuffer;
-    vertex_binding.offset = 0;
-    index_binding.buffer  = g_RenderState.indexBuffer;
-    index_binding.offset  = 0;
     UpdateGPUBuffer(g_RenderState.entityBuffer, ecs.entities, sizeof(ecs.entities));
-    /* Draw */
-    SDL_GPUTexture* tex = g_RenderState.textures[gPaladin->materials[0].baseColorTexture.index].handle;
-    m44 viewProj = M44Multiply(g_Camera.view, g_Camera.projection);
-    FrustumPlanes frustumPlanes = CreateFrustumPlanes(viewProj);
-    SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmd, &color_target, 1, &depth_target);
-    SDL_BindGPUGraphicsPipeline(pass, g_RenderState.pipeline);
-    SDL_BindGPUVertexBuffers(pass, 0, &vertex_binding, 1);
-    SDL_BindGPUIndexBuffer(pass, &index_binding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
     
-    SDL_GPUBuffer* buffers[2] = { g_RenderState.boneBuffer, g_RenderState.entityBuffer};
-    SDL_BindGPUVertexStorageBuffers(pass, 0, buffers, SDL_arraysize(buffers));
+    DispatchAnimationCompute(cmd);
     
-    SDL_BindGPUFragmentSamplers(pass, 0, 
-                                &(SDL_GPUTextureSamplerBinding){
-        .texture = tex, 
-        .sampler = g_RenderState.sampler
-    }, 1);
-    
-    SDL_PushGPUVertexUniformData(cmd, 0, &viewProj, sizeof(m44));
-    
-    s32 numNodes = gPaladin->numNodes;
-    const bool hasScene = gPaladin->numScenes > 0;
-    AScene defaultScene;
-    if (hasScene)
-    {
-        defaultScene = gPaladin->scenes[gPaladin->defaultSceneIndex];
-        numNodes = defaultScene.numNodes;
-    }
-
-    s32 stackLen = 0;
-    s32 nodeStack[256];
-
-    if (hasScene)
-    {
-        for (s32 i = 0; i < defaultScene.numNodes; i++)
-            nodeStack[stackLen++] = defaultScene.nodes[i];
-    }
-    else
-    {
-        nodeStack[stackLen++] = 0; // No scene defined, traverse all top-level nodes
-    }
-
-    while (stackLen > 0)
-    {
-        const s32 nodeIndex = nodeStack[--stackLen];
-        const ANode* node = gPaladin->nodes + nodeIndex;
-        const AMesh* mesh = gPaladin->meshes + node->index;
-    
-        if (node->type == 0 && node->index != -1)
-            for (s32 j = 0; j < mesh->numPrimitives; ++j)
-            {
-                const APrimitive* primitive = &mesh->primitives[j];
-                // const bool hasMaterial = sceneBundle->materials && primitive->material != UINT16_MAX;
-                // const AMaterial material = sceneBundle->materials[primitive->material];
-                // const Matrix4 model = nodeTransforms[nodeIndex];
-                SDL_DrawGPUIndexedPrimitives(pass, primitive->numIndices, MAX_ANIM_INSTANCES, primitive->indexOffset, 0, 0);
-            }
-    
-            for (s32 i = 0; i < node->numChildren; i++)    
-            {
-                nodeStack[stackLen++] = node->children[i];
-            }
-    }
-    
-    SDL_EndGPURenderPass(pass);
+    RenderScene(cmd, &color_target, &depth_target);
     
     /* Blit MSAA resolve target to swapchain, if needed */
     if (g_RenderState.sample_count > SDL_GPU_SAMPLECOUNT_1) 
