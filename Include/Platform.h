@@ -13,8 +13,8 @@
     #define AX_ANSI_RED    "\033[31m"
 
     #define AX_LOG(format, ...)  SDL_Log(AX_ANSI_GREEN  "axInfo: %s -line:%i " format AX_ANSI_RESET, GetFileName(__FILE__), __LINE__, ##__VA_ARGS__)
-    #define AX_WARN(format, ...) SDL_LogWarn(SDL_LOG_PRIORITY_WARN,  AX_ANSI_YELLOW "axWarn: %s -line:%i " format AX_ANSI_RESET, GetFileName(__FILE__), __LINE__, ##__VA_ARGS__)
-    #define AX_ERROR(format, ...) SDL_LogError(SDL_LOG_PRIORITY_ERROR, AX_ANSI_RED "axError: %s -line:%i " format AX_ANSI_RESET, GetFileName(__FILE__), __LINE__, ##__VA_ARGS__)
+    #define AX_WARN(format, ...) SDL_LogWarn(SDL_LOG_PRIORITY_WARN,  AX_ANSI_YELLOW "%s -line:%i " format AX_ANSI_RESET, GetFileName(__FILE__), __LINE__, ##__VA_ARGS__)
+    #define AX_ERROR(format, ...) SDL_LogError(SDL_LOG_PRIORITY_ERROR, AX_ANSI_RED "%s -line:%i " format AX_ANSI_RESET, GetFileName(__FILE__), __LINE__, ##__VA_ARGS__)
 #else
     #define AX_ERROR(format, ...)
     #define AX_LOG(format, ...)

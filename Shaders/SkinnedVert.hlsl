@@ -6,7 +6,6 @@
 cbuffer vs_params : register(b0, space1)
 {
     float4x4 uViewProj;
-    uint     uVisibleOffset;
 };
 
 StructuredBuffer<uint>         sBoneMtx  : register(t0);
@@ -43,7 +42,7 @@ f16_3x4 LoadBone(uint idx)
 
 VSOutput main(VSInput input, uint instanceID : SV_InstanceID)
 {
-    uint denseIdx = sDrawDenseIndices[uVisibleOffset + instanceID];
+    uint denseIdx = sDrawDenseIndices[instanceID];
     uint boneStart = (denseIdx % MAX_ANIM_INSTANCES) * MAX_BONES; // animation palette is independent from entity index
 
     f16_4 weights;

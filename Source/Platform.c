@@ -209,13 +209,14 @@ s64 TimeNow()
 }
 
 // time is nanoseconds
-f32  TimeToSeconds(s64 t)       { return (double)t / (double)PlatformCtx.CPUFrequency; }
-s64 TimeToMilliseconds(s64 t)  { return Int64MulDiv(t, 1000, PlatformCtx.CPUFrequency); }
-s64 TimeToMicroseconds(s64 t)  { return Int64MulDiv(t, 1000000, PlatformCtx.CPUFrequency); }
+f32  TimeToSeconds(s64 t)     { return (double)t / (double)PlatformCtx.CPUFrequency; }
+s64 TimeToMilliseconds(s64 t) { return Int64MulDiv(t, 1000, PlatformCtx.CPUFrequency); }
+s64 TimeToMicroseconds(s64 t) { return Int64MulDiv(t, 1000000, PlatformCtx.CPUFrequency); }
 
 void PlatformInit()
 {
     EnableConsoleColors();
+    SDL_SetLogPriorities(SDL_LOG_PRIORITY_VERBOSE);
     PlatformCtx.SecondsSinceLastClick = 0.0f;
     PlatformCtx.CPUFrequency          = SDL_GetPerformanceFrequency();
     PlatformCtx.StartupTime           = SDL_GetPerformanceCounter();
