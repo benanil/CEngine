@@ -103,6 +103,11 @@ void BakeGLTFAnimations(SceneBundle* gltf)
 
     for (s32 a = 0; a < gltf->numAnimations; a++)
     {
+        s32 numInvalidComponents = 0;
+        s32 numNonFloatsIn = 0;
+        s32 numNonFloatOut = 0;
+        s32 numCubic = 0;
+
         for (s32 s = 0; s < gltf->animations[a].numSamplers; s++)
         {
             const bool scaleTranslation = ShouldScaleTranslationSampler(&gltf->animations[a], scaledNodes, s);
@@ -117,14 +122,10 @@ void BakeGLTFAnimations(SceneBundle* gltf)
             sampler->input = currSampler;
             currSampler += sampler->count;
 
-            if (sampler->interpolation == ASamplerInterpolation_CubicSpline)
-                AX_WARN("sampler cubic spline not supported");
-            if (sampler->inputType != AComponentType_FLOAT)
-                AX_WARN("unsupported sampler input type: %d", sampler->inputType);
-            if (sampler->outputType != AComponentType_FLOAT)
-                AX_WARN("unsupported sampler output type: %d", sampler->outputType);
-            if (sampler->numComponent != 4)
-                AX_WARN("anim sampler num components has to be 4. its: %d", sampler->numComponent);
+            numCubic += (sampler->interpolation == ASamplerInterpolation_CubicSpline);
+            numNonFloatsIn += (sampler->inputType != AComponentType_FLOAT);
+            numNonFloatOut += (sampler->outputType != AComponentType_FLOAT);
+            numInvalidComponents += (sampler->numComponent != 4 || sampler->numComponent != 3);
 
             for (s32 i = 0; i < sampler->count; i++)
             {
@@ -138,5 +139,10 @@ void BakeGLTFAnimations(SceneBundle* gltf)
             sampler->output = (f32*)currOutput;
             currOutput += sampler->count;
         }
+
+        if (numCubic)       AX_WARN("sampler cubic spline not supported numCubic: %d", numCubic);
+        if (numNonFloatsIn) AX_WARN("unsupported sampler input type: %d", numNonFloatsIn);
+        if (numNonFloatOut) AX_WARN("unsupported sampler output type: %d", numNonFloatOut);
+        if (numInvalidComponents) AX_WARN("anim sampler num components has to be 4 or 3 numInvalid: %d", numInvalidComponents);
     }
 }

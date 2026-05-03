@@ -154,18 +154,6 @@ static const char* NodeName(const SceneBundle* scene, s32 nodeIdx)
     return scene->nodes[nodeIdx].name;
 }
 
-static const char* AnimTargetPathName(AAnimTargetPath path)
-{
-    switch (path)
-    {
-        case AAnimTargetPath_Translation: return "translation";
-        case AAnimTargetPath_Rotation:    return "rotation";
-        case AAnimTargetPath_Scale:       return "scale";
-        case AAnimTargetPath_Weight:      return "weight";
-        default:                          return "unknown";
-    }
-}
-
 static bool NodeIsDescendantOf(const SceneBundle* scene, s32 nodeIdx, s32 parentIdx)
 {
     while (nodeIdx >= 0 && nodeIdx < scene->numNodes)
@@ -236,18 +224,24 @@ void SceneBundle_ValidateNodeHierarchy(const SceneBundle* scene)
                 AX_WARN("animation %d sampler %d uses cubic spline interpolation; runtime treats it as linear", a, s);
         }
 
+        s32 numInvalidSampler = 0;
+        s32 numInvalidNode    = 0;
+        s32 numInvalidTarget[AAnimTargetPath_Weight+1] = {0};
+        
         for (s32 c = 0; c < animation->numChannels; c++)
         {
             const AAnimChannel* channel = &animation->channels[c];
-            if (channel->sampler < 0 || channel->sampler >= animation->numSamplers)
-                AX_WARN("animation %d channel %d references invalid sampler %d", a, c, channel->sampler);
-
-            if (channel->targetNode < 0 || channel->targetNode >= scene->numNodes)
-                AX_WARN("animation %d channel %d targets invalid node %d", a, c, channel->targetNode);
-
-            if (channel->targetPath == AAnimTargetPath_Scale || channel->targetPath == AAnimTargetPath_Weight)
-                AX_WARN("animation %d channel %d targets unsupported %s", a, c, AnimTargetPathName(channel->targetPath));
+            numInvalidSampler += (channel->sampler < 0 || channel->sampler >= animation->numSamplers);
+            numInvalidNode    += (channel->targetNode < 0 || channel->targetNode >= scene->numNodes);
+            numInvalidTarget[channel->targetPath]++;
         }
+
+        if (numInvalidSampler) AX_WARN("animation channels references invalid sampler %d", numInvalidSampler);
+        if (numInvalidNode   ) AX_WARN("animation channels targets invalid node count: %d", numInvalidNode);
+        if (numInvalidTarget[AAnimTargetPath_Weight])
+            AX_WARN("animation channels unsupported target weight count: %d", numInvalidTarget[AAnimTargetPath_Weight]);
+        if (numInvalidTarget[AAnimTargetPath_Scale])
+            AX_WARN("animation channels unsupported target scale count: %d", numInvalidTarget[AAnimTargetPath_Scale]);
     }
 
     for (s32 i = 0; i < scene->numNodes; i++)

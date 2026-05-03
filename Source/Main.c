@@ -58,7 +58,7 @@ s32 InitScene()
         return 0;
     }
     
-    if (SceneBundleCreateAnimations(gPaladin) == 0) return 0;
+    if (!SceneBundleCreateAnimations(gPaladin)) return 0;
     InitAnimationInstances();
     u32 skinnedBundle = ECS_AddSceneBundle(&ecsSkinned, gPaladin);
     // u32 staticBundle  = ECS_AddSceneBundle(&ecsStatic, gPaladin);

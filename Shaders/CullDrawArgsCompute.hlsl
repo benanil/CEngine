@@ -38,11 +38,11 @@ float4 UnpackHalf4(uint2 packed)
 bool AABBVisible(float3 mn, float3 mx)
 {
     [unroll]
-    for (uint i = 0; i < 5; i++)
+    for (uint i = 0; i < 6; i++)
     {
         float4 plane = frustumPlanes[i];
-        float3 p = lerp(mn, mx, step(0.0f, plane.xyz));
-        if (dot(plane.xyz, p) + plane.w < 0.0f)
+        float4 p = float4(lerp(mn, mx, step(0.0f, plane.xyz)), 1.0f);
+        if (dot(plane, p) < 0.0f)
             return false;
     }
     return true;
@@ -81,7 +81,7 @@ void BuildWorldAABB(Entity entity, PrimitiveGroup group, out float3 worldMin, ou
     float3 extent = (localMax - localMin) * 0.5f;
 
     float4 q = normalize(UnpackRGBA16Snorm(entity.rotation.x, entity.rotation.y));
-    float3 s = float3(UnpackVec3XY11Z10Unorm(entity.scaleSparse.x)) * 10.0f;
+    float3 s = float3(UnpackVec3XY11Z10Unorm(entity.scale.x)) * 10.0f;
 
     float3x3 rotM = M33FromQuaternionF32(q);
     float3 axisX = rotM[0] * s.x;

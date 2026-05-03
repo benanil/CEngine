@@ -183,13 +183,13 @@ static void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd, ECS* renderSe
     if (renderSet->numGroups == 0) return;
 
     struct {
-        v128f planes[6];
+        FrustumPlanes planes;
         u32 numEntities;
         u32 numPrimitiveGroups;
         u32 mode;
         u32 pad0;
     } params;
-    MemCopy(params.planes, frustumPlanes.planes, sizeof(params.planes));
+    MemCopy(&params.planes, frustumPlanes.planes, sizeof(FrustumPlanes));
     params.numEntities = renderSet->numEntities;
     params.numPrimitiveGroups = renderSet->numGroups;
     params.mode = 0;
@@ -318,7 +318,7 @@ void Render()
     if (ecsSkinned.numEntities > 0)
         UpdateGPUBuffer(g_RenderState.skinnedBuffers.entity, ecsSkinned.entities, ecsSkinned.numEntities * sizeof(Entity), 0ull);
     if (ecsStatic.numEntities > 0)
-        UpdateGPUBuffer(g_RenderState.skinnedBuffers.entity, ecsStatic.entities, ecsStatic.numEntities * sizeof(Entity), 0ull);
+        UpdateGPUBuffer(g_RenderState.staticBuffers.entity, ecsStatic.entities, ecsStatic.numEntities * sizeof(Entity), 0ull);
     
     m44 viewProj = M44Multiply(g_Camera.view, g_Camera.projection);
     FrustumPlanes frustumPlanes = CreateFrustumPlanes(viewProj);

@@ -154,7 +154,7 @@ s32 SceneBundleInitAnimations(const SceneBundle* gltfScene, Pose result[MAX_BONE
 s32 SceneBundleCreateAnimations(const SceneBundle* bundle)
 {
     Pose poses[MAX_BONES];
-    if (SceneBundleInitAnimations(bundle, poses) == 0)
+    if (!SceneBundleInitAnimations(bundle, poses))
         return 0;
 
     for (u32 animIdx = 0; animIdx < bundle->numAnimations; animIdx++)
@@ -172,7 +172,6 @@ s32 SceneBundleCreateAnimations(const SceneBundle* bundle)
     AX_LOG("num animation: %d", NumGPUAnimations);
     return 1;
 }
-
 
 void SampleSkinnedAnimationPose(const SceneBundle* bundle, Pose pose[MAX_BONES], s32 animIdx, f32 normTime)
 {

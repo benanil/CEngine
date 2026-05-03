@@ -636,7 +636,7 @@ s32 LoadGLTFCached(const char* path, SceneBundle* scene, Texture* textures)
 /*//////////////////////////////////////////////////////////////////////////*/
 
 // ZSTD_CCtx* zstdCompressorCTX = NULL;
-const s32 ABMMeshVersion = 50;
+const s32 ABMMeshVersion = 56;
 
 u8 IsABMLastVersion(const u8* path)
 {
@@ -762,6 +762,8 @@ s32 SaveGLTFBinary(const SceneBundle* gltf, const u8* path)
             AFileWrite(&primitive->jointCount , sizeof(u16), file, 1);
             AFileWrite(&primitive->jointStride, sizeof(u16), file, 1);
             AFileWrite(&primitive->material   , sizeof(u16), file, 1);
+            AFileWrite(primitive->min, sizeof(v128f), file, 1);
+            AFileWrite(primitive->max, sizeof(v128f), file, 1);
         }
     }
     
@@ -1034,7 +1036,6 @@ s32 LoadSceneBundleBinary(const u8* path, SceneBundle* gltf)
             AFileRead(&primitive->jointType  , sizeof(u16), file, 1);
             AFileRead(&primitive->jointCount , sizeof(u16), file, 1);
             AFileRead(&primitive->jointStride, sizeof(u16), file, 1);
-            
             u64 indexSize = (u64)(GraphicsTypeToSize(primitive->indexType)) * primitive->numIndices;
             primitive->indices = (void*)currIndices;
             currIndices += indexSize;
@@ -1044,6 +1045,9 @@ s32 LoadSceneBundleBinary(const u8* path, SceneBundle* gltf)
             currVertices += primitiveVertexSize;
             AFileRead(&primitive->material, sizeof(u16), file, 1);
             primitive->hasOutline = false; // always false 
+
+            AFileRead(primitive->min, sizeof(v128f), file, 1);
+            AFileRead(primitive->max, sizeof(v128f), file, 1);
         }
     }
     

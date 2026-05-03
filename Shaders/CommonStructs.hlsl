@@ -5,7 +5,8 @@ struct Entity
 {
     float4 position;
     uint2  rotation;
-    uint2  scaleSparse;
+    uint  scale;
+    uint  sparse;
 };
 
 struct PrimitiveGroup

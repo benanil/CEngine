@@ -637,8 +637,8 @@ purefn FrustumPlanes VCALL CreateFrustumPlanes(m44 viewProjection)
     result.planes[1] = VecSub(C.r[3], C.r[0]); // m_right_plane
     result.planes[2] = VecAdd(C.r[3], C.r[1]); // m_bottom_plane
     result.planes[3] = VecSub(C.r[3], C.r[1]); // m_top_plane
-    result.planes[4] = C.r[2];                 // m_near_plane  
-    // result.planes[5] = VecSub(C.r[3], C.r[2]); // m_far_plane
+    result.planes[4] = VecSub(C.r[3], C.r[2]); // m_far_plane
+    result.planes[5] = C.r[2];                 // m_near_plane  
     return result;
 }
 
@@ -649,7 +649,7 @@ purefn v128f VCALL MaxPointAlongNormal(v128f min, v128f max, v128f n)
 
 static inline bool VCALL CheckAABBCulled(v128f min, v128f max, const v128f frustumPlanes[6])
 {
-    for (u32 i = 0u; i < 5u; ++i) // make < 6 if you want far plane 
+    for (u32 i = 0u; i < 6u; ++i) // make < 6 if you want far plane 
     {
         v128f p = MaxPointAlongNormal(min, max, frustumPlanes[i]);
         p = VecSelect(VecOne(), p, VecSelect1110);
