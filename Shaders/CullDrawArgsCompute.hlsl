@@ -189,7 +189,7 @@ void main(uint3 tid : SV_DispatchThreadID)
         drawArgs[idx].numInstances = 0;
         drawArgs[idx].firstIndex = group.indexOffset;
         drawArgs[idx].vertexOffset = int(group.vertexOffset);
-        drawArgs[idx].firstInstance = 0;
+        drawArgs[idx].firstInstance = group.entityOffset;
         return;
     }
 
