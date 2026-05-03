@@ -221,18 +221,10 @@ static void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd, ECS* renderSe
 
 static void RenderScene(SDL_GPUCommandBuffer* cmd, 
                         SDL_GPUColorTargetInfo* color_target, 
-                        SDL_GPUDepthStencilTargetInfo* depth_target)
+                        SDL_GPUDepthStencilTargetInfo* depth_target,
+                        m44 viewProj)
 {
     SDL_GPUTexture* tex = g_RenderState.textures[gPaladin->materials[0].baseColorTexture.index].handle;
-    m44 viewProj = M44Multiply(g_Camera.view, g_Camera.projection);
-    struct {
-        m44 viewProj;
-        u32 visibleOffset;
-        u32 pad[3];
-    } vertexParams;
-    vertexParams.viewProj = viewProj;
-    vertexParams.visibleOffset = 0;
-    vertexParams.pad[0] = vertexParams.pad[1] = vertexParams.pad[2] = 0;
 
     /* Set up the bindings */
     SDL_GPUBufferBinding vertex_binding;
@@ -255,18 +247,8 @@ static void RenderScene(SDL_GPUCommandBuffer* cmd,
         .sampler = g_RenderState.sampler
     }, 1);
     
-    for (u32 i = 0; i < ecsSkinned.numGroups; i++)
-    {
-        const PrimitiveGroup* group = ecsSkinned.primitiveGroups + i;
-        if (!group->valid || group->numEntities == 0) continue;
-
-        vertexParams.visibleOffset = group->entityOffset;
-        SDL_PushGPUVertexUniformData(cmd, 0, &vertexParams, sizeof(vertexParams));
-        SDL_DrawGPUIndexedPrimitivesIndirect(pass,
-                                             g_RenderState.skinnedBuffers.drawArgs,
-                                             i * sizeof(SDL_GPUIndexedIndirectDrawCommand),
-                                             1);
-    }
+    SDL_PushGPUVertexUniformData(cmd, 0, &viewProj, sizeof(viewProj));
+    SDL_DrawGPUIndexedPrimitivesIndirect(pass, g_RenderState.skinnedBuffers.drawArgs, 0, ecsSkinned.numGroups);
     SDL_EndGPURenderPass(pass);
 }
 
@@ -342,7 +324,7 @@ void Render()
     FrustumPlanes frustumPlanes = CreateFrustumPlanes(viewProj);
     DispatchCullDrawArgsCompute(cmd, &ecsSkinned, &g_RenderState.skinnedBuffers, frustumPlanes);
     DispatchAnimationCompute(cmd, &ecsSkinned);
-    RenderScene(cmd, &color_target, &depth_target);
+    RenderScene(cmd, &color_target, &depth_target, viewProj);
 
     DispatchCullDrawArgsCompute(cmd, &ecsStatic, &g_RenderState.staticBuffers, frustumPlanes);
     

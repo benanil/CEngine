@@ -379,15 +379,6 @@
 					<File>
 						<Path>Shaders/CommonStructs.hlsl</Path>
 					</File>
-					<File>
-						<Path>Shaders/DebugLineFrag.hlsl</Path>
-					</File>
-					<File>
-						<Path>Shaders/DebugAABBCompute.hlsl</Path>
-					</File>
-					<File>
-						<Path>Shaders/DebugLineVert.hlsl</Path>
-					</File>
 				</Children>
 			</Folder>
 			<Folder>
