@@ -23,7 +23,7 @@ StructuredBuffer<uint> denseToPrimitiveIndex : register(t2);
 
 cbuffer params : register(b0, space2)
 {
-    float4 planes[6]; // frustum
+    float4 frustumPlanes[6];
     uint   numEntities;
     uint   numPrimitiveGroups;
     uint   mode;
@@ -37,17 +37,14 @@ float4 UnpackHalf4(uint2 packed)
 
 bool AABBVisible(float3 mn, float3 mx)
 {
-    float3 p = lerp(mn, mx, step(0.0f, planes[0].xyz));
-    if (dot(planes[0].xyz, p) + planes[0].w < 0.0f) return false;
-    p = lerp(mn, mx, step(0.0f, planes[1].xyz));
-    if (dot(planes[1].xyz, p) + planes[1].w < 0.0f) return false;
-    p = lerp(mn, mx, step(0.0f, planes[2].xyz));
-    if (dot(planes[2].xyz, p) + planes[2].w < 0.0f) return false;
-    p = lerp(mn, mx, step(0.0f, planes[3].xyz));
-    if (dot(planes[3].xyz, p) + planes[3].w < 0.0f) return false;
-    p = lerp(mn, mx, step(0.0f, planes[4].xyz));
-    if (dot(planes[4].xyz, p) + planes[4].w < 0.0f) return false;
-    
+    [unroll]
+    for (uint i = 0; i < 5; i++)
+    {
+        float4 plane = frustumPlanes[i];
+        float3 p = lerp(mn, mx, step(0.0f, plane.xyz));
+        if (dot(plane.xyz, p) + plane.w < 0.0f)
+            return false;
+    }
     return true;
 }
 

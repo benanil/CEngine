@@ -67,20 +67,6 @@ typedef struct AnimNode_
     uint8_t childrenStartIndex;
 } AnimNode;
 
-typedef struct AnimationController_
-{
-    const SceneBundle* mPrefab;
-
-    s32      mRootNodeIndex;
-    s32      mNumJoints;
-    
-    AnimNode mAnimNodes[MAX_BONES * 2];
-    Pose     mAnimPoseA[MAX_BONES * 2]; // < the result bone array that we send to GPU
-    u8       mChildIndices[MAX_BONES * 2];
-
-} AnimationController;
-
-
 typedef struct GPUAnimationInstance_
 {
     u32 animIdx;
@@ -96,6 +82,22 @@ typedef struct GPUAnimationData_
     u32 numNodes;
     f32 duration;
 } GPUAnimationData;
+
+
+
+// this is the only function :D, fail return 0
+s32 SceneBundleCreateAnimations(const SceneBundle* bundle);
+
+// below all private feel free
+void AnimInitBuffers();
+
+void InitAnimationInstances();
+
+// fail return 0
+s32 SceneBundleInitAnimations(const SceneBundle* prefab, Pose pose[MAX_BONES]);
+
+// use negative normTime to sample animation reversely
+void SampleSkinnedAnimationPose(const SceneBundle* bundle, Pose pose[MAX_BONES], s32 animIdx, f32 normTime);
 
 
 // this is here for reference not used now
@@ -147,18 +149,7 @@ typedef struct AnimatedCharacter_
     s32 mLocomotionIndices   [4][3];
     s32 mLocomotionIndicesInv[3][3]; 
     
-    AnimationController controller;
 } AnimatedCharacter;
-
-
-// bool humanoid = true, i32 lowerBodyStart = 58, animId = global animation controllerIndex 
-void AnimationController_Create(const SceneBundle* prefab, AnimationController* animController);
-
-
-void AnimationController_Clear(AnimationController* ac);
-
-// use negative normTime to sample animation reversely
-void AnimationController_SampleAnimationPose(const AnimationController* ac, Pose pose[MAX_BONES], s32 animIdx, f32 normTime);
 
 
 #if defined(__cplusplus)

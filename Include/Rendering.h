@@ -14,10 +14,4 @@ void InitBuffers();
 
 void RendererInit();
 
-void InitAnimationInstances();
-
-void InitAnimationFrames(AnimationController* ac);
-
-void AnimInitBuffers();
-
 #endif

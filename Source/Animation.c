@@ -9,7 +9,7 @@
 *    Stores bone matrices into M33x4Half format and sends to GPU within Textures      *
 *    Scale interpolation is disabled for now                                              *
 *  Author:                                                                                *
-*    Anilcan Gulkaya 2024 anilcangulkaya7@gmail.com github @benanil                       *
+*    Anilcan Gulkaya 2026 anilcangulkaya7@gmail.com github @benanil                       *
 *******************************************************************************************/
 
 #include "Include/Animation.h"
@@ -25,18 +25,16 @@ extern RenderState  g_RenderState;
 
 u32 animPoses[MAX_BONES * MAX_GPU_ANIM_FRAMES * ANIM_POSE_NUM_INT32]; // 32mb
 u32 animHierarchy[ANIM_NODE_COUNT + ANIM_CHILD_PACKED_COUNT];
-u32 animJoints[MAX_BONES * MAX_SKIN_COUNT  * 2];
-u32 invBindMatrices[MAX_BONES * MAX_SKIN_COUNT  * 2 * ANIM_MATRIX_NUM_INT32];
+u32 animJoints[MAX_BONES * MAX_SKIN_COUNT];
+u32 invBindMatrices[MAX_BONES * MAX_SKIN_COUNT * ANIM_MATRIX_NUM_INT32];
 GPUAnimationInstance animInstances[MAX_ANIM_INSTANCES];
 GPUAnimationData animData[MAX_ANIM_COUNT];
-u32 numGPUAnimations;
+u32 NumGPUAnimations = 0;
+s32 AnimTotalFrameOffset = 0;
 
-static void StoreHalf4(u32* dst, const f32* src)
+static void StoreHalf4(u32* dst, v128f src)
 {
-    f16 h[4];
-    Float4ToHalf4(h, src);
-    dst[0] = (u32)h[0] | ((u32)h[1] << 16);
-    dst[1] = (u32)h[2] | ((u32)h[3] << 16);
+    Float4ToHalf4V((u64*)dst, src);
 }
 
 void AnimInitBuffers()
@@ -51,47 +49,47 @@ void AnimInitBuffers()
     g_RenderState.animDataBuffer      = CreateBuffer(animData       , sizeof(animData)       , readCompute, "CPAnimationData");
     g_RenderState.jointsBuffer        = CreateBuffer(animJoints     , sizeof(animJoints)     , readCompute, "CPjointsBuffer ");
     g_RenderState.invBindBuffer       = CreateBuffer(invBindMatrices, sizeof(invBindMatrices), readCompute, "CPinvBindBuffer");
-    g_RenderState.animInstanceBuffer  = CreateBuffer(animInstances  , sizeof(animInstances), readCompute, "CPAnimationInstances");
+    g_RenderState.animInstanceBuffer  = CreateBuffer(animInstances  , sizeof(animInstances)  , readCompute, "CPAnimationInstances");
 }
 
 static void UpdateBuffers()
 {
+    // todo
 }
 
-int AnimationGetGPUData(AnimationController* ac, int animIdx, int frameOffset)
+static int AnimationGetGPUData(const SceneBundle* bundle, Pose poses[MAX_BONES], int animIdx, int frameOffset)
 {
-    const AAnimation* animation = &ac->mPrefab->animations[animIdx];
-    const ASkin*      skin      = &ac->mPrefab->skins[0];
-    const int framePerSecond    = ANIM_NUM_FRAMES;
-    int numFrames = (int)(animation->duration * framePerSecond);
+    const AAnimation* animation = &bundle->animations[animIdx];
+    const ASkin*      skin      = &bundle->skins[0];
+    int numFrames = (int)(animation->duration * ANIM_NUM_FRAMES);
     int numPose   = frameOffset * MAX_BONES;
     MemsetZero(animHierarchy, sizeof(animHierarchy));
 
     for (int i = 0; i < numFrames; i++)
     {
         float norm = (float)i / (float)numFrames;
-        AnimationController_SampleAnimationPose(ac, ac->mAnimPoseA, animIdx, norm);
-        for (int poseIdx = 0; poseIdx < MAX_BONES; poseIdx++)
+        SampleSkinnedAnimationPose(bundle, poses, animIdx, norm);
+        for (int poseIdx = 0; poseIdx < bundle->numNodes; poseIdx++)
         {
             u32* outPose = animPoses + ((numPose + poseIdx) * ANIM_POSE_NUM_INT32);
-            StoreHalf4(outPose, ac->mAnimPoseA[poseIdx].translation.m128_f32);
-            StoreHalf4(outPose + 2, ac->mAnimPoseA[poseIdx].rotation.m128_f32);
+            StoreHalf4(outPose, poses[poseIdx].translation);
+            StoreHalf4(outPose + 2, poses[poseIdx].rotation);
         }
         numPose += MAX_BONES;
     }
 
-    animData[animIdx] = (GPUAnimationData){
+    animData[NumGPUAnimations++] = (GPUAnimationData){
         .frameOffset   = (u32)frameOffset,
         .numFrames     = (u32)numFrames,
-        .rootNodeIndex = (u32)ac->mRootNodeIndex,
+        .rootNodeIndex = (u32)bundle->rootNode,
         .numJoints     = (u32)skin->numJoints,
-        .numNodes      = (u32)ac->mPrefab->numNodes,
+        .numNodes      = (u32)bundle->numNodes,
         .duration      = animation->duration
     };
 
-    for (int i = 0; i < ANIM_NODE_COUNT; i++)
+    for (int i = 0; i < bundle->numNodes; i++)
     {
-        const ANode* node = i < ac->mPrefab->numNodes ? &ac->mPrefab->nodes[i] : NULL;
+        const ANode* node = i < bundle->numNodes ? &bundle->nodes[i] : NULL;
         u32 parent = node && node->parent >= 0 ? (u32)node->parent : 0xFFFFu;
         animHierarchy[i] = parent;
     }
@@ -103,10 +101,10 @@ int AnimationGetGPUData(AnimationController* ac, int animIdx, int frameOffset)
     for (int i = 0; i < skin->numJoints; i++)
     {
         u32* outMtx = invBindMatrices + (i * ANIM_MATRIX_NUM_INT32);
-        StoreHalf4(outMtx + 0, inv[i].m[0]);
-        StoreHalf4(outMtx + 2, inv[i].m[1]);
-        StoreHalf4(outMtx + 4, inv[i].m[2]);
-        StoreHalf4(outMtx + 6, inv[i].m[3]);
+        StoreHalf4(outMtx + 0, inv[i].r[0]);
+        StoreHalf4(outMtx + 2, inv[i].r[1]);
+        StoreHalf4(outMtx + 4, inv[i].r[2]);
+        StoreHalf4(outMtx + 6, inv[i].r[3]);
     }
     return numFrames;
 }
@@ -116,7 +114,7 @@ void InitAnimationInstances(void)
     for (u32 i = 0; i < MAX_ANIM_INSTANCES; i++)
     {
         u32 hash = WangHash(i + 645u);
-        u32 animIdx = hash % numGPUAnimations;
+        u32 animIdx = hash % NumGPUAnimations;
         f32 duration = animData[animIdx].duration;
 
         animInstances[i] = (GPUAnimationInstance){
@@ -126,74 +124,59 @@ void InitAnimationInstances(void)
     }
 }
 
-void InitAnimationFrames(AnimationController* ac)
+s32 SceneBundleInitAnimations(const SceneBundle* gltfScene, Pose result[MAX_BONES])
 {
-    int frameOffset = 0;
-    const SceneBundle* bundle = ac->mPrefab;
-    numGPUAnimations = (u32)MMIN(bundle->numAnimations, MAX_ANIM_COUNT);
-    for (u32 animIdx = 0; animIdx < numGPUAnimations; animIdx++)
-    {
-        int numFrames = (int)(bundle->animations[animIdx].duration * ANIM_NUM_FRAMES);
-        if (frameOffset + numFrames > MAX_GPU_ANIM_FRAMES)
-        {
-            numGPUAnimations = animIdx;
-            break;
-        }
-        numFrames = AnimationGetGPUData(ac, (int)animIdx, frameOffset);
-        frameOffset += numFrames;
-    }
-    AX_LOG("num animation: %d", numGPUAnimations);
-}
-
-void AnimationController_Create(const SceneBundle* gltfScene, AnimationController* result)
-{
-    Pose pose;
-    AnimNode animNode;
-    ANode inputNode;
-    s32 childIndex;
     const ASkin* skin = &gltfScene->skins[0];
-
     if (skin == NULL) {
-        AX_WARN("skin is null"); return;
+        AX_WARN("skin is null"); 
+        return 0;
     }
-    if (skin->numJoints > MAX_BONES) {
+    if (gltfScene->numNodes >= MAX_BONES) {
         AX_WARN("number of joints is greater than max capacity"); 
-        return; 
+        return 0; 
     }
-    result->mRootNodeIndex = gltfScene->rootNode; // Prefab_FindAnimRootNodeIndex(prefab);
-    result->mPrefab        = gltfScene;
-    result->mNumJoints     = skin->numJoints;
     
-    ASSERT(result->mRootNodeIndex < MAX_BONES);
-    ASSERT(gltfScene->nodes[result->mRootNodeIndex].numChildren > 0); // root node has to have children nodes
-    MemSet(result->mChildIndices, 255, sizeof(result->mChildIndices));
+    ASSERT(gltfScene->rootNode < MAX_BONES);
+    ASSERT(gltfScene->nodes[gltfScene->rootNode].numChildren > 0); // root node has to have children nodes
 
-    childIndex = 0;
     for (s32 i = 0; i < gltfScene->numNodes; i++)
     {
-        inputNode  = gltfScene->nodes[i];
-        pose.translation = VecLoad(inputNode.translation);
-        pose.rotation    = VecLoad(inputNode.rotation);
-        pose.rotation    = QNorm(pose.rotation);
-
-        animNode.numChildren = inputNode.numChildren;
-        animNode.childrenStartIndex = childIndex;
-
-        result->mAnimNodes[i] = animNode;
-        result->mAnimPoseA[i] = pose;
-
-        for (s32 j = 0; j < animNode.numChildren; j++)
-        {
-            result->mChildIndices[childIndex++] = (u8)inputNode.children[j];
-        }
+        ANode inputNode = gltfScene->nodes[i];
+        result[i] = (Pose){
+            .translation = VecLoad(inputNode.translation),
+            .rotation    = QNorm(VecLoad(inputNode.rotation))
+        };
     }
+    return 1;
 }
 
-void AnimationController_Clear(AnimationController* ac) { }
-
-void AnimationController_SampleAnimationPose(const AnimationController* ac, Pose pose[MAX_BONES], s32 animIdx, f32 normTime)
+// maybe return animation handle we might want to delete
+s32 SceneBundleCreateAnimations(const SceneBundle* bundle)
 {
-    const AAnimation* animation = &ac->mPrefab->animations[animIdx];
+    Pose poses[MAX_BONES];
+    if (SceneBundleInitAnimations(bundle, poses) == 0)
+        return 0;
+
+    for (u32 animIdx = 0; animIdx < bundle->numAnimations; animIdx++)
+    {
+        s32 numFrames = (s32)(bundle->animations[animIdx].duration * ANIM_NUM_FRAMES);
+        if (AnimTotalFrameOffset + numFrames > MAX_GPU_ANIM_FRAMES)
+        {
+            NumGPUAnimations = animIdx;
+            AX_WARN("animation couldn't added frame capacity is not enough", NumGPUAnimations);
+            break;
+        }
+        numFrames = AnimationGetGPUData(bundle, poses, (int)animIdx, AnimTotalFrameOffset);
+        AnimTotalFrameOffset += numFrames;
+    }
+    AX_LOG("num animation: %d", NumGPUAnimations);
+    return 1;
+}
+
+
+void SampleSkinnedAnimationPose(const SceneBundle* bundle, Pose pose[MAX_BONES], s32 animIdx, f32 normTime)
+{
+    const AAnimation* animation = &bundle->animations[animIdx];
     const bool reverse = normTime < 0.0f;
 
     normTime = Minf32(Absf32(normTime), 1.0f);
@@ -205,15 +188,9 @@ void AnimationController_SampleAnimationPose(const AnimationController* ac, Pose
     {
         const AAnimChannel* channel = &animation->channels[c];
         const AAnimSampler* sampler = &animation->samplers[channel->sampler];
-        const s32 targetNode = channel->targetNode;
-    
-        // // morph targets are not supported
-        // if (channel->targetPath == AAnimTargetPath_Weight || 
-        //     sampler->interpolation == ASamplerInterpolation_CubicSpline || 
-        //     sampler->inputType  != AComponentType_FLOAT || 
-        //     sampler->outputType != AComponentType_FLOAT)
+        // morph targets are not supported
+        // if (channel->targetPath == AAnimTargetPath_Weight || sampler->interpolation == ASamplerInterpolation_CubicSpline || sampler->inputType  != AComponentType_FLOAT || sampler->outputType != AComponentType_FLOAT)
         //     continue;
-    
         // binary search
         s32 beginIdx = 0;
         s32 endIdx   = sampler->count - 1;
@@ -221,7 +198,6 @@ void AnimationController_SampleAnimationPose(const AnimationController* ac, Pose
         while (beginIdx + 1 < endIdx)
         {
             s32 mid = (beginIdx + endIdx) >> 1;
-
             if (realTime < sampler->input[mid])
                 endIdx = mid;
             else
@@ -243,12 +219,12 @@ void AnimationController_SampleAnimationPose(const AnimationController* ac, Pose
         switch (channel->targetPath)
         {
             case AAnimTargetPath_Translation:
-                pose[targetNode].translation = VecLerp(begin, end, t);
+                pose[channel->targetNode].translation = VecLerp(begin, end, t);
                 break;
             case AAnimTargetPath_Rotation:
-                pose[targetNode].rotation = QNLerp(begin, end, t); // QNormEst maybe
+                pose[channel->targetNode].rotation = QNorm(QSlerp(begin, end, t));
                 break;
-        };
+        }
     }
 }
 
