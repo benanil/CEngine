@@ -356,12 +356,6 @@
 						<Path>Shaders/ShaderCompile.bat</Path>
 					</File>
 					<File>
-						<Path>Shaders/SkinnedFrag.hlsl</Path>
-					</File>
-					<File>
-						<Path>Shaders/SkinnedVert.hlsl</Path>
-					</File>
-					<File>
 						<Path>Shaders/Common.hlsl</Path>
 					</File>
 					<File>
@@ -378,6 +372,12 @@
 					</File>
 					<File>
 						<Path>Shaders/CommonStructs.hlsl</Path>
+					</File>
+					<File>
+						<Path>Shaders/LineDebug.hlsl</Path>
+					</File>
+					<File>
+						<Path>Shaders/Skinned.hlsl</Path>
 					</File>
 				</Children>
 			</Folder>

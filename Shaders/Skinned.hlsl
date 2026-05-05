@@ -8,9 +8,9 @@ cbuffer vs_params : register(b0, space1)
     float4x4 uViewProj;
 };
 
-StructuredBuffer<uint>         sBoneMtx  : register(t0);
-StructuredBuffer<Entity>       sEntities : register(t1);
-StructuredBuffer<uint>         sDrawDenseIndices : register(t2);
+StructuredBuffer<uint>   sBoneMtx          : register(t0);
+StructuredBuffer<Entity> sEntities         : register(t1);
+StructuredBuffer<uint>   sDrawDenseIndices : register(t2);
 
 static const uint MatrixNumInt32 = 6;
 
@@ -40,7 +40,7 @@ f16_3x4 LoadBone(uint idx)
     return bone;
 }
 
-VSOutput main(VSInput input, uint instanceID : SV_InstanceID)
+VSOutput vert(VSInput input, uint instanceID : SV_InstanceID)
 {
     uint denseIdx = sDrawDenseIndices[instanceID];
     uint boneStart = (denseIdx % MAX_ANIM_INSTANCES) * MAX_BONES; // animation palette is independent from entity index
@@ -79,4 +79,15 @@ VSOutput main(VSInput input, uint instanceID : SV_InstanceID)
     o.texCoords = input.aTexCoords;
     o.normal    = normalize(tbn[2]);
     return o;
+}
+
+
+Texture2D<float4> Texture : register(t0, space2);
+SamplerState Sampler : register(s0, space2);
+
+float4 frag(VSOutput input) : SV_Target0
+{
+    f16_3 sunDir = f16_3(0.5, -0.5, 0.0f);
+    f16_io ndl = dot(input.normal, -sunDir);
+    return Texture.Sample(Sampler, input.texCoords) * max(ndl, 0.1);
 }

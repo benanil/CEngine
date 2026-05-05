@@ -12,12 +12,22 @@ struct IndexedDrawCommand
     uint firstInstance;
 };
 
+struct IndirectDrawCommand
+{
+    uint numVertices;  
+    uint numInstances; 
+    uint firstVertex;  
+    uint firstInstance;
+};
+
 StructuredBuffer<Entity>         entities        : register(t0);
 StructuredBuffer<PrimitiveGroup> primitiveGroups : register(t1);
 
-RWStructuredBuffer<uint>               drawDenseIndices      : register(u0, space1);
-RWStructuredBuffer<IndexedDrawCommand> drawArgs              : register(u1, space1);
-RWStructuredBuffer<uint>               numVisibleInPrimitive : register(u2, space1);
+RWStructuredBuffer<uint>                drawDenseIndices      : register(u0, space1);
+RWStructuredBuffer<IndexedDrawCommand>  drawArgs              : register(u1, space1);
+RWStructuredBuffer<uint>                numVisibleInPrimitive : register(u2, space1);
+RWStructuredBuffer<LineVertex>          lineVertices          : register(u3, space1);
+RWStructuredBuffer<IndirectDrawCommand> lineDrawCommand       : register(u4, space1);
 
 StructuredBuffer<uint> denseToPrimitiveIndex : register(t2);
 
@@ -73,6 +83,57 @@ float3 QMulVec3F32(float4 quat, float3 vec) {
     return vec + (cross(quat.xyz, cross(quat.xyz, vec) + (vec * quat.w)) * 2.0);
 }
 
+u32 WangHash(u32 x) { 
+	x ^= x >> 16u; x *= 0x7feb352du;
+	x ^= x >> 15u; x *= 0x846ca68bu;
+	return x ^ (x >> 16u);
+}
+
+void AddLine(float3 a, float3 b, int idx)
+{
+    u32 color = WangHash(idx);
+    lineVertices[idx].x = a.x;
+    lineVertices[idx].y = a.y;
+    lineVertices[idx].z = a.z;
+    lineVertices[idx].color = color;
+
+    lineVertices[idx + 1].x = b.x;
+    lineVertices[idx + 1].y = b.y;
+    lineVertices[idx + 1].z = b.z;
+    lineVertices[idx + 1].color = color;
+}
+
+void AddAABBLine(float3 worldMin, float3 worldMax)
+{
+    uint start;
+    InterlockedAdd(lineDrawCommand[0].numVertices, 24, start);
+    // if (start + 23 >= MAX_LINE_VERTEX_COUNT) return;
+    float3 p000 = float3(worldMin.x, worldMin.y, worldMin.z);
+    float3 p100 = float3(worldMax.x, worldMin.y, worldMin.z);
+    float3 p010 = float3(worldMin.x, worldMax.y, worldMin.z);
+    float3 p110 = float3(worldMax.x, worldMax.y, worldMin.z);
+
+    float3 p001 = float3(worldMin.x, worldMin.y, worldMax.z);
+    float3 p101 = float3(worldMax.x, worldMin.y, worldMax.z);
+    float3 p011 = float3(worldMin.x, worldMax.y, worldMax.z);
+    float3 p111 = float3(worldMax.x, worldMax.y, worldMax.z);
+
+    AddLine(p000, p100, start + 0);
+    AddLine(p100, p110, start + 2);
+    AddLine(p110, p010, start + 4);
+    AddLine(p010, p000, start + 6);
+
+    AddLine(p001, p101, start + 8);
+    AddLine(p101, p111, start + 10);
+    AddLine(p111, p011, start + 12);
+    AddLine(p011, p001, start + 14);
+
+    AddLine(p000, p001, start + 16);
+    AddLine(p100, p101, start + 18);
+    AddLine(p110, p111, start + 20);
+    AddLine(p010, p011, start + 22);
+}
+
 void BuildWorldAABB(Entity entity, PrimitiveGroup group, out float3 worldMin, out float3 worldMax)
 {
     float3 localMin = UnpackHalf4(group.aabbMin).xyz;
@@ -95,7 +156,49 @@ void BuildWorldAABB(Entity entity, PrimitiveGroup group, out float3 worldMin, ou
     worldMax = worldCenter + worldExtent;
 }
 
-#ifndef MOBILE
+[numthreads(64, 1, 1)]
+void main(uint3 tid : SV_DispatchThreadID)
+{
+    uint idx = tid.x;
+
+    if (mode == 0)
+    {
+        if (idx >= numPrimitiveGroups) return;
+
+        PrimitiveGroup group = primitiveGroups[idx];
+        numVisibleInPrimitive[idx] = 0;
+        drawArgs[idx].numIndices = group.numIndices;
+        drawArgs[idx].numInstances = 0;
+        drawArgs[idx].firstIndex = group.indexOffset;
+        drawArgs[idx].vertexOffset = int(group.vertexOffset);
+        drawArgs[idx].firstInstance = group.entityOffset;
+
+        lineDrawCommand[0].numVertices   = 0;  
+        lineDrawCommand[0].numInstances  = 1; 
+        lineDrawCommand[0].firstVertex   = 0;  
+        lineDrawCommand[0].firstInstance = 0;
+        return;
+    }
+
+    if (idx >= numEntities) return;
+
+    uint primitiveIdx = denseToPrimitiveIndex[idx];
+    PrimitiveGroup group = primitiveGroups[primitiveIdx];
+    if (group.valid == 0) return;
+
+    float3 worldMin;
+    float3 worldMax;
+    BuildWorldAABB(entities[idx], group, worldMin, worldMax);
+    if (!AABBVisible(worldMin, worldMax)) return;
+    // AddAABBLine(worldMin, worldMax);
+
+    uint visibleIdx;
+    InterlockedAdd(numVisibleInPrimitive[primitiveIdx], 1, visibleIdx);
+    drawDenseIndices[group.entityOffset + visibleIdx] = idx;
+    InterlockedMax(drawArgs[primitiveIdx].numInstances, visibleIdx + 1);
+}
+
+#ifdef MOBILE
 
 [numthreads(64, 1, 1)]
 void main(uint3 tid : SV_DispatchThreadID, uint3 gid : SV_GroupThreadID)
@@ -174,39 +277,5 @@ void main(uint3 tid : SV_DispatchThreadID, uint3 gid : SV_GroupThreadID)
     }
 }
 #else
-[numthreads(64, 1, 1)]
-void main(uint3 tid : SV_DispatchThreadID)
-{
-    uint idx = tid.x;
 
-    if (mode == 0)
-    {
-        if (idx >= numPrimitiveGroups) return;
-
-        PrimitiveGroup group = primitiveGroups[idx];
-        numVisibleInPrimitive[idx] = 0;
-        drawArgs[idx].numIndices = group.numIndices;
-        drawArgs[idx].numInstances = 0;
-        drawArgs[idx].firstIndex = group.indexOffset;
-        drawArgs[idx].vertexOffset = int(group.vertexOffset);
-        drawArgs[idx].firstInstance = group.entityOffset;
-        return;
-    }
-
-    if (idx >= numEntities) return;
-
-    uint primitiveIdx = denseToPrimitiveIndex[idx];
-    PrimitiveGroup group = primitiveGroups[primitiveIdx];
-    if (group.valid == 0) return;
-
-    float3 worldMin;
-    float3 worldMax;
-    BuildWorldAABB(entities[idx], group, worldMin, worldMax);
-    if (!AABBVisible(worldMin, worldMax)) return;
-
-    uint visibleIdx;
-    InterlockedAdd(numVisibleInPrimitive[primitiveIdx], 1, visibleIdx);
-    drawDenseIndices[group.entityOffset + visibleIdx] = idx;
-    InterlockedMax(drawArgs[primitiveIdx].numInstances, visibleIdx + 1);
-}
 #endif

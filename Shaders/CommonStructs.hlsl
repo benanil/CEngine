@@ -24,4 +24,11 @@ struct PrimitiveGroup
     uint2 aabbMin;
     uint2 aabbMax;
 };
+
+struct LineVertex
+{
+    float x, y, z;
+    uint color;
+};
+
 #endif

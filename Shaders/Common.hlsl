@@ -175,20 +175,6 @@ typedef int4   v128i;
 typedef uint4  v128u;
 
 // -----------------------------------------------------------------------------
-// Helpers
-// -----------------------------------------------------------------------------
-#define _VEC4_GET(v, i) ((i) == 0 ? (v).x : ((i) == 1 ? (v).y : ((i) == 2 ? (v).z : (v).w)))
-
-#define _U32_TO_MASK(b) ((b) ? 0xFFFFFFFFu : 0u)
-#define _I32_TO_MASK(b) ((b) ? -1 : 0)
-
-#define _VEC4_CMP_MASK_4(a, b, op) \
-    uint4(_U32_TO_MASK((a).x op (b).x), _U32_TO_MASK((a).y op (b).y), _U32_TO_MASK((a).z op (b).z), _U32_TO_MASK((a).w op (b).w))
-
-#define _VEC4_CMP_IMASK_4(a, b, op) \
-    int4(_I32_TO_MASK((a).x op (b).x), _I32_TO_MASK((a).y op (b).y), _I32_TO_MASK((a).z op (b).z), _I32_TO_MASK((a).w op (b).w))
-
-// -----------------------------------------------------------------------------
 // Float vectors
 // -----------------------------------------------------------------------------
 #define VecZero()               float4(0.0, 0.0, 0.0, 0.0)
@@ -200,17 +186,6 @@ typedef uint4  v128u;
 
 #define VecSet(x, y, z, w)      float4((x), (y), (z), (w))
 #define VecSetR(x, y, z, w)     float4((x), (y), (z), (w))
-
-// Pointer-less HLSL note:
-// use buffer Load/Store in calling code, or wrap these to your own memory API.
-#define VecLoad(x)              (*(v128f*)(x))
-#define VecLoadA(x)             (*(v128f*)(x))
-#define VecLoadI(x)             asfloat(*(v128u*)(x))
-#define VecLoadIU(x)            asfloat(*(v128u*)(x))
-
-#define VecStoreU(ptr, x)       (*(v128u*)(ptr) = asuint(x))
-#define VecStore(ptr, x)        (*(v128f*)(ptr) = (x))
-#define VecStoreA(ptr, x)       (*(v128f*)(ptr) = (x))
 
 #define MakeShuffleMask(x,y,z,w)  0
 
@@ -241,7 +216,6 @@ typedef uint4  v128u;
 #define VecDivf(a, b)           ((a) / b)
 
 #define VecRound(v)             round(v)
-
 #define VecFmaddLane(a, b, c, l) ((a) * VecSet1(_VEC4_GET(b, l)) + (c))
 #define VecFmadd(a, b, c)       ((a) * (b) + (c))
 #define VecFmsub(a, b, c)       ((a) * (b) - (c))
@@ -270,16 +244,9 @@ typedef uint4  v128u;
 #define Vec3LenV(v)             VecSet1(sqrt(dot((v).xyz, (v).xyz)))
 
 // Swizzling / shuffling
-#define VecSwizzle(vec, x, y, z, w)         float4(_VEC4_GET(vec, x), _VEC4_GET(vec, y), _VEC4_GET(vec, z), _VEC4_GET(vec, w))
-#define VecShuffle(vec1, vec2, x, y, z, w)  float4(_VEC4_GET(vec1, x), _VEC4_GET(vec1, y), _VEC4_GET(vec2, z), _VEC4_GET(vec2, w))
-#define VecShuffleR(vec1, vec2, x, y, z, w) float4(_VEC4_GET(vec1, w), _VEC4_GET(vec1, z), _VEC4_GET(vec2, y), _VEC4_GET(vec2, x))
-
-#define VecShuffle_0101(vec1, vec2)     float4((vec1).x, (vec1).y, (vec2).x, (vec2).y)
-#define VecShuffle_2323(vec1, vec2)     float4((vec1).z, (vec1).w, (vec2).z, (vec2).w)
-#define VecRev(v)                       float4((v).w, (v).z, (v).y, (v).x)
-
-#define VecSwapPairs(v)                 float4((v).y, (v).x, (v).w, (v).z)
-#define VecSwapHalves(v)                float4((v).z, (v).w, (v).x, (v).y)
+#define VecRev(v)                       v.wzyy
+#define VecSwapPairs(v)                 v.yxww
+#define VecSwapHalves(v)                v.zwxx
 
 // Logical / bitwise
 #define VecNot(a)                       asfloat(~asuint(a))
@@ -293,17 +260,6 @@ typedef uint4  v128u;
 #define VecMin(a, b)                    min((a), (b))
 #define VecFloor(a)                     floor(a)
 
-#define VecCmpGt(a, b)                  _VEC4_CMP_MASK_4(a, b, >)
-#define VecCmpGe(a, b)                  _VEC4_CMP_MASK_4(a, b, >=)
-#define VecCmpLt(a, b)                  _VEC4_CMP_MASK_4(a, b, <)
-#define VecCmpLe(a, b)                  _VEC4_CMP_MASK_4(a, b, <=)
-#define VecCmpEq(a, b)                  _VEC4_CMP_MASK_4(a, b, ==)
-
-#define VecMovemask(a)                  (((asuint(a).x >> 31) & 1u) | (((asuint(a).y >> 31) & 1u) << 1) | (((asuint(a).z >> 31) & 1u) << 2) | (((asuint(a).w >> 31) & 1u) << 3))
-
-#define VecSelect(V1, V2, Control)      asfloat((asuint(V1) & ~asuint(Control)) | (asuint(V2) & asuint(Control)))
-#define VecBlend(a, b, c)               VecSelect(a, b, c)
-
 // -----------------------------------------------------------------------------
 // Integer vectors
 // -----------------------------------------------------------------------------
@@ -312,9 +268,6 @@ typedef uint4  v128u;
 #define VeciSet(x, y, z, w)             int4((x), (y), (z), (w))
 #define VeciSetR(x, y, z, w)            int4((x), (y), (z), (w))
 #define VeciDup64(x)                    int2((x), (x))   // no real 64-bit SIMD lane model in HLSL
-#define VeciLoadA(x)                    (*(int4*)(x))
-#define VeciLoad(x)                     (*(int4*)(x))
-#define VeciLoad64(qword)               (*(int2*)(qword))
 
 #define VeciSetX(v, x)                  ((v).x = (x))
 #define VeciSetY(v, y)                  ((v).y = (y))
@@ -344,14 +297,6 @@ typedef uint4  v128u;
 #define VeciSll32(a, b)                 ((uint4(a) << (b)))
 #define VeciToVecf(a)                   asfloat(uint4(a))
 
-#define VeciCmpLt(a, b)                 _VEC4_CMP_IMASK_4(a, b, <)
-#define VeciCmpLe(a, b)                 _VEC4_CMP_IMASK_4(a, b, <=)
-
-#define VeciCmpGt(a, b)                 _VEC4_CMP_IMASK_4(a, b, >)
-#define VeciCmpGe(a, b)                 _VEC4_CMP_IMASK_4(a, b, >=)
-#define VeciCmpEq(a, b)                 _VEC4_CMP_IMASK_4(a, b, ==)
-
-#define VeciBlend(a, b, c)              asint(VecSelect(asfloat(a), asfloat(b), asuint(c)))
 #define VecFabs(x)                      VecAnd(x, VecFromInt1(0x7fffffff))
 
 #define VecFromInt(x, y, z, w)          asfloat(uint4((x), (y), (z), (w)))
@@ -374,14 +319,6 @@ typedef uint4  v128u;
 #define VecUnpackHi32(x)                int4((x).z, (x).w, 0, 0)
 
 #define VecPack16(x)                    uint4(saturate(float4(x)))   // approximate
-
-#define VecStoreLo64(p, v)              (*(uint2*)(p) = asuint((v).xy))
-#define VecStoreHi64(p, v)              (*(uint2*)(p) = asuint((v).zw))
-#define VecLoadLo64(p, v)               asfloat(uint4(*(uint2*)(p), 0, 0))
-#define VecLoadHi64(p, v)               asfloat(uint4(0, 0, *(uint2*)(p).x, *(uint2*)(p).y))
-
-// In HLSL, do this inline at the call site:
-#define Vec3Load(x)                     float4(asfloat(*(float3*)(x)).xyz, 0.0)
 
 #else
 

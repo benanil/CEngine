@@ -18,4 +18,7 @@
 #define ANIM_NODE_COUNT         (MAX_BONES * 2)
 #define ANIM_CHILD_PACKED_COUNT ((ANIM_NODE_COUNT + 3) / 4)
 
+
+#define MAX_LINE_COUNT (MAX_ANIM_INSTANCES * 100)
+
 #endif

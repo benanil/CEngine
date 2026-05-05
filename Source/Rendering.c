@@ -14,23 +14,24 @@
 #if defined(PLATFORM_APPLE)
 #include "Shaders/msl/SkinnedFrag.msl.h"
 #include "Shaders/msl/SkinnedVert.msl.h"
+#include "Shaders/msl/AnimationCompute.msl.h"
+#include "Shaders/msl/CullDrawArgsCompute.msl.h"
+#include "Shaders/msl/LineDebugFrag.msl.h"
+#include "Shaders/msl/LineDebugVert.msl.h"
 #define Shaders_SkinnedFrag_spv      Shaders_SkinnedFrag_msl
 #define Shaders_SkinnedFrag_spv_size Shaders_SkinnedFrag_msl_size
 #define Shaders_SkinnedVert_spv      Shaders_SkinnedVert_msl
 #define Shaders_SkinnedVert_spv_size Shaders_SkinnedVert_msl_size
+#define Shaders_AnimationCompute_spv      Shaders_AnimationCompute_msl
+#define Shaders_AnimationCompute_spv_size Shaders_AnimationCompute_msl_size
 #elif defined(PLATFORM_WINDOWS)
 // Shaders_SkinnedFrag_spv
 #include "Shaders/spv/SkinnedFrag.spv.h"
 #include "Shaders/spv/SkinnedVert.spv.h"
-#endif
-
-#if defined(PLATFORM_APPLE)
-#include "Shaders/msl/AnimationCompute.msl.h"
-#define Shaders_AnimationCompute_spv      Shaders_AnimationCompute_msl
-#define Shaders_AnimationCompute_spv_size Shaders_AnimationCompute_msl_size
-#elif defined(PLATFORM_WINDOWS)
-#include "Shaders/spv/AnimationCompute.spv.h"
 #include "Shaders/spv/CullDrawArgsCompute.spv.h"
+#include "Shaders/spv/AnimationCompute.spv.h"
+#include "Shaders/spv/LineDebugVert.spv.h"
+#include "Shaders/spv/LineDebugFrag.spv.h"
 #endif
 
 #define TESTGPU_SUPPORTED_FORMATS (SDL_GPU_SHADERFORMAT_SPIRV | SDL_GPU_SHADERFORMAT_DXBC | SDL_GPU_SHADERFORMAT_DXIL | SDL_GPU_SHADERFORMAT_METALLIB)
@@ -79,6 +80,9 @@ void InitBuffers()
     /* Create skined */
     g_RenderState.vertexBuffer = CreateBuffer(gGFX.VertexBuffer, MAX_VERTEX * sizeof(ASkinedVertex), SDL_GPU_BUFFERUSAGE_VERTEX, "CPVertexBuffer");
     g_RenderState.indexBuffer  = CreateBuffer(gGFX.IndexBuffer , MAX_INDEX * sizeof(int), SDL_GPU_BUFFERUSAGE_INDEX, "CPIndexBuffer");
+    
+    g_RenderState.lineBuffer = CreateBuffer(NULL, sizeof(ALineVertex) * MAX_LINE_COUNT, SDL_GPU_BUFFERUSAGE_VERTEX | SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE, "CPLineVertexBuffer"); 
+    g_RenderState.lineDrawArgsBuffer = CreateBuffer(NULL, sizeof(u32) * 4, SDL_GPU_BUFFERUSAGE_INDIRECT | SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE, "CPLinedrawArgsBuffer");
 }
 
 static void InitAnimationComputePipeline()
@@ -107,7 +111,7 @@ static void InitCullDrawArgsComputePipeline()
         .format                        = SDL_GetGPUShaderFormats(g_GPUDevice),
         .num_uniform_buffers           = 1,
         .num_readonly_storage_buffers  = 3,
-        .num_readwrite_storage_buffers = 3,
+        .num_readwrite_storage_buffers = 5,
         .threadcount_x                 = 64,
         .threadcount_y                 = 1,
         .threadcount_z                 = 1,
@@ -130,13 +134,60 @@ static void InitSamplers()
 }
 
 static void InitSkinedPipeline();
+static void InitLinePipeline();
 
 void RendererInit()
 {
     InitSamplers();
     InitSkinedPipeline();
+    InitLinePipeline();
     InitAnimationComputePipeline();
     InitCullDrawArgsComputePipeline();
+}
+
+static void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd, ECS* renderSet,
+                                        ECS_GraphicsBuffers* buffers,
+                                        FrustumPlanes frustumPlanes)
+{
+    if (renderSet->numGroups == 0) return;
+
+    struct {
+        FrustumPlanes planes;
+        u32 numEntities;
+        u32 numPrimitiveGroups;
+        u32 mode;
+        u32 pad0;
+    } params;
+    MemCopy(&params.planes, frustumPlanes.planes, sizeof(FrustumPlanes));
+    params.numEntities = renderSet->numEntities;
+    params.numPrimitiveGroups = renderSet->numGroups;
+    params.mode = 0;
+    params.pad0 = 0;
+
+    SDL_GPUBuffer* ro_buffers[3] = { buffers->entity, buffers->primitiveGroup, buffers->denseToPrimitive };
+    SDL_GPUStorageBufferReadWriteBinding rw_bindings[5] = {
+        { buffers->drawDenseIndices },
+        { buffers->drawArgs },
+        { buffers->numVisible },
+        { g_RenderState.lineBuffer },
+        { g_RenderState.lineDrawArgsBuffer }
+    };
+
+    SDL_GPUComputePass* pass = SDL_BeginGPUComputePass(cmd, NULL, 0, rw_bindings, SDL_arraysize(rw_bindings));
+    SDL_BindGPUComputePipeline(pass, g_CullDrawArgsComputePipeline);
+    SDL_BindGPUComputeStorageBuffers(pass, 0, ro_buffers, SDL_arraysize(ro_buffers));
+    SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
+    // clear draw args and numVisibleInPrimitive
+    SDL_DispatchGPUCompute(pass, (renderSet->numGroups + 63) / 64, 1, 1);
+
+    if (renderSet->numEntities > 0)
+    {
+        params.mode = 1;
+        SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
+        // actual culling
+        SDL_DispatchGPUCompute(pass, (renderSet->numEntities + 63) / 64, 1, 1);
+    }
+    SDL_EndGPUComputePass(pass);
 }
 
 void DispatchAnimationCompute(SDL_GPUCommandBuffer* cmd, ECS* renderSet)
@@ -176,48 +227,6 @@ void DispatchAnimationCompute(SDL_GPUCommandBuffer* cmd, ECS* renderSet)
     SDL_EndGPUComputePass(pass);
 }
 
-static void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd, ECS* renderSet,
-                                        ECS_GraphicsBuffers* buffers,
-                                        FrustumPlanes frustumPlanes)
-{
-    if (renderSet->numGroups == 0) return;
-
-    struct {
-        FrustumPlanes planes;
-        u32 numEntities;
-        u32 numPrimitiveGroups;
-        u32 mode;
-        u32 pad0;
-    } params;
-    MemCopy(&params.planes, frustumPlanes.planes, sizeof(FrustumPlanes));
-    params.numEntities = renderSet->numEntities;
-    params.numPrimitiveGroups = renderSet->numGroups;
-    params.mode = 0;
-    params.pad0 = 0;
-
-    SDL_GPUBuffer* ro_buffers[3] = { buffers->entity, buffers->primitiveGroup, buffers->denseToPrimitive };
-    SDL_GPUStorageBufferReadWriteBinding rw_bindings[3] = {
-        { buffers->drawDenseIndices },
-        { buffers->drawArgs },
-        { buffers->numVisible }
-    };
-
-    SDL_GPUComputePass* pass = SDL_BeginGPUComputePass(cmd, NULL, 0, rw_bindings, SDL_arraysize(rw_bindings));
-    SDL_BindGPUComputePipeline(pass, g_CullDrawArgsComputePipeline);
-    SDL_BindGPUComputeStorageBuffers(pass, 0, ro_buffers, SDL_arraysize(ro_buffers));
-    SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
-    // clear draw args and numVisibleInPrimitive
-    SDL_DispatchGPUCompute(pass, (renderSet->numGroups + 63) / 64, 1, 1);
-
-    if (renderSet->numEntities > 0)
-    {
-        params.mode = 1;
-        SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
-        // actual culling
-        SDL_DispatchGPUCompute(pass, (renderSet->numEntities + 63) / 64, 1, 1);
-    }
-    SDL_EndGPUComputePass(pass);
-}
 
 static void RenderScene(SDL_GPUCommandBuffer* cmd, 
                         SDL_GPUColorTargetInfo* color_target, 
@@ -227,15 +236,11 @@ static void RenderScene(SDL_GPUCommandBuffer* cmd,
     SDL_GPUTexture* tex = g_RenderState.textures[gPaladin->materials[0].baseColorTexture.index].handle;
 
     /* Set up the bindings */
-    SDL_GPUBufferBinding vertex_binding;
-    SDL_GPUBufferBinding index_binding;
-    vertex_binding.buffer = g_RenderState.vertexBuffer;
-    vertex_binding.offset = 0;
-    index_binding.buffer  = g_RenderState.indexBuffer;
-    index_binding.offset  = 0;
+    SDL_GPUBufferBinding vertex_binding = { g_RenderState.vertexBuffer, 0 };
+    SDL_GPUBufferBinding index_binding  = { g_RenderState.indexBuffer , 0 };
 
     SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmd, color_target, 1, depth_target);
-    SDL_BindGPUGraphicsPipeline(pass, g_RenderState.pipeline);
+    SDL_BindGPUGraphicsPipeline(pass, g_RenderState.skinnedPipeline);
     SDL_BindGPUVertexBuffers(pass, 0, &vertex_binding, 1);
     SDL_BindGPUIndexBuffer(pass, &index_binding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
     
@@ -249,6 +254,15 @@ static void RenderScene(SDL_GPUCommandBuffer* cmd,
     
     SDL_PushGPUVertexUniformData(cmd, 0, &viewProj, sizeof(viewProj));
     SDL_DrawGPUIndexedPrimitivesIndirect(pass, g_RenderState.skinnedBuffers.drawArgs, 0, ecsSkinned.numGroups);
+    
+    // debug lines
+    SDL_BindGPUGraphicsPipeline(pass, g_RenderState.linePipeline);
+    vertex_binding.buffer = g_RenderState.lineBuffer;
+    vertex_binding.offset = 0;
+    SDL_BindGPUVertexBuffers(pass, 0, &vertex_binding, 1);
+    SDL_PushGPUVertexUniformData(cmd, 0, &viewProj, sizeof(viewProj));
+    SDL_DrawGPUPrimitivesIndirect(pass, g_RenderState.lineDrawArgsBuffer, 0, 1);
+
     SDL_EndGPURenderPass(pass);
 }
 
@@ -292,11 +306,11 @@ void Render()
     SDL_zero(color_target);
     color_target.clear_color.a = 1.0f;
     if (winstate->tex_msaa) {
-        color_target.load_op = SDL_GPU_LOADOP_CLEAR;
-        color_target.store_op = SDL_GPU_STOREOP_RESOLVE;
-        color_target.texture = winstate->tex_msaa;
-        color_target.resolve_texture = winstate->tex_resolve;
-        color_target.cycle = true;
+        color_target.load_op               = SDL_GPU_LOADOP_CLEAR;
+        color_target.store_op              = SDL_GPU_STOREOP_RESOLVE;
+        color_target.texture               = winstate->tex_msaa;
+        color_target.resolve_texture       = winstate->tex_resolve;
+        color_target.cycle                 = true;
         color_target.cycle_resolve_texture = true;
     }
     else {
@@ -332,7 +346,6 @@ void Render()
     if (g_RenderState.sample_count > SDL_GPU_SAMPLECOUNT_1) 
     {
         SDL_GPUBlitInfo blit_info;
-        SDL_zero(blit_info);
         blit_info.source.texture = winstate->tex_resolve;
         blit_info.source.w = drawablew;
         blit_info.source.h = drawableh;
@@ -350,14 +363,84 @@ void Render()
     SDL_SubmitGPUCommandBuffer(cmd);
 }
 
+static void InitLinePipeline()
+{
+    SDL_GPUShader* vertex_shader = SDL_CreateGPUShader(g_GPUDevice, &(SDL_GPUShaderCreateInfo){
+        .num_uniform_buffers = 1,
+        .format              = SDL_GetGPUShaderFormats(g_GPUDevice),
+        .code                = Shaders_LineDebugVert_spv,
+        .code_size           = sizeof(Shaders_LineDebugVert_spv),
+        .num_samplers        = 0,
+        .num_storage_buffers = 0,
+        .stage               = SDL_GPU_SHADERSTAGE_VERTEX,
+        .entrypoint          = "vert"
+    }); CHECK_CREATE(vertex_shader  , "Vertex Shader")
+
+    SDL_GPUShader* fragment_shader = SDL_CreateGPUShader(g_GPUDevice, &(SDL_GPUShaderCreateInfo){
+        .num_uniform_buffers = 0,
+        .format              = SDL_GetGPUShaderFormats(g_GPUDevice),
+        .code                = Shaders_LineDebugFrag_spv,
+        .code_size           = sizeof(Shaders_LineDebugFrag_spv),
+        .num_samplers        = 0,
+        .num_storage_buffers = 0,
+        .stage               = SDL_GPU_SHADERSTAGE_FRAGMENT,
+        .entrypoint          = "frag"
+    }); CHECK_CREATE(fragment_shader, "Fragment Shader")
+
+    const SDL_GPUVertexAttribute vertex_attributes[2] = {
+        {
+            .location    = 0,
+            .buffer_slot = 0,
+            .format      = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,
+            .offset      = 0
+        },
+        {
+            .location    = 1,
+            .buffer_slot = 0,
+            .format      = SDL_GPU_VERTEXELEMENTFORMAT_UINT,
+            .offset      = sizeof(f32) * 3
+        }
+    };
+
+    SDL_GPUTextureFormat colorFormat = SDL_GetGPUSwapchainTextureFormat(g_GPUDevice, g_SDLWindow);
+    SDL_GPUGraphicsPipelineCreateInfo pipelinedesc = {
+        .vertex_shader   = vertex_shader,
+        .fragment_shader = fragment_shader,
+        .primitive_type  = SDL_GPU_PRIMITIVETYPE_LINELIST,
+        .target_info     = (SDL_GPUGraphicsPipelineTargetInfo)
+        {
+            .num_color_targets          = 1,
+            .color_target_descriptions  = &(SDL_GPUColorTargetDescription){ .format = colorFormat },
+            .depth_stencil_format       = SDL_GPU_TEXTUREFORMAT_D24_UNORM,
+            .has_depth_stencil_target   = true
+        },
+        .multisample_state  = (SDL_GPUMultisampleState){ .sample_count = g_RenderState.sample_count },
+        .depth_stencil_state = (SDL_GPUDepthStencilState)
+        {
+            .enable_depth_test  = true,
+            .enable_depth_write = true,
+            .compare_op         = SDL_GPU_COMPAREOP_LESS_OR_EQUAL
+        },
+        .vertex_input_state = (SDL_GPUVertexInputState){
+            .vertex_buffer_descriptions = &(SDL_GPUVertexBufferDescription){
+                0, sizeof(ALineVertex), SDL_GPU_VERTEXINPUTRATE_VERTEX, 0 
+            },
+            .num_vertex_buffers    = 1, // above array count
+            .vertex_attributes     = vertex_attributes,
+            .num_vertex_attributes = ARRAY_SIZE(vertex_attributes)
+        }
+    };
+
+    g_RenderState.linePipeline = SDL_CreateGPUGraphicsPipeline(g_GPUDevice, &pipelinedesc);
+    CHECK_CREATE(g_RenderState.linePipeline, "Render Pipeline")
+    
+    /* These are reference-counted; once the pipeline is created, you don't need to keep these. */
+    SDL_ReleaseGPUShader(g_GPUDevice, vertex_shader);
+    SDL_ReleaseGPUShader(g_GPUDevice, fragment_shader);
+}
+
 static void InitSkinedPipeline()
 {
-    SDL_GPUGraphicsPipelineCreateInfo pipelinedesc;
-    SDL_GPUColorTargetDescription     color_target_desc;
-    SDL_GPUVertexAttribute            vertex_attributes[5];
-    SDL_GPUVertexBufferDescription    vertex_buffer_desc;
-
-    /* Create shaders */
     SDL_GPUShader* vertex_shader = SDL_CreateGPUShader(g_GPUDevice, &(SDL_GPUShaderCreateInfo){
         .num_uniform_buffers = 1,
         .format              = SDL_GetGPUShaderFormats(g_GPUDevice),
@@ -365,9 +448,10 @@ static void InitSkinedPipeline()
         .code_size           = sizeof(Shaders_SkinnedVert_spv),
         .num_samplers        = 0,
         .num_storage_buffers = 3,
-        .stage               = SDL_GPU_SHADERSTAGE_VERTEX
+        .stage               = SDL_GPU_SHADERSTAGE_VERTEX,
+        .entrypoint          = "vert"
     });
-    
+
     SDL_GPUShader* fragment_shader = SDL_CreateGPUShader(g_GPUDevice, &(SDL_GPUShaderCreateInfo){
         .num_uniform_buffers = 0,
         .format              = SDL_GetGPUShaderFormats(g_GPUDevice),
@@ -375,73 +459,77 @@ static void InitSkinedPipeline()
         .code_size           = sizeof(Shaders_SkinnedFrag_spv),
         .num_samplers        = 1,
         .num_storage_buffers = 0,
-        .stage               = SDL_GPU_SHADERSTAGE_FRAGMENT
+        .stage               = SDL_GPU_SHADERSTAGE_FRAGMENT,
+        .entrypoint          = "frag"
     });
-    
+
     CHECK_CREATE(vertex_shader  , "Vertex Shader")
     CHECK_CREATE(fragment_shader, "Fragment Shader")
 
-    /* Set up the graphics pipeline */
-    SDL_zero(pipelinedesc);
-    SDL_zero(color_target_desc);
-    
-    color_target_desc.format = SDL_GetGPUSwapchainTextureFormat(g_GPUDevice, g_SDLWindow);
-    
-    pipelinedesc.target_info.num_color_targets = 1;
-    pipelinedesc.target_info.color_target_descriptions  = &color_target_desc;
-    pipelinedesc.target_info.depth_stencil_format       = SDL_GPU_TEXTUREFORMAT_D24_UNORM;
-    pipelinedesc.target_info.has_depth_stencil_target   = true;
-    
-    pipelinedesc.depth_stencil_state.enable_depth_test  = true;
-    pipelinedesc.depth_stencil_state.enable_depth_write = true;
-    pipelinedesc.depth_stencil_state.compare_op         = SDL_GPU_COMPAREOP_LESS_OR_EQUAL;
-    
-    pipelinedesc.multisample_state.sample_count = g_RenderState.sample_count;
-    
-    pipelinedesc.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
-    
-    pipelinedesc.vertex_shader   = vertex_shader;
-    pipelinedesc.fragment_shader = fragment_shader;
-    
-    vertex_buffer_desc.slot               = 0;
-    vertex_buffer_desc.input_rate         = SDL_GPU_VERTEXINPUTRATE_VERTEX;
-    vertex_buffer_desc.instance_step_rate = 0;
-    vertex_buffer_desc.pitch              = sizeof(ASkinedVertex);
-    
-    vertex_attributes[0].buffer_slot = 0;
-    vertex_attributes[0].format      = SDL_GPU_VERTEXELEMENTFORMAT_HALF4;
-    vertex_attributes[0].location    = 0;
-    vertex_attributes[0].offset      = 0;
-    
-    vertex_attributes[1].buffer_slot = 0;
-    vertex_attributes[1].format      = SDL_GPU_VERTEXELEMENTFORMAT_UINT;
-    vertex_attributes[1].location    = 1;
-    vertex_attributes[1].offset      = sizeof(int) * 2;
-    
-    vertex_attributes[2].buffer_slot = 0;
-    vertex_attributes[2].format      = SDL_GPU_VERTEXELEMENTFORMAT_HALF2;
-    vertex_attributes[2].location    = 2;
-    vertex_attributes[2].offset      = vertex_attributes[1].offset + sizeof(int);
-    
-    vertex_attributes[3].buffer_slot = 0;
-    vertex_attributes[3].format      = SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4;
-    vertex_attributes[3].location    = 3;
-    vertex_attributes[3].offset      = vertex_attributes[2].offset + sizeof(int);
-    
-    vertex_attributes[4].buffer_slot = 0;
-    vertex_attributes[4].format      = SDL_GPU_VERTEXELEMENTFORMAT_UINT;
-    vertex_attributes[4].location    = 4;
-    vertex_attributes[4].offset      = vertex_attributes[3].offset + sizeof(int);
-    
-    pipelinedesc.vertex_input_state.num_vertex_buffers = 1;
-    pipelinedesc.vertex_input_state.vertex_buffer_descriptions = &vertex_buffer_desc;
-    pipelinedesc.vertex_input_state.num_vertex_attributes = SDL_arraysize(vertex_attributes);
-    pipelinedesc.vertex_input_state.vertex_attributes = (SDL_GPUVertexAttribute*)&vertex_attributes;
-    
-    pipelinedesc.props = 0;
-    
-    g_RenderState.pipeline = SDL_CreateGPUGraphicsPipeline(g_GPUDevice, &pipelinedesc);
-    CHECK_CREATE(g_RenderState.pipeline, "Render Pipeline")
+    const SDL_GPUVertexAttribute vertex_attributes[5] = {
+        {
+            .location    = 0,
+            .buffer_slot = 0,
+            .format      = SDL_GPU_VERTEXELEMENTFORMAT_HALF4,
+            .offset      = 0
+        },
+        {
+            .location    = 1,
+            .buffer_slot = 0,
+            .format      = SDL_GPU_VERTEXELEMENTFORMAT_UINT,
+            .offset      = offsetof(ASkinedVertex, octTbn)
+        },
+        {
+            .location    = 2,
+            .buffer_slot = 0,
+            .format      = SDL_GPU_VERTEXELEMENTFORMAT_HALF2,
+            .offset      = offsetof(ASkinedVertex, texCoord)
+        },
+        {
+            .location    = 3,
+            .buffer_slot = 0,
+            .format      = SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4,
+            .offset      = offsetof(ASkinedVertex, joints)
+        },
+        {
+            .location    = 4,
+            .buffer_slot = 0,
+            .format      = SDL_GPU_VERTEXELEMENTFORMAT_UINT,
+            .offset      = offsetof(ASkinedVertex, weights)
+        }
+    };
+
+    SDL_GPUTextureFormat colorFormat = SDL_GetGPUSwapchainTextureFormat(g_GPUDevice, g_SDLWindow);
+    SDL_GPUGraphicsPipelineCreateInfo pipelinedesc = {
+        .vertex_shader   = vertex_shader,
+        .fragment_shader = fragment_shader,
+        .primitive_type  = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
+        .target_info     = (SDL_GPUGraphicsPipelineTargetInfo)
+        {
+            .num_color_targets          = 1,
+            .color_target_descriptions  = &(SDL_GPUColorTargetDescription){ .format = colorFormat },
+            .depth_stencil_format       = SDL_GPU_TEXTUREFORMAT_D24_UNORM,
+            .has_depth_stencil_target   = true
+        },
+        .depth_stencil_state = (SDL_GPUDepthStencilState)
+        {
+            .enable_depth_test  = true,
+            .enable_depth_write = true,
+            .compare_op         = SDL_GPU_COMPAREOP_LESS_OR_EQUAL
+        },
+        .multisample_state  = (SDL_GPUMultisampleState){ .sample_count = g_RenderState.sample_count },
+        .vertex_input_state = (SDL_GPUVertexInputState){
+            .vertex_buffer_descriptions = &(SDL_GPUVertexBufferDescription){
+                0, sizeof(ASkinedVertex), SDL_GPU_VERTEXINPUTRATE_VERTEX, 0 
+            },
+            .num_vertex_buffers    = 1, // above array count
+            .vertex_attributes     = vertex_attributes,
+            .num_vertex_attributes = ARRAY_SIZE(vertex_attributes)
+        }
+    };
+
+    g_RenderState.skinnedPipeline = SDL_CreateGPUGraphicsPipeline(g_GPUDevice, &pipelinedesc);
+    CHECK_CREATE(g_RenderState.skinnedPipeline, "Render Pipeline")
     
     /* These are reference-counted; once the pipeline is created, you don't need to keep these. */
     SDL_ReleaseGPUShader(g_GPUDevice, vertex_shader);
@@ -465,7 +553,7 @@ static void DestroyPipeline()
     DestroyECS_GraphicsBuffers(&g_RenderState.staticBuffers);
     if (g_RenderState.vertexBuffer) SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.vertexBuffer);
     if (g_RenderState.indexBuffer) SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.indexBuffer);
-    if (g_RenderState.pipeline)     SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.pipeline);
+    if (g_RenderState.skinnedPipeline)     SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.skinnedPipeline);
     if (g_AnimComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_AnimComputePipeline);
     if (g_CullDrawArgsComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_CullDrawArgsComputePipeline);
     

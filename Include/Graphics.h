@@ -68,7 +68,7 @@ typedef s32 GraphicType;
 // https://www.yosoygames.com.ar/wp/2018/03/vertex-formats-part-1-compression/
 typedef struct AVertex_
 {
-    fv3  position;
+    fv3 position;
     u32 octTbn;
     u32 texCoord; // half2
 } AVertex;
@@ -82,6 +82,13 @@ typedef struct ASkinedVertex_
     u32 joints;   // rgb8u
     u32 weights;  // rgb8u
 } ASkinedVertex;
+
+// for sizeof only
+typedef struct ALineVertex_
+{
+    f32 x, y, z;
+    u32 color;
+} ALineVertex;
 
 typedef struct GPUMesh_
 {
@@ -126,22 +133,25 @@ typedef struct ECS_GraphicsBuffers_
 
 typedef struct RenderState
 {
-    SDL_GPUGraphicsPipeline* pipeline;
-    SDL_GPUSampler* sampler;
-    SDL_GPUBuffer* vertexBuffer;
-    SDL_GPUBuffer* indexBuffer;
-    ECS_GraphicsBuffers skinnedBuffers;
-    ECS_GraphicsBuffers staticBuffers;
+    SDL_GPUGraphicsPipeline* skinnedPipeline;
+    SDL_GPUGraphicsPipeline* linePipeline;
+    SDL_GPUSampler*          sampler;
+    SDL_GPUBuffer*           vertexBuffer;
+    SDL_GPUBuffer*           indexBuffer;
+    SDL_GPUBuffer*           lineBuffer;
+    SDL_GPUBuffer*           lineDrawArgsBuffer;
+    ECS_GraphicsBuffers      skinnedBuffers;
+    ECS_GraphicsBuffers      staticBuffers;
     
-    SDL_GPUSampleCount sample_count;
+    SDL_GPUSampleCount       sample_count;
     // anim
-    SDL_GPUBuffer*  boneBuffer;
-    SDL_GPUBuffer*  animPoseBuffer;
-    SDL_GPUBuffer*  animHierarchyBuffer;
-    SDL_GPUBuffer*  animDataBuffer;
-    SDL_GPUBuffer*  jointsBuffer;
-    SDL_GPUBuffer*  invBindBuffer;
-    SDL_GPUBuffer*  animInstanceBuffer;
+    SDL_GPUBuffer*           boneBuffer;
+    SDL_GPUBuffer*           animPoseBuffer;
+    SDL_GPUBuffer*           animHierarchyBuffer;
+    SDL_GPUBuffer*           animDataBuffer;
+    SDL_GPUBuffer*           jointsBuffer;
+    SDL_GPUBuffer*           invBindBuffer;
+    SDL_GPUBuffer*           animInstanceBuffer;
     Texture textures[128];
 } RenderState;
 
