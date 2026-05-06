@@ -89,9 +89,8 @@ u32 WangHash(u32 x) {
 	return x ^ (x >> 16u);
 }
 
-void AddLine(float3 a, float3 b, int idx)
+void AddLine(float3 a, float3 b, u32 idx, u32 color)
 {
-    u32 color = WangHash(idx);
     lineVertices[idx].x = a.x;
     lineVertices[idx].y = a.y;
     lineVertices[idx].z = a.z;
@@ -107,6 +106,9 @@ void AddAABBLine(float3 worldMin, float3 worldMax)
 {
     uint start;
     InterlockedAdd(lineDrawCommand[0].numVertices, 24, start);
+    uint3 d = uint3(worldMin * 100);
+
+    u32 color = WangHash(d.x + d.y + d.z);
     // if (start + 23 >= MAX_LINE_VERTEX_COUNT) return;
     float3 p000 = float3(worldMin.x, worldMin.y, worldMin.z);
     float3 p100 = float3(worldMax.x, worldMin.y, worldMin.z);
@@ -118,20 +120,20 @@ void AddAABBLine(float3 worldMin, float3 worldMax)
     float3 p011 = float3(worldMin.x, worldMax.y, worldMax.z);
     float3 p111 = float3(worldMax.x, worldMax.y, worldMax.z);
 
-    AddLine(p000, p100, start + 0);
-    AddLine(p100, p110, start + 2);
-    AddLine(p110, p010, start + 4);
-    AddLine(p010, p000, start + 6);
+    AddLine(p000, p100, start + 0, color);
+    AddLine(p100, p110, start + 2, color);
+    AddLine(p110, p010, start + 4, color);
+    AddLine(p010, p000, start + 6, color);
 
-    AddLine(p001, p101, start + 8);
-    AddLine(p101, p111, start + 10);
-    AddLine(p111, p011, start + 12);
-    AddLine(p011, p001, start + 14);
+    AddLine(p001, p101, start + 8, color);
+    AddLine(p101, p111, start + 10, color);
+    AddLine(p111, p011, start + 12, color);
+    AddLine(p011, p001, start + 14, color);
 
-    AddLine(p000, p001, start + 16);
-    AddLine(p100, p101, start + 18);
-    AddLine(p110, p111, start + 20);
-    AddLine(p010, p011, start + 22);
+    AddLine(p000, p001, start + 16, color);
+    AddLine(p100, p101, start + 18, color);
+    AddLine(p110, p111, start + 20, color);
+    AddLine(p010, p011, start + 22, color);
 }
 
 void BuildWorldAABB(Entity entity, PrimitiveGroup group, out float3 worldMin, out float3 worldMax)
@@ -190,7 +192,7 @@ void main(uint3 tid : SV_DispatchThreadID)
     float3 worldMax;
     BuildWorldAABB(entities[idx], group, worldMin, worldMax);
     if (!AABBVisible(worldMin, worldMax)) return;
-    // AddAABBLine(worldMin, worldMax);
+    AddAABBLine(worldMin, worldMax);
 
     uint visibleIdx;
     InterlockedAdd(numVisibleInPrimitive[primitiveIdx], 1, visibleIdx);
