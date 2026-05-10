@@ -9,6 +9,7 @@ from pathlib import Path
 
 print = functools.partial(print, flush=True)
 
+SHADER_SCRIPT = Path("Shaders/CompileShaders.py")
 PROJECT_EXE = "CPlayground"
 
 VSWHERE = Path(
@@ -165,6 +166,13 @@ def choose_unix_compiler_env() -> dict[str, str]:
     return env
 
 
+def compile_shaders():
+    print("Compiling shaders...")
+    run_cmd(
+        [sys.executable, str(SHADER_SCRIPT)],
+        "[ERROR] Failed to compile shaders",
+    )
+
 def configure_and_build(config: str, env: dict[str, str]):
     build_dir = Path(config)
     generator = choose_generator()
@@ -246,6 +254,7 @@ def run_exe(config: str):
 def main() -> int:
     config = get_config()
 
+    compile_shaders()
     delete_old_exe(config)
 
     if platform.system() == "Windows":

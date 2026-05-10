@@ -45,7 +45,7 @@ VSOutput vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("Dra
 {
     PrimitiveGroup group = sPrimitiveGroups[drawID];
     uint denseIdx = sDrawDenseIndices[group.entityOffset + instanceID];
-    uint boneStart = (denseIdx - group.entityOffset) * MAX_BONES; // mesh-part groups store the same character order
+    uint boneStart = sEntities[denseIdx].sparse * MAX_BONES;
 
     f16_4 weights;
     weights.xyz = UnpackVec3XY11Z10Unorm(input.aWeights);

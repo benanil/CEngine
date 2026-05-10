@@ -23,6 +23,7 @@ SDL_Window*  g_SDLWindow;
 
 extern RenderState  g_RenderState;
 extern SceneBundle* gPaladin;
+extern SceneBundle* gSponza;
 
 extern RenderSet    skinnedSet;
 extern RenderSet    surfaceSet;
@@ -51,6 +52,7 @@ static void MainLoop(void)
 s32 InitScene()
 {
     gPaladin = (SceneBundle*)AllocateTLSFGlobal(sizeof(SceneBundle));
+    gSponza  = (SceneBundle*)AllocateTLSFGlobal(sizeof(SceneBundle));
     
     if (!LoadGLTFCached("Assets/Meshes/Paladin/Paladin.gltf", gPaladin, g_RenderState.textures))
     {
@@ -58,12 +60,20 @@ s32 InitScene()
         return 0;
     }
     
+    s32 sponzaRes = LoadGLTFCached("Assets/Meshes/Sponza/scene.gltf", gSponza, g_RenderState.textures + gPaladin->numImages);
+    if (!sponzaRes)
+    {
+        AX_ERROR("gltf sponza load failed: %d", sponzaRes);
+        return 0;
+    }
+
     if (!SceneBundleCreateAnimations(gPaladin)) return 0;
     InitAnimationInstances();
-    u32 skinnedBundle = RenderSet_AddSceneBundle(&skinnedSet, gPaladin);
-    u32 surfaceBundle = RenderSet_AddSceneBundle(&surfaceSet, gPaladin);
 
-    for (s32 i = 0; i < MAX_ANIM_INSTANCES; i++)
+    u32 skinnedBundle = RenderSet_AddSceneBundle(&skinnedSet, gPaladin);
+    u32 surfaceBundle = RenderSet_AddSceneBundle(&surfaceSet, gSponza);
+
+    for (s32 i = 0; i < 5; i++)
     {
         u64 hash = MurmurHash(i + 123);
         v128f pos = VecMulf(VecSetR(f32_(i & 63), 0.0f, f32_(i >> 6), 0.0f), 1.5f);
@@ -73,7 +83,10 @@ s32 InitScene()
             break;
     }
     
-    RenderSet_AddScene(&surfaceSet, surfaceBundle, VecZero(), VecSetR(0.0f, 0.0f, 0.0f, 1.0f), VecOne(), false);
+    RenderSet_AddScene(&surfaceSet, surfaceBundle, VecZero(), VecSetR(0.0f, 0.0f, 0.0f, 1.0f), VecSet1(0.1f), false);
+    
+    RenderSet_AddScene(&surfaceSet, surfaceBundle, VecSetR(-50.0f, 0.0f, 25.0f, 0.0f), VecSetR(0.0f, 0.0f, 0.0f, 1.0f), VecSet1(0.1f), false);
+
     InitBuffers();
     return 1;
 }

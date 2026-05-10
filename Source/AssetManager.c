@@ -562,6 +562,11 @@ s32 LoadSceneImages(const u8* texturePath, Texture* textures, s32 numImages)
         return 0;
 
     u8 buffer[2048];
+    u8 typeBuffer[64];
+    u8 baseDir[2048];
+    u8 fileName[512];
+    u8 basisPath[2048];
+    GetBaseDir(texturePath, baseDir);
 
     s32 result = 1;
     s32 fileNumImages = AFileReadI32(buffer, sizeof(buffer), file); // First line: numImages
@@ -575,22 +580,42 @@ s32 LoadSceneImages(const u8* texturePath, Texture* textures, s32 numImages)
     for (s32 i = 0; i < numImages; i++)
     {
         s32 pathLen = AFileReadLine(buffer, sizeof(buffer), file);
-        ChangeExtension(buffer, pathLen, "basis");
+        s32 textureType = AFileReadI32(typeBuffer, sizeof(typeBuffer), file);
 
-        u64 size = FileSize(buffer);
+        if (pathLen <= 0)
+        {
+            AX_WARN("basis metadata ended early index:%d, file:%s", i, texturePath);
+            result = 2;
+            break;
+        }
+
+        GetFileNameNoExt(buffer, fileName);
+        s32 baseLen = (s32)StringLengthSafe(baseDir, sizeof(baseDir));
+        s32 nameLen = (s32)StringLengthSafe(fileName, sizeof(fileName));
+        if (baseLen + nameLen + 7 > (s32)sizeof(basisPath))
+        {
+            AX_WARN("basis path too long index:%d, file:%s", i, texturePath);
+            result = 2;
+            continue;
+        }
+
+        SmallMemCpy(basisPath, baseDir, baseLen);
+        SmallMemCpy(basisPath + baseLen, fileName, nameLen);
+        SmallMemCpy(basisPath + baseLen + nameLen, ".basis", 7);
+
+        u64 size = FileSize(basisPath);
         void* mem = ArenaPushGlobal(size);
         
         if (!mem || size == 0)
         {
             const char* reason = size == 0 ? "BasisFileNotExist" : "ArenaNotEnough";
             // textures[i] = rCreateTexture(32, 32, buffer, 0, TexFlags_Nearest, reason); // fill with placeholder
-            AX_WARN("%s index:%d, fileSize:%d, path:%s", reason, i, size, texturePath);
+            AX_WARN("%s index:%d, fileSize:%llu, path:%s", reason, i, size, basisPath);
             result = 2;
             continue;
         }
 
-        void* basisData = ReadAllFile(buffer, mem, size);
-        s32 textureType = AFileReadI32(buffer, sizeof(buffer), file);
+        void* basisData = ReadAllFile(basisPath, mem, size);
 
         s32 isNormal =  textureType & 1;
         s32 isMetallicRoughness = (textureType >> 1) & 1;
@@ -599,6 +624,7 @@ s32 LoadSceneImages(const u8* texturePath, Texture* textures, s32 numImages)
                                              (u8)isNormal, (u8)isMetallicRoughness);
         ArenaPopGlobal(size);
     }
+    AFileClose(file);
     return result;
 }
 

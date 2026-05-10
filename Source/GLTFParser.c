@@ -1162,7 +1162,7 @@ void FreeSceneBundle(SceneBundle* gltf)
 
 int Prefab_FindAnimRootNodeIndex(const SceneBundle* prefab)
 {
-    if (prefab->skins == NULL)
+    if (prefab->skins == NULL || prefab->skins == (ASkin*)0xCDCDCDCDCDCDCDCDull)
         return 0;
 
     ASkin skin = prefab->skins[0];

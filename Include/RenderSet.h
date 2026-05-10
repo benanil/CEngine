@@ -57,6 +57,7 @@ typedef struct RenderSet_
     u32 numEntities;
     u32 numGroups;
     u32 numBundles;
+    u32 nextSparseID;
 } RenderSet;
 
 extern RenderSet skinnedSet;
@@ -74,16 +75,15 @@ u32 RenderSet_AddEntity(RenderSet* set, u32 primitiveIdx, const Entity* data);
 
 u32 RenderSet_AddEntities(RenderSet* set, u32 primitiveIdx, u32 numAdded, const Entity* data);
 
-u32 RemoveEntity(u32 entityIdx, u32 groupIdx);
+void RenderSet_Clear(RenderSet* set);
 
-u32 RemoveEntities(u32 groupIdx, u32 startIdx, u32 count);
+u32 RenderSet_RemoveEntity(RenderSet* set, u32 groupIdx, u32 localEntityIdx);
 
-u32 RemoveSceneBundle(u32 bundleIdx);
+u32 RenderSet_RemoveEntities(RenderSet* set, u32 groupIdx, u32 localStartIdx, u32 count);
 
-u32 GetNumPrimitivesInBundle(u32 bundleIdx);
+u32 RenderSet_RemoveSceneBundle(RenderSet* set, u32 bundleIdx);
 
-void RenderSet_CompactEntities();
+void RenderSet_CompactEntities(RenderSet* set);
 
-void RenderSet_Update(f32 delta_time);
 
 #endif

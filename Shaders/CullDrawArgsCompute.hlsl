@@ -6,7 +6,6 @@
 StructuredBuffer<Entity>         entities                 : register(t0);
 StructuredBuffer<PrimitiveGroup> primitiveGroups          : register(t1);
 StructuredBuffer<uint>           denseToPrimitiveIndex    : register(t2);
-StructuredBuffer<uint>           sparseToDense            : register(t3);
 
 RWStructuredBuffer<uint>                drawDenseIndices  : register(u0, space1);
 RWStructuredBuffer<IndexedDrawCommand>  drawArgs          : register(u1, space1);
@@ -152,7 +151,6 @@ void BuildWorldAABB(Entity entity, PrimitiveGroup group, out float3 worldMin, ou
 void main(uint3 tid : SV_DispatchThreadID)
 {
     uint idx = tid.x;
-
     if (mode == 0)
     {
         if (idx < numPrimitiveGroups)
@@ -197,9 +195,7 @@ void main(uint3 tid : SV_DispatchThreadID)
     if (idx >= maxEntityID)
         return;
 
-    uint dense = sparseToDense[idx];
-    if (dense == ~0u)
-        return;
+    uint dense = idx;
 
     uint primitiveIdx = denseToPrimitiveIndex[dense];
     PrimitiveGroup group = primitiveGroups[primitiveIdx];
@@ -210,7 +206,9 @@ void main(uint3 tid : SV_DispatchThreadID)
     if (!AABBVisible(worldMin, worldMax))
         return;
 
-    AddAABBLine(worldMin, worldMax);
+    if (enableVisibilityOutput == 0)
+        AddAABBLine(worldMin, worldMax);
+    
     uint localVisibleIdx;
     InterlockedAdd(drawArgs[primitiveIdx].numInstances, 1, localVisibleIdx);
 
@@ -221,7 +219,7 @@ void main(uint3 tid : SV_DispatchThreadID)
 
     if (enableVisibilityOutput != 0)
     {
-        uint visibleDense = dense - group.entityOffset;
+        uint visibleDense = entities[dense].sparse;
         uint old;
         InterlockedCompareExchange(visibilityMask[visibleDense], 0, 1, old);
 

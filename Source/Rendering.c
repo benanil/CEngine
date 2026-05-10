@@ -40,6 +40,7 @@
 
 
 SceneBundle*        gPaladin;
+SceneBundle*        gSponza;
 
 WindowState         g_WindowState;
 RenderState         g_RenderState;
@@ -116,7 +117,7 @@ static void InitCullDrawArgsComputePipeline()
         .entrypoint                    = "main",
         .format                        = SDL_GetGPUShaderFormats(g_GPUDevice),
         .num_uniform_buffers           = 1,
-        .num_readonly_storage_buffers  = 4,
+        .num_readonly_storage_buffers  = 3,
         .num_readwrite_storage_buffers = 8,
         .threadcount_x                 = 64,
         .threadcount_y                 = 1,
@@ -174,11 +175,10 @@ static void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd, RenderSet* re
     params.mode = 0;
     params.enableVisibilityOutput = enableVisibilityOutput ? 1u : 0u;
 
-    SDL_GPUBuffer* ro_buffers[4] = { 
+    SDL_GPUBuffer* ro_buffers[3] = {
         buffers->entity, 
         buffers->primitiveGroup, 
-        buffers->denseToPrimitive,
-        buffers->sparseToDense
+        buffers->denseToPrimitive
     };
     SDL_GPUStorageBufferReadWriteBinding rw_bindings[8] = {
         { buffers->drawDenseIndices },
@@ -279,10 +279,13 @@ static void RenderScene(SDL_GPUCommandBuffer* cmd,
 
     if (surfaceSet.numGroups > 0)
     {
+        tex = g_RenderState.textures[15].handle;
+
         SDL_BindGPUGraphicsPipeline(pass, g_RenderState.surfacePipeline);
         vertex_binding.buffer = g_RenderState.surfaceVertexBuffer;
         vertex_binding.offset = 0;
         SDL_BindGPUVertexBuffers(pass, 0, &vertex_binding, 1);
+        SDL_BindGPUIndexBuffer(pass, &index_binding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
 
         SDL_GPUBuffer* surfaceBuffers[3] = {
             g_RenderState.surfaceBuffers.entity,
@@ -411,14 +414,11 @@ void Render()
     SDL_SubmitGPUCommandBuffer(cmd);
 }
 
-typedef enum VertexFormat_
-{
-    VFORMAT_FLOAT3 = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,
-    VFORMAT_UINT   = SDL_GPU_VERTEXELEMENTFORMAT_UINT  ,
-    VFORMAT_HALF2  = SDL_GPU_VERTEXELEMENTFORMAT_HALF2 ,
-    VFORMAT_HALF4  = SDL_GPU_VERTEXELEMENTFORMAT_HALF4 ,
-    VFORMAT_UBYTE4 = SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4
-} VertexFormat;
+#define VFORMAT_FLOAT3 SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3
+#define VFORMAT_UINT   SDL_GPU_VERTEXELEMENTFORMAT_UINT  
+#define VFORMAT_HALF2  SDL_GPU_VERTEXELEMENTFORMAT_HALF2 
+#define VFORMAT_HALF4  SDL_GPU_VERTEXELEMENTFORMAT_HALF4 
+#define VFORMAT_UBYTE4 SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4
 
 static void InitLinePipeline()
 {
