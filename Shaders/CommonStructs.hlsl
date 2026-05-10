@@ -1,15 +1,39 @@
 #ifndef COMMON_STRUCTS
 #define COMMON_STRUCTS
 
-struct Entity
+typedef struct IndexedDrawCommand_
+{
+    uint numIndices;
+    uint numInstances;
+    uint firstIndex;
+    int  vertexOffset;
+    uint firstInstance;
+} IndexedDrawCommand;
+
+typedef struct IndirectDrawCommand_
+{
+    uint numVertices;  
+    uint numInstances; 
+    uint firstVertex;  
+    uint firstInstance;
+} IndirectDrawCommand;
+
+typedef struct IndirectDispatchCommand_
+{
+    uint groupCountX;
+    uint groupCountY;
+    uint groupCountZ;
+} IndirectDispatchCommand;
+
+typedef struct Entity_
 {
     float4 position;
     uint2  rotation;
     uint  scale;
     uint  sparse;
-};
+} Entity;
 
-struct PrimitiveGroup
+typedef struct PrimitiveGroup_
 {
     uint entityOffset;
     uint numEntities;
@@ -23,12 +47,12 @@ struct PrimitiveGroup
     uint valid;
     uint2 aabbMin;
     uint2 aabbMax;
-};
+} PrimitiveGroup;
 
-struct LineVertex
+typedef struct LineVertex_
 {
     float x, y, z;
     uint color;
-};
+} LineVertex;
 
 #endif

@@ -29,18 +29,15 @@ struct AnimationData {
     float duration;
 };
 
-StructuredBuffer<uint>               animPoses            : register(t0); // per bone * frame
-StructuredBuffer<uint>               animHierarchy        : register(t1); // per skin * bone
-StructuredBuffer<AnimationData>      animData             : register(t2); // per animation
-StructuredBuffer<uint>               joints               : register(t3); // per instance * bone
-StructuredBuffer<uint>               inverseBindMatrices  : register(t4); // per skin * bone
-StructuredBuffer<AnimationInstance>  animInstances        : register(t5); // per instance 
-StructuredBuffer<PrimitiveGroup>     primitiveGroups      : register(t6);
-StructuredBuffer<uint>               denseToPrimitiveIndex: register(t7);
+StructuredBuffer<uint>               animPoses             : register(t0); // per bone * frame
+StructuredBuffer<uint>               animHierarchy         : register(t1); // per skin * bone
+StructuredBuffer<AnimationData>      animData              : register(t2); // per animation
+StructuredBuffer<uint>               joints                : register(t3); // per instance * bone
+StructuredBuffer<uint>               inverseBindMatrices   : register(t4); // per skin * bone
+StructuredBuffer<AnimationInstance>  animInstances         : register(t5); // per instance 
+StructuredBuffer<uint>               visibleDenseIndices   : register(t6); // unique visible instances
 
-RWStructuredBuffer<uint> outBoneMtx             : register(u0, space1); // per instance * bone
-RWStructuredBuffer<uint> drawDenseIndices       : register(u1, space1);
-RWStructuredBuffer<uint> numVisibleInPrimitive  : register(u2, space1);
+RWStructuredBuffer<uint> outBoneMtx          : register(u0, space1); // per instance * bone
 
 cbuffer params : register(b0, space2)
 {
@@ -121,17 +118,11 @@ void main(uint3 GlobalInvocationID : SV_DispatchThreadID)
     if (visibleSlot >= uint(numInstances))
         return;
 
-    uint primitiveIdx = denseToPrimitiveIndex[visibleSlot];
-    PrimitiveGroup group = primitiveGroups[primitiveIdx];
-    uint localVisibleSlot = visibleSlot - group.entityOffset;
-    if (localVisibleSlot >= numVisibleInPrimitive[primitiveIdx])
-        return;
-
-    uint denseIdx = drawDenseIndices[visibleSlot];
-    int instanceIdx = int(denseIdx % MAX_ANIM_INSTANCES);
-
+    uint instanceIdx = visibleDenseIndices[visibleSlot];
+    
     AnimationInstance anim = animInstances[instanceIdx];
-    AnimationData data = animData[anim.animIdx];
+    AnimationData     data = animData[anim.animIdx];
+    
     float animRatio = Fractf((timeSinceStartup + anim.timeOffset) / data.duration);
     float animT     = animRatio * float(data.numFrames);
     int frameAIdx   = int(Floorf(animT));

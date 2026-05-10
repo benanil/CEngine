@@ -92,7 +92,7 @@ target_sources(${EXECUTABLE_NAME} PRIVATE
     Extern/dynarray.c
     Extern/tlsf.c
     Source/Memory.c
-    Source/ECS.c
+    Source/RenderSet.c
     Source/FileSystem.c
     Source/Platform.c
     Source/Graphics.c

@@ -1,4 +1,5 @@
-# Build.py
+# Compile.py
+import functools
 import os
 import platform
 import shutil
@@ -6,8 +7,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-SHADER_SCRIPT = Path("Shaders/CompileShaders.py")
-PROJECT_EXE   = "CPlayground"
+print = functools.partial(print, flush=True)
+
+PROJECT_EXE = "CPlayground"
 
 VSWHERE = Path(
     r"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe"
@@ -45,12 +47,20 @@ def find_vcvarsall() -> Path:
             ],
             capture_output=True,
             text=True,
+            encoding="mbcs",
+            errors="replace",
         )
 
         install_path = result.stdout.strip()
 
         if result.returncode == 0 and install_path:
-            vcvarsall = (Path(install_path) / "VC" / "Auxiliary" / "Build" / "vcvarsall.bat")
+            vcvarsall = (
+                Path(install_path)
+                / "VC"
+                / "Auxiliary"
+                / "Build"
+                / "vcvarsall.bat"
+            )
 
             if vcvarsall.exists():
                 return vcvarsall
@@ -80,16 +90,37 @@ def get_msvc_env() -> dict[str, str]:
 
     print(f"Using MSVC env: {vcvarsall}")
 
-    command = f'call "{vcvarsall}" x64 && set'
+    temp_bat = Path("_msvc_env.bat")
 
-    result = subprocess.run(
-        ["cmd.exe", "/s", "/c", command],
-        capture_output=True,
-        text=True,
+    temp_bat.write_text(
+        f"""@echo off
+call "{vcvarsall}" x64
+if errorlevel 1 exit /b %errorlevel%
+set
+""",
+        encoding="mbcs",
     )
+
+    try:
+        result = subprocess.run(
+            ["cmd.exe", "/d", "/c", str(temp_bat)],
+            capture_output=True,
+            text=True,
+            encoding="mbcs",
+            errors="replace",
+        )
+    finally:
+        try:
+            temp_bat.unlink()
+        except FileNotFoundError:
+            pass
 
     if result.returncode != 0:
         print("[ERROR] Failed to initialize MSVC environment.")
+        print("----- vcvarsall stdout -----")
+        print(result.stdout)
+        print("----- vcvarsall stderr -----")
+        print(result.stderr)
         sys.exit(result.returncode)
 
     env = os.environ.copy()
@@ -105,6 +136,11 @@ def get_msvc_env() -> dict[str, str]:
 def choose_generator() -> str:
     if shutil.which("ninja"):
         return "Ninja"
+
+    if platform.system() == "Windows":
+        print("[ERROR] Ninja not found.")
+        print("Install Ninja or change this script to use a Visual Studio CMake generator.")
+        sys.exit(1)
 
     return "Unix Makefiles"
 
@@ -125,15 +161,8 @@ def choose_unix_compiler_env() -> dict[str, str]:
 
     print(f"Using C compiler:   {cc}")
     print(f"Using C++ compiler: {cxx}")
+
     return env
-
-
-def compile_shaders():
-    print("Compiling shaders...")
-    run_cmd(
-        [sys.executable, str(SHADER_SCRIPT)],
-        "[ERROR] Failed to compile shaders",
-    )
 
 
 def configure_and_build(config: str, env: dict[str, str]):
@@ -158,19 +187,46 @@ def configure_and_build(config: str, env: dict[str, str]):
     )
 
     run_cmd(
-        [ "cmake", "--build", str(build_dir) ],
-        f"[ERROR] Build failed for {config}", 
-        env=env
+        [
+            "cmake",
+            "--build", str(build_dir),
+            "--config", config,
+        ],
+        f"[ERROR] Build failed for {config}",
+        env=env,
     )
 
 
 def get_exe_path(config: str) -> Path:
-    system = platform.system()
-
-    if system == "Windows":
+    if platform.system() == "Windows":
         return Path(config) / config / f"{PROJECT_EXE}.exe"
 
     return Path(config) / PROJECT_EXE
+
+
+def delete_old_exe(config: str):
+    exe = get_exe_path(config)
+
+    if exe.exists():
+        print(f"Deleting old executable: {exe}")
+        exe.unlink()
+
+
+def get_config() -> str:
+    if len(sys.argv) <= 1:
+        return "Debug"
+
+    arg = sys.argv[1].lower()
+
+    if arg == "debug":
+        return "Debug"
+
+    if arg == "release":
+        return "Release"
+
+    print(f"[ERROR] Unknown build config: {sys.argv[1]}")
+    print("Usage: python Compile.py [Debug|Release]")
+    sys.exit(1)
 
 
 def run_exe(config: str):
@@ -187,37 +243,10 @@ def run_exe(config: str):
     else:
         subprocess.Popen([str(exe)])
 
-
-def get_config() -> str:
-    if len(sys.argv) <= 1:
-        return "Debug"
-
-    arg = sys.argv[1].lower()
-
-    if arg == "debug":
-        return "Debug"
-
-    if arg == "release":
-        return "Release"
-
-    print(f"[ERROR] Unknown build config: {sys.argv[1]}")
-    print("Usage: python Build.py [Debug|Release]")
-    sys.exit(1)
-
-
-def delete_old_exe(config: str):
-    exe = get_exe_path(config)
-
-    if exe.exists():
-        print(f"Deleting old executable: {exe}")
-        exe.unlink()
-
 def main() -> int:
     config = get_config()
 
     delete_old_exe(config)
-
-    compile_shaders()
 
     if platform.system() == "Windows":
         env = get_msvc_env()
@@ -225,7 +254,7 @@ def main() -> int:
         env = choose_unix_compiler_env()
 
     configure_and_build(config, env)
-
+    run_exe(config)
     return 0
 
 

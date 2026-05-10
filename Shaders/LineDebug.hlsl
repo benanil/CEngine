@@ -1,3 +1,5 @@
+#include "Bitpack.hlsl"
+
 struct VSInput
 {
     float3 pos : POSITION0;
@@ -14,16 +16,6 @@ cbuffer vs_params : register(b0, space1)
 {
     float4x4 uViewProj;
 };
-
-float3 UnpackColor3Uint(uint color)
-{
-    const float tof1 = 1.0 / 255.0;
-    return float3(
-        (float)((color >> 0)  & 0xFF),
-        (float)((color >> 8)  & 0xFF),
-        (float)((color >> 16) & 0xFF)
-    ) * tof1;
-}
 
 VSOutput vert(VSInput i)
 {

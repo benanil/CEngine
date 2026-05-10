@@ -68,7 +68,7 @@ typedef s32 GraphicType;
 // https://www.yosoygames.com.ar/wp/2018/03/vertex-formats-part-1-compression/
 typedef struct AVertex_
 {
-    fv3 position;
+    float3 position;
     u32 octTbn;
     u32 texCoord; // half2
 } AVertex;
@@ -121,27 +121,33 @@ typedef struct WindowState
     u32 prev_drawablew, prev_drawableh;
 } WindowState;
 
-typedef struct ECS_GraphicsBuffers_
+typedef struct RenderSetBuffers_
 {
     SDL_GPUBuffer* primitiveGroup;
     SDL_GPUBuffer* drawDenseIndices;
     SDL_GPUBuffer* drawArgs;
     SDL_GPUBuffer* denseToPrimitive;
-    SDL_GPUBuffer* numVisible;
+    SDL_GPUBuffer* sparseToDense;
     SDL_GPUBuffer* entity;
-} ECS_GraphicsBuffers;
+    SDL_GPUBuffer* visibleDenseIndices;
+    SDL_GPUBuffer* visibilityMask;
+    SDL_GPUBuffer* visibleCount;
+    SDL_GPUBuffer* dispatchArgs;
+} RenderSetBuffers;
 
 typedef struct RenderState
 {
     SDL_GPUGraphicsPipeline* skinnedPipeline;
+    SDL_GPUGraphicsPipeline* surfacePipeline;
     SDL_GPUGraphicsPipeline* linePipeline;
     SDL_GPUSampler*          sampler;
-    SDL_GPUBuffer*           vertexBuffer;
+    SDL_GPUBuffer*           skinnedVertexBuffer;
+    SDL_GPUBuffer*           surfaceVertexBuffer;
     SDL_GPUBuffer*           indexBuffer;
     SDL_GPUBuffer*           lineBuffer;
     SDL_GPUBuffer*           lineDrawArgsBuffer;
-    ECS_GraphicsBuffers      skinnedBuffers;
-    ECS_GraphicsBuffers      staticBuffers;
+    RenderSetBuffers         skinnedBuffers;
+    RenderSetBuffers         surfaceBuffers;
     
     SDL_GPUSampleCount       sample_count;
     // anim
@@ -158,10 +164,12 @@ typedef struct RenderState
 
 typedef struct Graphics_
 {
-    ASkinedVertex* VertexBuffer;
-    u32*           IndexBuffer ;
-    u32            NumIndices  ;
-    u32            NumVertices ;
+    ASkinedVertex* SkinnedVertexBuffer;
+    AVertex*       SurfaceVertexBuffer;
+    u32*           IndexBuffer;
+    u32            NumIndices;
+    u32            NumSkinnedVertices;
+    u32            NumSurfaceVertices;
 } Graphics;
 
 static inline s32 GetRootNodeIdx(SceneBundle* bundle)

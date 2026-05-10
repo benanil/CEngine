@@ -131,6 +131,26 @@ static void VerticesForPrimitive(APrimitive* primitive, ASkinedVertex* currVerte
     }
 }
 
+static void SurfaceVerticesForPrimitive(APrimitive* primitive, AVertex* currVertex)
+{
+    primitive->vertices = currVertex;
+    const float3* positions = (const float3*)primitive->vertexAttribs[AAttribIdx_POSITION];
+    const float2* texCoords = (const float2*)primitive->vertexAttribs[AAttribIdx_TEXCOORD_0];
+    const float3* normals   = (const float3*)primitive->vertexAttribs[AAttribIdx_NORMAL];
+    const v128f*  tangents  = (const v128f*)primitive->vertexAttribs[AAttribIdx_TANGENT];
+
+    for (s32 v = 0; v < primitive->numVertices; v++)
+    {
+        v128f tangent = tangents ? tangents[v] : VecZero();
+        float2 texCoord = texCoords ? texCoords[v] : (float2){0.0f, 0.0f};
+        float3 normal = normals ? normals[v] : (float3){0.5f, 0.5f, 0.0f};
+
+        currVertex[v].position = positions[v];
+        currVertex[v].texCoord = Float2ToHalf2(&texCoord.x);
+        currVertex[v].octTbn = PackNormalTangent(Vec3Load(&normal.x), tangent);
+    }
+}
+
 static void BoundsForPrimitive(APrimitive* primitive)
 {
     const float3* positions = (const float3*)primitive->vertexAttribs[AAttribIdx_POSITION];
@@ -150,25 +170,28 @@ s32 BakeSceneMeshesAndAnimations(SceneBundle* gltf)
 {
     AX_LOG("mesh bake: meshes=%d vertices=%d indices=%d skins=%d", gltf->numMeshes, gltf->totalVertices, gltf->totalIndices, gltf->numSkins);
     AMesh* meshes    = gltf->meshes;
-    u32 vertexCursor = gGFX.NumVertices;
+    bool isSkinned = gltf->numSkins > 0;
+    u32 vertexCursor = isSkinned ? gGFX.NumSkinnedVertices : gGFX.NumSurfaceVertices;
     u32 indexCursor  = gGFX.NumIndices;
 
-    if ((gGFX.NumVertices + gltf->totalVertices) > MAX_VERTEX ||
+    if ((vertexCursor + gltf->totalVertices) > MAX_VERTEX ||
         (gGFX.NumIndices  + gltf->totalIndices ) > MAX_INDEX)
     {
         AX_WARN("mesh bake failed: vertex/index buffer capacity exceeded vertices=%d/%d indices=%d/%d",
-                gGFX.NumVertices + gltf->totalVertices, MAX_VERTEX,
+                vertexCursor + gltf->totalVertices, MAX_VERTEX,
                 gGFX.NumIndices + gltf->totalIndices, MAX_INDEX);
         return 0;
     }
 
-    gGFX.NumVertices += gltf->totalVertices;
-    gGFX.NumIndices  += gltf->totalIndices;
+    if (isSkinned) gGFX.NumSkinnedVertices += gltf->totalVertices;
+    else           gGFX.NumSurfaceVertices += gltf->totalVertices;
+    gGFX.NumIndices += gltf->totalIndices;
 
-    gltf->allVertices = gGFX.VertexBuffer + vertexCursor;
-    gltf->allIndices  = gGFX.IndexBuffer  + indexCursor;
+    gltf->allVertices = isSkinned ? (void*)(gGFX.SkinnedVertexBuffer + vertexCursor) : (void*)(gGFX.SurfaceVertexBuffer + vertexCursor);
+    gltf->allIndices  = gGFX.IndexBuffer + indexCursor;
 
-    ASkinedVertex* currVertex = (ASkinedVertex*)gltf->allVertices;
+    ASkinedVertex* currSkinnedVertex = (ASkinedVertex*)gltf->allVertices;
+    AVertex* currSurfaceVertex = (AVertex*)gltf->allVertices;
     u32* currIndices = (u32*)gltf->allIndices;
 
     for (s32 m = 0; m < gltf->numMeshes; ++m)
@@ -181,13 +204,21 @@ s32 BakeSceneMeshesAndAnimations(SceneBundle* gltf)
                 AX_WARN("mesh %d primitive %d has empty geometry vertices=%d indices=%d", m, p, primitive->numVertices, primitive->numIndices);
 
             IndicesForPrimitive(primitive, currIndices, vertexCursor);
-            VerticesForPrimitive(primitive, currVertex);
-            JointsForPrimitive(primitive, currVertex);
-            WeightsForPrimitive(primitive, currVertex);
+            if (isSkinned)
+            {
+                VerticesForPrimitive(primitive, currSkinnedVertex);
+                JointsForPrimitive(primitive, currSkinnedVertex);
+                WeightsForPrimitive(primitive, currSkinnedVertex);
+                currSkinnedVertex += primitive->numVertices;
+            }
+            else
+            {
+                SurfaceVerticesForPrimitive(primitive, currSurfaceVertex);
+                currSurfaceVertex += primitive->numVertices;
+            }
             BoundsForPrimitive(primitive);
 
             primitive->indexOffset = indexCursor;
-            currVertex   += primitive->numVertices;
             currIndices  += primitive->numIndices;
             vertexCursor += primitive->numVertices;
             indexCursor  += primitive->numIndices;
@@ -244,28 +275,29 @@ void GenerateLOD_75_GLTF(SceneBundle* sceneBundle)
 
 void OptimizeMesh(const SceneBundle* gltf)
 {
+    size_t vertexSize = gltf->numSkins > 0 ? sizeof(ASkinedVertex) : sizeof(AVertex);
     int* remap = ArenaAllocGlobal(gltf->totalIndices * sizeof(s32));
     size_t totalVertices = meshopt_generateVertexRemap(remap, (const u32 *)gltf->allIndices,
                                                        (size_t)gltf->totalIndices, gltf->allVertices,
-                                                       (size_t)gltf->totalVertices, sizeof(ASkinedVertex));
+                                                       (size_t)gltf->totalVertices, vertexSize);
 
     int* temp = ArenaAllocGlobal(gltf->totalIndices * sizeof(s32));
     meshopt_remapIndexBuffer(temp, gltf->allIndices, (size_t)gltf->totalIndices, remap);
 
-    ASkinedVertex* vertexBufferNew = ArenaAllocGlobal((size_t)gltf->totalVertices * sizeof(ASkinedVertex));
-    meshopt_remapVertexBuffer(vertexBufferNew, gltf->allVertices, (size_t)gltf->totalVertices, sizeof(ASkinedVertex), remap);
+    void* vertexBufferNew = ArenaAllocGlobal((size_t)gltf->totalVertices * vertexSize);
+    meshopt_remapVertexBuffer(vertexBufferNew, gltf->allVertices, (size_t)gltf->totalVertices, vertexSize, remap);
 
-    MemSet(gltf->allVertices, 0, (size_t)gltf->totalVertices * sizeof(ASkinedVertex));
+    MemSet(gltf->allVertices, 0, (size_t)gltf->totalVertices * vertexSize);
     MemSet(gltf->allIndices , 0, (size_t)gltf->totalIndices * sizeof(s32));
 
     MemCopy(gltf->allIndices , temp, (size_t)gltf->totalIndices * sizeof(s32));
-    MemCopy(gltf->allVertices, vertexBufferNew, (size_t)totalVertices * sizeof(ASkinedVertex));
+    MemCopy(gltf->allVertices, vertexBufferNew, (size_t)totalVertices * vertexSize);
 
     ArenaPopGlobal((size_t)gltf->totalIndices * sizeof(s32));
     ArenaPopGlobal((size_t)gltf->totalIndices * sizeof(s32));
-    ArenaPopGlobal((size_t)gltf->totalVertices * sizeof(ASkinedVertex));
+    ArenaPopGlobal((size_t)gltf->totalVertices * vertexSize);
 
     meshopt_optimizeVertexCache(gltf->allIndices , gltf->allIndices, gltf->totalIndices, (size_t)totalVertices);
     meshopt_optimizeVertexFetch(gltf->allVertices, gltf->allIndices, gltf->totalIndices,
-                                gltf->allVertices, (size_t)totalVertices, sizeof(ASkinedVertex));
+                                gltf->allVertices, (size_t)totalVertices, vertexSize);
 }

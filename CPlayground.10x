@@ -260,9 +260,6 @@
 						<Path>Include/Common.h</Path>
 					</File>
 					<File>
-						<Path>Include/ECS.h</Path>
-					</File>
-					<File>
 						<Path>Include/FastDelta.h</Path>
 					</File>
 					<File>
@@ -300,6 +297,9 @@
 					</File>
 					<File>
 						<Path>Include/RenderLimits.h</Path>
+					</File>
+					<File>
+						<Path>Include/RenderSet.h</Path>
 					</File>
 				</Children>
 			</Folder>
@@ -382,6 +382,9 @@
 					<File>
 						<Path>Shaders/CompileShaders.py</Path>
 					</File>
+					<File>
+						<Path>Shaders/Surface.hlsl</Path>
+					</File>
 				</Children>
 			</Folder>
 			<Folder>
@@ -439,7 +442,7 @@
 						<Path>Source/MeshBake.c</Path>
 					</File>
 					<File>
-						<Path>Source/ECS.c</Path>
+						<Path>Source/RenderSet.c</Path>
 					</File>
 				</Children>
 			</Folder>

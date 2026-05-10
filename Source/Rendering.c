@@ -9,7 +9,7 @@
 #include "Include/Camera.h"
 #include "Include/Memory.h"
 #include "Math/Half.h"
-#include "Include/ECS.h"
+#include "Include/RenderSet.h"
 
 #if defined(PLATFORM_APPLE)
 #include "Shaders/msl/SkinnedFrag.msl.h"
@@ -28,6 +28,8 @@
 // Shaders_SkinnedFrag_spv
 #include "Shaders/spv/SkinnedFrag.spv.h"
 #include "Shaders/spv/SkinnedVert.spv.h"
+#include "Shaders/spv/SurfaceFrag.spv.h"
+#include "Shaders/spv/SurfaceVert.spv.h"
 #include "Shaders/spv/CullDrawArgsCompute.spv.h"
 #include "Shaders/spv/AnimationCompute.spv.h"
 #include "Shaders/spv/LineDebugVert.spv.h"
@@ -49,40 +51,44 @@ static SDL_GPUComputePipeline* g_CullDrawArgsComputePipeline = NULL;
 extern SDL_Window*  g_SDLWindow; // main    
 extern Camera       g_Camera; // main
 extern Graphics     gGFX;
-extern ECS          ecsSkinned;
-extern ECS          ecsStatic;
+extern RenderSet    skinnedSet;
+extern RenderSet    surfaceSet;
 
-static void InitECSBuffers(ECS_GraphicsBuffers* buffers, ECS* ecs)
+static void InitRenderSetBuffers(RenderSetBuffers* buffers, RenderSet* set)
 {
     const Uint32 readRasterBit   = SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ;
     const Uint32 writeComputeBit = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE;
     const Uint32 readCompute     = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ;
     const Uint32 indirectBit     = SDL_GPU_BUFFERUSAGE_INDIRECT;
-    size_t groupBytes  = ecs->maxGroups   * sizeof(PrimitiveGroup);
-    size_t entityBytes = ecs->maxEntities * sizeof(Entity);
+    size_t groupBytes  = set->maxGroups   * sizeof(PrimitiveGroup);
+    size_t entityBytes = set->maxEntities * sizeof(Entity);
     
     // indirect and culling
-    buffers->primitiveGroup    = CreateBuffer(ecs->primitiveGroups, groupBytes, readCompute, "CPPrimitiveGroups");
-    buffers->drawDenseIndices  = CreateBuffer(NULL, ecs->maxEntities * sizeof(u32), readRasterBit | readCompute | writeComputeBit, "CPDrawDenseIndices");
-    buffers->drawArgs          = CreateBuffer(NULL, ecs->maxGroups * sizeof(SDL_GPUIndexedIndirectDrawCommand), indirectBit | writeComputeBit, "CPDrawArgs");
-    buffers->denseToPrimitive  = CreateBuffer(ecs->denseToPrimitiveIndex, ecs->maxEntities * sizeof(u32), readCompute, "CPDenseToPrimitive");
-    buffers->numVisible        = CreateBuffer(NULL, ecs->maxGroups * sizeof(u32), readCompute | writeComputeBit, "CPNumVisible");
-    buffers->entity            = CreateBuffer(ecs->entities, entityBytes, readRasterBit | readCompute, "CPEntities");
+    buffers->primitiveGroup   = CreateBuffer(set->primitiveGroups, groupBytes, readCompute, "CPPrimitiveGroups");
+    buffers->drawDenseIndices = CreateBuffer(NULL, set->maxEntities * sizeof(u32), readRasterBit | readCompute | writeComputeBit, "CPDrawDenseIndices");
+    buffers->sparseToDense    = CreateBuffer(set->sparseID, set->maxEntities * sizeof(u32), readCompute, "CPSparseToDense");
+    buffers->drawArgs         = CreateBuffer(NULL, set->maxGroups * sizeof(SDL_GPUIndexedIndirectDrawCommand), indirectBit | writeComputeBit, "CPDrawArgs");
+    buffers->denseToPrimitive = CreateBuffer(set->denseToPrimitiveIndex, set->maxEntities * sizeof(u32), readCompute, "CPDenseToPrimitive");
+    buffers->entity           = CreateBuffer(set->entities, entityBytes, readRasterBit | readCompute, "CPEntities");
+    buffers->visibleDenseIndices = CreateBuffer(NULL, set->maxEntities * sizeof(u32), readCompute | writeComputeBit, "CPVisibleDenseIndices");
+    buffers->visibilityMask      = CreateBuffer(NULL, set->maxEntities * sizeof(u32), readCompute | writeComputeBit, "CPVisibilityMask");
+    buffers->visibleCount        = CreateBuffer(NULL, sizeof(u32), readCompute | writeComputeBit, "CPVisibleCount");
+    buffers->dispatchArgs        = CreateBuffer(NULL, sizeof(u32) * 3, indirectBit | writeComputeBit, "CPDispatchArgs");
 }
 
 void InitBuffers()
 {
-    InitECSBuffers(&g_RenderState.skinnedBuffers, &ecsSkinned);
-    InitECSBuffers(&g_RenderState.staticBuffers, &ecsStatic);
+    InitRenderSetBuffers(&g_RenderState.skinnedBuffers, &skinnedSet);
+    InitRenderSetBuffers(&g_RenderState.surfaceBuffers, &surfaceSet);
 
     AnimInitBuffers();
-    // TODO: buffers per ECS
-    /* Create skined */
-    g_RenderState.vertexBuffer = CreateBuffer(gGFX.VertexBuffer, MAX_VERTEX * sizeof(ASkinedVertex), SDL_GPU_BUFFERUSAGE_VERTEX, "CPVertexBuffer");
-    g_RenderState.indexBuffer  = CreateBuffer(gGFX.IndexBuffer , MAX_INDEX * sizeof(int), SDL_GPU_BUFFERUSAGE_INDEX, "CPIndexBuffer");
+    // TODO: buffers per render set
+    g_RenderState.skinnedVertexBuffer = CreateBuffer(gGFX.SkinnedVertexBuffer, MAX_VERTEX * sizeof(ASkinedVertex), SDL_GPU_BUFFERUSAGE_VERTEX, "CPSkinnedVertexBuffer");
+    g_RenderState.surfaceVertexBuffer = CreateBuffer(gGFX.SurfaceVertexBuffer, MAX_VERTEX * sizeof(AVertex), SDL_GPU_BUFFERUSAGE_VERTEX, "CPSurfaceVertexBuffer");
+    g_RenderState.indexBuffer         = CreateBuffer(gGFX.IndexBuffer, MAX_INDEX * sizeof(int), SDL_GPU_BUFFERUSAGE_INDEX, "CPIndexBuffer");
     
     g_RenderState.lineBuffer = CreateBuffer(NULL, sizeof(ALineVertex) * MAX_LINE_COUNT, SDL_GPU_BUFFERUSAGE_VERTEX | SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE, "CPLineVertexBuffer"); 
-    g_RenderState.lineDrawArgsBuffer = CreateBuffer(NULL, sizeof(u32) * 4, SDL_GPU_BUFFERUSAGE_INDIRECT | SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE, "CPLinedrawArgsBuffer");
+    g_RenderState.lineDrawArgsBuffer = CreateBuffer(NULL, sizeof(u32) * 8, SDL_GPU_BUFFERUSAGE_INDIRECT | SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE, "CPLinedrawArgsBuffer");
 }
 
 static void InitAnimationComputePipeline()
@@ -93,8 +99,8 @@ static void InitAnimationComputePipeline()
         .entrypoint                    = "main",
         .format                        = SDL_GetGPUShaderFormats(g_GPUDevice),
         .num_uniform_buffers           = 1,
-        .num_readonly_storage_buffers  = 8,
-        .num_readwrite_storage_buffers = 3,
+        .num_readonly_storage_buffers  = 7,
+        .num_readwrite_storage_buffers = 1,
         .threadcount_x                 = 32,
         .threadcount_y                 = 1,
         .threadcount_z                 = 1,
@@ -110,8 +116,8 @@ static void InitCullDrawArgsComputePipeline()
         .entrypoint                    = "main",
         .format                        = SDL_GetGPUShaderFormats(g_GPUDevice),
         .num_uniform_buffers           = 1,
-        .num_readonly_storage_buffers  = 3,
-        .num_readwrite_storage_buffers = 5,
+        .num_readonly_storage_buffers  = 4,
+        .num_readwrite_storage_buffers = 8,
         .threadcount_x                 = 64,
         .threadcount_y                 = 1,
         .threadcount_z                 = 1,
@@ -134,43 +140,55 @@ static void InitSamplers()
 }
 
 static void InitSkinedPipeline();
+static void InitSurfacePipeline();
 static void InitLinePipeline();
 
 void RendererInit()
 {
     InitSamplers();
     InitSkinedPipeline();
+    InitSurfacePipeline();
     InitLinePipeline();
     InitAnimationComputePipeline();
     InitCullDrawArgsComputePipeline();
 }
 
-static void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd, ECS* renderSet,
-                                        ECS_GraphicsBuffers* buffers,
-                                        FrustumPlanes frustumPlanes)
+static void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet,
+                                        RenderSetBuffers* buffers,
+                                        FrustumPlanes frustumPlanes,
+                                        bool enableVisibilityOutput)
 {
     if (renderSet->numGroups == 0) return;
+    CHECK_CREATE(g_CullDrawArgsComputePipeline, "Cull Draw Args Compute Pipeline")
 
     struct {
         FrustumPlanes planes;
         u32 numEntities;
         u32 numPrimitiveGroups;
         u32 mode;
-        u32 pad0;
+        u32 enableVisibilityOutput;
     } params;
     MemCopy(&params.planes, frustumPlanes.planes, sizeof(FrustumPlanes));
     params.numEntities = renderSet->numEntities;
     params.numPrimitiveGroups = renderSet->numGroups;
     params.mode = 0;
-    params.pad0 = 0;
+    params.enableVisibilityOutput = enableVisibilityOutput ? 1u : 0u;
 
-    SDL_GPUBuffer* ro_buffers[3] = { buffers->entity, buffers->primitiveGroup, buffers->denseToPrimitive };
-    SDL_GPUStorageBufferReadWriteBinding rw_bindings[5] = {
+    SDL_GPUBuffer* ro_buffers[4] = { 
+        buffers->entity, 
+        buffers->primitiveGroup, 
+        buffers->denseToPrimitive,
+        buffers->sparseToDense
+    };
+    SDL_GPUStorageBufferReadWriteBinding rw_bindings[8] = {
         { buffers->drawDenseIndices },
         { buffers->drawArgs },
-        { buffers->numVisible },
         { g_RenderState.lineBuffer },
-        { g_RenderState.lineDrawArgsBuffer }
+        { g_RenderState.lineDrawArgsBuffer },
+        { buffers->visibleDenseIndices },
+        { buffers->visibilityMask },
+        { buffers->visibleCount },
+        { buffers->dispatchArgs }
     };
 
     SDL_GPUComputePass* pass = SDL_BeginGPUComputePass(cmd, NULL, 0, rw_bindings, SDL_arraysize(rw_bindings));
@@ -178,7 +196,9 @@ static void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd, ECS* renderSe
     SDL_BindGPUComputeStorageBuffers(pass, 0, ro_buffers, SDL_arraysize(ro_buffers));
     SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
     // clear draw args and numVisibleInPrimitive
-    SDL_DispatchGPUCompute(pass, (renderSet->numGroups + 63) / 64, 1, 1);
+    u32 resetCount = renderSet->numGroups;
+    if (enableVisibilityOutput && renderSet->numEntities > resetCount) resetCount = renderSet->numEntities;
+    SDL_DispatchGPUCompute(pass, (resetCount + 63) / 64, 1, 1);
 
     if (renderSet->numEntities > 0)
     {
@@ -190,9 +210,10 @@ static void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd, ECS* renderSe
     SDL_EndGPUComputePass(pass);
 }
 
-void DispatchAnimationCompute(SDL_GPUCommandBuffer* cmd, ECS* renderSet)
+void DispatchAnimationCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet)
 {
     if (renderSet->numEntities == 0) return;
+    CHECK_CREATE(g_AnimComputePipeline, "Animation Compute Pipeline")
 
     struct {
         float timeSinceStartup;
@@ -201,42 +222,38 @@ void DispatchAnimationCompute(SDL_GPUCommandBuffer* cmd, ECS* renderSet)
     params.timeSinceStartup = (float)TimeSinceStartup();
     params.numInstances     = (int)renderSet->numEntities;
     
-    SDL_GPUStorageBufferReadWriteBinding rw_bindings[3] = {
-        { g_RenderState.boneBuffer },
-        { g_RenderState.skinnedBuffers.drawDenseIndices},
-        { g_RenderState.skinnedBuffers.numVisible }
+    SDL_GPUStorageBufferReadWriteBinding rw_bindings[1] = {
+        { g_RenderState.boneBuffer }
     };
 
-    SDL_GPUBuffer* ro_buffers[8] = {
+    SDL_GPUBuffer* ro_buffers[7] = {
         g_RenderState.animPoseBuffer,
         g_RenderState.animHierarchyBuffer,
         g_RenderState.animDataBuffer,
         g_RenderState.jointsBuffer,
         g_RenderState.invBindBuffer,
         g_RenderState.animInstanceBuffer,
-        g_RenderState.skinnedBuffers.primitiveGroup,
-        g_RenderState.skinnedBuffers.denseToPrimitive
+        g_RenderState.skinnedBuffers.visibleDenseIndices
     };
 
     SDL_GPUComputePass* pass = SDL_BeginGPUComputePass(cmd, NULL, 0, rw_bindings, SDL_arraysize(rw_bindings));
     SDL_BindGPUComputePipeline(pass, g_AnimComputePipeline);
     SDL_BindGPUComputeStorageBuffers(pass, 0, ro_buffers, SDL_arraysize(ro_buffers));
     SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
-
-    SDL_DispatchGPUCompute(pass, (renderSet->numEntities + 31) / 32, 1, 1);
+    SDL_DispatchGPUComputeIndirect(pass, g_RenderState.skinnedBuffers.dispatchArgs, 0);
+ 
     SDL_EndGPUComputePass(pass);
 }
-
 
 static void RenderScene(SDL_GPUCommandBuffer* cmd, 
                         SDL_GPUColorTargetInfo* color_target, 
                         SDL_GPUDepthStencilTargetInfo* depth_target,
-                        m44 viewProj)
+                        mat4x4 viewProj)
 {
     SDL_GPUTexture* tex = g_RenderState.textures[gPaladin->materials[0].baseColorTexture.index].handle;
 
     /* Set up the bindings */
-    SDL_GPUBufferBinding vertex_binding = { g_RenderState.vertexBuffer, 0 };
+    SDL_GPUBufferBinding vertex_binding = { g_RenderState.skinnedVertexBuffer, 0 };
     SDL_GPUBufferBinding index_binding  = { g_RenderState.indexBuffer , 0 };
 
     SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmd, color_target, 1, depth_target);
@@ -244,7 +261,12 @@ static void RenderScene(SDL_GPUCommandBuffer* cmd,
     SDL_BindGPUVertexBuffers(pass, 0, &vertex_binding, 1);
     SDL_BindGPUIndexBuffer(pass, &index_binding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
     
-    SDL_GPUBuffer* buffers[3] = { g_RenderState.boneBuffer, g_RenderState.skinnedBuffers.entity, g_RenderState.skinnedBuffers.drawDenseIndices };
+    SDL_GPUBuffer* buffers[4] = {
+        g_RenderState.boneBuffer,
+        g_RenderState.skinnedBuffers.entity,
+        g_RenderState.skinnedBuffers.primitiveGroup,
+        g_RenderState.skinnedBuffers.drawDenseIndices
+    };
     SDL_BindGPUVertexStorageBuffers(pass, 0, buffers, SDL_arraysize(buffers));
     
     SDL_BindGPUFragmentSamplers(pass, 0, &(SDL_GPUTextureSamplerBinding){
@@ -253,7 +275,28 @@ static void RenderScene(SDL_GPUCommandBuffer* cmd,
     }, 1);
     
     SDL_PushGPUVertexUniformData(cmd, 0, &viewProj, sizeof(viewProj));
-    SDL_DrawGPUIndexedPrimitivesIndirect(pass, g_RenderState.skinnedBuffers.drawArgs, 0, ecsSkinned.numGroups);
+    SDL_DrawGPUIndexedPrimitivesIndirect(pass, g_RenderState.skinnedBuffers.drawArgs, 0, skinnedSet.numGroups);
+
+    if (surfaceSet.numGroups > 0)
+    {
+        SDL_BindGPUGraphicsPipeline(pass, g_RenderState.surfacePipeline);
+        vertex_binding.buffer = g_RenderState.surfaceVertexBuffer;
+        vertex_binding.offset = 0;
+        SDL_BindGPUVertexBuffers(pass, 0, &vertex_binding, 1);
+
+        SDL_GPUBuffer* surfaceBuffers[3] = {
+            g_RenderState.surfaceBuffers.entity,
+            g_RenderState.surfaceBuffers.primitiveGroup,
+            g_RenderState.surfaceBuffers.drawDenseIndices
+        };
+        SDL_BindGPUVertexStorageBuffers(pass, 0, surfaceBuffers, SDL_arraysize(surfaceBuffers));
+        SDL_BindGPUFragmentSamplers(pass, 0, &(SDL_GPUTextureSamplerBinding){
+            .texture = tex,
+            .sampler = g_RenderState.sampler
+        }, 1);
+        SDL_PushGPUVertexUniformData(cmd, 0, &viewProj, sizeof(viewProj));
+        SDL_DrawGPUIndexedPrimitivesIndirect(pass, g_RenderState.surfaceBuffers.drawArgs, 0, surfaceSet.numGroups);
+    }
     
     // debug lines
     SDL_BindGPUGraphicsPipeline(pass, g_RenderState.linePipeline);
@@ -261,7 +304,7 @@ static void RenderScene(SDL_GPUCommandBuffer* cmd,
     vertex_binding.offset = 0;
     SDL_BindGPUVertexBuffers(pass, 0, &vertex_binding, 1);
     SDL_PushGPUVertexUniformData(cmd, 0, &viewProj, sizeof(viewProj));
-    SDL_DrawGPUPrimitivesIndirect(pass, g_RenderState.lineDrawArgsBuffer, 0, 1);
+    SDL_DrawGPUPrimitivesIndirect(pass, g_RenderState.lineDrawArgsBuffer, sizeof(int) * 4, 1);
 
     SDL_EndGPURenderPass(pass);
 }
@@ -329,18 +372,23 @@ void Render()
     depth_target.texture          = winstate->tex_depth;
     depth_target.cycle            = true;
     
-    if (ecsSkinned.numEntities > 0)
-        UpdateGPUBuffer(g_RenderState.skinnedBuffers.entity, ecsSkinned.entities, ecsSkinned.numEntities * sizeof(Entity), 0ull);
-    if (ecsStatic.numEntities > 0)
-        UpdateGPUBuffer(g_RenderState.staticBuffers.entity, ecsStatic.entities, ecsStatic.numEntities * sizeof(Entity), 0ull);
+    if (skinnedSet.numEntities > 0)
+    {
+        UpdateGPUBuffer(g_RenderState.skinnedBuffers.entity, skinnedSet.entities, skinnedSet.numEntities * sizeof(Entity), 0ull);
+        UpdateGPUBuffer(g_RenderState.skinnedBuffers.sparseToDense, skinnedSet.sparseID, skinnedSet.numEntities * sizeof(u32), 0ull);
+    }
+    if (surfaceSet.numEntities > 0)
+    {
+        UpdateGPUBuffer(g_RenderState.surfaceBuffers.entity, surfaceSet.entities, surfaceSet.numEntities * sizeof(Entity), 0ull);
+        UpdateGPUBuffer(g_RenderState.surfaceBuffers.sparseToDense, surfaceSet.sparseID, surfaceSet.numEntities * sizeof(u32), 0ull);
+    }
     
-    m44 viewProj = M44Multiply(g_Camera.view, g_Camera.projection);
+    mat4x4 viewProj = M44Multiply(g_Camera.view, g_Camera.projection);
     FrustumPlanes frustumPlanes = CreateFrustumPlanes(viewProj);
-    DispatchCullDrawArgsCompute(cmd, &ecsSkinned, &g_RenderState.skinnedBuffers, frustumPlanes);
-    DispatchAnimationCompute(cmd, &ecsSkinned);
+    DispatchCullDrawArgsCompute(cmd, &skinnedSet, &g_RenderState.skinnedBuffers, frustumPlanes, true);
+    DispatchAnimationCompute(cmd, &skinnedSet);
+    DispatchCullDrawArgsCompute(cmd, &surfaceSet, &g_RenderState.surfaceBuffers, frustumPlanes, false);
     RenderScene(cmd, &color_target, &depth_target, viewProj);
-
-    DispatchCullDrawArgsCompute(cmd, &ecsStatic, &g_RenderState.staticBuffers, frustumPlanes);
     
     /* Blit MSAA resolve target to swapchain, if needed */
     if (g_RenderState.sample_count > SDL_GPU_SAMPLECOUNT_1) 
@@ -362,6 +410,15 @@ void Render()
     
     SDL_SubmitGPUCommandBuffer(cmd);
 }
+
+typedef enum VertexFormat_
+{
+    VFORMAT_FLOAT3 = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,
+    VFORMAT_UINT   = SDL_GPU_VERTEXELEMENTFORMAT_UINT  ,
+    VFORMAT_HALF2  = SDL_GPU_VERTEXELEMENTFORMAT_HALF2 ,
+    VFORMAT_HALF4  = SDL_GPU_VERTEXELEMENTFORMAT_HALF4 ,
+    VFORMAT_UBYTE4 = SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4
+} VertexFormat;
 
 static void InitLinePipeline()
 {
@@ -388,18 +445,8 @@ static void InitLinePipeline()
     }); CHECK_CREATE(fragment_shader, "Fragment Shader")
 
     const SDL_GPUVertexAttribute vertex_attributes[2] = {
-        {
-            .location    = 0,
-            .buffer_slot = 0,
-            .format      = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,
-            .offset      = 0
-        },
-        {
-            .location    = 1,
-            .buffer_slot = 0,
-            .format      = SDL_GPU_VERTEXELEMENTFORMAT_UINT,
-            .offset      = sizeof(f32) * 3
-        }
+        { .location = 0, .buffer_slot = 0, .format = VFORMAT_FLOAT3, .offset = 0 },
+        { .location = 1, .buffer_slot = 0, .format = VFORMAT_UINT  , .offset = sizeof(f32) * 3 }
     };
 
     SDL_GPUTextureFormat colorFormat = SDL_GetGPUSwapchainTextureFormat(g_GPUDevice, g_SDLWindow);
@@ -447,7 +494,7 @@ static void InitSkinedPipeline()
         .code                = Shaders_SkinnedVert_spv,
         .code_size           = sizeof(Shaders_SkinnedVert_spv),
         .num_samplers        = 0,
-        .num_storage_buffers = 3,
+        .num_storage_buffers = 4,
         .stage               = SDL_GPU_SHADERSTAGE_VERTEX,
         .entrypoint          = "vert"
     });
@@ -467,36 +514,11 @@ static void InitSkinedPipeline()
     CHECK_CREATE(fragment_shader, "Fragment Shader")
 
     const SDL_GPUVertexAttribute vertex_attributes[5] = {
-        {
-            .location    = 0,
-            .buffer_slot = 0,
-            .format      = SDL_GPU_VERTEXELEMENTFORMAT_HALF4,
-            .offset      = 0
-        },
-        {
-            .location    = 1,
-            .buffer_slot = 0,
-            .format      = SDL_GPU_VERTEXELEMENTFORMAT_UINT,
-            .offset      = offsetof(ASkinedVertex, octTbn)
-        },
-        {
-            .location    = 2,
-            .buffer_slot = 0,
-            .format      = SDL_GPU_VERTEXELEMENTFORMAT_HALF2,
-            .offset      = offsetof(ASkinedVertex, texCoord)
-        },
-        {
-            .location    = 3,
-            .buffer_slot = 0,
-            .format      = SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4,
-            .offset      = offsetof(ASkinedVertex, joints)
-        },
-        {
-            .location    = 4,
-            .buffer_slot = 0,
-            .format      = SDL_GPU_VERTEXELEMENTFORMAT_UINT,
-            .offset      = offsetof(ASkinedVertex, weights)
-        }
+        { .location = 0, .buffer_slot = 0, .format = VFORMAT_HALF4 , .offset = 0 },
+        { .location = 1, .buffer_slot = 0, .format = VFORMAT_UINT  , .offset = offsetof(ASkinedVertex, octTbn)   },
+        { .location = 2, .buffer_slot = 0, .format = VFORMAT_HALF2 , .offset = offsetof(ASkinedVertex, texCoord) },
+        { .location = 3, .buffer_slot = 0, .format = VFORMAT_UBYTE4, .offset = offsetof(ASkinedVertex, joints)   },
+        { .location = 4, .buffer_slot = 0, .format = VFORMAT_UINT  , .offset = offsetof(ASkinedVertex, weights)  }
     };
 
     SDL_GPUTextureFormat colorFormat = SDL_GetGPUSwapchainTextureFormat(g_GPUDevice, g_SDLWindow);
@@ -522,7 +544,7 @@ static void InitSkinedPipeline()
             .vertex_buffer_descriptions = &(SDL_GPUVertexBufferDescription){
                 0, sizeof(ASkinedVertex), SDL_GPU_VERTEXINPUTRATE_VERTEX, 0 
             },
-            .num_vertex_buffers    = 1, // above array count
+            .num_vertex_buffers    = 1,
             .vertex_attributes     = vertex_attributes,
             .num_vertex_attributes = ARRAY_SIZE(vertex_attributes)
         }
@@ -536,24 +558,98 @@ static void InitSkinedPipeline()
     SDL_ReleaseGPUShader(g_GPUDevice, fragment_shader);
 }
 
+static void InitSurfacePipeline()
+{
+    SDL_GPUShader* vertex_shader = SDL_CreateGPUShader(g_GPUDevice, &(SDL_GPUShaderCreateInfo){
+        .num_uniform_buffers = 1,
+        .format              = SDL_GetGPUShaderFormats(g_GPUDevice),
+        .code                = Shaders_SurfaceVert_spv,
+        .code_size           = sizeof(Shaders_SurfaceVert_spv),
+        .num_samplers        = 0,
+        .num_storage_buffers = 3,
+        .stage               = SDL_GPU_SHADERSTAGE_VERTEX,
+        .entrypoint          = "vert"
+    });
 
-static void DestroyECS_GraphicsBuffers(ECS_GraphicsBuffers* buffers)
+    SDL_GPUShader* fragment_shader = SDL_CreateGPUShader(g_GPUDevice, &(SDL_GPUShaderCreateInfo){
+        .num_uniform_buffers = 0,
+        .format              = SDL_GetGPUShaderFormats(g_GPUDevice),
+        .code                = Shaders_SurfaceFrag_spv,
+        .code_size           = sizeof(Shaders_SurfaceFrag_spv),
+        .num_samplers        = 1,
+        .num_storage_buffers = 0,
+        .stage               = SDL_GPU_SHADERSTAGE_FRAGMENT,
+        .entrypoint          = "frag"
+    });
+
+    CHECK_CREATE(vertex_shader, "Surface Vertex Shader")
+    CHECK_CREATE(fragment_shader, "Surface Fragment Shader")
+
+    const SDL_GPUVertexAttribute vertex_attributes[3] = {
+        { .location = 0, .buffer_slot = 0, .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3, .offset = offsetof(AVertex, position) },
+        { .location = 1, .buffer_slot = 0, .format = SDL_GPU_VERTEXELEMENTFORMAT_UINT,   .offset = offsetof(AVertex, octTbn) },
+        { .location = 2, .buffer_slot = 0, .format = SDL_GPU_VERTEXELEMENTFORMAT_HALF2,  .offset = offsetof(AVertex, texCoord) }
+    };
+
+    SDL_GPUTextureFormat colorFormat = SDL_GetGPUSwapchainTextureFormat(g_GPUDevice, g_SDLWindow);
+    SDL_GPUGraphicsPipelineCreateInfo pipelinedesc = {
+        .vertex_shader   = vertex_shader,
+        .fragment_shader = fragment_shader,
+        .primitive_type  = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
+        .target_info     = (SDL_GPUGraphicsPipelineTargetInfo)
+        {
+            .num_color_targets          = 1,
+            .color_target_descriptions  = &(SDL_GPUColorTargetDescription){ .format = colorFormat },
+            .depth_stencil_format       = SDL_GPU_TEXTUREFORMAT_D24_UNORM,
+            .has_depth_stencil_target   = true
+        },
+        .depth_stencil_state = (SDL_GPUDepthStencilState)
+        {
+            .enable_depth_test  = true,
+            .enable_depth_write = true,
+            .compare_op         = SDL_GPU_COMPAREOP_LESS_OR_EQUAL
+        },
+        .multisample_state  = (SDL_GPUMultisampleState){ .sample_count = g_RenderState.sample_count },
+        .vertex_input_state = (SDL_GPUVertexInputState){
+            .vertex_buffer_descriptions = &(SDL_GPUVertexBufferDescription){
+                0, sizeof(AVertex), SDL_GPU_VERTEXINPUTRATE_VERTEX, 0
+            },
+            .num_vertex_buffers    = 1,
+            .vertex_attributes     = vertex_attributes,
+            .num_vertex_attributes = ARRAY_SIZE(vertex_attributes)
+        }
+    };
+
+    g_RenderState.surfacePipeline = SDL_CreateGPUGraphicsPipeline(g_GPUDevice, &pipelinedesc);
+    CHECK_CREATE(g_RenderState.surfacePipeline, "Surface Render Pipeline")
+
+    SDL_ReleaseGPUShader(g_GPUDevice, vertex_shader);
+    SDL_ReleaseGPUShader(g_GPUDevice, fragment_shader);
+}
+
+static void DestroyRenderSetBuffers(RenderSetBuffers* buffers)
 {
     if (buffers->entity)           SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->entity);
     if (buffers->primitiveGroup)   SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->primitiveGroup);
     if (buffers->drawDenseIndices) SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->drawDenseIndices);
     if (buffers->drawArgs)         SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->drawArgs);
     if (buffers->denseToPrimitive) SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->denseToPrimitive);
-    if (buffers->numVisible)       SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->numVisible);
+    if (buffers->sparseToDense)    SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->sparseToDense);
+    if (buffers->visibleDenseIndices) SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->visibleDenseIndices);
+    if (buffers->visibilityMask)      SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->visibilityMask);
+    if (buffers->visibleCount)        SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->visibleCount);
+    if (buffers->dispatchArgs)        SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->dispatchArgs);
 }
 
 static void DestroyPipeline()
 {
-    DestroyECS_GraphicsBuffers(&g_RenderState.skinnedBuffers);
-    DestroyECS_GraphicsBuffers(&g_RenderState.staticBuffers);
-    if (g_RenderState.vertexBuffer) SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.vertexBuffer);
+    DestroyRenderSetBuffers(&g_RenderState.skinnedBuffers);
+    DestroyRenderSetBuffers(&g_RenderState.surfaceBuffers);
+    if (g_RenderState.skinnedVertexBuffer) SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.skinnedVertexBuffer);
+    if (g_RenderState.surfaceVertexBuffer) SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.surfaceVertexBuffer);
     if (g_RenderState.indexBuffer) SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.indexBuffer);
     if (g_RenderState.skinnedPipeline)     SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.skinnedPipeline);
+    if (g_RenderState.surfacePipeline)     SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.surfacePipeline);
     if (g_AnimComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_AnimComputePipeline);
     if (g_CullDrawArgsComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_CullDrawArgsComputePipeline);
     

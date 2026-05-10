@@ -708,7 +708,7 @@ s32 SaveGLTFBinary(const SceneBundle* gltf, const u8* path)
     AFileWrite(&gltf->numSkins, sizeof(u16), file, 1);
     AFileWrite(&gltf->numAnimations, sizeof(u16), file, 1);
     AFileWrite(&gltf->defaultSceneIndex, sizeof(u16), file, 1);
-    u16 isSkined = (u16)(gltf->skins != NULL);
+    u16 isSkined = (u16)(gltf->numSkins > 0);
     AFileWrite(&isSkined, sizeof(u16), file, 1);
     
     OptimizeMesh(gltf);
@@ -970,14 +970,14 @@ s32 LoadSceneBundleBinary(const u8* path, SceneBundle* gltf)
     AFileRead(&gltf->totalIndices, sizeof(s32), file, 1);
     AFileRead(&gltf->totalVertices, sizeof(s32), file, 1);
     
-    size_t vertexSize = sizeof(ASkinedVertex);
+    size_t vertexSize = isSkined ? sizeof(ASkinedVertex) : sizeof(AVertex);
     size_t vertexAlignment = 4;
 
     {
-        u32 vertexCursor = gGFX.NumVertices;
+        u32 vertexCursor = isSkined ? gGFX.NumSkinnedVertices : gGFX.NumSurfaceVertices;
         u32 indexCursor  = gGFX.NumIndices;
 
-        if ((gGFX.NumVertices + gltf->totalVertices) > MAX_VERTEX ||
+        if ((vertexCursor + gltf->totalVertices) > MAX_VERTEX ||
             (gGFX.NumIndices + gltf->totalIndices) > MAX_INDEX)
         {
             AX_ERROR("VERTEX buffer size is not enough for %s", path);
@@ -985,11 +985,12 @@ s32 LoadSceneBundleBinary(const u8* path, SceneBundle* gltf)
         }
 
 
-        gGFX.NumVertices += gltf->totalVertices;
-        gGFX.NumIndices  += gltf->totalIndices;
+        if (isSkined) gGFX.NumSkinnedVertices += gltf->totalVertices;
+        else          gGFX.NumSurfaceVertices += gltf->totalVertices;
+        gGFX.NumIndices += gltf->totalIndices;
 
-        gltf->allVertices = gGFX.VertexBuffer + vertexCursor; // AlignAddress(u64_(gGFX.VertexBuffer + vertexCursor), 4);
-        gltf->allIndices  = gGFX.IndexBuffer + indexCursor;  // AlignAddress(u64_(gGFX.IndexBuffer + indexCursor), 4);
+        gltf->allVertices = isSkined ? (void*)(gGFX.SkinnedVertexBuffer + vertexCursor) : (void*)(gGFX.SurfaceVertexBuffer + vertexCursor);
+        gltf->allIndices  = gGFX.IndexBuffer + indexCursor;
 
         u64 allVertexSize = gltf->totalVertices * vertexSize;
         u64 allIndexSize  = gltf->totalIndices * sizeof(u32);

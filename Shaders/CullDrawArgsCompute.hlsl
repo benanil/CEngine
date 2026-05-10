@@ -3,41 +3,29 @@
 #include "Math.hlsl"
 #include "CommonStructs.hlsl"
 
-struct IndexedDrawCommand
-{
-    uint numIndices;
-    uint numInstances;
-    uint firstIndex;
-    int  vertexOffset;
-    uint firstInstance;
-};
+StructuredBuffer<Entity>         entities                 : register(t0);
+StructuredBuffer<PrimitiveGroup> primitiveGroups          : register(t1);
+StructuredBuffer<uint>           denseToPrimitiveIndex    : register(t2);
+StructuredBuffer<uint>           sparseToDense            : register(t3);
 
-struct IndirectDrawCommand
-{
-    uint numVertices;  
-    uint numInstances; 
-    uint firstVertex;  
-    uint firstInstance;
-};
+RWStructuredBuffer<uint>                drawDenseIndices  : register(u0, space1);
+RWStructuredBuffer<IndexedDrawCommand>  drawArgs          : register(u1, space1);
+RWStructuredBuffer<LineVertex>          lineVertices      : register(u2, space1);
 
-StructuredBuffer<Entity>         entities        : register(t0);
-StructuredBuffer<PrimitiveGroup> primitiveGroups : register(t1);
-
-RWStructuredBuffer<uint>                drawDenseIndices      : register(u0, space1);
-RWStructuredBuffer<IndexedDrawCommand>  drawArgs              : register(u1, space1);
-RWStructuredBuffer<uint>                numVisibleInPrimitive : register(u2, space1);
-RWStructuredBuffer<LineVertex>          lineVertices          : register(u3, space1);
-RWStructuredBuffer<IndirectDrawCommand> lineDrawCommand       : register(u4, space1);
-
-StructuredBuffer<uint> denseToPrimitiveIndex : register(t2);
+// first line draw command's first member(numVertices) is number of visible entities
+RWStructuredBuffer<IndirectDrawCommand> lineDrawCommand   : register(u3, space1);
+RWStructuredBuffer<uint>                visibleDenseIndices : register(u4, space1);
+RWStructuredBuffer<uint>                visibilityMask      : register(u5, space1);
+RWStructuredBuffer<uint>                visibleCount       : register(u6, space1);
+RWStructuredBuffer<IndirectDispatchCommand> dispatchArgs   : register(u7, space1);
 
 cbuffer params : register(b0, space2)
 {
     float4 frustumPlanes[6];
-    uint   numEntities;
+    uint   maxEntityID;
     uint   numPrimitiveGroups;
     uint   mode;
-    uint   _pad0;
+    uint   enableVisibilityOutput;
 };
 
 float4 UnpackHalf4(uint2 packed)
@@ -84,9 +72,9 @@ float3 QMulVec3F32(float4 quat, float3 vec) {
 }
 
 u32 WangHash(u32 x) { 
-	x ^= x >> 16u; x *= 0x7feb352du;
-	x ^= x >> 15u; x *= 0x846ca68bu;
-	return x ^ (x >> 16u);
+    x ^= x >> 16u; x *= 0x7feb352du;
+    x ^= x >> 15u; x *= 0x846ca68bu;
+    return x ^ (x >> 16u);
 }
 
 void AddLine(float3 a, float3 b, u32 idx, u32 color)
@@ -105,7 +93,7 @@ void AddLine(float3 a, float3 b, u32 idx, u32 color)
 void AddAABBLine(float3 worldMin, float3 worldMax)
 {
     uint start;
-    InterlockedAdd(lineDrawCommand[0].numVertices, 24, start);
+    InterlockedAdd(lineDrawCommand[1].numVertices, 24, start);
     uint3 d = uint3(worldMin * 100);
 
     u32 color = WangHash(d.x + d.y + d.z);
@@ -125,7 +113,7 @@ void AddAABBLine(float3 worldMin, float3 worldMax)
     AddLine(p110, p010, start + 4, color);
     AddLine(p010, p000, start + 6, color);
 
-    AddLine(p001, p101, start + 8, color);
+    AddLine(p001, p101, start + 8 , color);
     AddLine(p101, p111, start + 10, color);
     AddLine(p111, p011, start + 12, color);
     AddLine(p011, p001, start + 14, color);
@@ -140,22 +128,24 @@ void BuildWorldAABB(Entity entity, PrimitiveGroup group, out float3 worldMin, ou
 {
     float3 localMin = UnpackHalf4(group.aabbMin).xyz;
     float3 localMax = UnpackHalf4(group.aabbMax).xyz;
-    float3 center = (localMin + localMax) * 0.5f;
-    float3 extent = (localMax - localMin) * 0.5f;
+    float3 center = F3MulF(F3Add(localMin, localMax), 0.5f);
+    float3 extent = F3MulF(F3Sub(localMax, localMin), 0.5f);
 
-    float4 q = normalize(UnpackRGBA16Snorm(entity.rotation.x, entity.rotation.y));
-    float3 s = float3(UnpackVec3XY11Z10Unorm(entity.scale.x)) * 10.0f;
+    float4 q = VecNorm(UnpackRGBA16Snorm(entity.rotation.x, entity.rotation.y));
+    float3 s = F3MulF(float3(UnpackVec3XY11Z10Unorm(entity.scale.x)), 10.0f);
 
-    float3x3 rotM = M33FromQuaternionF32(q);
-    float3 axisX = rotM[0] * s.x;
-    float3 axisY = rotM[1] * s.y;
-    float3 axisZ = rotM[2] * s.z;
+    mat3x3 rotM = M33FromQuaternionF32(q);
+    float3 axisX = F3MulF(rotM[0], s.x);
+    float3 axisY = F3MulF(rotM[1], s.y);
+    float3 axisZ = F3MulF(rotM[2], s.z);
 
     float3 worldCenter = entity.position.xyz + QMulVec3F32(q, center * s);
-    float3 worldExtent = abs(axisX) * extent.x + abs(axisY) * extent.y + abs(axisZ) * extent.z;
+    float3 worldExtent = F3Add(F3Add(F3MulF(F3Abs(axisX), extent.x),
+                                     F3MulF(F3Abs(axisY), extent.y)), 
+                                     F3MulF(F3Abs(axisZ), extent.z));
 
-    worldMin = worldCenter - worldExtent;
-    worldMax = worldCenter + worldExtent;
+    worldMin = F3Sub(worldCenter, worldExtent);
+    worldMax = F3Add(worldCenter, worldExtent);
 }
 
 [numthreads(64, 1, 1)]
@@ -165,119 +155,86 @@ void main(uint3 tid : SV_DispatchThreadID)
 
     if (mode == 0)
     {
-        if (idx >= numPrimitiveGroups) return;
-
-        PrimitiveGroup group = primitiveGroups[idx];
-        numVisibleInPrimitive[idx] = 0;
-        drawArgs[idx].numIndices = group.numIndices;
-        drawArgs[idx].numInstances = 0;
-        drawArgs[idx].firstIndex = group.indexOffset;
-        drawArgs[idx].vertexOffset = int(group.vertexOffset);
-        drawArgs[idx].firstInstance = group.entityOffset;
-
-        lineDrawCommand[0].numVertices   = 0;  
-        lineDrawCommand[0].numInstances  = 1; 
-        lineDrawCommand[0].firstVertex   = 0;  
-        lineDrawCommand[0].firstInstance = 0;
-        return;
-    }
-
-    if (idx >= numEntities) return;
-
-    uint primitiveIdx = denseToPrimitiveIndex[idx];
-    PrimitiveGroup group = primitiveGroups[primitiveIdx];
-    if (group.valid == 0) return;
-
-    float3 worldMin;
-    float3 worldMax;
-    BuildWorldAABB(entities[idx], group, worldMin, worldMax);
-    if (!AABBVisible(worldMin, worldMax)) return;
-    AddAABBLine(worldMin, worldMax);
-
-    uint visibleIdx;
-    InterlockedAdd(numVisibleInPrimitive[primitiveIdx], 1, visibleIdx);
-    drawDenseIndices[group.entityOffset + visibleIdx] = idx;
-    InterlockedMax(drawArgs[primitiveIdx].numInstances, visibleIdx + 1);
-}
-
-#ifdef MOBILE
-
-[numthreads(64, 1, 1)]
-void main(uint3 tid : SV_DispatchThreadID, uint3 gid : SV_GroupThreadID)
-{
-    uint idx = tid.x;
-
-    if (mode == 0)
-    {
-        if (idx >= numPrimitiveGroups) return;
-        PrimitiveGroup group        = primitiveGroups[idx];
-        numVisibleInPrimitive[idx]  = 0;
-        drawArgs[idx].numIndices    = group.numIndices;
-        drawArgs[idx].numInstances  = 0;
-        drawArgs[idx].firstIndex    = group.indexOffset;
-        drawArgs[idx].vertexOffset  = int(group.vertexOffset);
-        drawArgs[idx].firstInstance = 0;
-        return;
-    }
-
-    bool visible = false;
-    uint primitiveIdx = 0;
-    uint entityIdx = idx;
-
-    if (idx < numEntities)
-    {
-        primitiveIdx = denseToPrimitiveIndex[idx];
-        PrimitiveGroup group = primitiveGroups[primitiveIdx];
-
-        if (group.valid != 0)
+        if (idx < numPrimitiveGroups)
         {
-            float3 worldMin, worldMax;
-            BuildWorldAABB(entities[idx], group, worldMin, worldMax);
-            visible = AABBVisible(worldMin, worldMax);
+            PrimitiveGroup group = primitiveGroups[idx];
+            drawArgs[idx].numIndices    = group.numIndices;
+            drawArgs[idx].numInstances  = 0;
+            drawArgs[idx].firstIndex    = group.indexOffset;
+            drawArgs[idx].vertexOffset  = int(group.vertexOffset);
+            drawArgs[idx].firstInstance = 0;
         }
-    }
 
-    // Each lane that shares a primitiveIdx with others in the wave can
-    // contribute to a single atomic instead of N separate atomics.
-    // We elect one lane per unique primitiveIdx to do the atomic, then
-    // distribute offsets back via prefix sum over the matching lanes.
-    [loop]
-    while (WaveActiveAnyTrue(visible))
-    {
-        // Pick one visible primitive each iteration. WaveReadLaneFirst can read
-        // an invisible lane, so use a reduction that ignores invisible lanes.
-        uint wavePrimitiveIdx = WaveActiveMin(visible ? primitiveIdx : ~0u);
-        bool sameGroup = visible && (primitiveIdx == wavePrimitiveIdx);
-    
-        // Count how many lanes in this wave are writing to firstLane's primitive.
-        uint groupCount     = WaveActiveCountBits(sameGroup);
-        // Each contributing lane gets a unique offset within that batch.
-        uint laneOffset     = WavePrefixCountBits(sameGroup);
-    
-        if (sameGroup)
+        if (idx == 0)
         {
-            uint baseSlot = 0;
-            if (WaveIsFirstLane() || laneOffset == 0)
+            lineDrawCommand[0].numVertices   = 0; // indirect dispatch X
+            lineDrawCommand[0].numInstances  = 1; // indirect dispatch Y
+            lineDrawCommand[0].firstVertex   = 1; // indirect dispatch Z
+            lineDrawCommand[0].firstInstance = 0; // total visible count
+
+            lineDrawCommand[1].numVertices   = 0;
+            lineDrawCommand[1].numInstances  = 1;
+            lineDrawCommand[1].firstVertex   = 0;
+            lineDrawCommand[1].firstInstance = 0;
+
+            if (enableVisibilityOutput != 0)
             {
-                // One atomic per unique primitiveIdx per wave iteration.
-                PrimitiveGroup group = primitiveGroups[primitiveIdx];
-                InterlockedAdd(numVisibleInPrimitive[primitiveIdx], groupCount, baseSlot);
-                InterlockedMax(drawArgs[primitiveIdx].numInstances, baseSlot + groupCount);
-                // Broadcast base slot to all lanes that share this primitive.
-                // Store temporarily; other lanes retrieve via WaveReadLaneAt.
+                visibleCount[0] = 0;
+                dispatchArgs[0].groupCountX = 0;
+                dispatchArgs[0].groupCountY = 1;
+                dispatchArgs[0].groupCountZ = 1;
             }
-    
-            // The elected lane is the first one with sameGroup == true.
-            uint electedLane = WaveActiveMin(sameGroup ? WaveGetLaneIndex() : ~0u);
-            uint baseSlotBroadcast = WaveReadLaneAt(baseSlot, electedLane);
-    
-            PrimitiveGroup group = primitiveGroups[primitiveIdx];
-            drawDenseIndices[group.entityOffset + baseSlotBroadcast + laneOffset] = entityIdx;
-    
-            visible = false; // mark as handled
+        }
+
+        if (enableVisibilityOutput != 0 && idx < maxEntityID)
+        {
+            visibilityMask[idx] = 0;
+        }
+
+        return;
+    }
+
+    if (idx >= maxEntityID)
+        return;
+
+    uint dense = sparseToDense[idx];
+    if (dense == ~0u)
+        return;
+
+    uint primitiveIdx = denseToPrimitiveIndex[dense];
+    PrimitiveGroup group = primitiveGroups[primitiveIdx];
+
+    float3 worldMin, worldMax;
+    BuildWorldAABB(entities[dense], group, worldMin, worldMax);
+
+    if (!AABBVisible(worldMin, worldMax))
+        return;
+
+    AddAABBLine(worldMin, worldMax);
+    uint localVisibleIdx;
+    InterlockedAdd(drawArgs[primitiveIdx].numInstances, 1, localVisibleIdx);
+
+    uint globalVisibleIdx;
+    InterlockedAdd(lineDrawCommand[0].firstInstance, 1, globalVisibleIdx);
+
+    drawDenseIndices[group.entityOffset + localVisibleIdx] = dense;
+
+    if (enableVisibilityOutput != 0)
+    {
+        uint visibleDense = dense - group.entityOffset;
+        uint old;
+        InterlockedCompareExchange(visibilityMask[visibleDense], 0, 1, old);
+
+        if (old == 0)
+        {
+            uint visibleSlot;
+            InterlockedAdd(visibleCount[0], 1, visibleSlot);
+            visibleDenseIndices[visibleSlot] = visibleDense;
+
+            if ((visibleSlot & 31u) == 0)
+            {
+                InterlockedAdd(dispatchArgs[0].groupCountX, 1);
+            }
         }
     }
 }
-#else
-
-#endif

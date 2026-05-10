@@ -60,6 +60,7 @@ void GraphicsInit(bool msaa)
     VkPhysicalDeviceVulkan11Features vk11_features = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
         .pNext = &vk12_features,
+        .shaderDrawParameters = VK_TRUE,
         // this is supported on mobile devices and amd latest
         // .storageInputOutput16 = VK_TRUE,
     };
@@ -106,8 +107,9 @@ void GraphicsInit(bool msaa)
     winstate->tex_msaa    = CreateMSAATexture(drawablew, drawableh);
     winstate->tex_resolve = CreateResolveTexture(drawablew, drawableh);
     
-    gGFX.VertexBuffer = AllocAligned(sizeof(ASkinedVertex) * MAX_VERTEX, 4);
-    gGFX.IndexBuffer  = AllocAligned(sizeof(u32) * MAX_INDEX + 16, 4); // 16->give little bit of space for memcpy
+    gGFX.SkinnedVertexBuffer = AllocAligned(sizeof(ASkinedVertex) * MAX_VERTEX, 4);
+    gGFX.SurfaceVertexBuffer = AllocAligned(sizeof(AVertex) * MAX_VERTEX, 4);
+    gGFX.IndexBuffer         = AllocAligned(sizeof(u32) * MAX_INDEX + 16, 4); // 16->give little bit of space for memcpy
 }
 
 void GraphicsDestroy()

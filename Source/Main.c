@@ -10,7 +10,7 @@
 #include "Include/Camera.h"
 #include "Include/Rendering.h"
 #include "Include/Graphics.h"
-#include "Include/ECS.h"
+#include "Include/RenderSet.h"
 #include "Include/Memory.h"
 #include "Include/Random.h"
 #include "Include/AssetManager.h"
@@ -24,8 +24,8 @@ SDL_Window*  g_SDLWindow;
 extern RenderState  g_RenderState;
 extern SceneBundle* gPaladin;
 
-extern ECS          ecsSkinned;
-extern ECS          ecsStatic;
+extern RenderSet    skinnedSet;
+extern RenderSet    surfaceSet;
 
 static void MainLoop(void)
 {
@@ -60,8 +60,8 @@ s32 InitScene()
     
     if (!SceneBundleCreateAnimations(gPaladin)) return 0;
     InitAnimationInstances();
-    u32 skinnedBundle = ECS_AddSceneBundle(&ecsSkinned, gPaladin);
-    // u32 staticBundle  = ECS_AddSceneBundle(&ecsStatic, gPaladin);
+    u32 skinnedBundle = RenderSet_AddSceneBundle(&skinnedSet, gPaladin);
+    u32 surfaceBundle = RenderSet_AddSceneBundle(&surfaceSet, gPaladin);
 
     for (s32 i = 0; i < MAX_ANIM_INSTANCES; i++)
     {
@@ -69,11 +69,11 @@ s32 InitScene()
         v128f pos = VecMulf(VecSetR(f32_(i & 63), 0.0f, f32_(i >> 6), 0.0f), 1.5f);
         v128f rot = VecSetR(0.0f, NextDouble01(hash) * 2.0f - 1.0f, 0.0f, NextDouble01(MurmurHash(hash)) * 2.0f - 1.0f);  // x=0, y=random, z=0, w=random
         v128f scale = VecSet1(0.01f);
-        if (!ECS_AddScene(&ecsSkinned, skinnedBundle, pos, rot, scale, true))
+        if (!RenderSet_AddScene(&skinnedSet, skinnedBundle, pos, rot, scale, true))
             break;
     }
     
-    // ECS_AddScene(&ecsStatic, staticBundle, VecZero(), VecSetR(0.0f, 0.0f, 0.0f, 1.0f), VecOne(), false);
+    RenderSet_AddScene(&surfaceSet, surfaceBundle, VecZero(), VecSetR(0.0f, 0.0f, 0.0f, 1.0f), VecOne(), false);
     InitBuffers();
     return 1;
 }
@@ -98,7 +98,7 @@ s32 main(s32 argc, char* argv[])
     InitGlobalArena();
     PlatformInit();
     BasisuSetup();
-    ECS_Init();
+    RenderSet_Init();
 
     GraphicsInit(msaa);
     RendererInit(msaa);

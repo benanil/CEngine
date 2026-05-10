@@ -9,7 +9,7 @@ set SPV_DIR=Shaders\spv
 
 rem One HLSL file per graphics pass:
 rem FileName:VertexEntry:FragmentEntry
-set GRAPHICS_SHADERS=Skinned:vert:frag LineDebug:vert:frag
+set GRAPHICS_SHADERS=Skinned:vert:frag Surface:vert:frag LineDebug:vert:frag
 
 rem One HLSL file per compute pass:
 rem FileName:ComputeEntry

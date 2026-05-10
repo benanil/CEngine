@@ -10,7 +10,8 @@ cbuffer vs_params : register(b0, space1)
 
 StructuredBuffer<uint>   sBoneMtx          : register(t0);
 StructuredBuffer<Entity> sEntities         : register(t1);
-StructuredBuffer<uint>   sDrawDenseIndices : register(t2);
+StructuredBuffer<PrimitiveGroup> sPrimitiveGroups : register(t2);
+StructuredBuffer<uint>   sDrawDenseIndices : register(t3);
 
 static const uint MatrixNumInt32 = 6;
 
@@ -40,10 +41,11 @@ f16_3x4 LoadBone(uint idx)
     return bone;
 }
 
-VSOutput vert(VSInput input, uint instanceID : SV_InstanceID)
+VSOutput vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("DrawIndex")]] uint drawID : DRAWINDEX)
 {
-    uint denseIdx = sDrawDenseIndices[instanceID];
-    uint boneStart = (denseIdx % MAX_ANIM_INSTANCES) * MAX_BONES; // animation palette is independent from entity index
+    PrimitiveGroup group = sPrimitiveGroups[drawID];
+    uint denseIdx = sDrawDenseIndices[group.entityOffset + instanceID];
+    uint boneStart = (denseIdx - group.entityOffset) * MAX_BONES; // mesh-part groups store the same character order
 
     f16_4 weights;
     weights.xyz = UnpackVec3XY11Z10Unorm(input.aWeights);
@@ -59,9 +61,8 @@ VSOutput vert(VSInput input, uint instanceID : SV_InstanceID)
         animMat[2] = mad(weights[i], bone[2], animMat[2]);
     }
 
-    f16_4x3 animT = transpose(animMat);
-
-    Entity entity   = sEntities[denseIdx];
+    f16_4x3 animT  = transpose(animMat);
+    Entity entity  = sEntities[denseIdx];
     f16_4 insRot   = normalize(UnpackRGBA16Snorm(entity.rotation[0], entity.rotation[1]));
     f16_3 insScale = UnpackVec3XY11Z10Unorm(entity.scale) * f16(10.0);
 
@@ -73,7 +74,6 @@ VSOutput vert(VSInput input, uint instanceID : SV_InstanceID)
     tbn[0] = Orthonormalize(tbn[1], tbn[2]);
 
     f16_3 worldPos = QMulVec3(insRot, mul(f16_4(input.aPos.xyz, f16(1.0)), animT));
-
     VSOutput o;
     o.position  = mul(uViewProj, float4(float3(insScale * worldPos) + entity.position.xyz, 1.0));
     o.texCoords = input.aTexCoords;
@@ -83,7 +83,7 @@ VSOutput vert(VSInput input, uint instanceID : SV_InstanceID)
 
 
 Texture2D<float4> Texture : register(t0, space2);
-SamplerState Sampler : register(s0, space2);
+SamplerState Sampler      : register(s0, space2);
 
 float4 frag(VSOutput input) : SV_Target0
 {
