@@ -52,12 +52,22 @@ f16_3 UnpackVec3XY11Z10Unorm(uint packed) {
     );
 }
 
+float3 UnpackColor3Uint(uint color)
+{
+    const float tof1 = 1.0 / 255.0;
+    return float3(
+        (float)((color >> 0)  & 0xFF),
+        (float)((color >> 8)  & 0xFF),
+        (float)((color >> 16) & 0xFF)
+    ) * tof1;
+}
+
 f16_3 OctDecode(f16_2 f)
 {
     // https://twitter.com/Stubbesaurus/status/937994790553227264
     f16_3 n = f16_3(f.x, f.y, 1.0 - abs(f.x) - abs(f.y));
     f16  t  = saturate(-n.z);
-    n.xy    += select(n.xy >= 0.0, -t, t);
+    n.xy   += select(n.xy >= 0.0, -t, t);
     return normalize(n);
 }
 
@@ -83,9 +93,9 @@ f16_3 DecodeTangent(f16_3 normal, f16 diamond_tangent)
 
 void UnpackNormalTangent(uint packed, out f16_3 normal, out f16_3 tangent)
 {
-    f16_3 oct    = UnpackVec3XY11Z10Snorm(packed);
-    normal        = OctDecode(oct.xy);
-    tangent       = DecodeTangent(normal, mad(oct.z, f16(0.5), f16(0.5)));
+    f16_3 oct = UnpackVec3XY11Z10Snorm(packed);
+    normal    = OctDecode(oct.xy);
+    tangent   = DecodeTangent(normal, mad(oct.z, f16(0.5), f16(0.5)));
 }
 
 #endif

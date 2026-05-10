@@ -97,7 +97,7 @@ static int AnimationGetGPUData(const SceneBundle* bundle, Pose poses[MAX_BONES],
     for (int i = 0; i < skin->numJoints; i++)
         animJoints[i] = (u32)skin->joints[i];
 
-    const m44* inv = (const m44*)skin->inverseBindMatrices;
+    const mat4x4* inv = (const mat4x4*)skin->inverseBindMatrices;
     for (int i = 0; i < skin->numJoints; i++)
     {
         u32* outMtx = invBindMatrices + (i * ANIM_MATRIX_NUM_INT32);

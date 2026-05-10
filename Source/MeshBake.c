@@ -114,16 +114,16 @@ static void IndicesForPrimitive(APrimitive* primitive, u32* currIndices, const u
 static void VerticesForPrimitive(APrimitive* primitive, ASkinedVertex* currVertex)
 {
     primitive->vertices = currVertex;
-    const fv3* positions   = (const fv3*)primitive->vertexAttribs[AAttribIdx_POSITION];
-    const fv2* texCoords   = (const fv2*)primitive->vertexAttribs[AAttribIdx_TEXCOORD_0];
-    const fv3* normals     = (const fv3*)primitive->vertexAttribs[AAttribIdx_NORMAL];
+    const float3* positions   = (const float3*)primitive->vertexAttribs[AAttribIdx_POSITION];
+    const float2* texCoords   = (const float2*)primitive->vertexAttribs[AAttribIdx_TEXCOORD_0];
+    const float3* normals     = (const float3*)primitive->vertexAttribs[AAttribIdx_NORMAL];
     const v128f* tangents  = (const v128f*)primitive->vertexAttribs[AAttribIdx_TANGENT];
 
     for (s32 v = 0; v < primitive->numVertices; v++)
     {
         v128f tangent = tangents  ? tangents[v]  : VecZero();
-        fv2 texCoord  = texCoords ? texCoords[v] : (fv2){0.0f, 0.0f};
-        fv3 normal    = normals   ? normals[v]   : (fv3){0.5f, 0.5f, 0.0};
+        float2 texCoord  = texCoords ? texCoords[v] : (float2){0.0f, 0.0f};
+        float3 normal    = normals   ? normals[v]   : (float3){0.5f, 0.5f, 0.0};
 
         Float4ToHalf4((f16*)&currVertex[v].positionXY, &positions[v].x);
         currVertex[v].texCoord = Float2ToHalf2(&texCoord.x);
@@ -133,7 +133,7 @@ static void VerticesForPrimitive(APrimitive* primitive, ASkinedVertex* currVerte
 
 static void BoundsForPrimitive(APrimitive* primitive)
 {
-    const fv3* positions = (const fv3*)primitive->vertexAttribs[AAttribIdx_POSITION];
+    const float3* positions = (const float3*)primitive->vertexAttribs[AAttribIdx_POSITION];
     v128f min = VecSet1(FLT_MAX);
     v128f max = VecNeg(min);
     for (s32 i = 0; i < primitive->numVertices; i++)

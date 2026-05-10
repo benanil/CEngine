@@ -43,6 +43,11 @@
 typedef float f32;
 typedef int   s32;
 typedef uint  u32;
+typedef float4 v128f;
+typedef int4   v128i;
+typedef uint4  v128u;
+typedef float3x3 mat3x3;
+typedef float4x4 mat4x4;
 
 #if INT16_SUPPORTED
     typedef int16_t   s16;
@@ -166,14 +171,6 @@ typedef uint  u32;
 #define VecCombine(a, b) f16_4(a, b)
 
 #if defined(__HLSL_VERSION)
-
-// -----------------------------------------------------------------------------
-// Types
-// -----------------------------------------------------------------------------
-typedef float4 v128f;
-typedef int4   v128i;
-typedef uint4  v128u;
-
 // -----------------------------------------------------------------------------
 // Float vectors
 // -----------------------------------------------------------------------------
@@ -319,9 +316,98 @@ typedef uint4  v128u;
 #define VecUnpackHi32(x)                int4((x).z, (x).w, 0, 0)
 
 #define VecPack16(x)                    uint4(saturate(float4(x)))   // approximate
-
-#else
-
-// keep your existing SSE/C99 branch here
 #endif
+
+#define F3Add(a, b)     ((a) + (b))
+#define F3Sub(a, b)     ((a) - (b))
+#define F3Mul(a, b)     ((a) * (b))
+#define F3Div(a, b)     ((a) / (b))
+#define F2Add(a, b)     ((a) + (b))
+#define F2Sub(a, b)     ((a) - (b))
+#define F2Mul(a, b)     ((a) * (b))
+#define F2Div(a, b)     ((a) / (b))
+#define F3AddF(a, b)    ((a) + (b))
+#define F3SubF(a, b)    ((a) - (b))
+#define F3MulF(a, b)    ((a) * (b))
+#define F3DivF(a, b)    ((a) / (b))
+#define F2AddF(a, b)    ((a) + (b))
+#define F2SubF(a, b)    ((a) - (b))
+#define F2MulF(a, b)    ((a) * (b))
+#define F2DivF(a, b)    ((a) / (b))
+#define F2Neg(a)        -(a)
+#define F3Neg(a)        -(a)
+#define I3Add(a, b)     ((a) + (b))
+#define I3Sub(a, b)     ((a) - (b))
+#define I3Mul(a, b)     ((a) * (b))
+#define I3Div(a, b)     ((a) / (b))
+#define I2Add(a, b)     ((a) + (b))
+#define I2Sub(a, b)     ((a) - (b))
+#define I2Mul(a, b)     ((a) * (b))
+#define I2Div(a, b)     ((a) / (b))
+#define I3AddI(a, b)    ((a) + (b))
+#define I3SubI(a, b)    ((a) - (b))
+#define I3MulI(a, b)    ((a) * (b))
+#define I3DivI(a, b)    ((a) / (b))
+#define I2AddI(a, b)    ((a) + (b))
+#define I2SubI(a, b)    ((a) - (b))
+#define I2MulI(a, b)    ((a) * (b))
+#define I2DivI(a, b)    ((a) / (b))
+#define I3Neg(a)        -(a)
+#define I2Neg(a)        -(a)
+#define F2Len(a)        length(a)
+#define F3Len(a)        length(a)
+#define I2Len(a)        length(a)
+#define I3Len(a)        length(a)
+#define I2LenSq(a)      length(a)
+#define F2LenSq(a)      length(a)
+#define F2Dist(a, b)    distance(a, b)
+#define I2Dist(a, b)    distance(a, b)
+#define I3Dist(a, b)    distance(a, b)
+#define F3Zero()        float3( 0.0f,  0.0f,  0.0f)
+#define F3One()         float3( 1.0f,  1.0f,  1.0f)
+#define F3Up()          float3( 0.0f,  1.0f,  0.0f)
+#define F3Left()        float3(-1.0f,  0.0f,  0.0f)
+#define F3Down()        float3( 0.0f, -1.0f,  0.0f)
+#define F3Right()       float3( 1.0f,  0.0f,  0.0f)
+#define F3Forward()     float3( 0.0f,  0.0f,  1.0f)
+#define F3Backward()    float3( 0.0f,  0.0f, -1.0f)
+#define Vec3Get(v)      v.xyz
+#define F3Dot(a, b)     dot(a, b)
+#define F3Cross(a, b)   cross(a, b)
+#define F3Lerp(a, b, t) lerp(a, b, t)
+#define F2Lerp(a, b, t) lerp(a, b, t)
+#define F3Norm(a)       normalize(a)
+#define F3Abs(a)        abs(a)
+
+float3 F3NormSafe(float3 a) {
+    float lenSqr = dot(a, a);
+    return a * rsqrt(max(lenSqr, 1e-8f));
+}
+
+float F3DistSqr(float3 a, float3 b) {
+    float3 d = a - b;
+    return dot(d, d);
+}
+
+float F3Angle(float3 a, float3 b) {
+    float d = dot(F3NormSafe(a), F3NormSafe(b));
+    return acos(clamp(d, -1.0f, 1.0f));
+}
+
+float F3Dist(float3 a, float3 b) {
+    return sqrt(F3DistSqr(a, b));
+}
+
+float3 F3NormEst(float3 a) {
+    return a * rsqrt(dot(a, a));
+}
+
+float3 F3Proj(float3 v, float3 n) {
+    return n * (dot(v, n) / max(dot(n, n), 1e-8f));
+}
+
+float3 F3Reflect(float3 i, float3 n) {
+    return i - 2.0f * F3Proj(i, n);
+}
+
 #endif // HLSL_COMMON_HN_HON_H

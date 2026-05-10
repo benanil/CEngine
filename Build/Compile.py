@@ -50,13 +50,7 @@ def find_vcvarsall() -> Path:
         install_path = result.stdout.strip()
 
         if result.returncode == 0 and install_path:
-            vcvarsall = (
-                Path(install_path)
-                / "VC"
-                / "Auxiliary"
-                / "Build"
-                / "vcvarsall.bat"
-            )
+            vcvarsall = (Path(install_path) / "VC" / "Auxiliary" / "Build" / "vcvarsall.bat")
 
             if vcvarsall.exists():
                 return vcvarsall
@@ -131,13 +125,11 @@ def choose_unix_compiler_env() -> dict[str, str]:
 
     print(f"Using C compiler:   {cc}")
     print(f"Using C++ compiler: {cxx}")
-
     return env
 
 
 def compile_shaders():
     print("Compiling shaders...")
-
     run_cmd(
         [sys.executable, str(SHADER_SCRIPT)],
         "[ERROR] Failed to compile shaders",

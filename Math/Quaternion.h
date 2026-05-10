@@ -42,7 +42,7 @@ static inline v128f VCALL QMul(v128f Q1, v128f Q2)
 }
 
 // Angle should be between -twopi, twopi
-static inline v128f QFromAxisAngle(fv3 axis, float angle)
+static inline v128f QFromAxisAngle(float3 axis, float angle)
 {
     float SinV = Sin(0.5f * angle);
     float CosV = Cos(0.5f * angle);
@@ -72,9 +72,9 @@ static inline v128f VCALL QMulVec3V(v128f vec, v128f quat)
     return VecAdd(vec, temp1);
 }
 
-static inline fv3 VCALL QMulVec3(fv3 vec, Quaternion quat)
+static inline float3 VCALL QMulVec3(float3 vec, Quaternion quat)
 {
-    fv3 res;
+    float3 res;
     Vec3Store(&res.x, QMulVec3V(VecSetR(vec.x, vec.y, vec.z, 1.0f), quat));
     return res;
 }
@@ -149,16 +149,16 @@ purefn Quaternion QFromEuler(float x, float y, float z)
         c[0] * c[1] * c[2] + s[0] * s[1] * s[2]);
 }
 
-purefn Quaternion VCALL QFromEulerVec3(fv3 euler)
+purefn Quaternion VCALL QFromEulerVec3(float3 euler)
 {
     return QFromEuler(euler.x, euler.y, euler.z);
 }
 
-purefn fv3 QToEulerAngles(Quaternion qu)
+purefn float3 QToEulerAngles(Quaternion qu)
 {
     xyzw q;
     VecStore(&q.x, qu);
-    fv3 eulerAngles; // using cstd for trigonometric functions recommended
+    float3 eulerAngles; // using cstd for trigonometric functions recommended
     eulerAngles.x = ATan2(2.0f * (q.y * q.z + q.w * q.x), q.w * q.w - q.x * q.x - q.y * q.y + q.z * q.z);
     eulerAngles.y = ASin(MCLAMP(-2.0f * (q.x * q.z - q.w * q.y), -1.0f, 1.0f));
     eulerAngles.z = ATan2(2.0f * (q.x * q.y + q.w * q.z), q.w * q.w + q.x * q.x - q.y * q.y - q.z * q.z);
@@ -374,9 +374,9 @@ static inline void M44FromQuaternion(float* mat, Quaternion quat)
     mat[4 * 3 + 3] = 1.0f;
 }
 
-purefn Quaternion QFromLookRotation(fv3 direction, fv3 up)
+purefn Quaternion QFromLookRotation(float3 direction, float3 up)
 {
-    const fv3 matrix[3] = {
+    const float3 matrix[3] = {
         F3Cross(&up, &direction), up, direction 
     };
     xyzw result;
@@ -408,26 +408,26 @@ purefn Quaternion VCALL QInverse(Quaternion q)
     }
 }
 
-static inline fv3 VCALL QGetForward(Quaternion vec) {
-    fv3 res;
+static inline float3 VCALL QGetForward(Quaternion vec) {
+    float3 res;
     Vec3Store(&res.x, QMulVec3V(VecSetR( 0.0f, 0.0f, 1.0f, 0.0f), QConjugate(vec)));
     return res; 
 }
 
-static inline fv3 VCALL QGetRight(Quaternion vec) {
-    fv3 res;
+static inline float3 VCALL QGetRight(Quaternion vec) {
+    float3 res;
     Vec3Store(&res.x, QMulVec3V(VecSetR( 1.0f, 0.0f, 0.0f, 0.0f), QConjugate(vec)));
     return res; 
 }
 
-static inline fv3 VCALL QGetLeft(Quaternion vec) {
-    fv3 res;
+static inline float3 VCALL QGetLeft(Quaternion vec) {
+    float3 res;
     Vec3Store(&res.x, QMulVec3V(VecSetR(-1.0f, 0.0f, 0.0f, 0.0f), QConjugate(vec)));
     return res; 
 }
 
-static inline fv3 VCALL QGetUp(Quaternion vec) {
-    fv3 res;
+static inline float3 VCALL QGetUp(Quaternion vec) {
+    float3 res;
     Vec3Store(&res.x, QMulVec3V(VecSetR( 0.0f, 1.0f, 0.0f, 0.0f), QConjugate(vec)));
     return res; 
 }

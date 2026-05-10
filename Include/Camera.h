@@ -14,19 +14,19 @@ extern "C" {
 
 typedef struct Camera_
 {
-    m44 projection;
-    m44 view;
+    mat4x4 projection;
+    mat4x4 view;
     
     f32 verticalFOV;
     f32 nearClip;
     f32 farClip;
 
-    iv2 viewportSize, monitorSize;
+    int2 viewportSize, monitorSize;
        
-    fv3 position;
-    fv2 mouseOld;
-    fv3 targetPos;
-    fv3 Front, Right, Up;
+    float3 position;
+    float2 mouseOld;
+    float3 targetPos;
+    float3 Front, Right, Up;
  
     f32 pitch, yaw, senstivity;
     f32 speed;
@@ -35,8 +35,8 @@ typedef struct Camera_
  
     FrustumPlanes frustumPlanes;
 
-    m44 inverseProjection;
-    m44 inverseView;
+    mat4x4 inverseProjection;
+    mat4x4 inverseView;
 } Camera;
 
 
@@ -65,9 +65,9 @@ static inline void Camera_CalculateLook(Camera* camera) // from yaw pitch
     camera->Up = F3Cross(&camera->Right, &camera->Front);
 }
 
-static inline RayV ScreenPointToRay(Camera* camera, fv2 pos)
+static inline RayV ScreenPointToRay(Camera* camera, float2 pos)
 {
-    fv2 coord = (fv2){ pos.x / (f32)camera->viewportSize.x, pos.y / (f32)camera->viewportSize.y };
+    float2 coord = (float2){ pos.x / (f32)camera->viewportSize.x, pos.y / (f32)camera->viewportSize.y };
     coord.y = 1.0f - coord.y;    // Flip Y to match the NDC coordinate system
     coord = F2SubF(F2MulF(coord, 2.0f), 1.0f); // Map to range [-1, 1]
 
@@ -101,9 +101,9 @@ static inline void CameraInit(Camera* camera, int width, int height)
     Camera_RecalculateProjection(camera, width, height);
 }
 
-static inline void InfiniteMouse(fv2 point)
+static inline void InfiniteMouse(float2 point)
 {
-    iv2 monitorSize;
+    int2 monitorSize;
     wGetMonitorSize(&monitorSize.x, &monitorSize.y);
     
     #ifndef __ANDROID__
@@ -122,9 +122,9 @@ static inline void CameraUpdate(Camera* camera, f32 dt)
     
     if (!pressing) { camera->wasPressing = false; return; }
         
-    fv2 mousePos;
+    float2 mousePos;
     GetMousePos(&mousePos.x, &mousePos.y);
-    fv2 diff = F2Sub(mousePos, camera->mouseOld);
+    float2 diff = F2Sub(mousePos, camera->mouseOld);
     
     SDL_Cursor* cursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_MOVE);
     SDL_SetCursor(cursor);

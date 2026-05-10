@@ -467,7 +467,7 @@ static void ParseNodesObj(sj_Value sjMeshObj, void* element, GLTFParseContext* c
         }
         else if (StrCMP16(curr, "matrix"))
         {
-            m44 m;
+            mat4x4 m;
             float* matrix = &m.m[0][0];
             
             for (int i = 0; i < 16; i++)

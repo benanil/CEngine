@@ -74,14 +74,14 @@ void BakeGLTFAnimations(SceneBundle* gltf)
         if (skin->numJoints > MAX_BONES)
             AX_WARN("skin %d has %d joints, max GPU bone count is %d", s, skin->numJoints, MAX_BONES);
 
-        m44* inverseBindMatrices = AllocateTLSFGlobal(skin->numJoints * sizeof(m44));
-        SmallMemCpy(inverseBindMatrices, skin->inverseBindMatrices, sizeof(m44) * skin->numJoints);
+        mat4x4* inverseBindMatrices = AllocateTLSFGlobal(skin->numJoints * sizeof(mat4x4));
+        SmallMemCpy(inverseBindMatrices, skin->inverseBindMatrices, sizeof(mat4x4) * skin->numJoints);
         skin->inverseBindMatrices = (f32*)inverseBindMatrices;
 
         for (s32 i = 0; i < skin->numJoints; i++)
         {
             if (skin->joints[i] == rootIndex) continue;
-            m44 inv = inverseBindMatrices[i];
+            mat4x4 inv = inverseBindMatrices[i];
             inv.r[0] = VecNorm(inv.r[0]);
             inv.r[1] = VecNorm(inv.r[1]);
             inv.r[2] = VecNorm(inv.r[2]);

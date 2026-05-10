@@ -264,10 +264,10 @@ s32 LoadFBX(const u8* path, SceneBundle* fbxScene, f32 scale)
         u32 numJoints = (u32)deformer->clusters.count;
         skin->numJoints = numJoints;
         skin->skeleton = 0;
-        skin->inverseBindMatrices = AllocateTLSFGlobal(numJoints * sizeof(m44));
+        skin->inverseBindMatrices = AllocateTLSFGlobal(numJoints * sizeof(mat4x4));
         skin->joints = FixedPow2Allocator_AllocateUninitialized(allocator, (sizeof(s32) + 1) * numJoints);
     
-        m44* matrices = (m44*)skin->inverseBindMatrices;
+        mat4x4* matrices = (mat4x4*)skin->inverseBindMatrices;
         for (u32 j = 0u; j < numJoints; j++)
         {
             ufbx_matrix uMatrix = deformer->clusters.data[j]->geometry_to_bone;
@@ -440,9 +440,9 @@ s32 LoadFBX(const u8* path, SceneBundle* fbxScene, f32 scale)
             ASSERT(anode->children[j] != -1);
         }
         
-        SmallMemCpy(anode->translation, &unode->local_transform.translation.x, sizeof(fv3));
+        SmallMemCpy(anode->translation, &unode->local_transform.translation.x, sizeof(float3));
         SmallMemCpy(anode->rotation, &unode->local_transform.rotation.x, sizeof(v128f));
-        SmallMemCpy(anode->scale, &unode->local_transform.scale.x, sizeof(fv3));
+        SmallMemCpy(anode->scale, &unode->local_transform.scale.x, sizeof(float3));
         
         if (unode->mesh)
         {
@@ -855,7 +855,7 @@ s32 SaveGLTFBinary(const SceneBundle* gltf, const u8* path)
         ASkin skin = gltf->skins[i];
         AFileWrite(&skin.skeleton, sizeof(s32), file, 1);
         AFileWrite(&skin.numJoints, sizeof(s32), file, 1);
-        AFileWrite(skin.inverseBindMatrices, sizeof(m44) * skin.numJoints, file, 1);
+        AFileWrite(skin.inverseBindMatrices, sizeof(mat4x4) * skin.numJoints, file, 1);
         AFileWrite(skin.joints, sizeof(s32) * skin.numJoints, file, 1);
     }
     
@@ -1156,9 +1156,9 @@ s32 LoadSceneBundleBinary(const u8* path, SceneBundle* gltf)
         ASkin* skin = &gltf->skins[i];
         AFileRead(&skin->skeleton, sizeof(s32), file, 1);
         AFileRead(&skin->numJoints, sizeof(s32), file, 1);
-        skin->inverseBindMatrices = (f32*)AllocateTLSFGlobal(sizeof(m44) * skin->numJoints);
+        skin->inverseBindMatrices = (f32*)AllocateTLSFGlobal(sizeof(mat4x4) * skin->numJoints);
         skin->joints = FixedPow2Allocator_AllocateUninitialized(allocator, skin->numJoints * sizeof(s32));
-        AFileRead(skin->inverseBindMatrices, sizeof(m44) * skin->numJoints, file, 1);
+        AFileRead(skin->inverseBindMatrices, sizeof(mat4x4) * skin->numJoints, file, 1);
         AFileRead(skin->joints, sizeof(s32) * skin->numJoints, file, 1);
     }
 
