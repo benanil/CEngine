@@ -685,7 +685,7 @@ s32 LoadGLTFCached(const char* path, SceneBundle* scene, Texture* textures)
 /*//////////////////////////////////////////////////////////////////////////*/
 
 // ZSTD_CCtx* zstdCompressorCTX = NULL;
-const s32 ABMMeshVersion = 57;
+const s32 ABMMeshVersion = 59;
 
 u8 IsABMLastVersion(const u8* path)
 {
@@ -856,6 +856,9 @@ s32 SaveGLTFBinary(const SceneBundle* gltf, const u8* path)
         
         data = ((u64)(material->baseColorFactor) << 32) | (u64)material->doubleSided;
         AFileWrite(&data, sizeof(u64), file, 1);
+
+        u32 packedFactors = ((u32)material->metallicFactor << 16u) | (u32)material->roughnessFactor;
+        AFileWrite(&packedFactors, sizeof(u32), file, 1);
         
         AFileWrite(&material->alphaCutoff, sizeof(float), file, 1);
         AFileWrite(&material->alphaMode, sizeof(s32), file, 1);
@@ -1151,6 +1154,11 @@ s32 LoadSceneBundleBinary(const u8* path, SceneBundle* gltf)
         AFileRead(&data, sizeof(u64), file, 1);
         material->baseColorFactor = (data >> 32);
         material->doubleSided     = data & 0x1;
+
+        u32 packedFactors;
+        AFileRead(&packedFactors, sizeof(u32), file, 1);
+        material->metallicFactor  = (u16)(packedFactors >> 16u);
+        material->roughnessFactor = (u16)(packedFactors & 0xFFFFu);
         
         AFileRead(&material->alphaCutoff, sizeof(float), file, 1);
         AFileRead(&material->alphaMode, sizeof(s32), file, 1);

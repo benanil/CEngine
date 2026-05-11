@@ -652,7 +652,7 @@ purefn f32 UnpackSnorm16(u16 x) {
 
 // packs 0,1 range f1 to short
 purefn u16 PackUnorm16(f32 x) {
-    return (u16)Clampf32(x * (f32)INT16_MAX, (f32)INT16_MIN, (f32)INT16_MAX);
+    return (u16)Clampf32(x * (f32)UINT16_MAX, 0.0f, (f32)UINT16_MAX);
 }
 
 purefn f32 UnpackUnorm16(u16 x) {

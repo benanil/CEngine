@@ -119,8 +119,8 @@ typedef struct TextureDescriptor_
 {
     u32 pageIndex;
     u32 flags;
-    float uvScale[2];
-    float uvBias[2];
+    float2 uvScale;
+    float2 uvBias;
 } TextureDescriptor;
 
 typedef struct MaterialGPU_
@@ -136,7 +136,7 @@ typedef struct MaterialGPU_
 
 typedef struct WindowState
 {
-    SDL_GPUTexture* tex_depth, *tex_msaa, *tex_resolve;
+    SDL_GPUTexture* tex_depth, *tex_msaa, *tex_resolve, *tex_color, *tex_post;
     u32 prev_drawablew, prev_drawableh;
 } WindowState;
 
@@ -177,14 +177,14 @@ typedef struct RenderState
     SDL_GPUBuffer*           jointsBuffer;
     SDL_GPUBuffer*           invBindBuffer;
     SDL_GPUBuffer*           animInstanceBuffer;
-    Texture textures[MAX_SCENE_TEXTURES];
-    Texture albedoPages;
-    Texture normalPages;
-    Texture metallicRoughnessPages;
     SDL_GPUBuffer*           textureDescriptorBuffer;
     SDL_GPUBuffer*           materialBuffer;
     u32                      numTextureDescriptors;
     u32                      numMaterials;
+    Texture                  albedoPages;
+    Texture                  normalPages;
+    Texture                  metallicRoughnessPages;
+    Texture                  textures[MAX_SCENE_TEXTURES];
 } RenderState;
 
 
@@ -222,8 +222,6 @@ Texture rCreateTexture2DArray(int width, int height, int layers, void* data, SDL
 
 void rDeleteTexture(Texture texture);
 
-void rUpdateTexture(Texture texture, void* data);
-
 void TextureSystem_BuildPages(SceneBundle** bundles, const u32* imageOffsets, u32 numBundles, Texture* textures);
 
 void UploadTextureRegion(Texture texture, u32 layer, u32 x, u32 y, u32 width, u32 height, u32 srcWidth, u32 srcHeight, const void* data);
@@ -241,6 +239,10 @@ SDL_GPUTexture* CreateDepthTexture(u32 drawablew, u32 drawableh);
 SDL_GPUTexture* CreateMSAATexture(u32 drawablew, u32 drawableh);
 
 SDL_GPUTexture* CreateResolveTexture(u32 drawablew, u32 drawableh);
+
+SDL_GPUTexture* CreateSceneColorTexture(u32 drawablew, u32 drawableh, SDL_GPUSampleCount sampleCount);
+
+SDL_GPUTexture* CreatePostProcessTexture(u32 drawablew, u32 drawableh);
 
 #if defined(__cplusplus)
 }

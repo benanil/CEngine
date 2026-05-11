@@ -6,11 +6,6 @@
 static basist::transcoder_texture_format BasisTexToTranscoderFormat(basist::basis_tex_format fmt, 
                                                                     bool hasAlpha, bool isNormal, bool isMetalicRoughness)
 {
-    #ifndef __ANDROID__
-    if (isNormal || isMetalicRoughness) 
-        return basist::transcoder_texture_format::cTFBC5_RG;
-    #endif
-
     if (fmt == basist::basis_tex_format::cETC1S)
     {
         #ifdef __ANDROID__

@@ -391,6 +391,15 @@
 					<File>
 						<Path>Shaders/TexturePageCopyRGBA.hlsl</Path>
 					</File>
+					<File>
+						<Path>Shaders/TextureSampling.hlsl</Path>
+					</File>
+					<File>
+						<Path>Shaders/PBR.hlsl</Path>
+					</File>
+					<File>
+						<Path>Shaders/TonemapCompute.hlsl</Path>
+					</File>
 				</Children>
 			</Folder>
 			<Folder>

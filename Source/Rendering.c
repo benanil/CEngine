@@ -34,6 +34,7 @@
 #include "Shaders/spv/AnimationCompute.spv.h"
 #include "Shaders/spv/LineDebugVert.spv.h"
 #include "Shaders/spv/LineDebugFrag.spv.h"
+#include "Shaders/spv/TonemapCompute.spv.h"
 #endif
 
 #define TESTGPU_SUPPORTED_FORMATS (SDL_GPU_SHADERFORMAT_SPIRV | SDL_GPU_SHADERFORMAT_DXBC | SDL_GPU_SHADERFORMAT_DXIL | SDL_GPU_SHADERFORMAT_METALLIB)
@@ -48,6 +49,7 @@ SDL_GPUDevice*      g_GPUDevice = NULL;
 
 static SDL_GPUComputePipeline* g_AnimComputePipeline = NULL;
 static SDL_GPUComputePipeline* g_CullDrawArgsComputePipeline = NULL;
+static SDL_GPUComputePipeline* g_TonemapComputePipeline = NULL;
 
 extern SDL_Window*  g_SDLWindow; // main    
 extern Camera       g_Camera; // main
@@ -126,6 +128,23 @@ static void InitCullDrawArgsComputePipeline()
     CHECK_CREATE(g_CullDrawArgsComputePipeline, "Cull Draw Args Compute Pipeline")
 }
 
+static void InitTonemapComputePipeline()
+{
+    g_TonemapComputePipeline = SDL_CreateGPUComputePipeline(g_GPUDevice, &(SDL_GPUComputePipelineCreateInfo){
+        .code                           = Shaders_TonemapCompute_spv,
+        .code_size                      = sizeof(Shaders_TonemapCompute_spv),
+        .entrypoint                     = "main",
+        .format                         = SDL_GetGPUShaderFormats(g_GPUDevice),
+        .num_samplers                   = 1,
+        .num_readwrite_storage_textures = 1,
+        .num_uniform_buffers            = 1,
+        .threadcount_x                  = 8,
+        .threadcount_y                  = 8,
+        .threadcount_z                  = 1,
+    });
+    CHECK_CREATE(g_TonemapComputePipeline, "Tonemap Compute Pipeline")
+}
+
 static void InitSamplers()
 {
     g_RenderState.sampler = SDL_CreateGPUSampler(g_GPUDevice, &(SDL_GPUSamplerCreateInfo){
@@ -138,6 +157,33 @@ static void InitSamplers()
         .min_lod         = 0.0f,
         .max_lod         = 12.0f
     });
+}
+
+
+static void DispatchTonemapCompute(SDL_GPUCommandBuffer* cmd, SDL_GPUTexture* source, SDL_GPUTexture* destination, u32 width, u32 height)
+{
+    CHECK_CREATE(g_TonemapComputePipeline, "Tonemap Compute Pipeline")
+
+        SDL_GPUStorageTextureReadWriteBinding rwTexture = {
+        .texture = destination,
+        .mip_level = 0,
+        .layer = 0,
+        .cycle = true
+    };
+    SDL_GPUComputePass* pass = SDL_BeginGPUComputePass(cmd, &rwTexture, 1, NULL, 0);
+    SDL_BindGPUComputePipeline(pass, g_TonemapComputePipeline);
+    SDL_BindGPUComputeSamplers(pass, 0, &(SDL_GPUTextureSamplerBinding){
+        .texture = source,
+        .sampler = g_RenderState.sampler
+    }, 1);
+    struct { u32 outputSize[2]; f32 exposure; f32 gamma; } params = {
+        { width, height },
+        1.0f,
+        2.2f
+    };
+    SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
+    SDL_DispatchGPUCompute(pass, (width + 7u) / 8u, (height + 7u) / 8u, 1);
+    SDL_EndGPUComputePass(pass);
 }
 
 
@@ -237,6 +283,16 @@ static void RenderScene(SDL_GPUCommandBuffer* cmd,
                         SDL_GPUDepthStencilTargetInfo* depth_target,
                         mat4x4 viewProj)
 {
+    struct {
+        mat4x4 viewProj;
+        float cameraPosition[4];
+    } shaderParams;
+    shaderParams.viewProj = viewProj;
+    shaderParams.cameraPosition[0] = g_Camera.position.x;
+    shaderParams.cameraPosition[1] = g_Camera.position.y;
+    shaderParams.cameraPosition[2] = g_Camera.position.z;
+    shaderParams.cameraPosition[3] = 0.0f;
+
     /* Set up the bindings */
     SDL_GPUBufferBinding vertex_binding = { g_RenderState.skinnedVertexBuffer, 0 };
     SDL_GPUBufferBinding index_binding  = { g_RenderState.indexBuffer , 0 };
@@ -266,7 +322,7 @@ static void RenderScene(SDL_GPUCommandBuffer* cmd,
     SDL_BindGPUFragmentSamplers(pass, 0, pageSamplers, SDL_arraysize(pageSamplers));
     SDL_BindGPUFragmentStorageBuffers(pass, 0, fragmentBuffers, SDL_arraysize(fragmentBuffers));
     
-    SDL_PushGPUVertexUniformData(cmd, 0, &viewProj, sizeof(viewProj));
+    SDL_PushGPUVertexUniformData(cmd, 0, &shaderParams, sizeof(shaderParams));
     SDL_DrawGPUIndexedPrimitivesIndirect(pass, g_RenderState.skinnedBuffers.drawArgs, 0, skinnedSet.numGroups);
 
     if (surfaceSet.numGroups > 0)
@@ -285,7 +341,7 @@ static void RenderScene(SDL_GPUCommandBuffer* cmd,
         SDL_BindGPUVertexStorageBuffers(pass, 0, surfaceBuffers, SDL_arraysize(surfaceBuffers));
         SDL_BindGPUFragmentSamplers(pass, 0, pageSamplers, SDL_arraysize(pageSamplers));
         SDL_BindGPUFragmentStorageBuffers(pass, 0, fragmentBuffers, SDL_arraysize(fragmentBuffers));
-        SDL_PushGPUVertexUniformData(cmd, 0, &viewProj, sizeof(viewProj));
+        SDL_PushGPUVertexUniformData(cmd, 0, &shaderParams, sizeof(shaderParams));
         SDL_DrawGPUIndexedPrimitivesIndirect(pass, g_RenderState.surfaceBuffers.drawArgs, 0, surfaceSet.numGroups);
     }
     
@@ -328,9 +384,13 @@ void Render()
         SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_depth);
         SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_msaa);
         SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_resolve);
+        SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_color);
+        SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_post);
         winstate->tex_depth   = CreateDepthTexture(drawablew, drawableh);
         winstate->tex_msaa    = CreateMSAATexture(drawablew, drawableh);
         winstate->tex_resolve = CreateResolveTexture(drawablew, drawableh);
+        winstate->tex_color   = CreateSceneColorTexture(drawablew, drawableh, SDL_GPU_SAMPLECOUNT_1);
+        winstate->tex_post    = CreatePostProcessTexture(drawablew, drawableh);
     }
     winstate->prev_drawablew = drawablew;
     winstate->prev_drawableh = drawableh;
@@ -350,7 +410,7 @@ void Render()
     else {
         color_target.load_op  = SDL_GPU_LOADOP_CLEAR;
         color_target.store_op = SDL_GPU_STOREOP_STORE;
-        color_target.texture  = swapchainTexture;
+        color_target.texture  = winstate->tex_color;
     }
     
     SDL_GPUDepthStencilTargetInfo depth_target;
@@ -380,24 +440,21 @@ void Render()
     DispatchAnimationCompute(cmd, &skinnedSet);
     DispatchCullDrawArgsCompute(cmd, &surfaceSet, &g_RenderState.surfaceBuffers, frustumPlanes, false);
     RenderScene(cmd, &color_target, &depth_target, viewProj);
-    
-    /* Blit MSAA resolve target to swapchain, if needed */
-    if (g_RenderState.sample_count > SDL_GPU_SAMPLECOUNT_1) 
-    {
-        SDL_GPUBlitInfo blit_info;
-        blit_info.source.texture = winstate->tex_resolve;
-        blit_info.source.w = drawablew;
-        blit_info.source.h = drawableh;
-        
-        blit_info.destination.texture = swapchainTexture;
-        blit_info.destination.w = drawablew;
-        blit_info.destination.h = drawableh;
-        
-        blit_info.load_op = SDL_GPU_LOADOP_DONT_CARE;
-        blit_info.filter  = SDL_GPU_FILTER_LINEAR;
-        
-        SDL_BlitGPUTexture(cmd, &blit_info);
-    }
+
+    SDL_GPUTexture* sceneColor = g_RenderState.sample_count > SDL_GPU_SAMPLECOUNT_1 ? winstate->tex_resolve : winstate->tex_color;
+    DispatchTonemapCompute(cmd, sceneColor, winstate->tex_post, drawablew, drawableh);
+
+    SDL_GPUBlitInfo blit_info;
+    SDL_zero(blit_info);
+    blit_info.source.texture = winstate->tex_post;
+    blit_info.source.w = drawablew;
+    blit_info.source.h = drawableh;
+    blit_info.destination.texture = swapchainTexture;
+    blit_info.destination.w = drawablew;
+    blit_info.destination.h = drawableh;
+    blit_info.load_op = SDL_GPU_LOADOP_DONT_CARE;
+    blit_info.filter = SDL_GPU_FILTER_LINEAR;
+    SDL_BlitGPUTexture(cmd, &blit_info);
     
     SDL_SubmitGPUCommandBuffer(cmd);
 }
@@ -437,7 +494,7 @@ static void InitLinePipeline()
         { .location = 1, .buffer_slot = 0, .format = VFORMAT_UINT  , .offset = sizeof(f32) * 3 }
     };
 
-    SDL_GPUTextureFormat colorFormat = SDL_GetGPUSwapchainTextureFormat(g_GPUDevice, g_SDLWindow);
+    SDL_GPUTextureFormat colorFormat = SDL_GPU_TEXTUREFORMAT_R11G11B10_UFLOAT;
     SDL_GPUGraphicsPipelineCreateInfo pipelinedesc = {
         .vertex_shader   = vertex_shader,
         .fragment_shader = fragment_shader,
@@ -509,7 +566,7 @@ static void InitSkinedPipeline()
         { .location = 4, .buffer_slot = 0, .format = VFORMAT_UINT  , .offset = offsetof(ASkinedVertex, weights)  }
     };
 
-    SDL_GPUTextureFormat colorFormat = SDL_GetGPUSwapchainTextureFormat(g_GPUDevice, g_SDLWindow);
+    SDL_GPUTextureFormat colorFormat = SDL_GPU_TEXTUREFORMAT_R11G11B10_UFLOAT;
     SDL_GPUGraphicsPipelineCreateInfo pipelinedesc = {
         .vertex_shader   = vertex_shader,
         .fragment_shader = fragment_shader,
@@ -579,7 +636,7 @@ static void InitSurfacePipeline()
         { .location = 2, .buffer_slot = 0, .format = SDL_GPU_VERTEXELEMENTFORMAT_HALF2,  .offset = offsetof(AVertex, texCoord) }
     };
 
-    SDL_GPUTextureFormat colorFormat = SDL_GetGPUSwapchainTextureFormat(g_GPUDevice, g_SDLWindow);
+    SDL_GPUTextureFormat colorFormat = SDL_GPU_TEXTUREFORMAT_R11G11B10_UFLOAT;
     SDL_GPUGraphicsPipelineCreateInfo pipelinedesc = {
         .vertex_shader   = vertex_shader,
         .fragment_shader = fragment_shader,
@@ -623,6 +680,7 @@ void RendererInit()
     InitLinePipeline();
     InitAnimationComputePipeline();
     InitCullDrawArgsComputePipeline();
+    InitTonemapComputePipeline();
 }
 
 static void DestroyRenderSetBuffers(RenderSetBuffers* buffers)
@@ -655,6 +713,7 @@ static void DestroyPipeline()
     if (g_RenderState.surfacePipeline)     SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.surfacePipeline);
     if (g_AnimComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_AnimComputePipeline);
     if (g_CullDrawArgsComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_CullDrawArgsComputePipeline);
+    if (g_TonemapComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_TonemapComputePipeline);
     
     SDL_zero(g_RenderState);
     g_GPUDevice = NULL;

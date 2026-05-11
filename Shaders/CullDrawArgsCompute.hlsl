@@ -206,8 +206,8 @@ void main(uint3 tid : SV_DispatchThreadID)
     if (!AABBVisible(worldMin, worldMax))
         return;
 
-    if (enableVisibilityOutput == 0)
-        AddAABBLine(worldMin, worldMax);
+    // if (enableVisibilityOutput == 0)
+    //     AddAABBLine(worldMin, worldMax);
     
     uint localVisibleIdx;
     InterlockedAdd(drawArgs[primitiveIdx].numInstances, 1, localVisibleIdx);

@@ -106,6 +106,8 @@ void GraphicsInit(bool msaa)
     winstate->tex_depth   = CreateDepthTexture(drawablew, drawableh);
     winstate->tex_msaa    = CreateMSAATexture(drawablew, drawableh);
     winstate->tex_resolve = CreateResolveTexture(drawablew, drawableh);
+    winstate->tex_color   = CreateSceneColorTexture(drawablew, drawableh, SDL_GPU_SAMPLECOUNT_1);
+    winstate->tex_post    = CreatePostProcessTexture(drawablew, drawableh);
     
     gGFX.SkinnedVertexBuffer = AllocAligned(sizeof(ASkinedVertex) * MAX_VERTEX, 4);
     gGFX.SurfaceVertexBuffer = AllocAligned(sizeof(AVertex) * MAX_VERTEX, 4);
@@ -118,6 +120,8 @@ void GraphicsDestroy()
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_depth);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_msaa);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_resolve);
+    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_color);
+    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_post);
     SDL_ReleaseWindowFromGPUDevice(g_GPUDevice, g_SDLWindow);
 
     SDL_DestroyGPUDevice(g_GPUDevice);
@@ -250,7 +254,7 @@ SDL_GPUTexture* CreateMSAATexture(Uint32 drawablew, Uint32 drawableh)
     }
     
     createinfo.type = SDL_GPU_TEXTURETYPE_2D;
-    createinfo.format = SDL_GetGPUSwapchainTextureFormat(g_GPUDevice, g_SDLWindow);
+    createinfo.format = SDL_GPU_TEXTUREFORMAT_R11G11B10_UFLOAT;
     createinfo.width = drawablew;
     createinfo.height = drawableh;
     createinfo.layer_count_or_depth = 1;
@@ -274,7 +278,7 @@ SDL_GPUTexture* CreateResolveTexture(Uint32 drawablew, Uint32 drawableh)
     }
     
     createinfo.type = SDL_GPU_TEXTURETYPE_2D;
-    createinfo.format = SDL_GetGPUSwapchainTextureFormat(g_GPUDevice, g_SDLWindow);
+    createinfo.format = SDL_GPU_TEXTUREFORMAT_R11G11B10_UFLOAT;
     createinfo.width = drawablew;
     createinfo.height = drawableh;
     createinfo.layer_count_or_depth = 1;
@@ -285,6 +289,44 @@ SDL_GPUTexture* CreateResolveTexture(Uint32 drawablew, Uint32 drawableh)
     
     result = SDL_CreateGPUTexture(g_GPUDevice, &createinfo);
     CHECK_CREATE(result, "Resolve Texture")
+    return result;
+}
+
+SDL_GPUTexture* CreateSceneColorTexture(Uint32 drawablew, Uint32 drawableh, SDL_GPUSampleCount sampleCount)
+{
+    SDL_GPUTextureCreateInfo createinfo;
+    createinfo.type = SDL_GPU_TEXTURETYPE_2D;
+    createinfo.format = SDL_GPU_TEXTUREFORMAT_R11G11B10_UFLOAT;
+    createinfo.width = drawablew;
+    createinfo.height = drawableh;
+    createinfo.layer_count_or_depth = 1;
+    createinfo.num_levels = 1;
+    createinfo.sample_count = sampleCount;
+    createinfo.usage = SDL_GPU_TEXTUREUSAGE_COLOR_TARGET;
+    if (sampleCount == SDL_GPU_SAMPLECOUNT_1)
+        createinfo.usage |= SDL_GPU_TEXTUREUSAGE_SAMPLER;
+    createinfo.props = 0;
+
+    SDL_GPUTexture* result = SDL_CreateGPUTexture(g_GPUDevice, &createinfo);
+    CHECK_CREATE(result, "Scene Color Texture")
+    return result;
+}
+
+SDL_GPUTexture* CreatePostProcessTexture(Uint32 drawablew, Uint32 drawableh)
+{
+    SDL_GPUTextureCreateInfo createinfo;
+    createinfo.type = SDL_GPU_TEXTURETYPE_2D;
+    createinfo.format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
+    createinfo.width = drawablew;
+    createinfo.height = drawableh;
+    createinfo.layer_count_or_depth = 1;
+    createinfo.num_levels = 1;
+    createinfo.sample_count = SDL_GPU_SAMPLECOUNT_1;
+    createinfo.usage = SDL_GPU_TEXTUREUSAGE_SAMPLER | SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_WRITE;
+    createinfo.props = 0;
+
+    SDL_GPUTexture* result = SDL_CreateGPUTexture(g_GPUDevice, &createinfo);
+    CHECK_CREATE(result, "Post Process Texture")
     return result;
 }
 
@@ -520,11 +562,6 @@ Texture rCreateTexture2DArray(int width, int height, int layers, void* data, SDL
                               TexFlags flags, SDL_GPUTextureUsageFlags usage, const char* label)
 {
     return rCreateTextureEx(width, height, layers, data, format, usage, flags, label);
-}
-
-void rUpdateTexture(Texture texture, void* data)
-{
-
 }
 
 void UploadTextureRegion(Texture texture, u32 layer, u32 x, u32 y, u32 width, u32 height, u32 srcWidth, u32 srcHeight, const void* data)

@@ -392,6 +392,10 @@ purefn int Mini32(int a, int b) { return a < b ? a : b; }
 
 purefn int Maxi32(int a, int b) { return a > b ? a : b; }
 
+purefn uint32_t Minu32(uint32_t a, uint32_t b) { return a < b ? a : b; }
+
+purefn uint32_t Maxu32(uint32_t a, uint32_t b) { return a > b ? a : b; }
+
 purefn uint64_t Minu64(uint64_t a, uint64_t b) { return a < b ? a : b; }
 
 purefn uint64_t Maxu64(uint64_t a, uint64_t b) { return a > b ? a : b; }

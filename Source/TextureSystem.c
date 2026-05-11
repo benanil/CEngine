@@ -17,15 +17,6 @@ extern SDL_GPUDevice* g_GPUDevice;
 
 enum { TextureClass_Albedo, TextureClass_Normal, TextureClass_MetallicRoughness, TextureClass_Count };
 
-static TextureDescriptor gTextureDescriptors[MAX_TEXTURE_DESCRIPTORS];
-static MaterialGPU gMaterials[MAX_GPU_MATERIALS];
-static u32 gAlbedoDescriptor[MAX_SCENE_TEXTURES];
-static u32 gNormalDescriptor[MAX_SCENE_TEXTURES];
-static u32 gMetallicRoughnessDescriptor[MAX_SCENE_TEXTURES];
-
-static SDL_GPUComputePipeline* gCopyRGBAPipeline;
-static SDL_GPUComputePipeline* gCopyRGPipeline;
-
 typedef struct PageCopyRequest_
 {
     u32 textureClass;
@@ -33,7 +24,19 @@ typedef struct PageCopyRequest_
     u32 page;
     u32 x, y;
     u32 width, height;
+    u32 padding;
 } PageCopyRequest;
+
+static TextureDescriptor gTextureDescriptors[MAX_TEXTURE_DESCRIPTORS];
+static MaterialGPU gMaterials[MAX_GPU_MATERIALS];
+static u32 gAlbedoDescriptor[MAX_SCENE_TEXTURES];
+static u32 gNormalDescriptor[MAX_SCENE_TEXTURES];
+static u32 gMetallicRoughnessDescriptor[MAX_SCENE_TEXTURES];
+static PageCopyRequest gCopyRequests[MAX_TEXTURE_DESCRIPTORS];
+
+static SDL_GPUComputePipeline* gCopyRGBAPipeline;
+static SDL_GPUComputePipeline* gCopyRGPipeline;
+static u32 gNumCopyRequests;
 
 static u32 MipCountForSize(u32 width, u32 height)
 {
@@ -46,9 +49,6 @@ static u32 MipCountForSize(u32 width, u32 height)
     }
     return levels;
 }
-
-static PageCopyRequest gCopyRequests[MAX_TEXTURE_DESCRIPTORS];
-static u32 gNumCopyRequests;
 
 static void InitCopyPipelines(void)
 {
@@ -99,10 +99,10 @@ static u32 AddDescriptor(u32 pageIndex, float x, float y, float w, float h)
     TextureDescriptor* desc = &gTextureDescriptors[idx];
     desc->pageIndex = pageIndex;
     desc->flags = 0;
-    desc->uvScale[0] = w / (float)TEXTURE_PAGE_SIZE;
-    desc->uvScale[1] = h / (float)TEXTURE_PAGE_SIZE;
-    desc->uvBias[0] = x / (float)TEXTURE_PAGE_SIZE;
-    desc->uvBias[1] = y / (float)TEXTURE_PAGE_SIZE;
+    desc->uvScale.x = w / (float)TEXTURE_PAGE_SIZE;
+    desc->uvScale.y = h / (float)TEXTURE_PAGE_SIZE;
+    desc->uvBias.x = x / (float)TEXTURE_PAGE_SIZE;
+    desc->uvBias.y = y / (float)TEXTURE_PAGE_SIZE;
     return idx;
 }
 
@@ -155,7 +155,7 @@ static bool ResolveGlobalImageIndex(const SceneBundle* bundle, u32 imageOffset, 
     return true;
 }
 
-static void QueuePackedTextureCopy(u32 textureClass, u32 sourceIndex, Texture* src, u32 page, u32 x, u32 y)
+static void QueuePackedTextureCopy(u32 textureClass, u32 sourceIndex, Texture* src, u32 page, u32 x, u32 y, u32 padding)
 {
     if (!src || !src->handle || src->width <= 0 || src->height <= 0) return;
     if (gNumCopyRequests >= MAX_TEXTURE_DESCRIPTORS)
@@ -171,6 +171,7 @@ static void QueuePackedTextureCopy(u32 textureClass, u32 sourceIndex, Texture* s
     req->y = y;
     req->width = (u32)src->width;
     req->height = (u32)src->height;
+    req->padding = padding;
 }
 
 static void DispatchPageCopies(Texture* textures)
@@ -186,14 +187,25 @@ static void DispatchPageCopies(Texture* textures)
         Texture* dst = PageTextureForClass(req->textureClass);
         if (!src->handle || !dst->handle) continue;
 
-        u32 mipCount = MipCountForSize(req->width, req->height);
-        if (src->mipLevels > 0 && src->mipLevels < mipCount) mipCount = src->mipLevels;
-        for (u32 mip = 0; mip < mipCount; mip++)
+        u32 sourceMipCount = MipCountForSize(req->width, req->height);
+        if (src->mipLevels > 0 && src->mipLevels < sourceMipCount) sourceMipCount = src->mipLevels;
+        u32 pageMipCount = MipCountForSize(TEXTURE_PAGE_SIZE, TEXTURE_PAGE_SIZE);
+        for (u32 mip = 0; mip < pageMipCount; mip++)
         {
-            u32 mipWidth = req->width >> mip;
-            u32 mipHeight = req->height >> mip;
-            if (mipWidth == 0) mipWidth = 1;
-            if (mipHeight == 0) mipHeight = 1;
+            u32 sourceMip = mip < sourceMipCount ? mip : sourceMipCount - 1u;
+            u32 mipWidth  = Maxu32(req->width >> mip, 1u);
+            u32 mipHeight = Maxu32(req->height >> mip, 1u);
+            u32 sourceWidth  = Maxu32(req->width >> sourceMip, 1u);
+            u32 sourceHeight = Maxu32(req->height >> sourceMip, 1u);
+            u32 pageMipSize = TEXTURE_PAGE_SIZE >> mip;
+            if (pageMipSize == 0) pageMipSize = 1;
+            u32 innerX = req->x >> mip;
+            u32 innerY = req->y >> mip;
+            u32 gutter = req->padding && innerX > 0 && innerY > 0 &&
+                         (innerX + mipWidth) < pageMipSize &&
+                         (innerY + mipHeight) < pageMipSize ? 1u : 0u;
+            u32 copyWidth = mipWidth + gutter * 2u;
+            u32 copyHeight = mipHeight + gutter * 2u;
             SDL_GPUStorageTextureReadWriteBinding rwTexture = {
                 .texture = dst->handle,
                 .mip_level = mip,
@@ -206,14 +218,16 @@ static void DispatchPageCopies(Texture* textures)
                 .texture = src->handle,
                 .sampler = g_RenderState.sampler
             }, 1);
-            struct { u32 dstOffset[2]; u32 copySize[2]; u32 sourceMip; u32 pad; } params = {
-                { req->x >> mip, req->y >> mip },
-                { mipWidth, mipHeight },
-                mip,
-                0
+            struct { u32 dstOffset[2]; u32 copySize[2]; u32 sourceSize[2]; u32 sourceMip; u32 gutter; u32 channelMode; } params = {
+                { innerX - gutter, innerY - gutter },
+                { copyWidth, copyHeight },
+                { sourceWidth, sourceHeight },
+                sourceMip,
+                gutter,
+                req->textureClass == TextureClass_MetallicRoughness ? 1u : 0u
             };
             SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
-            SDL_DispatchGPUCompute(pass, (mipWidth + 7u) / 8u, (mipHeight + 7u) / 8u, 1);
+            SDL_DispatchGPUCompute(pass, (copyWidth + 7u) / 8u, (copyHeight + 7u) / 8u, 1);
             SDL_EndGPUComputePass(pass);
         }
     }
@@ -293,7 +307,7 @@ static void PackClass(Texture* textures, bool* wanted, u32 textureClass)
             u32 descIdx = AddDescriptor(page, (float)dstX, (float)dstY,
                                         (float)src->width, (float)src->height);
             descMap[imageIdx] = descIdx;
-            QueuePackedTextureCopy(textureClass, imageIdx, src, page, dstX, dstY);
+            QueuePackedTextureCopy(textureClass, imageIdx, src, page, dstX, dstY, pad);
             packedCount++;
         }
     }
@@ -305,8 +319,7 @@ static void PackClass(Texture* textures, bool* wanted, u32 textureClass)
 
 void TextureSystem_BuildPages(SceneBundle** bundles, const u32* imageOffsets, u32 numBundles, Texture* textures)
 {
-    double startTime = TimeSinceStartup();
-    bool wanted[TextureClass_Count][MAX_SCENE_TEXTURES] = {0};
+    double startTime = TimeSinceStartup();    bool wanted[TextureClass_Count][MAX_SCENE_TEXTURES] = {0};
     g_RenderState.numTextureDescriptors = 0;
     g_RenderState.numMaterials = 0;
     gNumCopyRequests = 0;
