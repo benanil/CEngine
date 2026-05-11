@@ -70,23 +70,33 @@ s32 InitScene()
     if (!SceneBundleCreateAnimations(gPaladin)) return 0;
     InitAnimationInstances();
 
+    SceneBundle* bundles[2] = { gPaladin, gSponza };
+    u32 imageOffsets[2] = { 0, (u32)gPaladin->numImages };
+    TextureSystem_BuildPages(bundles, imageOffsets, 2, g_RenderState.textures);
+
     u32 skinnedBundle = RenderSet_AddSceneBundle(&skinnedSet, gPaladin);
     u32 surfaceBundle = RenderSet_AddSceneBundle(&surfaceSet, gSponza);
 
-    for (s32 i = 0; i < 5; i++)
+    for (s32 i = 0; i < 50; i++)
     {
         u64 hash = MurmurHash(i + 123);
-        v128f pos = VecMulf(VecSetR(f32_(i & 63), 0.0f, f32_(i >> 6), 0.0f), 1.5f);
+        v128f pos = VecMulf(VecSetR(f32_(i & 7), 0.0f, f32_(i >> 3), 0.0f), 1.5f);
         v128f rot = VecSetR(0.0f, NextDouble01(hash) * 2.0f - 1.0f, 0.0f, NextDouble01(MurmurHash(hash)) * 2.0f - 1.0f);  // x=0, y=random, z=0, w=random
         v128f scale = VecSet1(0.01f);
         if (!RenderSet_AddScene(&skinnedSet, skinnedBundle, pos, rot, scale, true))
             break;
     }
     
-    RenderSet_AddScene(&surfaceSet, surfaceBundle, VecZero(), VecSetR(0.0f, 0.0f, 0.0f, 1.0f), VecSet1(0.1f), false);
+    for (s32 i = 0; i < 50; i++)
+    {
+        u64 hash = MurmurHash(i + 123);
+        v128f pos = VecMulf(VecSetR(f32_(i & 7), 0.0f, f32_(i >> 3), 0.0f), 25.5f);
+        v128f rot = VecSetR(0.0f, 0.0f, 0.0f, 1.0f);  // x=0, y=random, z=0, w=random
+        v128f scale = VecSet1(0.1f);
+        if (!RenderSet_AddScene(&surfaceSet, surfaceBundle, pos, rot, scale, false))
+            break;
+    }
     
-    RenderSet_AddScene(&surfaceSet, surfaceBundle, VecSetR(-50.0f, 0.0f, 25.0f, 0.0f), VecSetR(0.0f, 0.0f, 0.0f, 1.0f), VecSet1(0.1f), false);
-
     InitBuffers();
     return 1;
 }

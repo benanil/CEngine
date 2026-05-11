@@ -29,7 +29,9 @@ typedef struct PrimitiveGroup_
     u32 vertexOffset;
     u32 meshIndex;
     u32 primitiveIndex;
+    u32 materialIndex;
     u32 valid;
+    u32 padding;
     f16 aabbMin[4];
     f16 aabbMax[4];
 } PrimitiveGroup;

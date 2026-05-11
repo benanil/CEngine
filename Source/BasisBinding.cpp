@@ -196,4 +196,34 @@ SDL_GPUTexture* BasisuMakeImage(
     return result;
 }
 
+void* BasisuDecodeImageRGBA(
+    const void* basisu_data,
+    uint64_t size,
+    int* width,
+    int* height)
+{
+    basist::basisu_transcoder transcoder;
+    basist::basisu_image_info img_info;
+    transcoder.start_transcoding(basisu_data, (uint32_t)size);
+    transcoder.get_image_info(basisu_data, (uint32_t)size, img_info, 0);
+
+    uint32_t levelWidth = 0, levelHeight = 0, levelBlocks = 0;
+    transcoder.get_image_level_desc(basisu_data, (uint32_t)size, 0, 0, levelWidth, levelHeight, levelBlocks);
+
+    size_t outputSize = (size_t)levelWidth * (size_t)levelHeight * 4u;
+    void* output = AllocateTLSFGlobal(outputSize);
+    if (!output)
+        return nullptr;
+
+    bool ok = transcoder.transcode_image_level(basisu_data, (uint32_t)size, 0, 0, output,
+                                               (uint32_t)(outputSize / 4u),
+                                               basist::transcoder_texture_format::cTFRGBA32, 0);
+    if (!ok)
+        return nullptr;
+
+    *width = (int)levelWidth;
+    *height = (int)levelHeight;
+    return output;
+}
+
 } // extern c

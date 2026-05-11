@@ -319,8 +319,8 @@ static void ParseTexturesObj(sj_Value sjTextureObj, void* element, GLTFParseCont
     {
         char beforeChar = *key.end; *key.end = 0; char* name = key.start;
 
-        if (StrCMP16(key.start, "sampler"))     ParsePositiveNumber(key.start, &texture->sampler);
-        else if (StrCMP16(key.start, "source")) ParsePositiveNumber(key.start, &texture->source);
+        if (StrCMP16(key.start, "sampler"))     ParsePositiveNumber(val.start, &texture->sampler);
+        else if (StrCMP16(key.start, "source")) ParsePositiveNumber(val.start, &texture->source);
         else if (StrCMP16(key.start, "name"))   texture->name = CopySJString(val, ctx->allocator);
         else AX_LOG("unknown: %s ", key.start);
         

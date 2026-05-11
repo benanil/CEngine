@@ -52,9 +52,9 @@ void GraphicsInit(bool msaa)
     VkPhysicalDeviceVulkan12Features vk12_features = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
         .pNext = NULL,
-        .shaderFloat16 = VK_TRUE,
-        .shaderSubgroupExtendedTypes = VK_TRUE,
-        .subgroupBroadcastDynamicId = VK_TRUE,
+        .shaderFloat16 = VK_TRUE
+        // .shaderSubgroupExtendedTypes = VK_TRUE,
+        // .subgroupBroadcastDynamicId  = VK_TRUE,
     };
 
     VkPhysicalDeviceVulkan11Features vk11_features = {
@@ -312,6 +312,8 @@ Texture rImportTexture(const char* path, TexFlags flags, const char* label)
     defTexture.width  = 32;
     defTexture.height = 32;
     defTexture.handle = 0;
+    defTexture.type = 0;
+    defTexture.mipLevels = 1;
 
     if (!FileExist(path)) {
         AX_ERROR("image is not exist, using default texture! %s", path);
@@ -352,7 +354,8 @@ Texture rImportTexture(const char* path, TexFlags flags, const char* label)
         MemCopy(image, textureLoadBuffer, numBytes);
         ArenaPopGlobal(numBytes);
     }
-    Texture texture = rCreateTexture(width, height, image, numCompToFormat[channels], flags, label); 
+    Texture texture = rCreateTexture(width, height, image, numCompToFormat[channels], flags, 0, label); 
+    texture.type = 0;
     
     bool delBuff = (flags & TexFlags_DontDeleteCPUBuffer) == 0;
     if (delBuff)
@@ -378,82 +381,201 @@ static u64 CalcMipBytes(u32 width, u32 height, u32 bpp, u32 mipLevels)
     return total;
 }
 
-Texture rCreateTexture(int width, int height, void* data, SDL_GPUTextureFormat format, TexFlags flags, const char* label)
+static Texture rCreateTextureEx(
+    int width,
+    int height,
+    int layers,
+    void* data,
+    SDL_GPUTextureFormat format,
+    SDL_GPUTextureUsageFlags usage,
+    TexFlags flags,
+    const char* label)
 {
-    SDL_GPUTextureCreateInfo texDesc;
-    texDesc.type                 = SDL_GPU_TEXTURETYPE_2D;
-    texDesc.format               = format;
-    texDesc.width                = width;
-    texDesc.height               = height;
-    texDesc.layer_count_or_depth = 1;
-    texDesc.sample_count         = SDL_GPU_SAMPLECOUNT_1;
-    texDesc.usage                = SDL_GPU_TEXTUREUSAGE_SAMPLER;
-    texDesc.props                = 0;
+    bool isArray = layers > 1;
+
+    u32 mipLevels = 1;
+    if (flags & TexFlags_MipMap)
+    {
+        u32 maxDim = (u32)(width > height ? width : height);
+        mipLevels = Log2u32(maxDim) + 1;
+    }
     
-    if (!!(flags & TexFlags_MipMap))
-        texDesc.num_levels = Clampi32((Log2u32((unsigned)width) >> 1)-1, 1, 8);
-    else
-        texDesc.num_levels = 1;
-        
-    Texture res; 
-    res.width = width;
+    SDL_GPUTextureCreateInfo texDesc = {
+        .type                 = isArray ? SDL_GPU_TEXTURETYPE_2D_ARRAY : SDL_GPU_TEXTURETYPE_2D,
+        .format               = format,
+        .width                = (u32)width,
+        .height               = (u32)height,
+        .layer_count_or_depth = (u32)layers,
+        .num_levels           = mipLevels,
+        .sample_count         = SDL_GPU_SAMPLECOUNT_1,
+        .usage                = usage,
+        .props                = SDL_CreateProperties()
+    };
+
+    if (label)
+        SDL_SetStringProperty(texDesc.props, SDL_PROP_GPU_TEXTURE_CREATE_NAME_STRING, label);
+
+    Texture res = {0};
+    res.width  = width;
     res.height = height;
-    res.handle = SDL_CreateGPUTexture(g_GPUDevice, &texDesc);
     res.format = format;
     res.buffer = data;
+    res.mipLevels = mipLevels;
+    res.handle = SDL_CreateGPUTexture(g_GPUDevice, &texDesc);
+
+    SDL_DestroyProperties(texDesc.props);
+
+    if (!res.handle)
+    {
+        AX_WARN("SDL_CreateGPUTexture failed!");
+        return res;
+    }
 
     if (data)
     {
-        SDL_GPUCommandBuffer* uploadCmdBuf = SDL_AcquireGPUCommandBuffer(g_GPUDevice);
-        SDL_GPUCopyPass* copyPass = SDL_BeginGPUCopyPass(uploadCmdBuf);
-     
-        SDL_GPUTransferBufferCreateInfo transferBufferCreateInfo = {
+        u32 blockSize  = SDL_GPUTextureFormatTexelBlockSize(format);
+        u32 layerSize  = blockSize * (u32)width * (u32)height;
+        u32 uploadSize = layerSize * (u32)layers;
+
+        SDL_GPUTransferBufferCreateInfo transferDesc = {
             .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
-            .size  = SDL_GPUTextureFormatTexelBlockSize(format) * width * height
+            .size  = uploadSize
         };
 
-        SDL_GPUTransferBuffer* textureTransferBuffer = SDL_CreateGPUTransferBuffer(g_GPUDevice, &transferBufferCreateInfo);
-        Uint8* textureTransferPtr = (Uint8*)SDL_MapGPUTransferBuffer(g_GPUDevice, textureTransferBuffer, false);
-        MemCopy(textureTransferPtr, data, transferBufferCreateInfo.size);
-        SDL_UnmapGPUTransferBuffer(g_GPUDevice, textureTransferBuffer);
-        
-        SDL_GPUTextureRegion textureRegion = {
-            .texture = res.handle,
+        SDL_GPUTransferBuffer* transferBuffer = SDL_CreateGPUTransferBuffer(g_GPUDevice, &transferDesc);
+
+        Uint8* dst = (Uint8*)SDL_MapGPUTransferBuffer(g_GPUDevice, transferBuffer, false);
+
+        MemCopy(dst, data, uploadSize);
+
+        SDL_UnmapGPUTransferBuffer(g_GPUDevice, transferBuffer);
+
+        SDL_GPUCommandBuffer* cmd = SDL_AcquireGPUCommandBuffer(g_GPUDevice);
+        SDL_GPUCopyPass* copyPass = SDL_BeginGPUCopyPass(cmd);
+
+        SDL_GPUTextureTransferInfo transferInfo = {
+            .transfer_buffer = transferBuffer,
+            .offset          = 0,
+            .pixels_per_row  = (u32)width,
+            .rows_per_layer  = (u32)height
+        };
+
+        SDL_GPUTextureRegion region = {
+            .texture   = res.handle,
             .mip_level = 0,
-            .w = width,
-            .h = height,
-            .d = 1
+            .layer     = 0,
+            .x         = 0,
+            .y         = 0,
+            .z         = 0,
+            .w         = (u32)width,
+            .h         = (u32)height,
+            .d         = isArray ? 1 : (u32)layers
         };
 
-        SDL_GPUTextureTransferInfo textureTransferInfo = {
-            .transfer_buffer = textureTransferBuffer,
-            .offset = 0
-        };
+        if (isArray)
+        {
+            for (u32 layer = 0; layer < (u32)layers; layer++)
+            {
+                transferInfo.offset = layerSize * layer;
+                region.layer = layer;
+                region.d = 1;
+                SDL_UploadToGPUTexture(copyPass, &transferInfo, &region, false);
+            }
+        }
+        else
+        {
+            SDL_UploadToGPUTexture(copyPass, &transferInfo, &region, false);
+        }
 
-        SDL_UploadToGPUTexture(copyPass, &textureTransferInfo, &textureRegion, false);
         SDL_EndGPUCopyPass(copyPass);
-        
-        SDL_GPUFence* fence = SDL_SubmitGPUCommandBufferAndAcquireFence(uploadCmdBuf);
+
+        SDL_GPUFence* fence = SDL_SubmitGPUCommandBufferAndAcquireFence(cmd);
         SDL_WaitForGPUFences(g_GPUDevice, true, &fence, 1);
         SDL_ReleaseGPUFence(g_GPUDevice, fence);
-        SDL_ReleaseGPUTransferBuffer(g_GPUDevice, textureTransferBuffer);
+
+        SDL_ReleaseGPUTransferBuffer(g_GPUDevice, transferBuffer);
     }
 
-    if (data && !!(flags & TexFlags_MipMap))
+    if (data && (flags & TexFlags_MipMap))
     {
-        SDL_GPUCommandBuffer* mipmapCmdBuf = SDL_AcquireGPUCommandBuffer(g_GPUDevice);
-        SDL_GenerateMipmapsForGPUTexture(mipmapCmdBuf, res.handle);
-        SDL_GPUFence* fence = SDL_SubmitGPUCommandBufferAndAcquireFence(mipmapCmdBuf);
+        SDL_GPUCommandBuffer* cmd = SDL_AcquireGPUCommandBuffer(g_GPUDevice);
+
+        SDL_GenerateMipmapsForGPUTexture(cmd, res.handle);
+
+        SDL_GPUFence* fence = SDL_SubmitGPUCommandBufferAndAcquireFence(cmd);
         SDL_WaitForGPUFences(g_GPUDevice, true, &fence, 1);
-        SDL_ReleaseGPUFence(g_GPUDevice, fence); 
+        SDL_ReleaseGPUFence(g_GPUDevice, fence);
     }
 
     return res;
 }
 
+Texture rCreateTexture(int width, int height, void* data, SDL_GPUTextureFormat format,
+                       TexFlags flags, SDL_GPUTextureUsageFlags usage, const char* label)
+{
+    return rCreateTextureEx(width, height, 1, data, format, usage, flags, label);
+}
+
+Texture rCreateTexture2DArray(int width, int height, int layers, void* data, SDL_GPUTextureFormat format, 
+                              TexFlags flags, SDL_GPUTextureUsageFlags usage, const char* label)
+{
+    return rCreateTextureEx(width, height, layers, data, format, usage, flags, label);
+}
+
 void rUpdateTexture(Texture texture, void* data)
 {
 
+}
+
+void UploadTextureRegion(Texture texture, u32 layer, u32 x, u32 y, u32 width, u32 height, u32 srcWidth, u32 srcHeight, const void* data)
+{
+    if (!texture.handle || !data || width == 0 || height == 0) return;
+
+    u32 blockSize = SDL_GPUTextureFormatTexelBlockSize(texture.format);
+    SDL_GPUTransferBufferCreateInfo transferDesc = {
+        .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
+        .size  = (u32)(srcWidth * srcHeight * blockSize)
+    };
+    SDL_GPUTransferBuffer* transferBuffer = SDL_CreateGPUTransferBuffer(g_GPUDevice, &transferDesc);
+    Uint8* dst = (Uint8*)SDL_MapGPUTransferBuffer(g_GPUDevice, transferBuffer, false);
+    MemCopy(dst, data, transferDesc.size);
+    SDL_UnmapGPUTransferBuffer(g_GPUDevice, transferBuffer);
+
+    SDL_GPUCommandBuffer* cmd = SDL_AcquireGPUCommandBuffer(g_GPUDevice);
+    SDL_GPUCopyPass* copyPass = SDL_BeginGPUCopyPass(cmd);
+    SDL_GPUTextureTransferInfo transferInfo = {
+        .transfer_buffer = transferBuffer,
+        .offset = 0,
+        .pixels_per_row = srcWidth,
+        .rows_per_layer = srcHeight
+    };
+    SDL_GPUTextureRegion region = {
+        .texture = texture.handle,
+        .mip_level = 0,
+        .layer = layer,
+        .x = x,
+        .y = y,
+        .z = 0,
+        .w = width,
+        .h = height,
+        .d = 1
+    };
+    SDL_UploadToGPUTexture(copyPass, &transferInfo, &region, false);
+    SDL_EndGPUCopyPass(copyPass);
+    SDL_GPUFence* fence = SDL_SubmitGPUCommandBufferAndAcquireFence(cmd);
+    SDL_WaitForGPUFences(g_GPUDevice, true, &fence, 1);
+    SDL_ReleaseGPUFence(g_GPUDevice, fence);
+    SDL_ReleaseGPUTransferBuffer(g_GPUDevice, transferBuffer);
+}
+
+void GenerateTextureMips(Texture texture)
+{
+    if (!texture.handle) return;
+    SDL_GPUCommandBuffer* cmd = SDL_AcquireGPUCommandBuffer(g_GPUDevice);
+    SDL_GenerateMipmapsForGPUTexture(cmd, texture.handle);
+    SDL_GPUFence* fence = SDL_SubmitGPUCommandBufferAndAcquireFence(cmd);
+    SDL_WaitForGPUFences(g_GPUDevice, true, &fence, 1);
+    SDL_ReleaseGPUFence(g_GPUDevice, fence);
 }
 
 void rDeleteTexture(Texture texture)

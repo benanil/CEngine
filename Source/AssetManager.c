@@ -469,14 +469,17 @@ s32 LoadFBX(const u8* path, SceneBundle* fbxScene, f32 scale)
 
 void SaveSceneImages(SceneBundle* scene, const u8* savePath, bool deleteRemaining)
 {
-    u8 pathBuf[2048], baseDir[2048], name[512];
+    u8 pathBuf[2048], baseDir[2048], name[512], bdcPath[2048], tmpPath[2048];
 
     // .bdc path
-    s32 len = StringLengthSafe(savePath, sizeof(pathBuf));
-    SmallMemCpy(pathBuf, savePath, len);
-    ChangeExtension(pathBuf, len, "bdc");
+    s32 len = StringLengthSafe(savePath, sizeof(bdcPath));
+    SmallMemCpy(bdcPath, savePath, len);
+    ChangeExtension(bdcPath, len, "bdc");
+    s32 bdcLen = StringLengthSafe(bdcPath, sizeof(bdcPath));
+    SmallMemCpy(tmpPath, bdcPath, bdcLen);
+    SmallMemCpy(tmpPath + bdcLen, ".tmp", 5);
 
-    AFile file = AFileOpen(pathBuf, AOpenFlag_WriteText);
+    AFile file = AFileOpen(tmpPath, AOpenFlag_WriteText);
     GetBaseDir(savePath, baseDir);
 
     // write count
@@ -549,6 +552,8 @@ void SaveSceneImages(SceneBundle* scene, const u8* savePath, bool deleteRemainin
     }
 
     AFileClose(file);
+    RemoveFile(bdcPath);
+    RenameFile(tmpPath, bdcPath);
 }
 
 // result: 1 fine, 2 some file is not exist, 3 not enough images for scene
@@ -585,7 +590,7 @@ s32 LoadSceneImages(const u8* texturePath, Texture* textures, s32 numImages)
         if (pathLen <= 0)
         {
             AX_WARN("basis metadata ended early index:%d, file:%s", i, texturePath);
-            result = 2;
+            result = 3;
             break;
         }
 
@@ -620,8 +625,18 @@ s32 LoadSceneImages(const u8* texturePath, Texture* textures, s32 numImages)
         s32 isNormal =  textureType & 1;
         s32 isMetallicRoughness = (textureType >> 1) & 1;
 
+        textures[i].type = (u32)textureType;
+        textures[i].channels = (textureType & 3u) ? 2u : 4u;
+        textures[i].buffer = NULL;
         textures[i].handle = BasisuMakeImage(basisData, size, &textures[i].width, &textures[i].height, &textures[i].format,
                                              (u8)isNormal, (u8)isMetallicRoughness);
+        u32 maxDim = (u32)(textures[i].width > textures[i].height ? textures[i].width : textures[i].height);
+        textures[i].mipLevels = Mini32((s32)(Log2u32(maxDim) + 1), 8);
+        if (!textures[i].handle)
+        {
+            AX_WARN("basis gpu texture creation failed index:%d, path:%s", i, basisPath);
+            result = 2;
+        }
         ArenaPopGlobal(size);
     }
     AFileClose(file);
@@ -652,8 +667,16 @@ s32 LoadGLTFCached(const char* path, SceneBundle* scene, Texture* textures)
     }
     ChangeExtension(buffer, newLen, "bdc");
     s32 imageResult = LoadSceneImages(buffer, textures, scene->numImages);
-    if (imageResult == 0)
-        AX_WARN("scene image load failed: %s", buffer);
+    if (imageResult == 0 || imageResult == 3)
+    {
+        AX_WARN("scene image cache invalid, rebuilding: %s result=%d", buffer, imageResult);
+        SaveSceneImages(scene, buffer, false);
+        imageResult = LoadSceneImages(buffer, textures, scene->numImages);
+    }
+    else if (imageResult == 2)
+    {
+        AX_WARN("scene image cache has missing basis files, keeping metadata: %s", buffer);
+    }
     return result && (imageResult != 0);
 }
 
@@ -662,7 +685,7 @@ s32 LoadGLTFCached(const char* path, SceneBundle* scene, Texture* textures)
 /*//////////////////////////////////////////////////////////////////////////*/
 
 // ZSTD_CCtx* zstdCompressorCTX = NULL;
-const s32 ABMMeshVersion = 56;
+const s32 ABMMeshVersion = 57;
 
 u8 IsABMLastVersion(const u8* path)
 {

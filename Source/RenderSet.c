@@ -71,6 +71,7 @@ u32 RenderSet_AddSceneBundle(RenderSet* set, const SceneBundle* sceneBundle)
             group->vertexOffset   = 0;
             group->meshIndex      = m;
             group->primitiveIndex = p;
+            group->materialIndex  = (u32)(sceneBundle->materialOffset + primitive->material);
             group->entityOffset   = set->numEntities;
             Float4ToHalf4V((u64*)group->aabbMin, VecLoad(primitive->min));
             Float4ToHalf4V((u64*)group->aabbMax, VecLoad(primitive->max));

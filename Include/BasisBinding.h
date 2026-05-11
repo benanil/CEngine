@@ -20,6 +20,12 @@ SDL_GPUTexture* BasisuMakeImage(
     bool isNormal, 
     bool isMetallicRoughness);
 
+void* BasisuDecodeImageRGBA(
+    const void* basisu_data,
+    uint64_t size,
+    int* width,
+    int* height);
+
 
 #ifdef __cplusplus
 }

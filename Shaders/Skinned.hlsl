@@ -29,6 +29,7 @@ struct VSOutput
     float4    position  : SV_Position;
     f16_2_io texCoords : TEXCOORD0;
     f16_3_io normal    : NORMAL;
+    nointerpolation uint materialIndex : TEXCOORD1;
 };
 
 f16_3x4 LoadBone(uint idx)
@@ -78,16 +79,26 @@ VSOutput vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("Dra
     o.position  = mul(uViewProj, float4(float3(insScale * worldPos) + entity.position.xyz, 1.0));
     o.texCoords = input.aTexCoords;
     o.normal    = normalize(tbn[2]);
+    o.materialIndex = group.materialIndex;
     return o;
 }
 
 
-Texture2D<float4> Texture : register(t0, space2);
-SamplerState Sampler      : register(s0, space2);
+Texture2DArray<float4> AlbedoPages            : register(t0, space2);
+Texture2DArray<float2> NormalPages            : register(t1, space2);
+Texture2DArray<float2> MetallicRoughnessPages : register(t2, space2);
+SamplerState Sampler                         : register(s0, space2);
+
+StructuredBuffer<MaterialGPU>        sMaterials          : register(t3, space2);
+StructuredBuffer<TextureDescriptor>  sTextureDescriptors : register(t4, space2);
 
 float4 frag(VSOutput input) : SV_Target0
 {
     f16_3 sunDir = f16_3(0.5, -0.5, 0.0f);
     f16_io ndl = dot(input.normal, -sunDir);
-    return Texture.Sample(Sampler, input.texCoords) * max(ndl, 0.1);
+    MaterialGPU material = sMaterials[input.materialIndex];
+    TextureDescriptor albedo = sTextureDescriptors[material.albedoDescriptor];
+    float2 repeatUV = frac(float2(input.texCoords));
+    float2 atlasUV = albedo.uvBias + lerp(float2(0.5f / 4096.0f, 0.5f / 4096.0f), albedo.uvScale - float2(0.5f / 4096.0f, 0.5f / 4096.0f), repeatUV);
+    return AlbedoPages.Sample(Sampler, float3(atlasUV, albedo.pageIndex)) * max(ndl, 0.1);
 }

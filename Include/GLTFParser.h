@@ -325,6 +325,8 @@ typedef struct SceneBundle_
     int totalVertices;
     int totalIndices;
     float scale;
+    int imageOffset;
+    int materialOffset;
 
     GLTFBuffer* buffers;
 

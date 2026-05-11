@@ -385,6 +385,12 @@
 					<File>
 						<Path>Shaders/Surface.hlsl</Path>
 					</File>
+					<File>
+						<Path>Shaders/TexturePageCopyRG.hlsl</Path>
+					</File>
+					<File>
+						<Path>Shaders/TexturePageCopyRGBA.hlsl</Path>
+					</File>
 				</Children>
 			</Folder>
 			<Folder>
@@ -443,6 +449,9 @@
 					</File>
 					<File>
 						<Path>Source/RenderSet.c</Path>
+					</File>
+					<File>
+						<Path>Source/TextureSystem.c</Path>
 					</File>
 				</Children>
 			</Folder>

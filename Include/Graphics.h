@@ -11,6 +11,12 @@
 #define MAX_VERTEX 1000000
 #define MAX_INDEX (MAX_VERTEX * 5)
 
+#define TEXTURE_PAGE_SIZE 4096
+#define TEXTURE_PAGE_LAYERS 4
+#define MAX_SCENE_TEXTURES 512
+#define MAX_TEXTURE_DESCRIPTORS 1024
+#define MAX_GPU_MATERIALS 1024
+
 #if defined(__cplusplus)
 extern "C" {
 #endif
@@ -19,17 +25,8 @@ enum TexFlags_
 {
     TexFlags_None                = 0,
     TexFlags_MipMap              = 1,
-    TexFlags_Compressed          = 2,
-    TexFlags_ClampToEdge         = 4,
-    TexFlags_Nearest             = 8,
-    TexFlags_Linear              = 16, // default linear in desktop platforms
-    TexFlags_DontDeleteCPUBuffer = 32,
-    TexFlags_DynamicUpdate       = 64, // the image content is updated infrequently by the CPU
-    TexFlags_StreamUpdate        = 128, // the image content is updated each frame by the CPU via
-    TexFlags_RenderAttachment    = 256,
-    TexFlags_StorageAttachment   = 512,
-    // no filtering or wrapping
-    TexFlags_RawData     = TexFlags_Nearest | TexFlags_ClampToEdge
+    TexFlags_DontDeleteCPUBuffer = 2,
+
 };
 typedef s32 TexFlags;
 
@@ -113,7 +110,29 @@ typedef struct Texture_
     SDL_GPUTexture* handle;
     SDL_GPUTextureFormat format;
     void* buffer;
+    u32 channels;
+    u32 type;
+    u32 mipLevels;
 } Texture;
+
+typedef struct TextureDescriptor_
+{
+    u32 pageIndex;
+    u32 flags;
+    float uvScale[2];
+    float uvBias[2];
+} TextureDescriptor;
+
+typedef struct MaterialGPU_
+{
+    u32 albedoDescriptor;
+    u32 normalDescriptor;
+    u32 metallicRoughnessDescriptor;
+    u32 flags;
+    u32 baseColorFactor;
+    u32 metallicRoughnessFactor;
+    u32 padding[2];
+} MaterialGPU;
 
 typedef struct WindowState
 {
@@ -158,7 +177,14 @@ typedef struct RenderState
     SDL_GPUBuffer*           jointsBuffer;
     SDL_GPUBuffer*           invBindBuffer;
     SDL_GPUBuffer*           animInstanceBuffer;
-    Texture textures[128];
+    Texture textures[MAX_SCENE_TEXTURES];
+    Texture albedoPages;
+    Texture normalPages;
+    Texture metallicRoughnessPages;
+    SDL_GPUBuffer*           textureDescriptorBuffer;
+    SDL_GPUBuffer*           materialBuffer;
+    u32                      numTextureDescriptors;
+    u32                      numMaterials;
 } RenderState;
 
 
@@ -188,11 +214,21 @@ void GraphicsDestroy();
 
 Texture rImportTexture(const char* path, TexFlags flags, const char* label);
 
-Texture rCreateTexture(s32 width, s32 height, void* data, SDL_PixelFormat format, TexFlags flags, const char* label);
+Texture rCreateTexture(int width, int height, void* data, SDL_GPUTextureFormat format,
+                       TexFlags flags, SDL_GPUTextureUsageFlags usage, const char* label);
+
+Texture rCreateTexture2DArray(int width, int height, int layers, void* data, SDL_GPUTextureFormat format, 
+                              TexFlags flags, SDL_GPUTextureUsageFlags usage, const char* label);
 
 void rDeleteTexture(Texture texture);
 
 void rUpdateTexture(Texture texture, void* data);
+
+void TextureSystem_BuildPages(SceneBundle** bundles, const u32* imageOffsets, u32 numBundles, Texture* textures);
+
+void UploadTextureRegion(Texture texture, u32 layer, u32 x, u32 y, u32 width, u32 height, u32 srcWidth, u32 srcHeight, const void* data);
+
+void GenerateTextureMips(Texture texture);
 
 s32 GraphicsTypeToSize(GraphicType type);
 

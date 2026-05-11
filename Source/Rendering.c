@@ -136,23 +136,10 @@ static void InitSamplers()
         .address_mode_v  = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
         .address_mode_w  = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
         .min_lod         = 0.0f,
-        .max_lod         = 8.0f
+        .max_lod         = 12.0f
     });
 }
 
-static void InitSkinedPipeline();
-static void InitSurfacePipeline();
-static void InitLinePipeline();
-
-void RendererInit()
-{
-    InitSamplers();
-    InitSkinedPipeline();
-    InitSurfacePipeline();
-    InitLinePipeline();
-    InitAnimationComputePipeline();
-    InitCullDrawArgsComputePipeline();
-}
 
 static void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet,
                                         RenderSetBuffers* buffers,
@@ -250,11 +237,18 @@ static void RenderScene(SDL_GPUCommandBuffer* cmd,
                         SDL_GPUDepthStencilTargetInfo* depth_target,
                         mat4x4 viewProj)
 {
-    SDL_GPUTexture* tex = g_RenderState.textures[gPaladin->materials[0].baseColorTexture.index].handle;
-
     /* Set up the bindings */
     SDL_GPUBufferBinding vertex_binding = { g_RenderState.skinnedVertexBuffer, 0 };
     SDL_GPUBufferBinding index_binding  = { g_RenderState.indexBuffer , 0 };
+    SDL_GPUTextureSamplerBinding pageSamplers[3] = {
+        { .texture = g_RenderState.albedoPages.handle, .sampler = g_RenderState.sampler },
+        { .texture = g_RenderState.normalPages.handle, .sampler = g_RenderState.sampler },
+        { .texture = g_RenderState.metallicRoughnessPages.handle, .sampler = g_RenderState.sampler }
+    };
+    SDL_GPUBuffer* fragmentBuffers[2] = {
+        g_RenderState.materialBuffer,
+        g_RenderState.textureDescriptorBuffer
+    };
 
     SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmd, color_target, 1, depth_target);
     SDL_BindGPUGraphicsPipeline(pass, g_RenderState.skinnedPipeline);
@@ -269,18 +263,14 @@ static void RenderScene(SDL_GPUCommandBuffer* cmd,
     };
     SDL_BindGPUVertexStorageBuffers(pass, 0, buffers, SDL_arraysize(buffers));
     
-    SDL_BindGPUFragmentSamplers(pass, 0, &(SDL_GPUTextureSamplerBinding){
-        .texture = tex, 
-        .sampler = g_RenderState.sampler
-    }, 1);
+    SDL_BindGPUFragmentSamplers(pass, 0, pageSamplers, SDL_arraysize(pageSamplers));
+    SDL_BindGPUFragmentStorageBuffers(pass, 0, fragmentBuffers, SDL_arraysize(fragmentBuffers));
     
     SDL_PushGPUVertexUniformData(cmd, 0, &viewProj, sizeof(viewProj));
     SDL_DrawGPUIndexedPrimitivesIndirect(pass, g_RenderState.skinnedBuffers.drawArgs, 0, skinnedSet.numGroups);
 
     if (surfaceSet.numGroups > 0)
     {
-        tex = g_RenderState.textures[15].handle;
-
         SDL_BindGPUGraphicsPipeline(pass, g_RenderState.surfacePipeline);
         vertex_binding.buffer = g_RenderState.surfaceVertexBuffer;
         vertex_binding.offset = 0;
@@ -293,10 +283,8 @@ static void RenderScene(SDL_GPUCommandBuffer* cmd,
             g_RenderState.surfaceBuffers.drawDenseIndices
         };
         SDL_BindGPUVertexStorageBuffers(pass, 0, surfaceBuffers, SDL_arraysize(surfaceBuffers));
-        SDL_BindGPUFragmentSamplers(pass, 0, &(SDL_GPUTextureSamplerBinding){
-            .texture = tex,
-            .sampler = g_RenderState.sampler
-        }, 1);
+        SDL_BindGPUFragmentSamplers(pass, 0, pageSamplers, SDL_arraysize(pageSamplers));
+        SDL_BindGPUFragmentStorageBuffers(pass, 0, fragmentBuffers, SDL_arraysize(fragmentBuffers));
         SDL_PushGPUVertexUniformData(cmd, 0, &viewProj, sizeof(viewProj));
         SDL_DrawGPUIndexedPrimitivesIndirect(pass, g_RenderState.surfaceBuffers.drawArgs, 0, surfaceSet.numGroups);
     }
@@ -504,8 +492,8 @@ static void InitSkinedPipeline()
         .format              = SDL_GetGPUShaderFormats(g_GPUDevice),
         .code                = Shaders_SkinnedFrag_spv,
         .code_size           = sizeof(Shaders_SkinnedFrag_spv),
-        .num_samplers        = 1,
-        .num_storage_buffers = 0,
+        .num_samplers        = 3,
+        .num_storage_buffers = 2,
         .stage               = SDL_GPU_SHADERSTAGE_FRAGMENT,
         .entrypoint          = "frag"
     });
@@ -576,8 +564,8 @@ static void InitSurfacePipeline()
         .format              = SDL_GetGPUShaderFormats(g_GPUDevice),
         .code                = Shaders_SurfaceFrag_spv,
         .code_size           = sizeof(Shaders_SurfaceFrag_spv),
-        .num_samplers        = 1,
-        .num_storage_buffers = 0,
+        .num_samplers        = 3,
+        .num_storage_buffers = 2,
         .stage               = SDL_GPU_SHADERSTAGE_FRAGMENT,
         .entrypoint          = "frag"
     });
@@ -627,6 +615,16 @@ static void InitSurfacePipeline()
     SDL_ReleaseGPUShader(g_GPUDevice, fragment_shader);
 }
 
+void RendererInit()
+{
+    InitSamplers();
+    InitSkinedPipeline();
+    InitSurfacePipeline();
+    InitLinePipeline();
+    InitAnimationComputePipeline();
+    InitCullDrawArgsComputePipeline();
+}
+
 static void DestroyRenderSetBuffers(RenderSetBuffers* buffers)
 {
     if (buffers->entity)           SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->entity);
@@ -648,6 +646,11 @@ static void DestroyPipeline()
     if (g_RenderState.skinnedVertexBuffer) SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.skinnedVertexBuffer);
     if (g_RenderState.surfaceVertexBuffer) SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.surfaceVertexBuffer);
     if (g_RenderState.indexBuffer) SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.indexBuffer);
+    if (g_RenderState.textureDescriptorBuffer) SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.textureDescriptorBuffer);
+    if (g_RenderState.materialBuffer) SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.materialBuffer);
+    if (g_RenderState.albedoPages.handle) SDL_ReleaseGPUTexture(g_GPUDevice, g_RenderState.albedoPages.handle);
+    if (g_RenderState.normalPages.handle) SDL_ReleaseGPUTexture(g_GPUDevice, g_RenderState.normalPages.handle);
+    if (g_RenderState.metallicRoughnessPages.handle) SDL_ReleaseGPUTexture(g_GPUDevice, g_RenderState.metallicRoughnessPages.handle);
     if (g_RenderState.skinnedPipeline)     SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.skinnedPipeline);
     if (g_RenderState.surfacePipeline)     SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.surfacePipeline);
     if (g_AnimComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_AnimComputePipeline);

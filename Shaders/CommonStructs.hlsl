@@ -44,10 +44,31 @@ typedef struct PrimitiveGroup_
     uint vertexOffset;
     uint meshIndex;
     uint primitiveIndex;
+    uint materialIndex;
     uint valid;
+    uint padding;
     uint2 aabbMin;
     uint2 aabbMax;
 } PrimitiveGroup;
+
+typedef struct TextureDescriptor_
+{
+    uint pageIndex;
+    uint flags;
+    float2 uvScale;
+    float2 uvBias;
+} TextureDescriptor;
+
+typedef struct MaterialGPU_
+{
+    uint albedoDescriptor;
+    uint normalDescriptor;
+    uint metallicRoughnessDescriptor;
+    uint flags;
+    uint baseColorFactor;
+    uint metallicRoughnessFactor;
+    uint2 padding;
+} MaterialGPU;
 
 typedef struct LineVertex_
 {
