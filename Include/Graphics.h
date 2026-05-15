@@ -110,6 +110,7 @@ typedef struct Texture_
     SDL_GPUTexture* handle;
     SDL_GPUTextureFormat format;
     void* buffer;
+    u64 bufferSize;
     u32 channels;
     u32 type;
     u32 mipLevels;

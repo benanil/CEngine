@@ -16,6 +16,7 @@ extern "C" {
 #define BASIS_FLAG_NORMAL_MAP     0x04   // Input is a normal map (disable sRGB, renormalize)
 #define BASIS_FLAG_NO_MIPMAPS     0x08   // Disable automatic mipmap generation
 #define BASIS_FLAG_Y_FLIP         0x10   // Flip image vertically before compression
+#define BASIS_FLAG_METALLIC_ROUGHNESS 0x20
 
 // Quality preset for fast/slow trade-off (used when quality level is not set)
 #define BASIS_QUALITY_FASTEST     0

@@ -1,7 +1,20 @@
 
 #include <SDL3/SDL_gpu.h>
 #include "Include/Memory.h"
+#include "Include/BasisBinding.h"
 #include "Extern/basis_universal/transcoder/basisu_transcoder.h"
+
+static basist::transcoder_texture_format SDLFormatToBasisTranscoderFormat(SDL_GPUTextureFormat format)
+{
+    switch (format)
+    {
+        case SDL_GPU_TEXTUREFORMAT_BC5_RG_UNORM:   return basist::transcoder_texture_format::cTFBC5_RG;
+        case SDL_GPU_TEXTUREFORMAT_BC7_RGBA_UNORM: return basist::transcoder_texture_format::cTFBC7_RGBA;
+        case SDL_GPU_TEXTUREFORMAT_ASTC_4x4_UNORM: return basist::transcoder_texture_format::cTFASTC_4x4_RGBA;
+        case SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM: return basist::transcoder_texture_format::cTFRGBA32;
+        default: return basist::transcoder_texture_format::cTFTotalTextureFormats;
+    }
+}
 
 static basist::transcoder_texture_format BasisTexToTranscoderFormat(basist::basis_tex_format fmt, 
                                                                     bool hasAlpha, bool isNormal, bool isMetalicRoughness)
@@ -17,8 +30,10 @@ static basist::transcoder_texture_format BasisTexToTranscoderFormat(basist::basi
     else if (fmt == basist::basis_tex_format::cUASTC_LDR_4x4)
     {
         #ifdef __ANDROID__
-        return basist::transcoder_texture_format::cTFASTC_4x4_RGBA
+        return basist::transcoder_texture_format::cTFASTC_4x4_RGBA;
         #else
+        if (isNormal || isMetalicRoughness)
+            return basist::transcoder_texture_format::cTFBC5_RG;
         return  basist::transcoder_texture_format::cTFBC7_RGBA;
         #endif
     }
@@ -63,6 +78,74 @@ void BasisuShutdown(void) {
 
 }
 
+bool BasisuTranscodeImage(
+    const void* basisu_data,
+    uint64_t size,
+    SDL_GPUTextureFormat targetFormat,
+    BasisuTranscodedImage* outImage)
+{
+    if (!basisu_data || !size || !outImage) return false;
+
+    SDL_memset(outImage, 0, sizeof(*outImage));
+
+    basist::transcoder_texture_format fmt = SDLFormatToBasisTranscoderFormat(targetFormat);
+    if (fmt == basist::transcoder_texture_format::cTFTotalTextureFormats) return false;
+
+    basist::basisu_transcoder transcoder;
+    basist::basisu_image_info img_info;
+    if (!transcoder.start_transcoding(basisu_data, (uint32_t)size)) return false;
+    if (!transcoder.get_image_info(basisu_data, (uint32_t)size, img_info, 0)) return false;
+
+    uint32_t mipLevels = basisu::minimum(img_info.m_total_levels, (uint32_t)BASISU_MAX_TRANSCODED_MIPS);
+    uint32_t bytesPerBlock = basist::basis_get_bytes_per_block_or_pixel(fmt);
+    uint32_t dataSize = 0;
+
+    for (uint32_t i = 0; i < mipLevels; i++)
+    {
+        BasisuTranscodedLevel* level = &outImage->levels[i];
+        transcoder.get_image_level_desc(basisu_data, (uint32_t)size, 0, i,
+                                        level->width, level->height, level->blocks);
+        level->offset = dataSize;
+        level->size = level->blocks * bytesPerBlock;
+        dataSize += level->size;
+    }
+
+    void* data = AllocateTLSFGlobal(dataSize);
+    if (!data) return false;
+
+    uint8_t* ptr = (uint8_t*)data;
+    for (uint32_t i = 0; i < mipLevels; i++)
+    {
+        BasisuTranscodedLevel* level = &outImage->levels[i];
+        bool ok = transcoder.transcode_image_level(basisu_data, (uint32_t)size, 0, i,
+                                                   ptr + level->offset,
+                                                   level->size / bytesPerBlock,
+                                                   fmt, 0);
+        if (!ok)
+        {
+            DeAllocateTLSFGlobal(data);
+            SDL_memset(outImage, 0, sizeof(*outImage));
+            return false;
+        }
+    }
+
+    outImage->data = data;
+    outImage->dataSize = dataSize;
+    outImage->width = img_info.m_width;
+    outImage->height = img_info.m_height;
+    outImage->mipLevels = mipLevels;
+    outImage->bytesPerBlock = bytesPerBlock;
+    outImage->format = targetFormat;
+    return true;
+}
+
+void BasisuFreeTranscodedImage(BasisuTranscodedImage* image)
+{
+    if (!image) return;
+    if (image->data) DeAllocateTLSFGlobal(image->data);
+    SDL_memset(image, 0, sizeof(*image));
+}
+
 
 typedef struct ImageLevelDesc_
 {
@@ -75,6 +158,7 @@ SDL_GPUTexture* BasisuMakeImage(
     int* width,
     int* height, 
     SDL_GPUTextureFormat* format,
+    uint32_t* mipLevels,
     bool isNormal, 
     bool isMetallicRoughness) 
 {
@@ -188,6 +272,7 @@ SDL_GPUTexture* BasisuMakeImage(
     *width  = img_info.m_width;
     *height = img_info.m_height;
     *format = texDesc.format;
+    if (mipLevels) *mipLevels = texDesc.num_levels;
     return result;
 }
 

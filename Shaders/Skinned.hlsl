@@ -30,7 +30,7 @@ struct VSInput
 
 struct VSOutput
 {
-    float4    position  : SV_Position;
+    float4   position  : SV_Position;
     f16_2_io texCoords : TEXCOORD0;
     f16_3_io normal    : NORMAL;
     f16_3_io tangent   : TANGENT0;

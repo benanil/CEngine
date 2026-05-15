@@ -2,6 +2,7 @@
 #include "Extern/stb/stb_rect_pack.h"
 
 #include "Include/Graphics.h"
+#include "Include/BasisBinding.h"
 #include "Include/Memory.h"
 #include "Include/Platform.h"
 #include "Math/Half.h"
@@ -16,6 +17,8 @@ extern RenderState g_RenderState;
 extern SDL_GPUDevice* g_GPUDevice;
 
 enum { TextureClass_Albedo, TextureClass_Normal, TextureClass_MetallicRoughness, TextureClass_Count };
+enum { TextureDesc_DefaultAlbedo = 1u, TextureDesc_DefaultNormal = 2u, TextureDesc_DefaultMetallicRoughness = 4u };
+enum { CompressedPageAlign = 512u, CompressedPageMaxMips = 8u };
 
 typedef struct PageCopyRequest_
 {
@@ -106,6 +109,55 @@ static u32 AddDescriptor(u32 pageIndex, float x, float y, float w, float h)
     return idx;
 }
 
+static u32 AddDescriptorFlags(u32 pageIndex, float x, float y, float w, float h, u32 flags)
+{
+    u32 idx = AddDescriptor(pageIndex, x, y, w, h);
+    gTextureDescriptors[idx].flags = flags;
+    return idx;
+}
+
+static u32 AlignUpu32(u32 value, u32 align)
+{
+    return (value + align - 1u) & ~(align - 1u);
+}
+
+static bool IsBlockCompressedFormat(SDL_GPUTextureFormat format)
+{
+    return format == SDL_GPU_TEXTUREFORMAT_BC5_RG_UNORM ||
+           format == SDL_GPU_TEXTUREFORMAT_BC7_RGBA_UNORM ||
+           format == SDL_GPU_TEXTUREFORMAT_ASTC_4x4_UNORM;
+}
+
+static u32 CompressedMipBytes(SDL_GPUTextureFormat format, u32 width, u32 height)
+{
+    u32 blockSize = SDL_GPUTextureFormatTexelBlockSize(format);
+    u32 blocksX = (width + 3u) / 4u;
+    u32 blocksY = (height + 3u) / 4u;
+    return blocksX * blocksY * blockSize;
+}
+
+static SDL_GPUTextureFormat SelectAlbedoPageFormat(void)
+{
+#if defined(__ANDROID__)
+    SDL_GPUTextureFormat format = SDL_GPU_TEXTUREFORMAT_ASTC_4x4_UNORM;
+#else
+    SDL_GPUTextureFormat format = SDL_GPU_TEXTUREFORMAT_BC7_RGBA_UNORM;
+#endif
+    return SDL_GPUTextureSupportsFormat(g_GPUDevice, format, SDL_GPU_TEXTURETYPE_2D_ARRAY, SDL_GPU_TEXTUREUSAGE_SAMPLER) ?
+           format : SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
+}
+
+static SDL_GPUTextureFormat SelectRGPageFormat(void)
+{
+#if defined(__ANDROID__)
+    SDL_GPUTextureFormat format = SDL_GPU_TEXTUREFORMAT_ASTC_4x4_UNORM;
+#else
+    SDL_GPUTextureFormat format = SDL_GPU_TEXTUREFORMAT_BC5_RG_UNORM;
+#endif
+    return SDL_GPUTextureSupportsFormat(g_GPUDevice, format, SDL_GPU_TEXTURETYPE_2D_ARRAY, SDL_GPU_TEXTUREUSAGE_SAMPLER) ?
+           format : SDL_GPU_TEXTUREFORMAT_R8G8_UNORM;
+}
+
 static void UploadDefaultPages(void)
 {
     enum { DefaultSize = 16 };
@@ -174,6 +226,7 @@ static void QueuePackedTextureCopy(u32 textureClass, u32 sourceIndex, Texture* s
     req->padding = padding;
 }
 
+// non compressed
 static void DispatchPageCopies(Texture* textures)
 {
     if (gNumCopyRequests == 0) return;
@@ -235,6 +288,257 @@ static void DispatchPageCopies(Texture* textures)
     SDL_GPUFence* fence = SDL_SubmitGPUCommandBufferAndAcquireFence(cmd);
     SDL_WaitForGPUFences(g_GPUDevice, true, &fence, 1);
     SDL_ReleaseGPUFence(g_GPUDevice, fence);
+}
+
+typedef struct CompressedPageBuffers_
+{
+    SDL_GPUTextureFormat format;
+    u32 mipCount;
+    u8* data[TEXTURE_PAGE_LAYERS][CompressedPageMaxMips];
+    u32 size[CompressedPageMaxMips];
+} CompressedPageBuffers;
+
+static void FreeCompressedPageBuffers(CompressedPageBuffers* pages)
+{
+    for (u32 layer = 0; layer < TEXTURE_PAGE_LAYERS; layer++)
+        for (u32 mip = 0; mip < pages->mipCount; mip++)
+            if (pages->data[layer][mip]) DeAllocateTLSFGlobal(pages->data[layer][mip]);
+    SDL_memset(pages, 0, sizeof(*pages));
+}
+
+static bool AllocateCompressedPageBuffers(CompressedPageBuffers* pages, SDL_GPUTextureFormat format, u32 mipCount)
+{
+    SDL_memset(pages, 0, sizeof(*pages));
+    pages->format = format;
+    pages->mipCount = Mini32((s32)mipCount, CompressedPageMaxMips);
+    if (pages->mipCount == 0) pages->mipCount = 1;
+    for (u32 mip = 0; mip < pages->mipCount; mip++)
+    {
+        u32 mipSize = Maxu32(TEXTURE_PAGE_SIZE >> mip, 1u);
+        pages->size[mip] = CompressedMipBytes(format, mipSize, mipSize);
+        for (u32 layer = 0; layer < TEXTURE_PAGE_LAYERS; layer++)
+        {
+            pages->data[layer][mip] = (u8*)AllocZeroTLSFGlobal(1, pages->size[mip]);
+            if (!pages->data[layer][mip])
+            {
+                FreeCompressedPageBuffers(pages);
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+static bool CopyCompressedImageToPages(CompressedPageBuffers* pages, const Texture* src, u32 page, u32 x, u32 y)
+{
+    if (!src->buffer || src->bufferSize == 0) return false;
+
+    BasisuTranscodedImage image;
+    if (!BasisuTranscodeImage(src->buffer, src->bufferSize, pages->format, &image)) return false;
+
+    u32 bytesPerBlock = SDL_GPUTextureFormatTexelBlockSize(pages->format);
+    u32 mipCount = Mini32((s32)pages->mipCount, (s32)image.mipLevels);
+    for (u32 mip = 0; mip < mipCount; mip++)
+    {
+        BasisuTranscodedLevel* level = &image.levels[mip];
+        u32 mipPageSize = Maxu32(TEXTURE_PAGE_SIZE >> mip, 1u);
+        u32 dstX = x >> mip;
+        u32 dstY = y >> mip;
+        if ((dstX & 3u) || (dstY & 3u))
+        {
+            BasisuFreeTranscodedImage(&image);
+            return false;
+        }
+
+        u32 srcBlocksX = (level->width + 3u) / 4u;
+        u32 srcBlocksY = (level->height + 3u) / 4u;
+        u32 dstBlocksX = (mipPageSize + 3u) / 4u;
+        u32 dstBlockX = dstX / 4u;
+        u32 dstBlockY = dstY / 4u;
+        const u8* srcBlocks = (const u8*)image.data + level->offset;
+        u8* dstBlocks = pages->data[page][mip];
+
+        for (u32 row = 0; row < srcBlocksY; row++)
+        {
+            u32 dstOffset = ((dstBlockY + row) * dstBlocksX + dstBlockX) * bytesPerBlock;
+            u32 srcOffset = row * srcBlocksX * bytesPerBlock;
+            MemCopy(dstBlocks + dstOffset, srcBlocks + srcOffset, srcBlocksX * bytesPerBlock);
+        }
+    }
+
+    BasisuFreeTranscodedImage(&image);
+    return true;
+}
+
+static Texture CreateCompressedPageTexture(CompressedPageBuffers* pages, const char* label)
+{
+    Texture texture = {0};
+    texture.width = TEXTURE_PAGE_SIZE;
+    texture.height = TEXTURE_PAGE_SIZE;
+    texture.format = pages->format;
+    texture.mipLevels = pages->mipCount;
+
+    SDL_GPUTextureCreateInfo texDesc = {
+        .type = SDL_GPU_TEXTURETYPE_2D_ARRAY,
+        .format = pages->format,
+        .width = TEXTURE_PAGE_SIZE,
+        .height = TEXTURE_PAGE_SIZE,
+        .layer_count_or_depth = TEXTURE_PAGE_LAYERS,
+        .num_levels = pages->mipCount,
+        .sample_count = SDL_GPU_SAMPLECOUNT_1,
+        .usage = SDL_GPU_TEXTUREUSAGE_SAMPLER,
+        .props = SDL_CreateProperties()
+    };
+    if (label) SDL_SetStringProperty(texDesc.props, SDL_PROP_GPU_TEXTURE_CREATE_NAME_STRING, label);
+    texture.handle = SDL_CreateGPUTexture(g_GPUDevice, &texDesc);
+    SDL_DestroyProperties(texDesc.props);
+    if (!texture.handle) return texture;
+
+    u32 maxUploadSize = 0;
+    for (u32 mip = 0; mip < pages->mipCount; mip++)
+        if (pages->size[mip] > maxUploadSize) maxUploadSize = pages->size[mip];
+
+    SDL_GPUTransferBuffer* transferBuffer = SDL_CreateGPUTransferBuffer(g_GPUDevice, &(SDL_GPUTransferBufferCreateInfo){
+        .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
+        .size = maxUploadSize
+    });
+
+    for (u32 layer = 0; layer < TEXTURE_PAGE_LAYERS; layer++)
+    {
+        for (u32 mip = 0; mip < pages->mipCount; mip++)
+        {
+            u8* dst = (u8*)SDL_MapGPUTransferBuffer(g_GPUDevice, transferBuffer, false);
+            MemCopy(dst, pages->data[layer][mip], pages->size[mip]);
+            SDL_UnmapGPUTransferBuffer(g_GPUDevice, transferBuffer);
+
+            SDL_GPUCommandBuffer* cmd = SDL_AcquireGPUCommandBuffer(g_GPUDevice);
+            SDL_GPUCopyPass* copyPass = SDL_BeginGPUCopyPass(cmd);
+            u32 mipSize = Maxu32(TEXTURE_PAGE_SIZE >> mip, 1u);
+            SDL_GPUTextureTransferInfo transferInfo = { .transfer_buffer = transferBuffer, .offset = 0 };
+            SDL_GPUTextureRegion region = {
+                .texture = texture.handle,
+                .mip_level = mip,
+                .layer = layer,
+                .w = mipSize,
+                .h = mipSize,
+                .d = 1
+            };
+            SDL_UploadToGPUTexture(copyPass, &transferInfo, &region, false);
+            SDL_EndGPUCopyPass(copyPass);
+            SDL_GPUFence* fence = SDL_SubmitGPUCommandBufferAndAcquireFence(cmd);
+            SDL_WaitForGPUFences(g_GPUDevice, true, &fence, 1);
+            SDL_ReleaseGPUFence(g_GPUDevice, fence);
+        }
+    }
+    SDL_ReleaseGPUTransferBuffer(g_GPUDevice, transferBuffer);
+    return texture;
+}
+
+static void ReleaseTextureBasisBuffers(Texture* textures)
+{
+    for (u32 i = 0; i < MAX_SCENE_TEXTURES; i++)
+    {
+        if (textures[i].buffer && textures[i].bufferSize)
+        {
+            OSFree(textures[i].buffer, textures[i].bufferSize);
+            textures[i].buffer = NULL;
+            textures[i].bufferSize = 0;
+        }
+    }
+}
+
+static bool PackClassCompressed(Texture* textures, bool* wanted, u32 textureClass, SDL_GPUTextureFormat format, Texture* outTexture)
+{
+    if (!IsBlockCompressedFormat(format)) return false;
+
+    u32* descMap = DescriptorMapForClass(textureClass);
+    stbrp_rect rects[MAX_SCENE_TEXTURES];
+    bool packed[MAX_SCENE_TEXTURES] = {0};
+    u32 numRects = 0;
+    u32 packedCount = 0;
+    u32 classMipCount = CompressedPageMaxMips;
+
+    for (u32 i = 0; i < MAX_SCENE_TEXTURES; i++)
+    {
+        descMap[i] = textureClass + 1u;
+        if (!wanted[i] || !textures[i].buffer || textures[i].bufferSize == 0 || textures[i].width <= 0 || textures[i].height <= 0) continue;
+        if (textures[i].mipLevels > 0 && textures[i].mipLevels < classMipCount) classMipCount = textures[i].mipLevels;
+        u32 physicalW = AlignUpu32((u32)textures[i].width, CompressedPageAlign);
+        u32 physicalH = AlignUpu32((u32)textures[i].height, CompressedPageAlign);
+        if (physicalW > TEXTURE_PAGE_SIZE || physicalH > TEXTURE_PAGE_SIZE) continue;
+        rects[numRects].id = (int)i;
+        rects[numRects].w = (stbrp_coord)(physicalW / CompressedPageAlign);
+        rects[numRects].h = (stbrp_coord)(physicalH / CompressedPageAlign);
+        rects[numRects].was_packed = 0;
+        numRects++;
+    }
+
+    CompressedPageBuffers pages;
+    if (!AllocateCompressedPageBuffers(&pages, format, classMipCount)) return false;
+
+    u32 remaining = numRects;
+    for (u32 page = 0; page < TEXTURE_PAGE_LAYERS && remaining > 0; page++)
+    {
+        stbrp_rect pageRects[MAX_SCENE_TEXTURES + 1];
+        u32 pageRectCount = 0;
+        if (page == 0)
+        {
+            pageRects[pageRectCount].id = -1;
+            pageRects[pageRectCount].w = 1;
+            pageRects[pageRectCount].h = 1;
+            pageRects[pageRectCount].was_packed = 0;
+            pageRectCount++;
+        }
+        for (u32 r = 0; r < numRects; r++)
+            if (!packed[r]) pageRects[pageRectCount++] = rects[r];
+
+        stbrp_context ctx;
+        stbrp_node nodes[TEXTURE_PAGE_SIZE / CompressedPageAlign];
+        stbrp_init_target(&ctx, TEXTURE_PAGE_SIZE / CompressedPageAlign, TEXTURE_PAGE_SIZE / CompressedPageAlign,
+                          nodes, TEXTURE_PAGE_SIZE / CompressedPageAlign);
+        stbrp_pack_rects(&ctx, pageRects, (int)pageRectCount);
+
+        for (u32 pr = 0; pr < pageRectCount; pr++)
+        {
+            if (pageRects[pr].id < 0 || !pageRects[pr].was_packed) continue;
+            u32 imageIdx = (u32)pageRects[pr].id;
+            for (u32 r = 0; r < numRects; r++)
+            {
+                if ((u32)rects[r].id == imageIdx)
+                {
+                    packed[r] = true;
+                    remaining--;
+                    break;
+                }
+            }
+
+            Texture* src = &textures[imageIdx];
+            u32 dstX = (u32)pageRects[pr].x * CompressedPageAlign;
+            u32 dstY = (u32)pageRects[pr].y * CompressedPageAlign;
+            u32 descIdx = AddDescriptor(page, (float)dstX, (float)dstY, (float)src->width, (float)src->height);
+            descMap[imageIdx] = descIdx;
+            if (!CopyCompressedImageToPages(&pages, src, page, dstX, dstY))
+            {
+                FreeCompressedPageBuffers(&pages);
+                return false;
+            }
+            packedCount++;
+        }
+    }
+
+    if (remaining > 0)
+    {
+        AX_WARN("compressed texture page packer ran out of %d pages for class %d", TEXTURE_PAGE_LAYERS, textureClass);
+    }
+
+    u32 uploadedMipCount = pages.mipCount;
+    *outTexture = CreateCompressedPageTexture(&pages,
+        textureClass == TextureClass_Albedo ? "AlbedoPages" :
+        textureClass == TextureClass_Normal ? "NormalPages" : "MetallicRoughnessPages");
+    FreeCompressedPageBuffers(&pages);
+    if (!outTexture->handle) return false;
+    AX_LOG("compressed texture class %d packed %d/%d mips=%d", textureClass, packedCount, numRects, uploadedMipCount);
+    return true;
 }
 
 static void PackClass(Texture* textures, bool* wanted, u32 textureClass)
@@ -319,26 +623,16 @@ static void PackClass(Texture* textures, bool* wanted, u32 textureClass)
 
 void TextureSystem_BuildPages(SceneBundle** bundles, const u32* imageOffsets, u32 numBundles, Texture* textures)
 {
-    double startTime = TimeSinceStartup();    bool wanted[TextureClass_Count][MAX_SCENE_TEXTURES] = {0};
+    double startTime = TimeSinceStartup();    
+    bool wanted[TextureClass_Count][MAX_SCENE_TEXTURES] = {0};
     g_RenderState.numTextureDescriptors = 0;
     g_RenderState.numMaterials = 0;
     gNumCopyRequests = 0;
 
-    AddDescriptor(0, 0, 0, 16, 16); // reserved invalid
-    AddDescriptor(0, 0, 0, 16, 16); // default albedo
-    AddDescriptor(0, 0, 0, 16, 16); // default normal
-    AddDescriptor(0, 0, 0, 16, 16); // default metallic roughness
-    
-    const SDL_GPUTextureUsageFlags pageFlags = SDL_GPU_TEXTUREUSAGE_SAMPLER | SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_WRITE;
-
-    g_RenderState.albedoPages = rCreateTexture2DArray(TEXTURE_PAGE_SIZE, TEXTURE_PAGE_SIZE, TEXTURE_PAGE_LAYERS, NULL,
-                                                      SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM, TexFlags_MipMap, pageFlags, "AlbedoPages");
-    g_RenderState.normalPages = rCreateTexture2DArray(TEXTURE_PAGE_SIZE, TEXTURE_PAGE_SIZE, TEXTURE_PAGE_LAYERS, NULL,
-                                                      SDL_GPU_TEXTUREFORMAT_R8G8_UNORM, TexFlags_MipMap, pageFlags, "NormalPages");
-    g_RenderState.metallicRoughnessPages = rCreateTexture2DArray(TEXTURE_PAGE_SIZE, TEXTURE_PAGE_SIZE, TEXTURE_PAGE_LAYERS, NULL,
-                                                      SDL_GPU_TEXTUREFORMAT_R8G8_UNORM, TexFlags_MipMap, pageFlags, "MetallicRoughnessPages");
-
-    AX_LOG("texture pages created %.2fs", TimeSinceStartup() - startTime);
+    AddDescriptorFlags(0, 0, 0, 16, 16, TextureDesc_DefaultAlbedo); // reserved invalid
+    AddDescriptorFlags(0, 0, 0, 16, 16, TextureDesc_DefaultAlbedo); // default albedo
+    AddDescriptorFlags(0, 0, 0, 16, 16, TextureDesc_DefaultNormal); // default normal
+    AddDescriptorFlags(0, 0, 0, 16, 16, TextureDesc_DefaultMetallicRoughness); // default metallic roughness
 
     for (u32 b = 0; b < numBundles; b++)
     {
@@ -385,15 +679,56 @@ void TextureSystem_BuildPages(SceneBundle** bundles, const u32* imageOffsets, u3
         g_RenderState.numMaterials += (u32)bundle->numMaterials;
     }
 
-    PackClass(textures, wanted[TextureClass_Albedo], TextureClass_Albedo);
-    AX_LOG("albedo pages packed %.2fs", TimeSinceStartup() - startTime);
-    PackClass(textures, wanted[TextureClass_Normal], TextureClass_Normal);
-    AX_LOG("normal pages packed %.2fs", TimeSinceStartup() - startTime);
-    PackClass(textures, wanted[TextureClass_MetallicRoughness], TextureClass_MetallicRoughness);
-    AX_LOG("metallic roughness pages packed %.2fs", TimeSinceStartup() - startTime);
-    DispatchPageCopies(textures);
-    AX_LOG("texture page gpu copies complete requests=%d %.2fs", gNumCopyRequests, TimeSinceStartup() - startTime);
-    UploadDefaultPages();
+    SDL_GPUTextureFormat albedoFormat = SelectAlbedoPageFormat();
+    SDL_GPUTextureFormat rgFormat = SelectRGPageFormat();
+    bool compressedPages = IsBlockCompressedFormat(albedoFormat) && IsBlockCompressedFormat(rgFormat);
+
+    if (compressedPages)
+    {
+        compressedPages = PackClassCompressed(textures, wanted[TextureClass_Albedo], TextureClass_Albedo, albedoFormat, &g_RenderState.albedoPages) &&
+                          PackClassCompressed(textures, wanted[TextureClass_Normal], TextureClass_Normal, rgFormat, &g_RenderState.normalPages) &&
+                          PackClassCompressed(textures, wanted[TextureClass_MetallicRoughness], TextureClass_MetallicRoughness, rgFormat, &g_RenderState.metallicRoughnessPages);
+        if (compressedPages)
+            AX_LOG("compressed texture pages built %.2fs", TimeSinceStartup() - startTime);
+        else
+        {
+            AX_WARN("compressed texture page build failed, falling back to uncompressed pages");
+            if (g_RenderState.albedoPages.handle) SDL_ReleaseGPUTexture(g_GPUDevice, g_RenderState.albedoPages.handle);
+            if (g_RenderState.normalPages.handle) SDL_ReleaseGPUTexture(g_GPUDevice, g_RenderState.normalPages.handle);
+            if (g_RenderState.metallicRoughnessPages.handle) SDL_ReleaseGPUTexture(g_GPUDevice, g_RenderState.metallicRoughnessPages.handle);
+            
+            g_RenderState.albedoPages = (Texture){0};
+            g_RenderState.normalPages = (Texture){0};
+            g_RenderState.metallicRoughnessPages = (Texture){0};
+            g_RenderState.numTextureDescriptors = 0;
+            gNumCopyRequests = 0;
+            AddDescriptorFlags(0, 0, 0, 16, 16, TextureDesc_DefaultAlbedo);
+            AddDescriptorFlags(0, 0, 0, 16, 16, TextureDesc_DefaultAlbedo);
+            AddDescriptorFlags(0, 0, 0, 16, 16, TextureDesc_DefaultNormal);
+            AddDescriptorFlags(0, 0, 0, 16, 16, TextureDesc_DefaultMetallicRoughness);
+        }
+    }
+
+    if (!compressedPages)
+    {
+        const SDL_GPUTextureUsageFlags pageFlags = SDL_GPU_TEXTUREUSAGE_SAMPLER | SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_WRITE;
+        g_RenderState.albedoPages = rCreateTexture2DArray(TEXTURE_PAGE_SIZE, TEXTURE_PAGE_SIZE, TEXTURE_PAGE_LAYERS, NULL,
+                                                          SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM, TexFlags_MipMap, pageFlags, "AlbedoPages");
+        g_RenderState.normalPages = rCreateTexture2DArray(TEXTURE_PAGE_SIZE, TEXTURE_PAGE_SIZE, TEXTURE_PAGE_LAYERS, NULL,
+                                                          SDL_GPU_TEXTUREFORMAT_R8G8_UNORM, TexFlags_MipMap, pageFlags, "NormalPages");
+        g_RenderState.metallicRoughnessPages = rCreateTexture2DArray(TEXTURE_PAGE_SIZE, TEXTURE_PAGE_SIZE, TEXTURE_PAGE_LAYERS, NULL,
+                                                          SDL_GPU_TEXTUREFORMAT_R8G8_UNORM, TexFlags_MipMap, pageFlags, "MetallicRoughnessPages");
+        AX_LOG("uncompressed texture pages created %.2fs", TimeSinceStartup() - startTime);
+        PackClass(textures, wanted[TextureClass_Albedo], TextureClass_Albedo);
+        AX_LOG("albedo pages packed %.2fs", TimeSinceStartup() - startTime);
+        PackClass(textures, wanted[TextureClass_Normal], TextureClass_Normal);
+        AX_LOG("normal pages packed %.2fs", TimeSinceStartup() - startTime);
+        PackClass(textures, wanted[TextureClass_MetallicRoughness], TextureClass_MetallicRoughness);
+        AX_LOG("metallic roughness pages packed %.2fs", TimeSinceStartup() - startTime);
+        DispatchPageCopies(textures);
+        AX_LOG("texture page gpu copies complete requests=%d %.2fs", gNumCopyRequests, TimeSinceStartup() - startTime);
+        UploadDefaultPages();
+    }
 
     g_RenderState.numMaterials = 0;
     for (u32 b = 0; b < numBundles; b++)
@@ -416,15 +751,14 @@ void TextureSystem_BuildPages(SceneBundle** bundles, const u32* imageOffsets, u3
                 dst->normalDescriptor = gNormalDescriptor[imageIndex];
             if (ResolveGlobalImageIndex(bundle, imageOffsets[b], src->metallicRoughnessTexture.index, &imageIndex))
                 dst->metallicRoughnessDescriptor = gMetallicRoughnessDescriptor[imageIndex];
-
         }
-
     }
 
     g_RenderState.textureDescriptorBuffer = CreateBuffer(gTextureDescriptors, sizeof(TextureDescriptor) * MAX_TEXTURE_DESCRIPTORS,
         SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ, "TextureDescriptors");
     g_RenderState.materialBuffer = CreateBuffer(gMaterials, sizeof(MaterialGPU) * MAX_GPU_MATERIALS,
         SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ, "Materials");
+    ReleaseTextureBasisBuffers(textures);
     AX_LOG("texture system ready descriptors=%d materials=%d %.2fs",
            g_RenderState.numTextureDescriptors, g_RenderState.numMaterials, TimeSinceStartup() - startTime);
 }

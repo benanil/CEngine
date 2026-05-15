@@ -541,7 +541,7 @@ void SaveSceneImages(SceneBundle* scene, const u8* savePath, bool deleteRemainin
         s32 type = (isNormal ? 1 : 0) | (isMR ? 2 : 0);
         AX_LOG("output path: %s", pathBuf);
 
-        s32 r = basis_compress_file((const char*)src, (const char*)pathBuf, type, 256, -1, -1);
+        s32 r = basis_compress_file((const char*)src, (const char*)pathBuf, type, 1, -1, -1);
         if (r) AX_ERROR("Failed: %s (%d)\n", src, r);
 
         n = IntToString(pathBuf, type, 0);
@@ -609,11 +609,11 @@ s32 LoadSceneImages(const u8* texturePath, Texture* textures, s32 numImages)
         SmallMemCpy(basisPath + baseLen + nameLen, ".basis", 7);
 
         u64 size = FileSize(basisPath);
-        void* mem = ArenaPushGlobal(size);
+        void* mem = OSAlloc(size);
         
         if (!mem || size == 0)
         {
-            const char* reason = size == 0 ? "BasisFileNotExist" : "ArenaNotEnough";
+            const char* reason = size == 0 ? "BasisFileNotExist" : "OSAllocFailed";
             // textures[i] = rCreateTexture(32, 32, buffer, 0, TexFlags_Nearest, reason); // fill with placeholder
             AX_WARN("%s index:%d, fileSize:%llu, path:%s", reason, i, size, basisPath);
             result = 2;
@@ -621,23 +621,20 @@ s32 LoadSceneImages(const u8* texturePath, Texture* textures, s32 numImages)
         }
 
         void* basisData = ReadAllFile(basisPath, mem, size);
-
         s32 isNormal =  textureType & 1;
         s32 isMetallicRoughness = (textureType >> 1) & 1;
 
         textures[i].type = (u32)textureType;
         textures[i].channels = (textureType & 3u) ? 2u : 4u;
-        textures[i].buffer = NULL;
-        textures[i].handle = BasisuMakeImage(basisData, size, &textures[i].width, &textures[i].height, &textures[i].format,
+        textures[i].buffer = basisData;
+        textures[i].bufferSize = size;
+        textures[i].handle = BasisuMakeImage(basisData, size, &textures[i].width, &textures[i].height, &textures[i].format, &textures[i].mipLevels,
                                              (u8)isNormal, (u8)isMetallicRoughness);
-        u32 maxDim = (u32)(textures[i].width > textures[i].height ? textures[i].width : textures[i].height);
-        textures[i].mipLevels = Mini32((s32)(Log2u32(maxDim) + 1), 8);
         if (!textures[i].handle)
         {
             AX_WARN("basis gpu texture creation failed index:%d, path:%s", i, basisPath);
             result = 2;
         }
-        ArenaPopGlobal(size);
     }
     AFileClose(file);
     return result;

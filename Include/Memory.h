@@ -5,7 +5,7 @@
 #include <stdint.h>
 
 #ifndef TLSF_MEMORY_SIZE
-    #define TLSF_MEMORY_SIZE (512 * 1000 * 1000)
+    #define TLSF_MEMORY_SIZE (1024ull * 1000ull * 1000ull)
 #endif
 
 #ifndef ARENA_MEMORY_SIZE

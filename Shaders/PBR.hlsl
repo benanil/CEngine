@@ -4,7 +4,7 @@
 #include "Math.hlsl"
 
 #ifndef PBR_DEBUG_OUTPUT
-#define PBR_DEBUG_OUTPUT 0
+    #define PBR_DEBUG_OUTPUT 0
 #endif
 
 float4 UnpackColor4Uint(uint color)

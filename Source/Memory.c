@@ -21,7 +21,8 @@
 Arena  GlobalArena = { 0, 0, 0 };
 tlsf_t GlobalTLSF = NULL;
 char   ArenaMemory[ARENA_MEMORY_SIZE];
-char   TLSFMemory[TLSF_MEMORY_SIZE];
+void*  TLSFMemory = NULL;
+size_t TLSFMemorySize = 0;
 
 size_t OSGetPageSize(void) {
     #ifdef PLATFORM_WINDOWS
@@ -44,6 +45,8 @@ void* OSAlloc(size_t size)
     #ifdef PLATFORM_WINDOWS
     DWORD mask = MEM_COMMIT | MEM_RESERVE | MEM_LARGE_PAGES; 
     void *ptr = VirtualAlloc(NULL, size, mask, PAGE_READWRITE);
+    if (!ptr)
+        ptr = VirtualAlloc(NULL, size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     #else
     void *ptr = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     #endif
@@ -67,7 +70,23 @@ void InitGlobalArena()
     GlobalArena.buf = ArenaMemory;
     GlobalArena.buffLen = ARENA_MEMORY_SIZE;
     GlobalArena.currOffset = 0;
-    GlobalTLSF = tlsf_create_with_pool(TLSFMemory, TLSF_MEMORY_SIZE);
+    size_t tlsfSize = (size_t)TLSF_MEMORY_SIZE;
+    const size_t minTLSFSize = 256ull * 1000ull * 1000ull;
+    while (tlsfSize >= minTLSFSize)
+    {
+        TLSFMemory = OSAlloc(tlsfSize);
+        if (TLSFMemory) break;
+        tlsfSize >>= 1;
+    }
+    if (!TLSFMemory)
+    {
+        AX_ERROR("Failed to allocate TLSF backing memory: requested=%llu mb", (u64)TLSF_MEMORY_SIZE / 1024ull / 1024ull);
+        return;
+    }
+    TLSFMemorySize = tlsfSize;
+    if (TLSFMemorySize != (size_t)TLSF_MEMORY_SIZE)
+        AX_WARN("TLSF backing allocation reduced: requested=%llu mb actual=%llu mb", (u64)TLSF_MEMORY_SIZE / 1024ull / 1024ull, (u64)TLSFMemorySize / 1024ull / 1024ull);
+    GlobalTLSF = tlsf_create_with_pool(TLSFMemory, TLSFMemorySize);
 }
 
 Arena* GetGlobalArena()
@@ -82,11 +101,13 @@ uint64_t AlignAddress(uint64_t addr, uint64_t align)
     return (addr + mask) & ~mask;
 }
 
-static bool CheckTLSFFail(void* ptr)
+static bool CheckTLSFFail(void* ptr, size_t requestedSize)
 {
     if (ptr == NULL)
     {
-        AX_ERROR("TLSF Memory Allocating failed not enough memory total tlsf size:%d mb", TLSF_MEMORY_SIZE/1024/1024);
+        AX_ERROR("TLSF Memory Allocating failed request:%llu mb total tlsf size:%llu mb",
+                 (u64)requestedSize / 1024ull / 1024ull,
+                 (u64)TLSFMemorySize / 1024ull / 1024ull);
         return false;
     }
     return true;
@@ -101,7 +122,7 @@ void* AllocAligned(uint64_t bytes, uint64_t align)
 {
     uint64_t actualBytes = bytes + align;
     uint8_t* pRawMem     = (uint8_t*)tlsf_malloc(GlobalTLSF, actualBytes);
-    if (!CheckTLSFFail(pRawMem)) return NULL;
+    if (!CheckTLSFFail(pRawMem, actualBytes)) return NULL;
     uint8_t* pAlignedMem = (uint8_t*)AlignPointer(pRawMem, align);
 
     if (pAlignedMem == pRawMem)
@@ -124,16 +145,17 @@ void FreeAligned(void* pMem)
 
 void* AllocZeroTLSFGlobal(size_t count, size_t size)
 {
-    void* ptr = tlsf_malloc(GlobalTLSF, count * size);
-    if (!CheckTLSFFail(ptr)) return NULL;
-    MemsetZero(ptr, count * size);
+    size_t bytes = count * size;
+    void* ptr = tlsf_malloc(GlobalTLSF, bytes);
+    if (!CheckTLSFFail(ptr, bytes)) return NULL;
+    MemsetZero(ptr, bytes);
     return ptr;
 }
 
 void* AllocateTLSFGlobal(size_t size)
 {
     void* ptr = tlsf_malloc(GlobalTLSF, size);
-    if (!CheckTLSFFail(ptr)) return NULL;
+    if (!CheckTLSFFail(ptr, size)) return NULL;
     MemSet(ptr, 0xCD, size);
     return ptr;
 }
@@ -141,7 +163,7 @@ void* AllocateTLSFGlobal(size_t size)
 void* ReAllocateTLSFGlobal(void* ptr, size_t size)
 {
     void* res = tlsf_realloc(GlobalTLSF, ptr, size);
-    if (!CheckTLSFFail(res)) return NULL;
+    if (!CheckTLSFFail(res, size)) return NULL;
     return res;
 }
 

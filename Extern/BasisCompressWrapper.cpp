@@ -44,6 +44,26 @@ static bool setup_params(basis_compressor_params& params,
         fprintf(stderr, "Failed to load image: %s\n", input_filename);
         return false;
     }
+    if (flags & BASIS_FLAG_NORMAL_MAP) {
+        for (uint32_t y = 0; y < img.get_height(); y++) {
+            for (uint32_t x = 0; x < img.get_width(); x++) {
+                color_rgba& p = img(x, y);
+                p.a = p.g; // Basis BC5 transcodes R+A into the two BC4 blocks.
+            }
+        }
+    } else if (flags & BASIS_FLAG_METALLIC_ROUGHNESS) {
+        for (uint32_t y = 0; y < img.get_height(); y++) {
+            for (uint32_t x = 0; x < img.get_width(); x++) {
+                color_rgba& p = img(x, y);
+                const uint8_t metallic = p.b;
+                const uint8_t roughness = p.g;
+                p.r = metallic;
+                p.a = roughness; // Basis BC5 expects the second channel in alpha.
+                p.g = roughness;
+                p.b = 0;
+            }
+        }
+    }
     params.m_source_images.push_back(img);
 
     // Flags handling
@@ -108,7 +128,7 @@ static bool setup_params(basis_compressor_params& params,
     } else { // UASTC (including HDR detection? We assume LDR for now)
         // For LDR 4x4 UASTC (the most common)
         params.set_format_mode(basist::basis_tex_format::cUASTC_LDR_4x4);
-        // Quality: UASTC pack level (0..4) – map quality_level (0..100) to 0..4
+        // Quality: UASTC pack level (0..4) ï¿½ map quality_level (0..100) to 0..4
         if (quality_level >= 0) {
             int pack_level = (quality_level * 4) / 100;
             if (pack_level < 0) pack_level = 0;
@@ -164,6 +184,8 @@ int basis_compress_file(const char* input_filename,
         
     if (isNormal)
         flags |= BASIS_FLAG_NORMAL_MAP;
+    if (isMetallicRoughness)
+        flags |= BASIS_FLAG_METALLIC_ROUGHNESS;
 
     basis_compressor_params params;
     if (!setup_params(params, input_filename, output_filename, flags,
