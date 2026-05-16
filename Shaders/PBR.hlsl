@@ -64,7 +64,7 @@ float3 ApplyPBR(float3 albedo, float3 normal, float3 viewDir, float metallic, fl
     roughness = clamp(roughness, 0.045f, 1.0f);
     metallic  = saturate(metallic);
 
-    float3 lightDir = normalize(float3(-0.45f, 0.8f, 0.25f));
+    float3 lightDir = normalize(float3(-0.5f, 0.5f, 0.0f));
     float3 halfVec  = normalize(viewDir + lightDir);
     float3 radiance = float3(3.0f, 2.9f, 2.7f) * 2.0;
 

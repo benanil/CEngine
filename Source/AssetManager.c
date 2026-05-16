@@ -466,10 +466,9 @@ s32 LoadFBX(const u8* path, SceneBundle* fbxScene, f32 scale)
     return 1;
 }
 
-
 void SaveSceneImages(SceneBundle* scene, const u8* savePath, bool deleteRemaining)
 {
-    u8 pathBuf[2048], baseDir[2048], name[512], bdcPath[2048], tmpPath[2048];
+    u8 pathBuf[2048], baseDir[2048], name[512], bdcPath[2048], tmpPath[2048], srcPath[2048];
 
     // .bdc path
     s32 len = StringLengthSafe(savePath, sizeof(bdcPath));
@@ -492,10 +491,24 @@ void SaveSceneImages(SceneBundle* scene, const u8* savePath, bool deleteRemainin
     for (s32 i = 0; i < scene->numImages; i++)
     {
         const u8* src = scene->images[i].path;
+        if (src == NULL || src[0] == '\0')
+        {
+            AX_WARN("scene image has no path, writing empty cache entry index:%d", i);
+            pathBuf[0] = '\n';
+            AFileWrite(pathBuf, 1, file, 1);
+            pathBuf[0] = '0';
+            pathBuf[1] = '\n';
+            AFileWrite(pathBuf, 2, file, 1);
+            continue;
+        }
+
+        s32 srcLen = (s32)StringLengthSafe(src, sizeof(srcPath) - 1);
+        SmallMemCpy(srcPath, src, srcLen);
+        srcPath[srcLen] = '\0';
 
         // write original path
-        s32 l = (s32)StringLengthSafe(src, sizeof(pathBuf) - 2);
-        SmallMemCpy(pathBuf, src, l);
+        s32 l = (s32)StringLengthSafe(srcPath, sizeof(pathBuf) - 2);
+        SmallMemCpy(pathBuf, srcPath, l);
         pathBuf[l++] = '\n';
         AFileWrite(pathBuf, l, file, 1);
 
@@ -503,7 +516,7 @@ void SaveSceneImages(SceneBundle* scene, const u8* savePath, bool deleteRemainin
         s32 baseLen = (s32)StringLengthSafe(baseDir, sizeof(baseDir));
         SmallMemCpy(pathBuf, baseDir, baseLen);
 
-        s32 nameLen = GetFileNameNoExt(src, name);
+        s32 nameLen = GetFileNameNoExt(srcPath, name);
         SmallMemCpy(pathBuf + baseLen, name, nameLen);
         SmallMemCpy(pathBuf + baseLen + nameLen, ".basis", 7);
 
@@ -541,15 +554,15 @@ void SaveSceneImages(SceneBundle* scene, const u8* savePath, bool deleteRemainin
         s32 type = (isNormal ? 1 : 0) | (isMR ? 2 : 0);
         AX_LOG("output path: %s", pathBuf);
 
-        s32 r = basis_compress_file((const char*)src, (const char*)pathBuf, type, 1, -1, -1);
-        s32 r = basis_compress_file((const char*)src, (const char*)pathBuf, type, 16, -1, -1);
-        if (r) AX_ERROR("Failed: %s (%d)\n", src, r);
+        const s32 quality = 0; // 100 is max
+        s32 r = basis_compress_file((const char*)srcPath, (const char*)pathBuf, type, 16, quality, -1);
+        if (r) AX_ERROR("Failed: %s (%d)\n", srcPath, r);
 
         n = IntToString(pathBuf, type, 0);
         pathBuf[n++] = '\n';
         AFileWrite(pathBuf, n, file, 1);
 
-        if (deleteRemaining) RemoveFile(src);
+        if (deleteRemaining) RemoveFile(srcPath);
     }
 
     AFileClose(file);
@@ -596,6 +609,18 @@ s32 LoadSceneImages(const u8* texturePath, Texture* textures, s32 numImages)
         }
 
         GetFileNameNoExt(buffer, fileName);
+        s32 fileNameLen = (s32)StringLengthSafe(fileName, sizeof(fileName));
+        if (fileNameLen <= 0)
+        {
+            AX_WARN("basis metadata has empty image path index:%d, file:%s", i, texturePath);
+            textures[i].handle = NULL;
+            textures[i].buffer = NULL;
+            textures[i].bufferSize = 0;
+            textures[i].type = (u32)textureType;
+            result = 3;
+            continue;
+        }
+
         s32 baseLen = (s32)StringLengthSafe(baseDir, sizeof(baseDir));
         s32 nameLen = (s32)StringLengthSafe(fileName, sizeof(fileName));
         if (baseLen + nameLen + 7 > (s32)sizeof(basisPath))
@@ -654,8 +679,16 @@ s32 LoadGLTFCached(const char* path, SceneBundle* scene, Texture* textures)
     }
     else if (ParseGLTF(path, scene, 1.0f)) {
         AX_LOG("asset cache rebuild: %s -> %s", path, buffer);
-        BakeSceneMeshesAndAnimations(scene);
-        SaveGLTFBinary(scene, buffer);
+        if (!BakeSceneMeshesAndAnimations(scene))
+        {
+            AX_WARN("asset import failed during mesh bake: %s vertices=%d indices=%d", path, scene->totalVertices, scene->totalIndices);
+            return 0;
+        }
+        if (!SaveGLTFBinary(scene, buffer))
+        {
+            AX_WARN("asset cache save failed: %s", buffer);
+            return 0;
+        }
         ChangeExtension(buffer, newLen, "bdc");
         SaveSceneImages(scene, buffer, FileHasExtension(path, pathLen,".glb"));
     }
@@ -683,7 +716,7 @@ s32 LoadGLTFCached(const char* path, SceneBundle* scene, Texture* textures)
 /*//////////////////////////////////////////////////////////////////////////*/
 
 // ZSTD_CCtx* zstdCompressorCTX = NULL;
-const s32 ABMMeshVersion = 59;
+const s32 ABMMeshVersion = 64;
 
 u8 IsABMLastVersion(const u8* path)
 {
@@ -735,6 +768,11 @@ s32 SaveGLTFBinary(const SceneBundle* gltf, const u8* path)
 #if !AX_GAME_BUILD
     AX_LOG("abm save: %s version=%d meshes=%d nodes=%d skins=%d animations=%d",
            path, ABMMeshVersion, gltf->numMeshes, gltf->numNodes, gltf->numSkins, gltf->numAnimations);
+    if (gltf->allVertices == NULL || gltf->allIndices == NULL || gltf->totalVertices <= 0 || gltf->totalIndices <= 0)
+    {
+        AX_WARN("abm save skipped: scene is not baked path=%s vertices=%d indices=%d", path, gltf->totalVertices, gltf->totalIndices);
+        return 0;
+    }
     EnsurePath(path);
     AFile file = AFileOpen(path, AOpenFlag_WriteBinary);
     s32 version = ABMMeshVersion;

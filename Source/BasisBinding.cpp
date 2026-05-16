@@ -65,6 +65,22 @@ static SDL_GPUTextureFormat BasisToSDLPixelFormat(basist::transcoder_texture_for
     }
 }
 
+static bool IsBlockCompressedSDLFormat(SDL_GPUTextureFormat format)
+{
+    switch (format)
+    {
+        case SDL_GPU_TEXTUREFORMAT_BC1_RGBA_UNORM:
+        case SDL_GPU_TEXTUREFORMAT_BC3_RGBA_UNORM:
+        case SDL_GPU_TEXTUREFORMAT_BC4_R_UNORM:
+        case SDL_GPU_TEXTUREFORMAT_BC5_RG_UNORM:
+        case SDL_GPU_TEXTUREFORMAT_BC7_RGBA_UNORM:
+        case SDL_GPU_TEXTUREFORMAT_ASTC_4x4_UNORM:
+            return true;
+        default:
+            return false;
+    }
+}
+
 extern "C"
 {
 extern SDL_GPUDevice* g_GPUDevice;
@@ -251,10 +267,12 @@ SDL_GPUTexture* BasisuMakeImage(
         
         textureTransferInfo.transfer_buffer = textureTransferBuffer;
         textureTransferInfo.offset = imageDataLength;
+        uint32_t mipWidth = basisu::maximum(texDesc.width >> i, 1u);
+        uint32_t mipHeight = basisu::maximum(texDesc.height >> i, 1u);
         
         textureRegion.texture = result;
-        textureRegion.w = levelDesc->width;
-        textureRegion.h = levelDesc->height;
+        textureRegion.w = IsBlockCompressedSDLFormat(texDesc.format) ? mipWidth : levelDesc->width;
+        textureRegion.h = IsBlockCompressedSDLFormat(texDesc.format) ? mipHeight : levelDesc->height;
         textureRegion.d = 1;
         textureRegion.mip_level = i;
         

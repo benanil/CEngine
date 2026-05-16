@@ -32,8 +32,8 @@ typedef struct PrimitiveGroup_
     u32 materialIndex;
     u32 valid;
     u32 padding;
-    f16 aabbMin[4];
-    f16 aabbMax[4];
+    float aabbMin[4];
+    float aabbMax[4];
 } PrimitiveGroup;
 
 typedef struct Range_

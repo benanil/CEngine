@@ -4,22 +4,30 @@
 #include "Include/Platform.h"
 #include "Math/Matrix.h"
 
+#define IS_POISON_PTR(ptr) ((uintptr_t)(ptr) == (uintptr_t)0xCDCDCDCDCDCDCDCDull)
+
 // Mark animation-root descendants that need import-time root-scale compensation.
 static void MarkScaledNodes(const SceneBundle* gltf, s32 rootIndex, u8 scaledNodes[MAX_BONES * 2])
 {
     s32 stack[MAX_BONES * 2];
     s32 stackIndex = 0;
 
-    for (s32 i = 0; i < gltf->nodes[rootIndex].numChildren; i++)
+    if (rootIndex < 0 || rootIndex >= gltf->numNodes)
+        return;
+
+    for (s32 i = 0; i < gltf->nodes[rootIndex].numChildren && stackIndex < ARRAY_SIZE(stack); i++)
         stack[stackIndex++] = gltf->nodes[rootIndex].children[i];
 
     while (stackIndex > 0)
     {
         s32 nodeIndex = stack[--stackIndex];
+        if (nodeIndex < 0 || nodeIndex >= gltf->numNodes)
+            continue;
+
         const ANode* node = &gltf->nodes[nodeIndex];
         scaledNodes[nodeIndex] = 1;
 
-        for (s32 i = 0; i < node->numChildren; i++)
+        for (s32 i = 0; i < node->numChildren && stackIndex < ARRAY_SIZE(stack); i++)
             stack[stackIndex++] = node->children[i];
     }
 }
@@ -31,6 +39,7 @@ static bool ShouldScaleTranslationSampler(const AAnimation* animation, const u8 
         const AAnimChannel* channel = &animation->channels[c];
         if (channel->sampler == samplerIndex &&
             channel->targetPath == AAnimTargetPath_Translation &&
+            channel->targetNode >= 0 && channel->targetNode < (MAX_BONES * 2) &&
             scaledNodes[channel->targetNode])
             return true;
     }
@@ -39,7 +48,8 @@ static bool ShouldScaleTranslationSampler(const AAnimation* animation, const u8 
 
 void BakeGLTFAnimations(SceneBundle* gltf)
 {
-    if (gltf->skins == NULL)
+    if (gltf == NULL || gltf->numSkins <= 0 || gltf->skins == NULL || IS_POISON_PTR(gltf->skins) ||
+        gltf->nodes == NULL || IS_POISON_PTR(gltf->nodes) || gltf->numNodes <= 0)
         return;
 
     s32 rootIndex = Prefab_FindAnimRootNodeIndex(gltf);
@@ -71,6 +81,11 @@ void BakeGLTFAnimations(SceneBundle* gltf)
     for (s32 s = 0; s < gltf->numSkins; s++)
     {
         ASkin* skin = &gltf->skins[s];
+        if (skin->numJoints <= 0 || skin->joints == NULL || skin->inverseBindMatrices == NULL)
+        {
+            AX_WARN("skin %d invalid for animation bake joints=%d", s, skin->numJoints);
+            continue;
+        }
         if (skin->numJoints > MAX_BONES)
             AX_WARN("skin %d has %d joints, max GPU bone count is %d", s, skin->numJoints, MAX_BONES);
 
@@ -125,7 +140,7 @@ void BakeGLTFAnimations(SceneBundle* gltf)
             numCubic += (sampler->interpolation == ASamplerInterpolation_CubicSpline);
             numNonFloatsIn += (sampler->inputType != AComponentType_FLOAT);
             numNonFloatOut += (sampler->outputType != AComponentType_FLOAT);
-            numInvalidComponents += (sampler->numComponent != 4 || sampler->numComponent != 3);
+            numInvalidComponents += (sampler->numComponent != 4 && sampler->numComponent != 3);
 
             for (s32 i = 0; i < sampler->count; i++)
             {

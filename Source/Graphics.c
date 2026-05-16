@@ -43,7 +43,7 @@ extern WindowState    g_WindowState;
 extern RenderState    g_RenderState;
 extern SDL_Window*    g_SDLWindow;
 
-Graphics gGFX = {};
+Graphics gGFX = {0};
 
 extern void Quit(int rc);
 
@@ -109,9 +109,11 @@ void GraphicsInit(bool msaa)
     winstate->tex_color   = CreateSceneColorTexture(drawablew, drawableh, SDL_GPU_SAMPLECOUNT_1);
     winstate->tex_post    = CreatePostProcessTexture(drawablew, drawableh);
     
-    gGFX.SkinnedVertexBuffer = AllocAligned(sizeof(ASkinedVertex) * MAX_VERTEX, 4);
-    gGFX.SurfaceVertexBuffer = AllocAligned(sizeof(AVertex) * MAX_VERTEX, 4);
-    gGFX.IndexBuffer         = AllocAligned(sizeof(u32) * MAX_INDEX + 16, 4); // 16->give little bit of space for memcpy
+    gGFX.SkinnedVertexBuffer = OSAllocAligned(sizeof(ASkinedVertex) * MAX_VERTEX, 4);
+    gGFX.SurfaceVertexBuffer = OSAllocAligned(sizeof(AVertex) * MAX_VERTEX, 4);
+    gGFX.IndexBuffer         = OSAllocAligned(sizeof(u32) * MAX_INDEX + 16, 4); // 16->give little bit of space for memcpy
+    if (!gGFX.SkinnedVertexBuffer || !gGFX.SurfaceVertexBuffer || !gGFX.IndexBuffer)
+        AX_ERROR("graphics CPU buffer allocation failed skinned=%p surface=%p index=%p", gGFX.SkinnedVertexBuffer, gGFX.SurfaceVertexBuffer, gGFX.IndexBuffer);
 }
 
 void GraphicsDestroy()
@@ -125,6 +127,12 @@ void GraphicsDestroy()
     SDL_ReleaseWindowFromGPUDevice(g_GPUDevice, g_SDLWindow);
 
     SDL_DestroyGPUDevice(g_GPUDevice);
+    OSFreeAligned(gGFX.SkinnedVertexBuffer, sizeof(ASkinedVertex) * MAX_VERTEX);
+    OSFreeAligned(gGFX.SurfaceVertexBuffer, sizeof(AVertex) * MAX_VERTEX);
+    OSFreeAligned(gGFX.IndexBuffer        , sizeof(u32) * MAX_INDEX + 16);
+    gGFX.SkinnedVertexBuffer = NULL;
+    gGFX.SurfaceVertexBuffer = NULL;
+    gGFX.IndexBuffer = NULL;
 }
 
 SDL_GPUBuffer* CreateBuffer(

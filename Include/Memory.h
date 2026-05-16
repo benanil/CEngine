@@ -49,6 +49,8 @@ extern Arena GlobalArena;
 uint64_t  AlignAddress(uint64_t addr, uint64_t align);
 void*     AlignPointer(void* ptr, uint64_t align);
 void*     AllocAligned(uint64_t bytes, uint64_t align);
+void*     OSAllocAligned(uint64_t bytes, uint64_t align);
+void      OSFreeAligned(void* pMem, size_t size);
 void      FreeAligned(void* pMem);
 
 void      ArenaInit(Arena* a, size_t backing_buffer_length);

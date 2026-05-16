@@ -273,8 +273,18 @@ void GenerateLOD_75_GLTF(SceneBundle* sceneBundle)
     }
 }
 
-void OptimizeMesh(const SceneBundle* gltf)
+void OptimizeMesh(SceneBundle* gltf)
 {
+    if (gltf->allVertices == NULL || gltf->allIndices == NULL || gltf->totalVertices <= 0 || gltf->totalIndices <= 0)
+    {
+        AX_WARN("mesh optimize skipped: scene is not baked vertices=%d indices=%d", gltf->totalVertices, gltf->totalIndices);
+        return;
+    }
+    
+    // for now only for single meshes
+    if (gltf->numMeshes != 1)
+        return;
+
     size_t vertexSize = gltf->numSkins > 0 ? sizeof(ASkinedVertex) : sizeof(AVertex);
     int* remap = ArenaAllocGlobal(gltf->totalIndices * sizeof(s32));
     size_t totalVertices = meshopt_generateVertexRemap(remap, (const u32 *)gltf->allIndices,

@@ -163,7 +163,7 @@ s32 SceneBundleCreateAnimations(const SceneBundle* bundle)
         if (AnimTotalFrameOffset + numFrames > MAX_GPU_ANIM_FRAMES)
         {
             NumGPUAnimations = animIdx;
-            AX_WARN("animation couldn't added frame capacity is not enough", NumGPUAnimations);
+            AX_WARN("animation couldn't added frame capacity is not enough");
             break;
         }
         numFrames = AnimationGetGPUData(bundle, poses, (int)animIdx, AnimTotalFrameOffset);

@@ -160,33 +160,6 @@ static void InitSamplers()
 }
 
 
-static void DispatchTonemapCompute(SDL_GPUCommandBuffer* cmd, SDL_GPUTexture* source, SDL_GPUTexture* destination, u32 width, u32 height)
-{
-    CHECK_CREATE(g_TonemapComputePipeline, "Tonemap Compute Pipeline")
-
-        SDL_GPUStorageTextureReadWriteBinding rwTexture = {
-        .texture = destination,
-        .mip_level = 0,
-        .layer = 0,
-        .cycle = true
-    };
-    SDL_GPUComputePass* pass = SDL_BeginGPUComputePass(cmd, &rwTexture, 1, NULL, 0);
-    SDL_BindGPUComputePipeline(pass, g_TonemapComputePipeline);
-    SDL_BindGPUComputeSamplers(pass, 0, &(SDL_GPUTextureSamplerBinding){
-        .texture = source,
-        .sampler = g_RenderState.sampler
-    }, 1);
-    struct { u32 outputSize[2]; f32 exposure; f32 gamma; } params = {
-        { width, height },
-        1.0f,
-        2.2f
-    };
-    SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
-    SDL_DispatchGPUCompute(pass, (width + 7u) / 8u, (height + 7u) / 8u, 1);
-    SDL_EndGPUComputePass(pass);
-}
-
-
 static void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet,
                                         RenderSetBuffers* buffers,
                                         FrustumPlanes frustumPlanes,
@@ -195,7 +168,7 @@ static void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd, RenderSet* re
     if (renderSet->numGroups == 0) return;
     CHECK_CREATE(g_CullDrawArgsComputePipeline, "Cull Draw Args Compute Pipeline")
 
-    struct {
+        struct {
         FrustumPlanes planes;
         u32 numEntities;
         u32 numPrimitiveGroups;
@@ -240,6 +213,32 @@ static void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd, RenderSet* re
         // actual culling
         SDL_DispatchGPUCompute(pass, (renderSet->numEntities + 63) / 64, 1, 1);
     }
+    SDL_EndGPUComputePass(pass);
+}
+
+static void DispatchTonemapCompute(SDL_GPUCommandBuffer* cmd, SDL_GPUTexture* source, SDL_GPUTexture* destination, u32 width, u32 height)
+{
+    CHECK_CREATE(g_TonemapComputePipeline, "Tonemap Compute Pipeline")
+
+        SDL_GPUStorageTextureReadWriteBinding rwTexture = {
+        .texture = destination,
+        .mip_level = 0,
+        .layer = 0,
+        .cycle = true
+    };
+    SDL_GPUComputePass* pass = SDL_BeginGPUComputePass(cmd, &rwTexture, 1, NULL, 0);
+    SDL_BindGPUComputePipeline(pass, g_TonemapComputePipeline);
+    SDL_BindGPUComputeSamplers(pass, 0, &(SDL_GPUTextureSamplerBinding){
+        .texture = source,
+        .sampler = g_RenderState.sampler
+    }, 1);
+    struct { u32 outputSize[2]; f32 exposure; f32 gamma; } params = {
+        { width, height },
+        1.0f,
+        2.2f
+    };
+    SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
+    SDL_DispatchGPUCompute(pass, (width + 7u) / 8u, (height + 7u) / 8u, 1);
     SDL_EndGPUComputePass(pass);
 }
 

@@ -36,7 +36,7 @@ u8 IsABMLastVersion(const u8* path);
 // returns 0 on not enough memory
 s32 BakeSceneMeshesAndAnimations(SceneBundle* gltf);
 
-void OptimizeMesh(const SceneBundle* gltf);
+void OptimizeMesh(SceneBundle* gltf);
 
 void GenerateLOD_75_GLTF(SceneBundle* sceneBundle);
 

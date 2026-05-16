@@ -8,14 +8,14 @@
 
 #define CHECK_CREATE(var, thing) { if (!(var)) { AX_ERROR("Failed to create %s: %s", thing, SDL_GetError()); Quit(2); } }
 
-#define MAX_VERTEX 1000000
-#define MAX_INDEX (MAX_VERTEX * 5)
+#define MAX_VERTEX 3200000ull
+#define MAX_INDEX  9600000ull
 
-#define TEXTURE_PAGE_SIZE 4096
-#define TEXTURE_PAGE_LAYERS 4
-#define MAX_SCENE_TEXTURES 512
-#define MAX_TEXTURE_DESCRIPTORS 1024
-#define MAX_GPU_MATERIALS 1024
+#define TEXTURE_PAGE_SIZE       4096
+#define TEXTURE_PAGE_LAYERS     8
+#define MAX_SCENE_TEXTURES      1024
+#define MAX_TEXTURE_DESCRIPTORS 2048
+#define MAX_GPU_MATERIALS       2048
 
 #if defined(__cplusplus)
 extern "C" {

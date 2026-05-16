@@ -9,6 +9,8 @@
 #include <string>
 #include <vector>
 
+#include "stb/stb_image.h"
+
 using namespace basisu;
 
 // -----------------------------------------------------------------------------
@@ -38,12 +40,17 @@ static bool setup_params(basis_compressor_params& params,
     params.m_write_output_basis_or_ktx2_files = true;  // let the compressor write directly
     params.m_create_ktx2_file = false;                 // we want .basis, not KTX2
 
-    // Load source image using BasisU's built-in loader (supports PNG, JPG, etc.)
-    image img;
-    if (!load_image(input_filename, img)) {
-        fprintf(stderr, "Failed to load image: %s\n", input_filename);
+    int w, h, ch;
+    unsigned char* data = stbi_load(input_filename, &w, &h, &ch, 4);
+    if (!data) {
+        fprintf(stderr, "stbi_load failed: %s\n", stbi_failure_reason());
         return false;
     }
+
+    image img(w, h);
+    memcpy(img.get_ptr(), data, w * h * 4);
+    stbi_image_free(data);
+
     if (flags & BASIS_FLAG_NORMAL_MAP) {
         for (uint32_t y = 0; y < img.get_height(); y++) {
             for (uint32_t x = 0; x < img.get_width(); x++) {
@@ -128,7 +135,7 @@ static bool setup_params(basis_compressor_params& params,
     } else { // UASTC (including HDR detection? We assume LDR for now)
         // For LDR 4x4 UASTC (the most common)
         params.set_format_mode(basist::basis_tex_format::cUASTC_LDR_4x4);
-        // Quality: UASTC pack level (0..4) � map quality_level (0..100) to 0..4
+        // Quality: UASTC pack level (0..4) map quality_level (0..100) to 0..4
         if (quality_level >= 0) {
             int pack_level = (quality_level * 4) / 100;
             if (pack_level < 0) pack_level = 0;
@@ -172,6 +179,11 @@ int basis_compress_file(const char* input_filename,
         if (basis_encoder_init() != 0) {
             return -100;
         }
+    }
+    if (input_filename == NULL)
+    {
+        fprintf(stderr, "Compression failed for %s input_filename null", output_filename);
+        return 0;
     }
     // Check if this is a metallic/roughness texture (bit 1 set)
     int isMetallicRoughness = (textureFlags & 2) != 0;

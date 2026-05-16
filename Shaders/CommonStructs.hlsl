@@ -47,8 +47,8 @@ typedef struct PrimitiveGroup_
     uint materialIndex;
     uint valid;
     uint padding;
-    uint2 aabbMin;
-    uint2 aabbMax;
+    float4 aabbMin;
+    float4 aabbMax;
 } PrimitiveGroup;
 
 typedef struct TextureDescriptor_

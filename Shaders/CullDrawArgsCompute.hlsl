@@ -3,6 +3,8 @@
 #include "Math.hlsl"
 #include "CommonStructs.hlsl"
 
+#define DEBUG_CULLED_AABBS 0
+
 StructuredBuffer<Entity>         entities                 : register(t0);
 StructuredBuffer<PrimitiveGroup> primitiveGroups          : register(t1);
 StructuredBuffer<uint>           denseToPrimitiveIndex    : register(t2);
@@ -27,11 +29,6 @@ cbuffer params : register(b0, space2)
     uint   enableVisibilityOutput;
 };
 
-float4 UnpackHalf4(uint2 packed)
-{
-    return float4(UnpackHalf2(packed.x), UnpackHalf2(packed.y));
-}
-
 bool AABBVisible(float3 mn, float3 mx)
 {
     [unroll]
@@ -39,7 +36,7 @@ bool AABBVisible(float3 mn, float3 mx)
     {
         float4 plane = frustumPlanes[i];
         float4 p = float4(lerp(mn, mx, step(0.0f, plane.xyz)), 1.0f);
-        if (dot(plane, p) < 0.0f)
+        if (dot(plane, p) < -0.001f)
             return false;
     }
     return true;
@@ -93,10 +90,15 @@ void AddAABBLine(float3 worldMin, float3 worldMax)
 {
     uint start;
     InterlockedAdd(lineDrawCommand[1].numVertices, 24, start);
+    if (start + 24 > MAX_LINE_COUNT)
+    {
+        lineDrawCommand[1].numVertices = MAX_LINE_COUNT;
+        return;
+    }
+
     uint3 d = uint3(worldMin * 100);
 
     u32 color = WangHash(d.x + d.y + d.z);
-    // if (start + 23 >= MAX_LINE_VERTEX_COUNT) return;
     float3 p000 = float3(worldMin.x, worldMin.y, worldMin.z);
     float3 p100 = float3(worldMax.x, worldMin.y, worldMin.z);
     float3 p010 = float3(worldMin.x, worldMax.y, worldMin.z);
@@ -125,8 +127,8 @@ void AddAABBLine(float3 worldMin, float3 worldMax)
 
 void BuildWorldAABB(Entity entity, PrimitiveGroup group, out float3 worldMin, out float3 worldMax)
 {
-    float3 localMin = UnpackHalf4(group.aabbMin).xyz;
-    float3 localMax = UnpackHalf4(group.aabbMax).xyz;
+    float3 localMin = group.aabbMin.xyz;
+    float3 localMax = group.aabbMax.xyz;
     float3 center = F3MulF(F3Add(localMin, localMax), 0.5f);
     float3 extent = F3MulF(F3Sub(localMax, localMin), 0.5f);
 
@@ -140,7 +142,7 @@ void BuildWorldAABB(Entity entity, PrimitiveGroup group, out float3 worldMin, ou
 
     float3 worldCenter = entity.position.xyz + QMulVec3F32(q, center * s);
     float3 worldExtent = F3Add(F3Add(F3MulF(F3Abs(axisX), extent.x),
-                                     F3MulF(F3Abs(axisY), extent.y)), 
+                                     F3MulF(F3Abs(axisY), extent.y)),
                                      F3MulF(F3Abs(axisZ), extent.z));
 
     worldMin = F3Sub(worldCenter, worldExtent);
@@ -203,11 +205,15 @@ void main(uint3 tid : SV_DispatchThreadID)
     float3 worldMin, worldMax;
     BuildWorldAABB(entities[dense], group, worldMin, worldMax);
 
-    if (!AABBVisible(worldMin, worldMax))
-        return;
+    bool visible = AABBVisible(worldMin, worldMax);
 
-    // if (enableVisibilityOutput == 0)
-    //     AddAABBLine(worldMin, worldMax);
+#if DEBUG_CULLED_AABBS
+    if (!visible) AddAABBLine(worldMin, worldMax);
+    else return;
+#else
+    if (!visible) return;
+    // AddAABBLine(worldMin, worldMax);
+#endif
     
     uint localVisibleIdx;
     InterlockedAdd(drawArgs[primitiveIdx].numInstances, 1, localVisibleIdx);

@@ -638,6 +638,7 @@ purefn FrustumPlanes VCALL CreateFrustumPlanes(mat4x4 viewProjection)
     result.planes[2] = VecAdd(C.r[3], C.r[1]); // m_bottom_plane
     result.planes[3] = VecSub(C.r[3], C.r[1]); // m_top_plane
     result.planes[4] = VecSub(C.r[3], C.r[2]); // m_far_plane
+    // result.planes[5] = VecAdd(C.r[3], C.r[2]); // m_near_plane
     result.planes[5] = C.r[2];                 // m_near_plane  
     return result;
 }

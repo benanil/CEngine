@@ -143,6 +143,27 @@ static u32 AddDescriptorFlags(u32 pageIndex, float x, float y, float w, float h,
     return idx;
 }
 
+static void MarkWantedTexture(bool wanted[TextureClass_Count][MAX_SCENE_TEXTURES], u32 textureClass, u32 imageIndex)
+{
+    if (imageIndex >= MAX_SCENE_TEXTURES || textureClass >= TextureClass_Count)
+        return;
+
+    for (u32 c = 0; c < TextureClass_Count; c++)
+        wanted[c][imageIndex] = false;
+    wanted[textureClass][imageIndex] = true;
+}
+
+static void CountWantedTextures(bool wanted[TextureClass_Count][MAX_SCENE_TEXTURES], u32* albedo, u32* normal, u32* mr)
+{
+    *albedo = *normal = *mr = 0;
+    for (u32 i = 0; i < MAX_SCENE_TEXTURES; i++)
+    {
+        *albedo += wanted[TextureClass_Albedo][i];
+        *normal += wanted[TextureClass_Normal][i];
+        *mr     += wanted[TextureClass_MetallicRoughness][i];
+    }
+}
+
 static void AddDefaultDescriptors(void)
 {
     g_RenderState.numTextureDescriptors = 0;
@@ -738,42 +759,23 @@ void TextureSystem_BuildPages(SceneBundle** bundles, const u32* imageOffsets, u3
         bundle->imageOffset = (int)imageOffsets[b];
         bundle->materialOffset = (int)g_RenderState.numMaterials;
 
-        u32 albedoImages = 0, normalImages = 0, mrImages = 0;
-        for (s32 imageIdx = 0; imageIdx < bundle->numImages; imageIdx++)
-        {
-            u32 globalImage = imageOffsets[b] + (u32)imageIdx;
-            if (globalImage >= MAX_SCENE_TEXTURES || !textures[globalImage].handle) continue;
-            u32 type = textures[globalImage].type;
-            if (type & TextureType_Normal)
-            {
-                wanted[TextureClass_Normal][globalImage] = true;
-                normalImages++;
-            }
-            else if (type & TextureType_MetallicRoughness)
-            {
-                wanted[TextureClass_MetallicRoughness][globalImage] = true;
-                mrImages++;
-            }
-            else
-            {
-                wanted[TextureClass_Albedo][globalImage] = true;
-                albedoImages++;
-            }
-        }
-        AX_LOG("bundle texture images materials=%d images=%d albedo=%d normal=%d mr=%d offset=%d",
-               bundle->numMaterials, bundle->numImages, albedoImages, normalImages, mrImages, imageOffsets[b]);
-
         for (s32 m = 0; m < bundle->numMaterials; m++)
         {
             AMaterial* src = &bundle->materials[m];
             u32 imageIndex;
-            if (ResolveGlobalImageIndex(bundle, imageOffsets[b], src->baseColorTexture.index, &imageIndex))
-                wanted[TextureClass_Albedo][imageIndex] = true;
             if (ResolveGlobalImageIndex(bundle, imageOffsets[b], src->textures[0].index, &imageIndex))
-                wanted[TextureClass_Normal][imageIndex] = true;
+                MarkWantedTexture(wanted, TextureClass_Normal, imageIndex);
             if (ResolveGlobalImageIndex(bundle, imageOffsets[b], src->metallicRoughnessTexture.index, &imageIndex))
-                wanted[TextureClass_MetallicRoughness][imageIndex] = true;
+                MarkWantedTexture(wanted, TextureClass_MetallicRoughness, imageIndex);
+            // Base color wins conflicts because it is visible albedo, while MR/normal can fall back safely.
+            if (ResolveGlobalImageIndex(bundle, imageOffsets[b], src->baseColorTexture.index, &imageIndex))
+                MarkWantedTexture(wanted, TextureClass_Albedo, imageIndex);
         }
+
+        u32 totalAlbedo = 0, totalNormal = 0, totalMR = 0;
+        CountWantedTextures(wanted, &totalAlbedo, &totalNormal, &totalMR);
+        AX_LOG("bundle material textures materials=%d images=%d wantedTotals albedo=%d normal=%d mr=%d offset=%d",
+               bundle->numMaterials, bundle->numImages, totalAlbedo, totalNormal, totalMR, imageOffsets[b]);
         if (g_RenderState.numMaterials + (u32)bundle->numMaterials > MAX_GPU_MATERIALS)
         {
             AX_ERROR("maximum GPU materials reached");

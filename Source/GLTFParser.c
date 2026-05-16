@@ -35,7 +35,81 @@ typedef struct GLTFParseContext_
     const char* path;
     sj_Reader* sj;
     float scale;
+    int currentMesh;
+    int currentPrimitive;
 } GLTFParseContext;
+
+#define GLTF_IS_POISON_PTR(ptr) ((uintptr_t)(ptr) == (uintptr_t)0xCDCDCDCDCDCDCDCDull)
+
+static int GLTFAccessorElementSize(const GLTFAccessor* accessor)
+{
+    if (accessor->componentType < AComponentType_BYTE || accessor->componentType > AComponentType_FLOAT)
+        return 0;
+    return GraphicsTypeToSize(accessor->componentType) * accessor->type;
+}
+
+static void* GLTFPackStridedAccessor(FixedPow2Allocator* allocator, const void* src, int count, int elementSize, int byteStride)
+{
+    if (src == NULL || count <= 0 || elementSize <= 0)
+        return NULL;
+
+    if (byteStride == 0 || byteStride == elementSize)
+        return (void*)src;
+
+    char* packed = (char*)FixedPow2Allocator_Allocate(allocator, (size_t)count * (size_t)elementSize);
+    const char* input = (const char*)src;
+    for (int i = 0; i < count; i++)
+        SmallMemCpy(packed + ((size_t)i * (size_t)elementSize), input + ((size_t)i * (size_t)byteStride), (size_t)elementSize);
+    return packed;
+}
+
+static bool GLTFResolveAccessorPtr(const SceneBundle* result, const GLTFAccessor* accessors, int numAccessors,
+                                   const GLTFBufferView* bufferViews, int numBufferViews, int accessorIndex,
+                                   const char* label, void** outPtr, GLTFAccessor* outAccessor, GLTFBufferView* outView)
+{
+    *outPtr = NULL;
+    if (accessorIndex < 0 || accessorIndex >= numAccessors)
+    {
+        AX_WARN("gltf accessor index out of bounds: %s accessor=%d count=%d", label, accessorIndex, numAccessors);
+        return false;
+    }
+
+    GLTFAccessor accessor = accessors[accessorIndex];
+    if (accessor.bufferView < 0 || accessor.bufferView >= numBufferViews)
+    {
+        AX_WARN("gltf accessor has invalid bufferView: %s accessor=%d bufferView=%d count=%d", label, accessorIndex, accessor.bufferView, numBufferViews);
+        return false;
+    }
+
+    GLTFBufferView view = bufferViews[accessor.bufferView];
+    if (view.buffer < 0 || view.buffer >= result->numBuffers || result->buffers == NULL)
+    {
+        AX_WARN("gltf bufferView has invalid buffer: %s bufferView=%d buffer=%d count=%d", label, accessor.bufferView, view.buffer, result->numBuffers);
+        return false;
+    }
+
+    if (result->buffers[view.buffer].uri == NULL)
+    {
+        AX_WARN("gltf buffer is missing data: %s buffer=%d", label, view.buffer);
+        return false;
+    }
+
+    int64_t offset = (int64_t)accessor.byteOffset + view.byteOffset;
+    int elementSize = GLTFAccessorElementSize(&accessor);
+    int stride = view.byteStride != 0 ? view.byteStride : elementSize;
+    int64_t requiredSize = offset + (accessor.count > 0 ? ((int64_t)stride * (accessor.count - 1)) + elementSize : 0);
+    if (offset < 0 || elementSize <= 0 || stride < elementSize || requiredSize > view.byteOffset + (int64_t)view.byteLength || requiredSize > result->buffers[view.buffer].byteLength)
+    {
+        AX_WARN("gltf accessor range invalid: %s accessor=%d offset=%lld elementSize=%d stride=%d count=%d viewLength=%d bufferLength=%d",
+                label, accessorIndex, (long long)offset, elementSize, stride, accessor.count, view.byteLength, result->buffers[view.buffer].byteLength);
+        return false;
+    }
+
+    *outPtr = (char*)result->buffers[view.buffer].uri + offset;
+    if (outAccessor) *outAccessor = accessor;
+    if (outView)     *outView = view;
+    return true;
+}
 
 static void DecodeBase64(char *dst, const char *src, size_t src_length)
 {
@@ -163,9 +237,37 @@ static void* ParseArray(sj_Value sjArray, size_t stride, int* numElementsOut,
     return arrayOfElements;
 }
 
+static bool GLTFKeyEquals(sj_Value key, const char* wanted)
+{
+    int wantedLen = StringLength(wanted);
+    return (key.end - key.start) == wantedLen && StringEqual(key.start, wanted, wantedLen);
+}
+
+static void* ParseTopLevelArrayByName(const char* source, uint64_t sourceSize, const char* wanted,
+                                      size_t stride, int* numElementsOut, GLTFParseContext* ctx,
+                                      ParseArrayObjFn objFn)
+{
+    sj_Reader sj = sj_reader((char*)source, sourceSize);
+    sj_Value obj = sj_read(&sj);
+    sj_Value key, val;
+    while (sj_iter_object(&sj, obj, &key, &val))
+    {
+        if (!GLTFKeyEquals(key, wanted))
+            continue;
+
+        sj_Reader* previous = ctx->sj;
+        ctx->sj = &sj;
+        void* parsed = ParseArray(val, stride, numElementsOut, ctx, objFn);
+        ctx->sj = previous;
+        return parsed;
+    }
+    return NULL;
+}
+
 static void ParseAccessorObj(sj_Value sjAccessorObj, void* element, GLTFParseContext* ctx)
 {
     GLTFAccessor* accessor = (GLTFAccessor*)element;
+    accessor->bufferView = -1;
     sj_Value key, val;
 
     while (sj_iter_object(ctx->sj, sjAccessorObj, &key, &val))
@@ -190,7 +292,8 @@ static void ParseAccessorObj(sj_Value sjAccessorObj, void* element, GLTFParseCon
                 case 'R': accessor->type = 1; break;  // SCALAR 
             }
         }
-        else AX_LOG("unknown accessor parameter: %s ", key.start);
+        else if (StrCMP16(key.start, "min") || StrCMP16(key.start, "max") || StrCMP16(key.start, "name") || StrCMP16(key.start, "sparse") || StrCMP16(key.start, "extras") || StrCMP16(key.start, "extensions")) { }
+        else AX_LOG("gltf ignored accessor parameter: %s path=%s", key.start, ctx->path);
         *key.end = beforeChar;
     }
 }
@@ -212,7 +315,7 @@ static void ParseSceneObj(sj_Value sjSceneObj, void* element, GLTFParseContext* 
         {
             scene->name = CopySJString(val, ctx->allocator);
         }
-        else AX_LOG("unknown: %s ", key.start);
+        else AX_LOG("gltf ignored scene parameter: %s path=%s", key.start, ctx->path);
     
         *key.end = beforeChar;
     }
@@ -231,7 +334,7 @@ static void ParseBufferViewObj(sj_Value sjBufferObj, void* element, GLTFParseCon
         else if (StrCMP16(key.start, "byteLength")) { ParsePositiveNumber(val.start, &bufferView->byteLength); }
         else if (StrCMP16(key.start, "byteStride")) { ParsePositiveNumber(val.start, &bufferView->byteStride); }
         else if (StrCMP16(key.start, "target"))     { ParsePositiveNumber(val.start, &bufferView->target);     }
-        else AX_LOG("unknown: %s ", key.start);
+        else AX_LOG("gltf ignored bufferView parameter: %s path=%s", key.start, ctx->path);
         
         *key.end = beforeChar;
     }
@@ -306,7 +409,8 @@ static void ParseImagesObj(sj_Value sjSceneObj, void* element, GLTFParseContext*
         {
             ParsePositiveNumber(val.start, &image->bufferViewIndex);
         }
-        else AX_LOG("unknown: %s ", key.start);
+        else if (StrCMP16(key.start, "mimeType") || StrCMP16(key.start, "name") || StrCMP16(key.start, "extras") || StrCMP16(key.start, "extensions")) { }
+        else AX_LOG("gltf ignored image parameter: %s path=%s", key.start, ctx->path);
         *key.end = beforeChar;
     } 
 }
@@ -322,18 +426,18 @@ static void ParseTexturesObj(sj_Value sjTextureObj, void* element, GLTFParseCont
         if (StrCMP16(key.start, "sampler"))     ParsePositiveNumber(val.start, &texture->sampler);
         else if (StrCMP16(key.start, "source")) ParsePositiveNumber(val.start, &texture->source);
         else if (StrCMP16(key.start, "name"))   texture->name = CopySJString(val, ctx->allocator);
-        else AX_LOG("unknown: %s ", key.start);
+        else AX_LOG("gltf ignored texture parameter: %s path=%s", key.start, ctx->path);
         
         *key.end = beforeChar;
     }
 }
 
-static void ParseAttributes(sj_Reader* sj, sj_Value sjAttributes, APrimitive* primitive)
+static void ParseAttributes(GLTFParseContext* ctx, sj_Value sjAttributes, APrimitive* primitive)
 {
     sj_Value key, val;
     MemsetZero(primitive->vertexAttribs, sizeof(void*) * AAttribType_Count);
     primitive->attributes = 0;
-    while (sj_iter_object(sj, sjAttributes, &key, &val))
+    while (sj_iter_object(ctx->sj, sjAttributes, &key, &val))
     {
         unsigned maskBefore = primitive->attributes;
         if      (StrCMP16(key.start, "POSITION"))   { primitive->attributes |= AAttribType_POSITION;   }
@@ -344,7 +448,14 @@ static void ParseAttributes(sj_Reader* sj, sj_Value sjAttributes, APrimitive* pr
         else if (StrCMP16(key.start, "JOINTS_0"))   { primitive->attributes |= AAttribType_JOINTS;     }
         else if (StrCMP16(key.start, "WEIGHTS_0"))  { primitive->attributes |= AAttribType_WEIGHTS;    }
         else if (StrCMP16(key.start, "TEXCOORD_"))  { continue; } // < NO more than two texture coords
-        else { ASSERT(0 && "attribute variable unknown!"); continue; }
+        else if (StrCMP16(key.start, "COLOR_"))     { continue; }
+        else if (StrCMP16(key.start, "_"))          { continue; }
+        else
+        {
+            AX_WARN("gltf ignored unsupported attribute path=%s mesh=%d primitive=%d attribute=%.*s",
+                    ctx->path, ctx->currentMesh, ctx->currentPrimitive, (int)(key.end - key.start), key.start);
+            continue;
+        }
 
         // using bitmask will help us to order attributes correctly(sort) Position, Normal, TexCoord
         unsigned newIndex = TrailingZeroCount32(maskBefore ^ primitive->attributes);
@@ -357,6 +468,7 @@ static void ParseAttributes(sj_Reader* sj, sj_Value sjAttributes, APrimitive* pr
 static void ParseMeshesObj(sj_Value sjMeshObj, void* element, GLTFParseContext* ctx)
 {
     AMesh* mesh = (AMesh*)element;
+    int meshIndex = ctx->currentMesh++;
     sj_Value key, val;
     while (sj_iter_object(ctx->sj, sjMeshObj, &key, &val))
     {
@@ -383,8 +495,8 @@ static void ParseMeshesObj(sj_Value sjMeshObj, void* element, GLTFParseContext* 
         }
         else if (!StrCMP16(key.start, "primitives"))
         { 
-            ASSERT(0 && "only primitives, name and weights allowed"); 
-            return; 
+            AX_LOG("gltf ignored mesh parameter path=%s mesh=%d parameter=%.*s", ctx->path, meshIndex, (int)(key.end - key.start), key.start);
+            continue;
         }
 
         mesh->numPrimitives = sjCountArray(*ctx->sj, val);
@@ -400,11 +512,14 @@ static void ParseMeshesObj(sj_Value sjMeshObj, void* element, GLTFParseContext* 
         {
             sj_Value sjPrimKey, sjPrimVal;
             APrimitive* primitive = mesh->primitives + primitiveIndex;  
+            ctx->currentPrimitive = primitiveIndex;
             primitive->material = -1;
+            primitive->mode = 4;
+            primitive->indiceIndex = UINT16_MAX;
             primitiveIndex++;
             while (sj_iter_object(ctx->sj, sjPrimitiveArr, &sjPrimKey, &sjPrimVal))
             {
-                if      (StrCMP16(sjPrimKey.start, "attributes")) { ParseAttributes(ctx->sj, sjPrimVal, primitive); }
+                if      (StrCMP16(sjPrimKey.start, "attributes")) { ParseAttributes(ctx, sjPrimVal, primitive); }
                 else if (StrCMP16(sjPrimKey.start, "indices"))    { ParsePositiveNumberU16(sjPrimVal.start, &primitive->indiceIndex);  }
                 else if (StrCMP16(sjPrimKey.start, "mode"))       { ParsePositiveNumberU16(sjPrimVal.start, &primitive->mode       ); }
                 else if (StrCMP16(sjPrimKey.start, "material"))   { ParsePositiveNumberU16(sjPrimVal.start, &primitive->material   ); }
@@ -421,9 +536,10 @@ static void ParseMeshesObj(sj_Value sjMeshObj, void* element, GLTFParseContext* 
                     {
                         sj_Value sjMorphKey,  sjMorphVal;
                         AMorphTarget* morphTarget = primitive->morphTargets + morphTargetIdx;
+                        MemsetZero(morphTarget, sizeof(AMorphTarget));
                         morphTargetIdx++;
 
-                        while (sj_iter_object(ctx->sj, sjPrimitiveArr, &sjMorphKey, &sjMorphVal))
+                        while (sj_iter_object(ctx->sj, sjMorphArr, &sjMorphKey, &sjMorphVal))
                         {
                             unsigned maskBefore = morphTarget->attributes;
                             if      (StrCMP16(sjMorphKey.start, "POSITION"))   { morphTarget->attributes |= AAttribType_POSITION;   }
@@ -431,7 +547,12 @@ static void ParseMeshesObj(sj_Value sjMeshObj, void* element, GLTFParseContext* 
                             else if (StrCMP16(sjMorphKey.start, "NORMAL"))     { morphTarget->attributes |= AAttribType_NORMAL;     }
                             else if (StrCMP16(sjMorphKey.start, "TANGENT"))    { morphTarget->attributes |= AAttribType_TANGENT;    }
                             else if (StrCMP16(sjMorphKey.start, "TEXCOORD_"))  { continue; } // < NO more than one texture coords
-                            else { ASSERT(0 && "attribute variable unknown!"); return; }
+                            else
+                            {
+                                AX_WARN("gltf ignored unsupported morph attribute path=%s mesh=%d primitive=%d attribute=%.*s",
+                                        ctx->path, meshIndex, primitiveIndex - 1, (int)(sjMorphKey.end - sjMorphKey.start), sjMorphKey.start);
+                                continue;
+                            }
                  
                             // detect changed attribute.
                             unsigned addedAttribute = TrailingZeroCount32(maskBefore ^ morphTarget->attributes);
@@ -439,7 +560,9 @@ static void ParseMeshesObj(sj_Value sjMeshObj, void* element, GLTFParseContext* 
                         }
                     }
                 }
-                else { ASSERT(0); return; }
+                else if (StrCMP16(sjPrimKey.start, "extras") || StrCMP16(sjPrimKey.start, "extensions")) { }
+                else AX_LOG("gltf ignored primitive parameter path=%s mesh=%d primitive=%d parameter=%.*s",
+                            ctx->path, meshIndex, primitiveIndex - 1, (int)(sjPrimKey.end - sjPrimKey.start), sjPrimKey.start);
             }
         }
     }
@@ -451,68 +574,71 @@ static void ParseNodesObj(sj_Value sjMeshObj, void* element, GLTFParseContext* c
     node->rotation[3] = 1.0f;
     node->scale[0] = node->scale[1] = node->scale[2] = ctx->scale; 
     node->index = -1;
+    node->skin = -1;
     node->parent = -1;
 
     sj_Value key, val;
     while (sj_iter_object(ctx->sj, sjMeshObj, &key, &val))
     {
-        const char* curr = key.start;
+        const char* curr = val.start;
 
         // mesh, name, children, matrix, translation, rotation, scale, skin
-        if      (StrCMP16(curr, "mesh"))   { node->type = 0; ParsePositiveNumber(curr, &node->index); }
-        else if (StrCMP16(curr, "camera")) { node->type = 1; ParsePositiveNumber(curr, &node->index); }
-        else if (StrCMP16(curr, "children"))
+        if      (StrCMP16(key.start, "mesh"))   { node->type = 0; ParsePositiveNumber(val.start, &node->index); }
+        else if (StrCMP16(key.start, "camera")) { node->type = 1; ParsePositiveNumber(val.start, &node->index); }
+        else if (StrCMP16(key.start, "children"))
         {
             node->children = ParseIntArrayAlloc(ctx, val, &node->numChildren);
         }
-        else if (StrCMP16(curr, "matrix"))
+        else if (StrCMP16(key.start, "matrix"))
         {
             mat4x4 m;
             float* matrix = &m.m[0][0];
+            float raw[16];
             
             for (int i = 0; i < 16; i++)
-                curr = ParseFloat(curr, &matrix[i]);
+                curr = ParseFloat(curr, &raw[i]);
             
+            MemCopy(matrix, raw, sizeof(raw));
             m = M44Transpose(m);
-            node->translation[0] = matrix[12];
-            node->translation[1] = matrix[13];
-            node->translation[2] = matrix[14];
+            node->translation[0] = raw[12];
+            node->translation[1] = raw[13];
+            node->translation[2] = raw[14];
             QuaternionFromMatrix(node->rotation, matrix, 4);
 
             v128f v = VecMulf(M44ExtractScaleV(m), ctx->scale);
             Vec3Store(node->scale, v);
         }
-        else if (StrCMP16(curr, "translation"))
+        else if (StrCMP16(key.start, "translation"))
         {
             curr = ParseFloat(curr, &node->translation[0]);
             curr = ParseFloat(curr, &node->translation[1]);
             curr = ParseFloat(curr, &node->translation[2]);
         }
-        else if (StrCMP16(curr, "rotation"))
+        else if (StrCMP16(key.start, "rotation"))
         {
             curr = ParseFloat(curr, &node->rotation[0]);
             curr = ParseFloat(curr, &node->rotation[1]);
             curr = ParseFloat(curr, &node->rotation[2]);
             curr = ParseFloat(curr, &node->rotation[3]);
         }
-        else if (StrCMP16(curr, "scale"))
+        else if (StrCMP16(key.start, "scale"))
         {
             curr = ParseFloat(curr, &node->scale[0]); node->scale[0] *= ctx->scale;
             curr = ParseFloat(curr, &node->scale[1]); node->scale[1] *= ctx->scale;
             curr = ParseFloat(curr, &node->scale[2]); node->scale[2] *= ctx->scale;
         }
-        else if (StrCMP16(curr, "name"))
+        else if (StrCMP16(key.start, "name"))
         {
             node->name = CopySJString(val, ctx->allocator);
         }
-        else if (StrCMP16(curr, "skin"))
+        else if (StrCMP16(key.start, "skin"))
         {
-            ParsePositiveNumber(curr, &node->skin);
+            ParsePositiveNumber(val.start, &node->skin);
         }
+        else if (StrCMP16(key.start, "weights") || StrCMP16(key.start, "extras") || StrCMP16(key.start, "extensions")) { }
         else
         {
-            ASSERT(0 && "Unknown node variable");
-            return;
+            AX_LOG("gltf ignored node parameter path=%s parameter=%.*s", ctx->path, (int)(key.end - key.start), key.start);
         }   
     }
 }
@@ -669,11 +795,17 @@ static void ParseAnimationsObj(sj_Value sjArrObj, void* element, GLTFParseContex
                                     case 'r': channel->targetPath = AAnimTargetPath_Rotation;    break;
                                     case 's': channel->targetPath = AAnimTargetPath_Scale;       break;
                                     case 'w': channel->targetPath = AAnimTargetPath_Weight;      break;
-                                    default: ASSERT(0 && "Unknown animation path value");
+                                    default:
+                                        AX_WARN("gltf ignored unknown animation target path path=%s value=%.*s", ctx->path, (int)(tgVal.end - tgVal.start), tgVal.start);
+                                        break;
                                 };
                             }
+                            else if (StrCMP16(tgKey.start, "extensions") || StrCMP16(tgKey.start, "extras")) { }
+                            else AX_LOG("gltf ignored animation target parameter path=%s parameter=%.*s", ctx->path, (int)(tgKey.end - tgKey.start), tgKey.start);
                         }
                     } 
+                    else if (StrCMP16(chKey.start, "extensions") || StrCMP16(chKey.start, "extras")) { }
+                    else AX_LOG("gltf ignored animation channel parameter path=%s parameter=%.*s", ctx->path, (int)(chKey.end - chKey.start), chKey.start);
                 }
             }
         }
@@ -712,13 +844,16 @@ static void ParseAnimationsObj(sj_Value sjArrObj, void* element, GLTFParseContex
                             case 'L': sampler->interpolation = 0; break; // Linear
                             case 'S': sampler->interpolation = 1; break; // Step
                             case 'C': sampler->interpolation = 2; break; // CubicSpline
-                            default: ASSERT(0 && "Unknown animation path value"); break;
+                            default: AX_WARN("gltf unknown animation interpolation path=%s value=%.*s", ctx->path, (int)(spVal.end - spVal.start), spVal.start); break;
                         };
                     }
-                    else ASSERT(0 && "Unknown animation sampler value");
+                    else if (StrCMP16(spKey.start, "extensions") || StrCMP16(spKey.start, "extras")) { }
+                    else AX_LOG("gltf ignored animation sampler parameter path=%s parameter=%.*s", ctx->path, (int)(spKey.end - spKey.start), spKey.start);
                 }
             }
         }
+        else if (StrCMP16(key.start, "extensions") || StrCMP16(key.start, "extras")) { }
+        else AX_LOG("gltf ignored animation parameter path=%s parameter=%.*s", ctx->path, (int)(key.end - key.start), key.start);
     } 
 }
 
@@ -732,8 +867,11 @@ static void ParseMaterialsObj(sj_Value sjMaterialObj, void* element, GLTFParseCo
     material->textures[0].index = UINT16_MAX;
     material->textures[1].index = UINT16_MAX;
     material->textures[2].index = UINT16_MAX;
+    material->baseColorFactor   = PackColorToUint(255, 255, 255, 255);
     material->metallicFactor    = PackUnorm16(1.0f);
     material->roughnessFactor   = PackUnorm16(1.0f);
+    material->alphaMode         = AMaterialAlphaMode_Opaque;
+    material->alphaCutoff       = 0.5f;
 
     sj_Value key, val;
     while (sj_iter_object(ctx->sj, sjMaterialObj, &key, &val))
@@ -913,6 +1051,8 @@ int ParseGLTF(const char* path, SceneBundle* result, float scale)
 
     GLTFAccessor* accessors = NULL;
     GLTFBufferView* bufferViews = NULL;
+    int numAccessors = 0;
+    int numBufferViews = 0;
 
     AScene* scenes = NULL;
     result->defaultSceneIndex = 0;
@@ -920,7 +1060,7 @@ int ParseGLTF(const char* path, SceneBundle* result, float scale)
     sj_Reader sj = sj_reader(source, sourceSize);
     sj_Value obj = sj_read(&sj);
     
-    GLTFParseContext ctx = {allocator, path, &sj, scale };
+    GLTFParseContext ctx = {allocator, path, &sj, scale, 0, 0 };
 
     size_t pathLen = StringLength(path);
     bool isGLB = FileHasExtension(path, pathLen, ".glb");
@@ -934,9 +1074,9 @@ int ParseGLTF(const char* path, SceneBundle* result, float scale)
 
         #define ParseList(Type, numThings, fnName) (Type*)ParseArray(val, sizeof(Type), numThings, &ctx, fnName)
             
-             if (StrCMP16(name, "accessors"))          accessors       = ParseList(GLTFAccessor  , NULL, ParseAccessorObj);
-        else if (StrCMP16(name, "bufferViews"))        bufferViews     = ParseList(GLTFBufferView, NULL, ParseBufferViewObj);
-        else if (!isGLB && StrCMP16(name, "buffers"))  result->buffers = ParseList(GLTFBuffer    , NULL, ParseBuffersObj);
+             if (StrCMP16(name, "accessors"))          accessors       = ParseList(GLTFAccessor  , &numAccessors, ParseAccessorObj);
+        else if (StrCMP16(name, "bufferViews"))        bufferViews     = ParseList(GLTFBufferView, &numBufferViews, ParseBufferViewObj);
+        else if (!isGLB && StrCMP16(name, "buffers"))  result->buffers = ParseList(GLTFBuffer    , &result->numBuffers, ParseBuffersObj);
         else if (StrCMP16(name, "scenes"))      result->scenes     = ParseList(AScene    , &result->numScenes    , ParseSceneObj     );
         else if (StrCMP16(name, "images"))      result->images     = ParseList(AImage    , &result->numImages    , ParseImagesObj    );
         else if (StrCMP16(name, "textures"))    result->textures   = ParseList(ATexture  , &result->numTextures  , ParseTexturesObj  );
@@ -947,11 +1087,30 @@ int ParseGLTF(const char* path, SceneBundle* result, float scale)
         else if (StrCMP16(name, "cameras"))     result->cameras    = ParseList(ACamera   , &result->numCameras   , ParseCamerasObj   );
         else if (StrCMP16(name, "skins"))       result->skins      = ParseList(ASkin     , &result->numSkins     , ParseSkinsObj     );
         else if (StrCMP16(name, "animations"))  result->animations = ParseList(AAnimation, &result->numAnimations, ParseAnimationsObj);
-        else if (StrCMP16(name, "scene"))       ParsePositiveNumber(key.start, &result->defaultSceneIndex);
+        else if (StrCMP16(name, "scene"))       ParsePositiveNumber(val.start, &result->defaultSceneIndex);
+        else if (StrCMP16(name, "asset") || StrCMP16(name, "extensionsUsed") || StrCMP16(name, "extensionsRequired") || StrCMP16(name, "extras")) { }
         else if (!isGLB) AX_LOG("unknown gltf parameter: %s", name);
 
         // skip, asets, extensions used
         *key.end = beforeChar;
+    }
+
+    if (accessors == NULL)
+    {
+        AX_WARN("gltf retrying accessors parse after top-level iterator miss: %s", path);
+        accessors = (GLTFAccessor*)ParseTopLevelArrayByName(source, sourceSize, "accessors", sizeof(GLTFAccessor), &numAccessors, &ctx, ParseAccessorObj);
+    }
+    if (bufferViews == NULL)
+    {
+        AX_WARN("gltf retrying bufferViews parse after top-level iterator miss: %s", path);
+        bufferViews = (GLTFBufferView*)ParseTopLevelArrayByName(source, sourceSize, "bufferViews", sizeof(GLTFBufferView), &numBufferViews, &ctx, ParseBufferViewObj);
+    }
+    if (!isGLB && (result->buffers == NULL || GLTF_IS_POISON_PTR(result->buffers)))
+    {
+        AX_WARN("gltf retrying buffers parse after top-level iterator miss: %s", path);
+        result->buffers = NULL;
+        result->numBuffers = 0;
+        result->buffers = (GLTFBuffer*)ParseTopLevelArrayByName(source, sourceSize, "buffers", sizeof(GLTFBuffer), &result->numBuffers, &ctx, ParseBuffersObj);
     }
 
     if (result->numMeshes     == 0xCDCDCDCD) { AX_WARN("numMeshes     undefined"); result->numMeshes     = 0; }
@@ -964,9 +1123,38 @@ int ParseGLTF(const char* path, SceneBundle* result, float scale)
     if (result->numScenes     == 0xCDCDCDCD) { AX_WARN("numScenes     undefined"); result->numScenes     = 0; }
     if (result->numSkins      == 0xCDCDCDCD) { AX_WARN("numSkins      undefined"); result->numSkins      = 0; }
     if (result->numAnimations == 0xCDCDCDCD) { AX_WARN("numAnimations undefined"); result->numAnimations = 0; }
+    if (result->numBuffers    == 0xCDCDCDCD) { AX_WARN("numBuffers    undefined"); result->numBuffers    = 0; }
 
-    AX_LOG("gltf parse: %s nodes=%d meshes=%d skins=%d animations=%d scenes=%d",
-           path, result->numNodes, result->numMeshes, result->numSkins, result->numAnimations, result->numScenes);
+    if (result->numMeshes     <= 0 || GLTF_IS_POISON_PTR(result->meshes))     result->meshes = NULL;
+    if (result->numNodes      <= 0 || GLTF_IS_POISON_PTR(result->nodes))      result->nodes = NULL;
+    if (result->numMaterials  <= 0 || GLTF_IS_POISON_PTR(result->materials))  result->materials = NULL;
+    if (result->numTextures   <= 0 || GLTF_IS_POISON_PTR(result->textures))   result->textures = NULL;
+    if (result->numImages     <= 0 || GLTF_IS_POISON_PTR(result->images))     result->images = NULL;
+    if (result->numSamplers   <= 0 || GLTF_IS_POISON_PTR(result->samplers))   result->samplers = NULL;
+    if (result->numCameras    <= 0 || GLTF_IS_POISON_PTR(result->cameras))    result->cameras = NULL;
+    if (result->numScenes     <= 0 || GLTF_IS_POISON_PTR(result->scenes))     result->scenes = NULL;
+    if (result->numSkins      <= 0 || GLTF_IS_POISON_PTR(result->skins))      result->skins = NULL;
+    if (result->numAnimations <= 0 || GLTF_IS_POISON_PTR(result->animations)) result->animations = NULL;
+    if (result->numBuffers    <= 0 || GLTF_IS_POISON_PTR(result->buffers))    result->buffers = NULL;
+
+    AX_LOG("gltf parse: %s nodes=%d meshes=%d materials=%d textures=%d images=%d buffers=%d bufferViews=%d accessors=%d skins=%d animations=%d scenes=%d defaultScene=%d",
+           path, result->numNodes, result->numMeshes, result->numMaterials, result->numTextures, result->numImages,
+           result->numBuffers, numBufferViews, numAccessors, result->numSkins, result->numAnimations, result->numScenes, result->defaultSceneIndex);
+
+    if (accessors == NULL || numAccessors <= 0)
+        AX_WARN("gltf has no accessors: %s", path);
+    if (bufferViews == NULL || numBufferViews <= 0)
+        AX_WARN("gltf has no bufferViews: %s", path);
+    if (result->buffers == NULL || result->numBuffers <= 0)
+        AX_WARN("gltf has no buffers: %s", path);
+
+    if (accessors == NULL || numAccessors <= 0 || bufferViews == NULL || numBufferViews <= 0 || result->buffers == NULL || result->numBuffers <= 0)
+    {
+        result->error = AError_BUFFER_PARSE_FAIL;
+        AX_ERROR("gltf import failed: missing critical binary metadata path=%s accessors=%d bufferViews=%d buffers=%d",
+                 path, numAccessors, numBufferViews, result->numBuffers);
+        return 0;
+    }
 
     if (result->nodes == NULL || result->numNodes <= 0)
         AX_WARN("gltf has no nodes: %s", path);
@@ -974,6 +1162,10 @@ int ParseGLTF(const char* path, SceneBundle* result, float scale)
         AX_WARN("gltf has no meshes: %s", path);
     if (result->numScenes <= 0)
         AX_WARN("gltf has no scenes; normalization will fall back to root/loose nodes: %s", path);
+
+    for (int i = 0; i < result->numImages; i++)
+        if (result->images[i].path == NULL && result->images[i].bufferViewIndex < 0)
+            AX_WARN("gltf image has neither uri nor bufferView path=%s image=%d", path, i);
 
     // Resolve accessor indices into direct buffer pointers used by the asset baking stage.
     for (int m = 0; m < result->numMeshes; ++m)
@@ -984,51 +1176,128 @@ int ParseGLTF(const char* path, SceneBundle* result, float scale)
         {
             APrimitive* primitive = &mesh.primitives[p];
             if ((primitive->attributes & AAttribType_POSITION) == 0)
+            {
                 AX_WARN("mesh %d primitive %d has no POSITION attribute", m, p);
+                primitive->numVertices = 0;
+                primitive->numIndices = 0;
+                continue;
+            }
 
-            // get position attrib's count because all attributes same
-            int numVertex = accessors[(int)(size_t)primitive->vertexAttribs[0]].count; 
+            void* resolvedPtr = NULL;
+            GLTFAccessor accessor = {0};
+            GLTFBufferView view = {0};
+            int positionAccessorIndex = (int)(size_t)primitive->vertexAttribs[AAttribIdx_POSITION];
+            if (!GLTFResolveAccessorPtr(result, accessors, numAccessors, bufferViews, numBufferViews,
+                                        positionAccessorIndex, "POSITION", &resolvedPtr, &accessor, &view))
+            {
+                AX_WARN("gltf skipping primitive with invalid POSITION path=%s mesh=%d primitive=%d", path, m, p);
+                primitive->numVertices = 0;
+                primitive->numIndices = 0;
+                continue;
+            }
+
+            int numVertex = accessor.count;
             primitive->numVertices = numVertex;
-        
-            bool indicesDefined = primitive->indiceIndex != 0xCDCD;
-            primitive->indiceIndex = indicesDefined ? primitive->indiceIndex : 0;
-            // get number of index
-            GLTFAccessor accessor = accessors[primitive->indiceIndex];
-            primitive->numIndices = accessor.count;
+
+            bool indicesDefined = primitive->indiceIndex != UINT16_MAX;
+            if (indicesDefined)
+            {
+                if (GLTFResolveAccessorPtr(result, accessors, numAccessors, bufferViews, numBufferViews,
+                                           primitive->indiceIndex, "indices", &resolvedPtr, &accessor, &view))
+                {
+                    primitive->numIndices = accessor.count;
+                    primitive->indices = resolvedPtr;
+                    primitive->indexType = accessor.componentType;
+                }
+                else
+                {
+                    AX_WARN("gltf primitive has invalid indices; using sequential indices path=%s mesh=%d primitive=%d", path, m, p);
+                    primitive->numIndices = numVertex;
+                    primitive->indices = NULL;
+                    primitive->indexType = AComponentType_UNSIGNED_INT;
+                }
+            }
+            else
+            {
+                primitive->numIndices = numVertex;
+                primitive->indices = NULL;
+                primitive->indexType = AComponentType_UNSIGNED_INT;
+            }
+            if (primitive->mode != 4)
+                AX_WARN("gltf primitive mode is unsupported by renderer path=%s mesh=%d primitive=%d mode=%d", path, m, p, primitive->mode);
             
-            accessor = accessors[primitive->indiceIndex];
-            GLTFBufferView view = bufferViews[accessor.bufferView];
-            int64_t offset = (int64_t)accessor.byteOffset + view.byteOffset;
-
-            primitive->indices = ((char*)result->buffers[view.buffer].uri) + offset;
-            primitive->indices = indicesDefined ? primitive->indices : NULL;
-            primitive->indexType = accessor.componentType;
-
             // get joint data that we need for creating vertices
             const uint32_t jointIndex = TrailingZeroCount32(AAttribType_JOINTS);
-            accessor = accessors[(int)(size_t)primitive->vertexAttribs[jointIndex]];
-            primitive->jointType   = (short)accessor.componentType;
-            primitive->jointCount  = (short)accessor.type;
-            primitive->jointStride = (short)bufferViews[accessor.bufferView].byteStride;
+            if (primitive->attributes & AAttribType_JOINTS)
+            {
+                int jointAccessorIndex = (int)(size_t)primitive->vertexAttribs[jointIndex];
+                if (GLTFResolveAccessorPtr(result, accessors, numAccessors, bufferViews, numBufferViews,
+                                           jointAccessorIndex, "JOINTS_0", &resolvedPtr, &accessor, &view))
+                {
+                    primitive->jointType   = (short)accessor.componentType;
+                    primitive->jointCount  = (short)accessor.type;
+                    primitive->jointStride = (short)view.byteStride;
+                    primitive->vertexAttribs[jointIndex] = resolvedPtr;
+                }
+                else
+                {
+                    primitive->attributes &= ~AAttribType_JOINTS;
+                    primitive->vertexAttribs[jointIndex] = NULL;
+                }
+            }
 
             // get weight data that we need for creating vertices
             const uint32_t weightIndex = TrailingZeroCount32(AAttribType_WEIGHTS);
-            accessor = accessors[(int)(size_t)primitive->vertexAttribs[weightIndex]];
-            primitive->weightType   = (short)accessor.componentType;
-            primitive->weightStride = (short)bufferViews[accessor.bufferView].byteStride;
+            if (primitive->attributes & AAttribType_WEIGHTS)
+            {
+                int weightAccessorIndex = (int)(size_t)primitive->vertexAttribs[weightIndex];
+                if (GLTFResolveAccessorPtr(result, accessors, numAccessors, bufferViews, numBufferViews,
+                                           weightAccessorIndex, "WEIGHTS_0", &resolvedPtr, &accessor, &view))
+                {
+                    primitive->weightType   = (short)accessor.componentType;
+                    primitive->weightStride = (short)view.byteStride;
+                    primitive->vertexAttribs[weightIndex] = resolvedPtr;
+                }
+                else
+                {
+                    primitive->attributes &= ~AAttribType_WEIGHTS;
+                    primitive->vertexAttribs[weightIndex] = NULL;
+                }
+            }
+            if (((primitive->attributes & AAttribType_JOINTS) != 0) != ((primitive->attributes & AAttribType_WEIGHTS) != 0))
+                AX_WARN("gltf primitive has incomplete skin attributes path=%s mesh=%d primitive=%d attributes=0x%x", path, m, p, primitive->attributes);
 
             // position, normal, texcoord are different buffers, 
             // we are unifying all attributes to Vertex* buffer here
             // even though attrib definition in gltf is not ordered, this code will order it, because we traversing set bits
             // for example it converts from this: TexCoord, Normal, Position to Position, Normal, TexCoord
-            unsigned attributes = primitive->attributes;
-            for (int j = 0; attributes > 0 && j < AAttribType_Count; j += NextSetBit(&attributes))
+            for (int j = 0; j < AAttribType_Count; j++)
             {
-                accessor     = accessors[(int)(size_t)primitive->vertexAttribs[j]];
-                view         = bufferViews[accessor.bufferView];
-                offset       = (int64_t)(accessor.byteOffset) + view.byteOffset;
-                
-                primitive->vertexAttribs[j] = (char*)result->buffers[view.buffer].uri + offset;
+                if ((primitive->attributes & (1u << j)) == 0)
+                    continue;
+                if (j == AAttribIdx_JOINTS || j == AAttribIdx_WEIGHTS)
+                    continue;
+
+                int attribAccessorIndex = (int)(size_t)primitive->vertexAttribs[j];
+                if (!GLTFResolveAccessorPtr(result, accessors, numAccessors, bufferViews, numBufferViews,
+                                            attribAccessorIndex, "vertex attribute", &resolvedPtr, &accessor, &view))
+                {
+                    AX_WARN("gltf vertex attribute invalid path=%s mesh=%d primitive=%d attrib=%d accessor=%d", path, m, p, j, attribAccessorIndex);
+                    primitive->vertexAttribs[j] = NULL;
+                    primitive->attributes &= ~(1u << j);
+                    continue;
+                }
+                int elementSize = GLTFAccessorElementSize(&accessor);
+                int byteStride = view.byteStride != 0 ? view.byteStride : elementSize;
+                void* packedPtr = GLTFPackStridedAccessor(allocator, resolvedPtr, accessor.count, elementSize, byteStride);
+                if (packedPtr == NULL)
+                {
+                    AX_WARN("gltf vertex attribute pack failed path=%s mesh=%d primitive=%d attrib=%d accessor=%d", path, m, p, j, attribAccessorIndex);
+                    primitive->vertexAttribs[j] = NULL;
+                    primitive->attributes &= ~(1u << j);
+                    continue;
+                }
+                primitive->vertexAttribs[j] = packedPtr;
             }
         }
     }
@@ -1039,17 +1308,31 @@ int ParseGLTF(const char* path, SceneBundle* result, float scale)
         if (skin->inverseBindMatrices == NULL)
         {
             AX_WARN("skin %d has no inverse bind matrices", s);
+            mat4x4* identityBind = (mat4x4*)FixedPow2Allocator_Allocate(allocator, skin->numJoints * sizeof(mat4x4));
+            for (int j = 0; j < skin->numJoints; j++)
+                identityBind[j] = M44Identity();
+            skin->inverseBindMatrices = (float*)identityBind;
             continue;
         }
 
         size_t skinIndex = (size_t)skin->inverseBindMatrices;
-        GLTFAccessor   accessor  = accessors[(int)skinIndex];
+        void* resolvedPtr = NULL;
+        GLTFAccessor accessor = {0};
+        GLTFBufferView view = {0};
+        if (!GLTFResolveAccessorPtr(result, accessors, numAccessors, bufferViews, numBufferViews,
+                                    (int)skinIndex, "inverseBindMatrices", &resolvedPtr, &accessor, &view))
+        {
+            AX_WARN("skin %d inverse bind matrices accessor invalid", s);
+            mat4x4* identityBind = (mat4x4*)FixedPow2Allocator_Allocate(allocator, skin->numJoints * sizeof(mat4x4));
+            for (int j = 0; j < skin->numJoints; j++)
+                identityBind[j] = M44Identity();
+            skin->inverseBindMatrices = (float*)identityBind;
+            continue;
+        }
         if (accessor.count != skin->numJoints)
             AX_WARN("skin %d inverse bind count %d does not match joint count %d", s, accessor.count, skin->numJoints);
 
-        GLTFBufferView view      = bufferViews[accessor.bufferView];
-        int64_t        offset    = (int64_t)(accessor.byteOffset) + view.byteOffset;
-        skin->inverseBindMatrices = (float*)((char*)result->buffers[view.buffer].uri + offset);
+        skin->inverseBindMatrices = (float*)resolvedPtr;
     }
 
     for (int i = 0; i < result->numImages; ++i)
@@ -1084,22 +1367,34 @@ int ParseGLTF(const char* path, SceneBundle* result, float scale)
         {
             AAnimSampler* sampler = &animation->samplers[s];
             size_t inputIndex = (size_t)sampler->input;
-            GLTFAccessor   accessor = accessors[(int)inputIndex];
-            GLTFBufferView view     = bufferViews[accessor.bufferView];
-            int64_t        offset   = (int64_t)(accessor.byteOffset) + view.byteOffset;
+            void* resolvedPtr = NULL;
+            GLTFAccessor accessor = {0};
+            GLTFBufferView view = {0};
+            if (!GLTFResolveAccessorPtr(result, accessors, numAccessors, bufferViews, numBufferViews,
+                                        (int)inputIndex, "animation input", &resolvedPtr, &accessor, &view))
+            {
+                sampler->input = NULL;
+                sampler->output = NULL;
+                sampler->count = 0;
+                continue;
+            }
             
-            sampler->input     = (float*)((char*)result->buffers[view.buffer].uri + offset);
+            sampler->input     = (float*)resolvedPtr;
             sampler->count     = accessor.count;
             sampler->inputType = accessor.componentType;
             if (sampler->inputType != AComponentType_FLOAT)
                 AX_WARN("animation %d sampler %d input type is not FLOAT: %d", a, s, sampler->inputType);
 
             size_t outputIndex = (size_t)sampler->output;
-            accessor = accessors[(int)outputIndex];
-            view     = bufferViews[accessor.bufferView];
-            offset   = (int64_t)(accessor.byteOffset) + view.byteOffset;
+            if (!GLTFResolveAccessorPtr(result, accessors, numAccessors, bufferViews, numBufferViews,
+                                        (int)outputIndex, "animation output", &resolvedPtr, &accessor, &view))
+            {
+                sampler->output = NULL;
+                sampler->count = 0;
+                continue;
+            }
             
-            sampler->output = (float*)((char*)result->buffers[view.buffer].uri + offset);
+            sampler->output = (float*)resolvedPtr;
             sampler->count  = accessor.count;
             sampler->outputType = accessor.componentType;
             sampler->numComponent = accessor.type;
@@ -1127,7 +1422,19 @@ int ParseGLTF(const char* path, SceneBundle* result, float scale)
         }
     }
     
-    result->rootNode = Prefab_FindAnimRootNodeIndex(result);
+    if (result->numSkins > 0)
+    {
+        result->rootNode = Prefab_FindAnimRootNodeIndex(result);
+    }
+    else if (result->scenes && result->numScenes > 0 && result->defaultSceneIndex >= 0 && result->defaultSceneIndex < result->numScenes &&
+             result->scenes[result->defaultSceneIndex].numNodes > 0)
+    {
+        result->rootNode = result->scenes[result->defaultSceneIndex].nodes[0];
+    }
+    else
+    {
+        result->rootNode = 0;
+    }
     result->totalIndices  = totalIndexCount;
     result->totalVertices = totalVertexCount;
 

@@ -118,6 +118,33 @@ void* AlignPointer(void* ptr, uint64_t align)
     return (void*)AlignAddress((uint64_t)ptr, align);
 }
 
+void* OSAllocAligned(uint64_t bytes, uint64_t align)
+{
+    uint64_t actualBytes = bytes + align;
+    uint8_t* pRawMem     = (uint8_t*)OSAlloc(actualBytes);
+    if (pRawMem == NULL) return NULL;
+    uint8_t* pAlignedMem = (uint8_t*)AlignPointer(pRawMem, align);
+
+    if (pAlignedMem == pRawMem)
+        pAlignedMem += align;
+
+    uint8_t shift      = (uint8_t)(pAlignedMem - pRawMem);
+    pAlignedMem[-1]    = (uint8_t)(shift & 0xFF);
+    return pAlignedMem;
+}
+
+void OSFreeAligned(void* pMem, size_t size)
+{
+    if (pMem == NULL)
+        return;
+
+    uint8_t* pAlignedMem = (uint8_t*)pMem;
+    uint64_t shift       = pAlignedMem[-1];
+    if (shift == 0) shift = 256;
+    uint8_t* pRawMem = pAlignedMem - shift;
+    OSFree(pRawMem, size);
+}
+
 void* AllocAligned(uint64_t bytes, uint64_t align)
 {
     uint64_t actualBytes = bytes + align;
