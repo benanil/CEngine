@@ -71,7 +71,7 @@ void InitGlobalArena()
     GlobalArena.buffLen = ARENA_MEMORY_SIZE;
     GlobalArena.currOffset = 0;
     size_t tlsfSize = (size_t)TLSF_MEMORY_SIZE;
-    const size_t minTLSFSize = 256ull * 1000ull * 1000ull;
+    const size_t minTLSFSize = TLSF_MEMORY_SIZE >> 2;
     while (tlsfSize >= minTLSFSize)
     {
         TLSFMemory = OSAlloc(tlsfSize);

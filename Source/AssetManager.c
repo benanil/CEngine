@@ -542,6 +542,7 @@ void SaveSceneImages(SceneBundle* scene, const u8* savePath, bool deleteRemainin
         AX_LOG("output path: %s", pathBuf);
 
         s32 r = basis_compress_file((const char*)src, (const char*)pathBuf, type, 1, -1, -1);
+        s32 r = basis_compress_file((const char*)src, (const char*)pathBuf, type, 16, -1, -1);
         if (r) AX_ERROR("Failed: %s (%d)\n", src, r);
 
         n = IntToString(pathBuf, type, 0);
@@ -609,7 +610,7 @@ s32 LoadSceneImages(const u8* texturePath, Texture* textures, s32 numImages)
         SmallMemCpy(basisPath + baseLen + nameLen, ".basis", 7);
 
         u64 size = FileSize(basisPath);
-        void* mem = OSAlloc(size);
+        void* mem = SDL_malloc(size);
         
         if (!mem || size == 0)
         {

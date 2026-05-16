@@ -223,6 +223,8 @@ Texture rCreateTexture2DArray(int width, int height, int layers, void* data, SDL
 
 void rDeleteTexture(Texture texture);
 
+void InitTextureSystem(void);
+
 void TextureSystem_BuildPages(SceneBundle** bundles, const u32* imageOffsets, u32 numBundles, Texture* textures);
 
 void UploadTextureRegion(Texture texture, u32 layer, u32 x, u32 y, u32 width, u32 height, u32 srcWidth, u32 srcHeight, const void* data);

@@ -124,6 +124,7 @@ s32 main(s32 argc, char* argv[])
     RenderSet_Init();
 
     GraphicsInit(msaa);
+    InitTextureSystem();
     RendererInit(msaa);
     if (!InitScene()) return 0;
     

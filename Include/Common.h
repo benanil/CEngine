@@ -643,6 +643,15 @@ purefn const char* GetFileName(const char* path)
     return path + length;
 }
 
+static inline bool IsMobilePlatform()
+{
+    #if defined(__ANDROID__)
+    return true;
+    #else
+    return false;
+    #endif
+}
+
 #if defined(__cplusplus)
 }
 #endif
