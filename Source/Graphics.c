@@ -112,7 +112,8 @@ void GraphicsInit(bool msaa)
     /* create a depth texture for the window */
     SDL_GetWindowSizeInPixels(g_SDLWindow, (int*)&drawablew, (int*)&drawableh);
     winstate->tex_depth   = CreateDepthTexture(drawablew, drawableh);
-    winstate->tex_occlusion_depth = CreateOcclusionDepthTexture(drawablew, drawableh);
+    winstate->tex_hiz_msaa = CreateHiZMSAATexture(drawablew, drawableh);
+    winstate->tex_hiz_depth = CreateHiZDepthTexture(drawablew, drawableh);
     winstate->tex_msaa    = CreateMSAATexture(drawablew, drawableh);
     winstate->tex_resolve = CreateResolveTexture(drawablew, drawableh);
     winstate->tex_color   = CreateSceneColorTexture(drawablew, drawableh, SDL_GPU_SAMPLECOUNT_1);
@@ -133,7 +134,8 @@ void GraphicsDestroy()
 {
     WindowState* winstate = &g_WindowState;
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_depth);
-    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_occlusion_depth);
+    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_hiz_msaa);
+    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_hiz_depth);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_msaa);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_resolve);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_color);
@@ -283,16 +285,26 @@ static SDL_GPUTexture* CreateTexture2D(u32 width, u32 height,
 
 SDL_GPUTexture* CreateDepthTexture(u32 drawablew, u32 drawableh)
 {
+    SDL_GPUTextureUsageFlags usage = SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET;
+    if (g_RenderState.sample_count == SDL_GPU_SAMPLECOUNT_1) usage |= SDL_GPU_TEXTUREUSAGE_SAMPLER;
     return CreateTexture2D(drawablew, drawableh, SDL_GPU_TEXTUREFORMAT_D32_FLOAT,
-                           SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET,
+                           usage,
                            g_RenderState.sample_count, 1, "Depth Texture");
 }
 
-SDL_GPUTexture* CreateOcclusionDepthTexture(u32 drawablew, u32 drawableh)
+SDL_GPUTexture* CreateHiZMSAATexture(u32 drawablew, u32 drawableh)
 {
-    return CreateTexture2D(drawablew, drawableh, SDL_GPU_TEXTUREFORMAT_D32_FLOAT,
-                           SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER,
-                           SDL_GPU_SAMPLECOUNT_1, 1, "Occlusion Depth Texture");
+    if (g_RenderState.sample_count == SDL_GPU_SAMPLECOUNT_1) return NULL;
+    return CreateTexture2D(drawablew, drawableh, SDL_GPU_TEXTUREFORMAT_R32_FLOAT,
+                           SDL_GPU_TEXTUREUSAGE_COLOR_TARGET,
+                           g_RenderState.sample_count, 1, "Hi-Z MSAA Depth Texture");
+}
+
+SDL_GPUTexture* CreateHiZDepthTexture(u32 drawablew, u32 drawableh)
+{
+    return CreateTexture2D(drawablew, drawableh, SDL_GPU_TEXTUREFORMAT_R32_FLOAT,
+                           SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER,
+                           SDL_GPU_SAMPLECOUNT_1, 1, "Hi-Z Resolved Depth Texture");
 }
 
 SDL_GPUTexture* CreateMSAATexture(u32 drawablew, u32 drawableh)

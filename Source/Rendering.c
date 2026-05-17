@@ -37,7 +37,6 @@
 #include "Shaders/spv/TonemapCompute.spv.h"
 #include "Shaders/spv/HiZBuildCompute.spv.h"
 #include "Shaders/spv/HiZDownscaleCompute.spv.h"
-#include "Shaders/spv/DepthResolveMSAACompute.spv.h"
 #include "Shaders/spv/SurfaceDepthOnlyVert.spv.h"
 #include "Shaders/spv/SurfaceDepthOnlyFrag.spv.h"
 #include "Shaders/spv/SkinnedDepthOnlyVert.spv.h"
@@ -59,7 +58,6 @@ static SDL_GPUComputePipeline* g_CullDrawArgsComputePipeline = NULL;
 static SDL_GPUComputePipeline* g_TonemapComputePipeline = NULL;
 static SDL_GPUComputePipeline* g_HiZBuildComputePipeline = NULL;
 static SDL_GPUComputePipeline* g_HiZDownscaleComputePipeline = NULL;
-static SDL_GPUComputePipeline* g_DepthResolveMSAAComputePipeline = NULL;
 static bool g_EnableOcclusion = true;
 
 extern SDL_Window*  g_SDLWindow; // main    
@@ -173,23 +171,6 @@ static void InitHiZDownscaleComputePipeline()
         .threadcount_z                  = 1,
     });
     CHECK_CREATE(g_HiZDownscaleComputePipeline, "Hi-Z Downscale Compute Pipeline")
-}
-
-static void InitDepthResolveMSAAComputePipeline()
-{
-    g_DepthResolveMSAAComputePipeline = SDL_CreateGPUComputePipeline(g_GPUDevice, &(SDL_GPUComputePipelineCreateInfo){
-        .code                           = Shaders_DepthResolveMSAACompute_spv,
-        .code_size                      = sizeof(Shaders_DepthResolveMSAACompute_spv),
-        .entrypoint                     = "main",
-        .format                         = SDL_GetGPUShaderFormats(g_GPUDevice),
-        .num_readonly_storage_textures  = 1,
-        .num_readwrite_storage_textures = 1,
-        .num_uniform_buffers            = 1,
-        .threadcount_x                  = 8,
-        .threadcount_y                  = 8,
-        .threadcount_z                  = 1,
-    });
-    CHECK_CREATE(g_DepthResolveMSAAComputePipeline, "MSAA Depth Resolve Compute Pipeline")
 }
 
 static void InitTonemapComputePipeline()
@@ -313,44 +294,6 @@ static void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd, RenderSet* re
     SDL_EndGPUComputePass(pass);
 }
 
-static u32 GetSampleCountValue(SDL_GPUSampleCount sampleCount)
-{
-    switch (sampleCount)
-    {
-        case SDL_GPU_SAMPLECOUNT_2: return 2;
-        case SDL_GPU_SAMPLECOUNT_4: return 4;
-        case SDL_GPU_SAMPLECOUNT_8: return 8;
-        default: return 1;
-    }
-}
-
-static void DispatchDepthResolveMSAACompute(SDL_GPUCommandBuffer* cmd, SDL_GPUTexture* depthTexture, SDL_GPUTexture* hiZTexture,
-                                           u32 width, u32 height)
-{
-    if (!depthTexture || !hiZTexture || g_RenderState.sample_count == SDL_GPU_SAMPLECOUNT_1) return;
-    CHECK_CREATE(g_DepthResolveMSAAComputePipeline, "MSAA Depth Resolve Compute Pipeline")
-
-    SDL_GPUStorageTextureReadWriteBinding rwTexture = {
-        .texture = hiZTexture,
-        .mip_level = 0,
-        .layer = 0,
-        .cycle = false
-    };
-
-    SDL_GPUComputePass* pass = SDL_BeginGPUComputePass(cmd, &rwTexture, 1, NULL, 0);
-    SDL_BindGPUComputePipeline(pass, g_DepthResolveMSAAComputePipeline);
-    SDL_BindGPUComputeStorageTextures(pass, 0, &depthTexture, 1);
-
-    struct { u32 outputSize[2]; u32 sampleCount; u32 padding; } params = {
-        { width, height },
-        GetSampleCountValue(g_RenderState.sample_count),
-        0u
-    };
-    SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
-    SDL_DispatchGPUCompute(pass, (width + 7u) / 8u, (height + 7u) / 8u, 1);
-    SDL_EndGPUComputePass(pass);
-}
-
 static void DispatchHiZBuildCompute(SDL_GPUCommandBuffer* cmd, SDL_GPUTexture* depthTexture, SDL_GPUTexture* hiZTexture,
                                     u32 width, u32 height, u32 mipCount, u32 firstMip)
 {
@@ -457,6 +400,7 @@ void DispatchAnimationCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet)
 }
 
 static void RenderDepthPrepass(SDL_GPUCommandBuffer* cmd,
+                               SDL_GPUColorTargetInfo* color_target,
                                SDL_GPUDepthStencilTargetInfo* depth_target,
                                mat4x4 viewProj,
                                SDL_GPUGraphicsPipeline* skinnedPipeline,
@@ -475,7 +419,7 @@ static void RenderDepthPrepass(SDL_GPUCommandBuffer* cmd,
     SDL_GPUBufferBinding vertex_binding = { g_RenderState.skinnedVertexBuffer, 0 };
     SDL_GPUBufferBinding index_binding  = { g_RenderState.indexBuffer, 0 };
 
-    SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmd, NULL, 0, depth_target);
+    SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmd, color_target, color_target ? 1 : 0, depth_target);
 
     if (skinnedSet.numGroups > 0)
     {
@@ -617,14 +561,16 @@ void Render()
     /* Resize the depth buffer if the window size changed */
     if (winstate->prev_drawablew != drawablew || winstate->prev_drawableh != drawableh) {
         SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_depth);
-        SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_occlusion_depth);
+        SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_hiz_msaa);
+        SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_hiz_depth);
         SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_msaa);
         SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_resolve);
         SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_color);
         SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_post);
         SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_hiz);
         winstate->tex_depth   = CreateDepthTexture(drawablew, drawableh);
-        winstate->tex_occlusion_depth = CreateOcclusionDepthTexture(drawablew, drawableh);
+        winstate->tex_hiz_msaa = CreateHiZMSAATexture(drawablew, drawableh);
+        winstate->tex_hiz_depth = CreateHiZDepthTexture(drawablew, drawableh);
         winstate->tex_msaa    = CreateMSAATexture(drawablew, drawableh);
         winstate->tex_resolve = CreateResolveTexture(drawablew, drawableh);
         winstate->tex_color   = CreateSceneColorTexture(drawablew, drawableh, SDL_GPU_SAMPLECOUNT_1);
@@ -673,10 +619,25 @@ void Render()
     SDL_GPUDepthStencilTargetInfo main_depth_target = depth_target;
     main_depth_target.load_op = SDL_GPU_LOADOP_LOAD;
     main_depth_target.cycle = false;
-    SDL_GPUDepthStencilTargetInfo occlusion_depth_target = depth_target;
-    occlusion_depth_target.texture = winstate->tex_occlusion_depth;
-    occlusion_depth_target.cycle = true;
-    
+
+    SDL_GPUColorTargetInfo hiz_depth_target;
+    SDL_zero(hiz_depth_target);
+    hiz_depth_target.load_op = SDL_GPU_LOADOP_CLEAR;
+    hiz_depth_target.clear_color.r = 1.0f;
+    if (g_RenderState.sample_count > SDL_GPU_SAMPLECOUNT_1)
+    {
+        hiz_depth_target.store_op = SDL_GPU_STOREOP_RESOLVE;
+        hiz_depth_target.texture = winstate->tex_hiz_msaa;
+        hiz_depth_target.resolve_texture = winstate->tex_hiz_depth;
+        hiz_depth_target.cycle = true;
+        hiz_depth_target.cycle_resolve_texture = true;
+    }
+    else
+    {
+        hiz_depth_target.store_op = SDL_GPU_STOREOP_STORE;
+        hiz_depth_target.texture = winstate->tex_hiz_depth;
+        hiz_depth_target.cycle = true;
+    }
     if (skinnedSet.numEntities > 0)
     {
         UpdateGPUBuffer(g_RenderState.skinnedBuffers.entity, skinnedSet.entities, skinnedSet.numEntities * sizeof(Entity), 0ull);
@@ -700,10 +661,9 @@ void Render()
                                 winstate->tex_hiz, winstate->hiz_width, winstate->hiz_height, winstate->hiz_mip_count,
                                 enableHiZ, false);
     
-    RenderDepthPrepass(cmd, &depth_target, viewProj, g_RenderState.skinnedDepthPipeline, g_RenderState.surfaceDepthPipeline);
+    RenderDepthPrepass(cmd, &hiz_depth_target, &depth_target, viewProj, g_RenderState.skinnedDepthPipeline, g_RenderState.surfaceDepthPipeline);
     RenderScene(cmd, &color_target, &main_depth_target, viewProj);
-    RenderDepthPrepass(cmd, &occlusion_depth_target, viewProj, g_RenderState.skinnedOcclusionDepthPipeline, g_RenderState.surfaceOcclusionDepthPipeline);
-    DispatchHiZBuildCompute(cmd, winstate->tex_occlusion_depth, winstate->tex_hiz, drawablew, drawableh, winstate->hiz_mip_count, 0);
+    DispatchHiZBuildCompute(cmd, winstate->tex_hiz_depth, winstate->tex_hiz, drawablew, drawableh, winstate->hiz_mip_count, 0);
     
     winstate->hiz_view_proj = viewProj;
     winstate->hiz_valid = true;
@@ -1004,7 +964,8 @@ static void InitDepthOnlyPipelines()
         .fragment_shader = surface_fragment_shader,
         .primitive_type  = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
         .target_info     = (SDL_GPUGraphicsPipelineTargetInfo){
-            .num_color_targets        = 0,
+            .num_color_targets        = 1,
+            .color_target_descriptions = &(SDL_GPUColorTargetDescription){ .format = SDL_GPU_TEXTUREFORMAT_R32_FLOAT },
             .depth_stencil_format     = SDL_GPU_TEXTUREFORMAT_D32_FLOAT,
             .has_depth_stencil_target = true
         },
@@ -1033,14 +994,8 @@ static void InitDepthOnlyPipelines()
 
     g_RenderState.surfaceDepthPipeline = SDL_CreateGPUGraphicsPipeline(g_GPUDevice, &surface_desc);
     g_RenderState.skinnedDepthPipeline = SDL_CreateGPUGraphicsPipeline(g_GPUDevice, &skinned_desc);
-    surface_desc.multisample_state.sample_count = SDL_GPU_SAMPLECOUNT_1;
-    skinned_desc.multisample_state.sample_count = SDL_GPU_SAMPLECOUNT_1;
-    g_RenderState.surfaceOcclusionDepthPipeline = SDL_CreateGPUGraphicsPipeline(g_GPUDevice, &surface_desc);
-    g_RenderState.skinnedOcclusionDepthPipeline = SDL_CreateGPUGraphicsPipeline(g_GPUDevice, &skinned_desc);
     CHECK_CREATE(g_RenderState.surfaceDepthPipeline, "Surface Depth Pipeline")
     CHECK_CREATE(g_RenderState.skinnedDepthPipeline, "Skinned Depth Pipeline")
-    CHECK_CREATE(g_RenderState.surfaceOcclusionDepthPipeline, "Surface Occlusion Depth Pipeline")
-    CHECK_CREATE(g_RenderState.skinnedOcclusionDepthPipeline, "Skinned Occlusion Depth Pipeline")
 
     SDL_ReleaseGPUShader(g_GPUDevice, surface_vertex_shader);
     SDL_ReleaseGPUShader(g_GPUDevice, surface_fragment_shader);
@@ -1060,7 +1015,6 @@ void RendererInit()
     InitTonemapComputePipeline();
     InitHiZBuildComputePipeline();
     InitHiZDownscaleComputePipeline();
-    InitDepthResolveMSAAComputePipeline();
 }
 
 static void DestroyRenderSetBuffers(RenderSetBuffers* buffers)
@@ -1095,14 +1049,11 @@ static void DestroyPipeline()
     if (g_RenderState.surfacePipeline)     SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.surfacePipeline);
     if (g_RenderState.skinnedDepthPipeline) SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.skinnedDepthPipeline);
     if (g_RenderState.surfaceDepthPipeline) SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.surfaceDepthPipeline);
-    if (g_RenderState.skinnedOcclusionDepthPipeline) SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.skinnedOcclusionDepthPipeline);
-    if (g_RenderState.surfaceOcclusionDepthPipeline) SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.surfaceOcclusionDepthPipeline);
     if (g_AnimComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_AnimComputePipeline);
     if (g_CullDrawArgsComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_CullDrawArgsComputePipeline);
     if (g_TonemapComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_TonemapComputePipeline);
     if (g_HiZBuildComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_HiZBuildComputePipeline);
     if (g_HiZDownscaleComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_HiZDownscaleComputePipeline);
-    if (g_DepthResolveMSAAComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_DepthResolveMSAAComputePipeline);
     
     SDL_zero(g_RenderState);
     g_GPUDevice = NULL;

@@ -12,7 +12,8 @@ SPV_DIR    = SHADER_DIR / "spv"
 GRAPHICS_SHADERS = [
     ("Skinned"  , "vert", "frag"),
     ("LineDebug", "vert", "frag"),
-    ("SurfaceDepthOnly", "vert", "frag")
+    ("SurfaceDepthOnly", "vert", "frag"),
+    ("SkinnedDepthOnly", "vert", "frag")
 ]
 
 COMPUTE_SHADERS = [

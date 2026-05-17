@@ -138,7 +138,7 @@ typedef struct MaterialGPU_
 
 typedef struct WindowState
 {
-    SDL_GPUTexture* tex_depth, *tex_occlusion_depth, *tex_msaa, *tex_resolve, *tex_color, *tex_post, *tex_hiz;
+    SDL_GPUTexture* tex_depth, *tex_hiz_msaa, *tex_hiz_depth, *tex_msaa, *tex_resolve, *tex_color, *tex_post, *tex_hiz;
     u32 prev_drawablew, prev_drawableh;
     u32 hiz_width, hiz_height, hiz_mip_count;
     mat4x4 hiz_view_proj;
@@ -165,8 +165,6 @@ typedef struct RenderState
     SDL_GPUGraphicsPipeline* surfacePipeline;
     SDL_GPUGraphicsPipeline* skinnedDepthPipeline;
     SDL_GPUGraphicsPipeline* surfaceDepthPipeline;
-    SDL_GPUGraphicsPipeline* skinnedOcclusionDepthPipeline;
-    SDL_GPUGraphicsPipeline* surfaceOcclusionDepthPipeline;
     SDL_GPUGraphicsPipeline* linePipeline;
     SDL_GPUSampler*          sampler;
     SDL_GPUSampler*          hiZSampler;
@@ -248,7 +246,9 @@ void UpdateGPUBuffer(SDL_GPUBuffer* buffer, const void* data, size_t bufferSize,
 
 SDL_GPUTexture* CreateDepthTexture(u32 drawablew, u32 drawableh);
 
-SDL_GPUTexture* CreateOcclusionDepthTexture(u32 drawablew, u32 drawableh);
+SDL_GPUTexture* CreateHiZMSAATexture(u32 drawablew, u32 drawableh);
+
+SDL_GPUTexture* CreateHiZDepthTexture(u32 drawablew, u32 drawableh);
 
 SDL_GPUTexture* CreateMSAATexture(u32 drawablew, u32 drawableh);
 

@@ -32,4 +32,7 @@ float4 vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("DrawI
     return mul(uViewProj, float4(finalWorldPos, 1.0));
 }
 
-void frag() {}
+float frag(float4 position : SV_Position) : SV_Target0
+{
+    return position.z;
+}
