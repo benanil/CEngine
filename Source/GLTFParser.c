@@ -1307,11 +1307,7 @@ int ParseGLTF(const char* path, SceneBundle* result, float scale)
         ASkin* skin = &result->skins[s];
         if (skin->inverseBindMatrices == NULL)
         {
-            AX_WARN("skin %d has no inverse bind matrices", s);
-            mat4x4* identityBind = (mat4x4*)FixedPow2Allocator_Allocate(allocator, skin->numJoints * sizeof(mat4x4));
-            for (int j = 0; j < skin->numJoints; j++)
-                identityBind[j] = M44Identity();
-            skin->inverseBindMatrices = (float*)identityBind;
+            AX_ERROR("skin %d has no inverse bind matrices", s);
             continue;
         }
 
@@ -1322,11 +1318,7 @@ int ParseGLTF(const char* path, SceneBundle* result, float scale)
         if (!GLTFResolveAccessorPtr(result, accessors, numAccessors, bufferViews, numBufferViews,
                                     (int)skinIndex, "inverseBindMatrices", &resolvedPtr, &accessor, &view))
         {
-            AX_WARN("skin %d inverse bind matrices accessor invalid", s);
-            mat4x4* identityBind = (mat4x4*)FixedPow2Allocator_Allocate(allocator, skin->numJoints * sizeof(mat4x4));
-            for (int j = 0; j < skin->numJoints; j++)
-                identityBind[j] = M44Identity();
-            skin->inverseBindMatrices = (float*)identityBind;
+            AX_ERROR("skin %d inverse bind matrices accessor invalid", s);
             continue;
         }
         if (accessor.count != skin->numJoints)
@@ -1400,8 +1392,6 @@ int ParseGLTF(const char* path, SceneBundle* result, float scale)
             sampler->numComponent = accessor.type;
             if (sampler->outputType != AComponentType_FLOAT)
                 AX_WARN("animation %d sampler %d output type is not FLOAT: %d", a, s, sampler->outputType);
-            if (sampler->numComponent != 3 && sampler->numComponent != 4)
-                AX_WARN("animation %d sampler %d output component count is unsupported: %d", a, s, sampler->numComponent);
            
             animation->duration = MMAX(animation->duration, sampler->input[sampler->count - 1]);
         }
