@@ -9,11 +9,11 @@ set SPV_DIR=Shaders\spv
 
 rem One HLSL file per graphics pass:
 rem FileName:VertexEntry:FragmentEntry
-set GRAPHICS_SHADERS=Skinned:vert:frag Surface:vert:frag LineDebug:vert:frag
+set GRAPHICS_SHADERS=Skinned:vert:frag Surface:vert:frag LineDebug:vert:frag SurfaceDepthOnly:vert:frag SkinnedDepthOnly:vert:frag
 
 rem One HLSL file per compute pass:
 rem FileName:ComputeEntry
-set COMPUTE_SHADERS=AnimationCompute:main CullDrawArgsCompute:main TexturePageCopyRGBA:main TexturePageCopyRG:main TonemapCompute:main
+set COMPUTE_SHADERS=AnimationCompute:main CullDrawArgsCompute:main TexturePageCopyRGBA:main TexturePageCopyRG:main TonemapCompute:main HiZBuildCompute:main HiZDownscaleCompute:main DepthResolveMSAACompute:main
 
 if not exist %SPV_DIR% mkdir %SPV_DIR%
 

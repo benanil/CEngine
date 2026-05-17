@@ -3,6 +3,7 @@
 
 #include <SDL3/SDL_gpu.h>
 #include "Math/Half.h"
+#include "Math/Matrix.h"
 #include "Math/Vector.h"
 #include "GLTFParser.h"
 
@@ -137,8 +138,11 @@ typedef struct MaterialGPU_
 
 typedef struct WindowState
 {
-    SDL_GPUTexture* tex_depth, *tex_msaa, *tex_resolve, *tex_color, *tex_post;
+    SDL_GPUTexture* tex_depth, *tex_occlusion_depth, *tex_msaa, *tex_resolve, *tex_color, *tex_post, *tex_hiz;
     u32 prev_drawablew, prev_drawableh;
+    u32 hiz_width, hiz_height, hiz_mip_count;
+    mat4x4 hiz_view_proj;
+    bool hiz_valid;
 } WindowState;
 
 typedef struct RenderSetBuffers_
@@ -159,8 +163,13 @@ typedef struct RenderState
 {
     SDL_GPUGraphicsPipeline* skinnedPipeline;
     SDL_GPUGraphicsPipeline* surfacePipeline;
+    SDL_GPUGraphicsPipeline* skinnedDepthPipeline;
+    SDL_GPUGraphicsPipeline* surfaceDepthPipeline;
+    SDL_GPUGraphicsPipeline* skinnedOcclusionDepthPipeline;
+    SDL_GPUGraphicsPipeline* surfaceOcclusionDepthPipeline;
     SDL_GPUGraphicsPipeline* linePipeline;
     SDL_GPUSampler*          sampler;
+    SDL_GPUSampler*          hiZSampler;
     SDL_GPUBuffer*           skinnedVertexBuffer;
     SDL_GPUBuffer*           surfaceVertexBuffer;
     SDL_GPUBuffer*           indexBuffer;
@@ -239,9 +248,13 @@ void UpdateGPUBuffer(SDL_GPUBuffer* buffer, const void* data, size_t bufferSize,
 
 SDL_GPUTexture* CreateDepthTexture(u32 drawablew, u32 drawableh);
 
+SDL_GPUTexture* CreateOcclusionDepthTexture(u32 drawablew, u32 drawableh);
+
 SDL_GPUTexture* CreateMSAATexture(u32 drawablew, u32 drawableh);
 
 SDL_GPUTexture* CreateResolveTexture(u32 drawablew, u32 drawableh);
+
+SDL_GPUTexture* CreateHiZTexture(u32 drawablew, u32 drawableh, u32* mipCount);
 
 SDL_GPUTexture* CreateSceneColorTexture(u32 drawablew, u32 drawableh, SDL_GPUSampleCount sampleCount);
 

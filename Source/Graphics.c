@@ -88,14 +88,22 @@ void GraphicsInit(bool msaa)
     /* Claim the windows */
     SDL_ClaimWindowForGPUDevice(g_GPUDevice, g_SDLWindow);
     
-    /* Determine which sample count to use */
     g_RenderState.sample_count = SDL_GPU_SAMPLECOUNT_1;
-    if (msaa && SDL_GPUTextureSupportsSampleCount(
-        g_GPUDevice,
-        SDL_GetGPUSwapchainTextureFormat(g_GPUDevice, g_SDLWindow),
-        SDL_GPU_SAMPLECOUNT_4)) 
+    const SDL_GPUSampleCount msaaSample[] = {
+        SDL_GPU_SAMPLECOUNT_8,
+        SDL_GPU_SAMPLECOUNT_4,
+        SDL_GPU_SAMPLECOUNT_2
+    };
+    
+    for (u32 i = 0; msaa && i < ARRAY_SIZE(msaaSample); i++)
     {
-        g_RenderState.sample_count = SDL_GPU_SAMPLECOUNT_4;
+        SDL_GPUSampleCount candidate = msaaSample[i];
+        if (SDL_GPUTextureSupportsSampleCount(g_GPUDevice, SDL_GPU_TEXTUREFORMAT_R11G11B10_UFLOAT, candidate) &&
+            SDL_GPUTextureSupportsSampleCount(g_GPUDevice, SDL_GPU_TEXTUREFORMAT_D32_FLOAT, candidate))
+        {
+            g_RenderState.sample_count = candidate;
+            break;
+        }
     }
     
     int drawablew, drawableh;
@@ -104,10 +112,15 @@ void GraphicsInit(bool msaa)
     /* create a depth texture for the window */
     SDL_GetWindowSizeInPixels(g_SDLWindow, (int*)&drawablew, (int*)&drawableh);
     winstate->tex_depth   = CreateDepthTexture(drawablew, drawableh);
+    winstate->tex_occlusion_depth = CreateOcclusionDepthTexture(drawablew, drawableh);
     winstate->tex_msaa    = CreateMSAATexture(drawablew, drawableh);
     winstate->tex_resolve = CreateResolveTexture(drawablew, drawableh);
     winstate->tex_color   = CreateSceneColorTexture(drawablew, drawableh, SDL_GPU_SAMPLECOUNT_1);
     winstate->tex_post    = CreatePostProcessTexture(drawablew, drawableh);
+    winstate->tex_hiz     = CreateHiZTexture(drawablew, drawableh, &winstate->hiz_mip_count);
+    winstate->hiz_width   = drawablew;
+    winstate->hiz_height  = drawableh;
+    winstate->hiz_valid   = false;
     
     gGFX.SkinnedVertexBuffer = OSAllocAligned(sizeof(ASkinedVertex) * MAX_VERTEX, 4);
     gGFX.SurfaceVertexBuffer = OSAllocAligned(sizeof(AVertex) * MAX_VERTEX, 4);
@@ -120,10 +133,12 @@ void GraphicsDestroy()
 {
     WindowState* winstate = &g_WindowState;
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_depth);
+    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_occlusion_depth);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_msaa);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_resolve);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_color);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_post);
+    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_hiz);
     SDL_ReleaseWindowFromGPUDevice(g_GPUDevice, g_SDLWindow);
 
     SDL_DestroyGPUDevice(g_GPUDevice);
@@ -231,111 +246,93 @@ void UpdateGPUBuffer(SDL_GPUBuffer* buffer, const void* data, size_t bufferSize,
     SDL_ReleaseGPUTransferBuffer(g_GPUDevice, boneTransferBuffer);
 }
 
-
-SDL_GPUTexture* CreateDepthTexture(Uint32 drawablew, Uint32 drawableh)
+static u32 GetMipCount(u32 width, u32 height)
 {
-    SDL_GPUTextureCreateInfo createinfo;
-    SDL_GPUTexture* result;
-    
-    createinfo.type = SDL_GPU_TEXTURETYPE_2D;
-    createinfo.format = SDL_GPU_TEXTUREFORMAT_D24_UNORM;
-    createinfo.width = drawablew;
-    createinfo.height = drawableh;
-    createinfo.layer_count_or_depth = 1;
-    createinfo.num_levels = 1;
-    createinfo.sample_count = g_RenderState.sample_count;
-    createinfo.usage = SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET;
-    createinfo.props = 0;
-    
-    result = SDL_CreateGPUTexture(g_GPUDevice, &createinfo);
-    CHECK_CREATE(result, "Depth Texture")
-    return result;
-}
-
-SDL_GPUTexture* CreateMSAATexture(Uint32 drawablew, Uint32 drawableh)
-{
-    SDL_GPUTextureCreateInfo createinfo;
-    SDL_GPUTexture* result;
-    
-    if (g_RenderState.sample_count == SDL_GPU_SAMPLECOUNT_1) {
-    	return NULL;
+    u32 levels = 1;
+    u32 size = width > height ? width : height;
+    while (size > 1) {
+        size >>= 1u;
+        levels++;
     }
-    
-    createinfo.type = SDL_GPU_TEXTURETYPE_2D;
-    createinfo.format = SDL_GPU_TEXTUREFORMAT_R11G11B10_UFLOAT;
-    createinfo.width = drawablew;
-    createinfo.height = drawableh;
-    createinfo.layer_count_or_depth = 1;
-    createinfo.num_levels = 1;
-    createinfo.sample_count = g_RenderState.sample_count;
-    createinfo.usage = SDL_GPU_TEXTUREUSAGE_COLOR_TARGET;
-    createinfo.props = 0;
-    
-    result = SDL_CreateGPUTexture(g_GPUDevice, &createinfo);
-    CHECK_CREATE(result, "MSAA Texture")
-    return result;
+    return levels;
 }
 
-SDL_GPUTexture* CreateResolveTexture(Uint32 drawablew, Uint32 drawableh)
+static SDL_GPUTexture* CreateTexture2D(u32 width, u32 height,
+                                       SDL_GPUTextureFormat format,
+                                       SDL_GPUTextureUsageFlags usage,
+                                       SDL_GPUSampleCount sampleCount,
+                                       u32 mipLevels,
+                                       const char* label)
 {
-    SDL_GPUTextureCreateInfo createinfo;
-    SDL_GPUTexture* result;
-    
-    if (g_RenderState.sample_count == SDL_GPU_SAMPLECOUNT_1) {
-    	return NULL;
-    }
-    
-    createinfo.type = SDL_GPU_TEXTURETYPE_2D;
-    createinfo.format = SDL_GPU_TEXTUREFORMAT_R11G11B10_UFLOAT;
-    createinfo.width = drawablew;
-    createinfo.height = drawableh;
-    createinfo.layer_count_or_depth = 1;
-    createinfo.num_levels = 1;
-    createinfo.sample_count = SDL_GPU_SAMPLECOUNT_1;
-    createinfo.usage = SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER;
-    createinfo.props = 0;
-    
-    result = SDL_CreateGPUTexture(g_GPUDevice, &createinfo);
-    CHECK_CREATE(result, "Resolve Texture")
-    return result;
-}
-
-SDL_GPUTexture* CreateSceneColorTexture(Uint32 drawablew, Uint32 drawableh, SDL_GPUSampleCount sampleCount)
-{
-    SDL_GPUTextureCreateInfo createinfo;
-    createinfo.type = SDL_GPU_TEXTURETYPE_2D;
-    createinfo.format = SDL_GPU_TEXTUREFORMAT_R11G11B10_UFLOAT;
-    createinfo.width = drawablew;
-    createinfo.height = drawableh;
-    createinfo.layer_count_or_depth = 1;
-    createinfo.num_levels = 1;
-    createinfo.sample_count = sampleCount;
-    createinfo.usage = SDL_GPU_TEXTUREUSAGE_COLOR_TARGET;
-    if (sampleCount == SDL_GPU_SAMPLECOUNT_1)
-        createinfo.usage |= SDL_GPU_TEXTUREUSAGE_SAMPLER;
-    createinfo.props = 0;
+    SDL_GPUTextureCreateInfo createinfo = {
+        .type = SDL_GPU_TEXTURETYPE_2D,
+        .format = format,
+        .usage = usage,
+        .width = width,
+        .height = height,
+        .layer_count_or_depth = 1,
+        .num_levels = mipLevels,
+        .sample_count = sampleCount,
+        .props = 0
+    };
 
     SDL_GPUTexture* result = SDL_CreateGPUTexture(g_GPUDevice, &createinfo);
-    CHECK_CREATE(result, "Scene Color Texture")
+    CHECK_CREATE(result, label)
     return result;
 }
 
-SDL_GPUTexture* CreatePostProcessTexture(Uint32 drawablew, Uint32 drawableh)
+SDL_GPUTexture* CreateDepthTexture(u32 drawablew, u32 drawableh)
 {
-    SDL_GPUTextureCreateInfo createinfo;
-    createinfo.type = SDL_GPU_TEXTURETYPE_2D;
-    createinfo.format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
-    createinfo.width = drawablew;
-    createinfo.height = drawableh;
-    createinfo.layer_count_or_depth = 1;
-    createinfo.num_levels = 1;
-    createinfo.sample_count = SDL_GPU_SAMPLECOUNT_1;
-    createinfo.usage = SDL_GPU_TEXTUREUSAGE_SAMPLER | SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_WRITE;
-    createinfo.props = 0;
+    return CreateTexture2D(drawablew, drawableh, SDL_GPU_TEXTUREFORMAT_D32_FLOAT,
+                           SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET,
+                           g_RenderState.sample_count, 1, "Depth Texture");
+}
 
-    SDL_GPUTexture* result = SDL_CreateGPUTexture(g_GPUDevice, &createinfo);
-    CHECK_CREATE(result, "Post Process Texture")
-    return result;
+SDL_GPUTexture* CreateOcclusionDepthTexture(u32 drawablew, u32 drawableh)
+{
+    return CreateTexture2D(drawablew, drawableh, SDL_GPU_TEXTUREFORMAT_D32_FLOAT,
+                           SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER,
+                           SDL_GPU_SAMPLECOUNT_1, 1, "Occlusion Depth Texture");
+}
+
+SDL_GPUTexture* CreateMSAATexture(u32 drawablew, u32 drawableh)
+{
+    if (g_RenderState.sample_count == SDL_GPU_SAMPLECOUNT_1) return NULL;
+    return CreateTexture2D(drawablew, drawableh, SDL_GPU_TEXTUREFORMAT_R11G11B10_UFLOAT, 
+                           SDL_GPU_TEXTUREUSAGE_COLOR_TARGET,
+                           g_RenderState.sample_count, 1, "MSAA Texture");
+}
+
+SDL_GPUTexture* CreateResolveTexture(u32 drawablew, u32 drawableh)
+{
+    if (g_RenderState.sample_count == SDL_GPU_SAMPLECOUNT_1) return NULL;
+    return CreateTexture2D(drawablew, drawableh, SDL_GPU_TEXTUREFORMAT_R11G11B10_UFLOAT,
+                           SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER,
+                           SDL_GPU_SAMPLECOUNT_1, 1, "Resolve Texture");
+}
+
+SDL_GPUTexture* CreateHiZTexture(u32 drawablew, u32 drawableh, u32* mipCount)
+{
+    u32 levels = GetMipCount(drawablew, drawableh);
+    if (mipCount) *mipCount = levels;
+    return CreateTexture2D(drawablew, drawableh, SDL_GPU_TEXTUREFORMAT_R32_FLOAT,
+                           SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_READ | SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_WRITE,
+                           SDL_GPU_SAMPLECOUNT_1, levels, "Hi-Z Texture");
+}
+
+SDL_GPUTexture* CreateSceneColorTexture(u32 drawablew, u32 drawableh, SDL_GPUSampleCount sampleCount)
+{
+    SDL_GPUTextureUsageFlags usage = SDL_GPU_TEXTUREUSAGE_COLOR_TARGET;
+    if (sampleCount == SDL_GPU_SAMPLECOUNT_1) usage |= SDL_GPU_TEXTUREUSAGE_SAMPLER;
+    return CreateTexture2D(drawablew, drawableh, SDL_GPU_TEXTUREFORMAT_R11G11B10_UFLOAT,
+                           usage, sampleCount, 1, "Scene Color Texture");
+}
+
+SDL_GPUTexture* CreatePostProcessTexture(u32 drawablew, u32 drawableh)
+{
+    return CreateTexture2D(drawablew, drawableh, SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
+                           SDL_GPU_TEXTUREUSAGE_SAMPLER | SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_WRITE,
+                           SDL_GPU_SAMPLECOUNT_1, 1, "Post Process Texture");
 }
 
 static void MakeRGBAFromRGB(const unsigned char* RESTRICT from, unsigned char* rgba, int numPixels)

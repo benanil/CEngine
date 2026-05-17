@@ -91,7 +91,7 @@ s32 InitScene()
     {
         u64 hash = MurmurHash(i + 123);
         v128f pos = VecMulf(VecSetR(f32_(i & 7), 0.0f, f32_(i >> 3), 0.0f), 25.5f);
-        v128f rot = QFromEuler(0.0f, MATH_PI, 0.0f); // VecSetR(1.0f, 0.0f, 1.0f, 0.0f);  // x=0, y=random, z=0, w=random
+        v128f rot = QFromEuler(0.0f, MATH_PI, 0.0f); // VecSetR(0.0f, 0.0f, 0.0f, 1.0f);  // x=0, y=random, z=0, w=random
         v128f scale = VecSet1(0.1f);
         if (!RenderSet_AddScene(&surfaceSet, surfaceBundle, pos, rot, scale, false))
             break;
@@ -103,7 +103,7 @@ s32 InitScene()
 
 s32 main(s32 argc, char* argv[])
 {
-    s32 msaa = 0;
+    s32 msaa = 1;
     done = 0;
 
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO))
@@ -125,7 +125,7 @@ s32 main(s32 argc, char* argv[])
 
     GraphicsInit(msaa);
     InitTextureSystem();
-    RendererInit(msaa);
+    RendererInit();
     if (!InitScene()) return 0;
     
     CameraInit(&g_Camera, 1920, 1080);

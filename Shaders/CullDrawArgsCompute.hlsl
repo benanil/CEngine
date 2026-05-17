@@ -5,9 +5,10 @@
 
 #define DEBUG_CULLED_AABBS 0
 
-StructuredBuffer<Entity>         entities                 : register(t0);
-StructuredBuffer<PrimitiveGroup> primitiveGroups          : register(t1);
-StructuredBuffer<uint>           denseToPrimitiveIndex    : register(t2);
+Texture2D<float>                 hiZTexture               : register(t0);
+StructuredBuffer<Entity>         entities                 : register(t1);
+StructuredBuffer<PrimitiveGroup> primitiveGroups          : register(t2);
+StructuredBuffer<uint>           denseToPrimitiveIndex    : register(t3);
 
 RWStructuredBuffer<uint>                drawDenseIndices  : register(u0, space1);
 RWStructuredBuffer<IndexedDrawCommand>  drawArgs          : register(u1, space1);
@@ -27,6 +28,12 @@ cbuffer params : register(b0, space2)
     uint   numPrimitiveGroups;
     uint   mode;
     uint   enableVisibilityOutput;
+    float4x4 viewProjection;
+    uint2  hiZSize;
+    uint   hiZMipCount;
+    uint   enableHiZ;
+    float  hiZDepthBias;
+    float3 hiZPadding;
 };
 
 bool AABBVisible(float3 mn, float3 mx)
@@ -86,7 +93,7 @@ void AddLine(float3 a, float3 b, u32 idx, u32 color)
     lineVertices[idx + 1].color = color;
 }
 
-void AddAABBLine(float3 worldMin, float3 worldMax)
+void AddAABBLineColored(float3 worldMin, float3 worldMax, u32 color)
 {
     uint start;
     InterlockedAdd(lineDrawCommand[1].numVertices, 24, start);
@@ -96,9 +103,6 @@ void AddAABBLine(float3 worldMin, float3 worldMax)
         return;
     }
 
-    uint3 d = uint3(worldMin * 100);
-
-    u32 color = WangHash(d.x + d.y + d.z);
     float3 p000 = float3(worldMin.x, worldMin.y, worldMin.z);
     float3 p100 = float3(worldMax.x, worldMin.y, worldMin.z);
     float3 p010 = float3(worldMin.x, worldMax.y, worldMin.z);
@@ -125,6 +129,12 @@ void AddAABBLine(float3 worldMin, float3 worldMax)
     AddLine(p010, p011, start + 22, color);
 }
 
+void AddAABBLine(float3 worldMin, float3 worldMax)
+{
+    uint3 d = uint3(worldMin * 100);
+    AddAABBLineColored(worldMin, worldMax, WangHash(d.x + d.y + d.z));
+}
+
 void BuildWorldAABB(Entity entity, PrimitiveGroup group, out float3 worldMin, out float3 worldMax)
 {
     float3 localMin = group.aabbMin.xyz;
@@ -147,6 +157,90 @@ void BuildWorldAABB(Entity entity, PrimitiveGroup group, out float3 worldMin, ou
 
     worldMin = F3Sub(worldCenter, worldExtent);
     worldMax = F3Add(worldCenter, worldExtent);
+}
+
+bool AABBOccludedHiZ(float3 mn, float3 mx)
+{
+    if (enableHiZ == 0u || hiZMipCount == 0u || hiZSize.x == 0u || hiZSize.y == 0u)
+        return false;
+
+    float3 corners[8] = {
+        float3(mn.x, mn.y, mn.z), float3(mx.x, mn.y, mn.z),
+        float3(mn.x, mx.y, mn.z), float3(mx.x, mx.y, mn.z),
+        float3(mn.x, mn.y, mx.z), float3(mx.x, mn.y, mx.z),
+        float3(mn.x, mx.y, mx.z), float3(mx.x, mx.y, mx.z)
+    };
+
+    float2 rectMin = float2(1e30f, 1e30f);
+    float2 rectMax = float2(-1e30f, -1e30f);
+    float nearestDepth = 1.0f;
+    bool anyBehind = false;
+    bool anyFront = false;
+
+    [unroll]
+    for (uint i = 0; i < 8; i++)
+    {
+        float4 clip = mul(viewProjection, float4(corners[i], 1.0f));
+        if (clip.w <= 0.0001f)
+        {
+            anyBehind = true;
+            continue;
+        }
+
+        float3 ndc = clip.xyz / clip.w;
+        rectMin = min(rectMin, ndc.xy);
+        rectMax = max(rectMax, ndc.xy);
+        float depth = saturate(ndc.z);
+        nearestDepth = min(nearestDepth, depth);
+        anyFront = true;
+    }
+
+    if (!anyFront || anyBehind)
+        return false;
+
+    if (rectMax.x < -1.0f || rectMin.x > 1.0f || rectMax.y < -1.0f || rectMin.y > 1.0f)
+        return false;
+
+    if (nearestDepth >= 1.0f)
+        return false;
+
+    float2 uvA = rectMin * float2(0.5f, -0.5f) + 0.5f;
+    float2 uvB = rectMax * float2(0.5f, -0.5f) + 0.5f;
+    rectMin = min(uvA, uvB);
+    rectMax = max(uvA, uvB);
+    rectMin = clamp(rectMin, 0.0f, 1.0f);
+    rectMax = clamp(rectMax, 0.0f, 1.0f);
+
+    float2 extentPixels = max((rectMax - rectMin) * float2(hiZSize), 1.0f);
+    float mip = clamp(ceil(log2(max(extentPixels.x, extentPixels.y))), 0.0f, float(hiZMipCount - 1u));
+    float lowerMip = max(mip - 1.0f, 0.0f);
+    float2 lowerMipSize = max(floor(float2(hiZSize) / exp2(lowerMip)), 1.0f);
+    float2 lowerMin = floor(rectMin * lowerMipSize);
+    float2 lowerMax = ceil(rectMax * lowerMipSize);
+    float2 lowerDims = lowerMax - lowerMin;
+    if (lowerDims.x <= 2.0f && lowerDims.y <= 2.0f)
+        mip = lowerMip;
+
+    int selectedMip = int(mip);
+    uint2 mipSize = max(hiZSize >> uint(selectedMip), uint2(1u, 1u));
+    float2 mipTexel = 1.0f / float2(mipSize);
+    rectMin = saturate(rectMin - mipTexel);
+    rectMax = saturate(rectMax + mipTexel);
+
+    uint2 p0 = min(uint2(rectMin * float2(mipSize)), mipSize - 1u);
+    uint2 p1 = min(uint2(float2(rectMax.x, rectMin.y) * float2(mipSize)), mipSize - 1u);
+    uint2 p2 = min(uint2(float2(rectMin.x, rectMax.y) * float2(mipSize)), mipSize - 1u);
+    uint2 p3 = min(uint2(rectMax * float2(mipSize)), mipSize - 1u);
+    uint2 pc = min(uint2(((rectMin + rectMax) * 0.5f) * float2(mipSize)), mipSize - 1u);
+
+    float d0 = hiZTexture.Load(int3(p0, selectedMip));
+    float d1 = hiZTexture.Load(int3(p1, selectedMip));
+    float d2 = hiZTexture.Load(int3(p2, selectedMip));
+    float d3 = hiZTexture.Load(int3(p3, selectedMip));
+    float d4 = hiZTexture.Load(int3(pc, selectedMip));
+    float maxOccluderDepth = max(max(max(d0, d1), max(d2, d3)), d4);
+
+    return maxOccluderDepth + hiZDepthBias < nearestDepth;
 }
 
 [numthreads(64, 1, 1)]
@@ -205,10 +299,16 @@ void main(uint3 tid : SV_DispatchThreadID)
     float3 worldMin, worldMax;
     BuildWorldAABB(entities[dense], group, worldMin, worldMax);
 
-    bool visible = AABBVisible(worldMin, worldMax);
+    bool frustumVisible = AABBVisible(worldMin, worldMax);
+    bool hiZOccluded = false;
+    if (frustumVisible)
+        hiZOccluded = AABBOccludedHiZ(worldMin, worldMax);
+
+    bool visible = frustumVisible && !hiZOccluded;
 
 #if DEBUG_CULLED_AABBS
-    if (!visible) AddAABBLine(worldMin, worldMax);
+    if (!frustumVisible) AddAABBLineColored(worldMin, worldMax, 0xFF0000FFu);
+    else if (hiZOccluded) AddAABBLineColored(worldMin, worldMax, 0xFFFF00FFu);
     else return;
 #else
     if (!visible) return;

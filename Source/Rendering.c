@@ -35,6 +35,13 @@
 #include "Shaders/spv/LineDebugVert.spv.h"
 #include "Shaders/spv/LineDebugFrag.spv.h"
 #include "Shaders/spv/TonemapCompute.spv.h"
+#include "Shaders/spv/HiZBuildCompute.spv.h"
+#include "Shaders/spv/HiZDownscaleCompute.spv.h"
+#include "Shaders/spv/DepthResolveMSAACompute.spv.h"
+#include "Shaders/spv/SurfaceDepthOnlyVert.spv.h"
+#include "Shaders/spv/SurfaceDepthOnlyFrag.spv.h"
+#include "Shaders/spv/SkinnedDepthOnlyVert.spv.h"
+#include "Shaders/spv/SkinnedDepthOnlyFrag.spv.h"
 #endif
 
 #define TESTGPU_SUPPORTED_FORMATS (SDL_GPU_SHADERFORMAT_SPIRV | SDL_GPU_SHADERFORMAT_DXBC | SDL_GPU_SHADERFORMAT_DXIL | SDL_GPU_SHADERFORMAT_METALLIB)
@@ -50,6 +57,10 @@ SDL_GPUDevice*      g_GPUDevice = NULL;
 static SDL_GPUComputePipeline* g_AnimComputePipeline = NULL;
 static SDL_GPUComputePipeline* g_CullDrawArgsComputePipeline = NULL;
 static SDL_GPUComputePipeline* g_TonemapComputePipeline = NULL;
+static SDL_GPUComputePipeline* g_HiZBuildComputePipeline = NULL;
+static SDL_GPUComputePipeline* g_HiZDownscaleComputePipeline = NULL;
+static SDL_GPUComputePipeline* g_DepthResolveMSAAComputePipeline = NULL;
+static bool g_EnableOcclusion = true;
 
 extern SDL_Window*  g_SDLWindow; // main    
 extern Camera       g_Camera; // main
@@ -118,6 +129,7 @@ static void InitCullDrawArgsComputePipeline()
         .code_size                     = sizeof(Shaders_CullDrawArgsCompute_spv),
         .entrypoint                    = "main",
         .format                        = SDL_GetGPUShaderFormats(g_GPUDevice),
+        .num_readonly_storage_textures = 1,
         .num_uniform_buffers           = 1,
         .num_readonly_storage_buffers  = 3,
         .num_readwrite_storage_buffers = 8,
@@ -126,6 +138,58 @@ static void InitCullDrawArgsComputePipeline()
         .threadcount_z                 = 1,
     });
     CHECK_CREATE(g_CullDrawArgsComputePipeline, "Cull Draw Args Compute Pipeline")
+}
+
+static void InitHiZBuildComputePipeline()
+{
+    g_HiZBuildComputePipeline = SDL_CreateGPUComputePipeline(g_GPUDevice, &(SDL_GPUComputePipelineCreateInfo){
+        .code                           = Shaders_HiZBuildCompute_spv,
+        .code_size                      = sizeof(Shaders_HiZBuildCompute_spv),
+        .entrypoint                     = "main",
+        .format                         = SDL_GetGPUShaderFormats(g_GPUDevice),
+        .num_samplers                   = 1,
+        .num_readonly_storage_textures  = 1,
+        .num_readwrite_storage_textures = 1,
+        .num_uniform_buffers            = 1,
+        .threadcount_x                  = 8,
+        .threadcount_y                  = 8,
+        .threadcount_z                  = 1,
+    });
+    CHECK_CREATE(g_HiZBuildComputePipeline, "Hi-Z Build Compute Pipeline")
+}
+
+static void InitHiZDownscaleComputePipeline()
+{
+    g_HiZDownscaleComputePipeline = SDL_CreateGPUComputePipeline(g_GPUDevice, &(SDL_GPUComputePipelineCreateInfo){
+        .code                           = Shaders_HiZDownscaleCompute_spv,
+        .code_size                      = sizeof(Shaders_HiZDownscaleCompute_spv),
+        .entrypoint                     = "main",
+        .format                         = SDL_GetGPUShaderFormats(g_GPUDevice),
+        .num_readonly_storage_textures  = 1,
+        .num_readwrite_storage_textures = 1,
+        .num_uniform_buffers            = 1,
+        .threadcount_x                  = 8,
+        .threadcount_y                  = 8,
+        .threadcount_z                  = 1,
+    });
+    CHECK_CREATE(g_HiZDownscaleComputePipeline, "Hi-Z Downscale Compute Pipeline")
+}
+
+static void InitDepthResolveMSAAComputePipeline()
+{
+    g_DepthResolveMSAAComputePipeline = SDL_CreateGPUComputePipeline(g_GPUDevice, &(SDL_GPUComputePipelineCreateInfo){
+        .code                           = Shaders_DepthResolveMSAACompute_spv,
+        .code_size                      = sizeof(Shaders_DepthResolveMSAACompute_spv),
+        .entrypoint                     = "main",
+        .format                         = SDL_GetGPUShaderFormats(g_GPUDevice),
+        .num_readonly_storage_textures  = 1,
+        .num_readwrite_storage_textures = 1,
+        .num_uniform_buffers            = 1,
+        .threadcount_x                  = 8,
+        .threadcount_y                  = 8,
+        .threadcount_z                  = 1,
+    });
+    CHECK_CREATE(g_DepthResolveMSAAComputePipeline, "MSAA Depth Resolve Compute Pipeline")
 }
 
 static void InitTonemapComputePipeline()
@@ -157,12 +221,31 @@ static void InitSamplers()
         .min_lod         = 0.0f,
         .max_lod         = 12.0f
     });
+    CHECK_CREATE(g_RenderState.sampler, "Linear Sampler")
+
+    g_RenderState.hiZSampler = SDL_CreateGPUSampler(g_GPUDevice, &(SDL_GPUSamplerCreateInfo){
+        .min_filter      = SDL_GPU_FILTER_NEAREST,
+        .mag_filter      = SDL_GPU_FILTER_NEAREST,
+        .mipmap_mode     = SDL_GPU_SAMPLERMIPMAPMODE_NEAREST,
+        .address_mode_u  = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+        .address_mode_v  = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+        .address_mode_w  = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+        .min_lod         = 0.0f,
+        .max_lod         = 32.0f
+    });
+    CHECK_CREATE(g_RenderState.hiZSampler, "Hi-Z Sampler")
 }
 
 
 static void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet,
                                         RenderSetBuffers* buffers,
                                         FrustumPlanes frustumPlanes,
+                                        mat4x4 viewProj,
+                                        SDL_GPUTexture* hiZTexture,
+                                        u32 hiZWidth,
+                                        u32 hiZHeight,
+                                        u32 hiZMipCount,
+                                        bool enableHiZ,
                                         bool enableVisibilityOutput)
 {
     if (renderSet->numGroups == 0) return;
@@ -174,12 +257,24 @@ static void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd, RenderSet* re
         u32 numPrimitiveGroups;
         u32 mode;
         u32 enableVisibilityOutput;
+        mat4x4 viewProjection;
+        u32 hiZSize[2];
+        u32 hiZMipCount;
+        u32 enableHiZ;
+        f32 hiZDepthBias;
+        f32 hiZPadding[3];
     } params;
     MemCopy(&params.planes, frustumPlanes.planes, sizeof(FrustumPlanes));
     params.numEntities = renderSet->numEntities;
     params.numPrimitiveGroups = renderSet->numGroups;
     params.mode = 0;
     params.enableVisibilityOutput = enableVisibilityOutput ? 1u : 0u;
+    params.viewProjection = viewProj;
+    params.hiZSize[0] = hiZWidth;
+    params.hiZSize[1] = hiZHeight;
+    params.hiZMipCount = hiZMipCount;
+    params.enableHiZ = enableHiZ ? 1u : 0u;
+    params.hiZDepthBias = 0.005f;
 
     SDL_GPUBuffer* ro_buffers[3] = {
         buffers->entity, 
@@ -200,6 +295,8 @@ static void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd, RenderSet* re
     SDL_GPUComputePass* pass = SDL_BeginGPUComputePass(cmd, NULL, 0, rw_bindings, SDL_arraysize(rw_bindings));
     SDL_BindGPUComputePipeline(pass, g_CullDrawArgsComputePipeline);
     SDL_BindGPUComputeStorageBuffers(pass, 0, ro_buffers, SDL_arraysize(ro_buffers));
+    if (hiZTexture)
+        SDL_BindGPUComputeStorageTextures(pass, 0, &hiZTexture, 1);
     SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
     // clear draw args and numVisibleInPrimitive
     u32 resetCount = renderSet->numGroups;
@@ -216,11 +313,95 @@ static void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd, RenderSet* re
     SDL_EndGPUComputePass(pass);
 }
 
-static void DispatchTonemapCompute(SDL_GPUCommandBuffer* cmd, SDL_GPUTexture* source, SDL_GPUTexture* destination, u32 width, u32 height)
+static u32 GetSampleCountValue(SDL_GPUSampleCount sampleCount)
 {
-    CHECK_CREATE(g_TonemapComputePipeline, "Tonemap Compute Pipeline")
+    switch (sampleCount)
+    {
+        case SDL_GPU_SAMPLECOUNT_2: return 2;
+        case SDL_GPU_SAMPLECOUNT_4: return 4;
+        case SDL_GPU_SAMPLECOUNT_8: return 8;
+        default: return 1;
+    }
+}
+
+static void DispatchDepthResolveMSAACompute(SDL_GPUCommandBuffer* cmd, SDL_GPUTexture* depthTexture, SDL_GPUTexture* hiZTexture,
+                                           u32 width, u32 height)
+{
+    if (!depthTexture || !hiZTexture || g_RenderState.sample_count == SDL_GPU_SAMPLECOUNT_1) return;
+    CHECK_CREATE(g_DepthResolveMSAAComputePipeline, "MSAA Depth Resolve Compute Pipeline")
+
+    SDL_GPUStorageTextureReadWriteBinding rwTexture = {
+        .texture = hiZTexture,
+        .mip_level = 0,
+        .layer = 0,
+        .cycle = false
+    };
+
+    SDL_GPUComputePass* pass = SDL_BeginGPUComputePass(cmd, &rwTexture, 1, NULL, 0);
+    SDL_BindGPUComputePipeline(pass, g_DepthResolveMSAAComputePipeline);
+    SDL_BindGPUComputeStorageTextures(pass, 0, &depthTexture, 1);
+
+    struct { u32 outputSize[2]; u32 sampleCount; u32 padding; } params = {
+        { width, height },
+        GetSampleCountValue(g_RenderState.sample_count),
+        0u
+    };
+    SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
+    SDL_DispatchGPUCompute(pass, (width + 7u) / 8u, (height + 7u) / 8u, 1);
+    SDL_EndGPUComputePass(pass);
+}
+
+static void DispatchHiZBuildCompute(SDL_GPUCommandBuffer* cmd, SDL_GPUTexture* depthTexture, SDL_GPUTexture* hiZTexture,
+                                    u32 width, u32 height, u32 mipCount, u32 firstMip)
+{
+    if (!depthTexture || !hiZTexture || mipCount == 0) return;
+    for (u32 mip = firstMip; mip < mipCount; mip++)
+    {
+        u32 outputWidth  = Maxu32(width >> mip, 1);
+        u32 outputHeight = Maxu32(height >> mip, 1);
+        u32 sourceWidth  = Maxu32((mip == 0) ? width  : (width >> (mip - 1)), 1);
+        u32 sourceHeight = Maxu32((mip == 0) ? height : (height >> (mip - 1)), 1);
 
         SDL_GPUStorageTextureReadWriteBinding rwTexture = {
+            .texture = hiZTexture,
+            .mip_level = mip,
+            .layer = 0,
+            .cycle = false
+        };
+        SDL_GPUComputePass* pass = SDL_BeginGPUComputePass(cmd, &rwTexture, 1, NULL, 0);
+        struct { u32 sourceSize[2]; u32 outputSize[2]; u32 sourceMip; u32 isBaseLevel; u32 padding[2]; } params = {
+            { sourceWidth, sourceHeight },
+            { outputWidth, outputHeight },
+            mip == 0 ? 0u : mip - 1u,
+            mip == 0 ? 1u : 0u,
+            { 0u, 0u }
+        };
+
+        if (mip == 0)
+        {
+            CHECK_CREATE(g_HiZBuildComputePipeline, "Hi-Z Build Compute Pipeline")
+            SDL_BindGPUComputePipeline(pass, g_HiZBuildComputePipeline);
+            SDL_GPUTextureSamplerBinding depthBinding = { .texture = depthTexture, .sampler = g_RenderState.hiZSampler };
+            SDL_BindGPUComputeSamplers(pass, 0, &depthBinding, 1);
+            SDL_BindGPUComputeStorageTextures(pass, 0, &hiZTexture, 1);
+        }
+        else
+        {
+            CHECK_CREATE(g_HiZDownscaleComputePipeline, "Hi-Z Downscale Compute Pipeline")
+            SDL_BindGPUComputePipeline(pass, g_HiZDownscaleComputePipeline);
+            SDL_BindGPUComputeStorageTextures(pass, 0, &hiZTexture, 1);
+        }
+        SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
+        SDL_DispatchGPUCompute(pass, (outputWidth + 7u) / 8u, (outputHeight + 7u) / 8u, 1);
+        SDL_EndGPUComputePass(pass);
+    }
+}
+
+static void DispatchTonemapCompute(SDL_GPUCommandBuffer* cmd, SDL_GPUTexture* source, SDL_GPUTexture* destination, u32 width, u32 height)
+{
+    CHECK_CREATE(g_TonemapComputePipeline, "Tonemap Compute Pipeline");
+
+    SDL_GPUStorageTextureReadWriteBinding rwTexture = {
         .texture = destination,
         .mip_level = 0,
         .layer = 0,
@@ -233,9 +414,7 @@ static void DispatchTonemapCompute(SDL_GPUCommandBuffer* cmd, SDL_GPUTexture* so
         .sampler = g_RenderState.sampler
     }, 1);
     struct { u32 outputSize[2]; f32 exposure; f32 gamma; } params = {
-        { width, height },
-        1.0f,
-        2.2f
+        { width, height }, 1.0f, 2.2f
     };
     SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
     SDL_DispatchGPUCompute(pass, (width + 7u) / 8u, (height + 7u) / 8u, 1);
@@ -275,6 +454,63 @@ void DispatchAnimationCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet)
     SDL_DispatchGPUComputeIndirect(pass, g_RenderState.skinnedBuffers.dispatchArgs, 0);
  
     SDL_EndGPUComputePass(pass);
+}
+
+static void RenderDepthPrepass(SDL_GPUCommandBuffer* cmd,
+                               SDL_GPUDepthStencilTargetInfo* depth_target,
+                               mat4x4 viewProj,
+                               SDL_GPUGraphicsPipeline* skinnedPipeline,
+                               SDL_GPUGraphicsPipeline* surfacePipeline)
+{
+    struct {
+        mat4x4 viewProj;
+        float cameraPosition[4];
+    } shaderParams;
+    shaderParams.viewProj = viewProj;
+    shaderParams.cameraPosition[0] = g_Camera.position.x;
+    shaderParams.cameraPosition[1] = g_Camera.position.y;
+    shaderParams.cameraPosition[2] = g_Camera.position.z;
+    shaderParams.cameraPosition[3] = 0.0f;
+
+    SDL_GPUBufferBinding vertex_binding = { g_RenderState.skinnedVertexBuffer, 0 };
+    SDL_GPUBufferBinding index_binding  = { g_RenderState.indexBuffer, 0 };
+
+    SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmd, NULL, 0, depth_target);
+
+    if (skinnedSet.numGroups > 0)
+    {
+        SDL_BindGPUGraphicsPipeline(pass, skinnedPipeline);
+        SDL_BindGPUVertexBuffers(pass, 0, &vertex_binding, 1);
+        SDL_BindGPUIndexBuffer(pass, &index_binding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
+        SDL_GPUBuffer* buffers[4] = {
+            g_RenderState.boneBuffer,
+            g_RenderState.skinnedBuffers.entity,
+            g_RenderState.skinnedBuffers.primitiveGroup,
+            g_RenderState.skinnedBuffers.drawDenseIndices
+        };
+        SDL_BindGPUVertexStorageBuffers(pass, 0, buffers, SDL_arraysize(buffers));
+        SDL_PushGPUVertexUniformData(cmd, 0, &shaderParams, sizeof(shaderParams));
+        SDL_DrawGPUIndexedPrimitivesIndirect(pass, g_RenderState.skinnedBuffers.drawArgs, 0, skinnedSet.numGroups);
+    }
+
+    if (surfaceSet.numGroups > 0)
+    {
+        SDL_BindGPUGraphicsPipeline(pass, surfacePipeline);
+        vertex_binding.buffer = g_RenderState.surfaceVertexBuffer;
+        vertex_binding.offset = 0;
+        SDL_BindGPUVertexBuffers(pass, 0, &vertex_binding, 1);
+        SDL_BindGPUIndexBuffer(pass, &index_binding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
+        SDL_GPUBuffer* surfaceBuffers[3] = {
+            g_RenderState.surfaceBuffers.entity,
+            g_RenderState.surfaceBuffers.primitiveGroup,
+            g_RenderState.surfaceBuffers.drawDenseIndices
+        };
+        SDL_BindGPUVertexStorageBuffers(pass, 0, surfaceBuffers, SDL_arraysize(surfaceBuffers));
+        SDL_PushGPUVertexUniformData(cmd, 0, &shaderParams, sizeof(shaderParams));
+        SDL_DrawGPUIndexedPrimitivesIndirect(pass, g_RenderState.surfaceBuffers.drawArgs, 0, surfaceSet.numGroups);
+    }
+
+    SDL_EndGPURenderPass(pass);
 }
 
 static void RenderScene(SDL_GPUCommandBuffer* cmd, 
@@ -363,16 +599,16 @@ void Render()
         AX_WARN("Failed to acquire command buffer :%s", SDL_GetError());
         Quit(2);
     }
-    
+    static int swapchainLogged = 0;
     SDL_GPUTexture* swapchainTexture;
     Uint32 drawablew, drawableh;
     if (!SDL_WaitAndAcquireGPUSwapchainTexture(cmd, g_SDLWindow, &swapchainTexture, &drawablew, &drawableh)) {
-        AX_WARN("Failed to acquire swapchain texture: %s", SDL_GetError());
+        if (swapchainLogged++ < 4) AX_WARN("Failed to acquire swapchain texture: %s", SDL_GetError());
         Quit(2);
     }
     
     if (swapchainTexture == NULL) {
-        AX_WARN("Failed to acquire swapchain texture");
+        if (swapchainLogged++ < 4) AX_WARN("Failed to acquire swapchain texture");
         SDL_CancelGPUCommandBuffer(cmd);
         return;
     }
@@ -381,18 +617,31 @@ void Render()
     /* Resize the depth buffer if the window size changed */
     if (winstate->prev_drawablew != drawablew || winstate->prev_drawableh != drawableh) {
         SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_depth);
+        SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_occlusion_depth);
         SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_msaa);
         SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_resolve);
         SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_color);
         SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_post);
+        SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_hiz);
         winstate->tex_depth   = CreateDepthTexture(drawablew, drawableh);
+        winstate->tex_occlusion_depth = CreateOcclusionDepthTexture(drawablew, drawableh);
         winstate->tex_msaa    = CreateMSAATexture(drawablew, drawableh);
         winstate->tex_resolve = CreateResolveTexture(drawablew, drawableh);
         winstate->tex_color   = CreateSceneColorTexture(drawablew, drawableh, SDL_GPU_SAMPLECOUNT_1);
         winstate->tex_post    = CreatePostProcessTexture(drawablew, drawableh);
+        winstate->tex_hiz     = CreateHiZTexture(drawablew, drawableh, &winstate->hiz_mip_count);
+        winstate->hiz_width   = drawablew;
+        winstate->hiz_height  = drawableh;
+        winstate->hiz_valid   = false;
     }
     winstate->prev_drawablew = drawablew;
     winstate->prev_drawableh = drawableh;
+
+    if (GetKeyReleased(SDLK_O))
+    {
+        g_EnableOcclusion = !g_EnableOcclusion;
+        AX_LOG("Hi-Z occlusion %s", g_EnableOcclusion ? "enabled" : "disabled");
+    }
     
     /* Set up the pass */
     SDL_GPUColorTargetInfo color_target;
@@ -416,11 +665,17 @@ void Render()
     SDL_zero(depth_target);
     depth_target.clear_depth      = 1.0f;
     depth_target.load_op          = SDL_GPU_LOADOP_CLEAR;
-    depth_target.store_op         = SDL_GPU_STOREOP_DONT_CARE;
+    depth_target.store_op         = SDL_GPU_STOREOP_STORE;
     depth_target.stencil_load_op  = SDL_GPU_LOADOP_DONT_CARE;
     depth_target.stencil_store_op = SDL_GPU_STOREOP_DONT_CARE;
     depth_target.texture          = winstate->tex_depth;
     depth_target.cycle            = true;
+    SDL_GPUDepthStencilTargetInfo main_depth_target = depth_target;
+    main_depth_target.load_op = SDL_GPU_LOADOP_LOAD;
+    main_depth_target.cycle = false;
+    SDL_GPUDepthStencilTargetInfo occlusion_depth_target = depth_target;
+    occlusion_depth_target.texture = winstate->tex_occlusion_depth;
+    occlusion_depth_target.cycle = true;
     
     if (skinnedSet.numEntities > 0)
     {
@@ -435,10 +690,23 @@ void Render()
     
     mat4x4 viewProj = M44Multiply(g_Camera.view, g_Camera.projection);
     FrustumPlanes frustumPlanes = CreateFrustumPlanes(viewProj);
-    DispatchCullDrawArgsCompute(cmd, &skinnedSet, &g_RenderState.skinnedBuffers, frustumPlanes, true);
+    bool enableHiZ = g_EnableOcclusion && winstate->hiz_valid;
+    mat4x4 hiZViewProj = enableHiZ ? winstate->hiz_view_proj : viewProj;
+    DispatchCullDrawArgsCompute(cmd, &skinnedSet, &g_RenderState.skinnedBuffers, frustumPlanes, hiZViewProj,
+                                winstate->tex_hiz, winstate->hiz_width, winstate->hiz_height, winstate->hiz_mip_count,
+                                enableHiZ, true);
     DispatchAnimationCompute(cmd, &skinnedSet);
-    DispatchCullDrawArgsCompute(cmd, &surfaceSet, &g_RenderState.surfaceBuffers, frustumPlanes, false);
-    RenderScene(cmd, &color_target, &depth_target, viewProj);
+    DispatchCullDrawArgsCompute(cmd, &surfaceSet, &g_RenderState.surfaceBuffers, frustumPlanes, hiZViewProj,
+                                winstate->tex_hiz, winstate->hiz_width, winstate->hiz_height, winstate->hiz_mip_count,
+                                enableHiZ, false);
+    
+    RenderDepthPrepass(cmd, &depth_target, viewProj, g_RenderState.skinnedDepthPipeline, g_RenderState.surfaceDepthPipeline);
+    RenderScene(cmd, &color_target, &main_depth_target, viewProj);
+    RenderDepthPrepass(cmd, &occlusion_depth_target, viewProj, g_RenderState.skinnedOcclusionDepthPipeline, g_RenderState.surfaceOcclusionDepthPipeline);
+    DispatchHiZBuildCompute(cmd, winstate->tex_occlusion_depth, winstate->tex_hiz, drawablew, drawableh, winstate->hiz_mip_count, 0);
+    
+    winstate->hiz_view_proj = viewProj;
+    winstate->hiz_valid = true;
 
     SDL_GPUTexture* sceneColor = g_RenderState.sample_count > SDL_GPU_SAMPLECOUNT_1 ? winstate->tex_resolve : winstate->tex_color;
     DispatchTonemapCompute(cmd, sceneColor, winstate->tex_post, drawablew, drawableh);
@@ -502,7 +770,7 @@ static void InitLinePipeline()
         {
             .num_color_targets          = 1,
             .color_target_descriptions  = &(SDL_GPUColorTargetDescription){ .format = colorFormat },
-            .depth_stencil_format       = SDL_GPU_TEXTUREFORMAT_D24_UNORM,
+            .depth_stencil_format       = SDL_GPU_TEXTUREFORMAT_D32_FLOAT,
             .has_depth_stencil_target   = true
         },
         .multisample_state  = (SDL_GPUMultisampleState){ .sample_count = g_RenderState.sample_count },
@@ -574,13 +842,13 @@ static void InitSkinedPipeline()
         {
             .num_color_targets          = 1,
             .color_target_descriptions  = &(SDL_GPUColorTargetDescription){ .format = colorFormat },
-            .depth_stencil_format       = SDL_GPU_TEXTUREFORMAT_D24_UNORM,
+            .depth_stencil_format       = SDL_GPU_TEXTUREFORMAT_D32_FLOAT,
             .has_depth_stencil_target   = true
         },
         .depth_stencil_state = (SDL_GPUDepthStencilState)
         {
             .enable_depth_test  = true,
-            .enable_depth_write = true,
+            .enable_depth_write = false,
             .compare_op         = SDL_GPU_COMPAREOP_LESS_OR_EQUAL
         },
         .multisample_state  = (SDL_GPUMultisampleState){ .sample_count = g_RenderState.sample_count },
@@ -644,13 +912,13 @@ static void InitSurfacePipeline()
         {
             .num_color_targets          = 1,
             .color_target_descriptions  = &(SDL_GPUColorTargetDescription){ .format = colorFormat },
-            .depth_stencil_format       = SDL_GPU_TEXTUREFORMAT_D24_UNORM,
+            .depth_stencil_format       = SDL_GPU_TEXTUREFORMAT_D32_FLOAT,
             .has_depth_stencil_target   = true
         },
         .depth_stencil_state = (SDL_GPUDepthStencilState)
         {
             .enable_depth_test  = true,
-            .enable_depth_write = true,
+            .enable_depth_write = false,
             .compare_op         = SDL_GPU_COMPAREOP_LESS_OR_EQUAL
         },
         .multisample_state  = (SDL_GPUMultisampleState){ .sample_count = g_RenderState.sample_count },
@@ -671,25 +939,138 @@ static void InitSurfacePipeline()
     SDL_ReleaseGPUShader(g_GPUDevice, fragment_shader);
 }
 
+static void InitDepthOnlyPipelines()
+{
+    SDL_GPUShader* surface_vertex_shader = SDL_CreateGPUShader(g_GPUDevice, &(SDL_GPUShaderCreateInfo){
+        .num_uniform_buffers = 1,
+        .format              = SDL_GetGPUShaderFormats(g_GPUDevice),
+        .code                = Shaders_SurfaceDepthOnlyVert_spv,
+        .code_size           = sizeof(Shaders_SurfaceDepthOnlyVert_spv),
+        .num_samplers        = 0,
+        .num_storage_buffers = 3,
+        .stage               = SDL_GPU_SHADERSTAGE_VERTEX,
+        .entrypoint          = "vert"
+    });
+    SDL_GPUShader* surface_fragment_shader = SDL_CreateGPUShader(g_GPUDevice, &(SDL_GPUShaderCreateInfo){
+        .num_uniform_buffers = 0,
+        .format              = SDL_GetGPUShaderFormats(g_GPUDevice),
+        .code                = Shaders_SurfaceDepthOnlyFrag_spv,
+        .code_size           = sizeof(Shaders_SurfaceDepthOnlyFrag_spv),
+        .num_samplers        = 0,
+        .num_storage_buffers = 0,
+        .stage               = SDL_GPU_SHADERSTAGE_FRAGMENT,
+        .entrypoint          = "frag"
+    });
+    SDL_GPUShader* skinned_vertex_shader = SDL_CreateGPUShader(g_GPUDevice, &(SDL_GPUShaderCreateInfo){
+        .num_uniform_buffers = 1,
+        .format              = SDL_GetGPUShaderFormats(g_GPUDevice),
+        .code                = Shaders_SkinnedDepthOnlyVert_spv,
+        .code_size           = sizeof(Shaders_SkinnedDepthOnlyVert_spv),
+        .num_samplers        = 0,
+        .num_storage_buffers = 4,
+        .stage               = SDL_GPU_SHADERSTAGE_VERTEX,
+        .entrypoint          = "vert"
+    });
+    SDL_GPUShader* skinned_fragment_shader = SDL_CreateGPUShader(g_GPUDevice, &(SDL_GPUShaderCreateInfo){
+        .num_uniform_buffers = 0,
+        .format              = SDL_GetGPUShaderFormats(g_GPUDevice),
+        .code                = Shaders_SkinnedDepthOnlyFrag_spv,
+        .code_size           = sizeof(Shaders_SkinnedDepthOnlyFrag_spv),
+        .num_samplers        = 0,
+        .num_storage_buffers = 0,
+        .stage               = SDL_GPU_SHADERSTAGE_FRAGMENT,
+        .entrypoint          = "frag"
+    });
+    CHECK_CREATE(surface_vertex_shader, "Surface Depth Vertex Shader")
+    CHECK_CREATE(surface_fragment_shader, "Surface Depth Fragment Shader")
+    CHECK_CREATE(skinned_vertex_shader, "Skinned Depth Vertex Shader")
+    CHECK_CREATE(skinned_fragment_shader, "Skinned Depth Fragment Shader")
+
+    const SDL_GPUVertexAttribute surface_attributes[3] = {
+        { .location = 0, .buffer_slot = 0, .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3, .offset = offsetof(AVertex, position) },
+        { .location = 1, .buffer_slot = 0, .format = SDL_GPU_VERTEXELEMENTFORMAT_UINT,   .offset = offsetof(AVertex, octTbn) },
+        { .location = 2, .buffer_slot = 0, .format = SDL_GPU_VERTEXELEMENTFORMAT_HALF2,  .offset = offsetof(AVertex, texCoord) }
+    };
+    const SDL_GPUVertexAttribute skinned_attributes[5] = {
+        { .location = 0, .buffer_slot = 0, .format = VFORMAT_HALF4 , .offset = 0 },
+        { .location = 1, .buffer_slot = 0, .format = VFORMAT_UINT  , .offset = offsetof(ASkinedVertex, octTbn)   },
+        { .location = 2, .buffer_slot = 0, .format = VFORMAT_HALF2 , .offset = offsetof(ASkinedVertex, texCoord) },
+        { .location = 3, .buffer_slot = 0, .format = VFORMAT_UBYTE4, .offset = offsetof(ASkinedVertex, joints)   },
+        { .location = 4, .buffer_slot = 0, .format = VFORMAT_UINT  , .offset = offsetof(ASkinedVertex, weights)  }
+    };
+
+    SDL_GPUGraphicsPipelineCreateInfo surface_desc = {
+        .vertex_shader   = surface_vertex_shader,
+        .fragment_shader = surface_fragment_shader,
+        .primitive_type  = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
+        .target_info     = (SDL_GPUGraphicsPipelineTargetInfo){
+            .num_color_targets        = 0,
+            .depth_stencil_format     = SDL_GPU_TEXTUREFORMAT_D32_FLOAT,
+            .has_depth_stencil_target = true
+        },
+        .depth_stencil_state = (SDL_GPUDepthStencilState){
+            .enable_depth_test  = true,
+            .enable_depth_write = true,
+            .compare_op         = SDL_GPU_COMPAREOP_LESS_OR_EQUAL
+        },
+        .multisample_state = (SDL_GPUMultisampleState){ .sample_count = g_RenderState.sample_count },
+        .vertex_input_state = (SDL_GPUVertexInputState){
+            .vertex_buffer_descriptions = &(SDL_GPUVertexBufferDescription){ 0, sizeof(AVertex), SDL_GPU_VERTEXINPUTRATE_VERTEX, 0 },
+            .num_vertex_buffers = 1,
+            .vertex_attributes = surface_attributes,
+            .num_vertex_attributes = ARRAY_SIZE(surface_attributes)
+        }
+    };
+    SDL_GPUGraphicsPipelineCreateInfo skinned_desc = surface_desc;
+    skinned_desc.vertex_shader = skinned_vertex_shader;
+    skinned_desc.fragment_shader = skinned_fragment_shader;
+    skinned_desc.vertex_input_state = (SDL_GPUVertexInputState){
+        .vertex_buffer_descriptions = &(SDL_GPUVertexBufferDescription){ 0, sizeof(ASkinedVertex), SDL_GPU_VERTEXINPUTRATE_VERTEX, 0 },
+        .num_vertex_buffers = 1,
+        .vertex_attributes = skinned_attributes,
+        .num_vertex_attributes = ARRAY_SIZE(skinned_attributes)
+    };
+
+    g_RenderState.surfaceDepthPipeline = SDL_CreateGPUGraphicsPipeline(g_GPUDevice, &surface_desc);
+    g_RenderState.skinnedDepthPipeline = SDL_CreateGPUGraphicsPipeline(g_GPUDevice, &skinned_desc);
+    surface_desc.multisample_state.sample_count = SDL_GPU_SAMPLECOUNT_1;
+    skinned_desc.multisample_state.sample_count = SDL_GPU_SAMPLECOUNT_1;
+    g_RenderState.surfaceOcclusionDepthPipeline = SDL_CreateGPUGraphicsPipeline(g_GPUDevice, &surface_desc);
+    g_RenderState.skinnedOcclusionDepthPipeline = SDL_CreateGPUGraphicsPipeline(g_GPUDevice, &skinned_desc);
+    CHECK_CREATE(g_RenderState.surfaceDepthPipeline, "Surface Depth Pipeline")
+    CHECK_CREATE(g_RenderState.skinnedDepthPipeline, "Skinned Depth Pipeline")
+    CHECK_CREATE(g_RenderState.surfaceOcclusionDepthPipeline, "Surface Occlusion Depth Pipeline")
+    CHECK_CREATE(g_RenderState.skinnedOcclusionDepthPipeline, "Skinned Occlusion Depth Pipeline")
+
+    SDL_ReleaseGPUShader(g_GPUDevice, surface_vertex_shader);
+    SDL_ReleaseGPUShader(g_GPUDevice, surface_fragment_shader);
+    SDL_ReleaseGPUShader(g_GPUDevice, skinned_vertex_shader);
+    SDL_ReleaseGPUShader(g_GPUDevice, skinned_fragment_shader);
+}
+
 void RendererInit()
 {
     InitSamplers();
     InitSkinedPipeline();
     InitSurfacePipeline();
+    InitDepthOnlyPipelines();
     InitLinePipeline();
     InitAnimationComputePipeline();
     InitCullDrawArgsComputePipeline();
     InitTonemapComputePipeline();
+    InitHiZBuildComputePipeline();
+    InitHiZDownscaleComputePipeline();
+    InitDepthResolveMSAAComputePipeline();
 }
 
 static void DestroyRenderSetBuffers(RenderSetBuffers* buffers)
 {
-    if (buffers->entity)           SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->entity);
-    if (buffers->primitiveGroup)   SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->primitiveGroup);
-    if (buffers->drawDenseIndices) SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->drawDenseIndices);
-    if (buffers->drawArgs)         SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->drawArgs);
-    if (buffers->denseToPrimitive) SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->denseToPrimitive);
-    if (buffers->sparseToDense)    SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->sparseToDense);
+    if (buffers->entity)              SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->entity);
+    if (buffers->primitiveGroup)      SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->primitiveGroup);
+    if (buffers->drawDenseIndices)    SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->drawDenseIndices);
+    if (buffers->drawArgs)            SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->drawArgs);
+    if (buffers->denseToPrimitive)    SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->denseToPrimitive);
+    if (buffers->sparseToDense)       SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->sparseToDense);
     if (buffers->visibleDenseIndices) SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->visibleDenseIndices);
     if (buffers->visibilityMask)      SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->visibilityMask);
     if (buffers->visibleCount)        SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->visibleCount);
@@ -703,6 +1084,8 @@ static void DestroyPipeline()
     if (g_RenderState.skinnedVertexBuffer) SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.skinnedVertexBuffer);
     if (g_RenderState.surfaceVertexBuffer) SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.surfaceVertexBuffer);
     if (g_RenderState.indexBuffer) SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.indexBuffer);
+    if (g_RenderState.sampler) SDL_ReleaseGPUSampler(g_GPUDevice, g_RenderState.sampler);
+    if (g_RenderState.hiZSampler) SDL_ReleaseGPUSampler(g_GPUDevice, g_RenderState.hiZSampler);
     if (g_RenderState.textureDescriptorBuffer) SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.textureDescriptorBuffer);
     if (g_RenderState.materialBuffer) SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.materialBuffer);
     if (g_RenderState.albedoPages.handle) SDL_ReleaseGPUTexture(g_GPUDevice, g_RenderState.albedoPages.handle);
@@ -710,9 +1093,16 @@ static void DestroyPipeline()
     if (g_RenderState.metallicRoughnessPages.handle) SDL_ReleaseGPUTexture(g_GPUDevice, g_RenderState.metallicRoughnessPages.handle);
     if (g_RenderState.skinnedPipeline)     SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.skinnedPipeline);
     if (g_RenderState.surfacePipeline)     SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.surfacePipeline);
+    if (g_RenderState.skinnedDepthPipeline) SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.skinnedDepthPipeline);
+    if (g_RenderState.surfaceDepthPipeline) SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.surfaceDepthPipeline);
+    if (g_RenderState.skinnedOcclusionDepthPipeline) SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.skinnedOcclusionDepthPipeline);
+    if (g_RenderState.surfaceOcclusionDepthPipeline) SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.surfaceOcclusionDepthPipeline);
     if (g_AnimComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_AnimComputePipeline);
     if (g_CullDrawArgsComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_CullDrawArgsComputePipeline);
     if (g_TonemapComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_TonemapComputePipeline);
+    if (g_HiZBuildComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_HiZBuildComputePipeline);
+    if (g_HiZDownscaleComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_HiZDownscaleComputePipeline);
+    if (g_DepthResolveMSAAComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_DepthResolveMSAAComputePipeline);
     
     SDL_zero(g_RenderState);
     g_GPUDevice = NULL;

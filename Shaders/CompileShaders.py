@@ -12,11 +12,15 @@ SPV_DIR    = SHADER_DIR / "spv"
 GRAPHICS_SHADERS = [
     ("Skinned"  , "vert", "frag"),
     ("LineDebug", "vert", "frag"),
+    ("SurfaceDepthOnly", "vert", "frag")
 ]
 
 COMPUTE_SHADERS = [
-    ("AnimationCompute"   , "main"),
-    ("CullDrawArgsCompute", "main"),
+    ("AnimationCompute"       , "main"),
+    ("CullDrawArgsCompute"    , "main"),
+    ("HiZBuildCompute"        , "main"),
+    ("HiZDownscaleCompute"    , "main"),
+    ("DepthResolveMSAACompute", "main")
 ]
 
 def run_cmd(args: list[str], error_msg: str):

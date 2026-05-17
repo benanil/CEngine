@@ -400,6 +400,21 @@
 					<File>
 						<Path>Shaders/TonemapCompute.hlsl</Path>
 					</File>
+					<File>
+						<Path>Shaders/HiZBuildCompute.hlsl</Path>
+					</File>
+					<File>
+						<Path>Shaders/DepthResolveMSAACompute.hlsl</Path>
+					</File>
+					<File>
+						<Path>Shaders/SkinnedDepthOnly.hlsl</Path>
+					</File>
+					<File>
+						<Path>Shaders/SurfaceDepthOnly.hlsl</Path>
+					</File>
+					<File>
+						<Path>Shaders/HiZDownscaleCompute.hlsl</Path>
+					</File>
 				</Children>
 			</Folder>
 			<Folder>
