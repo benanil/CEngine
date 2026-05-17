@@ -684,6 +684,7 @@ s32 LoadGLTFCached(const char* path, SceneBundle* scene, Texture* textures)
             AX_WARN("asset import failed during mesh bake: %s vertices=%d indices=%d", path, scene->totalVertices, scene->totalIndices);
             return 0;
         }
+        OptimizeMesh(scene);
         if (!SaveGLTFBinary(scene, buffer))
         {
             AX_WARN("asset cache save failed: %s", buffer);
@@ -796,8 +797,6 @@ s32 SaveGLTFBinary(const SceneBundle* gltf, const u8* path)
     u16 isSkined = (u16)(gltf->numSkins > 0);
     AFileWrite(&isSkined, sizeof(u16), file, 1);
     
-    OptimizeMesh(gltf);
-
     AFileWrite(&gltf->totalIndices, sizeof(s32), file, 1);
     AFileWrite(&gltf->totalVertices, sizeof(s32), file, 1);
     

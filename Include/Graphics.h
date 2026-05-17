@@ -173,6 +173,7 @@ typedef struct RenderState
     SDL_GPUBuffer*           indexBuffer;
     SDL_GPUBuffer*           lineBuffer;
     SDL_GPUBuffer*           lineDrawArgsBuffer;
+    SDL_GPUBuffer*           skinnedAnimatedVertices;
     RenderSetBuffers         skinnedBuffers;
     RenderSetBuffers         surfaceBuffers;
     

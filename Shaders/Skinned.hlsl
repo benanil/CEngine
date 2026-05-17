@@ -17,8 +17,6 @@ StructuredBuffer<Entity>         sEntities         : register(t1);
 StructuredBuffer<PrimitiveGroup> sPrimitiveGroups  : register(t2);
 StructuredBuffer<uint>           sDrawDenseIndices : register(t3);
 
-static const uint MatrixNumInt32 = 6;
-
 struct VSInput
 {
     f16_4_io  aPos          : POSITION0;
@@ -39,16 +37,6 @@ struct VSOutput
     nointerpolation uint materialIndex : TEXCOORD3;
 };
 
-f16_3x4 LoadBone(uint idx)
-{
-    uint base = idx * MatrixNumInt32;
-    f16_3x4 bone;
-    bone[0] = f16_4(UnpackHalf2(sBoneMtx[base + 0]), UnpackHalf2(sBoneMtx[base + 1]));
-    bone[1] = f16_4(UnpackHalf2(sBoneMtx[base + 2]), UnpackHalf2(sBoneMtx[base + 3]));
-    bone[2] = f16_4(UnpackHalf2(sBoneMtx[base + 4]), UnpackHalf2(sBoneMtx[base + 5]));
-    return bone;
-}
-
 VSOutput vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("DrawIndex")]] uint drawID : DRAWINDEX)
 {
     PrimitiveGroup group = sPrimitiveGroups[drawID];
@@ -63,7 +51,7 @@ VSOutput vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("Dra
     [unroll]
     for (int i = 0; i < 4; i++)
     {
-        f16_3x4 bone = LoadBone(boneStart + input.aJoints[i]);
+        f16_3x4 bone = LoadBone(sBoneMtx, boneStart + input.aJoints[i]);
         animMat[0] = mad(weights[i], bone[0], animMat[0]);
         animMat[1] = mad(weights[i], bone[1], animMat[1]);
         animMat[2] = mad(weights[i], bone[2], animMat[2]);
@@ -95,7 +83,31 @@ VSOutput vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("Dra
     return o;
 }
 
+#if 0
+StructuredBuffer<AnimatedVert> sAnimatedVert : register(t5);
+VSOutput vertNew(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("DrawIndex")]] uint drawID : DRAWINDEX)
+{
+    PrimitiveGroup group = sPrimitiveGroups[drawID];
+    uint denseIdx  = sDrawDenseIndices[group.entityOffset + instanceID];
+    uint boneStart = sEntities[denseIdx].sparse * MAX_BONES;
+    Entity entity  = sEntities[denseIdx];
+    uint outID = 0;
+    AnimatedVert input = sAnimatedVert[outID];
+    f16_3x3 tbn;
+    UnpackNormalTangent(input.tangentSpace, tbn[2], tbn[1]);
+    f16 tangentHandedness = UnpackTangentHandedness(input.tangentSpace);
 
+    VSOutput o;
+    o.position  = mul(uViewProj, input.position);
+    o.texCoords = input.aTexCoords;
+    o.normal    = normalize(tbn[2]);
+    o.tangent   = normalize(tbn[1]);
+    o.bitangent = normalize(cross(tbn[2], tbn[1])) * tangentHandedness;
+    o.viewDir   = uCameraPosition.xyz - finalWorldPos;
+    o.materialIndex = group.materialIndex;
+    return o;
+}
+#endif
 Texture2DArray<float4> AlbedoPages            : register(t0, space2);
 Texture2DArray<float2> NormalPages            : register(t1, space2);
 Texture2DArray<float2> MetallicRoughnessPages : register(t2, space2);

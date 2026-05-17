@@ -164,6 +164,7 @@ typedef float4x4 mat4x4;
 #define Ceilf(x)              ceil(x)
 #define Fractf(a)             frac(a)
 #define Fract(a)              frac(a)
+#define Signf(x)              sign(x)
 
 #define M44Transpose(m) transpose(m)
 #define VecXY(v) v.xy
@@ -235,7 +236,7 @@ typedef float4x4 mat4x4;
 
 #define Vec3DotV(a, b)          VecSet1(dot((a).xyz, (b).xyz))
 #define Vec3DotfV(a, b)         dot((a).xyz, (b).xyz)
-#define Vec3NormV(v)            float4(((v).xyz * rsqrt(dot((v).xyz, (v).xyz))), (v).w)
+#define Vec3NormV(v)            normalize((v).xyz)
 #define Vec3NormEstV(v)         float4(((v).xyz * rsqrt(dot((v).xyz, (v).xyz))), (v).w)
 #define Vec3LenfV(v)            sqrt(dot((v).xyz, (v).xyz))
 #define Vec3LenV(v)             VecSet1(sqrt(dot((v).xyz, (v).xyz)))

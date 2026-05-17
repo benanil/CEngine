@@ -1,6 +1,7 @@
 #ifndef BITPACK_HLSL
 #define BITPACK_HLSL
 
+#include "../Include/RenderLimits.h"
 #include "Common.hlsl"
 
 f16_3 UnpackVec3XY11Z10Snorm(uint packed) {
@@ -104,6 +105,84 @@ void UnpackNormalTangent(uint packed, out f16_3 normal, out f16_3 tangent)
 f16 UnpackTangentHandedness(uint packed)
 {
     return (packed & 0x80000000u) != 0u ? f16(-1.0) : f16(1.0);
+}
+
+f16_2 SignNotZero(f16_2 v)
+{
+    return select(v < f16_2(0.0, 0.0),
+                  f16_2(-1.0, -1.0),
+                  f16_2( 1.0,  1.0));
+}
+f16 SignNotZero(f16 v)
+{
+    return (v < f16(0.0)) ? f16(-1.0) : f16(1.0);
+}
+
+f16_2 OctWrap(f16_2 v)
+{
+    return (f16_2(1.0, 1.0) - abs(v.yx)) * SignNotZero(v);
+}
+
+f16_2 OctEncode(f16_3 n)
+{
+    n /= abs(n.x) + abs(n.y) + abs(n.z);
+    f16_2 wrapped = OctWrap(n.xy);
+    return (n.z < 0.0) ? wrapped : n.xy;
+}
+
+// https://www.jeremyong.com/graphics/2023/01/09/tangent-spaces-and-diamond-encoding/
+f16 EncodeTangentDiamond(f16_3 normal, f16_3 tangent)
+{
+    f16_3 t1;
+    if (abs(normal.y) > abs(normal.z))
+        t1 = f16_3(normal.y, -normal.x, f16(0.0));
+    else
+        t1 = f16_3(normal.z, f16(0.0), -normal.x);
+
+    t1 = normalize(t1);
+    f16_3 t2 = cross(t1, normal);
+    f16 tx = dot(tangent, t1);
+    f16 ty = dot(tangent, t2);
+    f16 denom = abs(tx) + abs(ty);
+    f16 x = (denom > f16(0.0)) ? (tx / denom) : f16(0.0);
+    f16 pys = SignNotZero(ty);
+    return -pys * f16(0.25) * x + f16(0.5) + pys * f16(0.25);
+}
+
+int PackSnormBits(f16 v, float scale)
+{
+    v = clamp(v, -1.0, 1.0);
+    // round away from zero, matching typical CPU pack behavior better than truncation
+    return (v >= 0.0) ? int(v * scale + 0.5) : int(v * scale - 0.5);
+}
+
+uint PackXY11Z10SnormToU32(f16_3 v)
+{
+    uint x = uint(PackSnormBits(v.x, 1023.0)) & 0x7FFu;
+    uint y = uint(PackSnormBits(v.y, 1023.0)) & 0x7FFu;
+    uint z = uint(PackSnormBits(v.z,  511.0)) & 0x3FFu;
+    return x | (y << 11) | (z << 22);
+}
+
+uint PackNormalTangent(f16_3 normal, f16_4 tangent)
+{
+    normal = normalize(normal);
+    f16_2 oct = OctEncode(normal);
+    f16 diamond  = EncodeTangentDiamond(normal, tangent.xyz);
+    uint packedOct = PackXY11Z10SnormToU32(f16_3(oct.x, oct.y, 0.0)) & 0x3FFFFFu;
+    uint packedDiamond = uint(saturate(diamond) * 511.0 + 0.5) & 0x1FFu;
+    uint handedness = (tangent.w < 0.0) ? 1u : 0u;
+    return packedOct | (packedDiamond << 22) | (handedness << 31);
+}
+
+f16_3x4 LoadBone(StructuredBuffer<uint> boneMtx, uint idx)
+{
+    uint base = idx * MatrixNumInt32;
+    f16_3x4 bone;
+    bone[0] = f16_4(UnpackHalf2(boneMtx[base + 0]), UnpackHalf2(boneMtx[base + 1]));
+    bone[1] = f16_4(UnpackHalf2(boneMtx[base + 2]), UnpackHalf2(boneMtx[base + 3]));
+    bone[2] = f16_4(UnpackHalf2(boneMtx[base + 4]), UnpackHalf2(boneMtx[base + 5]));
+    return bone;
 }
 
 #endif

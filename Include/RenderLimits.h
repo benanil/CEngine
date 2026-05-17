@@ -5,6 +5,7 @@
 #define MAX_GROUP               (MAX_ENTITY >> 1)
 #define MAX_BUNDLES             (MAX_ENTITY >> 2)
 
+#define MatrixNumInt32          6
 #define MAX_BONES               96
 #define MaxBoneDepth            32
 #define MAX_ANIM_INSTANCES      1024

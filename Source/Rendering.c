@@ -54,38 +54,41 @@ RenderState         g_RenderState;
 SDL_GPUDevice*      g_GPUDevice = NULL;
 
 static SDL_GPUComputePipeline* g_AnimComputePipeline = NULL;
+static SDL_GPUComputePipeline* g_AnimVerticesPipeline = NULL;
 static SDL_GPUComputePipeline* g_CullDrawArgsComputePipeline = NULL;
 static SDL_GPUComputePipeline* g_TonemapComputePipeline = NULL;
 static SDL_GPUComputePipeline* g_HiZBuildComputePipeline = NULL;
 static SDL_GPUComputePipeline* g_HiZDownscaleComputePipeline = NULL;
 static bool g_EnableOcclusion = true;
 
-extern SDL_Window*  g_SDLWindow; // main    
+extern SDL_Window*  g_SDLWindow; // main
 extern Camera       g_Camera; // main
 extern Graphics     gGFX;
 extern RenderSet    skinnedSet;
 extern RenderSet    surfaceSet;
 
+#define BReadRasterBit   SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ
+#define BWriteComputeBit SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE
+#define BReadCompute     SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ
+#define BIndirectBit     SDL_GPU_BUFFERUSAGE_INDIRECT
+#define BVertexBit       SDL_GPU_BUFFERUSAGE_VERTEX
+
 static void InitRenderSetBuffers(RenderSetBuffers* buffers, RenderSet* set)
 {
-    const Uint32 readRasterBit   = SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ;
-    const Uint32 writeComputeBit = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE;
-    const Uint32 readCompute     = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ;
-    const Uint32 indirectBit     = SDL_GPU_BUFFERUSAGE_INDIRECT;
     size_t groupBytes  = set->maxGroups   * sizeof(PrimitiveGroup);
     size_t entityBytes = set->maxEntities * sizeof(Entity);
     
     // indirect and culling
-    buffers->primitiveGroup   = CreateBuffer(set->primitiveGroups, groupBytes, readCompute, "CPPrimitiveGroups");
-    buffers->drawDenseIndices = CreateBuffer(NULL, set->maxEntities * sizeof(u32), readRasterBit | readCompute | writeComputeBit, "CPDrawDenseIndices");
-    buffers->sparseToDense    = CreateBuffer(set->sparseID, set->maxEntities * sizeof(u32), readCompute, "CPSparseToDense");
-    buffers->drawArgs         = CreateBuffer(NULL, set->maxGroups * sizeof(SDL_GPUIndexedIndirectDrawCommand), indirectBit | writeComputeBit, "CPDrawArgs");
-    buffers->denseToPrimitive = CreateBuffer(set->denseToPrimitiveIndex, set->maxEntities * sizeof(u32), readCompute, "CPDenseToPrimitive");
-    buffers->entity           = CreateBuffer(set->entities, entityBytes, readRasterBit | readCompute, "CPEntities");
-    buffers->visibleDenseIndices = CreateBuffer(NULL, set->maxEntities * sizeof(u32), readCompute | writeComputeBit, "CPVisibleDenseIndices");
-    buffers->visibilityMask      = CreateBuffer(NULL, set->maxEntities * sizeof(u32), readCompute | writeComputeBit, "CPVisibilityMask");
-    buffers->visibleCount        = CreateBuffer(NULL, sizeof(u32), readCompute | writeComputeBit, "CPVisibleCount");
-    buffers->dispatchArgs        = CreateBuffer(NULL, sizeof(u32) * 3, indirectBit | writeComputeBit, "CPDispatchArgs");
+    buffers->primitiveGroup   = CreateBuffer(set->primitiveGroups, groupBytes, BReadCompute, "CPPrimitiveGroups");
+    buffers->drawDenseIndices = CreateBuffer(NULL, set->maxEntities * sizeof(u32), BReadRasterBit | BReadCompute | BWriteComputeBit, "CPDrawDenseIndices");
+    buffers->sparseToDense    = CreateBuffer(set->sparseID, set->maxEntities * sizeof(u32), BReadCompute, "CPSparseToDense");
+    buffers->drawArgs         = CreateBuffer(NULL, set->maxGroups * sizeof(SDL_GPUIndexedIndirectDrawCommand), BIndirectBit | BWriteComputeBit, "CPDrawArgs");
+    buffers->denseToPrimitive = CreateBuffer(set->denseToPrimitiveIndex, set->maxEntities * sizeof(u32), BReadCompute, "CPDenseToPrimitive");
+    buffers->entity           = CreateBuffer(set->entities, entityBytes, BReadRasterBit | BReadCompute, "CPEntities");
+    buffers->visibleDenseIndices = CreateBuffer(NULL, set->maxEntities * sizeof(u32), BReadCompute | BWriteComputeBit, "CPVisibleDenseIndices");
+    buffers->visibilityMask      = CreateBuffer(NULL, set->maxEntities * sizeof(u32), BReadCompute | BWriteComputeBit, "CPVisibilityMask");
+    buffers->visibleCount        = CreateBuffer(NULL, sizeof(u32), BReadCompute | BWriteComputeBit, "CPVisibleCount");
+    buffers->dispatchArgs        = CreateBuffer(NULL, sizeof(u32) * 3, BIndirectBit | BWriteComputeBit, "CPDispatchArgs");
 }
 
 void InitBuffers()
@@ -94,13 +97,13 @@ void InitBuffers()
     InitRenderSetBuffers(&g_RenderState.surfaceBuffers, &surfaceSet);
 
     AnimInitBuffers();
-    // TODO: buffers per render set
-    g_RenderState.skinnedVertexBuffer = CreateBuffer(gGFX.SkinnedVertexBuffer, MAX_VERTEX * sizeof(ASkinedVertex), SDL_GPU_BUFFERUSAGE_VERTEX, "CPSkinnedVertexBuffer");
-    g_RenderState.surfaceVertexBuffer = CreateBuffer(gGFX.SurfaceVertexBuffer, MAX_VERTEX * sizeof(AVertex), SDL_GPU_BUFFERUSAGE_VERTEX, "CPSurfaceVertexBuffer");
+    const size_t animatedVertexSize = sizeof(v128f) * 2ull * MAX_VERTEX;
+    g_RenderState.skinnedVertexBuffer = CreateBuffer(gGFX.SkinnedVertexBuffer, MAX_VERTEX * sizeof(ASkinedVertex), BVertexBit, "CPSkinnedVertexBuffer");
+    g_RenderState.surfaceVertexBuffer = CreateBuffer(gGFX.SurfaceVertexBuffer, MAX_VERTEX * sizeof(AVertex), BVertexBit, "CPSurfaceVertexBuffer");
     g_RenderState.indexBuffer         = CreateBuffer(gGFX.IndexBuffer, MAX_INDEX * sizeof(int), SDL_GPU_BUFFERUSAGE_INDEX, "CPIndexBuffer");
-    
-    g_RenderState.lineBuffer = CreateBuffer(NULL, sizeof(ALineVertex) * MAX_LINE_COUNT, SDL_GPU_BUFFERUSAGE_VERTEX | SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE, "CPLineVertexBuffer"); 
-    g_RenderState.lineDrawArgsBuffer = CreateBuffer(NULL, sizeof(u32) * 8, SDL_GPU_BUFFERUSAGE_INDIRECT | SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE, "CPLinedrawArgsBuffer");
+    g_RenderState.skinnedAnimatedVertices = CreateBuffer(NULL, animatedVertexSize, BReadRasterBit | BWriteComputeBit, "CPAnimatedVertices");
+    g_RenderState.lineBuffer = CreateBuffer(NULL, sizeof(ALineVertex) * MAX_LINE_COUNT, BVertexBit | BWriteComputeBit, "CPLineVertexBuffer"); 
+    g_RenderState.lineDrawArgsBuffer = CreateBuffer(NULL, sizeof(u32) * 8, BIndirectBit | BWriteComputeBit, "CPLinedrawArgsBuffer");
 }
 
 static void InitAnimationComputePipeline()
@@ -118,6 +121,23 @@ static void InitAnimationComputePipeline()
         .threadcount_z                 = 1,
     });
     CHECK_CREATE(g_AnimComputePipeline, "Animation Compute Pipeline")
+}
+
+static void InitAnimateVerticesComputePipeline()
+{
+    g_AnimVerticesPipeline = SDL_CreateGPUComputePipeline(g_GPUDevice, &(SDL_GPUComputePipelineCreateInfo){
+        .code                          = Shaders_AnimationCompute_spv,
+        .code_size                     = sizeof(Shaders_AnimationCompute_spv),
+        .entrypoint                    = "main",
+        .format                        = SDL_GetGPUShaderFormats(g_GPUDevice),
+        .num_uniform_buffers           = 1,
+        .num_readonly_storage_buffers  = 7,
+        .num_readwrite_storage_buffers = 1,
+        .threadcount_x                 = 32,
+        .threadcount_y                 = 1,
+        .threadcount_z                 = 1,
+    });
+    CHECK_CREATE(g_AnimVerticesPipeline, "Animation vertices Pipeline")
 }
 
 static void InitCullDrawArgsComputePipeline()

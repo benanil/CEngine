@@ -14,8 +14,6 @@ StructuredBuffer<Entity>         sEntities         : register(t1);
 StructuredBuffer<PrimitiveGroup> sPrimitiveGroups  : register(t2);
 StructuredBuffer<uint>           sDrawDenseIndices : register(t3);
 
-static const uint MatrixNumInt32 = 6;
-
 struct VSInput
 {
     f16_4_io  aPos          : POSITION0;
@@ -25,17 +23,10 @@ struct VSInput
     uint      aWeights      : BLENDWEIGHT0;
 };
 
-f16_3x4 LoadBone(uint idx)
-{
-    uint base = idx * MatrixNumInt32;
-    f16_3x4 bone;
-    bone[0] = f16_4(UnpackHalf2(sBoneMtx[base + 0]), UnpackHalf2(sBoneMtx[base + 1]));
-    bone[1] = f16_4(UnpackHalf2(sBoneMtx[base + 2]), UnpackHalf2(sBoneMtx[base + 3]));
-    bone[2] = f16_4(UnpackHalf2(sBoneMtx[base + 4]), UnpackHalf2(sBoneMtx[base + 5]));
-    return bone;
-}
-
-float4 vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("DrawIndex")]] uint drawID : DRAWINDEX) : SV_Position
+float4 vert(VSInput input, 
+            uint instanceID : SV_InstanceID, 
+            [[vk::builtin("DrawIndex")]] uint drawID : DRAWINDEX,
+            uint vertexId : SV_VertexID) : SV_Position
 {
     PrimitiveGroup group = sPrimitiveGroups[drawID];
     uint denseIdx  = sDrawDenseIndices[group.entityOffset + instanceID];
@@ -49,7 +40,7 @@ float4 vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("DrawI
     [unroll]
     for (int i = 0; i < 4; i++)
     {
-        f16_3x4 bone = LoadBone(boneStart + input.aJoints[i]);
+        f16_3x4 bone = LoadBone(sBoneMtx, boneStart + input.aJoints[i]);
         animMat[0] = mad(weights[i], bone[0], animMat[0]);
         animMat[1] = mad(weights[i], bone[1], animMat[1]);
         animMat[2] = mad(weights[i], bone[2], animMat[2]);
@@ -63,6 +54,16 @@ float4 vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("DrawI
     float3 finalWorldPos = float3(insScale * worldPos) + entity.position.xyz;
     return mul(uViewProj, float4(finalWorldPos, 1.0));
 }
+
+#if 0
+StructuredBuffer<AnimatedVert> sAnimatedVert : register(t5);
+VSOutput vertNew(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("DrawIndex")]] uint drawID : DRAWINDEX)
+{
+    uint outID = 0;
+    AnimatedVert input = sAnimatedVert[outID];
+    return mul(uViewProj, input.position);
+}
+#endif
 
 float frag(float4 position : SV_Position) : SV_Target0
 {

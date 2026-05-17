@@ -47,7 +47,6 @@ cbuffer params : register(b0, space2)
 
 void WriteBone(f16_3x4 bone, int idx)
 {
-    const int MatrixNumInt32 = 6;
     int base = MatrixNumInt32 * idx;
     outBoneMtx[base + 0] = PackHalf2(VecXY(bone[0]));
     outBoneMtx[base + 1] = PackHalf2(VecZW(bone[0]));
