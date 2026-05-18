@@ -7,48 +7,77 @@
     #define PBR_DEBUG_OUTPUT 0
 #endif
 
-f16_4 UnpackColor4Uint(uint color)
+float4 UnpackColor4Uint(uint color)
 {
-    return f16_4(
-        f16((color >> 0u)  & 0xFFu),
-        f16((color >> 8u)  & 0xFFu),
-        f16((color >> 16u) & 0xFFu),
-        f16((color >> 24u) & 0xFFu)) * f16(1.0 / 255.0);
+    return float4(
+        float((color >> 0u)  & 0xFFu),
+        float((color >> 8u)  & 0xFFu),
+        float((color >> 16u) & 0xFFu),
+        float((color >> 24u) & 0xFFu)) * (1.0f / 255.0f);
 }
 
-f16 DistributionGGX(f16 NdotH, f16 roughness)
+float Pow5(float x)
 {
-    f16 a = roughness * roughness;
-    f16 a2 = a * a;
-    f16 denom = NdotH * NdotH * (a2 - f16(1.0)) + f16(1.0);
-    return a2 / max(f16(MATH_PI) * denom * denom, f16(0.0001));
+    float x2 = x * x;
+    return x2 * x2 * x;
 }
 
-f16 GeometrySchlickGGX(f16 NdotV, f16 roughness)
+float D_GGX(float roughness, float NoH, float3 n, float3 h)
 {
-    f16 r = roughness + f16(1.0);
-    f16 k = (r * r) * f16(0.125);
-    return NdotV / max(NdotV * (f16(1.0) - k) + k, f16(0.0001));
+    float3 NxH = cross(n, h);
+    float oneMinusNoHSquared = dot(NxH, NxH);
+    float a = NoH * roughness;
+    float k = min(roughness / max(oneMinusNoHSquared + a * a, 0.0000077f), 453.5f);
+    return k * k * MATH_OneDivPI;
 }
 
-f16 GeometrySmith(f16 NdotV, f16 NdotL, f16 roughness)
+float V_SmithGGXCorrelated(float roughness, float NoV, float NoL)
 {
-    return GeometrySchlickGGX(NdotV, roughness) * GeometrySchlickGGX(NdotL, roughness);
+    float a2 = roughness * roughness;
+    float lambdaV = NoL * sqrt((NoV - a2 * NoV) * NoV + a2);
+    float lambdaL = NoV * sqrt((NoL - a2 * NoL) * NoL + a2);
+    return 0.5f / max(lambdaV + lambdaL, 0.0000077f);
 }
 
-f16_3 FresnelSchlick(f16 cosTheta, f16_3 f0)
+float V_SmithGGXCorrelatedFast(float roughness, float NoV, float NoL)
 {
-    return f0 + (f16(1.0) - f0) * f16(pow(saturate(f16(1.0) - cosTheta), f16(5.0)));
+    return 0.5f / max(lerp(2.0f * NoL * NoV, NoL + NoV, roughness), 0.0000077f);
 }
 
-f16_3 DecodeNormalRG(f16_2 normalRG)
+float3 F_Schlick(float3 f0, float f90, float VoH)
 {
-    f16_2 xy = normalRG * f16(2.0) - f16(1.0);
-    f16 z = sqrt(saturate(f16(1.0) - dot(xy, xy)));
-    return normalize(f16_3(xy, z));
+    return f0 + (f90 - f0) * Pow5(1.0f - VoH);
 }
 
-f16_3 ApplyPBR(f16_3 albedo, f16_3 normal, f16_3 viewDir, f16 metallic, f16 roughness)
+float Distribution(float roughness, float NoH, float3 n, float3 h)
+{
+    return D_GGX(roughness, NoH, n, h);
+}
+
+float Visibility(float roughness, float NoV, float NoL)
+{
+    return V_SmithGGXCorrelatedFast(roughness, NoV, NoL);
+}
+
+float3 Fresnel(float3 f0, float LoH)
+{
+    float f90 = saturate(dot(f0, float3(16.5f, 16.5f, 16.5f)));
+    return F_Schlick(f0, f90, LoH);
+}
+
+float Diffuse(float roughness, float NoV, float NoL, float LoH)
+{
+    return MATH_OneDivPI;
+}
+
+float3 DecodeNormalRG(float2 normalRG)
+{
+    float2 xy = normalRG * 2.0f - 1.0f;
+    float z = sqrt(saturate(1.0f - dot(xy, xy)));
+    return normalize(float3(xy, z));
+}
+
+float3 ApplyPBR(float3 albedo, float3 normal, float3 viewDir, float metallic, float roughness)
 {
     normal    = normalize(normal);
 
@@ -57,32 +86,33 @@ f16_3 ApplyPBR(f16_3 albedo, f16_3 normal, f16_3 viewDir, f16 metallic, f16 roug
     #elif PBR_DEBUG_OUTPUT == 2
         return albedo;
     #elif PBR_DEBUG_OUTPUT == 3
-        return f16_3(metallic, roughness, f16(0.0));
+        return float3(metallic, roughness, 0.0f);
     #endif
 
     viewDir   = normalize(viewDir);
-    roughness = clamp(roughness, f16(0.045), f16(1.0));
+    roughness = clamp(roughness, 0.045f, 1.0f);
     metallic  = saturate(metallic);
 
-    f16_3 lightDir = normalize(f16_3(-0.5, 0.5, 0.0));
-    f16_3 halfVec  = normalize(viewDir + lightDir);
-    f16_3 radiance = f16_3(3.0, 2.9, 2.7) * f16(2.0);
+    float3 lightDir = normalize(float3(-0.5f, 0.5f, 0.0f));
+    float3 halfVec  = normalize(viewDir + lightDir);
+    float3 radiance = float3(3.0f, 2.9f, 2.7f) * 2.0f;
 
-    f16 NdotL = saturate(dot(normal, lightDir));
-    f16 NdotV = saturate(dot(normal, viewDir));
-    f16 NdotH = saturate(dot(normal, halfVec));
-    f16 HdotV = saturate(dot(halfVec, viewDir));
+    float NdotL = saturate(dot(normal, lightDir));
+    float NdotV = saturate(dot(normal, viewDir));
+    float NdotH = saturate(dot(normal, halfVec));
+    float HdotV = saturate(dot(halfVec, viewDir));
 
-    f16_3 f0 = lerp(f16_3(0.04, 0.04, 0.04), albedo, metallic);
-    f16_3 F  = FresnelSchlick(HdotV, f0);
-    f16 D = DistributionGGX(NdotH, roughness);
-    f16 G = GeometrySmith(NdotV, NdotL, roughness);
+    float3 f0 = lerp(float3(0.04f, 0.04f, 0.04f), albedo, metallic);
+    float3 F = Fresnel(f0, HdotV);
+    float D = Distribution(roughness, NdotH, normal, halfVec);
+    float V = Visibility(roughness, NdotV, NdotL);
+    float diffuse = Diffuse(roughness, NdotV, NdotL, HdotV);
 
-    f16_3 specular = (D * G * F) / max(f16(4.0) * NdotV * NdotL, f16(0.0001));
-    f16_3 diffuse  = (f16(1.0) - F) * (f16(1.0) - metallic) * albedo * f16(MATH_OneDivPI);
-    f16_3 direct   = (diffuse + specular) * radiance * NdotL;
-    f16_3 ambient  = albedo * f16(0.1);
-    return ambient + direct + specular;
+    float3 specular = D * V * F;
+    float3 diffuseColor = (1.0f - F) * (1.0f - metallic) * albedo * diffuse;
+    float3 direct = (diffuseColor + specular) * radiance * NdotL;
+    float3 ambient = albedo * 0.1f;
+    return ambient + direct;
 }
 
 #endif

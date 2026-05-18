@@ -80,29 +80,29 @@ float4 frag(VSOutput input) : SV_Target0
     TextureDescriptor normalDesc = sTextureDescriptors[material.normalDescriptor];
     TextureDescriptor mrDesc     = sTextureDescriptors[material.metallicRoughnessDescriptor];
 
-    f16_4 baseFactor = UnpackColor4Uint(material.baseColorFactor);
-    f16_3 baseColor  = SRGBToLinear(SampleTexturePageRGBA(AlbedoPages, Sampler, albedo, float2(input.texCoords)).rgb) * baseFactor.rgb;
-    f16_3 tangentNormal = DecodeNormalRG(SampleTexturePageRG(NormalPages, Sampler, normalDesc, float2(input.texCoords)));
+    float4 baseFactor = UnpackColor4Uint(material.baseColorFactor);
+    f16_3 baseColor  = SRGBToLinear(SampleTexturePageRGBA(AlbedoPages, Sampler, albedo, float2(input.texCoords)).rgb) * f16_3(baseFactor.rgb);
+    float3 tangentNormal = DecodeNormalRG(float2(SampleTexturePageRG(NormalPages, Sampler, normalDesc, float2(input.texCoords))));
     f16_2 mr = SampleTexturePageRG(MetallicRoughnessPages, Sampler, mrDesc, float2(input.texCoords));
 
-    f16_3 N = normalize(tangentNormal.x * normalize(f16_3(input.tangent)) +
-                         tangentNormal.y * normalize(f16_3(input.bitangent)) +
-                         tangentNormal.z * normalize(f16_3(input.normal)));
-    f16 metallicFactor  = f16((material.metallicRoughnessFactor >> 16u) & 0xFFFFu) * f16(1.0 / 65535.0);
-    f16 roughnessFactor = f16(material.metallicRoughnessFactor & 0xFFFFu) * f16(1.0 / 65535.0);
-    f16 metallic  = mr.x * metallicFactor;
-    f16 roughness = mr.y * roughnessFactor;
+    float3 N = normalize(tangentNormal.x * normalize(float3(input.tangent)) +
+                         tangentNormal.y * normalize(float3(input.bitangent)) +
+                         tangentNormal.z * normalize(float3(input.normal)));
+    float metallicFactor  = float((material.metallicRoughnessFactor >> 16u) & 0xFFFFu) * (1.0f / 65535.0f);
+    float roughnessFactor = float(material.metallicRoughnessFactor & 0xFFFFu) * (1.0f / 65535.0f);
+    float metallic  = float(mr.x) * metallicFactor;
+    float roughness = float(mr.y) * roughnessFactor;
     
     #if PBR_DEBUG_OUTPUT == 4
-        return float4(normalize(f16_3(input.normal)) * f16(0.5) + f16(0.5), baseFactor.a);
+        return float4(normalize(float3(input.normal)) * 0.5f + 0.5f, baseFactor.a);
     #elif PBR_DEBUG_OUTPUT == 5
-        return float4(normalize(f16_3(input.tangent)) * f16(0.5) + f16(0.5), baseFactor.a);
+        return float4(normalize(float3(input.tangent)) * 0.5f + 0.5f, baseFactor.a);
     #elif PBR_DEBUG_OUTPUT == 6
-        return float4(normalize(f16_3(input.bitangent)) * f16(0.5) + f16(0.5), baseFactor.a);
+        return float4(normalize(float3(input.bitangent)) * 0.5f + 0.5f, baseFactor.a);
     #elif PBR_DEBUG_OUTPUT == 7
-        return float4(tangentNormal * f16(0.5) + f16(0.5), baseFactor.a);
+        return float4(tangentNormal * 0.5f + 0.5f, baseFactor.a);
     #elif PBR_DEBUG_OUTPUT == 8
         return float4(metallicFactor, roughnessFactor, f16(0.0), baseFactor.a);
     #endif
-    return float4(ApplyPBR(baseColor, N, f16_3(input.viewDir), metallic, roughness), baseFactor.a);
+    return float4(ApplyPBR(float3(baseColor), N, float3(input.viewDir), metallic, roughness), baseFactor.a);
 }

@@ -50,7 +50,6 @@ float3 TonemapAgX(float3 color)
     return saturate(color);
 }
 
-
 float3 TonemapACES(float3 color)
 {
     float3 v = MulMat3(
