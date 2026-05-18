@@ -174,11 +174,12 @@ s32 BakeSceneMeshesAndAnimations(SceneBundle* gltf)
     u32 vertexCursor = isSkinned ? gGFX.NumSkinnedVertices : gGFX.NumSurfaceVertices;
     u32 indexCursor  = gGFX.NumIndices;
 
-    if ((vertexCursor + gltf->totalVertices) > MAX_VERTEX ||
+    u32 maxVertices = isSkinned ? MAX_SKINNED_SOURCE_VERTEX : MAX_SURFACE_VERTEX;
+    if ((vertexCursor + gltf->totalVertices) > maxVertices ||
         (gGFX.NumIndices  + gltf->totalIndices ) > MAX_INDEX)
     {
         AX_WARN("mesh bake failed: vertex/index buffer capacity exceeded vertices=%d/%d indices=%d/%d",
-                vertexCursor + gltf->totalVertices, MAX_VERTEX,
+                vertexCursor + gltf->totalVertices, maxVertices,
                 gGFX.NumIndices + gltf->totalIndices, MAX_INDEX);
         return 0;
     }

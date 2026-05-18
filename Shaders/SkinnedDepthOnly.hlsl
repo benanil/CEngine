@@ -9,10 +9,10 @@ cbuffer vs_params : register(b0, space1)
     float4 uCameraPosition;
 };
 
-StructuredBuffer<uint>           sBoneMtx          : register(t0);
-StructuredBuffer<Entity>         sEntities         : register(t1);
-StructuredBuffer<PrimitiveGroup> sPrimitiveGroups  : register(t2);
-StructuredBuffer<uint>           sDrawDenseIndices : register(t3);
+StructuredBuffer<Entity>         sEntities         : register(t0);
+StructuredBuffer<PrimitiveGroup> sPrimitiveGroups  : register(t1);
+StructuredBuffer<uint>           sDrawDenseIndices : register(t2);
+StructuredBuffer<AnimatedVert>   sAnimatedVert     : register(t3);
 
 struct VSInput
 {
@@ -30,40 +30,15 @@ float4 vert(VSInput input,
 {
     PrimitiveGroup group = sPrimitiveGroups[drawID];
     uint denseIdx  = sDrawDenseIndices[group.entityOffset + instanceID];
-    uint boneStart = sEntities[denseIdx].sparse * MAX_BONES;
-
-    f16_4 weights;
-    weights.xyz = UnpackVec3XY11Z10Unorm(input.aWeights);
-    weights.w   = saturate(f16(1.0) - weights.x - weights.y - weights.z);
-
-    f16_3x4 animMat = (f16_3x4)0;
-    [unroll]
-    for (int i = 0; i < 4; i++)
-    {
-        f16_3x4 bone = LoadBone(sBoneMtx, boneStart + input.aJoints[i]);
-        animMat[0] = mad(weights[i], bone[0], animMat[0]);
-        animMat[1] = mad(weights[i], bone[1], animMat[1]);
-        animMat[2] = mad(weights[i], bone[2], animMat[2]);
-    }
-
-    f16_4x3 animT = transpose(animMat);
+    uint localVertex = vertexId - group.vertexOffset;
+    uint sparse = sEntities[denseIdx].sparse;
+    uint animatedVertex = sparse * uint(MAX_SKINNED_VERTEX_PER_ANIM_INSTANCE) + group.animatedVertexOffset + localVertex;
+    AnimatedVert animated = sAnimatedVert[animatedVertex];
     Entity entity = sEntities[denseIdx];
-    f16_4 insRot = normalize(UnpackRGBA16Snorm(entity.rotation[0], entity.rotation[1]));
-    f16_3 insScale = UnpackVec3XY11Z10Unorm(entity.scale) * f16(10.0);
-    f16_3 worldPos = QMulVec3(insRot, mul(f16_4(input.aPos.xyz, f16(1.0)), animT));
-    float3 finalWorldPos = float3(insScale * worldPos) + entity.position.xyz;
+    f16_3 localPos = f16_3(UnpackHalf2(animated.positionXY), UnpackHalf(animated.positionZTangent));
+    float3 finalWorldPos = float3(localPos) + entity.position.xyz;
     return mul(uViewProj, float4(finalWorldPos, 1.0));
 }
-
-#if 0
-StructuredBuffer<AnimatedVert> sAnimatedVert : register(t5);
-VSOutput vertNew(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("DrawIndex")]] uint drawID : DRAWINDEX)
-{
-    uint outID = 0;
-    AnimatedVert input = sAnimatedVert[outID];
-    return mul(uViewProj, input.position);
-}
-#endif
 
 float frag(float4 position : SV_Position) : SV_Target0
 {

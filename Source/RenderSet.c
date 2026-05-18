@@ -1,5 +1,6 @@
 
 #include "Include/RenderSet.h"
+#include "Include/Graphics.h"
 #include "Include/Memory.h"
 #include "Include/Random.h"
 #include "Include/Platform.h"
@@ -9,6 +10,8 @@
 
 RenderSet skinnedSet;
 RenderSet surfaceSet;
+
+extern Graphics gGFX;
 
 void RenderSet_InitSet(RenderSet* set, u32 maxEntities, u32 maxGroups, u32 maxBundles)
 {
@@ -30,7 +33,7 @@ void RenderSet_InitSet(RenderSet* set, u32 maxEntities, u32 maxGroups, u32 maxBu
 
 void RenderSet_Init()
 {
-    RenderSet_InitSet(&skinnedSet, MAX_ENTITY, MAX_GROUP, MAX_BUNDLES);
+    RenderSet_InitSet(&skinnedSet, MAX_ANIM_INSTANCES, MAX_GROUP, MAX_BUNDLES);
     RenderSet_InitSet(&surfaceSet, MAX_ENTITY, MAX_GROUP, MAX_BUNDLES);
 }
 
@@ -51,6 +54,12 @@ u32 RenderSet_AddSceneBundle(RenderSet* set, const SceneBundle* sceneBundle)
     u32 bundleIdx = set->numBundles++;
     set->bundles[bundleIdx] = sceneBundle;
     u32 primitiveStart = set->numGroups;
+    u32 vertexBase = 0;
+    u32 localVertexOffset = 0;
+    if (set == &skinnedSet)
+        vertexBase = (u32)((const ASkinedVertex*)sceneBundle->allVertices - gGFX.SkinnedVertexBuffer);
+    else
+        vertexBase = (u32)((const AVertex*)sceneBundle->allVertices - gGFX.SurfaceVertexBuffer);
 
     for (u32 m = 0; m < (u32)sceneBundle->numMeshes; m++)
     {
@@ -65,16 +74,18 @@ u32 RenderSet_AddSceneBundle(RenderSet* set, const SceneBundle* sceneBundle)
             group->valid          = 1;
             group->numEntities    = 0;
             group->capacity       = 0;
-            group->boneStart      = 0;
+            group->animatedVertexOffset = localVertexOffset;
             group->numIndices     = (u32)primitive->numIndices;
             group->indexOffset    = (u32)primitive->indexOffset;
-            group->vertexOffset   = 0;
+            group->vertexOffset   = vertexBase + localVertexOffset;
             group->meshIndex      = m;
             group->primitiveIndex = p;
             group->materialIndex  = (u32)(sceneBundle->materialOffset + primitive->material);
+            group->numVertices    = (u32)primitive->numVertices;
             group->entityOffset   = set->numEntities;
             VecStore(group->aabbMin, VecLoad(primitive->min));
             VecStore(group->aabbMax, VecLoad(primitive->max));
+            localVertexOffset += (u32)primitive->numVertices;
         }
     }
 

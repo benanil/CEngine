@@ -23,7 +23,7 @@ typedef struct PrimitiveGroup_
     u32 entityOffset;
     u32 numEntities;
     u32 capacity;
-    u32 boneStart;
+    u32 animatedVertexOffset;
     u32 numIndices;
     u32 indexOffset;
     u32 vertexOffset;
@@ -31,7 +31,7 @@ typedef struct PrimitiveGroup_
     u32 primitiveIndex;
     u32 materialIndex;
     u32 valid;
-    u32 padding;
+    u32 numVertices;
     float aabbMin[4];
     float aabbMax[4];
 } PrimitiveGroup;

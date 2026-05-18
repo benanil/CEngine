@@ -38,7 +38,7 @@ typedef struct PrimitiveGroup_
     uint entityOffset;
     uint numEntities;
     uint capacity;
-    uint boneStart;
+    uint animatedVertexOffset;
     uint numIndices;
     uint indexOffset;
     uint vertexOffset;
@@ -46,10 +46,19 @@ typedef struct PrimitiveGroup_
     uint primitiveIndex;
     uint materialIndex;
     uint valid;
-    uint padding;
+    uint numVertices;
     float4 aabbMin;
     float4 aabbMax;
 } PrimitiveGroup;
+
+// Animated vertex cache format, 8 bytes per vertex.
+// positionXY: half2 xy
+// positionZTangent: low 16 bits half z, high 16 bits compressed tangent space
+typedef struct AnimatedVert_
+{
+    uint positionXY;
+    uint positionZTangent;
+} AnimatedVert;
 
 typedef struct TextureDescriptor_
 {

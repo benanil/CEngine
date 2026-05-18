@@ -353,25 +353,28 @@
 						<Children></Children>
 					</Folder>
 					<File>
-						<Path>Shaders/ShaderCompile.bat</Path>
+						<Path>Shaders/AnimateVertices.hlsl</Path>
 					</File>
 					<File>
-						<Path>Shaders/Common.hlsl</Path>
+						<Path>Shaders/AnimationCompute.hlsl</Path>
 					</File>
 					<File>
 						<Path>Shaders/Bitpack.hlsl</Path>
 					</File>
 					<File>
-						<Path>Shaders/Math.hlsl</Path>
+						<Path>Shaders/Common.hlsl</Path>
 					</File>
 					<File>
-						<Path>Shaders/AnimationCompute.hlsl</Path>
+						<Path>Shaders/ShaderCompile.bat</Path>
 					</File>
 					<File>
 						<Path>Shaders/CullDrawArgsCompute.hlsl</Path>
 					</File>
 					<File>
 						<Path>Shaders/CommonStructs.hlsl</Path>
+					</File>
+					<File>
+						<Path>Shaders/Math.hlsl</Path>
 					</File>
 					<File>
 						<Path>Shaders/LineDebug.hlsl</Path>
@@ -414,9 +417,6 @@
 					</File>
 					<File>
 						<Path>Shaders/HiZDownscaleCompute.hlsl</Path>
-					</File>
-					<File>
-						<Path>Shaders/AnimateVertices.hlsl</Path>
 					</File>
 				</Children>
 			</Folder>

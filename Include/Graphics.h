@@ -6,11 +6,9 @@
 #include "Math/Matrix.h"
 #include "Math/Vector.h"
 #include "GLTFParser.h"
+#include "RenderLimits.h"
 
 #define CHECK_CREATE(var, thing) { if (!(var)) { AX_ERROR("Failed to create %s: %s", thing, SDL_GetError()); Quit(2); } }
-
-#define MAX_VERTEX 3200000ull
-#define MAX_INDEX  9600000ull
 
 #define TEXTURE_PAGE_SIZE       4096
 #define TEXTURE_PAGE_LAYERS     8

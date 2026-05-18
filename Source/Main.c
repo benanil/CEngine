@@ -60,7 +60,7 @@ s32 InitScene()
         return 0;
     }
     
-    s32 sponzaRes = LoadGLTFCached("Assets/Meshes/Sponza/scene.gltf", gSponza, g_RenderState.textures + gPaladin->numImages);
+    s32 sponzaRes = LoadGLTFCached("Assets/Meshes/Helmet/DamagedHelmet.glb", gSponza, g_RenderState.textures + gPaladin->numImages);
     if (!sponzaRes)
     {
         AX_ERROR("gltf sponza load failed: %d", sponzaRes);

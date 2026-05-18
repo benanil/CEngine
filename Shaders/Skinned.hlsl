@@ -12,10 +12,10 @@ cbuffer vs_params : register(b0, space1)
     float4 uCameraPosition;
 };
 
-StructuredBuffer<uint>           sBoneMtx          : register(t0);
-StructuredBuffer<Entity>         sEntities         : register(t1);
-StructuredBuffer<PrimitiveGroup> sPrimitiveGroups  : register(t2);
-StructuredBuffer<uint>           sDrawDenseIndices : register(t3);
+StructuredBuffer<Entity>         sEntities         : register(t0);
+StructuredBuffer<PrimitiveGroup> sPrimitiveGroups  : register(t1);
+StructuredBuffer<uint>           sDrawDenseIndices : register(t2);
+StructuredBuffer<AnimatedVert>   sAnimatedVert     : register(t3);
 
 struct VSInput
 {
@@ -37,77 +37,33 @@ struct VSOutput
     nointerpolation uint materialIndex : TEXCOORD3;
 };
 
-VSOutput vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("DrawIndex")]] uint drawID : DRAWINDEX)
+VSOutput vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("DrawIndex")]] uint drawID : DRAWINDEX, uint vertexID : SV_VertexID)
 {
     PrimitiveGroup group = sPrimitiveGroups[drawID];
     uint denseIdx  = sDrawDenseIndices[group.entityOffset + instanceID];
-    uint boneStart = sEntities[denseIdx].sparse * MAX_BONES;
-
-    f16_4 weights;
-    weights.xyz = UnpackVec3XY11Z10Unorm(input.aWeights);
-    weights.w   = saturate(f16(1.0) - weights.x - weights.y - weights.z);
-
-    f16_3x4 animMat = (f16_3x4)0;
-    [unroll]
-    for (int i = 0; i < 4; i++)
-    {
-        f16_3x4 bone = LoadBone(sBoneMtx, boneStart + input.aJoints[i]);
-        animMat[0] = mad(weights[i], bone[0], animMat[0]);
-        animMat[1] = mad(weights[i], bone[1], animMat[1]);
-        animMat[2] = mad(weights[i], bone[2], animMat[2]);
-    }
-
-    f16_4x3 animT  = transpose(animMat);
-    Entity entity  = sEntities[denseIdx];
-    f16_4 insRot   = normalize(UnpackRGBA16Snorm(entity.rotation[0], entity.rotation[1]));
-    f16_3 insScale = UnpackVec3XY11Z10Unorm(entity.scale) * f16(10.0);
+    uint localVertex = vertexID - group.vertexOffset;
+    uint sparse = sEntities[denseIdx].sparse;
+    uint animatedVertex = sparse * uint(MAX_SKINNED_VERTEX_PER_ANIM_INSTANCE) + group.animatedVertexOffset + localVertex;
+    AnimatedVert animated = sAnimatedVert[animatedVertex];
+    Entity entity = sEntities[denseIdx];
+    f16_3 localPos = f16_3(UnpackHalf2(animated.positionXY), UnpackHalf(animated.positionZTangent));
+    float3 finalWorldPos = float3(localPos) + entity.position.xyz;
 
     f16_3x3 tbn;
-    UnpackNormalTangent(input.aTangentSpace, tbn[2], tbn[1]);
-    f16 tangentHandedness = UnpackTangentHandedness(input.aTangentSpace);
+    f16 tangentHandedness;
+    UnpackAnimatedTangentSpace16(animated.positionZTangent, tbn[2], tbn[1], tangentHandedness);
 
-    tbn[2] = QMulVec3(insRot, mul(f16_4(tbn[2], f16(0.0)), animT));
-    tbn[1] = QMulVec3(insRot, mul(f16_4(tbn[1], f16(0.0)), animT));
-    tbn[0] = Orthonormalize(tbn[1], tbn[2]);
-
-    f16_3 worldPos = QMulVec3(insRot, mul(f16_4(input.aPos.xyz, f16(1.0)), animT));
-    float3 finalWorldPos = float3(insScale * worldPos) + entity.position.xyz;
     VSOutput o;
     o.position  = mul(uViewProj, float4(finalWorldPos, 1.0));
     o.texCoords = input.aTexCoords;
-    o.normal    = normalize(tbn[2]);
-    o.tangent   = normalize(tbn[1]);
-    o.bitangent = normalize(cross(tbn[2], tbn[1])) * tangentHandedness;
+    o.normal    = tbn[2];
+    o.tangent   = tbn[1];
+    o.bitangent = cross(tbn[2], tbn[1]) * tangentHandedness;
     o.viewDir   = uCameraPosition.xyz - finalWorldPos;
     o.materialIndex = group.materialIndex;
     return o;
 }
 
-#if 0
-StructuredBuffer<AnimatedVert> sAnimatedVert : register(t5);
-VSOutput vertNew(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("DrawIndex")]] uint drawID : DRAWINDEX)
-{
-    PrimitiveGroup group = sPrimitiveGroups[drawID];
-    uint denseIdx  = sDrawDenseIndices[group.entityOffset + instanceID];
-    uint boneStart = sEntities[denseIdx].sparse * MAX_BONES;
-    Entity entity  = sEntities[denseIdx];
-    uint outID = 0;
-    AnimatedVert input = sAnimatedVert[outID];
-    f16_3x3 tbn;
-    UnpackNormalTangent(input.tangentSpace, tbn[2], tbn[1]);
-    f16 tangentHandedness = UnpackTangentHandedness(input.tangentSpace);
-
-    VSOutput o;
-    o.position  = mul(uViewProj, input.position);
-    o.texCoords = input.aTexCoords;
-    o.normal    = normalize(tbn[2]);
-    o.tangent   = normalize(tbn[1]);
-    o.bitangent = normalize(cross(tbn[2], tbn[1])) * tangentHandedness;
-    o.viewDir   = uCameraPosition.xyz - finalWorldPos;
-    o.materialIndex = group.materialIndex;
-    return o;
-}
-#endif
 Texture2DArray<float4> AlbedoPages            : register(t0, space2);
 Texture2DArray<float2> NormalPages            : register(t1, space2);
 Texture2DArray<float2> MetallicRoughnessPages : register(t2, space2);

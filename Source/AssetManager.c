@@ -717,7 +717,7 @@ s32 LoadGLTFCached(const char* path, SceneBundle* scene, Texture* textures)
 /*//////////////////////////////////////////////////////////////////////////*/
 
 // ZSTD_CCtx* zstdCompressorCTX = NULL;
-const s32 ABMMeshVersion = 64;
+const s32 ABMMeshVersion = 65;
 
 u8 IsABMLastVersion(const u8* path)
 {
@@ -1064,7 +1064,8 @@ s32 LoadSceneBundleBinary(const u8* path, SceneBundle* gltf)
         u32 vertexCursor = isSkined ? gGFX.NumSkinnedVertices : gGFX.NumSurfaceVertices;
         u32 indexCursor  = gGFX.NumIndices;
 
-        if ((vertexCursor + gltf->totalVertices) > MAX_VERTEX ||
+        u32 maxVertices = isSkined ? MAX_SKINNED_SOURCE_VERTEX : MAX_SURFACE_VERTEX;
+        if ((vertexCursor + gltf->totalVertices) > maxVertices ||
             (gGFX.NumIndices + gltf->totalIndices) > MAX_INDEX)
         {
             AX_ERROR("VERTEX buffer size is not enough for %s", path);

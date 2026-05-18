@@ -123,8 +123,8 @@ void GraphicsInit(bool msaa)
     winstate->hiz_height  = drawableh;
     winstate->hiz_valid   = false;
     
-    gGFX.SkinnedVertexBuffer = OSAllocAligned(sizeof(ASkinedVertex) * MAX_VERTEX, 4);
-    gGFX.SurfaceVertexBuffer = OSAllocAligned(sizeof(AVertex) * MAX_VERTEX, 4);
+    gGFX.SkinnedVertexBuffer = OSAllocAligned(sizeof(ASkinedVertex) * MAX_SKINNED_SOURCE_VERTEX, 4);
+    gGFX.SurfaceVertexBuffer = OSAllocAligned(sizeof(AVertex) * MAX_SURFACE_VERTEX, 4);
     gGFX.IndexBuffer         = OSAllocAligned(sizeof(u32) * MAX_INDEX + 16, 4); // 16->give little bit of space for memcpy
     if (!gGFX.SkinnedVertexBuffer || !gGFX.SurfaceVertexBuffer || !gGFX.IndexBuffer)
         AX_ERROR("graphics CPU buffer allocation failed skinned=%p surface=%p index=%p", gGFX.SkinnedVertexBuffer, gGFX.SurfaceVertexBuffer, gGFX.IndexBuffer);
@@ -144,8 +144,8 @@ void GraphicsDestroy()
     SDL_ReleaseWindowFromGPUDevice(g_GPUDevice, g_SDLWindow);
 
     SDL_DestroyGPUDevice(g_GPUDevice);
-    OSFreeAligned(gGFX.SkinnedVertexBuffer, sizeof(ASkinedVertex) * MAX_VERTEX);
-    OSFreeAligned(gGFX.SurfaceVertexBuffer, sizeof(AVertex) * MAX_VERTEX);
+    OSFreeAligned(gGFX.SkinnedVertexBuffer, sizeof(ASkinedVertex) * MAX_SKINNED_SOURCE_VERTEX);
+    OSFreeAligned(gGFX.SurfaceVertexBuffer, sizeof(AVertex) * MAX_SURFACE_VERTEX);
     OSFreeAligned(gGFX.IndexBuffer        , sizeof(u32) * MAX_INDEX + 16);
     gGFX.SkinnedVertexBuffer = NULL;
     gGFX.SurfaceVertexBuffer = NULL;

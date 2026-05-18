@@ -14,6 +14,24 @@ f16_3 UnpackVec3XY11Z10Snorm(uint packed) {
     );
 }
 
+f16 UnpackHalf(uint packed)
+{
+    #if INT16_SUPPORTED
+    return asfloat16(uint16_t(packed & 0xFFFFu));
+    #else
+    return f16(f16tof32(packed & 0xFFFFu));
+    #endif
+}
+
+uint PackHalf(f16 v)
+{
+    #if INT16_SUPPORTED
+    return uint(asuint16(v));
+    #else
+    return f32tof16(float(v));
+    #endif
+}
+
 f16_2 UnpackHalf2(uint packed) {
     #if INT16_SUPPORTED
     return asfloat16(uint16_t2(u16(packed), u16(packed >> 16)));
@@ -173,6 +191,26 @@ uint PackNormalTangent(f16_3 normal, f16_4 tangent)
     uint packedDiamond = uint(saturate(diamond) * 511.0 + 0.5) & 0x1FFu;
     uint handedness = (tangent.w < 0.0) ? 1u : 0u;
     return packedOct | (packedDiamond << 22) | (handedness << 31);
+}
+
+uint PackAnimatedTangentSpace16(f16_3 normal, f16_3 tangent, f16 handedness)
+{
+    normal = normalize(normal);
+    f16_2 oct = OctEncode(normal);
+    uint nx = uint(saturate(oct.x * f16(0.5) + f16(0.5)) * 63.0 + 0.5) & 0x3Fu;
+    uint ny = uint(saturate(oct.y * f16(0.5) + f16(0.5)) * 63.0 + 0.5) & 0x3Fu;
+    uint td = uint(saturate(EncodeTangentDiamond(normal, normalize(tangent))) * 7.0 + 0.5) & 0x7u;
+    uint h = handedness < f16(0.0) ? 1u : 0u;
+    return nx | (ny << 6) | (td << 12) | (h << 15);
+}
+
+void UnpackAnimatedTangentSpace16(uint packed, out f16_3 normal, out f16_3 tangent, out f16 handedness)
+{
+    uint t = packed >> 16;
+    f16_2 oct = f16_2(f16(t & 0x3Fu), f16((t >> 6) & 0x3Fu)) * f16(1.0 / 63.0) * f16(2.0) - f16(1.0);
+    normal = OctDecode(oct);
+    tangent = DecodeTangent(normal, f16((t >> 12) & 0x7u) * f16(1.0 / 7.0));
+    handedness = (t & 0x8000u) != 0u ? f16(-1.0) : f16(1.0);
 }
 
 f16_3x4 LoadBone(StructuredBuffer<uint> boneMtx, uint idx)

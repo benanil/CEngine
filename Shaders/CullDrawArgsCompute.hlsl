@@ -255,7 +255,7 @@ void main(uint3 tid : SV_DispatchThreadID)
             drawArgs[idx].numIndices    = group.numIndices;
             drawArgs[idx].numInstances  = 0;
             drawArgs[idx].firstIndex    = group.indexOffset;
-            drawArgs[idx].vertexOffset  = int(group.vertexOffset);
+            drawArgs[idx].vertexOffset  = 0;
             drawArgs[idx].firstInstance = 0;
         }
 
@@ -274,9 +274,16 @@ void main(uint3 tid : SV_DispatchThreadID)
             if (enableVisibilityOutput != 0)
             {
                 visibleCount[0] = 0;
+
+                // dispatchArgs[0]: bone animation dispatch, x = ceil(unique visible animated instances / 32).
                 dispatchArgs[0].groupCountX = 0;
                 dispatchArgs[0].groupCountY = 1;
                 dispatchArgs[0].groupCountZ = 1;
+
+                // dispatchArgs[1]: animated vertex dispatch, xyz = primitive groups / visible instances / local vertices.
+                dispatchArgs[1].groupCountX = (numPrimitiveGroups + 31u) / 32u;
+                dispatchArgs[1].groupCountY = 0;
+                dispatchArgs[1].groupCountZ = 0;
             }
         }
 
@@ -328,6 +335,9 @@ void main(uint3 tid : SV_DispatchThreadID)
         uint visibleDense = entities[dense].sparse;
         uint old;
         InterlockedCompareExchange(visibilityMask[visibleDense], 0, 1, old);
+
+        InterlockedMax(dispatchArgs[1].groupCountY, (localVisibleIdx + 32u) / 32u);
+        InterlockedMax(dispatchArgs[1].groupCountZ, (group.numVertices + 31u) / 32u);
 
         if (old == 0)
         {

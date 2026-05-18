@@ -18,6 +18,7 @@ GRAPHICS_SHADERS = [
 
 COMPUTE_SHADERS = [
     ("AnimationCompute"       , "main"),
+    ("AnimateVertices"        , "main"),
     ("CullDrawArgsCompute"    , "main"),
     ("HiZBuildCompute"        , "main"),
     ("HiZDownscaleCompute"    , "main"),

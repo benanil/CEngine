@@ -32,6 +32,7 @@
 #include "Shaders/spv/SurfaceVert.spv.h"
 #include "Shaders/spv/CullDrawArgsCompute.spv.h"
 #include "Shaders/spv/AnimationCompute.spv.h"
+#include "Shaders/spv/AnimateVertices.spv.h"
 #include "Shaders/spv/LineDebugVert.spv.h"
 #include "Shaders/spv/LineDebugFrag.spv.h"
 #include "Shaders/spv/TonemapCompute.spv.h"
@@ -82,13 +83,13 @@ static void InitRenderSetBuffers(RenderSetBuffers* buffers, RenderSet* set)
     buffers->primitiveGroup   = CreateBuffer(set->primitiveGroups, groupBytes, BReadCompute, "CPPrimitiveGroups");
     buffers->drawDenseIndices = CreateBuffer(NULL, set->maxEntities * sizeof(u32), BReadRasterBit | BReadCompute | BWriteComputeBit, "CPDrawDenseIndices");
     buffers->sparseToDense    = CreateBuffer(set->sparseID, set->maxEntities * sizeof(u32), BReadCompute, "CPSparseToDense");
-    buffers->drawArgs         = CreateBuffer(NULL, set->maxGroups * sizeof(SDL_GPUIndexedIndirectDrawCommand), BIndirectBit | BWriteComputeBit, "CPDrawArgs");
+    buffers->drawArgs         = CreateBuffer(NULL, set->maxGroups * sizeof(SDL_GPUIndexedIndirectDrawCommand), BIndirectBit | BReadCompute | BWriteComputeBit, "CPDrawArgs");
     buffers->denseToPrimitive = CreateBuffer(set->denseToPrimitiveIndex, set->maxEntities * sizeof(u32), BReadCompute, "CPDenseToPrimitive");
     buffers->entity           = CreateBuffer(set->entities, entityBytes, BReadRasterBit | BReadCompute, "CPEntities");
     buffers->visibleDenseIndices = CreateBuffer(NULL, set->maxEntities * sizeof(u32), BReadCompute | BWriteComputeBit, "CPVisibleDenseIndices");
     buffers->visibilityMask      = CreateBuffer(NULL, set->maxEntities * sizeof(u32), BReadCompute | BWriteComputeBit, "CPVisibilityMask");
     buffers->visibleCount        = CreateBuffer(NULL, sizeof(u32), BReadCompute | BWriteComputeBit, "CPVisibleCount");
-    buffers->dispatchArgs        = CreateBuffer(NULL, sizeof(u32) * 3, BIndirectBit | BWriteComputeBit, "CPDispatchArgs");
+    buffers->dispatchArgs        = CreateBuffer(NULL, sizeof(u32) * 6, BIndirectBit | BWriteComputeBit, "CPDispatchArgs");
 }
 
 void InitBuffers()
@@ -97,8 +98,8 @@ void InitBuffers()
     InitRenderSetBuffers(&g_RenderState.surfaceBuffers, &surfaceSet);
 
     AnimInitBuffers();
-    const size_t animatedVertexSize = sizeof(v128f) * 2ull * MAX_VERTEX;
-    g_RenderState.skinnedVertexBuffer = CreateBuffer(gGFX.SkinnedVertexBuffer, MAX_VERTEX * sizeof(ASkinedVertex), BVertexBit, "CPSkinnedVertexBuffer");
+    const size_t animatedVertexSize = sizeof(u64) * MAX_ANIMATED_VERTEX;
+    g_RenderState.skinnedVertexBuffer = CreateBuffer(gGFX.SkinnedVertexBuffer, MAX_SKINNED_SOURCE_VERTEX * sizeof(ASkinedVertex), BVertexBit | BReadCompute, "CPSkinnedVertexBuffer");
     g_RenderState.surfaceVertexBuffer = CreateBuffer(gGFX.SurfaceVertexBuffer, MAX_VERTEX * sizeof(AVertex), BVertexBit, "CPSurfaceVertexBuffer");
     g_RenderState.indexBuffer         = CreateBuffer(gGFX.IndexBuffer, MAX_INDEX * sizeof(int), SDL_GPU_BUFFERUSAGE_INDEX, "CPIndexBuffer");
     g_RenderState.skinnedAnimatedVertices = CreateBuffer(NULL, animatedVertexSize, BReadRasterBit | BWriteComputeBit, "CPAnimatedVertices");
@@ -126,12 +127,12 @@ static void InitAnimationComputePipeline()
 static void InitAnimateVerticesComputePipeline()
 {
     g_AnimVerticesPipeline = SDL_CreateGPUComputePipeline(g_GPUDevice, &(SDL_GPUComputePipelineCreateInfo){
-        .code                          = Shaders_AnimationCompute_spv,
-        .code_size                     = sizeof(Shaders_AnimationCompute_spv),
+        .code                          = Shaders_AnimateVertices_spv,
+        .code_size                     = sizeof(Shaders_AnimateVertices_spv),
         .entrypoint                    = "main",
         .format                        = SDL_GetGPUShaderFormats(g_GPUDevice),
         .num_uniform_buffers           = 1,
-        .num_readonly_storage_buffers  = 7,
+        .num_readonly_storage_buffers  = 6,
         .num_readwrite_storage_buffers = 1,
         .threadcount_x                 = 32,
         .threadcount_y                 = 1,
@@ -419,6 +420,42 @@ void DispatchAnimationCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet)
     SDL_EndGPUComputePass(pass);
 }
 
+void DispatchAnimateVerticesCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet)
+{
+    if (renderSet->numGroups == 0) return;
+    CHECK_CREATE(g_AnimVerticesPipeline, "Animation vertices Pipeline")
+
+    struct {
+        u32 numPrimitiveGroups;
+        u32 maxAnimatedVertices;
+        u32 padding[2];
+    } params;
+    params.numPrimitiveGroups = renderSet->numGroups;
+    params.maxAnimatedVertices = MAX_ANIMATED_VERTEX;
+    params.padding[0] = params.padding[1] = 0;
+
+    SDL_GPUStorageBufferReadWriteBinding rw_bindings[1] = {
+        { g_RenderState.skinnedAnimatedVertices }
+    };
+
+    SDL_GPUBuffer* ro_buffers[6] = {
+        g_RenderState.boneBuffer,
+        g_RenderState.skinnedBuffers.entity,
+        g_RenderState.skinnedBuffers.primitiveGroup,
+        g_RenderState.skinnedBuffers.drawDenseIndices,
+        g_RenderState.skinnedVertexBuffer,
+        g_RenderState.skinnedBuffers.drawArgs
+    };
+
+    SDL_GPUComputePass* pass = SDL_BeginGPUComputePass(cmd, NULL, 0, rw_bindings, SDL_arraysize(rw_bindings));
+    SDL_BindGPUComputePipeline(pass, g_AnimVerticesPipeline);
+    SDL_BindGPUComputeStorageBuffers(pass, 0, ro_buffers, SDL_arraysize(ro_buffers));
+    SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
+    // dispatchArgs[1] is generated by CullDrawArgsCompute for animated vertex expansion.
+    SDL_DispatchGPUComputeIndirect(pass, g_RenderState.skinnedBuffers.dispatchArgs, sizeof(u32) * 3);
+    SDL_EndGPUComputePass(pass);
+}
+
 static void RenderDepthPrepass(SDL_GPUCommandBuffer* cmd,
                                SDL_GPUColorTargetInfo* color_target,
                                SDL_GPUDepthStencilTargetInfo* depth_target,
@@ -447,10 +484,10 @@ static void RenderDepthPrepass(SDL_GPUCommandBuffer* cmd,
         SDL_BindGPUVertexBuffers(pass, 0, &vertex_binding, 1);
         SDL_BindGPUIndexBuffer(pass, &index_binding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
         SDL_GPUBuffer* buffers[4] = {
-            g_RenderState.boneBuffer,
             g_RenderState.skinnedBuffers.entity,
             g_RenderState.skinnedBuffers.primitiveGroup,
-            g_RenderState.skinnedBuffers.drawDenseIndices
+            g_RenderState.skinnedBuffers.drawDenseIndices,
+            g_RenderState.skinnedAnimatedVertices
         };
         SDL_BindGPUVertexStorageBuffers(pass, 0, buffers, SDL_arraysize(buffers));
         SDL_PushGPUVertexUniformData(cmd, 0, &shaderParams, sizeof(shaderParams));
@@ -511,10 +548,10 @@ static void RenderScene(SDL_GPUCommandBuffer* cmd,
     SDL_BindGPUIndexBuffer(pass, &index_binding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
     
     SDL_GPUBuffer* buffers[4] = {
-        g_RenderState.boneBuffer,
         g_RenderState.skinnedBuffers.entity,
         g_RenderState.skinnedBuffers.primitiveGroup,
-        g_RenderState.skinnedBuffers.drawDenseIndices
+        g_RenderState.skinnedBuffers.drawDenseIndices,
+        g_RenderState.skinnedAnimatedVertices
     };
     SDL_BindGPUVertexStorageBuffers(pass, 0, buffers, SDL_arraysize(buffers));
     
@@ -677,6 +714,7 @@ void Render()
                                 winstate->tex_hiz, winstate->hiz_width, winstate->hiz_height, winstate->hiz_mip_count,
                                 enableHiZ, true);
     DispatchAnimationCompute(cmd, &skinnedSet);
+    DispatchAnimateVerticesCompute(cmd, &skinnedSet);
     DispatchCullDrawArgsCompute(cmd, &surfaceSet, &g_RenderState.surfaceBuffers, frustumPlanes, hiZViewProj,
                                 winstate->tex_hiz, winstate->hiz_width, winstate->hiz_height, winstate->hiz_mip_count,
                                 enableHiZ, false);
@@ -1031,6 +1069,7 @@ void RendererInit()
     InitDepthOnlyPipelines();
     InitLinePipeline();
     InitAnimationComputePipeline();
+    InitAnimateVerticesComputePipeline();
     InitCullDrawArgsComputePipeline();
     InitTonemapComputePipeline();
     InitHiZBuildComputePipeline();
@@ -1056,6 +1095,7 @@ static void DestroyPipeline()
     DestroyRenderSetBuffers(&g_RenderState.skinnedBuffers);
     DestroyRenderSetBuffers(&g_RenderState.surfaceBuffers);
     if (g_RenderState.skinnedVertexBuffer) SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.skinnedVertexBuffer);
+    if (g_RenderState.skinnedAnimatedVertices) SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.skinnedAnimatedVertices);
     if (g_RenderState.surfaceVertexBuffer) SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.surfaceVertexBuffer);
     if (g_RenderState.indexBuffer) SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.indexBuffer);
     if (g_RenderState.sampler) SDL_ReleaseGPUSampler(g_GPUDevice, g_RenderState.sampler);
@@ -1070,6 +1110,7 @@ static void DestroyPipeline()
     if (g_RenderState.skinnedDepthPipeline) SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.skinnedDepthPipeline);
     if (g_RenderState.surfaceDepthPipeline) SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.surfaceDepthPipeline);
     if (g_AnimComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_AnimComputePipeline);
+    if (g_AnimVerticesPipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_AnimVerticesPipeline);
     if (g_CullDrawArgsComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_CullDrawArgsComputePipeline);
     if (g_TonemapComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_TonemapComputePipeline);
     if (g_HiZBuildComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_HiZBuildComputePipeline);
