@@ -243,55 +243,59 @@ bool AABBOccludedHiZ(float3 mn, float3 mx)
     return maxOccluderDepth + hiZDepthBias < nearestDepth;
 }
 
+void Initialize(uint idx)
+{
+    if (idx < numPrimitiveGroups)
+    {
+        PrimitiveGroup group = primitiveGroups[idx];
+        drawArgs[idx].numIndices    = group.numIndices;
+        drawArgs[idx].numInstances  = 0;
+        drawArgs[idx].firstIndex    = group.indexOffset;
+        drawArgs[idx].vertexOffset  = 0;
+        drawArgs[idx].firstInstance = 0;
+    }
+
+    if (idx == 0)
+    {
+        lineDrawCommand[0].numVertices   = 0; // indirect dispatch X
+        lineDrawCommand[0].numInstances  = 1; // indirect dispatch Y
+        lineDrawCommand[0].firstVertex   = 1; // indirect dispatch Z
+        lineDrawCommand[0].firstInstance = 0; // total visible count
+
+        lineDrawCommand[1].numVertices   = 0;
+        lineDrawCommand[1].numInstances  = 1;
+        lineDrawCommand[1].firstVertex   = 0;
+        lineDrawCommand[1].firstInstance = 0;
+
+        if (enableVisibilityOutput != 0)
+        {
+            visibleCount[0] = 0;
+
+            // dispatchArgs[0]: bone animation dispatch, x = ceil(unique visible animated instances / 32).
+            dispatchArgs[0].groupCountX = 0;
+            dispatchArgs[0].groupCountY = 1;
+            dispatchArgs[0].groupCountZ = 1;
+
+            // dispatchArgs[1]: animated vertex dispatch, xyz = primitive groups / visible instance tiles / local vertex tiles.
+            dispatchArgs[1].groupCountX = numPrimitiveGroups;
+            dispatchArgs[1].groupCountY = 0;
+            dispatchArgs[1].groupCountZ = 0;
+        }
+    }
+
+    if (enableVisibilityOutput != 0 && idx < maxEntityID)
+    {
+        visibilityMask[idx] = 0;
+    }
+}
+
 [numthreads(64, 1, 1)]
 void main(uint3 tid : SV_DispatchThreadID)
 {
     uint idx = tid.x;
     if (mode == 0)
     {
-        if (idx < numPrimitiveGroups)
-        {
-            PrimitiveGroup group = primitiveGroups[idx];
-            drawArgs[idx].numIndices    = group.numIndices;
-            drawArgs[idx].numInstances  = 0;
-            drawArgs[idx].firstIndex    = group.indexOffset;
-            drawArgs[idx].vertexOffset  = 0;
-            drawArgs[idx].firstInstance = 0;
-        }
-
-        if (idx == 0)
-        {
-            lineDrawCommand[0].numVertices   = 0; // indirect dispatch X
-            lineDrawCommand[0].numInstances  = 1; // indirect dispatch Y
-            lineDrawCommand[0].firstVertex   = 1; // indirect dispatch Z
-            lineDrawCommand[0].firstInstance = 0; // total visible count
-
-            lineDrawCommand[1].numVertices   = 0;
-            lineDrawCommand[1].numInstances  = 1;
-            lineDrawCommand[1].firstVertex   = 0;
-            lineDrawCommand[1].firstInstance = 0;
-
-            if (enableVisibilityOutput != 0)
-            {
-                visibleCount[0] = 0;
-
-                // dispatchArgs[0]: bone animation dispatch, x = ceil(unique visible animated instances / 32).
-                dispatchArgs[0].groupCountX = 0;
-                dispatchArgs[0].groupCountY = 1;
-                dispatchArgs[0].groupCountZ = 1;
-
-                // dispatchArgs[1]: animated vertex dispatch, xyz = primitive groups / visible instances / local vertices.
-                dispatchArgs[1].groupCountX = (numPrimitiveGroups + 31u) / 32u;
-                dispatchArgs[1].groupCountY = 0;
-                dispatchArgs[1].groupCountZ = 0;
-            }
-        }
-
-        if (enableVisibilityOutput != 0 && idx < maxEntityID)
-        {
-            visibilityMask[idx] = 0;
-        }
-
+        Initialize(idx);
         return;
     }
 
