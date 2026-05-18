@@ -24,6 +24,20 @@
 #define MATH_Sqrt2     (1.414213562f)
 #define MATH_Epsilon   (0.0001f)
 
+purefn u8 IsNanF32(f32 value)
+{
+    return value != value;
+}
+
+purefn u8 IsInfiniteF32(f32 value)
+{
+    return !IsNanF32(value) && (value < -FLT_MAX || value > FLT_MAX);
+}
+
+purefn u8 IsFiniteF32(f32 value)
+{
+    return !IsNanF32(value) && !IsInfiniteF32(value);
+}
 
 purefn v128f VCALL Vec3Cross(v128f vec0, v128f vec1)
 {

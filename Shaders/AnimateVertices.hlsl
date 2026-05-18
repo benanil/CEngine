@@ -82,11 +82,11 @@ void main(uint3 globalID : SV_DispatchThreadID, uint3 groupID : SV_GroupID, uint
         [unroll]
         for (int i = 0; i < 4; i++)
         {
-            f16_3x4 bone = LoadBone(sBoneMtx, boneStart + (joints & 0xFFu));
+            uint shift = i * 8;
+            f16_3x4 bone = LoadBone(sBoneMtx, boneStart + ((joints >> shift) & 0xFFu));
             animMat[0] = mad(weights[i], bone[0], animMat[0]);
             animMat[1] = mad(weights[i], bone[1], animMat[1]);
             animMat[2] = mad(weights[i], bone[2], animMat[2]);
-            joints >>= 8;
         }
 
         // mul(Vector, Transpose(Matrix)) is equivalent to mul(Matrix, Vector) in HLSL.
