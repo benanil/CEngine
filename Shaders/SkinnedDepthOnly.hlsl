@@ -35,7 +35,7 @@ float4 vert(VSInput input,
     uint animatedVertex = sparse * uint(MAX_SKINNED_VERTEX_PER_ANIM_INSTANCE) + group.animatedVertexOffset + localVertex;
     AnimatedVert animated = sAnimatedVert[animatedVertex];
     Entity entity = sEntities[denseIdx];
-    f16_3 localPos = f16_3(UnpackHalf2(animated.positionXY), UnpackHalf(animated.positionZTangent));
+    f16_3 localPos = UnpackAnimatedPosition(uint2(animated.packed0, animated.packed1));
     float3 finalWorldPos = float3(localPos) + entity.position.xyz;
     return mul(uViewProj, float4(finalWorldPos, 1.0));
 }

@@ -23,6 +23,8 @@
 
 #define MAX_LINE_COUNT (MAX_ENTITY * 100)
 
+// max animation bounds is 4095 * 0.002 = 8.19mt cube
+// because we are using 0.002 bit precision
 #define MAX_SURFACE_VERTEX                   3200000ull
 #define MAX_SKINNED_SOURCE_VERTEX            262144ull
 #define MAX_SKINNED_VERTEX_PER_ANIM_INSTANCE 65536ull

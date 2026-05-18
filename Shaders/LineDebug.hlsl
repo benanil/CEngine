@@ -9,7 +9,7 @@ struct VSInput
 struct VSOutput
 {
     float4 position  : SV_Position;
-    float3 color     : COLOR;
+    f16_3_io color   : COLOR;
 };
 
 cbuffer vs_params : register(b0, space1)
@@ -27,5 +27,5 @@ VSOutput vert(VSInput i)
 
 float4 frag(VSOutput i) : SV_Target0
 {
-    return float4(i.color, 1.0);
+    return float4(f16_3(i.color), f16(1.0));
 }

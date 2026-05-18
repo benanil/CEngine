@@ -71,13 +71,13 @@ f16_3 UnpackVec3XY11Z10Unorm(uint packed) {
     );
 }
 
-float3 UnpackColor3Uint(uint color)
+f16_3 UnpackColor3Uint(uint color)
 {
-    const float tof1 = 1.0 / 255.0;
-    return float3(
-        (float)((color >> 0)  & 0xFF),
-        (float)((color >> 8)  & 0xFF),
-        (float)((color >> 16) & 0xFF)
+    const f16 tof1 = f16(1.0 / 255.0);
+    return f16_3(
+        f16((color >> 0)  & 0xFF),
+        f16((color >> 8)  & 0xFF),
+        f16((color >> 16) & 0xFF)
     ) * tof1;
 }
 
@@ -193,24 +193,46 @@ uint PackNormalTangent(f16_3 normal, f16_4 tangent)
     return packedOct | (packedDiamond << 22) | (handedness << 31);
 }
 
-uint PackAnimatedTangentSpace16(f16_3 normal, f16_3 tangent, f16 handedness)
+uint PackTangentSpace25(f16_3 normal, f16_3 tangent, f16 handedness)
 {
     normal = normalize(normal);
     f16_2 oct = OctEncode(normal);
-    uint nx = uint(saturate(oct.x * f16(0.5) + f16(0.5)) * 63.0 + 0.5) & 0x3Fu;
-    uint ny = uint(saturate(oct.y * f16(0.5) + f16(0.5)) * 63.0 + 0.5) & 0x3Fu;
-    uint td = uint(saturate(EncodeTangentDiamond(normal, normalize(tangent))) * 7.0 + 0.5) & 0x7u;
+    uint2 n = uint2(saturate(oct * f16(0.5) + f16(0.5)) * 511.0 + 0.5) & 0x1FFu;
+    uint td = uint(saturate(EncodeTangentDiamond(normal, normalize(tangent))) * 63.0 + 0.5) & 0x3Fu;
     uint h = handedness < f16(0.0) ? 1u : 0u;
-    return nx | (ny << 6) | (td << 12) | (h << 15);
+    return n.x | (n.y << 9) | (td << 18) | (h << 24);
 }
 
-void UnpackAnimatedTangentSpace16(uint packed, out f16_3 normal, out f16_3 tangent, out f16 handedness)
+void UnpackTangentSpace25(uint packed, out f16_3 normal, out f16_3 tangent, out f16 handedness)
 {
-    uint t = packed >> 16;
-    f16_2 oct = f16_2(f16(t & 0x3Fu), f16((t >> 6) & 0x3Fu)) * f16(1.0 / 63.0) * f16(2.0) - f16(1.0);
+    f16_2 oct = f16_2(f16(packed & 0x1FFu), f16((packed >> 9) & 0x1FFu)) * f16(1.0 / 511.0) * f16(2.0) - f16(1.0);
     normal = OctDecode(oct);
-    tangent = DecodeTangent(normal, f16((t >> 12) & 0x7u) * f16(1.0 / 7.0));
-    handedness = (t & 0x8000u) != 0u ? f16(-1.0) : f16(1.0);
+    tangent = DecodeTangent(normal, f16((packed >> 18) & 0x3Fu) * f16(1.0 / 63.0));
+    handedness = (packed & 0x1000000u) != 0u ? f16(-1.0) : f16(1.0);
+}
+
+// max animation bounds is 4095 * 0.002 = 8.19mt
+uint2 PackAnimatedVertex(f16_3 position, f16_3 normal, f16_3 tangent, f16 handedness)
+{
+    int3 u = clamp(int3(round(float3(position) * 500.0)), -4096, 4095) & 0x1FFFu;
+    uint tangentSpace = PackTangentSpace25(normal, tangent, handedness);
+    return uint2(u.x | (u.y << 13) | ((u.z & 0x3Fu) << 26),
+                 (u.z >> 6) | (tangentSpace << 7));
+}
+
+f16_3 UnpackAnimatedPosition(uint2 packed)
+{
+    uint z = ((packed.x >> 26) & 0x3Fu) | ((packed.y & 0x7Fu) << 6);
+    return f16_3(
+        f16(int((packed.x         & 0x1FFFu) << 19u) >> 19),
+        f16(int(((packed.x >> 13) & 0x1FFFu) << 19u) >> 19),
+        f16(int(z                            << 19u) >> 19)
+    ) * f16(0.002);
+}
+
+void UnpackAnimatedTangentSpace(uint2 packed, out f16_3 normal, out f16_3 tangent, out f16 handedness)
+{
+    UnpackTangentSpace25(packed.y >> 7, normal, tangent, handedness);
 }
 
 f16_3x4 LoadBone(StructuredBuffer<uint> boneMtx, uint idx)

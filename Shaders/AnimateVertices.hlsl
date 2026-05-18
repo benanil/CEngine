@@ -101,8 +101,9 @@ void main(uint3 globalID : SV_DispatchThreadID, uint3 groupID : SV_GroupID, uint
         tbn[0] = Orthonormalize(tbn[1], tbn[2]);
 
         AnimatedVert o;
-        o.positionXY = PackHalf2(localPos.xy);
-        o.positionZTangent = PackHalf(localPos.z) | (PackAnimatedTangentSpace16(tbn[2], tbn[1], tangentHandedness) << 16);
+        uint2 packedAnimated = PackAnimatedVertex(localPos, tbn[2], tbn[1], tangentHandedness);
+        o.packed0 = packedAnimated.x;
+        o.packed1 = packedAnimated.y;
         sAnimatedVert[outVertex] = o;
     }
 }

@@ -98,7 +98,7 @@ void InitBuffers()
     InitRenderSetBuffers(&g_RenderState.surfaceBuffers, &surfaceSet);
 
     AnimInitBuffers();
-    const size_t animatedVertexSize = sizeof(u64) * MAX_ANIMATED_VERTEX;
+    const size_t animatedVertexSize = sizeof(u32) * 2 * MAX_ANIMATED_VERTEX;
     g_RenderState.skinnedVertexBuffer = CreateBuffer(gGFX.SkinnedVertexBuffer, MAX_SKINNED_SOURCE_VERTEX * sizeof(ASkinedVertex), BVertexBit | BReadCompute, "CPSkinnedVertexBuffer");
     g_RenderState.surfaceVertexBuffer = CreateBuffer(gGFX.SurfaceVertexBuffer, MAX_VERTEX * sizeof(AVertex), BVertexBit, "CPSurfaceVertexBuffer");
     g_RenderState.indexBuffer         = CreateBuffer(gGFX.IndexBuffer, MAX_INDEX * sizeof(int), SDL_GPU_BUFFERUSAGE_INDEX, "CPIndexBuffer");

@@ -46,12 +46,13 @@ VSOutput vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("Dra
     uint animatedVertex = sparse * uint(MAX_SKINNED_VERTEX_PER_ANIM_INSTANCE) + group.animatedVertexOffset + localVertex;
     AnimatedVert animated = sAnimatedVert[animatedVertex];
     Entity entity = sEntities[denseIdx];
-    f16_3 localPos = f16_3(UnpackHalf2(animated.positionXY), UnpackHalf(animated.positionZTangent));
+    uint2 packedAnimated = uint2(animated.packed0, animated.packed1);
+    f16_3 localPos = UnpackAnimatedPosition(packedAnimated);
     float3 finalWorldPos = float3(localPos) + entity.position.xyz;
 
     f16_3x3 tbn;
     f16 tangentHandedness;
-    UnpackAnimatedTangentSpace16(animated.positionZTangent, tbn[2], tbn[1], tangentHandedness);
+    UnpackAnimatedTangentSpace(packedAnimated, tbn[2], tbn[1], tangentHandedness);
 
     VSOutput o;
     o.position  = mul(uViewProj, float4(finalWorldPos, 1.0));
@@ -79,29 +80,29 @@ float4 frag(VSOutput input) : SV_Target0
     TextureDescriptor normalDesc = sTextureDescriptors[material.normalDescriptor];
     TextureDescriptor mrDesc = sTextureDescriptors[material.metallicRoughnessDescriptor];
 
-    float4 baseFactor = VecOne(); // UnpackColor4Uint(material.baseColorFactor);
-    float3 baseColor = SRGBToLinear(SampleTexturePageRGBA(AlbedoPages, Sampler, albedo, float2(input.texCoords)).rgb) * baseFactor.rgb;
-    float3 tangentNormal = DecodeNormalRG(SampleTexturePageRG(NormalPages, Sampler, normalDesc, float2(input.texCoords)));
-    float2 mr = SampleTexturePageRG(MetallicRoughnessPages, Sampler, mrDesc, float2(input.texCoords));
+    f16_4 baseFactor = f16_4(1.0, 1.0, 1.0, 1.0); // UnpackColor4Uint(material.baseColorFactor);
+    f16_3 baseColor = SRGBToLinear(SampleTexturePageRGBA(AlbedoPages, Sampler, albedo, float2(input.texCoords)).rgb) * baseFactor.rgb;
+    f16_3 tangentNormal = DecodeNormalRG(SampleTexturePageRG(NormalPages, Sampler, normalDesc, float2(input.texCoords)));
+    f16_2 mr = SampleTexturePageRG(MetallicRoughnessPages, Sampler, mrDesc, float2(input.texCoords));
 
-    float3 N = normalize(tangentNormal.x * normalize(input.tangent) +
-                         tangentNormal.y * normalize(input.bitangent) +
-                         tangentNormal.z * normalize(input.normal));
-    float metallicFactor  = float((material.metallicRoughnessFactor >> 16u) & 0xFFFFu) * (1.0f / 65535.0f);
-    float roughnessFactor = float(material.metallicRoughnessFactor & 0xFFFFu) * (1.0f / 65535.0f);
-    float metallic  = mr.x * metallicFactor;
-    float roughness = mr.y * roughnessFactor;
+    f16_3 N = normalize(tangentNormal.x * normalize(f16_3(input.tangent)) +
+                         tangentNormal.y * normalize(f16_3(input.bitangent)) +
+                         tangentNormal.z * normalize(f16_3(input.normal)));
+    f16 metallicFactor  = f16((material.metallicRoughnessFactor >> 16u) & 0xFFFFu) * f16(1.0 / 65535.0);
+    f16 roughnessFactor = f16(material.metallicRoughnessFactor & 0xFFFFu) * f16(1.0 / 65535.0);
+    f16 metallic  = mr.x * metallicFactor;
+    f16 roughness = mr.y * roughnessFactor;
     
     #if PBR_DEBUG_OUTPUT == 4
-        return float4(normalize(input.normal) * 0.5f + 0.5f, baseFactor.a);
+        return float4(normalize(f16_3(input.normal)) * f16(0.5) + f16(0.5), baseFactor.a);
     #elif PBR_DEBUG_OUTPUT == 5
-        return float4(normalize(input.tangent) * 0.5f + 0.5f, baseFactor.a);
+        return float4(normalize(f16_3(input.tangent)) * f16(0.5) + f16(0.5), baseFactor.a);
     #elif PBR_DEBUG_OUTPUT == 6
-        return float4(normalize(input.bitangent) * 0.5f + 0.5f, baseFactor.a);
+        return float4(normalize(f16_3(input.bitangent)) * f16(0.5) + f16(0.5), baseFactor.a);
     #elif PBR_DEBUG_OUTPUT == 7
-        return float4(tangentNormal * 0.5f + 0.5f, baseFactor.a);
+        return float4(tangentNormal * f16(0.5) + f16(0.5), baseFactor.a);
     #elif PBR_DEBUG_OUTPUT == 8
-        return float4(metallicFactor, roughnessFactor, 0.0f, baseFactor.a);
+        return float4(metallicFactor, roughnessFactor, f16(0.0), baseFactor.a);
     #endif
-    return float4(ApplyPBR(baseColor, N, input.viewDir, metallic, roughness), baseFactor.a);
+    return float4(ApplyPBR(baseColor, N, f16_3(input.viewDir), metallic, roughness), baseFactor.a);
 }

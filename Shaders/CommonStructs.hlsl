@@ -51,13 +51,14 @@ typedef struct PrimitiveGroup_
     float4 aabbMax;
 } PrimitiveGroup;
 
-// Animated vertex cache format, 8 bytes per vertex.
-// positionXY: half2 xy
-// positionZTangent: low 16 bits half z, high 16 bits compressed tangent space
+// Animated vertex cache format, 8 bytes per vertex. 
+// packed0/packed1: 39-bit signed fixed-point local position at 4095/500 = 0.002 unit precision
+// max animation bounds is 4095 * 0.002 = 8.19mt
+// plus 25-bit tangent space packed as 9/9 oct, 6-bit diamond tangent, 1-bit handedness.
 typedef struct AnimatedVert_
 {
-    uint positionXY;
-    uint positionZTangent;
+    uint packed0;
+    uint packed1;
 } AnimatedVert;
 
 typedef struct TextureDescriptor_
