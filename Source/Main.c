@@ -56,14 +56,14 @@ s32 InitScene()
     
     if (!LoadGLTFCached("Assets/Meshes/Paladin/Paladin.gltf", gPaladin, g_RenderState.textures))
     {
-        AX_ERROR("gltf scene load failed");
+        AX_ERROR("gltf scene load failed Paladin");
         return 0;
     }
     
     s32 sponzaRes = LoadGLTFCached("Assets/Meshes/Bistro/Bistro.glb", gSponza, g_RenderState.textures + gPaladin->numImages);
     if (!sponzaRes)
     {
-        AX_ERROR("gltf sponza load failed: %d", sponzaRes);
+        AX_ERROR("gltf Bistro/sponza load failed: %d ", sponzaRes);
         return 0;
     }
 
@@ -91,7 +91,7 @@ s32 InitScene()
     {
         u64 hash = MurmurHash(i + 123);
         v128f pos = VecMulf(VecSetR(f32_(i & 7), 0.0f, f32_(i >> 3), 0.0f), 100.5f);
-        v128f rot =QFromEuler(NextDouble01(hash)*MATH_PI, MATH_PI, 0.0f); // VecSetR(0.0f, 0.0f, 0.0f, 1.0f);  // x=0, y=random, z=0, w=random
+        v128f rot = QFromEuler(NextDouble01(hash)*MATH_PI, MATH_PI, 0.0f); // VecSetR(0.0f, 0.0f, 0.0f, 1.0f);  // x=0, y=random, z=0, w=random
         v128f scale = VecSet1(0.1f);
         if (!RenderSet_AddScene(&surfaceSet, surfaceBundle, pos, rot, scale, false))
             break;

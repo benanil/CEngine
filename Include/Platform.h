@@ -6,6 +6,8 @@
 
 #if defined(AX_ENABLE_LOGGING) || defined(_DEBUG) || defined(DEBUG) || defined(Debug)
     #include <SDL3/SDL_log.h>
+    #include <SDL3/SDL_messagebox.h>
+    #include <SDL3/SDL_stdinc.h>
 
     #define AX_ANSI_RESET  "\033[0m"
     #define AX_ANSI_GREEN  "\033[32m"
@@ -14,7 +16,12 @@
 
     #define AX_LOG(format, ...)  SDL_Log(AX_ANSI_GREEN  "axInfo: %s -line:%i " format AX_ANSI_RESET, GetFileName(__FILE__), __LINE__, ##__VA_ARGS__)
     #define AX_WARN(format, ...) SDL_LogWarn(SDL_LOG_PRIORITY_WARN,  AX_ANSI_YELLOW "%s -line:%i " format AX_ANSI_RESET, GetFileName(__FILE__), __LINE__, ##__VA_ARGS__)
-    #define AX_ERROR(format, ...) SDL_LogError(SDL_LOG_PRIORITY_ERROR, AX_ANSI_RED "%s -line:%i " format AX_ANSI_RESET, GetFileName(__FILE__), __LINE__, ##__VA_ARGS__)
+    #define AX_ERROR(format, ...) do { \
+        char ax_error_message[2048]; \
+        SDL_snprintf(ax_error_message, sizeof(ax_error_message), "%s -line:%i " format, GetFileName(__FILE__), __LINE__, ##__VA_ARGS__); \
+        SDL_LogError(SDL_LOG_PRIORITY_ERROR, AX_ANSI_RED "%s" AX_ANSI_RESET, ax_error_message); \
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "AX_ERROR", ax_error_message, NULL); \
+    } while (0)
 #else
     #define AX_ERROR(format, ...)
     #define AX_LOG(format, ...)
