@@ -2,7 +2,7 @@
 
 static float3 GetSunLightDir(void)
 {
-    return F3NormSafe((float3){ -0.5f, 0.5f, 0.0f });
+    return F3Norm((float3){ -0.33f, 0.66f, 0.0f });
 }
 
 mat4x4 GetShadowViewProj(void)
@@ -18,7 +18,7 @@ mat4x4 GetShadowViewProj(void)
     return M44Multiply(view, proj);
 }
 
-void RenderDepthPrepass(SDL_GPUCommandBuffer* cmd,
+void RenderDepth(SDL_GPUCommandBuffer* cmd,
                         SDL_GPUColorTargetInfo* color_target,
                         SDL_GPUDepthStencilTargetInfo* depth_target,
                         mat4x4 viewProj,

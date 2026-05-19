@@ -148,18 +148,22 @@ static void UploadRenderSetEntities(RenderSet* set, RenderSetBuffers* buffers)
     UpdateGPUBuffer(buffers->sparseToDense, set->sparseID, set->numEntities * sizeof(u32), 0ull);
 }
 
-static void CullAndAnimate(SDL_GPUCommandBuffer* cmd, FrustumPlanes planes, mat4x4 viewProj,
-                           bool enableHiZ, bool outputSkinnedVisibility)
+static void CullScene(SDL_GPUCommandBuffer* cmd, FrustumPlanes planes, mat4x4 viewProj,
+                      bool enableHiZ, bool outputSkinnedVisibility)
 {
     WindowState* winstate = &g_WindowState;
     DispatchCullDrawArgsCompute(cmd, &skinnedSet, &g_RenderState.skinnedBuffers, planes, viewProj,
                                 winstate->tex_hiz, winstate->hiz_width, winstate->hiz_height, winstate->hiz_mip_count,
                                 enableHiZ, outputSkinnedVisibility);
-    DispatchAnimationCompute(cmd, &skinnedSet);
-    DispatchAnimateVerticesCompute(cmd, &skinnedSet);
     DispatchCullDrawArgsCompute(cmd, &surfaceSet, &g_RenderState.surfaceBuffers, planes, viewProj,
                                 winstate->tex_hiz, winstate->hiz_width, winstate->hiz_height, winstate->hiz_mip_count,
                                 enableHiZ, false);
+}
+
+static void AnimateCameraVisibleSkinned(SDL_GPUCommandBuffer* cmd)
+{
+    DispatchAnimationCompute(cmd, &skinnedSet);
+    DispatchAnimateVerticesCompute(cmd, &skinnedSet);
 }
 
 void Render(void)
@@ -210,17 +214,22 @@ void Render(void)
     UploadRenderSetEntities(&surfaceSet, &g_RenderState.surfaceBuffers);
 
     mat4x4 viewProj = M44Multiply(g_Camera.view, g_Camera.projection);
-    mat4x4 shadowViewProj = GetShadowViewProj();
-    CullAndAnimate(cmd, CreateFrustumPlanes(shadowViewProj), shadowViewProj, g_EnableShadowHiZ, true);
-    RenderDepthPrepass(cmd, &shadow_color_target, &shadow_depth_target, shadowViewProj,
-                       g_RenderState.skinnedShadowPipeline, g_RenderState.surfaceShadowPipeline);
-
     bool enableHiZ = g_EnableOcclusion && winstate->hiz_valid;
     mat4x4 hiZViewProj = enableHiZ ? winstate->hiz_view_proj : viewProj;
-    CullAndAnimate(cmd, CreateFrustumPlanes(viewProj), hiZViewProj, enableHiZ, true);
 
-    RenderDepthPrepass(cmd, &hiz_depth_target, &depth_target, viewProj,
-                       g_RenderState.skinnedDepthPipeline, g_RenderState.surfaceDepthPipeline);
+    FrustumPlanes cameraFrustum = CreateFrustumPlanes(viewProj);
+    // we might want to use bigger frustum for skinned shadows shadows might pop up otherwise
+    CullScene(cmd, cameraFrustum, hiZViewProj, enableHiZ, true);
+    AnimateCameraVisibleSkinned(cmd);
+
+    mat4x4 shadowViewProj = GetShadowViewProj();
+    CullScene(cmd, CreateFrustumPlanes(shadowViewProj), shadowViewProj, g_EnableShadowHiZ, false);
+    RenderDepth(cmd, &shadow_color_target, &shadow_depth_target, shadowViewProj,
+                     g_RenderState.skinnedShadowPipeline, g_RenderState.surfaceShadowPipeline);
+
+    CullScene(cmd, cameraFrustum, hiZViewProj, enableHiZ, true);
+    RenderDepth(cmd, &hiz_depth_target, &depth_target, viewProj,
+                     g_RenderState.skinnedDepthPipeline, g_RenderState.surfaceDepthPipeline);
     RenderScene(cmd, &color_target, &main_depth_target, viewProj);
     DispatchHiZBuildCompute(cmd, winstate->tex_hiz_depth, winstate->tex_hiz, screenW, screenH, winstate->hiz_mip_count, 0);
 

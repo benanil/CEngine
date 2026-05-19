@@ -65,7 +65,7 @@ void DispatchTonemapCompute(SDL_GPUCommandBuffer* cmd, SDL_GPUTexture* source, S
 void DispatchAnimationCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet);
 void DispatchAnimateVerticesCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet);
 
-void RenderDepthPrepass(SDL_GPUCommandBuffer* cmd,
+void RenderDepth(SDL_GPUCommandBuffer* cmd,
                         SDL_GPUColorTargetInfo* color_target,
                         SDL_GPUDepthStencilTargetInfo* depth_target,
                         mat4x4 viewProj,
