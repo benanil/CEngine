@@ -6,12 +6,11 @@
 cbuffer vs_params : register(b0, space1)
 {
     float4x4 uViewProj;
-    float4 uCameraPosition;
 };
 
 StructuredBuffer<Entity>         sEntities         : register(t0);
 StructuredBuffer<PrimitiveGroup> sPrimitiveGroups  : register(t1);
-StructuredBuffer<uint>           sDrawDenseIndices : register(t2);
+StructuredBuffer<uint>           sDrawSparseIndices : register(t2);
 StructuredBuffer<AnimatedVert>   sAnimatedVert     : register(t3);
 
 struct VSInput
@@ -29,7 +28,7 @@ float4 vert(VSInput input,
             uint vertexId : SV_VertexID) : SV_Position
 {
     PrimitiveGroup group = sPrimitiveGroups[drawID];
-    uint denseIdx  = sDrawDenseIndices[group.entityOffset + instanceID];
+    uint denseIdx  = sDrawSparseIndices[group.entityOffset + instanceID];
     uint localVertex = vertexId - group.vertexOffset;
     uint sparse = sEntities[denseIdx].sparse;
     uint animatedVertex = sparse * uint(MAX_SKINNED_VERTEX_PER_ANIM_INSTANCE) + group.animatedVertexOffset + localVertex;

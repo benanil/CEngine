@@ -418,6 +418,9 @@
 					<File>
 						<Path>Shaders/HiZDownscaleCompute.hlsl</Path>
 					</File>
+					<File>
+						<Path>Shaders/Shadow.hlsl</Path>
+					</File>
 				</Children>
 			</Folder>
 			<Folder>
@@ -463,9 +466,6 @@
 						<Path>Source/BasisBinding.cpp</Path>
 					</File>
 					<File>
-						<Path>Source/Rendering.c</Path>
-					</File>
-					<File>
 						<Path>Source/SceneNormalize.c</Path>
 					</File>
 					<File>
@@ -475,10 +475,25 @@
 						<Path>Source/MeshBake.c</Path>
 					</File>
 					<File>
+						<Path>Source/TextureSystem.c</Path>
+					</File>
+					<File>
 						<Path>Source/RenderSet.c</Path>
 					</File>
 					<File>
-						<Path>Source/TextureSystem.c</Path>
+						<Path>Source/Rendering.c</Path>
+					</File>
+					<File>
+						<Path>Source/RenderingCompute.c</Path>
+					</File>
+					<File>
+						<Path>Source/RenderingDraw.c</Path>
+					</File>
+					<File>
+						<Path>Source/RenderingInternal.h</Path>
+					</File>
+					<File>
+						<Path>Source/RenderingPipelines.c</Path>
 					</File>
 				</Children>
 			</Folder>

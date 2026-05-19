@@ -5,12 +5,11 @@
 cbuffer vs_params : register(b0, space1)
 {
     float4x4 uViewProj;
-    float4 uCameraPosition;
 };
 
 StructuredBuffer<Entity>         sEntities         : register(t0);
 StructuredBuffer<PrimitiveGroup> sPrimitiveGroups  : register(t1);
-StructuredBuffer<uint>           sDrawDenseIndices : register(t2);
+StructuredBuffer<uint>           sDrawSparseIndices : register(t2);
 
 struct VSInput
 {
@@ -22,7 +21,7 @@ struct VSInput
 float4 vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("DrawIndex")]] uint drawID : DRAWINDEX) : SV_Position
 {
     PrimitiveGroup group = sPrimitiveGroups[drawID];
-    uint denseIdx = sDrawDenseIndices[group.entityOffset + instanceID];
+    uint denseIdx = sDrawSparseIndices[group.entityOffset + instanceID];
     Entity entity = sEntities[denseIdx];
 
     f16_4 insRot   = normalize(UnpackRGBA16Snorm(entity.rotation[0], entity.rotation[1]));

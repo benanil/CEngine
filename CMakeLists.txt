@@ -98,6 +98,9 @@ target_sources(${EXECUTABLE_NAME} PRIVATE
     Source/Graphics.c
     Source/TextureSystem.c
     Source/Rendering.c
+    Source/RenderingPipelines.c
+    Source/RenderingCompute.c
+    Source/RenderingDraw.c
     Source/GLTFParser.c
     Source/SceneNormalize.c
     Source/AnimationBake.c

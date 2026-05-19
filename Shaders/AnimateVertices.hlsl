@@ -20,12 +20,12 @@ cbuffer params : register(b0, space2)
     uint2 padding;
 }
 
-StructuredBuffer<uint>           sBoneMtx          : register(t0);
-StructuredBuffer<Entity>         sEntities         : register(t1);
-StructuredBuffer<PrimitiveGroup> sPrimitiveGroups  : register(t2);
-StructuredBuffer<uint>           sDrawDenseIndices : register(t3);
-StructuredBuffer<SkinnedVertex>  sVertexBuffer     : register(t4);
-StructuredBuffer<IndexedDrawCommand> sDrawArgs     : register(t5);
+StructuredBuffer<uint>           sBoneMtx           : register(t0);
+StructuredBuffer<Entity>         sEntities          : register(t1);
+StructuredBuffer<PrimitiveGroup> sPrimitiveGroups   : register(t2);
+StructuredBuffer<uint>           sDrawSparseIndices : register(t3);
+StructuredBuffer<SkinnedVertex>  sVertexBuffer      : register(t4);
+StructuredBuffer<IndexedDrawCommand> sDrawArgs      : register(t5);
 
 RWStructuredBuffer<AnimatedVert> sAnimatedVert     : register(u0, space1);
 
@@ -46,7 +46,7 @@ void main(uint3 globalID : SV_DispatchThreadID, uint3 groupID : SV_GroupID, uint
     uint vertexBase = groupID.z * 32u;
     uint animatedBase = group.animatedVertexOffset;
 
-    uint denseIdx = sDrawDenseIndices[group.entityOffset + instanceSlot];
+    uint denseIdx = sDrawSparseIndices[group.entityOffset + instanceSlot];
     Entity entity = sEntities[denseIdx];
     uint sparse = entity.sparse;
 

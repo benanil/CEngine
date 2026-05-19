@@ -10,13 +10,13 @@ StructuredBuffer<Entity>         entities                 : register(t1);
 StructuredBuffer<PrimitiveGroup> primitiveGroups          : register(t2);
 StructuredBuffer<uint>           denseToPrimitiveIndex    : register(t3);
 
-RWStructuredBuffer<uint>                drawDenseIndices  : register(u0, space1);
+RWStructuredBuffer<uint>                drawSparseIndices  : register(u0, space1);
 RWStructuredBuffer<IndexedDrawCommand>  drawArgs          : register(u1, space1);
 RWStructuredBuffer<LineVertex>          lineVertices      : register(u2, space1);
 
 // first line draw command's first member(numVertices) is number of visible entities
 RWStructuredBuffer<IndirectDrawCommand> lineDrawCommand   : register(u3, space1);
-RWStructuredBuffer<uint>                visibleDenseIndices : register(u4, space1);
+RWStructuredBuffer<uint>                visibleSparseIndices : register(u4, space1);
 RWStructuredBuffer<uint>                visibilityMask      : register(u5, space1);
 RWStructuredBuffer<uint>                visibleCount       : register(u6, space1);
 RWStructuredBuffer<IndirectDispatchCommand> dispatchArgs   : register(u7, space1);
@@ -302,13 +302,12 @@ void main(uint3 tid : SV_DispatchThreadID)
     if (idx >= maxEntityID)
         return;
 
-    uint dense = idx;
-
-    uint primitiveIdx = denseToPrimitiveIndex[dense];
+    uint sparse = idx;
+    uint primitiveIdx = denseToPrimitiveIndex[sparse];
     PrimitiveGroup group = primitiveGroups[primitiveIdx];
 
     float3 worldMin, worldMax;
-    BuildWorldAABB(entities[dense], group, worldMin, worldMax);
+    BuildWorldAABB(entities[sparse], group, worldMin, worldMax);
 
     bool frustumVisible = AABBVisible(worldMin, worldMax);
     bool hiZOccluded = false;
@@ -332,13 +331,13 @@ void main(uint3 tid : SV_DispatchThreadID)
     uint globalVisibleIdx;
     InterlockedAdd(lineDrawCommand[0].firstInstance, 1, globalVisibleIdx);
 
-    drawDenseIndices[group.entityOffset + localVisibleIdx] = dense;
+    drawSparseIndices[group.entityOffset + localVisibleIdx] = sparse;
 
     if (enableVisibilityOutput != 0)
     {
-        uint visibleDense = entities[dense].sparse;
+        uint visibleSparse = entities[sparse].sparse;
         uint old;
-        InterlockedCompareExchange(visibilityMask[visibleDense], 0, 1, old);
+        InterlockedCompareExchange(visibilityMask[visibleSparse], 0, 1, old);
 
         InterlockedMax(dispatchArgs[1].groupCountY, (localVisibleIdx + 32u) / 32u);
         InterlockedMax(dispatchArgs[1].groupCountZ, (group.numVertices + 31u) / 32u);
@@ -347,7 +346,7 @@ void main(uint3 tid : SV_DispatchThreadID)
         {
             uint visibleSlot;
             InterlockedAdd(visibleCount[0], 1, visibleSlot);
-            visibleDenseIndices[visibleSlot] = visibleDense;
+            visibleSparseIndices[visibleSlot] = visibleSparse;
 
             if ((visibleSlot & 31u) == 0)
             {

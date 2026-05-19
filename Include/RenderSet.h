@@ -45,7 +45,7 @@ typedef struct Range_
 typedef struct RenderSet_
 {
     Entity*             entities;
-    u32*                sparseID;
+    u32*                sparseID; // sparse to dense
     u32*                denseToPrimitiveIndex;
     
     PrimitiveGroup*     primitiveGroups;

@@ -147,12 +147,12 @@ typedef struct WindowState
 typedef struct RenderSetBuffers_
 {
     SDL_GPUBuffer* primitiveGroup;
-    SDL_GPUBuffer* drawDenseIndices;
+    SDL_GPUBuffer* drawSparseIndices;
     SDL_GPUBuffer* drawArgs;
     SDL_GPUBuffer* denseToPrimitive;
     SDL_GPUBuffer* sparseToDense;
     SDL_GPUBuffer* entity;
-    SDL_GPUBuffer* visibleDenseIndices;
+    SDL_GPUBuffer* visibleSparseIndices;
     SDL_GPUBuffer* visibilityMask;
     SDL_GPUBuffer* visibleCount;
     SDL_GPUBuffer* dispatchArgs;
