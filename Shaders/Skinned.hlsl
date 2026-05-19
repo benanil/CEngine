@@ -9,6 +9,7 @@
 cbuffer vs_params : register(b0, space1)
 {
     float4x4 uViewProj;
+    float4x4 uLightViewProj;
     float4 uCameraPosition;
 };
 
@@ -34,7 +35,8 @@ struct VSOutput
     f16_3_io tangent   : TANGENT0;
     f16_3_io bitangent : TEXCOORD1;
     f16_3_io viewDir   : TEXCOORD2;
-    nointerpolation uint materialIndex : TEXCOORD3;
+    float4   shadowPos : TEXCOORD3;
+    nointerpolation uint materialIndex : TEXCOORD4;
 };
 
 VSOutput vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("DrawIndex")]] uint drawID : DRAWINDEX, uint vertexID : SV_VertexID)
@@ -61,6 +63,7 @@ VSOutput vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("Dra
     o.tangent   = tbn[1];
     o.bitangent = cross(tbn[2], tbn[1]) * tangentHandedness;
     o.viewDir   = uCameraPosition.xyz - finalWorldPos;
+    o.shadowPos = mul(uLightViewProj, float4(finalWorldPos, 1.0));
     o.materialIndex = group.materialIndex;
     return o;
 }
@@ -68,10 +71,39 @@ VSOutput vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("Dra
 Texture2DArray<float4> AlbedoPages            : register(t0, space2);
 Texture2DArray<float2> NormalPages            : register(t1, space2);
 Texture2DArray<float2> MetallicRoughnessPages : register(t2, space2);
+Texture2D<float>       ShadowMap              : register(t3, space2);
 SamplerState Sampler                          : register(s0, space2);
 
-StructuredBuffer<MaterialGPU>        sMaterials          : register(t3, space2);
-StructuredBuffer<TextureDescriptor>  sTextureDescriptors : register(t4, space2);
+StructuredBuffer<MaterialGPU>        sMaterials          : register(t4, space2);
+StructuredBuffer<TextureDescriptor>  sTextureDescriptors : register(t5, space2);
+
+float SampleShadow(float4 shadowPos, float3 normal)
+{
+    float3 proj = shadowPos.xyz / shadowPos.w;
+    float2 uv = proj.xy * float2(0.5f, -0.5f) + 0.5f;
+    float depth = proj.z;
+    if (shadowPos.w <= 0.0f || any(uv < 0.0f) || any(uv > 1.0f) || depth >= 1.0f)
+        return 1.0f;
+
+    uint width, height;
+    ShadowMap.GetDimensions(width, height);
+    float2 texel = 1.35f / float2(width, height);
+    float3 lightDir = normalize(float3(-0.5f, 0.5f, 0.0f));
+    float bias = max(0.0007f * (1.0f - dot(normalize(normal), lightDir)), 0.0002f);
+
+    float shadow = 0.0f;
+    [unroll]
+    for (int y = -1; y <= 1; y++)
+    {
+        [unroll]
+        for (int x = -1; x <= 1; x++)
+        {
+            float mapDepth = ShadowMap.Sample(Sampler, uv + float2(x, y) * texel).r;
+            shadow += (depth - bias <= mapDepth) ? 1.0f : 0.0f;
+        }
+    }
+    return max(shadow * (1.0f / 9.0f), 0.2f);
+}
 
 float4 frag(VSOutput input) : SV_Target0
 {
@@ -104,5 +136,6 @@ float4 frag(VSOutput input) : SV_Target0
     #elif PBR_DEBUG_OUTPUT == 8
         return float4(metallicFactor, roughnessFactor, f16(0.0), baseFactor.a);
     #endif
-    return float4(ApplyPBR(float3(baseColor), N, float3(input.viewDir), metallic, roughness), baseFactor.a);
+    float shadow = SampleShadow(input.shadowPos, N);
+    return float4(ApplyPBR(float3(baseColor), N, float3(input.viewDir), metallic, roughness, shadow), baseFactor.a);
 }

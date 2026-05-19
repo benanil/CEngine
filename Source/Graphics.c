@@ -119,6 +119,8 @@ void GraphicsInit(bool msaa)
     winstate->tex_color   = CreateSceneColorTexture(drawablew, drawableh, SDL_GPU_SAMPLECOUNT_1);
     winstate->tex_post    = CreatePostProcessTexture(drawablew, drawableh);
     winstate->tex_hiz     = CreateHiZTexture(drawablew, drawableh, &winstate->hiz_mip_count);
+    winstate->tex_shadow_depth = CreateShadowDepthTexture(4096);
+    winstate->tex_shadow_color = CreateShadowColorTexture(4096);
     winstate->hiz_width   = drawablew;
     winstate->hiz_height  = drawableh;
     winstate->hiz_valid   = false;
@@ -141,6 +143,8 @@ void GraphicsDestroy()
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_color);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_post);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_hiz);
+    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_shadow_depth);
+    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_shadow_color);
     SDL_ReleaseWindowFromGPUDevice(g_GPUDevice, g_SDLWindow);
 
     SDL_DestroyGPUDevice(g_GPUDevice);
@@ -345,6 +349,20 @@ SDL_GPUTexture* CreatePostProcessTexture(u32 drawablew, u32 drawableh)
     return CreateTexture2D(drawablew, drawableh, SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
                            SDL_GPU_TEXTUREUSAGE_SAMPLER | SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_WRITE,
                            SDL_GPU_SAMPLECOUNT_1, 1, "Post Process Texture");
+}
+
+SDL_GPUTexture* CreateShadowDepthTexture(u32 size)
+{
+    return CreateTexture2D(size, size, SDL_GPU_TEXTUREFORMAT_D32_FLOAT,
+                           SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER,
+                           SDL_GPU_SAMPLECOUNT_1, 1, "Shadow Depth Texture");
+}
+
+SDL_GPUTexture* CreateShadowColorTexture(u32 size)
+{
+    return CreateTexture2D(size, size, SDL_GPU_TEXTUREFORMAT_R32_FLOAT,
+                           SDL_GPU_TEXTUREUSAGE_COLOR_TARGET,
+                           SDL_GPU_SAMPLECOUNT_1, 1, "Shadow Color Texture");
 }
 
 static void MakeRGBAFromRGB(const unsigned char* RESTRICT from, unsigned char* rgba, int numPixels)

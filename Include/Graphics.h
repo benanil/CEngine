@@ -137,6 +137,7 @@ typedef struct MaterialGPU_
 typedef struct WindowState
 {
     SDL_GPUTexture* tex_depth, *tex_hiz_msaa, *tex_hiz_depth, *tex_msaa, *tex_resolve, *tex_color, *tex_post, *tex_hiz;
+    SDL_GPUTexture* tex_shadow_depth, *tex_shadow_color;
     u32 prev_drawablew, prev_drawableh;
     u32 hiz_width, hiz_height, hiz_mip_count;
     mat4x4 hiz_view_proj;
@@ -163,9 +164,12 @@ typedef struct RenderState
     SDL_GPUGraphicsPipeline* surfacePipeline;
     SDL_GPUGraphicsPipeline* skinnedDepthPipeline;
     SDL_GPUGraphicsPipeline* surfaceDepthPipeline;
+    SDL_GPUGraphicsPipeline* skinnedShadowPipeline;
+    SDL_GPUGraphicsPipeline* surfaceShadowPipeline;
     SDL_GPUGraphicsPipeline* linePipeline;
     SDL_GPUSampler*          sampler;
     SDL_GPUSampler*          hiZSampler;
+    SDL_GPUSampler*          shadowSampler;
     SDL_GPUBuffer*           skinnedVertexBuffer;
     SDL_GPUBuffer*           surfaceVertexBuffer;
     SDL_GPUBuffer*           indexBuffer;
@@ -258,6 +262,10 @@ SDL_GPUTexture* CreateHiZTexture(u32 drawablew, u32 drawableh, u32* mipCount);
 SDL_GPUTexture* CreateSceneColorTexture(u32 drawablew, u32 drawableh, SDL_GPUSampleCount sampleCount);
 
 SDL_GPUTexture* CreatePostProcessTexture(u32 drawablew, u32 drawableh);
+
+SDL_GPUTexture* CreateShadowDepthTexture(u32 size);
+
+SDL_GPUTexture* CreateShadowColorTexture(u32 size);
 
 #if defined(__cplusplus)
 }

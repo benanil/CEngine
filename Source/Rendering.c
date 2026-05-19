@@ -61,6 +61,14 @@ static SDL_GPUComputePipeline* g_TonemapComputePipeline = NULL;
 static SDL_GPUComputePipeline* g_HiZBuildComputePipeline = NULL;
 static SDL_GPUComputePipeline* g_HiZDownscaleComputePipeline = NULL;
 static bool g_EnableOcclusion = true;
+static bool g_EnableShadowHiZ = true;
+static bool g_EnableShadowFrustumCull = true;
+
+#define SHADOW_MAP_SIZE        4096u
+#define SHADOW_ORTHO_SIZE      64.0f
+#define SHADOW_NEAR_PLANE      1.0f
+#define SHADOW_FAR_PLANE       300.0f
+#define SHADOW_CAMERA_DISTANCE 200.0f
 
 extern SDL_Window*  g_SDLWindow; // main
 extern Camera       g_Camera; // main
@@ -107,7 +115,7 @@ void InitBuffers()
     g_RenderState.lineDrawArgsBuffer = CreateBuffer(NULL, sizeof(u32) * 8, BIndirectBit | BWriteComputeBit, "CPLinedrawArgsBuffer");
 }
 
-static void InitAnimationComputePipeline()
+static void InitPipelines()
 {
     g_AnimComputePipeline = SDL_CreateGPUComputePipeline(g_GPUDevice, &(SDL_GPUComputePipelineCreateInfo){
         .code                          = Shaders_AnimationCompute_spv,
@@ -121,11 +129,8 @@ static void InitAnimationComputePipeline()
         .threadcount_y                 = 1,
         .threadcount_z                 = 1,
     });
-    CHECK_CREATE(g_AnimComputePipeline, "Animation Compute Pipeline")
-}
+    CHECK_CREATE(g_AnimComputePipeline, "Animation Compute Pipeline");
 
-static void InitAnimateVerticesComputePipeline()
-{
     g_AnimVerticesPipeline = SDL_CreateGPUComputePipeline(g_GPUDevice, &(SDL_GPUComputePipelineCreateInfo){
         .code                          = Shaders_AnimateVertices_spv,
         .code_size                     = sizeof(Shaders_AnimateVertices_spv),
@@ -138,11 +143,8 @@ static void InitAnimateVerticesComputePipeline()
         .threadcount_y                 = 1,
         .threadcount_z                 = 1,
     });
-    CHECK_CREATE(g_AnimVerticesPipeline, "Animation vertices Pipeline")
-}
+    CHECK_CREATE(g_AnimVerticesPipeline, "Animation vertices Pipeline");
 
-static void InitCullDrawArgsComputePipeline()
-{
     g_CullDrawArgsComputePipeline = SDL_CreateGPUComputePipeline(g_GPUDevice, &(SDL_GPUComputePipelineCreateInfo){
         .code                          = Shaders_CullDrawArgsCompute_spv,
         .code_size                     = sizeof(Shaders_CullDrawArgsCompute_spv),
@@ -156,11 +158,8 @@ static void InitCullDrawArgsComputePipeline()
         .threadcount_y                 = 1,
         .threadcount_z                 = 1,
     });
-    CHECK_CREATE(g_CullDrawArgsComputePipeline, "Cull Draw Args Compute Pipeline")
-}
+    CHECK_CREATE(g_CullDrawArgsComputePipeline, "Cull Draw Args Compute Pipeline");
 
-static void InitHiZBuildComputePipeline()
-{
     g_HiZBuildComputePipeline = SDL_CreateGPUComputePipeline(g_GPUDevice, &(SDL_GPUComputePipelineCreateInfo){
         .code                           = Shaders_HiZBuildCompute_spv,
         .code_size                      = sizeof(Shaders_HiZBuildCompute_spv),
@@ -174,11 +173,8 @@ static void InitHiZBuildComputePipeline()
         .threadcount_y                  = 8,
         .threadcount_z                  = 1,
     });
-    CHECK_CREATE(g_HiZBuildComputePipeline, "Hi-Z Build Compute Pipeline")
-}
+    CHECK_CREATE(g_HiZBuildComputePipeline, "Hi-Z Build Compute Pipeline");
 
-static void InitHiZDownscaleComputePipeline()
-{
     g_HiZDownscaleComputePipeline = SDL_CreateGPUComputePipeline(g_GPUDevice, &(SDL_GPUComputePipelineCreateInfo){
         .code                           = Shaders_HiZDownscaleCompute_spv,
         .code_size                      = sizeof(Shaders_HiZDownscaleCompute_spv),
@@ -191,11 +187,8 @@ static void InitHiZDownscaleComputePipeline()
         .threadcount_y                  = 8,
         .threadcount_z                  = 1,
     });
-    CHECK_CREATE(g_HiZDownscaleComputePipeline, "Hi-Z Downscale Compute Pipeline")
-}
+    CHECK_CREATE(g_HiZDownscaleComputePipeline, "Hi-Z Downscale Compute Pipeline");
 
-static void InitTonemapComputePipeline()
-{
     g_TonemapComputePipeline = SDL_CreateGPUComputePipeline(g_GPUDevice, &(SDL_GPUComputePipelineCreateInfo){
         .code                           = Shaders_TonemapCompute_spv,
         .code_size                      = sizeof(Shaders_TonemapCompute_spv),
@@ -208,7 +201,7 @@ static void InitTonemapComputePipeline()
         .threadcount_y                  = 8,
         .threadcount_z                  = 1,
     });
-    CHECK_CREATE(g_TonemapComputePipeline, "Tonemap Compute Pipeline")
+    CHECK_CREATE(g_TonemapComputePipeline, "Tonemap Compute Pipeline");
 }
 
 static void InitSamplers()
@@ -236,8 +229,37 @@ static void InitSamplers()
         .max_lod         = 32.0f
     });
     CHECK_CREATE(g_RenderState.hiZSampler, "Hi-Z Sampler")
+
+    g_RenderState.shadowSampler = SDL_CreateGPUSampler(g_GPUDevice, &(SDL_GPUSamplerCreateInfo){
+        .min_filter      = SDL_GPU_FILTER_LINEAR,
+        .mag_filter      = SDL_GPU_FILTER_LINEAR,
+        .mipmap_mode     = SDL_GPU_SAMPLERMIPMAPMODE_NEAREST,
+        .address_mode_u  = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+        .address_mode_v  = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+        .address_mode_w  = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+        .min_lod         = 0.0f,
+        .max_lod         = 0.0f
+    });
+    CHECK_CREATE(g_RenderState.shadowSampler, "Shadow Sampler")
 }
 
+static float3 GetSunLightDir(void)
+{
+    return F3NormSafe((float3){ -0.5f, 0.5f, 0.0f });
+}
+
+static mat4x4 GetShadowViewProj(void)
+{
+    float3 lightDir = GetSunLightDir();
+    float3 center = g_Camera.position;
+    float3 eye = F3Add(center, F3MulF(lightDir, SHADOW_CAMERA_DISTANCE));
+    float3 viewDir = F3MulF(lightDir, -1.0f);
+    mat4x4 view = M44LookAtRH(eye, viewDir, (float3){ 0.0f, 1.0f, 0.0f });
+    mat4x4 proj = M44OrthoRH(-SHADOW_ORTHO_SIZE, SHADOW_ORTHO_SIZE,
+                             -SHADOW_ORTHO_SIZE, SHADOW_ORTHO_SIZE,
+                             SHADOW_NEAR_PLANE, SHADOW_FAR_PLANE);
+    return M44Multiply(view, proj);
+}
 
 static void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet,
                                         RenderSetBuffers* buffers,
@@ -251,9 +273,9 @@ static void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd, RenderSet* re
                                         bool enableVisibilityOutput)
 {
     if (renderSet->numGroups == 0) return;
-    CHECK_CREATE(g_CullDrawArgsComputePipeline, "Cull Draw Args Compute Pipeline")
+    CHECK_CREATE(g_CullDrawArgsComputePipeline, "Cull Draw Args Compute Pipeline");
 
-        struct {
+    struct {
         FrustumPlanes planes;
         u32 numEntities;
         u32 numPrimitiveGroups;
@@ -277,7 +299,7 @@ static void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd, RenderSet* re
     params.hiZMipCount = hiZMipCount;
     params.enableHiZ = enableHiZ ? 1u : 0u;
     params.hiZDepthBias = 0.005f;
-
+    
     SDL_GPUBuffer* ro_buffers[3] = {
         buffers->entity, 
         buffers->primitiveGroup, 
@@ -521,9 +543,11 @@ static void RenderScene(SDL_GPUCommandBuffer* cmd,
 {
     struct {
         mat4x4 viewProj;
+        mat4x4 lightViewProj;
         float cameraPosition[4];
     } shaderParams;
     shaderParams.viewProj = viewProj;
+    shaderParams.lightViewProj = GetShadowViewProj();
     shaderParams.cameraPosition[0] = g_Camera.position.x;
     shaderParams.cameraPosition[1] = g_Camera.position.y;
     shaderParams.cameraPosition[2] = g_Camera.position.z;
@@ -532,10 +556,11 @@ static void RenderScene(SDL_GPUCommandBuffer* cmd,
     /* Set up the bindings */
     SDL_GPUBufferBinding vertex_binding = { g_RenderState.skinnedVertexBuffer, 0 };
     SDL_GPUBufferBinding index_binding  = { g_RenderState.indexBuffer , 0 };
-    SDL_GPUTextureSamplerBinding pageSamplers[3] = {
+    SDL_GPUTextureSamplerBinding pageSamplers[4] = {
         { .texture = g_RenderState.albedoPages.handle, .sampler = g_RenderState.sampler },
         { .texture = g_RenderState.normalPages.handle, .sampler = g_RenderState.sampler },
-        { .texture = g_RenderState.metallicRoughnessPages.handle, .sampler = g_RenderState.sampler }
+        { .texture = g_RenderState.metallicRoughnessPages.handle, .sampler = g_RenderState.sampler },
+        { .texture = g_WindowState.tex_shadow_depth, .sampler = g_RenderState.shadowSampler }
     };
     SDL_GPUBuffer* fragmentBuffers[2] = {
         g_RenderState.materialBuffer,
@@ -695,6 +720,24 @@ void Render()
         hiz_depth_target.texture = winstate->tex_hiz_depth;
         hiz_depth_target.cycle = true;
     }
+
+    SDL_GPUColorTargetInfo shadow_color_target;
+    SDL_zero(shadow_color_target);
+    shadow_color_target.load_op = SDL_GPU_LOADOP_CLEAR;
+    shadow_color_target.store_op = SDL_GPU_STOREOP_STORE;
+    shadow_color_target.clear_color.r = 1.0f;
+    shadow_color_target.texture = winstate->tex_shadow_color;
+    shadow_color_target.cycle = true;
+
+    SDL_GPUDepthStencilTargetInfo shadow_depth_target;
+    SDL_zero(shadow_depth_target);
+    shadow_depth_target.clear_depth      = 1.0f;
+    shadow_depth_target.load_op          = SDL_GPU_LOADOP_CLEAR;
+    shadow_depth_target.store_op         = SDL_GPU_STOREOP_STORE;
+    shadow_depth_target.stencil_load_op  = SDL_GPU_LOADOP_DONT_CARE;
+    shadow_depth_target.stencil_store_op = SDL_GPU_STOREOP_DONT_CARE;
+    shadow_depth_target.texture          = winstate->tex_shadow_depth;
+    shadow_depth_target.cycle            = true;
     if (skinnedSet.numEntities > 0)
     {
         UpdateGPUBuffer(g_RenderState.skinnedBuffers.entity, skinnedSet.entities, skinnedSet.numEntities * sizeof(Entity), 0ull);
@@ -707,6 +750,19 @@ void Render()
     }
     
     mat4x4 viewProj = M44Multiply(g_Camera.view, g_Camera.projection);
+    mat4x4 shadowViewProj = GetShadowViewProj();
+    FrustumPlanes shadowFrustumPlanes = CreateFrustumPlanes(shadowViewProj);
+    DispatchCullDrawArgsCompute(cmd, &skinnedSet, &g_RenderState.skinnedBuffers, shadowFrustumPlanes, shadowViewProj,
+                                winstate->tex_hiz, winstate->hiz_width, winstate->hiz_height, winstate->hiz_mip_count,
+                                g_EnableShadowHiZ, true);
+    DispatchAnimationCompute(cmd, &skinnedSet);
+    DispatchAnimateVerticesCompute(cmd, &skinnedSet);
+    DispatchCullDrawArgsCompute(cmd, &surfaceSet, &g_RenderState.surfaceBuffers, shadowFrustumPlanes, shadowViewProj,
+                                winstate->tex_hiz, winstate->hiz_width, winstate->hiz_height, winstate->hiz_mip_count,
+                                g_EnableShadowHiZ, false);
+    RenderDepthPrepass(cmd, &shadow_color_target, &shadow_depth_target, shadowViewProj,
+                       g_RenderState.skinnedShadowPipeline, g_RenderState.surfaceShadowPipeline);
+
     FrustumPlanes frustumPlanes = CreateFrustumPlanes(viewProj);
     bool enableHiZ = g_EnableOcclusion && winstate->hiz_valid;
     mat4x4 hiZViewProj = enableHiZ ? winstate->hiz_view_proj : viewProj;
@@ -834,7 +890,7 @@ static void InitSkinedPipeline()
         .format              = SDL_GetGPUShaderFormats(g_GPUDevice),
         .code                = Shaders_SkinnedFrag_spv,
         .code_size           = sizeof(Shaders_SkinnedFrag_spv),
-        .num_samplers        = 3,
+        .num_samplers        = 4,
         .num_storage_buffers = 2,
         .stage               = SDL_GPU_SHADERSTAGE_FRAGMENT,
         .entrypoint          = "frag"
@@ -906,7 +962,7 @@ static void InitSurfacePipeline()
         .format              = SDL_GetGPUShaderFormats(g_GPUDevice),
         .code                = Shaders_SurfaceFrag_spv,
         .code_size           = sizeof(Shaders_SurfaceFrag_spv),
-        .num_samplers        = 3,
+        .num_samplers        = 4,
         .num_storage_buffers = 2,
         .stage               = SDL_GPU_SHADERSTAGE_FRAGMENT,
         .entrypoint          = "frag"
@@ -1052,8 +1108,14 @@ static void InitDepthOnlyPipelines()
 
     g_RenderState.surfaceDepthPipeline = SDL_CreateGPUGraphicsPipeline(g_GPUDevice, &surface_desc);
     g_RenderState.skinnedDepthPipeline = SDL_CreateGPUGraphicsPipeline(g_GPUDevice, &skinned_desc);
+    surface_desc.multisample_state = (SDL_GPUMultisampleState){ .sample_count = SDL_GPU_SAMPLECOUNT_1 };
+    skinned_desc.multisample_state = (SDL_GPUMultisampleState){ .sample_count = SDL_GPU_SAMPLECOUNT_1 };
+    g_RenderState.surfaceShadowPipeline = SDL_CreateGPUGraphicsPipeline(g_GPUDevice, &surface_desc);
+    g_RenderState.skinnedShadowPipeline = SDL_CreateGPUGraphicsPipeline(g_GPUDevice, &skinned_desc);
     CHECK_CREATE(g_RenderState.surfaceDepthPipeline, "Surface Depth Pipeline")
     CHECK_CREATE(g_RenderState.skinnedDepthPipeline, "Skinned Depth Pipeline")
+    CHECK_CREATE(g_RenderState.surfaceShadowPipeline, "Surface Shadow Pipeline")
+    CHECK_CREATE(g_RenderState.skinnedShadowPipeline, "Skinned Shadow Pipeline")
 
     SDL_ReleaseGPUShader(g_GPUDevice, surface_vertex_shader);
     SDL_ReleaseGPUShader(g_GPUDevice, surface_fragment_shader);
@@ -1068,12 +1130,7 @@ void RendererInit()
     InitSurfacePipeline();
     InitDepthOnlyPipelines();
     InitLinePipeline();
-    InitAnimationComputePipeline();
-    InitAnimateVerticesComputePipeline();
-    InitCullDrawArgsComputePipeline();
-    InitTonemapComputePipeline();
-    InitHiZBuildComputePipeline();
-    InitHiZDownscaleComputePipeline();
+    InitPipelines();
 }
 
 static void DestroyRenderSetBuffers(RenderSetBuffers* buffers)
@@ -1100,6 +1157,7 @@ static void DestroyPipeline()
     if (g_RenderState.indexBuffer) SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.indexBuffer);
     if (g_RenderState.sampler) SDL_ReleaseGPUSampler(g_GPUDevice, g_RenderState.sampler);
     if (g_RenderState.hiZSampler) SDL_ReleaseGPUSampler(g_GPUDevice, g_RenderState.hiZSampler);
+    if (g_RenderState.shadowSampler) SDL_ReleaseGPUSampler(g_GPUDevice, g_RenderState.shadowSampler);
     if (g_RenderState.textureDescriptorBuffer) SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.textureDescriptorBuffer);
     if (g_RenderState.materialBuffer) SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.materialBuffer);
     if (g_RenderState.albedoPages.handle) SDL_ReleaseGPUTexture(g_GPUDevice, g_RenderState.albedoPages.handle);
@@ -1109,6 +1167,8 @@ static void DestroyPipeline()
     if (g_RenderState.surfacePipeline)     SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.surfacePipeline);
     if (g_RenderState.skinnedDepthPipeline) SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.skinnedDepthPipeline);
     if (g_RenderState.surfaceDepthPipeline) SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.surfaceDepthPipeline);
+    if (g_RenderState.skinnedShadowPipeline) SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.skinnedShadowPipeline);
+    if (g_RenderState.surfaceShadowPipeline) SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.surfaceShadowPipeline);
     if (g_AnimComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_AnimComputePipeline);
     if (g_AnimVerticesPipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_AnimVerticesPipeline);
     if (g_CullDrawArgsComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_CullDrawArgsComputePipeline);

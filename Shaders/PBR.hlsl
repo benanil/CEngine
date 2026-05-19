@@ -77,7 +77,7 @@ float3 DecodeNormalRG(float2 normalRG)
     return normalize(float3(xy, z));
 }
 
-float3 ApplyPBR(float3 albedo, float3 normal, float3 viewDir, float metallic, float roughness)
+float3 ApplyPBR(float3 albedo, float3 normal, float3 viewDir, float metallic, float roughness, float shadow)
 {
     normal    = normalize(normal);
 
@@ -110,9 +110,14 @@ float3 ApplyPBR(float3 albedo, float3 normal, float3 viewDir, float metallic, fl
 
     float3 specular = D * V * F;
     float3 diffuseColor = (1.0f - F) * (1.0f - metallic) * albedo * diffuse;
-    float3 direct = (diffuseColor + specular) * radiance * NdotL;
+    float3 direct = (diffuseColor + specular) * radiance * NdotL * shadow;
     float3 ambient = albedo * 0.1f;
     return ambient + direct;
+}
+
+float3 ApplyPBR(float3 albedo, float3 normal, float3 viewDir, float metallic, float roughness)
+{
+    return ApplyPBR(albedo, normal, viewDir, metallic, roughness, 1.0f);
 }
 
 #endif

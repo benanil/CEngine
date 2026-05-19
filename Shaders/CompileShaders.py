@@ -10,6 +10,7 @@ SHADER_DIR = Path("Shaders")
 SPV_DIR    = SHADER_DIR / "spv"
 
 GRAPHICS_SHADERS = [
+    ("Surface"  , "vert", "frag"),
     ("Skinned"  , "vert", "frag"),
     ("LineDebug", "vert", "frag"),
     ("SurfaceDepthOnly", "vert", "frag"),
