@@ -11,12 +11,7 @@ float SampleShadow(Texture2D<float> shadowMap, SamplerState sampler, float4 shad
 
     float2 texel = 1.35f / float2(width, height);
     float3 lightDir = normalize(float3(-0.33f, 0.66f, 0.0f));
-    float NdotL = saturate(dot(normalize(normal), lightDir));
-    float slopeBias = lerp(0.00008f, 0.00075f, 1.0f - NdotL);
-    float receiverBias = max(abs(ddx(depth)), abs(ddy(depth))) * 1.5f;
-    float bias = max(slopeBias, receiverBias);
-    float2 uvMin = texel;
-    float2 uvMax = 1.0f - texel;
+    float bias = max(0.0007f * (1.0f - dot(normalize(normal), lightDir)), 0.0002f);
 
     float shadow = 0.0f;
     [unroll]
@@ -25,8 +20,7 @@ float SampleShadow(Texture2D<float> shadowMap, SamplerState sampler, float4 shad
         [unroll]
         for (int x = -1; x <= 1; x++)
         {
-            float2 sampleUV = clamp(uv + float2(x, y) * texel, uvMin, uvMax);
-            float mapDepth = shadowMap.Sample(sampler, sampleUV).r;
+            float mapDepth = shadowMap.Sample(sampler, uv + float2(x, y) * texel).r;
             shadow += (depth - bias <= mapDepth) ? 1.0f : 0.0f;
         }
     }
