@@ -19,11 +19,17 @@
 #define BIndirectBit     SDL_GPU_BUFFERUSAGE_INDIRECT
 #define BVertexBit       SDL_GPU_BUFFERUSAGE_VERTEX
 
-#define SHADOW_MAX_DISTANCE    300.0f
-#define SHADOW_ORTHO_SIZE      64.0f
+#define SHADOW_MAX_DISTANCE    400.0f
 #define SHADOW_NEAR_PLANE      1.0f
-#define SHADOW_FAR_PLANE       300.0f
 #define SHADOW_CAMERA_DISTANCE 200.0f
+#define SHADOW_CASCADE_LAMBDA  0.95f
+#define SHADOW_CASCADE_OVERLAP 0.04f
+
+typedef struct ShadowCascadeData_
+{
+    mat4x4 lightViewProj[SHADOW_CASCADE_COUNT];
+    float  splitDistances[SHADOW_CASCADE_COUNT];
+} ShadowCascadeData;
 
 typedef struct DepthPassContext_
 {
@@ -40,7 +46,7 @@ typedef struct ScenePassContext_
 {
     SDL_GPUColorTargetInfo* colorTarget;
     SDL_GPUDepthStencilTargetInfo* depthTarget;
-    mat4x4 shadowViewProj;
+    ShadowCascadeData shadowCascades;
     mat4x4 viewProj;
 } ScenePassContext;
 
@@ -65,7 +71,7 @@ extern SDL_GPUComputePipeline* g_HiZDownscaleComputePipeline;
 void InitRenderPipelines(void);
 void DestroyRenderPipelines(void);
 
-mat4x4 GetShadowViewProj(void);
+ShadowCascadeData GetShadowCascades(void);
 
 void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd, 
                                  RenderSet* renderSet,

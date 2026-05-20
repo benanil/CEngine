@@ -106,6 +106,13 @@ static SDL_GPUDepthStencilTargetInfo MakeDepthTarget(SDL_GPUTexture* texture, SD
     return target;
 }
 
+static SDL_GPUDepthStencilTargetInfo MakeShadowDepthTarget(SDL_GPUTexture* texture, u32 layer)
+{
+    SDL_GPUDepthStencilTargetInfo target = MakeDepthTarget(texture, SDL_GPU_LOADOP_CLEAR, false);
+    (void)layer;
+    return target;
+}
+
 static SDL_GPUColorTargetInfo MakeHiZDepthTarget(WindowState* winstate)
 {
     SDL_GPUColorTargetInfo target;
@@ -129,7 +136,7 @@ static SDL_GPUColorTargetInfo MakeHiZDepthTarget(WindowState* winstate)
     return target;
 }
 
-static SDL_GPUColorTargetInfo MakeShadowColorTarget(WindowState* winstate)
+static SDL_GPUColorTargetInfo MakeShadowColorTarget(WindowState* winstate, u32 layer)
 {
     SDL_GPUColorTargetInfo target;
     SDL_zero(target);
@@ -137,7 +144,8 @@ static SDL_GPUColorTargetInfo MakeShadowColorTarget(WindowState* winstate)
     target.store_op = SDL_GPU_STOREOP_STORE;
     target.clear_color.r = 1.0f;
     target.texture = winstate->tex_shadow_color;
-    target.cycle = true;
+    target.layer_or_depth_plane = layer;
+    target.cycle = false;
     return target;
 }
 
@@ -213,17 +221,21 @@ void Render(void)
     CullScene(cmd, cameraFrustum, hiZViewProj, enableHiZ, true);
     AnimateCameraVisibleSkinned(cmd);
 
-    mat4x4 shadowViewProj = GetShadowViewProj();
-    SDL_GPUColorTargetInfo shadow_color_target = MakeShadowColorTarget(winstate);
-    SDL_GPUDepthStencilTargetInfo shadow_depth_target = MakeDepthTarget(winstate->tex_shadow_depth, SDL_GPU_LOADOP_CLEAR, true);
-    CullScene(cmd, CreateFrustumPlanes(shadowViewProj), shadowViewProj, true, false);
-    RenderDepth(cmd, &(DepthPassContext){
-        .colorTarget     = &shadow_color_target,
-        .depthTarget     = &shadow_depth_target,
-        .skinnedPipeline = g_RenderState.skinnedShadowPipeline,
-        .surfacePipeline = g_RenderState.surfaceShadowPipeline,
-        .viewProj        = shadowViewProj
-    });
+    ShadowCascadeData shadowCascades = GetShadowCascades();
+    for (u32 cascade = 0; cascade < SHADOW_CASCADE_COUNT; cascade++)
+    {
+        mat4x4 shadowViewProj = shadowCascades.lightViewProj[cascade];
+        SDL_GPUColorTargetInfo shadow_color_target = MakeShadowColorTarget(winstate, cascade);
+        SDL_GPUDepthStencilTargetInfo shadow_depth_target = MakeShadowDepthTarget(winstate->tex_shadow_depth, cascade);
+        CullScene(cmd, CreateFrustumPlanes(shadowViewProj), shadowViewProj, true, false);
+        RenderDepth(cmd, &(DepthPassContext){
+            .colorTarget     = &shadow_color_target,
+            .depthTarget     = &shadow_depth_target,
+            .skinnedPipeline = g_RenderState.skinnedShadowPipeline,
+            .surfacePipeline = g_RenderState.surfaceShadowPipeline,
+            .viewProj        = shadowViewProj
+        });
+    }
 
     CullScene(cmd, cameraFrustum, hiZViewProj, enableHiZ, true);
     RenderDepth(cmd, &(DepthPassContext){
@@ -236,7 +248,7 @@ void Render(void)
     RenderScene(cmd, &(ScenePassContext){
         .colorTarget = &color_target,
         .depthTarget = &main_depth_target,
-        .shadowViewProj = shadowViewProj,
+        .shadowCascades = shadowCascades,
         .viewProj    = viewProj
     });
     DispatchHiZBuildCompute(cmd);

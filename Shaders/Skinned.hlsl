@@ -9,8 +9,10 @@
 cbuffer vs_params : register(b0, space1)
 {
     float4x4 uViewProj;
-    float4x4 uLightViewProj;
+    float4x4 uLightViewProj[3];
     float4 uCameraPosition;
+    float4 uCameraForward;
+    float4 uCascadeSplits;
 };
 
 StructuredBuffer<Entity>         sEntities         : register(t0);
@@ -35,8 +37,12 @@ struct VSOutput
     f16_3_io tangent   : TANGENT0;
     f16_3_io bitangent : TEXCOORD1;
     f16_3_io viewDir   : TEXCOORD2;
-    float4   shadowPos : TEXCOORD3;
-    nointerpolation uint materialIndex : TEXCOORD4;
+    float4   shadowPos0 : TEXCOORD3;
+    float4   shadowPos1 : TEXCOORD4;
+    float4   shadowPos2 : TEXCOORD5;
+    float    viewDepth  : TEXCOORD6;
+    nointerpolation uint cascadeIndex : TEXCOORD7;
+    nointerpolation uint materialIndex : TEXCOORD8;
 };
 
 VSOutput vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("DrawIndex")]] uint drawID : DRAWINDEX, uint vertexID : SV_VertexID)
@@ -63,7 +69,12 @@ VSOutput vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("Dra
     o.tangent   = tbn[1];
     o.bitangent = cross(tbn[2], tbn[1]) * tangentHandedness;
     o.viewDir   = uCameraPosition.xyz - finalWorldPos;
-    o.shadowPos = mul(uLightViewProj, float4(finalWorldPos, 1.0));
+    o.shadowPos0 = mul(uLightViewProj[0], float4(finalWorldPos, 1.0));
+    o.shadowPos1 = mul(uLightViewProj[1], float4(finalWorldPos, 1.0));
+    o.shadowPos2 = mul(uLightViewProj[2], float4(finalWorldPos, 1.0));
+    o.viewDepth = dot(finalWorldPos - uCameraPosition.xyz, uCameraForward.xyz);
+    o.cascadeIndex = o.viewDepth > uCascadeSplits.x ? 1u : 0u;
+    o.cascadeIndex = o.viewDepth > uCascadeSplits.y ? 2u : o.cascadeIndex;
     o.materialIndex = group.materialIndex;
     return o;
 }
@@ -71,7 +82,7 @@ VSOutput vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("Dra
 Texture2DArray<float4> AlbedoPages            : register(t0, space2);
 Texture2DArray<float2> NormalPages            : register(t1, space2);
 Texture2DArray<float2> MetallicRoughnessPages : register(t2, space2);
-Texture2D<float>       ShadowMap              : register(t3, space2);
+Texture2DArray<float>  ShadowMap              : register(t3, space2);
 SamplerState           Sampler                : register(s0, space2);
 
 StructuredBuffer<MaterialGPU>        sMaterials          : register(t4, space2);
@@ -97,6 +108,8 @@ float4 frag(VSOutput input) : SV_Target0
     float metallic  = float(mr.x) * metallicFactor;
     float roughness = float(mr.y) * roughnessFactor;
     
-    float shadow = SampleShadow(ShadowMap, Sampler, input.shadowPos, N);
+    uint cascadeIndex = input.cascadeIndex;
+    float4 shadowPos = cascadeIndex == 0u ? input.shadowPos0 : (cascadeIndex == 1u ? input.shadowPos1 : input.shadowPos2);
+    float shadow = SampleShadow(ShadowMap, Sampler, shadowPos, cascadeIndex, N);
     return float4(ApplyPBR(float3(baseColor), N, float3(input.viewDir), metallic, roughness, shadow), baseFactor.a);
 }

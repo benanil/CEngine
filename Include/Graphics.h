@@ -15,7 +15,8 @@
 #define MAX_SCENE_TEXTURES      1024
 #define MAX_TEXTURE_DESCRIPTORS 2048
 #define MAX_GPU_MATERIALS       2048
-#define SHADOW_MAP_SIZE         2048u
+#define SHADOW_MAP_SIZE         1024u
+#define SHADOW_CASCADE_COUNT    3u
 
 #if defined(__cplusplus)
 extern "C" {
@@ -266,7 +267,7 @@ SDL_GPUTexture* CreatePostProcessTexture(u32 drawablew, u32 drawableh);
 
 SDL_GPUTexture* CreateShadowDepthTexture(u32 size);
 
-SDL_GPUTexture* CreateShadowColorTexture(u32 size);
+SDL_GPUTexture* CreateShadowColorTexture(u32 size, u32 layers);
 
 #if defined(__cplusplus)
 }

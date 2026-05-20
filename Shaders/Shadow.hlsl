@@ -1,4 +1,4 @@
-float SampleShadow(Texture2D<float> shadowMap, SamplerState sampler, float4 shadowPos, float3 normal)
+float SampleShadow(Texture2DArray<float> shadowMap, SamplerState sampler, float4 shadowPos, uint cascadeIndex, float3 normal)
 {
     float3 proj = shadowPos.xyz / shadowPos.w;
     float2 uv = proj.xy * float2(0.5f, -0.5f) + 0.5f;
@@ -6,8 +6,8 @@ float SampleShadow(Texture2D<float> shadowMap, SamplerState sampler, float4 shad
     if (shadowPos.w <= 0.0f || any(uv < 0.0f) || any(uv > 1.0f) || depth >= 1.0f)
         return 1.0f;
 
-    uint width, height;
-    shadowMap.GetDimensions(width, height);
+    uint width, height, layers;
+    shadowMap.GetDimensions(width, height, layers);
 
     float2 texel = 1.35f / float2(width, height);
     float3 lightDir = normalize(float3(-0.33f, 0.66f, 0.0f));
@@ -20,7 +20,7 @@ float SampleShadow(Texture2D<float> shadowMap, SamplerState sampler, float4 shad
         [unroll]
         for (int x = -1; x <= 1; x++)
         {
-            float mapDepth = shadowMap.Sample(sampler, uv + float2(x, y) * texel).r;
+            float mapDepth = shadowMap.Sample(sampler, float3(uv + float2(x, y) * texel, float(cascadeIndex))).r;
             shadow += (depth - bias <= mapDepth) ? 1.0f : 0.0f;
         }
     }

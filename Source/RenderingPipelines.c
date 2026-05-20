@@ -250,7 +250,7 @@ static void InitSkinedPipeline(void)
     });
 
     SDL_GPUShader* fragment_shader = SDL_CreateGPUShader(g_GPUDevice, &(SDL_GPUShaderCreateInfo){
-        .num_uniform_buffers = 0,
+        .num_uniform_buffers = 1,
         .format              = SDL_GetGPUShaderFormats(g_GPUDevice),
         .code                = Shaders_SkinnedFrag_spv,
         .code_size           = sizeof(Shaders_SkinnedFrag_spv),

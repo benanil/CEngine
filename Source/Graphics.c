@@ -120,7 +120,7 @@ void GraphicsInit(bool msaa)
     winstate->tex_post    = CreatePostProcessTexture(drawablew, drawableh);
     winstate->tex_hiz     = CreateHiZTexture(drawablew, drawableh, &winstate->hiz_mip_count);
     winstate->tex_shadow_depth = CreateShadowDepthTexture(SHADOW_MAP_SIZE);
-    winstate->tex_shadow_color = CreateShadowColorTexture(SHADOW_MAP_SIZE);
+    winstate->tex_shadow_color = CreateShadowColorTexture(SHADOW_MAP_SIZE, SHADOW_CASCADE_COUNT);
     winstate->hiz_width   = drawablew;
     winstate->hiz_height  = drawableh;
     winstate->hiz_valid   = false;
@@ -274,6 +274,28 @@ static SDL_GPUTexture* CreateTexture2D(u32 width, u32 height,
     return result;
 }
 
+static SDL_GPUTexture* CreateTexture2DArray(u32 width, u32 height, u32 layers,
+                                            SDL_GPUTextureFormat format,
+                                            SDL_GPUTextureUsageFlags usage,
+                                            const char* label)
+{
+    SDL_GPUTextureCreateInfo createinfo = {
+        .type = SDL_GPU_TEXTURETYPE_2D_ARRAY,
+        .format = format,
+        .usage = usage,
+        .width = width,
+        .height = height,
+        .layer_count_or_depth = layers,
+        .num_levels = 1,
+        .sample_count = SDL_GPU_SAMPLECOUNT_1,
+        .props = 0
+    };
+
+    SDL_GPUTexture* result = SDL_CreateGPUTexture(g_GPUDevice, &createinfo);
+    CHECK_CREATE(result, label)
+    return result;
+}
+
 SDL_GPUTexture* CreateDepthTexture(u32 drawablew, u32 drawableh)
 {
     SDL_GPUTextureUsageFlags usage = SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET;
@@ -341,15 +363,15 @@ SDL_GPUTexture* CreatePostProcessTexture(u32 drawablew, u32 drawableh)
 SDL_GPUTexture* CreateShadowDepthTexture(u32 size)
 {
     return CreateTexture2D(size, size, SDL_GPU_TEXTUREFORMAT_D32_FLOAT,
-                           SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER,
+                           SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET,
                            SDL_GPU_SAMPLECOUNT_1, 1, "Shadow Depth Texture");
 }
 
-SDL_GPUTexture* CreateShadowColorTexture(u32 size)
+SDL_GPUTexture* CreateShadowColorTexture(u32 size, u32 layers)
 {
-    return CreateTexture2D(size, size, SDL_GPU_TEXTUREFORMAT_R32_FLOAT,
-                           SDL_GPU_TEXTUREUSAGE_COLOR_TARGET,
-                           SDL_GPU_SAMPLECOUNT_1, 1, "Shadow Color Texture");
+    return CreateTexture2DArray(size, size, layers, SDL_GPU_TEXTUREFORMAT_R32_FLOAT,
+                                SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER,
+                                "Shadow Color Texture");
 }
 
 static void MakeRGBAFromRGB(const unsigned char* RESTRICT from, unsigned char* rgba, int numPixels)
