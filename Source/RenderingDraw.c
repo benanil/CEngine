@@ -1,38 +1,134 @@
 #include "RenderingInternal.h"
 
-static float3 GetSunLightDir(void)
+float3 GetRenderSunDirection(void)
 {
     return F3Norm((float3){ -0.33f, 0.66f, 0.0f });
 }
 
-mat4x4 GetShadowViewProj(void)
+static inline v128f VCALL TransformPoint(mat4x4 m, v128f p)
 {
-    float3 lightDir = GetSunLightDir();
-    float3 center = g_Camera.position;
-    float3 eye = F3Add(center, F3MulF(lightDir, SHADOW_CAMERA_DISTANCE));
-    float3 viewDir = F3MulF(lightDir, -1.0f);
-    mat4x4 view = M44LookAtRH(eye, viewDir, (float3){ 0.0f, 1.0f, 0.0f });
-    mat4x4 proj = M44OrthoRH(-SHADOW_ORTHO_SIZE, SHADOW_ORTHO_SIZE,
-                             -SHADOW_ORTHO_SIZE, SHADOW_ORTHO_SIZE,
-                              SHADOW_NEAR_PLANE, SHADOW_FAR_PLANE);
-    return M44Multiply(view, proj);
+    return Vec3Transform(p, m.r);
 }
 
-void RenderDepth(SDL_GPUCommandBuffer* cmd,
-                        SDL_GPUColorTargetInfo* color_target,
-                        SDL_GPUDepthStencilTargetInfo* depth_target,
-                        mat4x4 viewProj,
-                        SDL_GPUGraphicsPipeline* skinnedPipeline,
-                        SDL_GPUGraphicsPipeline* surfacePipeline)
+static inline v128f VCALL AddScaled(v128f a, v128f b, float scale)
+{
+    return VecFmadd(b, VecSet1(scale), a);
+}
+
+static float CascadeSplitDistance(float shadowNear, float shadowFar, u32 cascade)
+{
+    const float splits[SHADOW_CASCADE_COUNT] = {
+        SHADOW_CASCADE_SPLIT0,
+        SHADOW_CASCADE_SPLIT1,
+        SHADOW_MAX_DISTANCE
+    };
+    float split = Minf32(splits[cascade], shadowFar);
+    if (cascade > 0)
+    {
+        split = Maxf32(split, Minf32(splits[cascade - 1u], shadowFar));
+    }
+    return Maxf32(split, shadowNear);
+}
+
+static u32 GetShadowCascadeMapSize(u32 cascade)
+{
+    (void)cascade;
+    return SHADOW_MAP_SIZE;
+}
+
+ShadowCascadeData GetShadowCascades(void)
+{
+    ShadowCascadeData result;
+    float shadowNear = Maxf32(g_Camera.nearClip, 0.01f);
+    float shadowFar  = Minf32(g_Camera.farClip, SHADOW_MAX_DISTANCE);
+    float aspect     = (float)Maxi32(g_Camera.viewportSize.x, 1) / (float)Maxi32(g_Camera.viewportSize.y, 1);
+    float tanHalfFov = Tan(g_Camera.verticalFOV * MATH_DegToRad * 0.5f);
+
+    float3 sunLightDir   = GetRenderSunDirection();
+    v128f lightDir       = Vec3Load(&sunLightDir.x);
+    v128f lightViewDir   = VecMul(lightDir, VecSet1(-1.0f));
+    v128f cameraPosition = Vec3Load(&g_Camera.position.x);
+    v128f cameraFront    = Vec3Load(&g_Camera.Front.x);
+    v128f cameraRight    = Vec3Load(&g_Camera.Right.x);
+    v128f cameraUp       = Vec3Load(&g_Camera.Up.x);
+    float previousSplit = shadowNear;
+
+    for (u32 cascade = 0; cascade < SHADOW_CASCADE_COUNT; cascade++)
+    {
+        float split = CascadeSplitDistance(shadowNear, shadowFar, cascade);
+        result.splitDistances[cascade] = split;
+        float nearDist = previousSplit;
+        float farDist  = split;
+        previousSplit  = split;
+
+        float nearH = tanHalfFov * nearDist;
+        float nearW = nearH * aspect;
+        float farH  = tanHalfFov * farDist;
+        float farW  = farH * aspect;
+        v128f nearCenter = AddScaled(cameraPosition, cameraFront, nearDist);
+        v128f farCenter  = AddScaled(cameraPosition, cameraFront, farDist);
+        v128f corners[8] = {
+            AddScaled(AddScaled(nearCenter, cameraUp,  nearH), cameraRight, -nearW),
+            AddScaled(AddScaled(nearCenter, cameraUp,  nearH), cameraRight,  nearW),
+            AddScaled(AddScaled(nearCenter, cameraUp, -nearH), cameraRight, -nearW),
+            AddScaled(AddScaled(nearCenter, cameraUp, -nearH), cameraRight,  nearW),
+            AddScaled(AddScaled(farCenter,  cameraUp,  farH),  cameraRight, -farW),
+            AddScaled(AddScaled(farCenter,  cameraUp,  farH),  cameraRight,  farW),
+            AddScaled(AddScaled(farCenter,  cameraUp, -farH),  cameraRight, -farW),
+            AddScaled(AddScaled(farCenter,  cameraUp, -farH),  cameraRight,  farW)
+        };
+
+        v128f center = VecZero();
+        for (u32 i = 0; i < 8u; i++) center = VecAdd(center, corners[i]);
+        center = VecMul(center, VecSet1(1.0f / 8.0f));
+
+        float radius = 0.0f;
+        for (u32 i = 0; i < 8u; i++)
+        {
+            float dist = Vec3LenfV(VecSub(corners[i], center));
+            radius = Maxf32(radius, dist);
+        }
+        radius = Maxf32(radius, 1.0f);
+
+        float eyeDistance = radius + SHADOW_CAMERA_DISTANCE + SHADOW_CASTER_DEPTH_MARGIN;
+        v128f eye = AddScaled(center, lightDir, eyeDistance);
+        
+        // prevent LookAt NaN failures if the sun points straight down (e.g. at noon)
+        v128f upVec = VecSetR(0.0f, 1.0f, 0.0f, 0.0f);
+        if (Absf32(sunLightDir.y) > 0.999f) {
+            upVec = VecSetR(0.0f, 0.0f, 1.0f, 0.0f);
+        }
+        mat4x4 view = M44LookAtRHVec(eye, lightViewDir, upVec);
+        float extent = Ceilf(radius * 2.0f + 2.0f);
+        float halfExtent = extent * 0.5f;
+        v128f texelSize = VecSet1(extent / (float)GetShadowCascadeMapSize(cascade));
+
+        // completely replacing the skewed minLight/maxLight AABB logic.
+        v128f originLS = TransformPoint(view, center);
+        v128f originLS_snapped = VecMul(VecFloor(VecAdd(VecDiv(originLS, texelSize), VecSet1(0.5f))), texelSize);
+        v128f offset = VecSub(originLS, originLS_snapped);
+
+        mat4x4 proj = M44OrthoRH(VecGetX(offset) - halfExtent, VecGetX(offset) + halfExtent,
+                                 VecGetY(offset) - halfExtent, VecGetY(offset) + halfExtent,
+                                 SHADOW_NEAR_PLANE, eyeDistance + radius + SHADOW_CASTER_DEPTH_MARGIN);
+        result.lightViewProj[cascade] = M44Multiply(view, proj);
+    }
+
+    return result;
+}
+
+void RenderDepth(SDL_GPUCommandBuffer* cmd, const DepthPassContext* ctx)
 {
     SDL_GPUBufferBinding vertex_binding = { g_RenderState.skinnedVertexBuffer, 0 };
     SDL_GPUBufferBinding index_binding  = { g_RenderState.indexBuffer, 0 };
 
-    SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmd, color_target, color_target ? 1 : 0, depth_target);
+    SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmd, ctx->colorTarget, ctx->colorTarget ? 1 : 0, ctx->depthTarget);
+    if (ctx->viewport) SDL_SetGPUViewport(pass, ctx->viewport);
+    if (ctx->scissor) SDL_SetGPUScissor(pass, ctx->scissor);
 
     if (skinnedSet.numGroups > 0)
     {
-        SDL_BindGPUGraphicsPipeline(pass, skinnedPipeline);
+        SDL_BindGPUGraphicsPipeline(pass, ctx->skinnedPipeline);
         SDL_BindGPUVertexBuffers(pass, 0, &vertex_binding, 1);
         SDL_BindGPUIndexBuffer(pass, &index_binding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
         SDL_GPUBuffer* buffers[4] = {
@@ -42,13 +138,13 @@ void RenderDepth(SDL_GPUCommandBuffer* cmd,
             g_RenderState.skinnedAnimatedVertices
         };
         SDL_BindGPUVertexStorageBuffers(pass, 0, buffers, SDL_arraysize(buffers));
-        SDL_PushGPUVertexUniformData(cmd, 0, &viewProj, sizeof(mat4x4));
+        SDL_PushGPUVertexUniformData(cmd, 0, &ctx->viewProj, sizeof(mat4x4));
         SDL_DrawGPUIndexedPrimitivesIndirect(pass, g_RenderState.skinnedBuffers.drawArgs, 0, skinnedSet.numGroups);
     }
 
     if (surfaceSet.numGroups > 0)
     {
-        SDL_BindGPUGraphicsPipeline(pass, surfacePipeline);
+        SDL_BindGPUGraphicsPipeline(pass, ctx->surfacePipeline);
         vertex_binding.buffer = g_RenderState.surfaceVertexBuffer;
         vertex_binding.offset = 0;
         SDL_BindGPUVertexBuffers(pass, 0, &vertex_binding, 1);
@@ -59,49 +155,63 @@ void RenderDepth(SDL_GPUCommandBuffer* cmd,
             g_RenderState.surfaceBuffers.drawSparseIndices
         };
         SDL_BindGPUVertexStorageBuffers(pass, 0, surfaceBuffers, SDL_arraysize(surfaceBuffers));
-        SDL_PushGPUVertexUniformData(cmd, 0, &viewProj, sizeof(mat4x4));
+        SDL_PushGPUVertexUniformData(cmd, 0, &ctx->viewProj, sizeof(mat4x4));
         SDL_DrawGPUIndexedPrimitivesIndirect(pass, g_RenderState.surfaceBuffers.drawArgs, 0, surfaceSet.numGroups);
     }
 
     SDL_EndGPURenderPass(pass);
 }
 
-void RenderScene(SDL_GPUCommandBuffer* cmd,
-                 SDL_GPUColorTargetInfo* color_target,
-                 SDL_GPUDepthStencilTargetInfo* depth_target,
-                 mat4x4 viewProj)
+void RenderScene(SDL_GPUCommandBuffer* cmd, const ScenePassContext* ctx)
 {
     struct {
         mat4x4 viewProj;
-        mat4x4 lightViewProj;
+        mat4x4 lightViewProj[SHADOW_CASCADE_COUNT];
         float cameraPosition[4];
-    } shaderParams;
+        float cameraForward[4];
+        float cascadeSplits[4];
+    } vertexParams;
     if (skinnedSet.numGroups + surfaceSet.numGroups <= 0)
     {
         AX_WARN("nothing to render");
         return;
     }
-    shaderParams.viewProj = viewProj;
-    shaderParams.lightViewProj = GetShadowViewProj();
-    shaderParams.cameraPosition[0] = g_Camera.position.x;
-    shaderParams.cameraPosition[1] = g_Camera.position.y;
-    shaderParams.cameraPosition[2] = g_Camera.position.z;
-    shaderParams.cameraPosition[3] = 0.0f;
+    vertexParams.viewProj = ctx->viewProj;
+    for (u32 i = 0; i < SHADOW_CASCADE_COUNT; i++)
+    {
+        vertexParams.lightViewProj[i] = ctx->shadowCascades.lightViewProj[i];
+        vertexParams.cascadeSplits[i] = ctx->shadowCascades.splitDistances[i];
+    }
+    vertexParams.cameraPosition[0] = g_Camera.position.x;
+    vertexParams.cameraPosition[1] = g_Camera.position.y;
+    vertexParams.cameraPosition[2] = g_Camera.position.z;
+    vertexParams.cameraPosition[3] = 0.0f;
+    vertexParams.cameraForward[0] = g_Camera.Front.x;
+    vertexParams.cameraForward[1] = g_Camera.Front.y;
+    vertexParams.cameraForward[2] = g_Camera.Front.z;
+    vertexParams.cameraForward[3] = 0.0f;
+    vertexParams.cascadeSplits[3] = ctx->shadowCascades.splitDistances[SHADOW_CASCADE_COUNT - 1u];
 
     SDL_GPUBufferBinding vertex_binding = { g_RenderState.skinnedVertexBuffer, 0 };
     SDL_GPUBufferBinding index_binding  = { g_RenderState.indexBuffer, 0 };
-    SDL_GPUTextureSamplerBinding pageSamplers[4] = {
+    float3 sunDirection = GetRenderSunDirection();
+    SDL_GPUTextureSamplerBinding pageSamplers[5] = {
         { .texture = g_RenderState.albedoPages.handle, .sampler = g_RenderState.sampler },
         { .texture = g_RenderState.normalPages.handle, .sampler = g_RenderState.sampler },
         { .texture = g_RenderState.metallicRoughnessPages.handle, .sampler = g_RenderState.sampler },
-        { .texture = g_WindowState.tex_shadow_depth, .sampler = g_RenderState.shadowSampler }
+        { .texture = g_WindowState.tex_shadow_color, .sampler = g_RenderState.shadowSampler },
+        { .texture = g_WindowState.tex_hbao_blur, .sampler = g_RenderState.sampler }
+    };
+    struct { f32 viewportSize[4]; f32 sunDirection[4]; } fragmentParams = {
+        { (f32)Maxi32(g_Camera.viewportSize.x, 1), (f32)Maxi32(g_Camera.viewportSize.y, 1), 0.0f, 0.0f },
+        { sunDirection.x, sunDirection.y, sunDirection.z, 0.0f }
     };
     SDL_GPUBuffer* fragmentBuffers[2] = {
         g_RenderState.materialBuffer,
         g_RenderState.textureDescriptorBuffer
     };
 
-    SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmd, color_target, 1, depth_target);
+    SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmd, ctx->colorTarget, 1, ctx->depthTarget);
     if (skinnedSet.numGroups > 0)
     {
         SDL_BindGPUGraphicsPipeline(pass, g_RenderState.skinnedPipeline);
@@ -119,7 +229,8 @@ void RenderScene(SDL_GPUCommandBuffer* cmd,
         SDL_BindGPUFragmentSamplers(pass, 0, pageSamplers, SDL_arraysize(pageSamplers));
         SDL_BindGPUFragmentStorageBuffers(pass, 0, fragmentBuffers, SDL_arraysize(fragmentBuffers));
 
-        SDL_PushGPUVertexUniformData(cmd, 0, &shaderParams, sizeof(shaderParams));
+        SDL_PushGPUVertexUniformData(cmd, 0, &vertexParams, sizeof(vertexParams));
+        SDL_PushGPUFragmentUniformData(cmd, 0, &fragmentParams, sizeof(fragmentParams));
         SDL_DrawGPUIndexedPrimitivesIndirect(pass, g_RenderState.skinnedBuffers.drawArgs, 0, skinnedSet.numGroups);
     }
 
@@ -139,7 +250,8 @@ void RenderScene(SDL_GPUCommandBuffer* cmd,
         SDL_BindGPUVertexStorageBuffers(pass, 0, surfaceBuffers, SDL_arraysize(surfaceBuffers));
         SDL_BindGPUFragmentSamplers(pass, 0, pageSamplers, SDL_arraysize(pageSamplers));
         SDL_BindGPUFragmentStorageBuffers(pass, 0, fragmentBuffers, SDL_arraysize(fragmentBuffers));
-        SDL_PushGPUVertexUniformData(cmd, 0, &shaderParams, sizeof(shaderParams));
+        SDL_PushGPUVertexUniformData(cmd, 0, &vertexParams, sizeof(vertexParams));
+        SDL_PushGPUFragmentUniformData(cmd, 0, &fragmentParams, sizeof(fragmentParams));
         SDL_DrawGPUIndexedPrimitivesIndirect(pass, g_RenderState.surfaceBuffers.drawArgs, 0, surfaceSet.numGroups);
     }
 
@@ -147,7 +259,7 @@ void RenderScene(SDL_GPUCommandBuffer* cmd,
     vertex_binding.buffer = g_RenderState.lineBuffer;
     vertex_binding.offset = 0;
     SDL_BindGPUVertexBuffers(pass, 0, &vertex_binding, 1);
-    SDL_PushGPUVertexUniformData(cmd, 0, &viewProj, sizeof(viewProj));
+    SDL_PushGPUVertexUniformData(cmd, 0, &ctx->viewProj, sizeof(ctx->viewProj));
     SDL_DrawGPUPrimitivesIndirect(pass, g_RenderState.lineDrawArgsBuffer, sizeof(int) * 4, 1);
 
     SDL_EndGPURenderPass(pass);

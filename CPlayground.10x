@@ -421,6 +421,15 @@
 					<File>
 						<Path>Shaders/Shadow.hlsl</Path>
 					</File>
+					<File>
+						<Path>Shaders/HBAOBlurCompute.hlsl</Path>
+					</File>
+					<File>
+						<Path>Shaders/HBAOCompute.hlsl</Path>
+					</File>
+					<File>
+						<Path>Shaders/HBAONormalCompute.hlsl</Path>
+					</File>
 				</Children>
 			</Folder>
 			<Folder>

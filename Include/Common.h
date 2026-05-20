@@ -427,7 +427,7 @@ purefn double Absf64(double x)
     return BitCast(double, ix);
 }
 
-purefn f32 Floorf(f32 x) {
+purefn f32 Floorf32(f32 x) {
     f32 whole = (f32)(s32)x;  // truncate quotient to integer
     return x - (x-whole);
 }
@@ -442,8 +442,8 @@ purefn f32 Ceilf(f32 x) {
     return whole + (f32)(x > whole);
 }
 
-purefn f32 Fractf(f32 a) {
-    return a - Floorf(a);
+purefn f32 Fractf32(f32 a) {
+    return a - Floorf32(a);
 }
 
 purefn f64 Fract(f64 a) {

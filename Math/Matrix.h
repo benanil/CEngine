@@ -433,19 +433,15 @@ purefn mat4x4 VCALL M44Transpose(mat4x4 M)
     return mResult;
 }
 
-purefn mat4x4 VCALL M44LookAtRH(const float3 eye, const float3 center, const float3 up)
+purefn mat4x4 VCALL M44LookAtRHVec(v128f EyePosition, v128f Center, v128f UpDirection)
 {
-    v128f EyePosition  = VecLoad(&eye.x);
-    v128f EyeDirection = VecSub(VecZero(), VecLoad(&center.x));
-    v128f UpDirection  = VecLoad(&up.x);
-        
+    v128f EyeDirection = VecSub(VecZero(), Center);
     v128f R0 = Vec3Cross(UpDirection, EyeDirection); 
     R0 = Vec3NormEstV(R0);
     v128f R1 = Vec3Cross(EyeDirection, R0); 
     R1 = Vec3NormEstV(R1);
         
     v128f NegEyePosition = VecSub(VecZero(), EyePosition);
-        
     v128f D0 = Vec3DotV(R0, NegEyePosition);
     v128f D1 = Vec3DotV(R1, NegEyePosition);
     v128f D2 = Vec3DotV(EyeDirection, NegEyePosition);
@@ -457,6 +453,11 @@ purefn mat4x4 VCALL M44LookAtRH(const float3 eye, const float3 center, const flo
     M.r[2] = VecSelect(D2, EyeDirection, test);
     M.r[3] = VecIdentityR3;
     return M44Transpose(M);
+}
+
+purefn mat4x4 VCALL M44LookAtRH(const float3 eye, const float3 center, const float3 up)
+{
+    return M44LookAtRHVec(VecLoad(&eye.x), VecLoad(&center.x), VecLoad(&up.x));
 }
 
 purefn mat4x4 M44OrthoRH(f32 left, f32 right, f32 bottom, f32 top, f32 zNear, f32 zFar)

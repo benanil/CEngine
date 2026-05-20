@@ -21,8 +21,12 @@ COMPUTE_SHADERS = [
     ("AnimationCompute"       , "main"),
     ("AnimateVertices"        , "main"),
     ("CullDrawArgsCompute"    , "main"),
+    ("TonemapCompute"         , "main"),
     ("HiZBuildCompute"        , "main"),
     ("HiZDownscaleCompute"    , "main"),
+    ("HBAONormalCompute"      , "main"),
+    ("HBAOCompute"            , "main"),
+    ("HBAOBlurCompute"        , "main"),
     ("DepthResolveMSAACompute", "main")
 ]
 
