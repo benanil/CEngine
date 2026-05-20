@@ -15,11 +15,19 @@ static inline v128f VCALL AddScaled(v128f a, v128f b, float scale)
     return VecFmadd(b, VecSet1(scale), a);
 }
 
-static float CascadeSplitDistance(float nearClip, float farClip, float t)
+static float CascadeSplitDistance(float shadowNear, float shadowFar, u32 cascade)
 {
-    float logSplit = nearClip * Powf(farClip / nearClip, t);
-    float uniformSplit = nearClip + (farClip - nearClip) * t;
-    return logSplit * SHADOW_CASCADE_LAMBDA + uniformSplit * (1.0f - SHADOW_CASCADE_LAMBDA);
+    const float splits[SHADOW_CASCADE_COUNT] = {
+        SHADOW_CASCADE_SPLIT0,
+        SHADOW_CASCADE_SPLIT1,
+        SHADOW_MAX_DISTANCE
+    };
+    float split = Minf32(splits[cascade], shadowFar);
+    if (cascade > 0)
+    {
+        split = Maxf32(split, Minf32(splits[cascade - 1u], shadowFar));
+    }
+    return Maxf32(split, shadowNear);
 }
 
 static u32 GetShadowCascadeMapSize(u32 cascade)
@@ -47,13 +55,11 @@ ShadowCascadeData GetShadowCascades(void)
 
     for (u32 cascade = 0; cascade < SHADOW_CASCADE_COUNT; cascade++)
     {
-        float t = (float)(cascade + 1u) / (float)SHADOW_CASCADE_COUNT;
-        float split = CascadeSplitDistance(shadowNear, shadowFar, t);
+        float split = CascadeSplitDistance(shadowNear, shadowFar, cascade);
         result.splitDistances[cascade] = split;
 
-        float sliceOverlap = Maxf32((split - previousSplit) * SHADOW_CASCADE_OVERLAP, 0.05f);
-        float nearDist = Maxf32(shadowNear, previousSplit - sliceOverlap);
-        float farDist  = Minf32(shadowFar, split + sliceOverlap);
+        float nearDist = previousSplit;
+        float farDist  = split;
         previousSplit = split;
 
         float nearH = tanHalfFov * nearDist;
@@ -98,7 +104,7 @@ ShadowCascadeData GetShadowCascades(void)
             maxLight = VecMax(maxLight, lightPos);
         }
 
-        float extent = Ceilf(radius * 2.0f);
+        float extent = Ceilf(radius * 2.0f + 2.0f);
         float halfExtent = extent * 0.5f;
         v128f centerV = VecMulf(VecAdd(minLight, maxLight), 0.5f);
         v128f texelSize = VecSet1(extent / (float)GetShadowCascadeMapSize(cascade));

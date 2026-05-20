@@ -1,7 +1,5 @@
 #include "RenderingInternal.h"
 
-SceneBundle*   gPaladin;
-SceneBundle*   gSponza;
 WindowState    g_WindowState;
 RenderState    g_RenderState;
 SDL_GPUDevice* g_GPUDevice = NULL;
@@ -108,9 +106,8 @@ static SDL_GPUDepthStencilTargetInfo MakeDepthTarget(SDL_GPUTexture* texture, SD
 
 static SDL_GPUDepthStencilTargetInfo MakeShadowDepthTarget(SDL_GPUTexture* texture, u32 layer)
 {
-    SDL_GPUDepthStencilTargetInfo target = MakeDepthTarget(texture, SDL_GPU_LOADOP_CLEAR, false);
     (void)layer;
-    return target;
+    return MakeDepthTarget(texture, SDL_GPU_LOADOP_CLEAR, false);
 }
 
 static SDL_GPUColorTargetInfo MakeHiZDepthTarget(WindowState* winstate)
@@ -221,13 +218,26 @@ void Render(void)
     CullScene(cmd, cameraFrustum, hiZViewProj, enableHiZ, true);
     AnimateCameraVisibleSkinned(cmd);
 
+    static ShadowCascadeData cachedShadowCascades;
+    static u32 shadowFrameIndex = 0;
+    static bool shadowCacheValid = false;
+
     ShadowCascadeData shadowCascades = GetShadowCascades();
+    u32 shadowFrame = shadowFrameIndex++;
     for (u32 cascade = 0; cascade < SHADOW_CASCADE_COUNT; cascade++)
     {
-        mat4x4 shadowViewProj = shadowCascades.lightViewProj[cascade];
+        // Keep skipped cascades paired with the shadow map from their last update.
+        bool updateCascade = !shadowCacheValid || cascade == 0u ||
+                             (cascade == 1u && (shadowFrame % SHADOW_CASCADE1_UPDATE_RATE) == 0u) ||
+                             (cascade == 2u && (shadowFrame % SHADOW_CASCADE2_UPDATE_RATE) == 0u);
+        if (!updateCascade) continue;
+
+        cachedShadowCascades.lightViewProj[cascade] = shadowCascades.lightViewProj[cascade];
+        cachedShadowCascades.splitDistances[cascade] = shadowCascades.splitDistances[cascade];
+
+        mat4x4 shadowViewProj = cachedShadowCascades.lightViewProj[cascade];
         SDL_GPUColorTargetInfo shadow_color_target = MakeShadowColorTarget(winstate, cascade);
         SDL_GPUDepthStencilTargetInfo shadow_depth_target = MakeShadowDepthTarget(winstate->tex_shadow_depth, cascade);
-        CullScene(cmd, CreateFrustumPlanes(shadowViewProj), shadowViewProj, true, false);
         RenderDepth(cmd, &(DepthPassContext){
             .colorTarget     = &shadow_color_target,
             .depthTarget     = &shadow_depth_target,
@@ -236,8 +246,8 @@ void Render(void)
             .viewProj        = shadowViewProj
         });
     }
+    shadowCacheValid = true;
 
-    CullScene(cmd, cameraFrustum, hiZViewProj, enableHiZ, true);
     RenderDepth(cmd, &(DepthPassContext){
         .colorTarget     = &hiz_depth_target,
         .depthTarget     = &depth_target,
@@ -248,7 +258,7 @@ void Render(void)
     RenderScene(cmd, &(ScenePassContext){
         .colorTarget = &color_target,
         .depthTarget = &main_depth_target,
-        .shadowCascades = shadowCascades,
+        .shadowCascades = cachedShadowCascades,
         .viewProj    = viewProj
     });
     DispatchHiZBuildCompute(cmd);

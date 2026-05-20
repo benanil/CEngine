@@ -22,8 +22,8 @@ Camera       g_Camera;
 SDL_Window*  g_SDLWindow;
 
 extern RenderState  g_RenderState;
-extern SceneBundle* gPaladin;
-extern SceneBundle* gSponza;
+SceneBundle* gPaladin;
+SceneBundle* gSponza;
 
 extern RenderSet    skinnedSet;
 extern RenderSet    surfaceSet;

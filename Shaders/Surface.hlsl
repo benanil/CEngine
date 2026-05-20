@@ -6,6 +6,8 @@
 #include "Math.hlsl"
 #include "Shadow.hlsl"
 
+#define CSM_DEBUG_CASCADES 0
+
 cbuffer vs_params : register(b0, space1)
 {
     float4x4 uViewProj;
@@ -38,7 +40,7 @@ struct VSOutput
     float4   shadowPos1 : TEXCOORD4;
     float4   shadowPos2 : TEXCOORD5;
     float    viewDepth  : TEXCOORD6;
-    nointerpolation uint cascadeIndex : TEXCOORD7;
+    nointerpolation float2 cascadeSplits : TEXCOORD7;
     nointerpolation uint materialIndex : TEXCOORD8;
 };
 
@@ -73,8 +75,7 @@ VSOutput vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("Dra
     o.shadowPos1 = mul(uLightViewProj[1], float4(finalWorldPos, 1.0));
     o.shadowPos2 = mul(uLightViewProj[2], float4(finalWorldPos, 1.0));
     o.viewDepth = dot(finalWorldPos - uCameraPosition.xyz, uCameraForward.xyz);
-    o.cascadeIndex = o.viewDepth > uCascadeSplits.x ? 1u : 0u;
-    o.cascadeIndex = o.viewDepth > uCascadeSplits.y ? 2u : o.cascadeIndex;
+    o.cascadeSplits = uCascadeSplits.xy;
     o.materialIndex = group.materialIndex;
     return o;
 }
@@ -108,8 +109,14 @@ float4 frag(VSOutput input) : SV_Target0
     float metallic  = float(mr.x) * metallicFactor;
     float roughness = float(mr.y) * roughnessFactor;
     
-    uint cascadeIndex = input.cascadeIndex;
+    uint cascadeIndex = input.viewDepth > input.cascadeSplits.x ? 1u : 0u;
+    cascadeIndex = input.viewDepth > input.cascadeSplits.y ? 2u : cascadeIndex;
     float4 shadowPos = cascadeIndex == 0u ? input.shadowPos0 : (cascadeIndex == 1u ? input.shadowPos1 : input.shadowPos2);
     float shadow = SampleShadow(ShadowMap, Sampler, shadowPos, cascadeIndex, N);
-    return float4(ApplyPBR(float3(baseColor), N, float3(input.viewDir), metallic, roughness, shadow), baseFactor.a);
+    float3 color = ApplyPBR(float3(baseColor), N, float3(input.viewDir), metallic, roughness, shadow);
+#if CSM_DEBUG_CASCADES
+    float3 cascadeColor = cascadeIndex == 0u ? float3(1.0f, 0.0f, 0.0f) : (cascadeIndex == 1u ? float3(0.0f, 1.0f, 0.0f) : float3(0.0f, 0.0f, 1.0f));
+    color = lerp(color, cascadeColor, 0.65f);
+#endif
+    return float4(color, baseFactor.a);
 }

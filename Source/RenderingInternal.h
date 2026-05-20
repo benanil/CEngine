@@ -22,8 +22,10 @@
 #define SHADOW_MAX_DISTANCE    400.0f
 #define SHADOW_NEAR_PLANE      1.0f
 #define SHADOW_CAMERA_DISTANCE 200.0f
-#define SHADOW_CASCADE_LAMBDA  0.95f
-#define SHADOW_CASCADE_OVERLAP 0.04f
+#define SHADOW_CASCADE_SPLIT0  28.0f
+#define SHADOW_CASCADE_SPLIT1  100.0f
+#define SHADOW_CASCADE1_UPDATE_RATE 2u
+#define SHADOW_CASCADE2_UPDATE_RATE 3u
 
 typedef struct ShadowCascadeData_
 {
@@ -50,8 +52,6 @@ typedef struct ScenePassContext_
     mat4x4 viewProj;
 } ScenePassContext;
 
-extern SceneBundle*   gPaladin;
-extern SceneBundle*   gSponza;
 extern WindowState    g_WindowState;
 extern RenderState    g_RenderState;
 extern SDL_GPUDevice* g_GPUDevice;
