@@ -19,11 +19,30 @@
 #define BIndirectBit     SDL_GPU_BUFFERUSAGE_INDIRECT
 #define BVertexBit       SDL_GPU_BUFFERUSAGE_VERTEX
 
-#define SHADOW_MAP_SIZE        4096u
+#define SHADOW_MAX_DISTANCE    300.0f
 #define SHADOW_ORTHO_SIZE      64.0f
 #define SHADOW_NEAR_PLANE      1.0f
 #define SHADOW_FAR_PLANE       300.0f
 #define SHADOW_CAMERA_DISTANCE 200.0f
+
+typedef struct DepthPassContext_
+{
+    SDL_GPUColorTargetInfo* colorTarget;
+    SDL_GPUDepthStencilTargetInfo* depthTarget;
+    const SDL_GPUViewport* viewport;
+    const SDL_Rect* scissor;
+    SDL_GPUGraphicsPipeline* skinnedPipeline;
+    SDL_GPUGraphicsPipeline* surfacePipeline;
+    mat4x4 viewProj;
+} DepthPassContext;
+
+typedef struct ScenePassContext_
+{
+    SDL_GPUColorTargetInfo* colorTarget;
+    SDL_GPUDepthStencilTargetInfo* depthTarget;
+    mat4x4 shadowViewProj;
+    mat4x4 viewProj;
+} ScenePassContext;
 
 extern SceneBundle*   gPaladin;
 extern SceneBundle*   gSponza;
@@ -48,32 +67,21 @@ void DestroyRenderPipelines(void);
 
 mat4x4 GetShadowViewProj(void);
 
-void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet,
+void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd, 
+                                 RenderSet* renderSet,
                                  RenderSetBuffers* buffers,
                                  FrustumPlanes frustumPlanes,
                                  mat4x4 viewProj,
-                                 SDL_GPUTexture* hiZTexture,
-                                 u32 hiZWidth,
-                                 u32 hiZHeight,
-                                 u32 hiZMipCount,
                                  bool enableHiZ,
                                  bool enableVisibilityOutput);
 
-void DispatchHiZBuildCompute(SDL_GPUCommandBuffer* cmd, SDL_GPUTexture* depthTexture, SDL_GPUTexture* hiZTexture,
-                             u32 width, u32 height, u32 mipCount, u32 firstMip);
+void DispatchHiZBuildCompute(SDL_GPUCommandBuffer* cmd);
 void DispatchTonemapCompute(SDL_GPUCommandBuffer* cmd, SDL_GPUTexture* source, SDL_GPUTexture* destination, u32 width, u32 height);
 void DispatchAnimationCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet);
 void DispatchAnimateVerticesCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet);
 
-void RenderDepth(SDL_GPUCommandBuffer* cmd,
-                        SDL_GPUColorTargetInfo* color_target,
-                        SDL_GPUDepthStencilTargetInfo* depth_target,
-                        mat4x4 viewProj,
-                        SDL_GPUGraphicsPipeline* skinnedPipeline,
-                        SDL_GPUGraphicsPipeline* surfacePipeline);
-void RenderScene(SDL_GPUCommandBuffer* cmd,
-                 SDL_GPUColorTargetInfo* color_target,
-                 SDL_GPUDepthStencilTargetInfo* depth_target,
-                 mat4x4 viewProj);
+void RenderDepth(SDL_GPUCommandBuffer* cmd, const DepthPassContext* ctx);
+
+void RenderScene(SDL_GPUCommandBuffer* cmd, const ScenePassContext* ctx);
 
 #endif

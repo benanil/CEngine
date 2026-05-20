@@ -14,15 +14,15 @@ static void InitRenderSetBuffers(RenderSetBuffers* buffers, RenderSet* set)
     size_t groupBytes  = set->maxGroups * sizeof(PrimitiveGroup);
     size_t entityBytes = set->maxEntities * sizeof(Entity);
 
-    buffers->primitiveGroup   = CreateBuffer(set->primitiveGroups, groupBytes, BReadCompute, "CPPrimitiveGroups");
+    buffers->primitiveGroup    = CreateBuffer(set->primitiveGroups, groupBytes, BReadCompute, "CPPrimitiveGroups");
     buffers->drawSparseIndices = CreateBuffer(NULL, set->maxEntities * sizeof(u32), BReadRasterBit | BReadCompute | BWriteComputeBit, "CPDrawSparseIndices");
-    buffers->sparseToDense    = CreateBuffer(set->sparseID, set->maxEntities * sizeof(u32), BReadCompute, "CPSparseToDense");
-    buffers->drawArgs         = CreateBuffer(NULL, set->maxGroups * sizeof(SDL_GPUIndexedIndirectDrawCommand), BIndirectBit | BReadCompute | BWriteComputeBit, "CPDrawArgs");
-    buffers->denseToPrimitive = CreateBuffer(set->denseToPrimitiveIndex, set->maxEntities * sizeof(u32), BReadCompute, "CPDenseToPrimitive");
-    buffers->entity           = CreateBuffer(set->entities, entityBytes, BReadRasterBit | BReadCompute, "CPEntities");
-    buffers->visibilityMask   = CreateBuffer(NULL, set->maxEntities * sizeof(u32), BReadCompute | BWriteComputeBit, "CPVisibilityMask");
-    buffers->visibleCount     = CreateBuffer(NULL, sizeof(u32), BReadCompute | BWriteComputeBit, "CPVisibleCount");
-    buffers->dispatchArgs     = CreateBuffer(NULL, sizeof(u32) * 6, BIndirectBit | BWriteComputeBit, "CPDispatchArgs");
+    buffers->sparseToDense     = CreateBuffer(set->sparseID, set->maxEntities * sizeof(u32), BReadCompute, "CPSparseToDense");
+    buffers->drawArgs          = CreateBuffer(NULL, set->maxGroups * sizeof(SDL_GPUIndexedIndirectDrawCommand), BIndirectBit | BReadCompute | BWriteComputeBit, "CPDrawArgs");
+    buffers->denseToPrimitive  = CreateBuffer(set->denseToPrimitiveIndex, set->maxEntities * sizeof(u32), BReadCompute, "CPDenseToPrimitive");
+    buffers->entity            = CreateBuffer(set->entities, entityBytes, BReadRasterBit | BReadCompute, "CPEntities");
+    buffers->visibilityMask    = CreateBuffer(NULL, set->maxEntities * sizeof(u32), BReadCompute | BWriteComputeBit, "CPVisibilityMask");
+    buffers->visibleCount      = CreateBuffer(NULL, sizeof(u32), BReadCompute | BWriteComputeBit, "CPVisibleCount");
+    buffers->dispatchArgs      = CreateBuffer(NULL, sizeof(u32) * 6, BIndirectBit | BWriteComputeBit, "CPDispatchArgs");
     buffers->visibleSparseIndices = CreateBuffer(NULL, set->maxEntities * sizeof(u32), BReadCompute | BWriteComputeBit, "CPVisibleSparseIndices");
 }
 
@@ -76,18 +76,18 @@ static SDL_GPUColorTargetInfo MakeMainColorTarget(WindowState* winstate)
     target.clear_color.a = 1.0f;
     if (winstate->tex_msaa)
     {
-        target.load_op = SDL_GPU_LOADOP_CLEAR;
+        target.load_op  = SDL_GPU_LOADOP_CLEAR;
         target.store_op = SDL_GPU_STOREOP_RESOLVE;
-        target.texture = winstate->tex_msaa;
-        target.resolve_texture = winstate->tex_resolve;
-        target.cycle = true;
+        target.texture  = winstate->tex_msaa;
+        target.cycle    = true;
         target.cycle_resolve_texture = true;
+        target.resolve_texture = winstate->tex_resolve;
     }
     else
     {
-        target.load_op = SDL_GPU_LOADOP_CLEAR;
+        target.load_op  = SDL_GPU_LOADOP_CLEAR;
         target.store_op = SDL_GPU_STOREOP_STORE;
-        target.texture = winstate->tex_color;
+        target.texture  = winstate->tex_color;
     }
     return target;
 }
@@ -133,7 +133,7 @@ static SDL_GPUColorTargetInfo MakeShadowColorTarget(WindowState* winstate)
 {
     SDL_GPUColorTargetInfo target;
     SDL_zero(target);
-    target.load_op = SDL_GPU_LOADOP_CLEAR;
+    target.load_op  = SDL_GPU_LOADOP_CLEAR;
     target.store_op = SDL_GPU_STOREOP_STORE;
     target.clear_color.r = 1.0f;
     target.texture = winstate->tex_shadow_color;
@@ -148,16 +148,10 @@ static void UploadRenderSetEntities(RenderSet* set, RenderSetBuffers* buffers)
     UpdateGPUBuffer(buffers->sparseToDense, set->sparseID, set->numEntities * sizeof(u32), 0ull);
 }
 
-static void CullScene(SDL_GPUCommandBuffer* cmd, FrustumPlanes planes, mat4x4 viewProj,
-                      bool enableHiZ, bool outputSkinnedVisibility)
+static void CullScene(SDL_GPUCommandBuffer* cmd, FrustumPlanes planes, mat4x4 viewProj, bool enableHiZ, bool outputSkinnedVisibility)
 {
-    WindowState* winstate = &g_WindowState;
-    DispatchCullDrawArgsCompute(cmd, &skinnedSet, &g_RenderState.skinnedBuffers, planes, viewProj,
-                                winstate->tex_hiz, winstate->hiz_width, winstate->hiz_height, winstate->hiz_mip_count,
-                                enableHiZ, outputSkinnedVisibility);
-    DispatchCullDrawArgsCompute(cmd, &surfaceSet, &g_RenderState.surfaceBuffers, planes, viewProj,
-                                winstate->tex_hiz, winstate->hiz_width, winstate->hiz_height, winstate->hiz_mip_count,
-                                enableHiZ, false);
+    DispatchCullDrawArgsCompute(cmd, &skinnedSet, &g_RenderState.skinnedBuffers, planes, viewProj, enableHiZ, outputSkinnedVisibility);
+    DispatchCullDrawArgsCompute(cmd, &surfaceSet, &g_RenderState.surfaceBuffers, planes, viewProj, enableHiZ, false);
 }
 
 static void AnimateCameraVisibleSkinned(SDL_GPUCommandBuffer* cmd)
@@ -207,9 +201,6 @@ void Render(void)
     SDL_GPUDepthStencilTargetInfo depth_target        = MakeDepthTarget(winstate->tex_depth, SDL_GPU_LOADOP_CLEAR, true);
     SDL_GPUDepthStencilTargetInfo main_depth_target   = MakeDepthTarget(winstate->tex_depth, SDL_GPU_LOADOP_LOAD, false);
     SDL_GPUColorTargetInfo        hiz_depth_target    = MakeHiZDepthTarget(winstate);
-    SDL_GPUColorTargetInfo        shadow_color_target = MakeShadowColorTarget(winstate);
-    SDL_GPUDepthStencilTargetInfo shadow_depth_target = MakeDepthTarget(winstate->tex_shadow_depth, SDL_GPU_LOADOP_CLEAR, true);
-
     UploadRenderSetEntities(&skinnedSet, &g_RenderState.skinnedBuffers);
     UploadRenderSetEntities(&surfaceSet, &g_RenderState.surfaceBuffers);
 
@@ -223,15 +214,32 @@ void Render(void)
     AnimateCameraVisibleSkinned(cmd);
 
     mat4x4 shadowViewProj = GetShadowViewProj();
-    CullScene(cmd, CreateFrustumPlanes(shadowViewProj), shadowViewProj, g_EnableShadowHiZ, false);
-    RenderDepth(cmd, &shadow_color_target, &shadow_depth_target, shadowViewProj,
-                     g_RenderState.skinnedShadowPipeline, g_RenderState.surfaceShadowPipeline);
+    SDL_GPUColorTargetInfo shadow_color_target = MakeShadowColorTarget(winstate);
+    SDL_GPUDepthStencilTargetInfo shadow_depth_target = MakeDepthTarget(winstate->tex_shadow_depth, SDL_GPU_LOADOP_CLEAR, true);
+    CullScene(cmd, CreateFrustumPlanes(shadowViewProj), shadowViewProj, true, false);
+    RenderDepth(cmd, &(DepthPassContext){
+        .colorTarget     = &shadow_color_target,
+        .depthTarget     = &shadow_depth_target,
+        .skinnedPipeline = g_RenderState.skinnedShadowPipeline,
+        .surfacePipeline = g_RenderState.surfaceShadowPipeline,
+        .viewProj        = shadowViewProj
+    });
 
     CullScene(cmd, cameraFrustum, hiZViewProj, enableHiZ, true);
-    RenderDepth(cmd, &hiz_depth_target, &depth_target, viewProj,
-                     g_RenderState.skinnedDepthPipeline, g_RenderState.surfaceDepthPipeline);
-    RenderScene(cmd, &color_target, &main_depth_target, viewProj);
-    DispatchHiZBuildCompute(cmd, winstate->tex_hiz_depth, winstate->tex_hiz, screenW, screenH, winstate->hiz_mip_count, 0);
+    RenderDepth(cmd, &(DepthPassContext){
+        .colorTarget     = &hiz_depth_target,
+        .depthTarget     = &depth_target,
+        .skinnedPipeline = g_RenderState.skinnedDepthPipeline,
+        .surfacePipeline = g_RenderState.surfaceDepthPipeline,
+        .viewProj        = viewProj
+    });
+    RenderScene(cmd, &(ScenePassContext){
+        .colorTarget = &color_target,
+        .depthTarget = &main_depth_target,
+        .shadowViewProj = shadowViewProj,
+        .viewProj    = viewProj
+    });
+    DispatchHiZBuildCompute(cmd);
 
     winstate->hiz_view_proj = viewProj;
     winstate->hiz_valid = true;
@@ -250,7 +258,6 @@ void Render(void)
     blit_info.load_op = SDL_GPU_LOADOP_DONT_CARE;
     blit_info.filter = SDL_GPU_FILTER_LINEAR;
     SDL_BlitGPUTexture(cmd, &blit_info);
-
     SDL_SubmitGPUCommandBuffer(cmd);
 }
 
@@ -261,16 +268,16 @@ void RendererInit(void)
 
 static void DestroyRenderSetBuffers(RenderSetBuffers* buffers)
 {
-    if (buffers->entity)              SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->entity);
-    if (buffers->primitiveGroup)      SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->primitiveGroup);
+    if (buffers->entity)               SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->entity);
+    if (buffers->primitiveGroup)       SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->primitiveGroup);
     if (buffers->drawSparseIndices)    SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->drawSparseIndices);
-    if (buffers->drawArgs)            SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->drawArgs);
-    if (buffers->denseToPrimitive)    SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->denseToPrimitive);
-    if (buffers->sparseToDense)       SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->sparseToDense);
+    if (buffers->drawArgs)             SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->drawArgs);
+    if (buffers->denseToPrimitive)     SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->denseToPrimitive);
+    if (buffers->sparseToDense)        SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->sparseToDense);
     if (buffers->visibleSparseIndices) SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->visibleSparseIndices);
-    if (buffers->visibilityMask)      SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->visibilityMask);
-    if (buffers->visibleCount)        SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->visibleCount);
-    if (buffers->dispatchArgs)        SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->dispatchArgs);
+    if (buffers->visibilityMask)       SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->visibilityMask);
+    if (buffers->visibleCount)         SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->visibleCount);
+    if (buffers->dispatchArgs)         SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->dispatchArgs);
 }
 
 void DestroyPipeline(void)
@@ -283,11 +290,11 @@ void DestroyPipeline(void)
     if (g_RenderState.indexBuffer)             SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.indexBuffer);
     if (g_RenderState.lineBuffer)              SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lineBuffer);
     if (g_RenderState.lineDrawArgsBuffer)      SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lineDrawArgsBuffer);
+    if (g_RenderState.textureDescriptorBuffer) SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.textureDescriptorBuffer);
+    if (g_RenderState.materialBuffer)          SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.materialBuffer);
     if (g_RenderState.sampler)                 SDL_ReleaseGPUSampler(g_GPUDevice, g_RenderState.sampler);
     if (g_RenderState.hiZSampler)              SDL_ReleaseGPUSampler(g_GPUDevice, g_RenderState.hiZSampler);
     if (g_RenderState.shadowSampler)           SDL_ReleaseGPUSampler(g_GPUDevice, g_RenderState.shadowSampler);
-    if (g_RenderState.textureDescriptorBuffer) SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.textureDescriptorBuffer);
-    if (g_RenderState.materialBuffer)          SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.materialBuffer);
     if (g_RenderState.albedoPages.handle)      SDL_ReleaseGPUTexture(g_GPUDevice, g_RenderState.albedoPages.handle);
     if (g_RenderState.normalPages.handle)      SDL_ReleaseGPUTexture(g_GPUDevice, g_RenderState.normalPages.handle);
     if (g_RenderState.metallicRoughnessPages.handle) SDL_ReleaseGPUTexture(g_GPUDevice, g_RenderState.metallicRoughnessPages.handle);

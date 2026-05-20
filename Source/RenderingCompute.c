@@ -4,16 +4,11 @@ void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet
                                  RenderSetBuffers* buffers,
                                  FrustumPlanes frustumPlanes,
                                  mat4x4 viewProj,
-                                 SDL_GPUTexture* hiZTexture,
-                                 u32 hiZWidth,
-                                 u32 hiZHeight,
-                                 u32 hiZMipCount,
                                  bool enableHiZ,
                                  bool enableVisibilityOutput)
 {
     if (renderSet->numGroups == 0) return;
     CHECK_CREATE(g_CullDrawArgsComputePipeline, "Cull Draw Args Compute Pipeline");
-
     struct {
         FrustumPlanes planes;
         u32 numEntities;
@@ -27,6 +22,12 @@ void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet
         f32 hiZDepthBias;
         f32 hiZPadding[3];
     } params;
+
+    WindowState* winstate = &g_WindowState;
+    SDL_GPUTexture* hiZTexture = winstate->tex_hiz;
+    u32 hiZWidth = winstate->hiz_width;
+    u32 hiZHeight = winstate->hiz_height;
+    u32 hiZMipCount = winstate->hiz_mip_count;
     MemCopy(&params.planes, frustumPlanes.planes, sizeof(FrustumPlanes));
     params.numEntities = renderSet->numEntities;
     params.numPrimitiveGroups = renderSet->numGroups;
@@ -75,11 +76,16 @@ void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet
     SDL_EndGPUComputePass(pass);
 }
 
-void DispatchHiZBuildCompute(SDL_GPUCommandBuffer* cmd, SDL_GPUTexture* depthTexture, SDL_GPUTexture* hiZTexture,
-                             u32 width, u32 height, u32 mipCount, u32 firstMip)
+void DispatchHiZBuildCompute(SDL_GPUCommandBuffer* cmd)
 {
+    WindowState* winstate = &g_WindowState;
+    SDL_GPUTexture* depthTexture = winstate->tex_hiz_depth; 
+    SDL_GPUTexture* hiZTexture = winstate->tex_hiz;
+    u32 width    = winstate->hiz_width;
+    u32 height   = winstate->hiz_height;
+    u32 mipCount = winstate->hiz_mip_count;
     if (!depthTexture || !hiZTexture || mipCount == 0) return;
-    for (u32 mip = firstMip; mip < mipCount; mip++)
+    for (u32 mip = 0; mip < mipCount; mip++)
     {
         u32 outputWidth  = Maxu32(width >> mip, 1);
         u32 outputHeight = Maxu32(height >> mip, 1);

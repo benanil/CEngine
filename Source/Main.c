@@ -77,7 +77,7 @@ s32 InitScene()
     u32 skinnedBundle = RenderSet_AddSceneBundle(&skinnedSet, gPaladin);
     u32 surfaceBundle = RenderSet_AddSceneBundle(&surfaceSet, gSponza);
 
-    for (s32 i = 0; i < 50; i++)
+    for (s32 i = 0; i < 16; i++)
     {
         u64 hash = MurmurHash(i + 123);
         v128f pos = VecMulf(VecSetR(f32_(i & 7), 0.0f, f32_(i >> 3), 0.0f), 1.5f);
@@ -87,7 +87,7 @@ s32 InitScene()
             break;
     }
     
-    for (s32 i = 0; i < 8; i++)
+    for (s32 i = 0; i < 4; i++)
     {
         u64 hash = MurmurHash(i + 123);
         v128f pos = VecMulf(VecSetR(f32_(i & 7), 0.0f, f32_(i >> 3), 0.0f), 100.5f);

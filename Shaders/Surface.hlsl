@@ -32,7 +32,7 @@ struct VSOutput
     f16_3_io tangent    : TANGENT0;
     f16_3_io bitangent  : TEXCOORD1;
     f16_3_io viewDir    : TEXCOORD2;
-    float4   shadowPos  : TEXCOORD3;
+    float4   shadowPos : TEXCOORD3;
     nointerpolation uint materialIndex : TEXCOORD4;
 };
 

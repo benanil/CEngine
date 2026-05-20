@@ -119,8 +119,8 @@ void GraphicsInit(bool msaa)
     winstate->tex_color   = CreateSceneColorTexture(drawablew, drawableh, SDL_GPU_SAMPLECOUNT_1);
     winstate->tex_post    = CreatePostProcessTexture(drawablew, drawableh);
     winstate->tex_hiz     = CreateHiZTexture(drawablew, drawableh, &winstate->hiz_mip_count);
-    winstate->tex_shadow_depth = CreateShadowDepthTexture(4096);
-    winstate->tex_shadow_color = CreateShadowColorTexture(4096);
+    winstate->tex_shadow_depth = CreateShadowDepthTexture(SHADOW_MAP_SIZE);
+    winstate->tex_shadow_color = CreateShadowColorTexture(SHADOW_MAP_SIZE);
     winstate->hiz_width   = drawablew;
     winstate->hiz_height  = drawableh;
     winstate->hiz_valid   = false;
@@ -174,9 +174,8 @@ SDL_GPUBuffer* CreateBuffer(
     SDL_DestroyProperties(buffer_desc.props);
 
     // If no initial data was provided, we're done
-    if (buffer == NULL) {
+    if (buffer == NULL) 
         return gpu_buffer;
-    }
 
     // --- Upload initial data using a transfer buffer ---
     SDL_GPUTransferBufferCreateInfo transfer_desc = {
@@ -197,15 +196,8 @@ SDL_GPUBuffer* CreateBuffer(
     // Copy to GPU buffer
     SDL_GPUCommandBuffer* cmd = SDL_AcquireGPUCommandBuffer(g_GPUDevice);
     SDL_GPUCopyPass* copy_pass = SDL_BeginGPUCopyPass(cmd);
-    SDL_GPUTransferBufferLocation src_location = {
-        .transfer_buffer = upload_buf,
-        .offset = 0
-    };
-    SDL_GPUBufferRegion dst_region = {
-        .buffer = gpu_buffer,
-        .offset = 0,
-        .size   = bufferSize
-    };
+    SDL_GPUTransferBufferLocation src_location = { .transfer_buffer = upload_buf, .offset = 0 };
+    SDL_GPUBufferRegion dst_region = { .buffer = gpu_buffer, .offset = 0, .size  = bufferSize };
     SDL_UploadToGPUBuffer(copy_pass, &src_location, &dst_region, false);
     SDL_EndGPUCopyPass(copy_pass);
     SDL_SubmitGPUCommandBuffer(cmd);
@@ -236,12 +228,7 @@ void UpdateGPUBuffer(SDL_GPUBuffer* buffer, const void* data, size_t bufferSize,
 
     SDL_UploadToGPUBuffer(copyPass,
                           &(SDL_GPUTransferBufferLocation) { .transfer_buffer = boneTransferBuffer, .offset = 0}, 
-                          &(SDL_GPUBufferRegion) 
-                          {
-                              .buffer = buffer, 
-                              .offset = offset, 
-                              .size = bufferSize
-                          }, 
+                          &(SDL_GPUBufferRegion) { .buffer = buffer,  .offset = offset,  .size = bufferSize }, 
                           true);
     
     SDL_EndGPUCopyPass(copyPass);
