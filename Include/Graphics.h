@@ -15,7 +15,7 @@
 #define MAX_SCENE_TEXTURES      1024
 #define MAX_TEXTURE_DESCRIPTORS 2048
 #define MAX_GPU_MATERIALS       2048
-#define SHADOW_MAP_SIZE         1024u
+#define SHADOW_MAP_SIZE         2048u
 #define SHADOW_CASCADE_COUNT    3u
 
 #if defined(__cplusplus)
@@ -139,6 +139,7 @@ typedef struct MaterialGPU_
 typedef struct WindowState
 {
     SDL_GPUTexture* tex_depth, *tex_hiz_msaa, *tex_hiz_depth, *tex_msaa, *tex_resolve, *tex_color, *tex_post, *tex_hiz;
+    SDL_GPUTexture* tex_hbao, *tex_hbao_blur, *tex_hbao_normal;
     SDL_GPUTexture* tex_shadow_depth, *tex_shadow_color;
     u32 prev_drawablew, prev_drawableh;
     u32 hiz_width, hiz_height, hiz_mip_count;
@@ -197,6 +198,7 @@ typedef struct RenderState
     Texture                  albedoPages;
     Texture                  normalPages;
     Texture                  metallicRoughnessPages;
+    SDL_GPUTexture*          skyNoise3D;
     Texture                  textures[MAX_SCENE_TEXTURES];
 } RenderState;
 
@@ -264,6 +266,12 @@ SDL_GPUTexture* CreateHiZTexture(u32 drawablew, u32 drawableh, u32* mipCount);
 SDL_GPUTexture* CreateSceneColorTexture(u32 drawablew, u32 drawableh, SDL_GPUSampleCount sampleCount);
 
 SDL_GPUTexture* CreatePostProcessTexture(u32 drawablew, u32 drawableh);
+
+SDL_GPUTexture* CreateHBAOTexture(u32 drawablew, u32 drawableh);
+
+SDL_GPUTexture* CreateHBAONormalTexture(u32 drawablew, u32 drawableh);
+
+SDL_GPUTexture* Create3DNoise3DTexture(u32 size);
 
 SDL_GPUTexture* CreateShadowDepthTexture(u32 size);
 

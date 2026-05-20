@@ -22,10 +22,9 @@
 #define SHADOW_MAX_DISTANCE    400.0f
 #define SHADOW_NEAR_PLANE      1.0f
 #define SHADOW_CAMERA_DISTANCE 200.0f
-#define SHADOW_CASCADE_SPLIT0  28.0f
+#define SHADOW_CASTER_DEPTH_MARGIN 150.0f
+#define SHADOW_CASCADE_SPLIT0  32.0f
 #define SHADOW_CASCADE_SPLIT1  100.0f
-#define SHADOW_CASCADE1_UPDATE_RATE 2u
-#define SHADOW_CASCADE2_UPDATE_RATE 3u
 
 typedef struct ShadowCascadeData_
 {
@@ -67,11 +66,15 @@ extern SDL_GPUComputePipeline* g_CullDrawArgsComputePipeline;
 extern SDL_GPUComputePipeline* g_TonemapComputePipeline;
 extern SDL_GPUComputePipeline* g_HiZBuildComputePipeline;
 extern SDL_GPUComputePipeline* g_HiZDownscaleComputePipeline;
+extern SDL_GPUComputePipeline* g_HBAOComputePipeline;
+extern SDL_GPUComputePipeline* g_HBAOBlurComputePipeline;
+extern SDL_GPUComputePipeline* g_HBAONormalComputePipeline;
 
 void InitRenderPipelines(void);
 void DestroyRenderPipelines(void);
 
 ShadowCascadeData GetShadowCascades(void);
+float3 GetRenderSunDirection(void);
 
 void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd, 
                                  RenderSet* renderSet,
@@ -82,7 +85,8 @@ void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd,
                                  bool enableVisibilityOutput);
 
 void DispatchHiZBuildCompute(SDL_GPUCommandBuffer* cmd);
-void DispatchTonemapCompute(SDL_GPUCommandBuffer* cmd, SDL_GPUTexture* source, SDL_GPUTexture* destination, u32 width, u32 height);
+void DispatchHBAOCompute(SDL_GPUCommandBuffer* cmd, bool enabled, u32 width, u32 height);
+void DispatchTonemapCompute(SDL_GPUCommandBuffer* cmd, SDL_GPUTexture* source, SDL_GPUTexture* depth, SDL_GPUTexture* destination, u32 width, u32 height, mat4x4 viewProj);
 void DispatchAnimationCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet);
 void DispatchAnimateVerticesCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet);
 

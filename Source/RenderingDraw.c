@@ -1,6 +1,6 @@
 #include "RenderingInternal.h"
 
-static float3 GetSunLightDir(void)
+float3 GetRenderSunDirection(void)
 {
     return F3Norm((float3){ -0.33f, 0.66f, 0.0f });
 }
@@ -44,7 +44,7 @@ ShadowCascadeData GetShadowCascades(void)
     float aspect     = (float)Maxi32(g_Camera.viewportSize.x, 1) / (float)Maxi32(g_Camera.viewportSize.y, 1);
     float tanHalfFov = Tan(g_Camera.verticalFOV * MATH_DegToRad * 0.5f);
 
-    float3 sunLightDir = GetSunLightDir();
+    float3 sunLightDir   = GetRenderSunDirection();
     v128f lightDir       = Vec3Load(&sunLightDir.x);
     v128f lightViewDir   = VecMul(lightDir, VecSet1(-1.0f));
     v128f cameraPosition = Vec3Load(&g_Camera.position.x);
@@ -57,10 +57,9 @@ ShadowCascadeData GetShadowCascades(void)
     {
         float split = CascadeSplitDistance(shadowNear, shadowFar, cascade);
         result.splitDistances[cascade] = split;
-
         float nearDist = previousSplit;
         float farDist  = split;
-        previousSplit = split;
+        previousSplit  = split;
 
         float nearH = tanHalfFov * nearDist;
         float nearW = nearH * aspect;
@@ -91,30 +90,27 @@ ShadowCascadeData GetShadowCascades(void)
         }
         radius = Maxf32(radius, 1.0f);
 
-        float eyeDistance = radius + SHADOW_CAMERA_DISTANCE;
+        float eyeDistance = radius + SHADOW_CAMERA_DISTANCE + SHADOW_CASTER_DEPTH_MARGIN;
         v128f eye = AddScaled(center, lightDir, eyeDistance);
-        mat4x4 view = M44LookAtRHVec(eye, lightViewDir, VecSetR(0.0f, 1.0f, 0.0f, 0.0f));
-
-        v128f minLight = VecSet1(FLT_MAX);
-        v128f maxLight = VecSet1(-FLT_MAX);
-        for (u32 i = 0; i < 8u; i++)
-        {
-            v128f lightPos = TransformPoint(view, corners[i]);
-            minLight = VecMin(minLight, lightPos);
-            maxLight = VecMax(maxLight, lightPos);
+        
+        // prevent LookAt NaN failures if the sun points straight down (e.g. at noon)
+        v128f upVec = VecSetR(0.0f, 1.0f, 0.0f, 0.0f);
+        if (Absf32(sunLightDir.y) > 0.999f) {
+            upVec = VecSetR(0.0f, 0.0f, 1.0f, 0.0f);
         }
-
+        mat4x4 view = M44LookAtRHVec(eye, lightViewDir, upVec);
         float extent = Ceilf(radius * 2.0f + 2.0f);
         float halfExtent = extent * 0.5f;
-        v128f centerV = VecMulf(VecAdd(minLight, maxLight), 0.5f);
         v128f texelSize = VecSet1(extent / (float)GetShadowCascadeMapSize(cascade));
-        centerV = VecMul(VecFloor(VecDiv(centerV, texelSize)), texelSize);
-        float centerX = VecGetX(centerV);
-        float centerY = VecGetY(centerV);
 
-        mat4x4 proj = M44OrthoRH(centerX - halfExtent, centerX + halfExtent,
-                                 centerY - halfExtent, centerY + halfExtent,
-                                 SHADOW_NEAR_PLANE, eyeDistance + radius);
+        // completely replacing the skewed minLight/maxLight AABB logic.
+        v128f originLS = TransformPoint(view, center);
+        v128f originLS_snapped = VecMul(VecFloor(VecAdd(VecDiv(originLS, texelSize), VecSet1(0.5f))), texelSize);
+        v128f offset = VecSub(originLS, originLS_snapped);
+
+        mat4x4 proj = M44OrthoRH(VecGetX(offset) - halfExtent, VecGetX(offset) + halfExtent,
+                                 VecGetY(offset) - halfExtent, VecGetY(offset) + halfExtent,
+                                 SHADOW_NEAR_PLANE, eyeDistance + radius + SHADOW_CASTER_DEPTH_MARGIN);
         result.lightViewProj[cascade] = M44Multiply(view, proj);
     }
 
@@ -198,11 +194,17 @@ void RenderScene(SDL_GPUCommandBuffer* cmd, const ScenePassContext* ctx)
 
     SDL_GPUBufferBinding vertex_binding = { g_RenderState.skinnedVertexBuffer, 0 };
     SDL_GPUBufferBinding index_binding  = { g_RenderState.indexBuffer, 0 };
-    SDL_GPUTextureSamplerBinding pageSamplers[4] = {
+    float3 sunDirection = GetRenderSunDirection();
+    SDL_GPUTextureSamplerBinding pageSamplers[5] = {
         { .texture = g_RenderState.albedoPages.handle, .sampler = g_RenderState.sampler },
         { .texture = g_RenderState.normalPages.handle, .sampler = g_RenderState.sampler },
         { .texture = g_RenderState.metallicRoughnessPages.handle, .sampler = g_RenderState.sampler },
-        { .texture = g_WindowState.tex_shadow_color, .sampler = g_RenderState.shadowSampler }
+        { .texture = g_WindowState.tex_shadow_color, .sampler = g_RenderState.shadowSampler },
+        { .texture = g_WindowState.tex_hbao_blur, .sampler = g_RenderState.sampler }
+    };
+    struct { f32 viewportSize[4]; f32 sunDirection[4]; } fragmentParams = {
+        { (f32)Maxi32(g_Camera.viewportSize.x, 1), (f32)Maxi32(g_Camera.viewportSize.y, 1), 0.0f, 0.0f },
+        { sunDirection.x, sunDirection.y, sunDirection.z, 0.0f }
     };
     SDL_GPUBuffer* fragmentBuffers[2] = {
         g_RenderState.materialBuffer,
@@ -228,6 +230,7 @@ void RenderScene(SDL_GPUCommandBuffer* cmd, const ScenePassContext* ctx)
         SDL_BindGPUFragmentStorageBuffers(pass, 0, fragmentBuffers, SDL_arraysize(fragmentBuffers));
 
         SDL_PushGPUVertexUniformData(cmd, 0, &vertexParams, sizeof(vertexParams));
+        SDL_PushGPUFragmentUniformData(cmd, 0, &fragmentParams, sizeof(fragmentParams));
         SDL_DrawGPUIndexedPrimitivesIndirect(pass, g_RenderState.skinnedBuffers.drawArgs, 0, skinnedSet.numGroups);
     }
 
@@ -248,6 +251,7 @@ void RenderScene(SDL_GPUCommandBuffer* cmd, const ScenePassContext* ctx)
         SDL_BindGPUFragmentSamplers(pass, 0, pageSamplers, SDL_arraysize(pageSamplers));
         SDL_BindGPUFragmentStorageBuffers(pass, 0, fragmentBuffers, SDL_arraysize(fragmentBuffers));
         SDL_PushGPUVertexUniformData(cmd, 0, &vertexParams, sizeof(vertexParams));
+        SDL_PushGPUFragmentUniformData(cmd, 0, &fragmentParams, sizeof(fragmentParams));
         SDL_DrawGPUIndexedPrimitivesIndirect(pass, g_RenderState.surfaceBuffers.drawArgs, 0, surfaceSet.numGroups);
     }
 

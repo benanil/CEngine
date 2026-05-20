@@ -443,7 +443,7 @@ purefn f32 Log2f(f32 val) {
     f32 result = (f32)*((s32*)&val);
     result *= 1.0f / (1 << 23);
     result = result - 127.0f;
-    f32 tmp = result - Floorf(result);
+    f32 tmp = result - Floorf32(result);
     tmp = (tmp - tmp*tmp) * 0.346607f;
     return tmp + result; // ln(x) / ln(2) 
 }
@@ -626,7 +626,7 @@ purefn f32 Tan(f32 a) {
     u8 reciprocal = false;
 
     if (( a < 0.0f ) || (a >= MATH_PI)) {
-        a -= Floorf(a / MATH_PI) * MATH_PI;
+        a -= Floorf32(a / MATH_PI) * MATH_PI;
     }
     
     if ( a < MATH_HalfPI ) {
@@ -746,7 +746,7 @@ purefn f32 Remap(f32 in, f32 inMin, f32 inMax, f32 outMin, f32 outMax)
 
 purefn f32 Repeat(f32 t, f32 length)
 {
-    return Clampf32(t - Floorf(t / length) * length, 0.0f, length);
+    return Clampf32(t - Floorf32(t / length) * length, 0.0f, length);
 }
 
 purefn f32 Step(f32 edge, f32 x)

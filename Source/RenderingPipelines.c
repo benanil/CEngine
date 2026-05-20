@@ -26,6 +26,9 @@
 #include "Shaders/spv/TonemapCompute.spv.h"
 #include "Shaders/spv/HiZBuildCompute.spv.h"
 #include "Shaders/spv/HiZDownscaleCompute.spv.h"
+#include "Shaders/spv/HBAOCompute.spv.h"
+#include "Shaders/spv/HBAOBlurCompute.spv.h"
+#include "Shaders/spv/HBAONormalCompute.spv.h"
 #include "Shaders/spv/SurfaceDepthOnlyVert.spv.h"
 #include "Shaders/spv/SurfaceDepthOnlyFrag.spv.h"
 #include "Shaders/spv/SkinnedDepthOnlyVert.spv.h"
@@ -44,6 +47,9 @@ SDL_GPUComputePipeline* g_CullDrawArgsComputePipeline = NULL;
 SDL_GPUComputePipeline* g_TonemapComputePipeline = NULL;
 SDL_GPUComputePipeline* g_HiZBuildComputePipeline = NULL;
 SDL_GPUComputePipeline* g_HiZDownscaleComputePipeline = NULL;
+SDL_GPUComputePipeline* g_HBAOComputePipeline = NULL;
+SDL_GPUComputePipeline* g_HBAOBlurComputePipeline = NULL;
+SDL_GPUComputePipeline* g_HBAONormalComputePipeline = NULL;
 
 static void InitComputePipelines(void)
 {
@@ -124,7 +130,7 @@ static void InitComputePipelines(void)
         .code_size                      = sizeof(Shaders_TonemapCompute_spv),
         .entrypoint                     = "main",
         .format                         = SDL_GetGPUShaderFormats(g_GPUDevice),
-        .num_samplers                   = 1,
+        .num_samplers                   = 3,
         .num_readwrite_storage_textures = 1,
         .num_uniform_buffers            = 1,
         .threadcount_x                  = 8,
@@ -132,6 +138,48 @@ static void InitComputePipelines(void)
         .threadcount_z                  = 1,
     });
     CHECK_CREATE(g_TonemapComputePipeline, "Tonemap Compute Pipeline");
+
+    g_HBAOComputePipeline = SDL_CreateGPUComputePipeline(g_GPUDevice, &(SDL_GPUComputePipelineCreateInfo){
+        .code                           = Shaders_HBAOCompute_spv,
+        .code_size                      = sizeof(Shaders_HBAOCompute_spv),
+        .entrypoint                     = "main",
+        .format                         = SDL_GetGPUShaderFormats(g_GPUDevice),
+        .num_samplers                   = 2,
+        .num_readwrite_storage_textures = 1,
+        .num_uniform_buffers            = 1,
+        .threadcount_x                  = 8,
+        .threadcount_y                  = 8,
+        .threadcount_z                  = 1,
+    });
+    CHECK_CREATE(g_HBAOComputePipeline, "HBAO Compute Pipeline");
+
+    g_HBAONormalComputePipeline = SDL_CreateGPUComputePipeline(g_GPUDevice, &(SDL_GPUComputePipelineCreateInfo){
+        .code                           = Shaders_HBAONormalCompute_spv,
+        .code_size                      = sizeof(Shaders_HBAONormalCompute_spv),
+        .entrypoint                     = "main",
+        .format                         = SDL_GetGPUShaderFormats(g_GPUDevice),
+        .num_samplers                   = 1,
+        .num_readwrite_storage_textures = 1,
+        .num_uniform_buffers            = 1,
+        .threadcount_x                  = 8,
+        .threadcount_y                  = 8,
+        .threadcount_z                  = 1,
+    });
+    CHECK_CREATE(g_HBAONormalComputePipeline, "HBAO Normal Compute Pipeline");
+
+    g_HBAOBlurComputePipeline = SDL_CreateGPUComputePipeline(g_GPUDevice, &(SDL_GPUComputePipelineCreateInfo){
+        .code                           = Shaders_HBAOBlurCompute_spv,
+        .code_size                      = sizeof(Shaders_HBAOBlurCompute_spv),
+        .entrypoint                     = "main",
+        .format                         = SDL_GetGPUShaderFormats(g_GPUDevice),
+        .num_samplers                   = 2,
+        .num_readwrite_storage_textures = 1,
+        .num_uniform_buffers            = 1,
+        .threadcount_x                  = 8,
+        .threadcount_y                  = 8,
+        .threadcount_z                  = 1,
+    });
+    CHECK_CREATE(g_HBAOBlurComputePipeline, "HBAO Blur Compute Pipeline");
 }
 
 static void InitSamplers(void)
@@ -254,7 +302,7 @@ static void InitSkinedPipeline(void)
         .format              = SDL_GetGPUShaderFormats(g_GPUDevice),
         .code                = Shaders_SkinnedFrag_spv,
         .code_size           = sizeof(Shaders_SkinnedFrag_spv),
-        .num_samplers        = 4,
+        .num_samplers        = 5,
         .num_storage_buffers = 2,
         .stage               = SDL_GPU_SHADERSTAGE_FRAGMENT,
         .entrypoint          = "frag"
@@ -319,11 +367,11 @@ static void InitSurfacePipeline(void)
     });
 
     SDL_GPUShader* fragment_shader = SDL_CreateGPUShader(g_GPUDevice, &(SDL_GPUShaderCreateInfo){
-        .num_uniform_buffers = 0,
+        .num_uniform_buffers = 1,
         .format              = SDL_GetGPUShaderFormats(g_GPUDevice),
         .code                = Shaders_SurfaceFrag_spv,
         .code_size           = sizeof(Shaders_SurfaceFrag_spv),
-        .num_samplers        = 4,
+        .num_samplers        = 5,
         .num_storage_buffers = 2,
         .stage               = SDL_GPU_SHADERSTAGE_FRAGMENT,
         .entrypoint          = "frag"
@@ -507,4 +555,7 @@ void DestroyRenderPipelines(void)
     if (g_TonemapComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_TonemapComputePipeline);
     if (g_HiZBuildComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_HiZBuildComputePipeline);
     if (g_HiZDownscaleComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_HiZDownscaleComputePipeline);
+    if (g_HBAOComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_HBAOComputePipeline);
+    if (g_HBAOBlurComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_HBAOBlurComputePipeline);
+    if (g_HBAONormalComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_HBAONormalComputePipeline);
 }

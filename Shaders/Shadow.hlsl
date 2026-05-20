@@ -1,4 +1,4 @@
-float SampleShadow(Texture2DArray<float> shadowMap, SamplerState sampler, float4 shadowPos, uint cascadeIndex, float3 normal)
+float SampleShadow(Texture2DArray<float> shadowMap, SamplerState sampler, float4 shadowPos, uint cascadeIndex, float3 normal, float3 lightDir)
 {
     float3 proj = shadowPos.xyz / shadowPos.w;
     float2 uv = proj.xy * float2(0.5f, -0.5f) + 0.5f;
@@ -9,19 +9,22 @@ float SampleShadow(Texture2DArray<float> shadowMap, SamplerState sampler, float4
     uint width, height, layers;
     shadowMap.GetDimensions(width, height, layers);
 
-    float2 texel = 1.25f / float2(width, height);
-    float3 lightDir = normalize(float3(-0.33f, 0.66f, 0.0f));
-    float cascadeBiasScale = cascadeIndex == 0u ? 1.5f : (cascadeIndex == 1u ? 3.0f : 4.0f);
-    float bias = max(0.0012f * (1.0f - dot(normalize(normal), lightDir)), 0.00035f) * cascadeBiasScale;
+    float2 texel = 1.0f / float2(width, height);
+    lightDir = normalize(lightDir);
+    float cascadeBiasScale = cascadeIndex == 0u ? 1.2f : (cascadeIndex == 1u ? 2.8f : 2.6f);
+    float ndotl = saturate(dot(normalize(normal), lightDir));
+    float bias = max(0.0009f * (1.0f - ndotl), 0.00025f) * cascadeBiasScale;
 
     const float minShadow = 0.2f;
     float shadow = 0.0f;
+    float weightSum = 0.0f;
     [unroll]
-    for (int y = -1; y <= 1; y++)
+    for (int y = -2; y <= 2; y++)
     {
         [unroll]
-        for (int x = -1; x <= 1; x++)
+        for (int x = -2; x <= 2; x++)
         {
+            float weight = (3.0f - abs(float(x))) * (3.0f - abs(float(y)));
             float2 sampleUV = uv + float2(x, y) * texel;
             float tapShadow = 1.0f;
             if (all(sampleUV >= 0.0f) && all(sampleUV <= 1.0f))
@@ -32,8 +35,9 @@ float SampleShadow(Texture2DArray<float> shadowMap, SamplerState sampler, float4
                     tapShadow = (depth - bias <= mapDepth) ? 1.0f : 0.0f;
                 }
             }
-            shadow += tapShadow;
+            shadow += tapShadow * weight;
+            weightSum += weight;
         }
     }
-    return max(shadow * (1.0f / 9.0f), minShadow);
+    return max(shadow / weightSum, minShadow);
 }

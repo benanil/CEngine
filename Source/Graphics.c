@@ -7,6 +7,7 @@
 #include "Include/Algorithm.h"
 #include "Include/Memory.h"
 #include "Include/BasisBinding.h"
+#include "Include/Random.h"
 
 #include "Extern/SDL3/src/video/khronos/vulkan/vulkan.h"
 
@@ -119,8 +120,12 @@ void GraphicsInit(bool msaa)
     winstate->tex_color   = CreateSceneColorTexture(drawablew, drawableh, SDL_GPU_SAMPLECOUNT_1);
     winstate->tex_post    = CreatePostProcessTexture(drawablew, drawableh);
     winstate->tex_hiz     = CreateHiZTexture(drawablew, drawableh, &winstate->hiz_mip_count);
+    winstate->tex_hbao        = CreateHBAOTexture(Maxu32((u32)drawablew / 2u, 1u), Maxu32((u32)drawableh / 2u, 1u));
+    winstate->tex_hbao_blur   = CreateHBAOTexture(Maxu32((u32)drawablew / 2u, 1u), Maxu32((u32)drawableh / 2u, 1u));
+    winstate->tex_hbao_normal = CreateHBAONormalTexture(Maxu32((u32)drawablew / 2u, 1u), Maxu32((u32)drawableh / 2u, 1u));
     winstate->tex_shadow_depth = CreateShadowDepthTexture(SHADOW_MAP_SIZE);
     winstate->tex_shadow_color = CreateShadowColorTexture(SHADOW_MAP_SIZE, SHADOW_CASCADE_COUNT);
+    g_RenderState.skyNoise3D = Create3DNoise3DTexture(64u);
     winstate->hiz_width   = drawablew;
     winstate->hiz_height  = drawableh;
     winstate->hiz_valid   = false;
@@ -143,8 +148,12 @@ void GraphicsDestroy()
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_color);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_post);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_hiz);
+    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_hbao);
+    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_hbao_blur);
+    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_hbao_normal);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_shadow_depth);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_shadow_color);
+    SDL_ReleaseGPUTexture(g_GPUDevice, g_RenderState.skyNoise3D);
     SDL_ReleaseWindowFromGPUDevice(g_GPUDevice, g_SDLWindow);
 
     SDL_DestroyGPUDevice(g_GPUDevice);
@@ -296,6 +305,55 @@ static SDL_GPUTexture* CreateTexture2DArray(u32 width, u32 height, u32 layers,
     return result;
 }
 
+SDL_GPUTexture* Create3DNoise3DTexture(u32 size)
+{
+    SDL_GPUTextureCreateInfo createinfo = {
+        .type = SDL_GPU_TEXTURETYPE_2D_ARRAY,
+        .format = SDL_GPU_TEXTUREFORMAT_R8_UNORM,
+        .usage = SDL_GPU_TEXTUREUSAGE_SAMPLER,
+        .width = size,
+        .height = size,
+        .layer_count_or_depth = size,
+        .num_levels = 1,
+        .sample_count = SDL_GPU_SAMPLECOUNT_1,
+        .props = 0
+    };
+
+    SDL_GPUTexture* texture = SDL_CreateGPUTexture(g_GPUDevice, &createinfo);
+    CHECK_CREATE(texture, "Sky 3D Noise Texture");
+
+    u32 voxelCount = size * size * size;
+    u64* data = (u64*)ArenaPushGlobal(voxelCount);
+    for (u32 z = 0; z < size * size * (size / sizeof(u64)); z++)
+        data[z] = MurmurHash(z);
+
+    SDL_GPUTransferBuffer* transferBuffer = SDL_CreateGPUTransferBuffer(g_GPUDevice, &(SDL_GPUTransferBufferCreateInfo){
+        .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
+        .size = voxelCount
+    });
+    CHECK_CREATE(transferBuffer, "Sky 3D Noise Transfer Buffer");
+    u8* mapped = (u8*)SDL_MapGPUTransferBuffer(g_GPUDevice, transferBuffer, false);
+    MemCopy(mapped, data, voxelCount);
+    SDL_UnmapGPUTransferBuffer(g_GPUDevice, transferBuffer);
+    ArenaPopGlobal(voxelCount);
+
+    SDL_GPUCommandBuffer* cmd = SDL_AcquireGPUCommandBuffer(g_GPUDevice);
+    SDL_GPUCopyPass* copyPass = SDL_BeginGPUCopyPass(cmd);
+    for (u32 layer = 0; layer < size; layer++)
+    {
+        SDL_UploadToGPUTexture(copyPass,
+            &(SDL_GPUTextureTransferInfo){ .transfer_buffer = transferBuffer, .offset = layer * size * size, .pixels_per_row = size, .rows_per_layer = size },
+            &(SDL_GPUTextureRegion){ .texture = texture, .mip_level = 0, .layer = layer, .x = 0, .y = 0, .z = 0, .w = size, .h = size, .d = 1 },
+            false);
+    }
+    SDL_EndGPUCopyPass(copyPass);
+    SDL_GPUFence* fence = SDL_SubmitGPUCommandBufferAndAcquireFence(cmd);
+    SDL_WaitForGPUFences(g_GPUDevice, true, &fence, 1);
+    SDL_ReleaseGPUFence(g_GPUDevice, fence);
+    SDL_ReleaseGPUTransferBuffer(g_GPUDevice, transferBuffer);
+    return texture;
+}
+
 SDL_GPUTexture* CreateDepthTexture(u32 drawablew, u32 drawableh)
 {
     SDL_GPUTextureUsageFlags usage = SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET;
@@ -358,6 +416,20 @@ SDL_GPUTexture* CreatePostProcessTexture(u32 drawablew, u32 drawableh)
     return CreateTexture2D(drawablew, drawableh, SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
                            SDL_GPU_TEXTUREUSAGE_SAMPLER | SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_WRITE,
                            SDL_GPU_SAMPLECOUNT_1, 1, "Post Process Texture");
+}
+
+SDL_GPUTexture* CreateHBAOTexture(u32 drawablew, u32 drawableh)
+{
+    return CreateTexture2D(drawablew, drawableh, SDL_GPU_TEXTUREFORMAT_R8_UNORM,
+                           SDL_GPU_TEXTUREUSAGE_SAMPLER | SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_WRITE,
+                           SDL_GPU_SAMPLECOUNT_1, 1, "HBAO Texture");
+}
+
+SDL_GPUTexture* CreateHBAONormalTexture(u32 drawablew, u32 drawableh)
+{
+    return CreateTexture2D(drawablew, drawableh, SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT,
+                           SDL_GPU_TEXTUREUSAGE_SAMPLER | SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_WRITE,
+                           SDL_GPU_SAMPLECOUNT_1, 1, "HBAO Normal Texture");
 }
 
 SDL_GPUTexture* CreateShadowDepthTexture(u32 size)
