@@ -430,6 +430,15 @@
 					<File>
 						<Path>Shaders/HBAONormalCompute.hlsl</Path>
 					</File>
+					<File>
+						<Path>Shaders/Sky.hlsl</Path>
+					</File>
+					<File>
+						<Path>Shaders/GodRays.hlsl</Path>
+					</File>
+					<File>
+						<Path>Shaders/NoiseHash.hlsl</Path>
+					</File>
 				</Children>
 			</Folder>
 			<Folder>

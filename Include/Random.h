@@ -12,30 +12,30 @@ extern "C" {
 // developed and highly optimized by Chris Wellons
 // https://github.com/skeeto/hash-prospector https://nullprogram.com/blog/2018/07/31/
 purefn u32 WangHash(u32 x) { 
-	x ^= x >> 16u; x *= 0x7feb352du;
-	x ^= x >> 15u; x *= 0x846ca68bu;
-	return x ^ (x >> 16u);
+    x ^= x >> 16u; x *= 0x7feb352du;
+    x ^= x >> 15u; x *= 0x846ca68bu;
+    return x ^ (x >> 16u);
 }
 
 // given Wang hash returns input value: 
 // WangHash(x) = 234525;
 // x = InverseWangHash(234525);
 purefn u32 WangHashInverse(u32 x)  {
-	x ^= x >> 16u; x *= 0x7feb352du;
-	x ^= x >> 15u; x *= 0x846ca68bu;
-	return x ^ (x >> 16u);
+    x ^= x >> 16u; x *= 0x7feb352du;
+    x ^= x >> 15u; x *= 0x846ca68bu;
+    return x ^ (x >> 16u);
 }
 
 purefn u64 MurmurHash(u64 x) {
-	x ^= x >> 30ULL; x *= 0xbf58476d1ce4e5b9ULL;
-	x ^= x >> 27ULL; x *= 0x94d049bb133111ebULL;
-	return x ^ (x >> 31ULL);
+    x ^= x >> 30ULL; x *= 0xbf58476d1ce4e5b9ULL;
+    x ^= x >> 27ULL; x *= 0x94d049bb133111ebULL;
+    return x ^ (x >> 31ULL);
 }
 
 purefn u64 MurmurHashInverse(u64 x) {
-	x ^= x >> 31ULL ^ x >> 62ULL; x *= 0x319642b2d24d8ec3ULL;
-	x ^= x >> 27ULL ^ x >> 54ULL; x *= 0x96de1b173f119089ULL;
-	return x ^ (x >> 30ULL ^ x >> 60ULL);
+    x ^= x >> 31ULL ^ x >> 62ULL; x *= 0x319642b2d24d8ec3ULL;
+    x ^= x >> 27ULL ^ x >> 54ULL; x *= 0x96de1b173f119089ULL;
+    return x ^ (x >> 30ULL ^ x >> 60ULL);
 }
 
 // todo: find way of random seed generation
@@ -70,11 +70,11 @@ purefn u64 Seed64() {
 purefn f32 NextFloat01(u32 next) {
     return (f32)(next >> 8) / (f32)(1 << 24);
 }
-	
+
 purefn f32 RepeatMinMaxF32(u32 next, f32 min, f32 max) {
     return min + (NextFloat01(next) * Absf32(min - max));
 }
-	
+
 purefn f32 NextDouble01(u64 next) 
 {
     // // https://docs.oracle.com/javase/8/docs/api/java/util/Random.html
@@ -85,11 +85,11 @@ purefn f32 NextDouble01(u64 next)
     // return (((long)(next & (mask >> 1)) << 27) + ((next >> 32) & mask)) / (double)(1LL << 53LL);
     return (next & 0x001FFFFFFFFFFFFF) / 9007199254740992.0;
 }
-	
+
 purefn f32 RepatMinMaxF64(u64 next, f32 min, f32 max) {
     return min + (NextDouble01(next) * Absf32(min - max));
 }
-	
+
 purefn u32 RepeatMinMaxU32(u32 next, u32 min, u32 max)   { return min + (next % (max - min)); }
 purefn u64 RepeatMinMaxU64(u64 next, u64 min, u64 max)   { return min + (next % (max - min)); }
 purefn s32 RepeatMinMaxI32(s32 next, s32 _min, s32 _max) { return _min + (next % (_max - _min)); }
@@ -160,17 +160,17 @@ purefn u64 Xoroshiro128Plus(u64 s[2])
 
 purefn u32 StringToHash(const u8* str, u32 hash)
 {
-	while (*str)
-		hash = *str++ + (hash << 6u) + (hash << 16u) - hash;
-	return hash;
+    while (*str)
+        hash = *str++ + (hash << 6u) + (hash << 16u) - hash;
+    return hash;
 }
 
 purefn u32 PathToHash(const u8* str)
 {
-	u32 hash = 0u, idx = 0u, shift = 0u;
-	while (str[idx] && idx < 4u)
-		hash |= (u32)(str[idx]) << shift, shift += 8u, idx++;
-	return StringToHash(str + idx, WangHash(hash));
+    u32 hash = 0u, idx = 0u, shift = 0u;
+    while (str[idx] && idx < 4u)
+        hash |= (u32)(str[idx]) << shift, shift += 8u, idx++;
+    return StringToHash(str + idx, WangHash(hash));
 }
 
 // too see alternative random number generator look at Aditional.hpp for mersene twister pseudo random number generators
