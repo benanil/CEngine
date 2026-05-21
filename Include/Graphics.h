@@ -138,7 +138,8 @@ typedef struct MaterialGPU_
 
 typedef struct WindowState
 {
-    SDL_GPUTexture* tex_depth, *tex_hiz_msaa, *tex_hiz_depth, *tex_msaa, *tex_resolve, *tex_color, *tex_post, *tex_hiz;
+    SDL_GPUTexture* tex_depth, *tex_hiz_depth, *tex_color, *tex_post, *tex_hiz;
+    SDL_GPUTexture* tex_gbuffer_tangent, *tex_gbuffer_albedo_metallic, *tex_gbuffer_shadow_roughness;
     SDL_GPUTexture* tex_hbao, *tex_hbao_blur, *tex_hbao_normal;
     SDL_GPUTexture* tex_shadow_depth, *tex_shadow_color;
     u32 prev_drawablew, prev_drawableh;
@@ -182,7 +183,6 @@ typedef struct RenderState
     RenderSetBuffers         skinnedBuffers;
     RenderSetBuffers         surfaceBuffers;
     
-    SDL_GPUSampleCount       sample_count;
     // anim
     SDL_GPUBuffer*           boneBuffer;
     SDL_GPUBuffer*           animPoseBuffer;
@@ -253,17 +253,17 @@ void UpdateGPUBuffer(SDL_GPUBuffer* buffer, const void* data, size_t bufferSize,
 
 SDL_GPUTexture* CreateDepthTexture(u32 drawablew, u32 drawableh);
 
-SDL_GPUTexture* CreateHiZMSAATexture(u32 drawablew, u32 drawableh);
-
 SDL_GPUTexture* CreateHiZDepthTexture(u32 drawablew, u32 drawableh);
-
-SDL_GPUTexture* CreateMSAATexture(u32 drawablew, u32 drawableh);
-
-SDL_GPUTexture* CreateResolveTexture(u32 drawablew, u32 drawableh);
 
 SDL_GPUTexture* CreateHiZTexture(u32 drawablew, u32 drawableh, u32* mipCount);
 
 SDL_GPUTexture* CreateSceneColorTexture(u32 drawablew, u32 drawableh, SDL_GPUSampleCount sampleCount);
+
+SDL_GPUTexture* CreateGBufferTangentTexture(u32 drawablew, u32 drawableh);
+
+SDL_GPUTexture* CreateGBufferAlbedoMetallicTexture(u32 drawablew, u32 drawableh);
+
+SDL_GPUTexture* CreateGBufferShadowRoughnessTexture(u32 drawablew, u32 drawableh);
 
 SDL_GPUTexture* CreatePostProcessTexture(u32 drawablew, u32 drawableh);
 

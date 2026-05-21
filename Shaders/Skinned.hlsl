@@ -45,6 +45,14 @@ struct VSOutput
     float    viewDepth  : TEXCOORD6;
     nointerpolation float2 cascadeSplits : TEXCOORD7;
     nointerpolation uint materialIndex : TEXCOORD8;
+    nointerpolation float handedness : TEXCOORD9;
+};
+
+struct GBufferOutput
+{
+    uint   tangentFrame    : SV_Target0;
+    f16_4_io albedoMetallic  : SV_Target1;
+    f16_2_io shadowRoughness : SV_Target2;
 };
 
 VSOutput vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("DrawIndex")]] uint drawID : DRAWINDEX, uint vertexID : SV_VertexID)
@@ -77,6 +85,7 @@ VSOutput vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("Dra
     o.viewDepth = dot(finalWorldPos - uCameraPosition.xyz, uCameraForward.xyz);
     o.cascadeSplits = uCascadeSplits.xy;
     o.materialIndex = group.materialIndex;
+    o.handedness = float(tangentHandedness);
     return o;
 }
 
@@ -84,11 +93,10 @@ Texture2DArray<float4> AlbedoPages            : register(t0, space2);
 Texture2DArray<float2> NormalPages            : register(t1, space2);
 Texture2DArray<float2> MetallicRoughnessPages : register(t2, space2);
 Texture2DArray<float>  ShadowMap              : register(t3, space2);
-Texture2D<float>       AmbientOcclusion       : register(t4, space2);
 SamplerState           Sampler                : register(s0, space2);
 
-StructuredBuffer<MaterialGPU>        sMaterials          : register(t5, space2);
-StructuredBuffer<TextureDescriptor>  sTextureDescriptors : register(t6, space2);
+StructuredBuffer<MaterialGPU>        sMaterials          : register(t4, space2);
+StructuredBuffer<TextureDescriptor>  sTextureDescriptors : register(t5, space2);
 
 cbuffer ps_params : register(b0, space3)
 {
@@ -96,7 +104,7 @@ cbuffer ps_params : register(b0, space3)
     float4 uSunDirection;
 };
 
-float4 frag(VSOutput input) : SV_Target0
+GBufferOutput frag(VSOutput input)
 {
     MaterialGPU material = sMaterials[input.materialIndex];
     TextureDescriptor albedo = sTextureDescriptors[material.albedoDescriptor];
@@ -120,12 +128,18 @@ float4 frag(VSOutput input) : SV_Target0
     cascadeIndex = input.viewDepth > input.cascadeSplits.y ? 2u : cascadeIndex;
     float4 shadowPos = cascadeIndex == 0u ? input.shadowPos0 : (cascadeIndex == 1u ? input.shadowPos1 : input.shadowPos2);
     float shadow = SampleShadow(ShadowMap, Sampler, shadowPos, cascadeIndex, N, uSunDirection.xyz);
-    float2 screenUV = saturate(input.position.xy / uViewportSize.xy);
-    float ao = AmbientOcclusion.SampleLevel(Sampler, screenUV, 0.0f);
-    float3 color = ApplyPBR(float3(baseColor), N, float3(input.viewDir), metallic, roughness, shadow, ao, uSunDirection.xyz);
-#if CSM_DEBUG_CASCADES
-    float3 cascadeColor = cascadeIndex == 0u ? float3(1.0f, 0.0f, 0.0f) : (cascadeIndex == 1u ? float3(0.0f, 1.0f, 0.0f) : float3(0.0f, 0.0f, 1.0f));
-    color = lerp(color, cascadeColor, 0.65f);
-#endif
-    return float4(color, baseFactor.a);
+
+    #if CSM_DEBUG_CASCADES
+    f16_3 cascadeColor = cascadeIndex == 0u ? f16_3(1.0f, 0.0f, 0.0f) : (cascadeIndex == 1u ? f16_3(0.0f, 1.0f, 0.0f) : f16_3(0.0f, 0.0f, 1.0f));
+    baseColor = lerp(baseColor, cascadeColor, f16(0.65));
+    metallic = 0.0f;
+    roughness = 1.0f;
+    #endif
+
+    float3 T = normalize(float3(input.tangent) - dot(float3(input.tangent), N) * N);
+    GBufferOutput output;
+    output.tangentFrame = PackNormalTangent(f16_3(N), f16_4(f16_3(T), f16(input.handedness)));
+    output.albedoMetallic = f16_4_io(float4(float3(baseColor), saturate(metallic)));
+    output.shadowRoughness = f16_2_io(float2(saturate(shadow), saturate(roughness)));
+    return output;
 }

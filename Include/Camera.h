@@ -133,7 +133,7 @@ static inline void CameraInit(Camera* camera, int width, int height)
     camera->senstivity  = 15.0f;
     camera->verticalFOV = 65.0f;
     camera->nearClip    = 0.1f;
-    camera->farClip     = 1000.0f; // minimum = (sum(cascadeSizes))
+    camera->farClip     = 1500.0f; // minimum = (sum(cascadeSizes))
     camera->speed       = 3.0f;
     camera->position.x -= 6;
     wGetMonitorSize(&camera->monitorSize.x, &camera->monitorSize.y);

@@ -42,11 +42,11 @@ void InitBuffers(void)
 static void ReleaseWindowFrameTextures(WindowState* winstate)
 {
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_depth);
-    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_hiz_msaa);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_hiz_depth);
-    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_msaa);
-    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_resolve);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_color);
+    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_gbuffer_tangent);
+    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_gbuffer_albedo_metallic);
+    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_gbuffer_shadow_roughness);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_post);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_hiz);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_hbao);
@@ -58,11 +58,11 @@ static void ResizeWindowFrameTextures(WindowState* winstate, u32 width, u32 heig
 {
     ReleaseWindowFrameTextures(winstate);
     winstate->tex_depth     = CreateDepthTexture(width, height);
-    winstate->tex_hiz_msaa  = CreateHiZMSAATexture(width, height);
     winstate->tex_hiz_depth = CreateHiZDepthTexture(width, height);
-    winstate->tex_msaa      = CreateMSAATexture(width, height);
-    winstate->tex_resolve   = CreateResolveTexture(width, height);
     winstate->tex_color     = CreateSceneColorTexture(width, height, SDL_GPU_SAMPLECOUNT_1);
+    winstate->tex_gbuffer_tangent = CreateGBufferTangentTexture(width, height);
+    winstate->tex_gbuffer_albedo_metallic = CreateGBufferAlbedoMetallicTexture(width, height);
+    winstate->tex_gbuffer_shadow_roughness = CreateGBufferShadowRoughnessTexture(width, height);
     winstate->tex_post      = CreatePostProcessTexture(width, height);
     winstate->tex_hiz       = CreateHiZTexture(width, height, &winstate->hiz_mip_count);
     u32 hbaoWidth = Maxu32(width / 2u, 1u);
@@ -79,23 +79,40 @@ static SDL_GPUColorTargetInfo MakeMainColorTarget(WindowState* winstate)
 {
     SDL_GPUColorTargetInfo target;
     SDL_zero(target);
+    target.load_op  = SDL_GPU_LOADOP_CLEAR;
+    target.store_op = SDL_GPU_STOREOP_STORE;
     target.clear_color.a = 1.0f;
-    if (winstate->tex_msaa)
-    {
-        target.load_op  = SDL_GPU_LOADOP_CLEAR;
-        target.store_op = SDL_GPU_STOREOP_RESOLVE;
-        target.texture  = winstate->tex_msaa;
-        target.cycle    = true;
-        target.cycle_resolve_texture = true;
-        target.resolve_texture = winstate->tex_resolve;
-    }
-    else
-    {
-        target.load_op  = SDL_GPU_LOADOP_CLEAR;
-        target.store_op = SDL_GPU_STOREOP_STORE;
-        target.texture  = winstate->tex_color;
-    }
+    target.texture  = winstate->tex_color;
+    target.cycle    = true;
     return target;
+}
+
+static SDL_GPUColorTargetInfo MakeLoadedSceneColorTarget(WindowState* winstate)
+{
+    SDL_GPUColorTargetInfo target;
+    SDL_zero(target);
+    target.load_op  = SDL_GPU_LOADOP_LOAD;
+    target.store_op = SDL_GPU_STOREOP_STORE;
+    target.texture  = winstate->tex_color;
+    target.cycle    = false;
+    return target;
+}
+
+static void MakeGBufferTargets(WindowState* winstate, SDL_GPUColorTargetInfo targets[3])
+{
+    for (u32 i = 0; i < 3u; i++)
+    {
+        SDL_zero(targets[i]);
+        targets[i].load_op = SDL_GPU_LOADOP_CLEAR;
+        targets[i].store_op = SDL_GPU_STOREOP_STORE;
+        targets[i].cycle = true;
+    }
+    targets[0].texture = winstate->tex_gbuffer_tangent;
+    targets[1].texture = winstate->tex_gbuffer_albedo_metallic;
+    targets[2].texture = winstate->tex_gbuffer_shadow_roughness;
+    targets[1].clear_color.a = 0.0f;
+    targets[2].clear_color.r = 1.0f;
+    targets[2].clear_color.g = 1.0f;
 }
 
 static SDL_GPUDepthStencilTargetInfo MakeDepthTarget(SDL_GPUTexture* texture, SDL_GPULoadOp loadOp, bool cycle)
@@ -122,22 +139,11 @@ static SDL_GPUColorTargetInfo MakeHiZDepthTarget(WindowState* winstate)
 {
     SDL_GPUColorTargetInfo target;
     SDL_zero(target);
-    target.load_op = SDL_GPU_LOADOP_CLEAR;
+    target.load_op  = SDL_GPU_LOADOP_CLEAR;
+    target.store_op = SDL_GPU_STOREOP_STORE;
     target.clear_color.r = 1.0f;
-    if (g_RenderState.sample_count > SDL_GPU_SAMPLECOUNT_1)
-    {
-        target.store_op = SDL_GPU_STOREOP_RESOLVE;
-        target.texture = winstate->tex_hiz_msaa;
-        target.resolve_texture = winstate->tex_hiz_depth;
-        target.cycle = true;
-        target.cycle_resolve_texture = true;
-    }
-    else
-    {
-        target.store_op = SDL_GPU_STOREOP_STORE;
-        target.texture = winstate->tex_hiz_depth;
-        target.cycle = true;
-    }
+    target.texture = winstate->tex_hiz_depth;
+    target.cycle = true;
     return target;
 }
 
@@ -224,6 +230,9 @@ void Render(void)
     }
 
     SDL_GPUColorTargetInfo        color_target      = MakeMainColorTarget(winstate);
+    SDL_GPUColorTargetInfo        color_load_target = MakeLoadedSceneColorTarget(winstate);
+    SDL_GPUColorTargetInfo        gbuffer_targets[3];
+    MakeGBufferTargets(winstate, gbuffer_targets);
     SDL_GPUDepthStencilTargetInfo depth_target      = MakeDepthTarget(winstate->tex_depth, SDL_GPU_LOADOP_CLEAR, true);
     SDL_GPUDepthStencilTargetInfo main_depth_target = MakeDepthTarget(winstate->tex_depth, SDL_GPU_LOADOP_LOAD, false);
     SDL_GPUColorTargetInfo        hiz_depth_target  = MakeHiZDepthTarget(winstate);
@@ -279,21 +288,23 @@ void Render(void)
         .surfacePipeline = g_RenderState.surfaceDepthPipeline,
         .viewProj        = viewProj
     });
-    DispatchHBAOCompute(cmd, g_EnableHBAO, screenW, screenH);
     RenderScene(cmd, &(ScenePassContext){
-        .colorTarget = &color_target,
+        .colorTargets = gbuffer_targets,
+        .numColorTargets = SDL_arraysize(gbuffer_targets),
         .depthTarget = &main_depth_target,
         .shadowCascades = cachedShadowCascades,
         .viewProj    = viewProj
     });
+    DispatchHBAOCompute(cmd, g_EnableHBAO, screenW, screenH);
+    DispatchDeferredLightingCompute(cmd, screenW, screenH, viewProj);
+    RenderLines(cmd, &color_load_target, &main_depth_target, viewProj);
     DispatchHiZBuildCompute(cmd);
 
     winstate->hiz_view_proj = viewProj;
     winstate->hiz_valid = true;
     shadowCacheValid = true;
 
-    SDL_GPUTexture* sceneColor = g_RenderState.sample_count > SDL_GPU_SAMPLECOUNT_1 ? winstate->tex_resolve : winstate->tex_color;
-    DispatchTonemapCompute(cmd, sceneColor, winstate->tex_hiz_depth, winstate->tex_post, screenW, screenH, viewProj);
+    DispatchTonemapCompute(cmd, winstate->tex_color, winstate->tex_hiz_depth, winstate->tex_post, screenW, screenH, viewProj);
 
     SDL_GPUBlitInfo blit_info;
     SDL_zero(blit_info);

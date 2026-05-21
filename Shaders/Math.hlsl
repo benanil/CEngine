@@ -64,27 +64,6 @@ f16_4 QMulVec3V(f16_4 quat, f16_4 v)
     return f16_4(vec + (cross(quat.xyz, cross(quat.xyz, vec) + (vec * quat.w)) * 2.0), 0.0f);
 }
 
-f16_3x3 M33FromQuaternion(f16_4 q) 
-{
-    f16_3x3 mat;
-    const f16 num9 = q.x * q.x, num8 = q.y * q.y,
-    num7 = q.z * q.z, num6 = q.x * q.y,
-    num5 = q.z * q.w, num4 = q.z * q.x,
-    num3 = q.y * q.w, num2 = q.y * q.z,
-    num  = q.x * q.w;
-
-    mat[0][0] = 1.0 - (2.0 * (num8 + num7));
-    mat[0][1] = 2.0 * (num6 + num5);
-    mat[0][2] = 2.0 * (num4 - num3);
-    mat[1][0] = 2.0 * (num6 - num5);
-    mat[1][1] = 1.0 - (2.0 * (num7 + num9));
-    mat[1][2] = 2.0 * (num2 + num);
-    mat[2][0] = 2.0 * (num4 + num3);
-    mat[2][1] = 2.0 * (num2 - num);
-    mat[2][2] = 1.0 - (2.0 * (num8 + num9));
-    return mat;
-}
-
 f16_4x4 M44FromQuaternion(f16_4 q)
 {
     f16_4x4 mat = (f16_4x4)0;
@@ -116,33 +95,6 @@ f16_4x4 M44PositionRotationVec(f16_4 position, f16_4 rotation)
 }
 
 
-f16_4x4 M44Multiply(f16_4x4 in0, f16_4x4 in1) 
-{
-    f16_4 m0=(f16_4)0, m1=(f16_4)0, m2=(f16_4)0, m3=(f16_4)0;
-    m0 += in1[0] * in0[0][0];
-    m0 += in1[1] * in0[0][1];
-    m0 += in1[2] * in0[0][2]; 
-    m0 += in1[3] * in0[0][3]; 
-    in0[0] = m0;
-
-    m1 += in1[0] * in0[1][0];
-    m1 += in1[1] * in0[1][1];
-    m1 += in1[2] * in0[1][2]; 
-    m1 += in1[3] * in0[1][3]; 
-    in0[1] = m1;
-
-    m2 += in1[0] * in0[2][0];
-    m2 += in1[1] * in0[2][1];
-    m2 += in1[2] * in0[2][2]; 
-    m2 += in1[3] * in0[2][3]; 
-    in0[2] = m2;
-
-    m3 += in1[0] * in0[3][0];
-    m3 += in1[1] * in0[3][1];
-    m3 += in1[2] * in0[3][2]; 
-    m3 += in1[3] * in0[3][3]; 
-    in0[3] = m3;
-    return in0;
-}
+#define M44Multiply(a, b) mul(a, b)
 
 #endif // MATH_HLSL

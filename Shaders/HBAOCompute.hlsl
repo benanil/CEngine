@@ -1,6 +1,7 @@
 cbuffer HBAOParams : register(b0, space2)
 {
     float4x4 invProjection;
+    float4x4 view;
     uint2 fullSize;
     uint2 aoSize;
     float radius;
@@ -25,9 +26,9 @@ float Hash12(uint2 p)
 {
     uint x = p.x * 1664525u + p.y * 1013904223u + frameIndex * 747796405u;
     x ^= x >> 16u;
-    x *= 2246822519u;
-    x ^= x >> 13u;
-    x *= 3266489917u;
+    x *= 0x7feb352du;
+    x ^= x >> 15u;
+    x *= 0x846ca68bu;
     x ^= x >> 16u;
     return float(x & 0x00FFFFFFu) * (1.0f / 16777215.0f);
 }
@@ -47,7 +48,6 @@ float ComputeAOContribution(float3 p, float3 n, float3 s)
     float3 v = s - p;
     float vv = dot(v, v);
     if (vv <= 0.000001f) return 0.0f;
-
     float invLen = rsqrt(vv);
     float ndv = dot(n, v) * invLen;
     float falloff = saturate(1.0f - vv / max(radius * radius, 0.0001f));
@@ -74,7 +74,8 @@ void main(uint3 tid : SV_DispatchThreadID)
     }
 
     float3 viewPos = ReconstructView(fullP);
-    float3 normal = normalize(NormalTexture.Load(int3(p, 0)).xyz);
+    float3 worldNormal = normalize(NormalTexture.Load(int3(p, 0)).xyz * 2.0f - 1.0f);
+    float3 normal = normalize(mul((float3x3)view, worldNormal));
     float viewZ = max(abs(viewPos.z), 0.01f);
     float radiusPixels = clamp(radius * projectionScale / viewZ * 0.5f, 2.0f, 48.0f);
     float stepPixels = radiusPixels / float(NUM_STEPS + 1u);

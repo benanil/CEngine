@@ -1,6 +1,7 @@
 cbuffer HBAOParams : register(b0, space2)
 {
     float4x4 invProjection;
+    float4x4 view;
     uint2 fullSize;
     uint2 aoSize;
     float radius;

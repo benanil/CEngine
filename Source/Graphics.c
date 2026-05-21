@@ -89,23 +89,7 @@ void GraphicsInit(bool msaa)
     /* Claim the windows */
     SDL_ClaimWindowForGPUDevice(g_GPUDevice, g_SDLWindow);
     
-    g_RenderState.sample_count = SDL_GPU_SAMPLECOUNT_1;
-    const SDL_GPUSampleCount msaaSample[] = {
-        SDL_GPU_SAMPLECOUNT_8,
-        SDL_GPU_SAMPLECOUNT_4,
-        SDL_GPU_SAMPLECOUNT_2
-    };
-    
-    for (u32 i = 0; msaa && i < ARRAY_SIZE(msaaSample); i++)
-    {
-        SDL_GPUSampleCount candidate = msaaSample[i];
-        if (SDL_GPUTextureSupportsSampleCount(g_GPUDevice, SDL_GPU_TEXTUREFORMAT_R11G11B10_UFLOAT, candidate) &&
-            SDL_GPUTextureSupportsSampleCount(g_GPUDevice, SDL_GPU_TEXTUREFORMAT_D32_FLOAT, candidate))
-        {
-            g_RenderState.sample_count = candidate;
-            break;
-        }
-    }
+    (void)msaa;
     
     int drawablew, drawableh;
     /* Set up per-window state */
@@ -113,11 +97,11 @@ void GraphicsInit(bool msaa)
     /* create a depth texture for the window */
     SDL_GetWindowSizeInPixels(g_SDLWindow, (int*)&drawablew, (int*)&drawableh);
     winstate->tex_depth   = CreateDepthTexture(drawablew, drawableh);
-    winstate->tex_hiz_msaa = CreateHiZMSAATexture(drawablew, drawableh);
     winstate->tex_hiz_depth = CreateHiZDepthTexture(drawablew, drawableh);
-    winstate->tex_msaa    = CreateMSAATexture(drawablew, drawableh);
-    winstate->tex_resolve = CreateResolveTexture(drawablew, drawableh);
     winstate->tex_color   = CreateSceneColorTexture(drawablew, drawableh, SDL_GPU_SAMPLECOUNT_1);
+    winstate->tex_gbuffer_tangent = CreateGBufferTangentTexture(drawablew, drawableh);
+    winstate->tex_gbuffer_albedo_metallic = CreateGBufferAlbedoMetallicTexture(drawablew, drawableh);
+    winstate->tex_gbuffer_shadow_roughness = CreateGBufferShadowRoughnessTexture(drawablew, drawableh);
     winstate->tex_post    = CreatePostProcessTexture(drawablew, drawableh);
     winstate->tex_hiz     = CreateHiZTexture(drawablew, drawableh, &winstate->hiz_mip_count);
     winstate->tex_hbao        = CreateHBAOTexture(Maxu32((u32)drawablew / 2u, 1u), Maxu32((u32)drawableh / 2u, 1u));
@@ -141,11 +125,11 @@ void GraphicsDestroy()
 {
     WindowState* winstate = &g_WindowState;
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_depth);
-    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_hiz_msaa);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_hiz_depth);
-    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_msaa);
-    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_resolve);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_color);
+    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_gbuffer_tangent);
+    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_gbuffer_albedo_metallic);
+    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_gbuffer_shadow_roughness);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_post);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_hiz);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_hbao);
@@ -356,19 +340,9 @@ SDL_GPUTexture* Create3DNoise3DTexture(u32 size)
 
 SDL_GPUTexture* CreateDepthTexture(u32 drawablew, u32 drawableh)
 {
-    SDL_GPUTextureUsageFlags usage = SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET;
-    if (g_RenderState.sample_count == SDL_GPU_SAMPLECOUNT_1) usage |= SDL_GPU_TEXTUREUSAGE_SAMPLER;
     return CreateTexture2D(drawablew, drawableh, SDL_GPU_TEXTUREFORMAT_D32_FLOAT,
-                           usage,
-                           g_RenderState.sample_count, 1, "Depth Texture");
-}
-
-SDL_GPUTexture* CreateHiZMSAATexture(u32 drawablew, u32 drawableh)
-{
-    if (g_RenderState.sample_count == SDL_GPU_SAMPLECOUNT_1) return NULL;
-    return CreateTexture2D(drawablew, drawableh, SDL_GPU_TEXTUREFORMAT_R32_FLOAT,
-                           SDL_GPU_TEXTUREUSAGE_COLOR_TARGET,
-                           g_RenderState.sample_count, 1, "Hi-Z MSAA Depth Texture");
+                           SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER,
+                           SDL_GPU_SAMPLECOUNT_1, 1, "Depth Texture");
 }
 
 SDL_GPUTexture* CreateHiZDepthTexture(u32 drawablew, u32 drawableh)
@@ -376,22 +350,6 @@ SDL_GPUTexture* CreateHiZDepthTexture(u32 drawablew, u32 drawableh)
     return CreateTexture2D(drawablew, drawableh, SDL_GPU_TEXTUREFORMAT_R32_FLOAT,
                            SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER,
                            SDL_GPU_SAMPLECOUNT_1, 1, "Hi-Z Resolved Depth Texture");
-}
-
-SDL_GPUTexture* CreateMSAATexture(u32 drawablew, u32 drawableh)
-{
-    if (g_RenderState.sample_count == SDL_GPU_SAMPLECOUNT_1) return NULL;
-    return CreateTexture2D(drawablew, drawableh, SDL_GPU_TEXTUREFORMAT_R11G11B10_UFLOAT, 
-                           SDL_GPU_TEXTUREUSAGE_COLOR_TARGET,
-                           g_RenderState.sample_count, 1, "MSAA Texture");
-}
-
-SDL_GPUTexture* CreateResolveTexture(u32 drawablew, u32 drawableh)
-{
-    if (g_RenderState.sample_count == SDL_GPU_SAMPLECOUNT_1) return NULL;
-    return CreateTexture2D(drawablew, drawableh, SDL_GPU_TEXTUREFORMAT_R11G11B10_UFLOAT,
-                           SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER,
-                           SDL_GPU_SAMPLECOUNT_1, 1, "Resolve Texture");
 }
 
 SDL_GPUTexture* CreateHiZTexture(u32 drawablew, u32 drawableh, u32* mipCount)
@@ -405,10 +363,31 @@ SDL_GPUTexture* CreateHiZTexture(u32 drawablew, u32 drawableh, u32* mipCount)
 
 SDL_GPUTexture* CreateSceneColorTexture(u32 drawablew, u32 drawableh, SDL_GPUSampleCount sampleCount)
 {
-    SDL_GPUTextureUsageFlags usage = SDL_GPU_TEXTUREUSAGE_COLOR_TARGET;
+    SDL_GPUTextureUsageFlags usage = SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_WRITE;
     if (sampleCount == SDL_GPU_SAMPLECOUNT_1) usage |= SDL_GPU_TEXTUREUSAGE_SAMPLER;
-    return CreateTexture2D(drawablew, drawableh, SDL_GPU_TEXTUREFORMAT_R11G11B10_UFLOAT,
-                           usage, sampleCount, 1, "Scene Color Texture");
+    return CreateTexture2D(drawablew, drawableh, SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT,
+                            usage, sampleCount, 1, "Scene Color Texture");
+}
+
+SDL_GPUTexture* CreateGBufferTangentTexture(u32 drawablew, u32 drawableh)
+{
+    return CreateTexture2D(drawablew, drawableh, SDL_GPU_TEXTUREFORMAT_R32_UINT,
+                           SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER,
+                           SDL_GPU_SAMPLECOUNT_1, 1, "GBuffer Tangent Texture");
+}
+
+SDL_GPUTexture* CreateGBufferAlbedoMetallicTexture(u32 drawablew, u32 drawableh)
+{
+    return CreateTexture2D(drawablew, drawableh, SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
+                           SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER,
+                           SDL_GPU_SAMPLECOUNT_1, 1, "GBuffer Albedo Metallic Texture");
+}
+
+SDL_GPUTexture* CreateGBufferShadowRoughnessTexture(u32 drawablew, u32 drawableh)
+{
+    return CreateTexture2D(drawablew, drawableh, SDL_GPU_TEXTUREFORMAT_R8G8_UNORM,
+                           SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER,
+                           SDL_GPU_SAMPLECOUNT_1, 1, "GBuffer Shadow Roughness Texture");
 }
 
 SDL_GPUTexture* CreatePostProcessTexture(u32 drawablew, u32 drawableh)
@@ -427,9 +406,9 @@ SDL_GPUTexture* CreateHBAOTexture(u32 drawablew, u32 drawableh)
 
 SDL_GPUTexture* CreateHBAONormalTexture(u32 drawablew, u32 drawableh)
 {
-    return CreateTexture2D(drawablew, drawableh, SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT,
-                           SDL_GPU_TEXTUREUSAGE_SAMPLER | SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_WRITE,
-                           SDL_GPU_SAMPLECOUNT_1, 1, "HBAO Normal Texture");
+    return CreateTexture2D(drawablew, drawableh, SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
+                            SDL_GPU_TEXTUREUSAGE_SAMPLER | SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_WRITE,
+                            SDL_GPU_SAMPLECOUNT_1, 1, "HBAO Normal Texture");
 }
 
 SDL_GPUTexture* CreateShadowDepthTexture(u32 size)

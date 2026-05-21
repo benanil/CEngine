@@ -45,7 +45,8 @@ typedef struct DepthPassContext_
 
 typedef struct ScenePassContext_
 {
-    SDL_GPUColorTargetInfo* colorTarget;
+    SDL_GPUColorTargetInfo* colorTargets;
+    u32 numColorTargets;
     SDL_GPUDepthStencilTargetInfo* depthTarget;
     ShadowCascadeData shadowCascades;
     mat4x4 viewProj;
@@ -68,7 +69,8 @@ extern SDL_GPUComputePipeline* g_HiZBuildComputePipeline;
 extern SDL_GPUComputePipeline* g_HiZDownscaleComputePipeline;
 extern SDL_GPUComputePipeline* g_HBAOComputePipeline;
 extern SDL_GPUComputePipeline* g_HBAOBlurComputePipeline;
-extern SDL_GPUComputePipeline* g_HBAONormalComputePipeline;
+extern SDL_GPUComputePipeline* g_ExtractNormalComputePipeline;
+extern SDL_GPUComputePipeline* g_DeferredLightingComputePipeline;
 
 void InitRenderPipelines(void);
 void DestroyRenderPipelines(void);
@@ -86,6 +88,7 @@ void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd,
 
 void DispatchHiZBuildCompute(SDL_GPUCommandBuffer* cmd);
 void DispatchHBAOCompute(SDL_GPUCommandBuffer* cmd, bool enabled, u32 width, u32 height);
+void DispatchDeferredLightingCompute(SDL_GPUCommandBuffer* cmd, u32 width, u32 height, mat4x4 viewProj);
 void DispatchTonemapCompute(SDL_GPUCommandBuffer* cmd, SDL_GPUTexture* source, SDL_GPUTexture* depth, SDL_GPUTexture* destination, u32 width, u32 height, mat4x4 viewProj);
 void DispatchAnimationCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet);
 void DispatchAnimateVerticesCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet);
@@ -93,5 +96,6 @@ void DispatchAnimateVerticesCompute(SDL_GPUCommandBuffer* cmd, RenderSet* render
 void RenderDepth(SDL_GPUCommandBuffer* cmd, const DepthPassContext* ctx);
 
 void RenderScene(SDL_GPUCommandBuffer* cmd, const ScenePassContext* ctx);
+void RenderLines(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget, SDL_GPUDepthStencilTargetInfo* depthTarget, mat4x4 viewProj);
 
 #endif

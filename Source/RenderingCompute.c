@@ -130,8 +130,9 @@ void DispatchHiZBuildCompute(SDL_GPUCommandBuffer* cmd)
 void DispatchHBAOCompute(SDL_GPUCommandBuffer* cmd, bool enabled, u32 width, u32 height)
 {
     WindowState* winstate = &g_WindowState;
-    if (!winstate->tex_hiz_depth || !winstate->tex_hbao || !winstate->tex_hbao_blur || !winstate->tex_hbao_normal) return;
-    CHECK_CREATE(g_HBAONormalComputePipeline, "HBAO Normal Compute Pipeline");
+    if (!winstate->tex_hiz_depth || !winstate->tex_gbuffer_tangent || !winstate->tex_hbao ||
+        !winstate->tex_hbao_blur || !winstate->tex_hbao_normal) return;
+    if (enabled) CHECK_CREATE(g_ExtractNormalComputePipeline, "Extract Normal Compute Pipeline");
     CHECK_CREATE(g_HBAOComputePipeline, "HBAO Compute Pipeline");
     CHECK_CREATE(g_HBAOBlurComputePipeline, "HBAO Blur Compute Pipeline");
 
@@ -140,6 +141,7 @@ void DispatchHBAOCompute(SDL_GPUCommandBuffer* cmd, bool enabled, u32 width, u32
 
     struct {
         mat4x4 invProjection;
+        mat4x4 view;
         u32 fullSize[2];
         u32 aoSize[2];
         f32 radius;
@@ -153,6 +155,7 @@ void DispatchHBAOCompute(SDL_GPUCommandBuffer* cmd, bool enabled, u32 width, u32
     } params;
 
     params.invProjection = g_Camera.inverseProjection;
+    params.view = g_Camera.view;
     params.fullSize[0] = width;
     params.fullSize[1] = height;
     params.aoSize[0] = aoWidth;
@@ -166,21 +169,24 @@ void DispatchHBAOCompute(SDL_GPUCommandBuffer* cmd, bool enabled, u32 width, u32
     params.frameIndex = (u32)SDL_GetTicks();
     params.padding = 0u;
 
-    SDL_GPUStorageTextureReadWriteBinding normalOutput = {
-        .texture = winstate->tex_hbao_normal,
-        .mip_level = 0,
-        .layer = 0,
-        .cycle = true
-    };
-    SDL_GPUComputePass* pass = SDL_BeginGPUComputePass(cmd, &normalOutput, 1, NULL, 0);
-    SDL_BindGPUComputePipeline(pass, g_HBAONormalComputePipeline);
-    SDL_BindGPUComputeSamplers(pass, 0, &(SDL_GPUTextureSamplerBinding){
-        .texture = winstate->tex_hiz_depth,
-        .sampler = g_RenderState.hiZSampler
-    }, 1);
-    SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
-    SDL_DispatchGPUCompute(pass, (aoWidth + 7u) / 8u, (aoHeight + 7u) / 8u, 1);
-    SDL_EndGPUComputePass(pass);
+    SDL_GPUComputePass* pass;
+    if (enabled)
+    {
+        SDL_GPUStorageTextureReadWriteBinding normalOutput = {
+            .texture = winstate->tex_hbao_normal,
+            .mip_level = 0,
+            .layer = 0,
+            .cycle = true
+        };
+        pass = SDL_BeginGPUComputePass(cmd, &normalOutput, 1, NULL, 0);
+        SDL_BindGPUComputePipeline(pass, g_ExtractNormalComputePipeline);
+        SDL_BindGPUComputeSamplers(pass, 0, &(SDL_GPUTextureSamplerBinding){
+            .texture = winstate->tex_gbuffer_tangent,
+            .sampler = g_RenderState.hiZSampler
+        }, 1);
+        SDL_DispatchGPUCompute(pass, (aoWidth + 7u) / 8u, (aoHeight + 7u) / 8u, 1);
+        SDL_EndGPUComputePass(pass);
+    }
 
     SDL_GPUStorageTextureReadWriteBinding hbaoOutput = {
         .texture = winstate->tex_hbao,
@@ -217,6 +223,54 @@ void DispatchHBAOCompute(SDL_GPUCommandBuffer* cmd, bool enabled, u32 width, u32
     SDL_EndGPUComputePass(pass);
 }
 
+void DispatchDeferredLightingCompute(SDL_GPUCommandBuffer* cmd, u32 width, u32 height, mat4x4 viewProj)
+{
+    WindowState* winstate = &g_WindowState;
+    if (!winstate->tex_gbuffer_tangent || !winstate->tex_gbuffer_albedo_metallic ||
+        !winstate->tex_gbuffer_shadow_roughness || !winstate->tex_hiz_depth ||
+        !winstate->tex_hbao_blur || !winstate->tex_color) return;
+    CHECK_CREATE(g_DeferredLightingComputePipeline, "Deferred Lighting Compute Pipeline");
+
+    SDL_GPUStorageTextureReadWriteBinding output = {
+        .texture = winstate->tex_color,
+        .mip_level = 0,
+        .layer = 0,
+        .cycle = true
+    };
+    SDL_GPUComputePass* pass = SDL_BeginGPUComputePass(cmd, &output, 1, NULL, 0);
+    SDL_BindGPUComputePipeline(pass, g_DeferredLightingComputePipeline);
+
+    SDL_GPUTextureSamplerBinding inputs[5] = {
+        { .texture = winstate->tex_gbuffer_tangent, .sampler = g_RenderState.hiZSampler },
+        { .texture = winstate->tex_gbuffer_albedo_metallic, .sampler = g_RenderState.hiZSampler },
+        { .texture = winstate->tex_gbuffer_shadow_roughness, .sampler = g_RenderState.hiZSampler },
+        { .texture = winstate->tex_hiz_depth, .sampler = g_RenderState.hiZSampler },
+        { .texture = winstate->tex_hbao_blur, .sampler = g_RenderState.sampler }
+    };
+    SDL_BindGPUComputeSamplers(pass, 0, inputs, SDL_arraysize(inputs));
+
+    float3 sunDirection = GetRenderSunDirection();
+    struct {
+        u32 outputSize[2];
+        f32 padding0[2];
+        mat4x4 invViewProj;
+        f32 cameraPosition[4];
+        f32 sunDirection[4];
+    } params = {0};
+    params.outputSize[0] = width;
+    params.outputSize[1] = height;
+    params.invViewProj = M44Inverse(viewProj);
+    params.cameraPosition[0] = g_Camera.position.x;
+    params.cameraPosition[1] = g_Camera.position.y;
+    params.cameraPosition[2] = g_Camera.position.z;
+    params.sunDirection[0] = sunDirection.x;
+    params.sunDirection[1] = sunDirection.y;
+    params.sunDirection[2] = sunDirection.z;
+    SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
+    SDL_DispatchGPUCompute(pass, (width + 7u) / 8u, (height + 7u) / 8u, 1);
+    SDL_EndGPUComputePass(pass);
+}
+
 static float2 GetGodRaySunPos(mat4x4 viewProj, float* intensity)
 {
     float3 dir = GetRenderSunDirection();
@@ -234,16 +288,14 @@ static float2 GetGodRaySunPos(mat4x4 viewProj, float* intensity)
     v128f ndcV = VecDiv(clip, VecSet1(w));
     float ndcX = VecGetX(ndcV);
     float ndcY = VecGetY(ndcV);
-    *intensity *= MCLAMP((facing + 0.2f) / 0.7f, 0.0f, 1.0f);
-    return (float2){ MCLAMP(ndcX * 0.5f + 0.5f, -0.5f, 1.5f), MCLAMP(0.5f - ndcY * 0.5f, -0.5f, 1.5f) };
+    *intensity *= Clamp01f32((facing + 0.2f) / 0.7f);
+    return (float2){ Clampf32(ndcX * 0.5f + 0.5f, -0.5f, 1.5f), Clampf32(0.5f - ndcY * 0.5f, -0.5f, 1.5f) };
 }
 
 static f32 GetSkyPhaseTime(void)
 {
-    static bool initialized = false;
     static double startupPhase = 0.0;
-
-    if (!initialized)
+    if (startupPhase == 0.0)
     {
         SDL_Time wallTime = 0;
         if (SDL_GetCurrentTime(&wallTime))
@@ -251,22 +303,13 @@ static f32 GetSkyPhaseTime(void)
             const SDL_Time dayNS = (SDL_Time)86400 * 1000000000;
             startupPhase = (double)(wallTime % dayNS) / 1000000000.0;
         }
-        initialized = true;
     }
-
-    double elapsed = (double)SDL_GetTicksNS() / 1000000000.0;
-    return (f32)(startupPhase * 0.01 + elapsed * 0.0025);
-}
-
-static f32 GetCloudTime(void)
-{
-    return (f32)((double)SDL_GetTicksNS() / 1000000000.0);
+    return (f32)(startupPhase * 0.01);
 }
 
 void DispatchTonemapCompute(SDL_GPUCommandBuffer* cmd, SDL_GPUTexture* source, SDL_GPUTexture* depth, SDL_GPUTexture* destination, u32 width, u32 height, mat4x4 viewProj)
 {
     CHECK_CREATE(g_TonemapComputePipeline, "Tonemap Compute Pipeline");
-
     SDL_GPUStorageTextureReadWriteBinding rwTexture = {
         .texture = destination,
         .mip_level = 0,
@@ -305,8 +348,8 @@ void DispatchTonemapCompute(SDL_GPUCommandBuffer* cmd, SDL_GPUTexture* source, S
     params.sunPos[0] = sunPos.x;
     params.sunPos[1] = sunPos.y;
     params.godRayIntensity = godRayIntensity;
-    params.time = GetSkyPhaseTime() + 55.0f;
-    params.cloudTime = GetCloudTime();
+    params.cloudTime = TimeSinceStartup();
+    params.time = GetSkyPhaseTime() + params.cloudTime;
     params.invViewProj = M44Inverse(viewProj);
     params.cameraPosition[0] = g_Camera.position.x;
     params.cameraPosition[1] = g_Camera.position.y;
@@ -314,6 +357,7 @@ void DispatchTonemapCompute(SDL_GPUCommandBuffer* cmd, SDL_GPUTexture* source, S
     params.sunDirection[0] = sunDir.x;
     params.sunDirection[1] = sunDir.y;
     params.sunDirection[2] = sunDir.z;
+    params.sunDirection[2] = FModf(params.time, MATH_TwoPI);
     SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
     SDL_DispatchGPUCompute(pass, (width + 7u) / 8u, (height + 7u) / 8u, 1);
     SDL_EndGPUComputePass(pass);

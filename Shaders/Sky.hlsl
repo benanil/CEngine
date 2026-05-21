@@ -123,7 +123,7 @@ float Cloud(float3 ro, float3 rd)
     float2 p = (ro + dist * rd).xz;
     p *= 1.2f / skyPlaneScale;
 
-    float t = cloudTime * 0.1f;
+    float t = cloudTime * 0.05f;
     float den = CloudFBM(float2(p.x - t, p.y - t));
     float cloudMix = smoothstep(0.4f, 0.8f, den);
     cloudMix *= saturate(rd.y * 6.0f);

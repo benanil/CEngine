@@ -428,16 +428,19 @@
 						<Path>Shaders/HBAOCompute.hlsl</Path>
 					</File>
 					<File>
-						<Path>Shaders/HBAONormalCompute.hlsl</Path>
-					</File>
-					<File>
-						<Path>Shaders/Sky.hlsl</Path>
-					</File>
-					<File>
 						<Path>Shaders/GodRays.hlsl</Path>
 					</File>
 					<File>
 						<Path>Shaders/NoiseHash.hlsl</Path>
+					</File>
+					<File>
+						<Path>Shaders/DeferredLighting.hlsl</Path>
+					</File>
+					<File>
+						<Path>Shaders/ExtractNormalCompute.hlsl</Path>
+					</File>
+					<File>
+						<Path>Shaders/Sky.hlsl</Path>
 					</File>
 				</Children>
 			</Folder>

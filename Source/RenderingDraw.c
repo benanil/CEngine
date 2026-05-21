@@ -195,12 +195,11 @@ void RenderScene(SDL_GPUCommandBuffer* cmd, const ScenePassContext* ctx)
     SDL_GPUBufferBinding vertex_binding = { g_RenderState.skinnedVertexBuffer, 0 };
     SDL_GPUBufferBinding index_binding  = { g_RenderState.indexBuffer, 0 };
     float3 sunDirection = GetRenderSunDirection();
-    SDL_GPUTextureSamplerBinding pageSamplers[5] = {
+    SDL_GPUTextureSamplerBinding pageSamplers[4] = {
         { .texture = g_RenderState.albedoPages.handle, .sampler = g_RenderState.sampler },
         { .texture = g_RenderState.normalPages.handle, .sampler = g_RenderState.sampler },
         { .texture = g_RenderState.metallicRoughnessPages.handle, .sampler = g_RenderState.sampler },
-        { .texture = g_WindowState.tex_shadow_color, .sampler = g_RenderState.shadowSampler },
-        { .texture = g_WindowState.tex_hbao_blur, .sampler = g_RenderState.sampler }
+        { .texture = g_WindowState.tex_shadow_color, .sampler = g_RenderState.shadowSampler }
     };
     struct { f32 viewportSize[4]; f32 sunDirection[4]; } fragmentParams = {
         { (f32)Maxi32(g_Camera.viewportSize.x, 1), (f32)Maxi32(g_Camera.viewportSize.y, 1), 0.0f, 0.0f },
@@ -211,7 +210,7 @@ void RenderScene(SDL_GPUCommandBuffer* cmd, const ScenePassContext* ctx)
         g_RenderState.textureDescriptorBuffer
     };
 
-    SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmd, ctx->colorTarget, 1, ctx->depthTarget);
+    SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmd, ctx->colorTargets, ctx->numColorTargets, ctx->depthTarget);
     if (skinnedSet.numGroups > 0)
     {
         SDL_BindGPUGraphicsPipeline(pass, g_RenderState.skinnedPipeline);
@@ -255,12 +254,16 @@ void RenderScene(SDL_GPUCommandBuffer* cmd, const ScenePassContext* ctx)
         SDL_DrawGPUIndexedPrimitivesIndirect(pass, g_RenderState.surfaceBuffers.drawArgs, 0, surfaceSet.numGroups);
     }
 
-    SDL_BindGPUGraphicsPipeline(pass, g_RenderState.linePipeline);
-    vertex_binding.buffer = g_RenderState.lineBuffer;
-    vertex_binding.offset = 0;
-    SDL_BindGPUVertexBuffers(pass, 0, &vertex_binding, 1);
-    SDL_PushGPUVertexUniformData(cmd, 0, &ctx->viewProj, sizeof(ctx->viewProj));
-    SDL_DrawGPUPrimitivesIndirect(pass, g_RenderState.lineDrawArgsBuffer, sizeof(int) * 4, 1);
+    SDL_EndGPURenderPass(pass);
+}
 
+void RenderLines(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget, SDL_GPUDepthStencilTargetInfo* depthTarget, mat4x4 viewProj)
+{
+    SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmd, colorTarget, 1, depthTarget);
+    SDL_GPUBufferBinding vertex_binding = { g_RenderState.lineBuffer, 0 };
+    SDL_BindGPUGraphicsPipeline(pass, g_RenderState.linePipeline);
+    SDL_BindGPUVertexBuffers(pass, 0, &vertex_binding, 1);
+    SDL_PushGPUVertexUniformData(cmd, 0, &viewProj, sizeof(viewProj));
+    SDL_DrawGPUPrimitivesIndirect(pass, g_RenderState.lineDrawArgsBuffer, sizeof(int) * 4, 1);
     SDL_EndGPURenderPass(pass);
 }
