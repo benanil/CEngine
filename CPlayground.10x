@@ -301,6 +301,9 @@
 					<File>
 						<Path>Include/Slug.h</Path>
 					</File>
+					<File>
+						<Path>Include/UIRenderer.h</Path>
+					</File>
 				</Children>
 			</Folder>
 			<Folder>
@@ -407,9 +410,6 @@
 						<Path>Shaders/HiZBuildCompute.hlsl</Path>
 					</File>
 					<File>
-						<Path>Shaders/DepthResolveMSAACompute.hlsl</Path>
-					</File>
-					<File>
 						<Path>Shaders/SkinnedDepthOnly.hlsl</Path>
 					</File>
 					<File>
@@ -444,6 +444,9 @@
 					</File>
 					<File>
 						<Path>Shaders/Slug.hlsl</Path>
+					</File>
+					<File>
+						<Path>Shaders/UIShape.hlsl</Path>
 					</File>
 				</Children>
 			</Folder>
@@ -521,6 +524,9 @@
 					</File>
 					<File>
 						<Path>Source/Slug.c</Path>
+					</File>
+					<File>
+						<Path>Source/UIRenderer.c</Path>
 					</File>
 				</Children>
 			</Folder>

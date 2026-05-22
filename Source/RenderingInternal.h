@@ -12,6 +12,7 @@
 #include "Include/Memory.h"
 #include "Include/RenderSet.h"
 #include "Include/Slug.h"
+#include "Include/UIRenderer.h"
 #include "Math/Half.h"
 
 #define BReadRasterBit   SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ

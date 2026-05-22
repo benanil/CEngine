@@ -2,6 +2,7 @@
 #define CP_SLUG_H
 
 #include "Graphics.h"
+#include "DataStructures/HashMap.h"
 
 #if defined(__cplusplus)
 extern "C" {
@@ -10,6 +11,7 @@ extern "C" {
 #define SLUG_MAX_GLYPHS 128u
 #define SLUG_MAX_TEXT   1024u
 #define SLUG_VERTS_PER_GLYPH 6u
+#define SLUG_MAX_FALLBACK_FONTS 8u
 
 typedef struct SlugVertex_
 {
@@ -31,23 +33,53 @@ typedef struct SlugGlyph_
     f32 bandOffsetX, bandOffsetY;
 } SlugGlyph;
 
+typedef struct SlugBuildBuffers_
+{
+    u32* curves;
+    u32  numCurveWords;
+    u32  maxCurveWords;
+    u32* bands;
+    u32  numBands;
+    u32  maxBands;
+} SlugBuildBuffers;
+
+typedef struct SlugFallbackFont_
+{
+    char* ttfData;
+    f32 emScale;
+    s32 fontOffset;
+} SlugFallbackFont;
+
 typedef struct SlugFont_
 {
     SlugGlyph glyphs[SLUG_MAX_GLYPHS];
+    HashMap unicodeGlyphs;
+    char* ttfData;
+    f32 emScale;
+    SlugFallbackFont fallbackFonts[SLUG_MAX_FALLBACK_FONTS];
+    u32 numFallbackFonts;
     f32 ascent, descent;
+    SlugBuildBuffers buffers;
     SDL_GPUBuffer* curveBuffer;
     SDL_GPUBuffer* bandBuffer;
+    u32 gpuCurveWords;
+    u32 gpuBandWords;
     SDL_GPUBuffer* vertexBuffer;
     SlugVertex* vertices;
     u32 numVertices;
     u32 maxVertices;
+    bool glyphBuffersDirty;
 } SlugFont;
 
 bool SlugLoadFont(SlugFont* font, const char* path);
 void SlugDestroyFont(SlugFont* font);
 void SlugClear(SlugFont* font);
 bool SlugAppendText(SlugFont* font, const char* text, float3 pos, f32 size, u32 color);
+bool SlugAppendText2D(SlugFont* font, const char* text, float2 pos, f32 size, u32 color);
+float2 SlugCalcTextSize(SlugFont* font, const char* text, f32 size);
 void SlugRender(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget, SDL_GPUDepthStencilTargetInfo* depthTarget, SlugFont* font, mat4x4 viewProj);
+void SlugRender2D(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget, SlugFont* font);
+SlugFont* SlugGetDemoFont(void);
 
 void SlugInitDemo(void);
 void SlugDestroyDemo(void);

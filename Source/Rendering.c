@@ -37,6 +37,7 @@ void InitBuffers(void)
     g_RenderState.skinnedAnimatedVertices = CreateBuffer(NULL, animatedVertexSize, BReadRasterBit | BWriteComputeBit, "CPAnimatedVertices");
     g_RenderState.lineBuffer = CreateBuffer(NULL, sizeof(ALineVertex) * MAX_LINE_COUNT, BVertexBit | BWriteComputeBit, "CPLineVertexBuffer");
     g_RenderState.lineDrawArgsBuffer = CreateBuffer(NULL, sizeof(u32) * 8, BIndirectBit | BWriteComputeBit, "CPLinedrawArgsBuffer");
+    UIInit();
 }
 
 static void ReleaseWindowFrameTextures(WindowState* winstate)
@@ -318,6 +319,9 @@ void Render(void)
 
     DispatchTonemapCompute(cmd, winstate->tex_color, winstate->tex_hiz_depth, winstate->tex_post, screenW, screenH, viewProj);
     RenderSlugDemo(cmd, &post_load_target, &main_depth_target, viewProj);
+    UIBeginFrame();
+    UIRenderDemo();
+    UIEndFrame(cmd, &post_load_target);
 
     SDL_GPUBlitInfo blit_info;
     SDL_zero(blit_info);
@@ -363,6 +367,9 @@ void DestroyPipeline(void)
     if (g_RenderState.indexBuffer)             SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.indexBuffer);
     if (g_RenderState.lineBuffer)              SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lineBuffer);
     if (g_RenderState.lineDrawArgsBuffer)      SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lineDrawArgsBuffer);
+    if (g_RenderState.uiShapeBuffer)           SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.uiShapeBuffer);
+    if (g_RenderState.uiShapeDrawArgsBuffer)   SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.uiShapeDrawArgsBuffer);
+    UIDestroy();
     SlugDestroyDemo();
     if (g_RenderState.textureDescriptorBuffer) SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.textureDescriptorBuffer);
     if (g_RenderState.materialBuffer)          SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.materialBuffer);

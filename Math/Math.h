@@ -85,7 +85,7 @@ purefn f32 VCALL Min3(v128f a)
 
 purefn f32 VCALL Max3(v128f a)
 {
-    VecSetW(a, FLT_MIN);
+    VecSetW(a, -FLT_MAX);
     return VecMaxVal(a);
 }
 

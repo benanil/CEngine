@@ -14,6 +14,7 @@ GRAPHICS_SHADERS = [
     ("Skinned"  , "vert", "frag"),
     ("LineDebug", "vert", "frag"),
     ("Slug"     , "vert", "frag"),
+    ("UIShape"  , "vert", "frag"),
     ("SurfaceDepthOnly", "vert", "frag"),
     ("SkinnedDepthOnly", "vert", "frag")
 ]
@@ -22,13 +23,15 @@ COMPUTE_SHADERS = [
     ("AnimationCompute"       , "main"),
     ("AnimateVertices"        , "main"),
     ("CullDrawArgsCompute"    , "main"),
+    ("TexturePageCopyRGBA"    , "main"),
+    ("TexturePageCopyRG"      , "main"),
+    ("DeferredLighting"       , "main"),
     ("TonemapCompute"         , "main"),
     ("HiZBuildCompute"        , "main"),
     ("HiZDownscaleCompute"    , "main"),
-    ("HBAONormalCompute"      , "main"),
+    ("ExtractNormalCompute"   , "main"),
     ("HBAOCompute"            , "main"),
-    ("HBAOBlurCompute"        , "main"),
-    ("DepthResolveMSAACompute", "main")
+    ("HBAOBlurCompute"        , "main")
 ]
 
 def run_cmd(args: list[str], error_msg: str):

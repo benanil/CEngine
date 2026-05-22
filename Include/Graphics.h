@@ -173,6 +173,7 @@ typedef struct RenderState
     SDL_GPUGraphicsPipeline* linePipeline;
     SDL_GPUGraphicsPipeline* slugPipeline;
     SDL_GPUGraphicsPipeline* slugDepthPipeline;
+    SDL_GPUGraphicsPipeline* uiShapePipeline;
     SDL_GPUSampler*          sampler;
     SDL_GPUSampler*          hiZSampler;
     SDL_GPUSampler*          shadowSampler;
@@ -181,6 +182,8 @@ typedef struct RenderState
     SDL_GPUBuffer*           indexBuffer;
     SDL_GPUBuffer*           lineBuffer;
     SDL_GPUBuffer*           lineDrawArgsBuffer;
+    SDL_GPUBuffer*           uiShapeBuffer;
+    SDL_GPUBuffer*           uiShapeDrawArgsBuffer;
     SDL_GPUBuffer*           skinnedAnimatedVertices;
     RenderSetBuffers         skinnedBuffers;
     RenderSetBuffers         surfaceBuffers;
