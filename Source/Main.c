@@ -14,6 +14,7 @@
 #include "Include/Memory.h"
 #include "Include/Random.h"
 #include "Include/AssetManager.h"
+#include "Include/Slug.h"
 
 static Uint32 frames = 0;
 static s32 done = 0;

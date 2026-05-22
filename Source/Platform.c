@@ -33,6 +33,26 @@ inline static s32 GetRealKey(s32 x)
     return x;
 }
 
+static void PlatformPushTextKeyEvent(s32 key, u16 mod)
+{
+    switch (key)
+    {
+        case SDLK_LEFT: case SDLK_RIGHT: case SDLK_UP: case SDLK_DOWN:
+        case SDLK_HOME: case SDLK_END: case SDLK_BACKSPACE: case SDLK_DELETE:
+        case SDLK_RETURN: case SDLK_A: case SDLK_C: case SDLK_V: case SDLK_X:
+            break;
+        default:
+            return;
+    }
+
+    if (PlatformCtx.TextKeyEventCount < (u32)ARRAY_SIZE(PlatformCtx.TextKeyEvents))
+    {
+        PlatformTextKeyEvent* event = &PlatformCtx.TextKeyEvents[PlatformCtx.TextKeyEventCount++];
+        event->key = key;
+        event->mod = mod;
+    }
+}
+
 // Sokol event callback
 void EventCallback(const SDL_Event* event) 
 {
@@ -42,6 +62,8 @@ void EventCallback(const SDL_Event* event)
             
             if (vk_code > 0 && vk_code < 512) BitsetSet(DownKeys, vk_code);
             else SDL_Log("unhandelled key code down: %x", vk_code);
+
+            PlatformPushTextKeyEvent(event->key.key, (u16)event->key.mod);
 
             break;
         }
@@ -62,13 +84,26 @@ void EventCallback(const SDL_Event* event)
             break;
             
         case SDL_EVENT_MOUSE_BUTTON_DOWN: {
-            u32 button_flag = 1 << (event->button.button);
+            u32 button_flag = 1u << (event->button.button - 1u);
             PlatformCtx.MouseDown |= button_flag;
+            break;
+        }
+        case SDL_EVENT_TEXT_INPUT:
+        {
+            u32 len = (u32)SDL_strlen(event->text.text);
+            u32 space = (u32)sizeof(PlatformCtx.TextInput) - PlatformCtx.TextInputLength - 1u;
+            u32 copy = Minu32(len, space);
+            if (copy > 0u)
+            {
+                MemCopy(PlatformCtx.TextInput + PlatformCtx.TextInputLength, event->text.text, copy);
+                PlatformCtx.TextInputLength += copy;
+                PlatformCtx.TextInput[PlatformCtx.TextInputLength] = 0;
+            }
             break;
         }
         case SDL_EVENT_MOUSE_BUTTON_UP: 
         {
-            u32 button_flag = 1 << (event->button.button);
+            u32 button_flag = 1u << (event->button.button - 1u);
             // Handle f64 click detection for left button
             if (button_flag == MouseButton_Left) {
                 u64 current_time = SDL_GetPerformanceCounter();
@@ -106,10 +141,7 @@ void GetMousePos(float* x, float* y) { SDL_GetMouseState(x, y); }
 void SetMousePos(float x, float y) {  SDL_WarpMouseGlobal(x, y); }
 
 void wGetMouseWindowPos(float* x, float* y) {
-    float globalX, globalY;
-    GetMousePos(&globalX, &globalY);
-    *x = PlatformCtx.MousePosX - globalX; 
-    *y = PlatformCtx.MousePosY - globalY;
+    GetMousePos(x, y);
 }
 
 void wGetMonitorSize(int* width, int* height) 
@@ -144,6 +176,25 @@ u8 AnyMouseKeyDown()            { return PlatformCtx.MouseDown > 0; }
 u8 GetMouseDown(s32 button)     { return !!(PlatformCtx.MouseDown     & button); }
 u8 GetMouseReleased(s32 button) { return !!(PlatformCtx.MouseReleased & button); }
 u8 GetMousePressed(s32 button)  { return !!(PlatformCtx.MousePressed  & button); }
+
+u32 PlatformConsumeTextInput(char* dst, u32 capacity)
+{
+    if (!dst || capacity == 0u) return 0u;
+    u32 count = Minu32(PlatformCtx.TextInputLength, capacity - 1u);
+    if (count > 0u) MemCopy(dst, PlatformCtx.TextInput, count);
+    dst[count] = 0;
+    PlatformCtx.TextInputLength = 0u;
+    PlatformCtx.TextInput[0] = 0;
+    return count;
+}
+
+u32 PlatformConsumeTextKeyEvents(PlatformTextKeyEvent* dst, u32 capacity)
+{
+    u32 count = Minu32(PlatformCtx.TextKeyEventCount, capacity);
+    if (dst && count > 0u) MemCopy(dst, PlatformCtx.TextKeyEvents, (size_t)count * sizeof(PlatformTextKeyEvent));
+    PlatformCtx.TextKeyEventCount = 0u;
+    return count;
+}
 
 
 void SetPressedAndReleasedKeys()
@@ -232,9 +283,6 @@ void PlatformUpdate()
     PlatformCtx.LastTime  = now;
     SetPressedAndReleasedKeys();
     RecordLastKeys();
-    char buff[128] = {0};
-    IntToString(buff, (int64_t)TimeToMilliseconds(elapsed), 0);
-    SDL_SetWindowTitle(g_SDLWindow, buff);
 }
 
 f32 TimeSinceStartup()

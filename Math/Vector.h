@@ -116,6 +116,9 @@ purefn s32 Any3(s32 msk) { return msk > 0; }
 typedef float2   f16_2;
 typedef v128f f16_4;
 
+#define F2Set1(val) (float2) { val, val }
+#define F3Set1(val) (float3) { val, val, val }
+
 static inline u32 PackHalf2(float2 v)
 {
     return Float2ToHalf2(&v.x);

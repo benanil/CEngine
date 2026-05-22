@@ -46,8 +46,10 @@ typedef struct SlugBuildBuffers_
 typedef struct SlugFallbackFont_
 {
     char* ttfData;
+    u32 ttfSize;
     f32 emScale;
     s32 fontOffset;
+    s32 fontIndex;
 } SlugFallbackFont;
 
 typedef struct SlugFont_
@@ -55,6 +57,7 @@ typedef struct SlugFont_
     SlugGlyph glyphs[SLUG_MAX_GLYPHS];
     HashMap unicodeGlyphs;
     char* ttfData;
+    u32 ttfSize;
     f32 emScale;
     SlugFallbackFont fallbackFonts[SLUG_MAX_FALLBACK_FONTS];
     u32 numFallbackFonts;
@@ -74,9 +77,15 @@ typedef struct SlugFont_
 bool SlugLoadFont(SlugFont* font, const char* path);
 void SlugDestroyFont(SlugFont* font);
 void SlugClear(SlugFont* font);
-bool SlugAppendText(SlugFont* font, const char* text, float3 pos, f32 size, u32 color);
-bool SlugAppendText2D(SlugFont* font, const char* text, float2 pos, f32 size, u32 color);
+bool SlugAppendText3D(SlugFont* font, const char* text, float3 pos, Quaternion rot, f32 size, u32 color);
+bool SlugAppendGlyph2D(SlugFont* font, u32 faceIndex, u32 glyphIndex, float2 pos, f32 size, u32 color);
 float2 SlugCalcTextSize(SlugFont* font, const char* text, f32 size);
+u32 SlugGetFontFaceCount(SlugFont* font);
+void* SlugGetFontFaceData(SlugFont* font, u32 faceIndex, u32* size);
+f32 SlugGetFontFaceEmScale(SlugFont* font, u32 faceIndex);
+s32 SlugGetFontFaceCollectionIndex(SlugFont* font, u32 faceIndex);
+f32 SlugGetFontAscent(SlugFont* font);
+f32 SlugGetFontDescent(SlugFont* font);
 void SlugRender(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget, SDL_GPUDepthStencilTargetInfo* depthTarget, SlugFont* font, mat4x4 viewProj);
 void SlugRender2D(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget, SlugFont* font);
 SlugFont* SlugGetDemoFont(void);

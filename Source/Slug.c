@@ -165,10 +165,9 @@ static u32 SlugExtractCurves(stbtt_fontinfo* info, u32 glyphIndex, f32 emScale, 
     return numCurves;
 }
 
-static void SlugBuildGlyph(stbtt_fontinfo* info, u32 codePoint, f32 emScale, SlugBuildBuffers* buffers, SlugGlyph* glyph)
+static void SlugBuildGlyphByIndex(stbtt_fontinfo* info, u32 glyphIndex, f32 emScale, SlugBuildBuffers* buffers, SlugGlyph* glyph)
 {
     *glyph = (SlugGlyph){0};
-    u32 glyphIndex = (u32)stbtt_FindGlyphIndex(info, (int)codePoint);
 
     s32 advance, lsb;
     stbtt_GetGlyphHMetrics(info, (int)glyphIndex, &advance, &lsb);
@@ -186,7 +185,7 @@ static void SlugBuildGlyph(stbtt_fontinfo* info, u32 codePoint, f32 emScale, Slu
     u32 numCurves = SlugExtractCurves(info, glyphIndex, emScale, &curves);
     if (numCurves == 0u)
     {
-        AX_LOG("Slug glyph %u has no curves", codePoint);
+        AX_LOG("Slug glyph index %u has no curves", glyphIndex);
         return;
     }
 
@@ -275,6 +274,11 @@ static void SlugBuildGlyph(stbtt_fontinfo* info, u32 codePoint, f32 emScale, Slu
     DeAllocateTLSFGlobal(curves);
 }
 
+static void SlugBuildGlyph(stbtt_fontinfo* info, u32 codePoint, f32 emScale, SlugBuildBuffers* buffers, SlugGlyph* glyph)
+{
+    SlugBuildGlyphByIndex(info, (u32)stbtt_FindGlyphIndex(info, (int)codePoint), emScale, buffers, glyph);
+}
+
 static const u32 g_SlugUnicodeCodepoints[] = {
     0x00FCu, 0x00F6u, 0x00E7u, 0x011Fu, 0x015Fu, 0x0131u, 0x00E4u, 0x00DFu,
     0x00F1u, 0x00E5u, 0x00E2u, 0x00E1u, 0x00E6u, 0x00EAu, 0x0142u, 0x0107u,
@@ -296,7 +300,8 @@ static const char* g_SlugFallbackFontPaths[] = {
 static bool SlugLoadFallbackFont(SlugFont* font, const char* path)
 {
     if (font->numFallbackFonts >= SLUG_MAX_FALLBACK_FONTS) return false;
-    if (FileSize(path) == 0u) return false;
+    u64 fileSize = FileSize(path);
+    if (fileSize == 0u || fileSize > UINT32_MAX) return false;
 
     char* ttf = ReadAllFileAlloc(path);
     if (!ttf) return false;
@@ -314,13 +319,35 @@ static bool SlugLoadFallbackFont(SlugFont* font, const char* path)
 
         SlugFallbackFont* fallback = &font->fallbackFonts[font->numFallbackFonts++];
         fallback->ttfData = ttf;
+        fallback->ttfSize = (u32)fileSize;
         fallback->fontOffset = offset;
+        fallback->fontIndex = i;
         fallback->emScale = stbtt_ScaleForMappingEmToPixels(&info, 1.0f);
         loaded = true;
     }
 
     if (!loaded) FreeAllText(ttf);
     return loaded;
+}
+
+static bool SlugInitFontInfoForFace(SlugFont* font, u32 faceIndex, stbtt_fontinfo* info, f32* emScale)
+{
+    if (!font || !info || !emScale) return false;
+    if (faceIndex == 0u)
+    {
+        if (!font->ttfData) return false;
+        if (!stbtt_InitFont(info, (const unsigned char*)font->ttfData, 0)) return false;
+        *emScale = font->emScale;
+        return true;
+    }
+
+    u32 fallbackIndex = faceIndex - 1u;
+    if (fallbackIndex >= font->numFallbackFonts) return false;
+    SlugFallbackFont* fallback = &font->fallbackFonts[fallbackIndex];
+    if (!fallback->ttfData) return false;
+    if (!stbtt_InitFont(info, (const unsigned char*)fallback->ttfData, fallback->fontOffset)) return false;
+    *emScale = fallback->emScale;
+    return true;
 }
 
 static void SlugLoadFallbackFonts(SlugFont* font)
@@ -393,6 +420,24 @@ static const SlugGlyph* SlugEnsureGlyph(SlugFont* font, u32 codePoint)
     return (const SlugGlyph*)HMInsertOrAssign(&font->unicodeGlyphs, (u64)codePoint, &glyph);
 }
 
+static const SlugGlyph* SlugEnsureGlyphIndex(SlugFont* font, u32 faceIndex, u32 glyphIndex)
+{
+    u64 key = 0x8000000000000000ull | ((u64)faceIndex << 32u) | (u64)glyphIndex;
+    SlugGlyph* found = (SlugGlyph*)HMFind(&font->unicodeGlyphs, key);
+    if (found) return found;
+
+    SlugGlyph glyph = {0};
+    stbtt_fontinfo info;
+    f32 emScale;
+    if (SlugInitFontInfoForFace(font, faceIndex, &info, &emScale))
+    {
+        SlugBuildGlyphByIndex(&info, glyphIndex, emScale, &font->buffers, &glyph);
+        if (glyph.advance != 0.0f || glyph.glyphBandEntry != 0u) font->glyphBuffersDirty = true;
+    }
+    if (glyph.glyphBandEntry == 0u && glyph.advance == 0.0f) glyph = font->glyphs['-'];
+    return (const SlugGlyph*)HMInsertOrAssign(&font->unicodeGlyphs, key, &glyph);
+}
+
 static u32 SlugTextCodepointCount(const char* text, u32 maxBytes)
 {
     if (!text) return 0u;
@@ -439,6 +484,7 @@ bool SlugLoadFont(SlugFont* font, const char* path)
 
     f32 emScale = stbtt_ScaleForMappingEmToPixels(&info, 1.0f);
     font->ttfData = ttf;
+    font->ttfSize = (u32)fileSize;
     font->emScale = emScale;
     s32 ascent, descent, lineGap;
     stbtt_GetFontVMetrics(&info, &ascent, &descent, &lineGap);
@@ -499,15 +545,21 @@ void SlugDestroyFont(SlugFont* font)
     SDL_zero(*font);
 }
 
-static void SlugWriteVertex(SlugVertex* v, f32 ox, f32 oy, f32 ex, f32 ey, f32 nx, f32 ny, const SlugGlyph* glyph, u32 color)
+static void SlugWriteVertexV(SlugVertex* v, v128f pos, f32 ex, f32 ey, v128f normal, const SlugGlyph* glyph, u32 color)
 {
     u32 packedLoc  = glyph->glyphBandEntry;
     u32 packedInfo = (glyph->bandMaxX & 0xFFFFu) | ((glyph->bandMaxY & 0x00FFu) << 16u);
-    v->pos[0] = ox; v->pos[1] = oy; v->pos[2] = nx; v->pos[3] = ny;
-    v->tex[0] = ex; v->tex[1] = ey; v->tex[2] = BitCast(f32, packedLoc); v->tex[3] = BitCast(f32, packedInfo);
-    v->jac[0] = 1.0f; v->jac[1] = 0.0f; v->jac[2] = 0.0f; v->jac[3] = 1.0f;
-    v->band[0] = glyph->bandScaleX; v->band[1] = glyph->bandScaleY; v->band[2] = glyph->bandOffsetX; v->band[3] = glyph->bandOffsetY;
+    VecStore(v->pos, VecShuffle_0101(pos, normal));
+    VecStore(v->tex, VecSetR(ex, ey, BitCast(f32, packedLoc), BitCast(f32, packedInfo)));
+    VecStore(v->jac, VecSetR(1.0f, 0.0f, 0.0f, 1.0f));
+    VecStore(v->band, VecSetR(glyph->bandScaleX, glyph->bandScaleY, glyph->bandOffsetX, glyph->bandOffsetY));
     v->color = color;
+    v->z = VecGetZ(pos);
+}
+
+static void SlugWriteVertex(SlugVertex* v, f32 ox, f32 oy, f32 ex, f32 ey, f32 nx, f32 ny, const SlugGlyph* glyph, u32 color)
+{
+    SlugWriteVertexV(v, VecSetR(ox, oy, 0.0f, 0.0f), ex, ey, VecSetR(nx, ny, 0.0f, 0.0f), glyph, color);
 }
 
 static void SlugUploadVertexBuffer(SDL_GPUCommandBuffer* cmd, SDL_GPUBuffer* buffer, const void* data, size_t size)
@@ -560,7 +612,7 @@ void SlugClear(SlugFont* font)
     font->numVertices = 0u;
 }
 
-bool SlugAppendText(SlugFont* font, const char* text, float3 pos, f32 size, u32 color)
+bool SlugAppendText3D(SlugFont* font, const char* text, float3 pos, Quaternion rot, f32 size, u32 color)
 {
     if (!font->vertices || !font->vertexBuffer || !font->curveBuffer || !font->bandBuffer)
     {
@@ -582,9 +634,13 @@ bool SlugAppendText(SlugFont* font, const char* text, float3 pos, f32 size, u32 
         return false;
     }
 
+    v128f posV  = VecSetR(pos.x, pos.y, pos.z, 0.0f);
+    v128f right = QMulVec3V(VecSetR(1.0f, 0.0f, 0.0f, 0.0f), rot);
+    v128f up    = QMulVec3V(VecSetR(0.0f, 1.0f, 0.0f, 0.0f), rot);
+
     SlugVertex* vertices = font->vertices;
     f32 cursor = 0.0f;
-    const f32 n = 0.70710678f;
+    const f32 n = 1.0 / MATH_Sqrt2;
     f32 invSize = 1.0f / Maxf32(size, 1.0e-6f);
 
     const char* at = text;
@@ -602,21 +658,36 @@ bool SlugAppendText(SlugFont* font, const char* text, float3 pos, f32 size, u32 
         {
             f32 ex0 = glyph->x0 - SLUG_BOUNDS_PAD_EM, ey0 = glyph->y0 - SLUG_BOUNDS_PAD_EM;
             f32 ex1 = glyph->x1 + SLUG_BOUNDS_PAD_EM, ey1 = glyph->y1 + SLUG_BOUNDS_PAD_EM;
-            f32 ox0 = pos.x + (cursor + ex0) * size, oy0 = pos.y + ey0 * size;
-            f32 ox1 = pos.x + (cursor + ex1) * size, oy1 = pos.y + ey1 * size;
-            struct { f32 ox, oy, ex, ey, nx, ny; } corners[4] = {
-                { ox0, oy1, ex0, ey1, -n,  n },
-                { ox1, oy1, ex1, ey1,  n,  n },
-                { ox1, oy0, ex1, ey0,  n, -n },
-                { ox0, oy0, ex0, ey0, -n, -n }
+
+            v128f lx0 = VecSet1((cursor + ex0) * size);
+            v128f ly0 = VecSet1(ey0 * size);
+            v128f lx1 = VecSet1((cursor + ex1) * size);
+            v128f ly1 = VecSet1(ey1 * size);
+
+            v128f p0 = VecFmadd(lx0, right, VecFmadd(ly1, up, posV));
+            v128f p1 = VecFmadd(lx1, right, VecFmadd(ly1, up, posV));
+            v128f p2 = VecFmadd(lx1, right, VecFmadd(ly0, up, posV));
+            v128f p3 = VecFmadd(lx0, right, VecFmadd(ly0, up, posV));
+
+            v128f nn = VecSet1(n);
+            v128f n0 = VecMul(nn, VecSub(up, right));
+            v128f n1 = VecMul(nn, VecAdd(up, right));
+            v128f n2 = VecMul(nn, VecSub(right, up));
+            v128f n3 = VecMul(nn, VecNeg(VecAdd(up, right)));
+
+            struct { v128f p, normal; f32 ex, ey; } corners[4] = {
+                { p0, n0, ex0, ey1 },
+                { p1, n1, ex1, ey1 },
+                { p2, n2, ex1, ey0 },
+                { p3, n3, ex0, ey0 }
             };
+
             const u32 tri[6] = { 0u, 3u, 1u, 1u, 3u, 2u };
             for (u32 vi = 0; vi < 6u; vi++)
             {
                 const u32 ci = tri[vi];
                 SlugVertex* v = &vertices[font->numVertices++];
-                SlugWriteVertex(v, corners[ci].ox, corners[ci].oy, corners[ci].ex, corners[ci].ey, corners[ci].nx, corners[ci].ny, glyph, color);
-                v->z = pos.z;
+                SlugWriteVertexV(v, corners[ci].p, corners[ci].ex, corners[ci].ey, corners[ci].normal, glyph, color);
                 v->jac[0] = invSize;
                 v->jac[3] = invSize;
             }
@@ -626,74 +697,99 @@ bool SlugAppendText(SlugFont* font, const char* text, float3 pos, f32 size, u32 
     return true;
 }
 
-bool SlugAppendText2D(SlugFont* font, const char* text, float2 pos, f32 size, u32 color)
+bool SlugAppendGlyph2D(SlugFont* font, u32 faceIndex, u32 glyphIndex, float2 pos, f32 size, u32 color)
 {
+    if (font == NULL) font = &g_SlugDemoFont;
     if (!font->vertices || !font->vertexBuffer || !font->curveBuffer || !font->bandBuffer)
     {
-        AX_WARN("Slug append 2D skipped, resources not initialized");
+        AX_WARN("Slug glyph append skipped, resources not initialized");
+        return false;
+    }
+    if (font->numVertices + SLUG_VERTS_PER_GLYPH > font->maxVertices)
+    {
+        AX_WARN("Slug glyph vertex batch full: vertices=%u capacity=%u", font->numVertices, font->maxVertices);
         return false;
     }
 
-    u32 textBytes = (u32)StringLengthSafe(text, SLUG_MAX_TEXT + 1u);
-    u32 textLen = SlugTextCodepointCount(text, SLUG_MAX_TEXT);
-    if (textBytes == 0u) return true;
-    if (textBytes > SLUG_MAX_TEXT)
-    {
-        AX_WARN("Slug 2D text too long: %u", textBytes);
-        return false;
-    }
-    if (font->numVertices + textLen * SLUG_VERTS_PER_GLYPH > font->maxVertices)
-    {
-        AX_WARN("Slug 2D vertex batch full: vertices=%u needed=%u capacity=%u", font->numVertices, textLen * SLUG_VERTS_PER_GLYPH, font->maxVertices);
-        return false;
-    }
+    const SlugGlyph* glyph = SlugEnsureGlyphIndex(font, faceIndex, glyphIndex);
+    if (glyph->advance == 0.0f && glyph->glyphBandEntry == 0u) return true;
 
     SlugVertex* vertices = font->vertices;
-    f32 cursor = 0.0f;
     const f32 n = 0.70710678f;
     f32 invSize = 1.0f / Maxf32(size, 1.0e-6f);
-    f32 baselineY = pos.y + font->ascent * size;
-
-    const char* at = text;
-    const char* end = text + textBytes;
-    while (at < end && *at)
+    f32 pad = SLUG_BOUNDS_PAD_PX * invSize;
+    f32 ex0 = glyph->x0 - pad, ey0 = glyph->y0 - pad;
+    f32 ex1 = glyph->x1 + pad, ey1 = glyph->y1 + pad;
+    f32 ox0 = pos.x + ex0 * size;
+    f32 ox1 = pos.x + ex1 * size;
+    f32 oy0 = pos.y - ey0 * size;
+    f32 oy1 = pos.y - ey1 * size;
+    struct { f32 ox, oy, ex, ey, nx, ny; } corners[4] = {
+        { ox0, oy0, ex0, ey0, -n,  n },
+        { ox1, oy0, ex1, ey0,  n,  n },
+        { ox1, oy1, ex1, ey1,  n, -n },
+        { ox0, oy1, ex0, ey1, -n, -n }
+    };
+    const u32 tri[6] = { 0u, 3u, 1u, 1u, 3u, 2u };
+    for (u32 vi = 0; vi < 6u; vi++)
     {
-        u32 codePoint;
-        int step = CodepointFromUtf8(&codePoint, at, end);
-        at += step > 0 ? step : 1;
-
-        const SlugGlyph* glyph = SlugEnsureGlyph(font, codePoint);
-        if (glyph->advance == 0.0f && codePoint != ' ') continue;
-
-        if (glyph->glyphBandEntry != 0u || codePoint != ' ')
-        {
-            f32 pad = SLUG_BOUNDS_PAD_PX * invSize;
-            f32 ex0 = glyph->x0 - pad, ey0 = glyph->y0 - pad;
-            f32 ex1 = glyph->x1 + pad, ey1 = glyph->y1 + pad;
-            f32 ox0 = pos.x + (cursor + ex0) * size;
-            f32 ox1 = pos.x + (cursor + ex1) * size;
-            f32 oy0 = baselineY - ey0 * size;
-            f32 oy1 = baselineY - ey1 * size;
-            struct { f32 ox, oy, ex, ey, nx, ny; } corners[4] = {
-                { ox0, oy0, ex0, ey0, -n,  n },
-                { ox1, oy0, ex1, ey0,  n,  n },
-                { ox1, oy1, ex1, ey1,  n, -n },
-                { ox0, oy1, ex0, ey1, -n, -n }
-            };
-            const u32 tri[6] = { 0u, 3u, 1u, 1u, 3u, 2u };
-            for (u32 vi = 0; vi < 6u; vi++)
-            {
-                const u32 ci = tri[vi];
-                SlugVertex* v = &vertices[font->numVertices++];
-                SlugWriteVertex(v, corners[ci].ox, corners[ci].oy, corners[ci].ex, corners[ci].ey, corners[ci].nx, corners[ci].ny, glyph, color);
-                v->z = 0.0f;
-                v->jac[0] = invSize;
-                v->jac[3] = invSize;
-            }
-        }
-        cursor += glyph->advance;
+        const u32 ci = tri[vi];
+        SlugVertex* v = &vertices[font->numVertices++];
+        SlugWriteVertex(v, corners[ci].ox, corners[ci].oy, corners[ci].ex, corners[ci].ey, corners[ci].nx, corners[ci].ny, glyph, color);
+        v->z = 0.0f;
+        v->jac[0] = invSize;
+        v->jac[3] = invSize;
     }
     return true;
+}
+
+u32 SlugGetFontFaceCount(SlugFont* font)
+{
+    if (!font || !font->ttfData) return 0u;
+    return 1u + font->numFallbackFonts;
+}
+
+void* SlugGetFontFaceData(SlugFont* font, u32 faceIndex, u32* size)
+{
+    if (size) *size = 0u;
+    if (!font) return NULL;
+    if (faceIndex == 0u)
+    {
+        if (size) *size = font->ttfSize;
+        return font->ttfData;
+    }
+    u32 fallbackIndex = faceIndex - 1u;
+    if (fallbackIndex >= font->numFallbackFonts) return NULL;
+    if (size) *size = font->fallbackFonts[fallbackIndex].ttfSize;
+    return font->fallbackFonts[fallbackIndex].ttfData;
+}
+
+f32 SlugGetFontFaceEmScale(SlugFont* font, u32 faceIndex)
+{
+    if (!font) return 0.0f;
+    if (faceIndex == 0u) return font->emScale;
+    u32 fallbackIndex = faceIndex - 1u;
+    if (fallbackIndex >= font->numFallbackFonts) return 0.0f;
+    return font->fallbackFonts[fallbackIndex].emScale;
+}
+
+s32 SlugGetFontFaceCollectionIndex(SlugFont* font, u32 faceIndex)
+{
+    if (!font) return 0;
+    if (faceIndex == 0u) return 0;
+    u32 fallbackIndex = faceIndex - 1u;
+    if (fallbackIndex >= font->numFallbackFonts) return 0;
+    return font->fallbackFonts[fallbackIndex].fontIndex;
+}
+
+f32 SlugGetFontAscent(SlugFont* font)
+{
+    return font ? font->ascent : 0.0f;
+}
+
+f32 SlugGetFontDescent(SlugFont* font)
+{
+    return font ? font->descent : 0.0f;
 }
 
 float2 SlugCalcTextSize(SlugFont* font, const char* text, f32 size)
@@ -790,7 +886,8 @@ void SlugDestroyDemo(void)
 
 void RenderSlugDemo(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget, SDL_GPUDepthStencilTargetInfo* depthTarget, mat4x4 viewProj)
 {
-    SlugAppendText(&g_SlugDemoFont, "Anılcan Gülkaya", (float3){ -2.0f, -2.0f, -3.0f }, 0.35f, 0xFFFFFFFFu);
-    SlugAppendText(&g_SlugDemoFont, "Quivira.otf buffer renderer", (float3){ -2.0f, -4.55f, -3.0f }, 0.22f, 0xFFFFC060u);
+    Quaternion rot = QFromAxisAngle(F3Up(), -MATH_PI * 0.5);
+    SlugAppendText3D(&g_SlugDemoFont, "Anılcan Gülkaya", (float3){ -2.0f, -2.0f, -3.0f }, rot, 0.35f, 0xFFFFFFFFu);
+    SlugAppendText3D(&g_SlugDemoFont, "Quivira.otf buffer renderer", (float3){ -2.0f, -2.55f, -3.0f }, QIdentity(), 0.22f, 0xFFFFC060u);
     SlugRender(cmd, colorTarget, depthTarget, &g_SlugDemoFont, viewProj);
 }

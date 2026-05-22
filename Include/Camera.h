@@ -171,6 +171,7 @@ static inline void CameraUpdate(Camera* camera, f32 dt)
     
     if (!pressing)
     {
+        SDL_SetCursor(SDL_GetDefaultCursor());
         GetMousePos(&camera->mouseOld.x, &camera->mouseOld.y);
         camera->wasPressing = false;
         return;

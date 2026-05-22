@@ -37,6 +37,11 @@
 extern "C" {
 #endif
 
+typedef struct PlatformTextKeyEvent_
+{
+    s32 key;
+    u16 mod;
+} PlatformTextKeyEvent;
 
 // Platform context structure
 typedef struct PlatformContext_ 
@@ -58,6 +63,10 @@ typedef struct PlatformContext_
     s32 WindowPosX, WindowPosY;
     
     s32 MouseDown, MouseLast, MousePressed, MouseReleased;
+    char TextInput[256];
+    u32  TextInputLength;
+    PlatformTextKeyEvent TextKeyEvents[64];
+    u32  TextKeyEventCount;
     u8  DoubleClicked;
     
 } PlatformContext;
@@ -91,6 +100,8 @@ u8   AnyKeyDown();
 u8   GetKeyDown(s32 c);
 u8   GetKeyReleased(s32 c);
 u8   GetKeyPressed(s32 c);
+u32  PlatformConsumeTextInput(char* dst, u32 capacity);
+u32  PlatformConsumeTextKeyEvents(PlatformTextKeyEvent* dst, u32 capacity);
 
 void SetPressedAndReleasedKeys();
 void RecordLastKeys();

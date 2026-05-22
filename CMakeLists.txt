@@ -102,6 +102,7 @@ target_sources(${EXECUTABLE_NAME} PRIVATE
     Source/RenderingCompute.c
     Source/RenderingDraw.c
     Source/UIRenderer.c
+    Source/KBTextShape.c
     Source/Slug.c
     Source/GLTFParser.c
     Source/SceneNormalize.c

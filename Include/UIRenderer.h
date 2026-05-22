@@ -90,6 +90,9 @@ void UIText(const char* text, float2 pos);
 bool UIButton(const char* text, float2 pos, float2 size);
 bool UICheckbox(const char* text, float2 pos, bool* enabled);
 bool UISliderFloat(const char* label, float2 pos, f32* value, f32 width);
+bool UITextBox(const char* label, float2 pos, char* buffer, u32 capacity, f32 width);
+bool UITextArea(const char* label, float2 pos, char* buffer, u32 capacity, float2 size);
+bool UITextDirect(const char* text, float2 resolvedPos, f32 size, u32 color);
 void UIRender(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget);
 void UIRenderDemo(void);
 
