@@ -98,6 +98,17 @@ static SDL_GPUColorTargetInfo MakeLoadedSceneColorTarget(WindowState* winstate)
     return target;
 }
 
+static SDL_GPUColorTargetInfo MakeLoadedPostTarget(WindowState* winstate)
+{
+    SDL_GPUColorTargetInfo target;
+    SDL_zero(target);
+    target.load_op  = SDL_GPU_LOADOP_LOAD;
+    target.store_op = SDL_GPU_STOREOP_STORE;
+    target.texture  = winstate->tex_post;
+    target.cycle    = false;
+    return target;
+}
+
 static void MakeGBufferTargets(WindowState* winstate, SDL_GPUColorTargetInfo targets[3])
 {
     for (u32 i = 0; i < 3u; i++)
@@ -231,6 +242,7 @@ void Render(void)
 
     SDL_GPUColorTargetInfo        color_target      = MakeMainColorTarget(winstate);
     SDL_GPUColorTargetInfo        color_load_target = MakeLoadedSceneColorTarget(winstate);
+    SDL_GPUColorTargetInfo        post_load_target  = MakeLoadedPostTarget(winstate);
     SDL_GPUColorTargetInfo        gbuffer_targets[3];
     MakeGBufferTargets(winstate, gbuffer_targets);
     SDL_GPUDepthStencilTargetInfo depth_target      = MakeDepthTarget(winstate->tex_depth, SDL_GPU_LOADOP_CLEAR, true);
@@ -305,6 +317,7 @@ void Render(void)
     shadowCacheValid = true;
 
     DispatchTonemapCompute(cmd, winstate->tex_color, winstate->tex_hiz_depth, winstate->tex_post, screenW, screenH, viewProj);
+    RenderSlugDemo(cmd, &post_load_target, &main_depth_target, viewProj);
 
     SDL_GPUBlitInfo blit_info;
     SDL_zero(blit_info);
@@ -323,6 +336,7 @@ void Render(void)
 void RendererInit(void)
 {
     InitRenderPipelines();
+    SlugInitDemo();
 }
 
 static void DestroyRenderSetBuffers(RenderSetBuffers* buffers)
@@ -349,6 +363,7 @@ void DestroyPipeline(void)
     if (g_RenderState.indexBuffer)             SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.indexBuffer);
     if (g_RenderState.lineBuffer)              SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lineBuffer);
     if (g_RenderState.lineDrawArgsBuffer)      SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lineDrawArgsBuffer);
+    SlugDestroyDemo();
     if (g_RenderState.textureDescriptorBuffer) SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.textureDescriptorBuffer);
     if (g_RenderState.materialBuffer)          SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.materialBuffer);
     if (g_RenderState.sampler)                 SDL_ReleaseGPUSampler(g_GPUDevice, g_RenderState.sampler);

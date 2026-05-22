@@ -13,6 +13,7 @@ GRAPHICS_SHADERS = [
     ("Surface"  , "vert", "frag"),
     ("Skinned"  , "vert", "frag"),
     ("LineDebug", "vert", "frag"),
+    ("Slug"     , "vert", "frag"),
     ("SurfaceDepthOnly", "vert", "frag"),
     ("SkinnedDepthOnly", "vert", "frag")
 ]

@@ -212,9 +212,6 @@
 						<Path>Extern/BasisCompressWrapper.h</Path>
 					</File>
 					<File>
-						<Path>Extern/cslug.h</Path>
-					</File>
-					<File>
 						<Path>Extern/sdefl.h</Path>
 					</File>
 				</Children>
@@ -300,6 +297,9 @@
 					</File>
 					<File>
 						<Path>Include/RenderSet.h</Path>
+					</File>
+					<File>
+						<Path>Include/Slug.h</Path>
 					</File>
 				</Children>
 			</Folder>
@@ -442,6 +442,9 @@
 					<File>
 						<Path>Shaders/Sky.hlsl</Path>
 					</File>
+					<File>
+						<Path>Shaders/Slug.hlsl</Path>
+					</File>
 				</Children>
 			</Folder>
 			<Folder>
@@ -515,6 +518,9 @@
 					</File>
 					<File>
 						<Path>Source/RenderingPipelines.c</Path>
+					</File>
+					<File>
+						<Path>Source/Slug.c</Path>
 					</File>
 				</Children>
 			</Folder>

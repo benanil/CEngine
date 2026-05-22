@@ -24,6 +24,8 @@
 #include "Shaders/spv/AnimateVertices.spv.h"
 #include "Shaders/spv/LineDebugVert.spv.h"
 #include "Shaders/spv/LineDebugFrag.spv.h"
+#include "Shaders/spv/SlugVert.spv.h"
+#include "Shaders/spv/SlugFrag.spv.h"
 #include "Shaders/spv/TonemapCompute.spv.h"
 #include "Shaders/spv/HiZBuildCompute.spv.h"
 #include "Shaders/spv/HiZDownscaleCompute.spv.h"
@@ -36,11 +38,14 @@
 #include "Shaders/spv/SkinnedDepthOnlyFrag.spv.h"
 #endif
 
+#define VFORMAT_F32    SDL_GPU_VERTEXELEMENTFORMAT_FLOAT
 #define VFORMAT_FLOAT3 SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3
+#define VFORMAT_FLOAT4 SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4
 #define VFORMAT_UINT   SDL_GPU_VERTEXELEMENTFORMAT_UINT
 #define VFORMAT_HALF2  SDL_GPU_VERTEXELEMENTFORMAT_HALF2
 #define VFORMAT_HALF4  SDL_GPU_VERTEXELEMENTFORMAT_HALF4
 #define VFORMAT_UBYTE4 SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4
+#define VFORMAT_NBYTE4 SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4_NORM
 
 SDL_GPUComputePipeline* g_AnimComputePipeline = NULL;
 SDL_GPUComputePipeline* g_AnimVerticesPipeline = NULL;
@@ -77,8 +82,8 @@ static void InitComputePipelines(void)
         .num_uniform_buffers           = 1,
         .num_readonly_storage_buffers  = 6,
         .num_readwrite_storage_buffers = 1,
-        .threadcount_x                 = 32,
-        .threadcount_y                 = 1,
+        .threadcount_x                 = 1,
+        .threadcount_y                 = 32,
         .threadcount_z                 = 1,
     });
     CHECK_CREATE(g_AnimVerticesPipeline, "Animation vertices Pipeline");
@@ -294,6 +299,86 @@ static void InitLinePipeline(void)
 
     g_RenderState.linePipeline = SDL_CreateGPUGraphicsPipeline(g_GPUDevice, &pipelinedesc);
     CHECK_CREATE(g_RenderState.linePipeline, "Render Pipeline")
+
+    SDL_ReleaseGPUShader(g_GPUDevice, vertex_shader);
+    SDL_ReleaseGPUShader(g_GPUDevice, fragment_shader);
+}
+
+static void InitSlugPipeline(void)
+{
+    SDL_GPUShader* vertex_shader = SDL_CreateGPUShader(g_GPUDevice, &(SDL_GPUShaderCreateInfo){
+        .num_uniform_buffers = 1,
+        .format              = SDL_GetGPUShaderFormats(g_GPUDevice),
+        .code                = Shaders_SlugVert_spv,
+        .code_size           = sizeof(Shaders_SlugVert_spv),
+        .num_samplers        = 0,
+        .num_storage_buffers = 0,
+        .stage               = SDL_GPU_SHADERSTAGE_VERTEX,
+        .entrypoint          = "vert"
+    }); CHECK_CREATE(vertex_shader, "Slug Vertex Shader")
+
+    SDL_GPUShader* fragment_shader = SDL_CreateGPUShader(g_GPUDevice, &(SDL_GPUShaderCreateInfo){
+        .num_uniform_buffers = 0,
+        .format              = SDL_GetGPUShaderFormats(g_GPUDevice),
+        .code                = Shaders_SlugFrag_spv,
+        .code_size           = sizeof(Shaders_SlugFrag_spv),
+        .num_samplers        = 0,
+        .num_storage_buffers = 2,
+        .stage               = SDL_GPU_SHADERSTAGE_FRAGMENT,
+        .entrypoint          = "frag"
+    }); CHECK_CREATE(fragment_shader, "Slug Fragment Shader")
+
+    const SDL_GPUVertexAttribute vertex_attributes[6] = {
+        { .location = 0, .buffer_slot = 0, .format = VFORMAT_FLOAT4, .offset = offsetof(SlugVertex, pos) },
+        { .location = 1, .buffer_slot = 0, .format = VFORMAT_FLOAT4, .offset = offsetof(SlugVertex, tex) },
+        { .location = 2, .buffer_slot = 0, .format = VFORMAT_FLOAT4, .offset = offsetof(SlugVertex, jac) },
+        { .location = 3, .buffer_slot = 0, .format = VFORMAT_FLOAT4, .offset = offsetof(SlugVertex, band) },
+        { .location = 4, .buffer_slot = 0, .format = VFORMAT_UINT, .offset = offsetof(SlugVertex, color) },
+        { .location = 5, .buffer_slot = 0, .format = VFORMAT_F32   , .offset = offsetof(SlugVertex, z) }
+    };
+    SDL_GPUColorTargetDescription colorTarget = {
+        .format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
+        .blend_state = {
+            .enable_blend = true,
+            .color_write_mask = 0xF,
+            .color_blend_op = SDL_GPU_BLENDOP_ADD,
+            .alpha_blend_op = SDL_GPU_BLENDOP_ADD,
+            .src_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE,
+            .dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+            .src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE,
+            .dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA
+        }
+    };
+
+    SDL_GPUGraphicsPipelineCreateInfo pipelinedesc = {
+        .vertex_shader   = vertex_shader,
+        .fragment_shader = fragment_shader,
+        .primitive_type  = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
+        .target_info     = (SDL_GPUGraphicsPipelineTargetInfo){
+            .num_color_targets         = 1,
+            .color_target_descriptions = &colorTarget
+        },
+        .multisample_state = (SDL_GPUMultisampleState){ .sample_count = SDL_GPU_SAMPLECOUNT_1 },
+        .vertex_input_state = (SDL_GPUVertexInputState){
+            .vertex_buffer_descriptions = &(SDL_GPUVertexBufferDescription){ 0, sizeof(SlugVertex), SDL_GPU_VERTEXINPUTRATE_VERTEX, 0 },
+            .num_vertex_buffers    = 1,
+            .vertex_attributes     = vertex_attributes,
+            .num_vertex_attributes = ARRAY_SIZE(vertex_attributes)
+        }
+    };
+
+    g_RenderState.slugPipeline = SDL_CreateGPUGraphicsPipeline(g_GPUDevice, &pipelinedesc);
+    CHECK_CREATE(g_RenderState.slugPipeline, "Slug Render Pipeline")
+
+    pipelinedesc.target_info.depth_stencil_format = SDL_GPU_TEXTUREFORMAT_D32_FLOAT;
+    pipelinedesc.target_info.has_depth_stencil_target = true;
+    pipelinedesc.depth_stencil_state = (SDL_GPUDepthStencilState){
+        .enable_depth_test  = true,
+        .enable_depth_write = false,
+        .compare_op         = SDL_GPU_COMPAREOP_LESS_OR_EQUAL
+    };
+    g_RenderState.slugDepthPipeline = SDL_CreateGPUGraphicsPipeline(g_GPUDevice, &pipelinedesc);
+    CHECK_CREATE(g_RenderState.slugDepthPipeline, "Slug Depth Render Pipeline")
 
     SDL_ReleaseGPUShader(g_GPUDevice, vertex_shader);
     SDL_ReleaseGPUShader(g_GPUDevice, fragment_shader);
@@ -560,6 +645,7 @@ void InitRenderPipelines(void)
     InitSurfacePipeline();
     InitDepthOnlyPipelines();
     InitLinePipeline();
+    InitSlugPipeline();
     InitComputePipelines();
 }
 
@@ -572,6 +658,8 @@ void DestroyRenderPipelines(void)
     if (g_RenderState.skinnedShadowPipeline) SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.skinnedShadowPipeline);
     if (g_RenderState.surfaceShadowPipeline) SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.surfaceShadowPipeline);
     if (g_RenderState.linePipeline) SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.linePipeline);
+    if (g_RenderState.slugPipeline) SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.slugPipeline);
+    if (g_RenderState.slugDepthPipeline) SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.slugDepthPipeline);
     if (g_AnimComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_AnimComputePipeline);
     if (g_AnimVerticesPipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_AnimVerticesPipeline);
     if (g_CullDrawArgsComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_CullDrawArgsComputePipeline);

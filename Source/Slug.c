@@ -1,0 +1,488 @@
+// https://github.com/EricLengyel/Slug
+// https://github.com/ShadowCurse/cslug
+#include "RenderingInternal.h"
+#include "Include/Slug.h"
+#include "Include/FileSystem.h"
+
+#define STBTT_malloc(size, user) ((void)(user), AllocateTLSFGlobal(size))
+#define STBTT_free(ptr, user)    ((void)(user), DeAllocateTLSFGlobal(ptr))
+#define STB_TRUETYPE_IMPLEMENTATION
+#include "Extern/stb/stb_truetype.h"
+
+#include <math.h>
+
+#define SLUG_EPS (1.0f / 1024.0f)
+typedef struct SlugCurve_
+{
+    float2 p1, p2, p3;
+} SlugCurve;
+
+typedef struct SlugBuildBuffers_
+{
+    u32* curves;
+    u32  numCurveWords;
+    u32  maxCurveWords;
+    u32* bands;
+    u32  numBands;
+    u32  maxBands;
+} SlugBuildBuffers;
+
+typedef struct SlugVertexParams_
+{
+    mat4x4 matrix;
+    f32 viewport[4];
+} SlugVertexParams;
+
+static SlugFont g_SlugDemoFont;
+
+static u32 SlugPackU16(u32 x, u32 y)
+{
+    return (x & 0xFFFFu) | ((y & 0xFFFFu) << 16u);
+}
+
+static void SlugEnsureU32Buffer(u32** ptr, u32* capacity, u32 needed)
+{
+    if (*capacity >= needed) return;
+    u32 newCapacity = *capacity ? *capacity : 128u;
+    while (newCapacity < needed) newCapacity *= 2u;
+    *ptr = (u32*)ReAllocateTLSFGlobal(*ptr, (size_t)newCapacity * sizeof(u32));
+    *capacity = newCapacity;
+}
+
+static void SlugAddCurve(SlugBuildBuffers* buffers, SlugCurve curve)
+{
+    SlugEnsureU32Buffer(&buffers->curves, &buffers->maxCurveWords, buffers->numCurveWords + 3u);
+    Float4ToHalf4(&buffers->curves[buffers->numCurveWords], &curve.p1.x);
+    buffers->curves[buffers->numCurveWords + 2u] = PackHalf2(curve.p3);
+    buffers->numCurveWords += 3u;
+}
+
+static bool SlugCurveHorizontal(const SlugCurve* c)
+{
+    return Absf32(c->p1.y - c->p2.y) < SLUG_EPS && Absf32(c->p2.y - c->p3.y) < SLUG_EPS;
+}
+
+static bool SlugCurveVertical(const SlugCurve* c)
+{
+    return Absf32(c->p1.x - c->p2.x) < SLUG_EPS && Absf32(c->p2.x - c->p3.x) < SLUG_EPS;
+}
+
+static v128f SlugCurveX(const SlugCurve* c)
+{
+    return VecSetR(c->p1.x, c->p2.x, c->p3.x, 0.0f);
+}
+
+static v128f SlugCurveY(const SlugCurve* c)
+{
+    return VecSetR(c->p1.y, c->p2.y, c->p3.y, 0.0f);
+}
+
+static void SlugSortDescend(u32* indexes, f32* maximums, u32 count)
+{
+    for (u32 i = 0; i + 1u < count; i++)
+    {
+        for (u32 j = i + 1u; j < count; j++)
+        {
+            if (maximums[i] < maximums[j])
+            {
+                u32 ti = indexes[i]; indexes[i] = indexes[j]; indexes[j] = ti;
+                f32 tf = maximums[i]; maximums[i] = maximums[j]; maximums[j] = tf;
+            }
+        }
+    }
+}
+
+static void SlugAppendCubicApprox(SlugCurve* curves, u32* count, f32 p0x, f32 p0y, f32 c1x, f32 c1y, f32 c2x, f32 c2y, f32 p3x, f32 p3y)
+{
+    f32 p01x = (p0x + c1x) * 0.5f;
+    f32 p01y = (p0y + c1y) * 0.5f;
+    f32 p12x = (c1x + c2x) * 0.5f;
+    f32 p12y = (c1y + c2y) * 0.5f;
+    f32 p23x = (c2x + p3x) * 0.5f;
+    f32 p23y = (c2y + p3y) * 0.5f;
+    f32 p012x = (p01x + p12x) * 0.5f;
+    f32 p012y = (p01y + p12y) * 0.5f;
+    f32 p123x = (p12x + p23x) * 0.5f;
+    f32 p123y = (p12y + p23y) * 0.5f;
+    f32 midx = (p012x + p123x) * 0.5f;
+    f32 midy = (p012y + p123y) * 0.5f;
+
+    curves[(*count)++] = (SlugCurve){ { p0x, p0y }, { (3.0f * p01x - p0x) * 0.5f, (3.0f * p01y - p0y) * 0.5f }, { midx, midy } };
+    curves[(*count)++] = (SlugCurve){ { midx, midy }, { (3.0f * p123x - p3x) * 0.5f, (3.0f * p123y - p3y) * 0.5f }, { p3x, p3y } };
+}
+
+static u32 SlugExtractCurves(stbtt_fontinfo* info, u32 glyphIndex, f32 emScale, SlugCurve** outCurves)
+{
+    stbtt_vertex* vertices = NULL;
+    s32 numVertices = stbtt_GetGlyphShape(info, (int)glyphIndex, &vertices);
+    if (numVertices <= 0)
+    {
+        *outCurves = NULL;
+        return 0;
+    }
+
+    SlugCurve* curves = (SlugCurve*)AllocateTLSFGlobal((size_t)numVertices * 2u * sizeof(SlugCurve));
+    u32 numCurves = 0;
+    f32 px = 0.0f;
+    f32 py = 0.0f;
+
+    for (s32 i = 0; i < numVertices; i++)
+    {
+        f32 x = (f32)vertices[i].x * emScale;
+        f32 y = (f32)vertices[i].y * emScale;
+        switch (vertices[i].type)
+        {
+            case STBTT_vmove:
+                px = x; py = y;
+                break;
+            case STBTT_vline:
+                curves[numCurves++] = (SlugCurve){ { px, py }, { x, y }, { x, y } };
+                px = x; py = y;
+                break;
+            case STBTT_vcurve:
+            {
+                f32 cx = (f32)vertices[i].cx * emScale;
+                f32 cy = (f32)vertices[i].cy * emScale;
+                curves[numCurves++] = (SlugCurve){ { px, py }, { cx, cy }, { x, y } };
+                px = x; py = y;
+            } break;
+            case STBTT_vcubic:
+            {
+                f32 c1x = (f32)vertices[i].cx  * emScale;
+                f32 c1y = (f32)vertices[i].cy  * emScale;
+                f32 c2x = (f32)vertices[i].cx1 * emScale;
+                f32 c2y = (f32)vertices[i].cy1 * emScale;
+                SlugAppendCubicApprox(curves, &numCurves, px, py, c1x, c1y, c2x, c2y, x, y);
+                px = x; py = y;
+            } break;
+            default:
+                px = x; py = y;
+                break;
+        }
+    }
+
+    stbtt_FreeShape(info, vertices);
+    *outCurves = curves;
+    return numCurves;
+}
+
+static void SlugBuildGlyph(stbtt_fontinfo* info, u32 codePoint, f32 emScale, SlugBuildBuffers* buffers, SlugGlyph* glyph)
+{
+    *glyph = (SlugGlyph){0};
+    u32 glyphIndex = (u32)stbtt_FindGlyphIndex(info, (int)codePoint);
+
+    s32 advance, lsb;
+    stbtt_GetGlyphHMetrics(info, (int)glyphIndex, &advance, &lsb);
+    glyph->advance = (f32)advance * emScale;
+
+    s32 ix0, iy0, ix1, iy1;
+    if (!stbtt_GetGlyphBox(info, (int)glyphIndex, &ix0, &iy0, &ix1, &iy1)) return;
+
+    glyph->x0 = (f32)ix0 * emScale;
+    glyph->y0 = (f32)iy0 * emScale;
+    glyph->x1 = (f32)ix1 * emScale;
+    glyph->y1 = (f32)iy1 * emScale;
+
+    SlugCurve* curves = NULL;
+    u32 numCurves = SlugExtractCurves(info, glyphIndex, emScale, &curves);
+    if (numCurves == 0u)
+    {
+        AX_LOG("Slug glyph %u has no curves", codePoint);
+        return;
+    }
+
+    u32* curveIndexes = (u32*)ArenaPushGlobal((u64)numCurves * sizeof(u32));
+    for (u32 i = 0; i < numCurves; i++)
+    {
+        curveIndexes[i] = buffers->numCurveWords / 3u;
+        SlugAddCurve(buffers, curves[i]);
+    }
+
+    u32 numHBands = (u32)Maxf32(1.0f, Minf32(16.0f, Ceilf(Sqrtf((f32)numCurves))));
+    u32 numVBands = numHBands;
+    u32 totalBands = numHBands + numVBands;
+    SlugEnsureU32Buffer(&buffers->bands, &buffers->maxBands, buffers->numBands + totalBands + totalBands * numCurves);
+
+    f32 glyphWidth  = glyph->x1 - glyph->x0;
+    f32 glyphHeight = glyph->y1 - glyph->y0;
+    f32 hbandSize = glyphHeight / (f32)numHBands;
+    f32 vbandSize = glyphWidth  / (f32)numVBands;
+
+    glyph->bandMaxX = numVBands - 1u;
+    glyph->bandMaxY = numHBands - 1u;
+    glyph->bandScaleX = glyphWidth  > 0.0f ? (f32)numVBands / glyphWidth  : 0.0f;
+    glyph->bandScaleY = glyphHeight > 0.0f ? (f32)numHBands / glyphHeight : 0.0f;
+    glyph->bandOffsetX = -glyph->x0 * glyph->bandScaleX;
+    glyph->bandOffsetY = -glyph->y0 * glyph->bandScaleY;
+
+    u32 bandHeaderOffset = buffers->numBands;
+    glyph->glyphBandEntry = bandHeaderOffset;
+    buffers->numBands += totalBands;
+
+    u32 mark = (u32)ArenaGetCurrentOffset();
+    u32* bandIndexes = (u32*)ArenaPushGlobal((u64)numCurves * sizeof(u32));
+    f32* bandMaximums = (f32*)ArenaPushGlobal((u64)numCurves * sizeof(f32));
+
+    for (u32 b = 0; b < numHBands; b++)
+    {
+        f32 by0 = glyph->y0 + (f32)b * hbandSize - SLUG_EPS;
+        f32 by1 = glyph->y0 + (f32)(b + 1u) * hbandSize + SLUG_EPS;
+        u32 count = 0;
+        for (u32 c = 0; c < numCurves; c++)
+        {
+            if (SlugCurveHorizontal(&curves[c])) continue;
+            v128f curveY = SlugCurveY(&curves[c]);
+            f32 ymin = Min3(curveY);
+            f32 ymax = Max3(curveY);
+            if (by0 <= ymax && ymin <= by1)
+            {
+                bandIndexes[count] = c;
+                bandMaximums[count++] = Max3(SlugCurveX(&curves[c]));
+            }
+        }
+
+        SlugSortDescend(bandIndexes, bandMaximums, count);
+        u32 offset = buffers->numBands - bandHeaderOffset;
+        buffers->bands[bandHeaderOffset + b] = SlugPackU16(count, offset);
+        for (u32 i = 0; i < count; i++) buffers->bands[buffers->numBands++] = SlugPackU16(curveIndexes[bandIndexes[i]], 0u);
+    }
+
+    for (u32 b = 0; b < numVBands; b++)
+    {
+        f32 bx0 = glyph->x0 + (f32)b * vbandSize - SLUG_EPS;
+        f32 bx1 = glyph->x0 + (f32)(b + 1u) * vbandSize + SLUG_EPS;
+        u32 count = 0;
+        for (u32 c = 0; c < numCurves; c++)
+        {
+            if (SlugCurveVertical(&curves[c])) continue;
+            v128f curveX = SlugCurveX(&curves[c]);
+            f32 xmin = Min3(curveX);
+            f32 xmax = Max3(curveX);
+            if (bx0 <= xmax && xmin <= bx1)
+            {
+                bandIndexes[count] = c;
+                bandMaximums[count++] = Max3(SlugCurveY(&curves[c]));
+            }
+        }
+
+        SlugSortDescend(bandIndexes, bandMaximums, count);
+        u32 offset = buffers->numBands - bandHeaderOffset;
+        buffers->bands[bandHeaderOffset + numHBands + b] = SlugPackU16(count, offset);
+        for (u32 i = 0; i < count; i++) buffers->bands[buffers->numBands++] = SlugPackU16(curveIndexes[bandIndexes[i]], 0u);
+    }
+
+    ArenaSetCurrentOffset(mark);
+    ArenaPopGlobal((u64)numCurves * sizeof(u32));
+    DeAllocateTLSFGlobal(curves);
+}
+
+bool SlugLoadFont(SlugFont* font, const char* path)
+{
+    SDL_zero(*font);
+    u64 fileSize = FileSize(path);
+    if (fileSize == 0u)
+    {
+        AX_WARN("Slug font missing: %s", path);
+        return false;
+    }
+
+    char* ttf = ReadAllFileAlloc(path);
+    if (!ttf)
+    {
+        AX_WARN("Failed to read Slug font: %s", path);
+        return false;
+    }
+
+    stbtt_fontinfo info;
+    if (!stbtt_InitFont(&info, (const unsigned char*)ttf, 0))
+    {
+        AX_WARN("Failed to init Slug font: %s", path);
+        FreeAllText(ttf);
+        return false;
+    }
+
+    f32 emScale = stbtt_ScaleForMappingEmToPixels(&info, 1.0f);
+    s32 ascent, descent, lineGap;
+    stbtt_GetFontVMetrics(&info, &ascent, &descent, &lineGap);
+    font->ascent = (f32)ascent * emScale;
+    font->descent = (f32)descent * emScale;
+
+    SlugBuildBuffers buffers = {0};
+    for (u32 codePoint = 0; codePoint < SLUG_MAX_GLYPHS; codePoint++)
+    {
+        if (codePoint >= ' ' && codePoint <= '~') SlugBuildGlyph(&info, codePoint, emScale, &buffers, &font->glyphs[codePoint]);
+    }
+
+    FreeAllText(ttf);
+
+    if (buffers.numCurveWords == 0u || buffers.numBands == 0u)
+    {
+        AX_WARN("Slug font generated no draw data: %s", path);
+        DeAllocateTLSFGlobal(buffers.curves);
+        DeAllocateTLSFGlobal(buffers.bands);
+        return false;
+    }
+
+    font->curveBuffer = CreateBuffer(buffers.curves, (size_t)buffers.numCurveWords * sizeof(u32), BReadRasterBit, "SlugCurveBuffer");
+    font->bandBuffer  = CreateBuffer(buffers.bands,  (size_t)buffers.numBands * sizeof(u32), BReadRasterBit, "SlugBandBuffer");
+    font->maxVertices = SLUG_MAX_TEXT * SLUG_VERTS_PER_GLYPH;
+    font->vertices = (SlugVertex*)AllocateTLSFGlobal((size_t)font->maxVertices * sizeof(SlugVertex));
+    font->vertexBuffer = CreateBuffer(NULL, (size_t)font->maxVertices * sizeof(SlugVertex), BVertexBit, "SlugVertexBuffer");
+
+    DeAllocateTLSFGlobal(buffers.curves);
+    DeAllocateTLSFGlobal(buffers.bands);
+    return true;
+}
+
+void SlugDestroyFont(SlugFont* font)
+{
+    if (font->curveBuffer) SDL_ReleaseGPUBuffer(g_GPUDevice, font->curveBuffer);
+    if (font->bandBuffer) SDL_ReleaseGPUBuffer(g_GPUDevice, font->bandBuffer);
+    if (font->vertexBuffer) SDL_ReleaseGPUBuffer(g_GPUDevice, font->vertexBuffer);
+    if (font->vertices) DeAllocateTLSFGlobal(font->vertices);
+    SDL_zero(*font);
+}
+
+static void SlugWriteVertex(SlugVertex* v, f32 ox, f32 oy, f32 ex, f32 ey, f32 nx, f32 ny, const SlugGlyph* glyph, u32 color)
+{
+    u32 packedLoc  = glyph->glyphBandEntry;
+    u32 packedInfo = (glyph->bandMaxX & 0xFFFFu) | ((glyph->bandMaxY & 0x00FFu) << 16u);
+    v->pos[0] = ox; v->pos[1] = oy; v->pos[2] = nx; v->pos[3] = ny;
+    v->tex[0] = ex; v->tex[1] = ey; v->tex[2] = BitCast(f32, packedLoc); v->tex[3] = BitCast(f32, packedInfo);
+    v->jac[0] = 1.0f; v->jac[1] = 0.0f; v->jac[2] = 0.0f; v->jac[3] = 1.0f;
+    v->band[0] = glyph->bandScaleX; v->band[1] = glyph->bandScaleY; v->band[2] = glyph->bandOffsetX; v->band[3] = glyph->bandOffsetY;
+    v->color = color;
+}
+
+static void SlugUploadVertexBuffer(SDL_GPUCommandBuffer* cmd, SDL_GPUBuffer* buffer, const void* data, size_t size)
+{
+    SDL_GPUTransferBufferCreateInfo transferDesc = {
+        .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
+        .size  = size
+    };
+    SDL_GPUTransferBuffer* transferBuffer = SDL_CreateGPUTransferBuffer(g_GPUDevice, &transferDesc);
+    void* dst = SDL_MapGPUTransferBuffer(g_GPUDevice, transferBuffer, false);
+    MemCopy(dst, data, size);
+    SDL_UnmapGPUTransferBuffer(g_GPUDevice, transferBuffer);
+
+    SDL_GPUCopyPass* copyPass = SDL_BeginGPUCopyPass(cmd);
+    SDL_UploadToGPUBuffer(copyPass,
+        &(SDL_GPUTransferBufferLocation){ .transfer_buffer = transferBuffer, .offset = 0 },
+        &(SDL_GPUBufferRegion){ .buffer = buffer, .offset = 0, .size = size },
+        true);
+    SDL_EndGPUCopyPass(copyPass);
+    SDL_ReleaseGPUTransferBuffer(g_GPUDevice, transferBuffer);
+}
+
+void SlugClear(SlugFont* font)
+{
+    font->numVertices = 0u;
+}
+
+bool SlugAppendText(SlugFont* font, const char* text, float3 pos, f32 size, u32 color)
+{
+    if (!font->vertices || !font->vertexBuffer || !font->curveBuffer || !font->bandBuffer)
+    {
+        AX_WARN("Slug append skipped, resources not initialized");
+        return false;
+    }
+
+    u32 textLen = (u32)StringLengthSafe(text, SLUG_MAX_TEXT + 1u);
+    if (textLen == 0u) return true;
+    if (textLen > SLUG_MAX_TEXT)
+    {
+        AX_WARN("Slug text too long: %u", textLen);
+        return false;
+    }
+    if (font->numVertices + textLen * SLUG_VERTS_PER_GLYPH > font->maxVertices)
+    {
+        AX_WARN("Slug vertex batch full: vertices=%u needed=%u capacity=%u", font->numVertices, textLen * SLUG_VERTS_PER_GLYPH, font->maxVertices);
+        return false;
+    }
+
+    SlugVertex* vertices = font->vertices;
+    f32 cursor = 0.0f;
+    const f32 n = 0.70710678f;
+    f32 invSize = 1.0f / Maxf32(size, 1.0e-6f);
+
+    for (u32 i = 0; i < textLen; i++)
+    {
+        u32 ch = (u8)text[i];
+        if (ch >= SLUG_MAX_GLYPHS) continue;
+        const SlugGlyph* glyph = &font->glyphs[ch];
+        if (glyph->advance == 0.0f && ch != ' ') continue;
+
+        if (glyph->glyphBandEntry != 0u || ch != ' ')
+        {
+            f32 ex0 = glyph->x0, ey0 = glyph->y0;
+            f32 ex1 = glyph->x1, ey1 = glyph->y1;
+            f32 ox0 = pos.x + (cursor + ex0) * size, oy0 = pos.y + ey0 * size;
+            f32 ox1 = pos.x + (cursor + ex1) * size, oy1 = pos.y + ey1 * size;
+            struct { f32 ox, oy, ex, ey, nx, ny; } corners[4] = {
+                { ox0, oy1, ex0, ey1, -n,  n },
+                { ox1, oy1, ex1, ey1,  n,  n },
+                { ox1, oy0, ex1, ey0,  n, -n },
+                { ox0, oy0, ex0, ey0, -n, -n }
+            };
+            const u32 tri[6] = { 0u, 3u, 1u, 1u, 3u, 2u };
+            for (u32 vi = 0; vi < 6u; vi++)
+            {
+                const u32 ci = tri[vi];
+                SlugVertex* v = &vertices[font->numVertices++];
+                SlugWriteVertex(v, corners[ci].ox, corners[ci].oy, corners[ci].ex, corners[ci].ey, corners[ci].nx, corners[ci].ny, glyph, color);
+                v->z = pos.z;
+                v->jac[0] = invSize;
+                v->jac[3] = invSize;
+            }
+        }
+        cursor += glyph->advance;
+    }
+    return true;
+}
+
+void SlugRender(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget, SDL_GPUDepthStencilTargetInfo* depthTarget, SlugFont* font, mat4x4 viewProj)
+{
+    SDL_GPUGraphicsPipeline* pipeline = depthTarget ? g_RenderState.slugDepthPipeline : g_RenderState.slugPipeline;
+    if (!font->vertexBuffer || !font->curveBuffer || !font->bandBuffer || !pipeline)
+    {
+        AX_WARN("Slug render skipped, resources not initialized");
+        return;
+    }
+    if (font->numVertices == 0u) return;
+
+    SlugUploadVertexBuffer(cmd, font->vertexBuffer, font->vertices, (size_t)font->numVertices * sizeof(SlugVertex));
+
+    SlugVertexParams params = {0};
+    params.matrix = viewProj;
+    params.viewport[0] = (f32)Maxu32(g_WindowState.prev_drawablew, 1u);
+    params.viewport[1] = (f32)Maxu32(g_WindowState.prev_drawableh, 1u);
+
+    SDL_GPUBuffer* storageBuffers[2] = { font->curveBuffer, font->bandBuffer };
+    SDL_GPUBufferBinding vertexBinding = { font->vertexBuffer, 0 };
+    SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmd, colorTarget, 1, depthTarget);
+    SDL_BindGPUGraphicsPipeline(pass, pipeline);
+    SDL_BindGPUVertexBuffers(pass, 0, &vertexBinding, 1);
+    SDL_BindGPUFragmentStorageBuffers(pass, 0, storageBuffers, SDL_arraysize(storageBuffers));
+    SDL_PushGPUVertexUniformData(cmd, 0, &params, sizeof(params));
+    SDL_DrawGPUPrimitives(pass, font->numVertices, 1, 0, 0);
+    SDL_EndGPURenderPass(pass);
+    SlugClear(font);
+}
+
+void SlugInitDemo(void)
+{
+    // if (!SlugLoadFont(&g_SlugDemoFont, "Assets/Fonts/Quivira.otf")) AX_WARN("Slug demo font load failed");
+    if (!SlugLoadFont(&g_SlugDemoFont, "Assets/Fonts/JetBrainsMono-Regular.ttf")) AX_WARN("Slug demo font load failed");
+}
+
+void SlugDestroyDemo(void)
+{
+    SlugDestroyFont(&g_SlugDemoFont);
+}
+
+void RenderSlugDemo(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget, SDL_GPUDepthStencilTargetInfo* depthTarget, mat4x4 viewProj)
+{
+    SlugAppendText(&g_SlugDemoFont, "Anilcan Gulkaya", (float3){ -2.0f, -2.0f, -3.0f }, 0.35f, 0xFFFFFFFFu);
+    SlugAppendText(&g_SlugDemoFont, "Quivira.otf buffer renderer", (float3){ -2.0f, -4.55f, -3.0f }, 0.22f, 0xFFFFC060u);
+    SlugRender(cmd, colorTarget, depthTarget, &g_SlugDemoFont, viewProj);
+}

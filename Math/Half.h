@@ -171,12 +171,12 @@ static inline void Float4ToHalf4V(u64* result, v128f f4)
     #endif
 }
 
-static inline void Float4ToHalf4(f16* result, const f32* f4)
+static inline void Float4ToHalf4(void* result, const f32* f4)
 {
     #ifdef AX_SUPPORT_AVX2
     _mm_storel_pi((__m64*)result, _mm_castsi128_ps(_mm_cvtps_ph(_mm_loadu_ps(f4), _MM_FROUND_TO_NEAREST_INT)));
     #elif defined(AX_SUPPORT_NEON)
-    vst1_f16(result, vcvt_f16_f32(vld1q_f32(f4)));
+    vst1_f16((f16*)result, vcvt_f16_f32(vld1q_f32(f4)));
     #elif defined(AX_SUPPORT_SSE) || defined(AX_SUPPORT_NEON)
 
     v128u IValue = VeciLoad((const unsigned int*)f4);

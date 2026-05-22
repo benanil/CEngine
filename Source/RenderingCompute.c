@@ -228,7 +228,11 @@ void DispatchDeferredLightingCompute(SDL_GPUCommandBuffer* cmd, u32 width, u32 h
     WindowState* winstate = &g_WindowState;
     if (!winstate->tex_gbuffer_tangent || !winstate->tex_gbuffer_albedo_metallic ||
         !winstate->tex_gbuffer_shadow_roughness || !winstate->tex_hiz_depth ||
-        !winstate->tex_hbao_blur || !winstate->tex_color) return;
+        !winstate->tex_hbao_blur || !winstate->tex_color)
+    {
+        AX_LOG("Deferred lighting is not ready yet");
+        return;
+    }
     CHECK_CREATE(g_DeferredLightingComputePipeline, "Deferred Lighting Compute Pipeline");
 
     SDL_GPUStorageTextureReadWriteBinding output = {

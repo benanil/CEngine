@@ -171,6 +171,8 @@ typedef struct RenderState
     SDL_GPUGraphicsPipeline* skinnedShadowPipeline;
     SDL_GPUGraphicsPipeline* surfaceShadowPipeline;
     SDL_GPUGraphicsPipeline* linePipeline;
+    SDL_GPUGraphicsPipeline* slugPipeline;
+    SDL_GPUGraphicsPipeline* slugDepthPipeline;
     SDL_GPUSampler*          sampler;
     SDL_GPUSampler*          hiZSampler;
     SDL_GPUSampler*          shadowSampler;

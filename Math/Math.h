@@ -63,16 +63,30 @@ purefn v128f VCALL Vec3Cross(v128f vec0, v128f vec1)
 #endif
 }
 
-purefn f32 VCALL Min3(v128f ab)
+purefn f32 VCALL VecMinVal(v128f a)
 {
-    v128f xy = VecMin(VecSplatX(ab), VecSplatY(ab));
-    return VecGetX(VecMin(xy, VecSplatZ(ab)));
+    v128f t = VecSwapPairs(a);
+    v128f m = VecMin(a, t);
+    return VecGetX(VecMin(m, VecSwapHalves(m)));
 }
 
-purefn f32 VCALL Max3(v128f ab)
+purefn f32 VCALL VecMaxVal(v128f a)
 {
-    v128f xy = VecMax(VecSplatX(ab), VecSplatY(ab));
-    return VecGetX(VecMax(xy, VecSplatZ(ab)));
+    v128f t = VecSwapPairs(a);
+    v128f m = VecMax(a, t);
+    return VecGetX(VecMax(m, VecSwapHalves(m)));
+}
+
+purefn f32 VCALL Min3(v128f a)
+{
+    VecSetW(a, FLT_MAX);
+    return VecMinVal(a);
+}
+
+purefn f32 VCALL Max3(v128f a)
+{
+    VecSetW(a, FLT_MIN);
+    return VecMaxVal(a);
 }
 
 #define VecClamp01(v) VecClamp(v, VecZero(), VecOne())
