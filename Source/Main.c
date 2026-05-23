@@ -14,7 +14,6 @@
 #include "Include/Memory.h"
 #include "Include/Random.h"
 #include "Include/AssetManager.h"
-#include "Include/Slug.h"
 
 static Uint32 frames = 0;
 static s32 done = 0;
@@ -28,6 +27,7 @@ SceneBundle* gSponza;
 
 extern RenderSet    skinnedSet;
 extern RenderSet    surfaceSet;
+
 
 static void MainLoop(void)
 {
@@ -61,7 +61,7 @@ s32 InitScene()
         return 0;
     }
     
-    s32 sponzaRes = LoadGLTFCached("Assets/Meshes/Bistro/Bistro.glb", gSponza, g_RenderState.textures + gPaladin->numImages);
+    s32 sponzaRes = LoadGLTFCached("Assets/Meshes/Sponza/scene.gltf ", gSponza, g_RenderState.textures + gPaladin->numImages);
     if (!sponzaRes)
     {
         AX_ERROR("gltf Bistro/sponza load failed: %d ", sponzaRes);

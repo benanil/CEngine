@@ -11,12 +11,12 @@ echo Compiling project...
 
 if "%1"=="Debug" (
     mkdir Debug
-	cmake -S . -B Debug -G Ninja -DCMAKE_BUILD_TYPE=Debug
+	rem cmake -S . -B Debug -G Ninja -DCMAKE_BUILD_TYPE=Debug
     cmake --build Debug
     start Debug/Debug/CPlayground.exe
 ) else (
     mkdir Debug
-    cmake -S . -B Release -G Ninja -DCMAKE_BUILD_TYPE=Release
+    rem cmake -S . -B Release -G Ninja -DCMAKE_BUILD_TYPE=Release
     cmake --build Release
     start Release/Release/CPlayground.exe
 )   

@@ -81,6 +81,22 @@ static inline int CodepointFromUtf8(unsigned int* out_unicode, const char* in_te
     return wanted;
 }
 
+static u32 StringCodepointCount(const char* text, u32 bytes)
+{
+    if (!text) return 0u;
+    u32 result = 0u;
+    const char* at = text;
+    const char* end = text + bytes;
+    while (at < end && *at)
+    {
+        u32 codepoint;
+        int step = CodepointFromUtf8(&codepoint, at, end);
+        at += step > 0 ? step : 1;
+        result++;
+    }
+    return result;
+}
+
 static inline uint32_t CodepointToUtf8(char* utf8, uint32_t unicode)
 {
     if (unicode < 0x80u) {

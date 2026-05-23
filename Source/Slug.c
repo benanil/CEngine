@@ -302,7 +302,7 @@ static bool SlugLoadFallbackFont(SlugFont* font, const char* path)
     if (font->numFallbackFonts >= SLUG_MAX_FALLBACK_FONTS) return false;
     u64 fileSize = FileSize(path);
     if (fileSize == 0u || fileSize > UINT32_MAX) return false;
-
+    AX_LOG("fallback font");
     char* ttf = ReadAllFileAlloc(path);
     if (!ttf) return false;
 
@@ -436,25 +436,6 @@ static const SlugGlyph* SlugEnsureGlyphIndex(SlugFont* font, u32 faceIndex, u32 
     }
     if (glyph.glyphBandEntry == 0u && glyph.advance == 0.0f) glyph = font->glyphs['-'];
     return (const SlugGlyph*)HMInsertOrAssign(&font->unicodeGlyphs, key, &glyph);
-}
-
-static u32 SlugTextCodepointCount(const char* text, u32 maxBytes)
-{
-    if (!text) return 0u;
-    u32 bytes = (u32)StringLengthSafe(text, maxBytes + 1u);
-    if (bytes > maxBytes) return bytes;
-
-    u32 count = 0u;
-    const char* at = text;
-    const char* end = text + bytes;
-    while (at < end && *at)
-    {
-        u32 codePoint;
-        int step = CodepointFromUtf8(&codePoint, at, end);
-        at += step > 0 ? step : 1;
-        count++;
-    }
-    return count;
 }
 
 bool SlugLoadFont(SlugFont* font, const char* path)
@@ -612,6 +593,77 @@ void SlugClear(SlugFont* font)
     font->numVertices = 0u;
 }
 
+// if no textedit is needed use this, otherwise UItext functions
+bool SlugAppendText2D(SlugFont* font, const char* text, float2 pos, f32 size, u32 color)
+{
+    if (font == NULL) font = &g_SlugDemoFont;
+    if (!font->vertices || !font->vertexBuffer || !font->curveBuffer || !font->bandBuffer)
+    {
+        AX_WARN("Slug append 2D skipped, resources not initialized");
+        return false;
+    }
+
+    u32 textBytes = (u32)StringLengthSafe(text, SLUG_MAX_TEXT + 1u);
+    u32 textLen = StringCodepointCount(text, SLUG_MAX_TEXT);
+    if (textBytes == 0u) return true;
+    if (textBytes > SLUG_MAX_TEXT)
+    {
+        AX_WARN("Slug 2D text too long: %u", textBytes);
+        return false;
+    }
+    if (font->numVertices + textLen * SLUG_VERTS_PER_GLYPH > font->maxVertices)
+    {
+        AX_WARN("Slug 2D vertex batch full: vertices=%u needed=%u capacity=%u", font->numVertices, textLen * SLUG_VERTS_PER_GLYPH, font->maxVertices);
+        return false;
+    }
+
+    f32 invSize = 1.0f / Maxf32(size, 1.0e-6f);
+    f32 cursor = 0.0f;
+    f32 baselineY = pos.y + font->ascent * size;
+    const char* at = text;
+    const char* end = text + textBytes;
+    while (at < end && *at)
+    {
+        u32 codePoint;
+        int step = CodepointFromUtf8(&codePoint, at, end);
+        at += step > 0 ? step : 1;
+
+        const SlugGlyph* glyph = SlugEnsureGlyph(font, codePoint);
+        if (glyph->advance == 0.0f && codePoint != ' ') continue;
+
+        if (glyph->glyphBandEntry != 0u || codePoint != ' ')
+        {
+            f32 pad = SLUG_BOUNDS_PAD_PX * invSize;
+            f32 ex0 = glyph->x0 - pad, ey0 = glyph->y0 - pad;
+            f32 ex1 = glyph->x1 + pad, ey1 = glyph->y1 + pad;
+            f32 ox0 = pos.x + (cursor + ex0) * size;
+            f32 ox1 = pos.x + (cursor + ex1) * size;
+            f32 oy0 = baselineY - ey0 * size;
+            f32 oy1 = baselineY - ey1 * size;
+            const f32 n = 1.0f / MATH_PI;
+            struct { f32 ox, oy, ex, ey, nx, ny; } corners[4] = {
+                { ox0, oy0, ex0, ey0, -n,  n },
+                { ox1, oy0, ex1, ey0,  n,  n },
+                { ox1, oy1, ex1, ey1,  n, -n },
+                { ox0, oy1, ex0, ey1, -n, -n }
+            };
+
+            const u32 tri[6] = { 0u, 3u, 1u, 1u, 3u, 2u };
+            for (u32 vi = 0; vi < 6u; vi++)
+            {
+                const u32 ci = tri[vi];
+                SlugVertex* v = &font->vertices[font->numVertices++];
+                SlugWriteVertex(v, corners[ci].ox, corners[ci].oy, corners[ci].ex, corners[ci].ey, corners[ci].nx, corners[ci].ny, glyph, color);
+                v->z = 0.0f;
+                v->jac[0] = invSize;
+                v->jac[3] = invSize;
+            }
+        }
+        cursor += glyph->advance;
+    }
+    return true;
+}
+
 bool SlugAppendText3D(SlugFont* font, const char* text, float3 pos, Quaternion rot, f32 size, u32 color)
 {
     if (!font->vertices || !font->vertexBuffer || !font->curveBuffer || !font->bandBuffer)
@@ -621,7 +673,7 @@ bool SlugAppendText3D(SlugFont* font, const char* text, float3 pos, Quaternion r
     }
 
     u32 textBytes = (u32)StringLengthSafe(text, SLUG_MAX_TEXT + 1u);
-    u32 textLen = SlugTextCodepointCount(text, SLUG_MAX_TEXT);
+    u32 textLen = StringCodepointCount(text, SLUG_MAX_TEXT);
     if (textBytes == 0u) return true;
     if (textBytes > SLUG_MAX_TEXT)
     {

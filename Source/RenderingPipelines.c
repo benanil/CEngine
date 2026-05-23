@@ -335,7 +335,7 @@ static void InitSlugPipeline(void)
         { .location = 1, .buffer_slot = 0, .format = VFORMAT_FLOAT4, .offset = offsetof(SlugVertex, tex) },
         { .location = 2, .buffer_slot = 0, .format = VFORMAT_FLOAT4, .offset = offsetof(SlugVertex, jac) },
         { .location = 3, .buffer_slot = 0, .format = VFORMAT_FLOAT4, .offset = offsetof(SlugVertex, band) },
-        { .location = 4, .buffer_slot = 0, .format = VFORMAT_UINT, .offset = offsetof(SlugVertex, color) },
+        { .location = 4, .buffer_slot = 0, .format = VFORMAT_UINT  , .offset = offsetof(SlugVertex, color) },
         { .location = 5, .buffer_slot = 0, .format = VFORMAT_F32   , .offset = offsetof(SlugVertex, z) }
     };
     SDL_GPUColorTargetDescription colorTarget = {

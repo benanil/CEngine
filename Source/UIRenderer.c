@@ -121,22 +121,6 @@ static u32 UIStringLength(const char* text, u32 capacity)
     return (u32)StringLengthSafe(text, capacity);
 }
 
-static u32 UICodepointCount(const char* text, u32 bytes)
-{
-    if (!text) return 0u;
-    u32 result = 0u;
-    const char* at = text;
-    const char* end = text + bytes;
-    while (at < end && *at)
-    {
-        u32 codepoint;
-        int step = CodepointFromUtf8(&codepoint, at, end);
-        at += step > 0 ? step : 1;
-        result++;
-    }
-    return result;
-}
-
 static u32 UIByteFromCodepoint(const char* text, u32 bytes, u32 codepointIndex)
 {
     if (!text) return 0u;
@@ -231,7 +215,7 @@ static bool UIPasteClipboardAtCaret(char* buffer, u32 capacity, bool multiline)
     if (!buffer || capacity == 0u || !SDL_HasClipboardText()) return false;
     char* clipboard = SDL_GetClipboardText();
     if (!clipboard) return false;
-    u32 len = (u32)SDL_strlen(clipboard);
+    u32 len = (u32)StringLength(clipboard);
     bool result = UIInsertBytesAtCaret(buffer, capacity, clipboard, len, multiline);
     SDL_free(clipboard);
     return result;
@@ -329,7 +313,7 @@ static bool UIBackspaceText(char* buffer, u32 capacity)
 static bool UIDeleteTextForward(char* buffer, u32 capacity)
 {
     u32 len = UIStringLength(buffer, capacity);
-    u32 codepoints = UICodepointCount(buffer, len);
+    u32 codepoints = StringCodepointCount(buffer, len);
     if (UIDeleteSelection(buffer, &len)) return true;
     if (g_UI.caret >= codepoints) return false;
     UIDeleteCodepointRange(buffer, capacity, g_UI.caret, g_UI.caret + 1u);
@@ -361,7 +345,7 @@ static bool UITextEditBehavior(u64 id, char* buffer, u32 capacity, bool multilin
 
     bool edited = false;
     u32 len = UIStringLength(buffer, capacity);
-    u32 codepoints = UICodepointCount(buffer, len);
+    u32 codepoints = StringCodepointCount(buffer, len);
     if (g_UI.caret > codepoints) UISetCaret(codepoints, false);
     if (g_UI.selectionAnchor > codepoints) g_UI.selectionAnchor = codepoints;
 
@@ -387,7 +371,7 @@ static bool UITextEditBehavior(u64 id, char* buffer, u32 capacity, bool multilin
                 if (ctrl && UICopySelectionToClipboard(buffer, capacity))
                 {
                     edited |= UIDeleteSelection(buffer, &len);
-                    codepoints = UICodepointCount(buffer, len);
+                    codepoints = StringCodepointCount(buffer, len);
                 }
                 break;
             case SDLK_V:
@@ -395,7 +379,7 @@ static bool UITextEditBehavior(u64 id, char* buffer, u32 capacity, bool multilin
                 {
                     edited |= UIPasteClipboardAtCaret(buffer, capacity, multiline);
                     len = UIStringLength(buffer, capacity);
-                    codepoints = UICodepointCount(buffer, len);
+                    codepoints = StringCodepointCount(buffer, len);
                 }
                 break;
             case SDLK_LEFT:
@@ -424,19 +408,19 @@ static bool UITextEditBehavior(u64 id, char* buffer, u32 capacity, bool multilin
             case SDLK_BACKSPACE:
                 edited |= UIBackspaceText(buffer, capacity);
                 len = UIStringLength(buffer, capacity);
-                codepoints = UICodepointCount(buffer, len);
+                codepoints = StringCodepointCount(buffer, len);
                 break;
             case SDLK_DELETE:
                 edited |= UIDeleteTextForward(buffer, capacity);
                 len = UIStringLength(buffer, capacity);
-                codepoints = UICodepointCount(buffer, len);
+                codepoints = StringCodepointCount(buffer, len);
                 break;
             case SDLK_RETURN:
                 if (multiline)
                 {
                     edited |= UIInsertBytesAtCaret(buffer, capacity, "\n", 1u, true);
                     len = UIStringLength(buffer, capacity);
-                    codepoints = UICodepointCount(buffer, len);
+                    codepoints = StringCodepointCount(buffer, len);
                 }
                 break;
             default:
@@ -470,8 +454,8 @@ static void UIUploadBuffer(SDL_GPUCommandBuffer* cmd, SDL_GPUBuffer* buffer, con
 
 void UIInit(void)
 {
-    SDL_zero(g_UIRenderer);
-    SDL_zero(g_UI);
+    MemsetZero(&g_UIRenderer, sizeof(UIRenderer));
+    MemsetZero(&g_UI, sizeof(UIContext));
     g_UIRenderer.capacity = UI_MAX_SHAPES;
     g_UIRenderer.shapes = (UIShape*)AllocateTLSFGlobal((size_t)g_UIRenderer.capacity * sizeof(UIShape));
     g_RenderState.uiShapeBuffer = CreateBuffer(NULL, (size_t)g_UIRenderer.capacity * sizeof(UIShape), BReadRasterBit, "UIShapeBuffer");
@@ -479,27 +463,27 @@ void UIInit(void)
 
     for (u32 i = 0; i < UIColor_Count; i++) g_UI.colorStackCount[i] = -1;
     for (u32 i = 0; i < UIFloat_Count; i++) g_UI.floatStackCount[i] = -1;
-    g_UI.colors[UIColor_Text] = 0xFFE1E1E1u;
-    g_UI.colors[UIColor_Quad] = 0xDD111111u;
-    g_UI.colors[UIColor_Hovered] = 0x8CFFFFFFu;
-    g_UI.colors[UIColor_Line] = 0xFFDEDEDEu;
-    g_UI.colors[UIColor_Border] = 0xFF484848u;
-    g_UI.colors[UIColor_CheckboxBG] = 0xFF0B0B0Bu;
-    g_UI.colors[UIColor_TextBoxBG] = 0xFF0B0B0Bu;
-    g_UI.colors[UIColor_SliderInside] = 0xCF888888u;
-    g_UI.colors[UIColor_TextBoxCursor] = 0xFFFFFFFFu;
+    g_UI.colors[UIColor_Text]           = 0xFFE1E1E1u;
+    g_UI.colors[UIColor_Quad]           = 0xEE111111u;
+    g_UI.colors[UIColor_Hovered]        = 0x8CFFFFFFu;
+    g_UI.colors[UIColor_Line]           = 0xFFDEDEDEu;
+    g_UI.colors[UIColor_Border]         = 0xFF484848u;
+    g_UI.colors[UIColor_CheckboxBG]     = 0xFF0B0B0Bu;
+    g_UI.colors[UIColor_TextBoxBG]      = 0xFF0B0B0Bu;
+    g_UI.colors[UIColor_SliderInside]   = 0xCF888888u;
+    g_UI.colors[UIColor_TextBoxCursor]  = 0xFF11FF11u;
     g_UI.colors[UIColor_SelectedBorder] = 0xFF008CFAu;
 
-    g_UI.floats[UIFloat_LineThickness] = 1.5f;
-    g_UI.floats[UIFloat_ContentStart] = 160.0f;
-    g_UI.floats[UIFloat_ButtonSpace] = 12.0f;
-    g_UI.floats[UIFloat_TextScale] = 1.0f;
-    g_UI.floats[UIFloat_TextBoxWidth] = 175.0f;
-    g_UI.floats[UIFloat_SliderHeight] = 18.0f;
-    g_UI.floats[UIFloat_Depth] = 0.9f;
-    g_UI.floats[UIFloat_FieldWidth] = 98.0f;
-    g_UI.floats[UIFloat_TextWrapWidth] = 100.0f;
-    g_UI.floats[UIFloat_ScrollWidth] = 16.0f;
+    g_UI.floats[UIFloat_LineThickness]  = 1.5f;
+    g_UI.floats[UIFloat_ContentStart]   = 160.0f;
+    g_UI.floats[UIFloat_ButtonSpace]    = 12.0f;
+    g_UI.floats[UIFloat_TextScale]      = 1.0f;
+    g_UI.floats[UIFloat_TextBoxWidth]   = 175.0f;
+    g_UI.floats[UIFloat_SliderHeight]   = 18.0f;
+    g_UI.floats[UIFloat_Depth]          = 0.9f;
+    g_UI.floats[UIFloat_FieldWidth]     = 98.0f;
+    g_UI.floats[UIFloat_TextWrapWidth]  = 100.0f;
+    g_UI.floats[UIFloat_ScrollWidth]    = 16.0f;
 }
 
 void UIDestroy(void)
@@ -534,33 +518,9 @@ void UIBeginFrame(void)
     if (!g_UI.keyboardFocus) PlatformConsumeTextKeyEvents(NULL, UINT32_MAX);
 }
 
-void ShowFps()
-{
-    static char fpsText[32] = "fps:0";
-    static char msText[128] = "ms:0";
-    static double lastUpdateTime = 0.0;
-    double currentTime = TimeSinceStartup();
-
-    if (currentTime - lastUpdateTime >= 0.25)
-    {
-        lastUpdateTime = currentTime;
-        f32 dt = GetDeltaTime();
-        int fps = (dt > 1.0e-6f) ? (int)(1.0f / dt) : 0;
-        f32 ms = dt * 1000.0f;
-        int len = IntToString(fpsText + 4, (int64_t)fps, 0);
-        fpsText[4 + len] = '\0';
-        len = IntToString(msText + 3, (int64_t)ms, 0);
-        msText[3 + len] = '\0';
-    }
-
-    UITextDirect(fpsText, (float2){32.0f, 600.0f}, 32.0f, WangHash(78091234));
-    UITextDirect(msText, (float2){32.0f, 650.0f}, 32.0f, WangHash(67894));
-}
-
 void UIEndFrame(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget)
 {
     UIRender(cmd, colorTarget);
-    ShowFps();
     SlugRender2D(cmd, colorTarget, SlugGetDemoFont());
     g_UI.mouseOld = g_UI.mouse;
 }
@@ -621,16 +581,12 @@ bool UIPushCapsule(float2 pos, float2 size, u32 color)
     return UIPushShape(pos, size, Minf32(size.x, size.y) * 0.5f, color, UIShapeType_Capsule);
 }
 
-bool UIPushBorder(float2 pos, float2 size, f32 thickness, u32 color)
+void UIPushBorder(f32 thickness, u32 color)
 {
-    // pos = F2SubF(pos, thickness);
-    // size = F2AddF(size, thickness * 2.0f);
-    if (!UIPushShape(pos, size, 0.0f, color, UIShapeType_RoundedRect)) return false;
+    if (g_UIRenderer.count == 0) return;
     UIShape* s = &g_UIRenderer.shapes[g_UIRenderer.count - 1u];
-    s->color = 0u;
     s->borderColor = color;
     s->params[1] = UIResolveScalar(thickness);
-    return true;
 }
 
 void UISetColor(UIColor what, u32 color)
@@ -649,8 +605,7 @@ void UIPushColor(UIColor what, u32 color)
 {
     if ((u32)what >= UIColor_Count) return;
     s32 count = g_UI.colorStackCount[what] + 1;
-    if ((u32)count >= UI_STACK_SIZE)
-    {
+    if ((u32)count >= UI_STACK_SIZE) {
         AX_WARN("UI color stack full: %u", (u32)what);
         return;
     }
@@ -661,8 +616,7 @@ void UIPushColor(UIColor what, u32 color)
 void UIPopColor(UIColor what)
 {
     if ((u32)what >= UIColor_Count) return;
-    if (g_UI.colorStackCount[what] < 0)
-    {
+    if (g_UI.colorStackCount[what] < 0) {
         AX_WARN("UI color stack underflow: %u", (u32)what);
         return;
     }
@@ -685,8 +639,7 @@ void UIPushFloat(UIFloat what, f32 value)
 {
     if ((u32)what >= UIFloat_Count) return;
     s32 count = g_UI.floatStackCount[what] + 1;
-    if ((u32)count >= UI_STACK_SIZE)
-    {
+    if ((u32)count >= UI_STACK_SIZE) {
         AX_WARN("UI float stack full: %u", (u32)what);
         return;
     }
@@ -702,8 +655,7 @@ void UIPushFloatAdd(UIFloat what, f32 value)
 void UIPopFloat(UIFloat what)
 {
     if ((u32)what >= UIFloat_Count) return;
-    if (g_UI.floatStackCount[what] < 0)
-    {
+    if (g_UI.floatStackCount[what] < 0) {
         AX_WARN("UI float stack underflow: %u", (u32)what);
         return;
     }
@@ -819,7 +771,7 @@ static bool UITextBuildLayout(const char* text, u32 bytes, float2 pos, f32 textS
     f32 sizePx = 32.0f * textScale * g_UI.uiScale;
     layout->ascent = SlugGetFontAscent(font) * sizePx / Maxf32(g_UI.windowRatio.y, 0.01f);
     layout->lineHeight = Maxf32((SlugGetFontAscent(font) - SlugGetFontDescent(font)) * sizePx, sizePx) / Maxf32(g_UI.windowRatio.y, 0.01f);
-    layout->codepointCount = UICodepointCount(text, bytes);
+    layout->codepointCount = StringCodepointCount(text, bytes);
     if (layout->codepointCount > UI_TEXT_MAX_CODEPOINTS) return false;
 
     UITextLine* line = UILayoutBeginLine(layout, pos.x, pos.y, 0u);
@@ -903,7 +855,7 @@ static bool UITextBuildLayout(const char* text, u32 bytes, float2 pos, f32 textS
         if (!multiline || lineStartByte + lineBytes >= bytes) break;
 
         lineStartByte += lineBytes + 1u;
-        cpBase += UICodepointCount(text + lineStartByte - lineBytes - 1u, lineBytes + 1u);
+        cpBase += StringCodepointCount(text + lineStartByte - lineBytes - 1u, lineBytes + 1u);
         penX = 0.0f;
         line = UILayoutBeginLine(layout, pos.x, pos.y + layout->lineHeight * (f32)layout->lineCount, cpBase);
         if (!line) break;
@@ -1041,7 +993,7 @@ bool UIButton(const char* text, float2 pos, float2 size)
     bool clicked = UIClickCheck(pos, size, UIClickOpt_None);
     u32 color = g_UI.wasHovered ? UIGetColor(UIColor_Hovered) : UIGetColor(UIColor_Quad);
     UIPushRoundedRect(pos, size, 6.0f, color);
-    UIPushBorder(pos, size, UIGetFloat(UIFloat_LineThickness), UIGetColor(UIColor_Border));
+    UIPushBorder(UIGetFloat(UIFloat_LineThickness), UIGetColor(UIColor_Border));
 
     if (text)
     {
@@ -1063,11 +1015,31 @@ bool UICheckbox(const char* text, float2 pos, bool* enabled)
     if (clicked && enabled) *enabled = !*enabled;
 
     UIPushRoundedRect(boxPos, (float2){ box, box }, 3.0f, UIGetColor(UIColor_CheckboxBG));
-    UIPushBorder(boxPos, (float2){ box, box }, UIGetFloat(UIFloat_LineThickness), UIGetColor(UIColor_Border));
+    UIPushBorder(UIGetFloat(UIFloat_LineThickness), UIGetColor(UIColor_Border));
     if (enabled && *enabled)
     {
         f32 pad = box * 0.22f;
         UIPushRoundedRect((float2){ boxPos.x + pad, boxPos.y + pad }, (float2){ box - pad * 2.0f, box - pad * 2.0f }, 2.0f, UIGetColor(UIColor_SliderInside));
+    }
+    return clicked;
+}
+
+bool UIRadioButton(const char* text, float2 pos, bool* enabled)
+{
+    float2 textSize = UITextSize(text);
+    UIText(text, pos);
+    f32 rd = Maxf32(textSize.y * 0.5f, 16.0f);
+    f32 controlX = Maxf32(pos.x + UIGetFloat(UIFloat_ContentStart) - rd * 0.5f,
+                          pos.x + textSize.x + UIGetFloat(UIFloat_ButtonSpace));
+    float2 boxPos = { controlX, pos.y + (textSize.y - rd) * 0.5f };
+    bool clicked = UIClickCheck(boxPos, (float2){ rd, rd }, UIClickOpt_BigCollision);
+    if (clicked && enabled) *enabled = !*enabled;
+    float2 circlePos = F2AddF(boxPos, rd * 0.5f);
+    UIPushCircle(circlePos, rd, UIGetColor(UIColor_CheckboxBG));
+    UIPushBorder(UIGetFloat(UIFloat_LineThickness), UIGetColor(UIColor_Border));
+    if (enabled && *enabled)
+    {
+        UIPushCircle(circlePos, rd * 0.7f, UIGetColor(UIColor_SliderInside));
     }
     return clicked;
 }
@@ -1092,7 +1064,7 @@ bool UISliderFloat(const char* label, float2 pos, f32* value, f32 width)
 
     g_UI.wasHovered = hovered;
     UIPushRoundedRect(barPos, barSize, barSize.y * 0.5f, UIGetColor(UIColor_TextBoxBG));
-    // UIPushBorder(barPos, barSize, UIGetFloat(UIFloat_LineThickness), UIGetColor(UIColor_Border));
+    UIPushBorder(UIGetFloat(UIFloat_LineThickness), UIGetColor(UIColor_Border));
     if (*value > 0.0f)
     {
         float2 fillSize = { barSize.x * UIClamp01(*value), barSize.y };
@@ -1123,7 +1095,7 @@ bool UITextBox(const char* label, float2 pos, char* buffer, u32 capacity, f32 wi
     bool focused = g_UI.keyboardFocus == id;
 
     UIPushRoundedRect(boxPos, boxSize, 4.0f, UIGetColor(UIColor_TextBoxBG));
-    UIPushBorder(boxPos, boxSize, UIGetFloat(UIFloat_LineThickness), focused ? UIGetColor(UIColor_SelectedBorder) : UIGetColor(UIColor_Border));
+    UIPushBorder(UIGetFloat(UIFloat_LineThickness), focused ? UIGetColor(UIColor_SelectedBorder) : UIGetColor(UIColor_Border));
     UIPushFloat(UIFloat_TextScale, 0.82f);
 
     float2 textPos = { boxPos.x + 8.0f, boxPos.y + 2.0f };
@@ -1154,7 +1126,7 @@ bool UITextBox(const char* label, float2 pos, char* buffer, u32 capacity, f32 wi
 
     if (focused) UITextDrawSelection(&layout);
     UITextDrawLayout(&layout);
-    if (focused)
+    if (focused && FModf(TimeSinceStartup(), 1.0f) > 0.5f)
     {
         float2 caretPos = UITextLayoutCaretPos(&layout, g_UI.caret);
         f32 cursorX = Minf32(caretPos.x + 2.0f, boxPos.x + boxSize.x - 4.0f);
@@ -1174,7 +1146,7 @@ bool UITextArea(const char* label, float2 pos, char* buffer, u32 capacity, float
     bool focused = g_UI.keyboardFocus == id;
 
     UIPushRoundedRect(boxPos, size, 6.0f, UIGetColor(UIColor_TextBoxBG));
-    UIPushBorder(boxPos, size, UIGetFloat(UIFloat_LineThickness), focused ? UIGetColor(UIColor_SelectedBorder) : UIGetColor(UIColor_Border));
+    UIPushBorder(UIGetFloat(UIFloat_LineThickness), focused ? UIGetColor(UIColor_SelectedBorder) : UIGetColor(UIColor_Border));
     UIPushFloat(UIFloat_TextScale, 0.78f);
 
     float2 textPos = { boxPos.x + 10.0f, boxPos.y + 8.0f };
@@ -1205,7 +1177,7 @@ bool UITextArea(const char* label, float2 pos, char* buffer, u32 capacity, float
 
     if (focused) UITextDrawSelection(&layout);
     UITextDrawLayout(&layout);
-    if (focused)
+    if (edited || focused && FModf(TimeSinceStartup(), 1.0f) > 0.35f)
     {
         float2 caretPos = UITextLayoutCaretPos(&layout, g_UI.caret);
         f32 cursorX = Minf32(caretPos.x + 2.0f, boxPos.x + size.x - 4.0f);
@@ -1248,24 +1220,4 @@ void UIRender(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget)
     SDL_DrawGPUPrimitivesIndirect(pass, g_RenderState.uiShapeDrawArgsBuffer, 0, 1);
     SDL_EndGPURenderPass(pass);
     UIClear();
-}
-
-void UIRenderDemo(void)
-{
-    static bool enabled = true;
-    static f32 slider = 0.62f;
-    static char textBox[128] = "edit me";
-    static char textArea[512] = "Text area 中文测试 日本語テスト\nArabic: العربية\nGreek: Ελληνικά";
-    UIPushRoundedRect((float2){ 32.0f-4, 32.0f-4 }, (float2){ 768.0f, 508.0f }, 8.0f, UIGetColor(UIColor_Border) & 0xccFFFFFF);
-    UIPushRoundedRect((float2){ 32.0f, 32.0f }, (float2){ 760.0f, 500.0f }, 8.0f, 0xCC202028u);
-    // UIPushBorder((float2){ 32.0f, 32.0f }, (float2){ 760.0f, 500.0f }, 1.5f, UIGetColor(UIColor_Border));
-    UIPushFloat(UIFloat_TextScale, 0.86f);
-    UIText("SDF + Slug Immediate UI", (float2){ 56.0f, 56.0f });
-    UIPopFloat(UIFloat_TextScale);
-    if (UIButton("Button", (float2) { 56.0f, 94.0f }, (float2) { 160.0f, 44.0f }))
-        AX_LOG("button clicked");
-    UICheckbox("Checkbox", (float2){ 56.0f, 150.0f }, &enabled);
-    UISliderFloat("Slider", (float2){ 56.0f, 196.0f }, &slider, 180.0f);
-    UITextBox("Text Box", (float2){ 56.0f, 242.0f }, textBox, (u32)sizeof(textBox), 260.0f);
-    UITextArea("Text Area", (float2){ 56.0f, 292.0f }, textArea, (u32)sizeof(textArea), (float2){ 520.0f, 160.0f });
 }

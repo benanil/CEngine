@@ -69,32 +69,35 @@ void UIDestroy(void);
 void UIBeginFrame(void);
 void UIEndFrame(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget);
 void UIClear(void);
+
 bool UIPushRect(float2 pos, float2 size, u32 color);
 bool UIPushRoundedRect(float2 pos, float2 size, f32 radius, u32 color);
 bool UIPushCircle(float2 center, f32 radius, u32 color);
 bool UIPushCapsule(float2 pos, float2 size, u32 color);
-bool UIPushBorder(float2 pos, float2 size, f32 thickness, u32 color);
+void UIPushBorder(f32 thickness, u32 color);
+
 void UISetColor(UIColor what, u32 color);
-u32 UIGetColor(UIColor what);
+u32  UIGetColor(UIColor what);
 void UIPushColor(UIColor what, u32 color);
 void UIPopColor(UIColor what);
 void UISetFloat(UIFloat what, f32 value);
-f32 UIGetFloat(UIFloat what);
+f32  UIGetFloat(UIFloat what);
 void UIPushFloat(UIFloat what, f32 value);
 void UIPushFloatAdd(UIFloat what, f32 value);
 void UIPopFloat(UIFloat what);
-bool UIClickCheck(float2 pos, float2 size, UIClickOpt flags);
-bool UIIsHovered(void);
+
+bool   UIClickCheck(float2 pos, float2 size, UIClickOpt flags);
+bool   UIIsHovered(void);
+bool   UIButton(const char* text, float2 pos, float2 size);
+bool   UICheckbox(const char* text, float2 pos, bool* enabled);
+bool   UIRadioButton(const char* text, float2 pos, bool* enabled);
+bool   UISliderFloat(const char* label, float2 pos, f32* value, f32 width);
+void   UIText(const char* text, float2 pos);
 float2 UITextSize(const char* text);
-void UIText(const char* text, float2 pos);
-bool UIButton(const char* text, float2 pos, float2 size);
-bool UICheckbox(const char* text, float2 pos, bool* enabled);
-bool UISliderFloat(const char* label, float2 pos, f32* value, f32 width);
-bool UITextBox(const char* label, float2 pos, char* buffer, u32 capacity, f32 width);
-bool UITextArea(const char* label, float2 pos, char* buffer, u32 capacity, float2 size);
-bool UITextDirect(const char* text, float2 resolvedPos, f32 size, u32 color);
-void UIRender(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget);
-void UIRenderDemo(void);
+bool   UITextBox(const char* label, float2 pos, char* buffer, u32 capacity, f32 width);
+bool   UITextArea(const char* label, float2 pos, char* buffer, u32 capacity, float2 size);
+bool   UITextDirect(const char* text, float2 resolvedPos, f32 size, u32 color);
+void   UIRender(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget);
 
 #if defined(__cplusplus)
 }

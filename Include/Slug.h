@@ -77,6 +77,7 @@ typedef struct SlugFont_
 bool SlugLoadFont(SlugFont* font, const char* path);
 void SlugDestroyFont(SlugFont* font);
 void SlugClear(SlugFont* font);
+bool SlugAppendText2D(SlugFont* font, const char* text, float2 pos, f32 size, u32 color);
 bool SlugAppendText3D(SlugFont* font, const char* text, float3 pos, Quaternion rot, f32 size, u32 color);
 bool SlugAppendGlyph2D(SlugFont* font, u32 faceIndex, u32 glyphIndex, float2 pos, f32 size, u32 color);
 float2 SlugCalcTextSize(SlugFont* font, const char* text, f32 size);

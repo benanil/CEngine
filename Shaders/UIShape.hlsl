@@ -3,7 +3,7 @@
 struct UIShape
 {
     float4 rect;
-    float4 params;
+    float4 params; // x: radius, y: border, z: softness, w: unused
     uint color;
     uint borderColor;
     uint shape;
@@ -28,41 +28,32 @@ cbuffer ui_params : register(b0, space1)
 
 StructuredBuffer<UIShape> ShapeBuffer : register(t0);
 
-float SdfBox(float2 p, float2 b)
+// Unified, branchless SDF for Box, Rounded Box, and Circle
+float EvaluateSdf(float2 p, float2 halfSize, float radius)
 {
-    float2 d = abs(p) - b;
-    return length(max(d, 0.0f)) + min(max(d.x, d.y), 0.0f);
-}
-
-float SdfRoundedBox(float2 p, float2 b, float r)
-{
-    r = min(r, min(b.x, b.y));
-    return SdfBox(p, max(b - r, 0.0f)) - r;
-}
-
-float ShapeDistance(float2 p, float2 halfSize, float radius, uint shape)
-{
-    if (shape == 2u) return length(p) - min(halfSize.x, halfSize.y);
-    if (shape == 3u) return SdfRoundedBox(p, halfSize, min(halfSize.x, halfSize.y));
-    if (shape == 1u) return SdfRoundedBox(p, halfSize, radius);
-    return SdfBox(p, halfSize);
+    // Clamp radius to ensure it never exceeds the half-dimensions
+    radius = min(radius, min(halfSize.x, halfSize.y));
+    float2 d = abs(p) - (halfSize - radius);
+    float outsideDist = length(max(d, 0.0f));
+    float insideDist = min(max(d.x, d.y), 0.0f);
+    return outsideDist + insideDist - radius;
 }
 
 VSOutput vert(uint vertexID : SV_VertexID, uint instanceID : SV_InstanceID)
 {
-    static const float2 corners[6] = {
-        float2(0.0f, 0.0f), float2(0.0f, 1.0f), float2(1.0f, 0.0f),
-        float2(1.0f, 0.0f), float2(0.0f, 1.0f), float2(1.0f, 1.0f)
-    };
-
     UIShape shape = ShapeBuffer[instanceID];
+    // Generate corner coordinates branchlessly using bits: (0,0), (0,1), (1,0), (1,0), (0,1), (1,1)
+    float2 uv = float2((vertexID == 2u || vertexID == 3u || vertexID == 5u), 
+                       (vertexID == 1u || vertexID == 4u || vertexID == 5u));
+
     float2 halfSize = shape.rect.zw * 0.5f;
+    // Padding calculation for AA/Softness expansion
     float pad = max(shape.params.y + shape.params.z, 1.0f);
     float2 expandedMin = shape.rect.xy - pad;
     float2 expandedSize = shape.rect.zw + pad * 2.0f;
-    float2 uv = corners[vertexID];
     float2 pixel = expandedMin + expandedSize * uv;
     float2 center = shape.rect.xy + halfSize;
+    // Compute NDC positions
     float2 clip = float2(pixel.x / ui_screen_scale.x * 2.0f - 1.0f, 1.0f - pixel.y / ui_screen_scale.y * 2.0f);
 
     VSOutput o;
@@ -81,25 +72,32 @@ float4 frag(VSOutput input) : SV_Target0
     float radius = input.params.x;
     float border = input.params.y;
     float softness = max(input.params.z, 0.0f);
-    float sd = ShapeDistance(input.local, input.halfSize, radius, input.shape);
+    // Unify shape type overrides branchlessly into a target radius calculation
+    // shape 0 = Rect (r=0), shape 1 = Rounded Rect (r=radius), shape 2 & 3 = Circle/Max Rounded Rect
+    float maxRadius = min(input.halfSize.x, input.halfSize.y);
+    float targetRadius = (input.shape == 0u) ? 0.0f : ((input.shape >= 2u) ? maxRadius : radius);
+
+    // Compute Outer Edge SDF
+    float sd = EvaluateSdf(input.local, input.halfSize, targetRadius);
+    // Determine screen-space antialiasing width
     float aa = max(fwidth(sd), softness);
     float fillCoverage = saturate(0.5f - sd / aa);
-    float4 fill = UnpackColor4Uint(input.color);
 
-    if (border > 0.0f)
-    {
-        float2 innerHalf = max(input.halfSize - border, 0.0f);
-        float innerRadius = max(radius - border, 0.0f);
-        float innerSd = ShapeDistance(input.local, innerHalf, innerRadius, input.shape);
-        float innerCoverage = saturate(0.5f - innerSd / aa);
-        float4 stroke = UnpackColor4Uint(input.borderColor);
-        float4 color = lerp(stroke, fill, innerCoverage);
-        color.a *= fillCoverage;
-        color.rgb *= color.a;
-        return color;
-    }
+    // Compute Inner Edge SDF (For Border Rendering)
+    // If border is 0, innerHalf matches halfSize, innerSd matches sd, and innerCoverage will be 1.0
+    float2 innerHalf = max(input.halfSize - border, 0.0f);
+    float innerRadius = max(targetRadius - border, 0.0f);
+    float innerSd = EvaluateSdf(input.local, innerHalf, innerRadius);
+    float innerCoverage = saturate(0.5f - innerSd / aa);
 
-    fill.a *= fillCoverage;
-    fill.rgb *= fill.a;
-    return fill;
+    // Unpack colors
+    float4 fill   = UnpackColor4Uint(input.color);
+    float4 stroke = UnpackColor4Uint(input.borderColor);
+    // Mix border and background branchlessly
+    // If border == 0, innerCoverage is forced to 1.0, yielding pure 'fill'
+    float4 color = lerp(stroke, fill, innerCoverage);
+    // Apply composite coverage and execute premultiplied alpha
+    color.a *= fillCoverage;
+    color.rgb *= color.a;
+    return color;
 }

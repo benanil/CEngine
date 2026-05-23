@@ -111,6 +111,7 @@ target_sources(${EXECUTABLE_NAME} PRIVATE
     Source/Animation.c
     Source/Algorithm.c
     Source/AssetManager.c
+    Source/Editor.c
     Source/BasisBinding.cpp
     Extern/ExternAll.cpp
     ${BASIS_ENCODER_SOURCES}

@@ -7,6 +7,8 @@ SDL_GPUDevice* g_GPUDevice = NULL;
 static bool g_EnableOcclusion = true;
 static bool g_EnableHBAO = true;
 
+extern void UIRenderCallback(void); // Editor.c
+
 static void InitRenderSetBuffers(RenderSetBuffers* buffers, RenderSet* set)
 {
     size_t groupBytes  = set->maxGroups * sizeof(PrimitiveGroup);
@@ -319,8 +321,9 @@ void Render(void)
 
     DispatchTonemapCompute(cmd, winstate->tex_color, winstate->tex_hiz_depth, winstate->tex_post, screenW, screenH, viewProj);
     RenderSlugDemo(cmd, &post_load_target, &main_depth_target, viewProj);
+    
     UIBeginFrame();
-    UIRenderDemo();
+    UIRenderCallback();
     UIEndFrame(cmd, &post_load_target);
 
     SDL_GPUBlitInfo blit_info;
