@@ -943,6 +943,5 @@ void RenderSlugDemo(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarg
     Quaternion rot = QFromAxisAngle(F3Up(), -MATH_PI * 0.5);
     SlugAppendText3D(&g_SlugDemoFont, "Anılcan Gülkaya", (float3){ -2.0f, -2.0f, -3.0f }, rot, 0.35f, 0xFFFFFFFFu);
     SlugAppendText3D(&g_SlugDemoFont, "Quivira.otf buffer renderer", (float3){ -2.0f, -2.55f, -3.0f }, QIdentity(), 0.22f, 0xFFFFC060u);
-    0xFF30D5C8
     SlugRender(cmd, colorTarget, depthTarget, &g_SlugDemoFont, viewProj);
 }
