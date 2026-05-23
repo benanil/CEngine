@@ -94,6 +94,7 @@ Texture2DArray<float2> NormalPages            : register(t1, space2);
 Texture2DArray<float2> MetallicRoughnessPages : register(t2, space2);
 Texture2DArray<float>  ShadowMap              : register(t3, space2);
 SamplerState           Sampler                : register(s0, space2);
+SamplerState           ShadowSampler          : register(s1, space2);
 
 StructuredBuffer<MaterialGPU>        sMaterials          : register(t4, space2);
 StructuredBuffer<TextureDescriptor>  sTextureDescriptors : register(t5, space2);
@@ -119,15 +120,15 @@ GBufferOutput frag(VSOutput input)
     float3 N = normalize(tangentNormal.x * normalize(float3(input.tangent)) +
                          tangentNormal.y * normalize(float3(input.bitangent)) +
                          tangentNormal.z * normalize(float3(input.normal)));
-    float metallicFactor  = float((material.metallicRoughnessFactor >> 16u) & 0xFFFFu) * (1.0f / 65535.0f);
-    float roughnessFactor = float(material.metallicRoughnessFactor & 0xFFFFu) * (1.0f / 65535.0f);
+    float metallicFactor  = 1.0f;//float((material.metallicRoughnessFactor >> 16u) & 0xFFFFu) * (1.0f / 65535.0f);
+    float roughnessFactor = 1.0f;//float(material.metallicRoughnessFactor & 0xFFFFu) * (1.0f / 65535.0f);
     float metallic  = float(mr.x) * metallicFactor;
     float roughness = float(mr.y) * roughnessFactor;
     
     uint cascadeIndex = input.viewDepth > input.cascadeSplits.x ? 1u : 0u;
     cascadeIndex = input.viewDepth > input.cascadeSplits.y ? 2u : cascadeIndex;
     float4 shadowPos = cascadeIndex == 0u ? input.shadowPos0 : (cascadeIndex == 1u ? input.shadowPos1 : input.shadowPos2);
-    float shadow = SampleShadow(ShadowMap, Sampler, shadowPos, cascadeIndex, N, uSunDirection.xyz, uint2(input.texCoords * 10.0));
+    float shadow = SampleShadow(ShadowMap, ShadowSampler, shadowPos, cascadeIndex, N, uSunDirection.xyz);
 
     #if CSM_DEBUG_CASCADES
     f16_3 cascadeColor = cascadeIndex == 0u ? f16_3(1.0f, 0.0f, 0.0f) : (cascadeIndex == 1u ? f16_3(0.0f, 1.0f, 0.0f) : f16_3(0.0f, 0.0f, 1.0f));

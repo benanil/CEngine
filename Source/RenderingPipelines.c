@@ -550,9 +550,21 @@ static void InitSurfacePipeline(void)
 
     const SDL_GPUColorTargetDescription gbufferTargets[3] = {
         { .format = SDL_GPU_TEXTUREFORMAT_R32_UINT },
-        { .format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM },
+        {
+            .format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
+            // .blend_state = (SDL_GPUColorTargetBlendState){
+            //     .src_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE,
+            //     .dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+            //     .color_blend_op        = SDL_GPU_BLENDOP_ADD,
+            //     .src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE,
+            //     .dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+            //     .alpha_blend_op        = SDL_GPU_BLENDOP_ADD,
+            //     .enable_blend          = true
+            // }
+        },
         { .format = SDL_GPU_TEXTUREFORMAT_R8G8_UNORM }
     };
+
     SDL_GPUGraphicsPipelineCreateInfo pipelinedesc = {
         .vertex_shader   = vertex_shader,
         .fragment_shader = fragment_shader,

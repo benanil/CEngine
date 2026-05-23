@@ -19,8 +19,9 @@
 
 #define SLUG_EPS (1.0f / 1024.0f)
 #define SLUG_INITIAL_GPU_WORDS (256u * 1024u)
-#define SLUG_BOUNDS_PAD_PX 2.0f
+#define SLUG_BOUNDS_PAD_PX 1.0f
 #define SLUG_BOUNDS_PAD_EM (1.0f / 32.0f)
+
 typedef struct SlugCurve_
 {
     float2 p1, p2, p3;
@@ -295,6 +296,7 @@ static const char* g_SlugFallbackFontPaths[] = {
     "Assets/Fonts/simsun.ttc",
     "Assets/Fonts/YuGothR.ttc",
     "Assets/Fonts/NotoSansArabic-Regular.ttf",
+    "Assets/Fonts/Quivira.otf"
 };
 
 static bool SlugLoadFallbackFont(SlugFont* font, const char* path)
@@ -941,5 +943,6 @@ void RenderSlugDemo(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarg
     Quaternion rot = QFromAxisAngle(F3Up(), -MATH_PI * 0.5);
     SlugAppendText3D(&g_SlugDemoFont, "Anılcan Gülkaya", (float3){ -2.0f, -2.0f, -3.0f }, rot, 0.35f, 0xFFFFFFFFu);
     SlugAppendText3D(&g_SlugDemoFont, "Quivira.otf buffer renderer", (float3){ -2.0f, -2.55f, -3.0f }, QIdentity(), 0.22f, 0xFFFFC060u);
+    0xFF30D5C8
     SlugRender(cmd, colorTarget, depthTarget, &g_SlugDemoFont, viewProj);
 }

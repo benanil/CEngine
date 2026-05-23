@@ -187,14 +187,6 @@ static void CullScene(SDL_GPUCommandBuffer* cmd, FrustumPlanes planes, mat4x4 vi
     DispatchCullDrawArgsCompute(cmd, &surfaceSet, &g_RenderState.surfaceBuffers, planes, viewProj, enableHiZ, false);
 }
 
-static FrustumPlanes CreateShadowCullPlanes(mat4x4 shadowViewProj)
-{
-    FrustumPlanes planes = CreateFrustumPlanes(shadowViewProj);
-    planes.planes[4] = VecZero(); // disable near, far plane frustum check
-    planes.planes[5] = VecZero();
-    return planes;
-}
-
 static void AnimateSkinned(SDL_GPUCommandBuffer* cmd)
 {
     DispatchAnimationCompute(cmd, &skinnedSet);
@@ -280,7 +272,8 @@ void Render(void)
         cachedShadowCascades.splitDistances[cascade] = shadowCascades.splitDistances[cascade];
 
         mat4x4 shadowViewProj = cachedShadowCascades.lightViewProj[cascade];
-        FrustumPlanes shadowFrustum = CreateShadowCullPlanes(shadowViewProj);
+        FrustumPlanes shadowFrustum = CreateFrustumPlanes(shadowViewProj);
+        // planes.planes[4] = planes.planes[5] = VecZero(); // disable near, far plane frustum check
         CullScene(cmd, shadowFrustum, shadowViewProj, false, false);
 
         SDL_GPUColorTargetInfo shadow_color_target = MakeShadowColorTarget(winstate, cascade);

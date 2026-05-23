@@ -15,7 +15,7 @@
 #define MAX_SCENE_TEXTURES      1024
 #define MAX_TEXTURE_DESCRIPTORS 2048
 #define MAX_GPU_MATERIALS       2048
-#define SHADOW_MAP_SIZE         2048u
+#define SHADOW_MAP_SIZE         (1023u * 3u)
 #define SHADOW_CASCADE_COUNT    3u
 
 #if defined(__cplusplus)
