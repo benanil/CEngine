@@ -280,7 +280,9 @@ void UIRenderCallback(void)
     // UIText("SDF + Slug Immediate UI", (float2){ 56.0f, 56.0f });
     // UIPopFloat(UIFloat_TextScale);
     // UITextArea("Text Area", (float2){ 56.0f, 292.0f }, textArea, (u32)sizeof(textArea), (float2){ 520.0f, 160.0f });
-
-    Clay_SetDebugModeEnabled(true);
+    if (GetKeyPressed('c'))
+    {
+        Clay_SetDebugModeEnabled(!Clay_IsDebugModeEnabled());
+    }
     ClayTestUI();
 }

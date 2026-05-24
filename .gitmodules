@@ -19,4 +19,4 @@
 	url = https://github.com/BinomialLLC/basis_universal
 [submodule "Extern/clay"]
 	path = Extern/clay
-	url = https://github.com/nicbarker/clay.git
+	url = https://github.com/nicbarker/clay
