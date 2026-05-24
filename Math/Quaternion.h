@@ -46,7 +46,7 @@ static inline v128f QFromAxisAngle(float3 axis, float angle)
 {
     float SinV = Sin(0.5f * angle);
     float CosV = Cos(0.5f * angle);
-    return QNorm(VecSetR(axis.x * SinV, axis.y * SinV, axis.z * SinV, CosV));
+    return VecSetR(axis.x * SinV, axis.y * SinV, axis.z * SinV, CosV);
 }
 
 // below 3 function are same as QFromAxisAngle but with single axis, 

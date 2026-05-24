@@ -213,7 +213,7 @@ void SampleSkinnedAnimationPose(const SceneBundle* bundle, Pose pose[MAX_BONES],
         
         if (reverse) XSWAP(float, beginTime, endTime);
         
-        const float t = Clamp01f32(beginTime / endTime);
+        const float t = Saturatef32(beginTime / endTime);
 
         switch (channel->targetPath)
         {

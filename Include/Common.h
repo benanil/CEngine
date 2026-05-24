@@ -368,37 +368,23 @@ purefn int64_t NextPowerOf2_64(int64_t x) {
 //------------------------------------------------------------------------
 // Math Operations
 
-
 #define MMIN(a, b) ((a) < (b) ? (a) : (b))
 #define MMAX(a, b) ((a) > (b) ? (a) : (b))
-
 #define MCLAMP(x, mn, mx) (MMIN((mx), MMAX((x), (mn))))
-
 #define MCLAMP01(x) (MMIN((1.0f), MMAX((x), (0.0f))))
 
-purefn float Clamp01f32(float x) { return MMIN(1.0f, MMAX(x, 0.0f)); }
-
-purefn float Clampf32(float x, float min, float max) { return MMIN(max, MMAX(x, min)); }
-
-purefn double Clampf64(double x, double min, double  max) { return MMIN(max, MMAX(x, min)); }
-
-purefn int Clampi32(int x, int min, int max) { return MMIN(max, MMAX(x, min)); }
-
-purefn float Minf32(float a, float b) { return a < b ? a : b; }
-
-purefn float Maxf32(float a, float b) { return a > b ? a : b; }
-
-purefn int Mini32(int a, int b) { return a < b ? a : b; }
-
-purefn int Maxi32(int a, int b) { return a > b ? a : b; }
-
-purefn uint32_t Minu32(uint32_t a, uint32_t b) { return a < b ? a : b; }
-
-purefn uint32_t Maxu32(uint32_t a, uint32_t b) { return a > b ? a : b; }
-
-purefn uint64_t Minu64(uint64_t a, uint64_t b) { return a < b ? a : b; }
-
-purefn uint64_t Maxu64(uint64_t a, uint64_t b) { return a > b ? a : b; }
+purefn f32 Saturatef32(f32 x) { return MMIN(1.0f, MMAX(x, 0.0f)); }
+purefn f32 Clampf32(f32 x, f32 min, f32 max) { return MMIN(max, MMAX(x, min)); }
+purefn f64 Clampf64(f64 x, f64 min, f64 max) { return MMIN(max, MMAX(x, min)); }
+purefn s32 Clamps32(s32 x, s32 min, s32 max) { return MMIN(max, MMAX(x, min)); }
+purefn f32 Minf32(f32 a, f32 b) { return a < b ? a : b; }
+purefn f32 Maxf32(f32 a, f32 b) { return a > b ? a : b; }
+purefn s32 Mins32(u32 a, u32 b) { return a < b ? a : b; }
+purefn s32 Maxs32(u32 a, u32 b) { return a > b ? a : b; }
+purefn u32 Minu32(u32 a, u32 b) { return a < b ? a : b; }
+purefn u32 Maxu32(u32 a, u32 b) { return a > b ? a : b; }
+purefn u64 Minu64(u64 a, u64 b) { return a < b ? a : b; }
+purefn u64 Maxu64(u64 a, u64 b) { return a > b ? a : b; }
 
 purefn int64_t Absu64(int64_t x) {
     int64_t temp = x >> 63;

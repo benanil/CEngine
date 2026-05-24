@@ -2,12 +2,21 @@
 #define CP_UI_RENDERER_H
 
 #include "Graphics.h"
+#include "Extern/clay/clay.h"
 
 #if defined(__cplusplus)
 extern "C" {
 #endif
 
 #define UI_MAX_SHAPES 8192u
+#define UI_MAX_IMAGES 1024u
+
+typedef struct UIImageData_
+{
+    SDL_GPUTexture* texture;
+    SDL_GPUSampler* sampler;
+    f32 uv[4]; // x, y, width, height. Zero width/height means full image.
+} UIImageData;
 
 typedef enum UIColor_
 {
@@ -39,13 +48,6 @@ typedef enum UIFloat_
     UIFloat_Count
 } UIFloat;
 
-typedef enum UIClickOpt_
-{
-    UIClickOpt_None = 0,
-    UIClickOpt_BigCollision = 1 << 0,
-    UIClickOpt_WhileMouseDown = 1 << 1
-} UIClickOpt;
-
 typedef enum UIShapeType_
 {
     UIShapeType_Rect = 0,
@@ -56,12 +58,13 @@ typedef enum UIShapeType_
 
 typedef struct UIShape_
 {
-    f32 rect[4];   // x, y, width, height in logical pixels.
+    f32 rect[4];   // x, y, width, height in framebuffer pixels.
     f32 params[4]; // radius, border width, softness, unused.
     u32 color;
     u32 borderColor;
     u32 shape;
     u32 flags;
+    f32 clip[4];   // x0, y0, x1, y1 in framebuffer pixels.
 } UIShape;
 
 void UIInit(void);
@@ -76,6 +79,9 @@ bool UIPushCircle(float2 center, f32 radius, u32 color);
 bool UIPushCapsule(float2 pos, float2 size, u32 color);
 void UIPushBorder(f32 thickness, u32 color);
 
+void UIPopClipRect(void);
+void UIGetClipRect(f32 outClip[4]);
+
 void UISetColor(UIColor what, u32 color);
 u32  UIGetColor(UIColor what);
 void UIPushColor(UIColor what, u32 color);
@@ -86,18 +92,39 @@ void UIPushFloat(UIFloat what, f32 value);
 void UIPushFloatAdd(UIFloat what, f32 value);
 void UIPopFloat(UIFloat what);
 
-bool   UIClickCheck(float2 pos, float2 size, UIClickOpt flags);
-bool   UIIsHovered(void);
-bool   UIButton(const char* text, float2 pos, float2 size);
-bool   UICheckbox(const char* text, float2 pos, bool* enabled);
-bool   UIRadioButton(const char* text, float2 pos, bool* enabled);
-bool   UISliderFloat(const char* label, float2 pos, f32* value, f32 width);
-void   UIText(const char* text, float2 pos);
-float2 UITextSize(const char* text);
-bool   UITextBox(const char* label, float2 pos, char* buffer, u32 capacity, f32 width);
 bool   UITextArea(const char* label, float2 pos, char* buffer, u32 capacity, float2 size);
-bool   UITextDirect(const char* text, float2 resolvedPos, f32 size, u32 color);
 void   UIRender(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget);
+UIImageData UIImageFromTexture(Texture* texture);
+
+Clay_RenderCommandArray UIEndLayout(void);
+void UIRenderCommands(Clay_RenderCommandArray* commands);
+bool UIClicked(void);
+bool UIButton(Clay_ElementId id, Clay_String label, Clay_Dimensions size, bool selected);
+bool UICheckbox(Clay_ElementId id, Clay_String label, bool* value);
+void UIProgressBar(Clay_ElementId id, Clay_String label, f32 value01);
+bool UISliderFloat(Clay_ElementId id, Clay_String label, f32* value, f32 minValue, f32 maxValue);
+
+u64 UIAutoID(const void* ptr);
+
+static inline Clay_Color UIColorToClay(u32 color)
+{
+    v128u lanes = VeciSrl(VeciSet1(color), VeciSetR(0, 8, 16, 24));
+    lanes = VeciAnd(lanes, VeciSet1(0xFFu));
+    Clay_Color result;
+    VecStore(&result.r, VecI32ToF32(lanes));
+    return result;
+}
+
+static inline u32 UIPackClayColor(Clay_Color color)
+{
+    v128f v = VecLoad(&color.r);
+    v = VecClamp(v, VecZero(), VecSet1(255.0f));
+    v128u i = VecF32ToU32(v);
+    i = VeciSll(i, VeciSetR(0, 8, 16, 24));
+    i = VeciOr(i, VecSwapHalvesU(i));
+    i = VeciOr(i, VecSwapPairsU(i));
+    return VeciGetX(i);
+}
 
 #if defined(__cplusplus)
 }

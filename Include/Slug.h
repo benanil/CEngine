@@ -8,10 +8,11 @@
 extern "C" {
 #endif
 
-#define SLUG_MAX_GLYPHS 128u
-#define SLUG_MAX_TEXT   1024u
-#define SLUG_VERTS_PER_GLYPH 6u
+#define SLUG_MAX_GLYPHS         128u
+#define SLUG_MAX_TEXT           8196u
+#define SLUG_VERTS_PER_GLYPH    6u
 #define SLUG_MAX_FALLBACK_FONTS 8u
+#define SLUG_MAX_BATCHES        256u
 
 typedef struct SlugVertex_
 {
@@ -22,6 +23,13 @@ typedef struct SlugVertex_
     u32 color;
     f32 z;
 } SlugVertex;
+
+typedef struct SlugBatch_
+{
+    u32 firstVertex;
+    u32 vertexCount;
+    f32 clip[4];
+} SlugBatch;
 
 typedef struct SlugGlyph_
 {
@@ -71,16 +79,20 @@ typedef struct SlugFont_
     SlugVertex* vertices;
     u32 numVertices;
     u32 maxVertices;
+    SlugBatch batches[SLUG_MAX_BATCHES];
+    u32 numBatches;
     bool glyphBuffersDirty;
 } SlugFont;
 
 bool SlugLoadFont(SlugFont* font, const char* path);
 void SlugDestroyFont(SlugFont* font);
 void SlugClear(SlugFont* font);
+bool SlugAppendText2DN(SlugFont* font, const char* text, u32 textBytes, float2 pos, f32 size, u32 color);
 bool SlugAppendText2D(SlugFont* font, const char* text, float2 pos, f32 size, u32 color);
 bool SlugAppendText3D(SlugFont* font, const char* text, float3 pos, Quaternion rot, f32 size, u32 color);
 bool SlugAppendGlyph2D(SlugFont* font, u32 faceIndex, u32 glyphIndex, float2 pos, f32 size, u32 color);
 float2 SlugCalcTextSize(SlugFont* font, const char* text, f32 size);
+float2 SlugCalcTextSizeN(SlugFont* font, const char* text, u32 bytes, f32 size);
 u32 SlugGetFontFaceCount(SlugFont* font);
 void* SlugGetFontFaceData(SlugFont* font, u32 faceIndex, u32* size);
 f32 SlugGetFontFaceEmScale(SlugFont* font, u32 faceIndex);

@@ -1,455 +1,48 @@
+#define CLAY_IMPLEMENTATION
 #include "RenderingInternal.h"
+#include "UI_Internal.h"
 #include "Include/Platform.h" // PlatformContext.lastTime for milisecond text
 #include "Include/String.h"
 #include "Extern/kb/kb_text_shape.h"
-#include <SDL3/SDL_clipboard.h>
 
-typedef struct UIRenderer_
+UIRenderer g_UIRenderer;
+UIContext g_UI;
+UILayoutContext g_UILayout;
+
+static void UIRenderLayoutImage(const Clay_RenderCommand* command);
+
+static void UILayoutHandleError(Clay_ErrorData errorData)
 {
-    UIShape* shapes;
-    u32 count;
-    u32 capacity;
-} UIRenderer;
-
-#define UI_STACK_SIZE 6u
-#define UI_MAX_SHAPE_FONTS (1u + SLUG_MAX_FALLBACK_FONTS)
-#define UI_TEXT_MAX_CODEPOINTS SLUG_MAX_TEXT
-#define UI_TEXT_MAX_COMMANDS SLUG_MAX_TEXT
-#define UI_TEXT_MAX_LINES 128u
-
-typedef struct UIContext_
-{
-    float2 screenSize;
-    float2 windowRatio;
-    float2 mouse;
-    float2 mouseOld;
-    f32 uiScale;
-    bool wasHovered;
-    bool anyElementClicked;
-    u64 active;
-    u64 keyboardFocus;
-    u64 textDragFocus;
-    u32 caret;
-    u32 selectionAnchor;
-    u32 nextAutoID;
-    u32 colors[UIColor_Count];
-    f32 floats[UIFloat_Count];
-    u32 colorStack[UIColor_Count][UI_STACK_SIZE];
-    f32 floatStack[UIFloat_Count][UI_STACK_SIZE];
-    s32 colorStackCount[UIColor_Count];
-    s32 floatStackCount[UIFloat_Count];
-    kbts_shape_context* textShapeContext;
-    kbts_font* textShapeFonts[UI_MAX_SHAPE_FONTS];
-    u32 textShapeFontCount;
-} UIContext;
-
-typedef struct UITextCommand_
-{
-    u32 faceIndex;
-    u32 glyphIndex;
-    u32 codepointIndex;
-    kbts_direction direction;
-    float2 pos;
-    f32 advanceX;
-    f32 width;
-} UITextCommand;
-
-typedef struct UITextLine_
-{
-    u32 firstCommand;
-    u32 onePastLastCommand;
-    u32 minCodepoint;
-    u32 maxCodepoint;
-    kbts_direction direction;
-    f32 x;
-    f32 y;
-    f32 width;
-} UITextLine;
-
-typedef struct UITextLayout_
-{
-    UITextCommand commands[UI_TEXT_MAX_COMMANDS];
-    UITextLine lines[UI_TEXT_MAX_LINES];
-    kbts_break_flags breakFlags[UI_TEXT_MAX_CODEPOINTS + 1u];
-    u32 commandCount;
-    u32 lineCount;
-    u32 codepointCount;
-    f32 lineHeight;
-    f32 ascent;
-    f32 width;
-    f32 height;
-    bool valid;
-} UITextLayout;
-
-typedef struct UIParams_
-{
-    f32 screenScale[4];
-} UIParams;
-
-static UIRenderer g_UIRenderer;
-static UIContext g_UI;
-
-static float2 UIResolvePos(float2 p)
-{
-    return (float2){ p.x * g_UI.windowRatio.x, p.y * g_UI.windowRatio.y };
+    AX_WARN("Clay error: %.*s", errorData.errorText.length, errorData.errorText.chars);
 }
 
-static float2 UIResolveSize(float2 s)
+static Clay_Dimensions UIMeasureText(Clay_StringSlice text, Clay_TextElementConfig* config, void* userData)
 {
-    return (float2){ s.x * g_UI.windowRatio.x, s.y * g_UI.windowRatio.y };
+    (void)userData;
+    f32 size = (f32)Maxu32(config && config->fontSize ? config->fontSize : 16u, 1u);
+    float2 measured = SlugCalcTextSizeN(SlugGetDemoFont(), text.chars, (u32)Maxs32(text.length, 0), size);
+    if (config && config->lineHeight > 0u) measured.y = Maxf32(measured.y, (f32)config->lineHeight);
+    return (Clay_Dimensions){ measured.x, measured.y };
 }
 
-static f32 UIResolveScalar(f32 v)
+static void UILayoutInit(void)
 {
-    return v * g_UI.uiScale;
-}
+    if (g_UILayout.initialized) return;
 
-static u64 UIAutoID(const void* ptr)
-{
-    u64 x = (u64)(uintptr_t)ptr ^ ((u64)g_UI.nextAutoID++ * 0x9E3779B97F4A7C15ull);
-    return MurmurHash(x);
-}
-
-static f32 UIClamp01(f32 v)
-{
-    return Minf32(Maxf32(v, 0.0f), 1.0f);
-}
-
-static u32 UIStringLength(const char* text, u32 capacity)
-{
-    if (!text || capacity == 0u) return 0u;
-    return (u32)StringLengthSafe(text, capacity);
-}
-
-static u32 UIByteFromCodepoint(const char* text, u32 bytes, u32 codepointIndex)
-{
-    if (!text) return 0u;
-    u32 cp = 0u;
-    const char* at = text;
-    const char* end = text + bytes;
-    while (at < end && *at && cp < codepointIndex)
+    u32 memorySize = Clay_MinMemorySize();
+    g_UILayout.memory = AllocateTLSFGlobal(memorySize);
+    if (!g_UILayout.memory)
     {
-        u32 codepoint;
-        int step = CodepointFromUtf8(&codepoint, at, end);
-        at += step > 0 ? step : 1;
-        cp++;
-    }
-    return (u32)(at - text);
-}
-
-static void UISelectionRange(u32* a, u32* b)
-{
-    if (*a > *b)
-    {
-        u32 t = *a;
-        *a = *b;
-        *b = t;
-    }
-}
-
-static void UISetCaret(u32 caret, bool selecting)
-{
-    g_UI.caret = caret;
-    if (!selecting) g_UI.selectionAnchor = caret;
-}
-
-static bool UIHasSelection(void)
-{
-    return g_UI.caret != g_UI.selectionAnchor;
-}
-
-static void UIDeleteRange(char* buffer, u32* len, u32 start, u32 end)
-{
-    UISelectionRange(&start, &end);
-    if (!buffer || start >= end || end > *len) return;
-    SDL_memmove(buffer + start, buffer + end, (size_t)(*len - end + 1u));
-    *len -= end - start;
-}
-
-static void UIDeleteCodepointRange(char* buffer, u32 capacity, u32 start, u32 end)
-{
-    u32 len = UIStringLength(buffer, capacity);
-    UISelectionRange(&start, &end);
-    u32 byteStart = UIByteFromCodepoint(buffer, len, start);
-    u32 byteEnd = UIByteFromCodepoint(buffer, len, end);
-    UIDeleteRange(buffer, &len, byteStart, byteEnd);
-}
-
-static bool UIDeleteSelection(char* buffer, u32* len)
-{
-    if (!UIHasSelection()) return false;
-    u32 start = g_UI.caret;
-    u32 end = g_UI.selectionAnchor;
-    UISelectionRange(&start, &end);
-    u32 byteStart = UIByteFromCodepoint(buffer, *len, start);
-    u32 byteEnd = UIByteFromCodepoint(buffer, *len, end);
-    UIDeleteRange(buffer, len, byteStart, byteEnd);
-    UISetCaret(start, false);
-    return true;
-}
-
-static bool UIInsertBytesAtCaret(char* buffer, u32 capacity, const char* text, u32 textLen, bool multiline);
-
-static bool UICopySelectionToClipboard(const char* buffer, u32 capacity)
-{
-    if (!buffer || !UIHasSelection()) return false;
-    u32 len = UIStringLength(buffer, capacity);
-    u32 start = g_UI.caret;
-    u32 end = g_UI.selectionAnchor;
-    UISelectionRange(&start, &end);
-    u32 byteStart = UIByteFromCodepoint(buffer, len, start);
-    u32 byteEnd = UIByteFromCodepoint(buffer, len, end);
-    if (byteStart >= byteEnd) return false;
-
-    u32 size = byteEnd - byteStart;
-    char* text = (char*)ArenaPushGlobal((u64)size + 1u);
-    MemCopy(text, buffer + byteStart, size);
-    text[size] = 0;
-    bool result = SDL_SetClipboardText(text);
-    ArenaPopGlobal((u64)size + 1u);
-    return result;
-}
-
-static bool UIPasteClipboardAtCaret(char* buffer, u32 capacity, bool multiline)
-{
-    if (!buffer || capacity == 0u || !SDL_HasClipboardText()) return false;
-    char* clipboard = SDL_GetClipboardText();
-    if (!clipboard) return false;
-    u32 len = (u32)StringLength(clipboard);
-    bool result = UIInsertBytesAtCaret(buffer, capacity, clipboard, len, multiline);
-    SDL_free(clipboard);
-    return result;
-}
-
-static bool UIInsertBytesAtCaret(char* buffer, u32 capacity, const char* text, u32 textLen, bool multiline)
-{
-    if (!buffer || capacity == 0u || !text || textLen == 0u) return false;
-    u32 len = UIStringLength(buffer, capacity);
-    UIDeleteSelection(buffer, &len);
-
-    bool edited = false;
-    u32 caretByte = UIByteFromCodepoint(buffer, len, g_UI.caret);
-    for (u32 i = 0u; i < textLen && len + 1u < capacity;)
-    {
-        char c = text[i];
-        u32 codepoint;
-        int step = CodepointFromUtf8(&codepoint, text + i, text + textLen);
-        u32 copy = (u32)(step > 0 ? step : 1);
-        i += copy;
-        if (!multiline && (c == '\r' || c == '\n')) continue;
-        if (len + copy >= capacity) break;
-
-        SDL_memmove(buffer + caretByte + copy, buffer + caretByte, (size_t)(len - caretByte + 1u));
-        MemCopy(buffer + caretByte, text + i - copy, copy);
-        caretByte += copy;
-        len += copy;
-        g_UI.caret++;
-        g_UI.selectionAnchor = g_UI.caret;
-        edited = true;
-    }
-    return edited;
-}
-
-static void UIDestroyTextShape(void)
-{
-    if (g_UI.textShapeContext) kbts_DestroyShapeContext(g_UI.textShapeContext);
-    g_UI.textShapeContext = NULL;
-    g_UI.textShapeFontCount = 0u;
-    SDL_zeroa(g_UI.textShapeFonts);
-}
-
-static bool UIEnsureTextShape(SlugFont* font)
-{
-    u32 faceCount = Minu32(SlugGetFontFaceCount(font), UI_MAX_SHAPE_FONTS);
-    if (faceCount == 0u) return false;
-    if (g_UI.textShapeContext && g_UI.textShapeFontCount == faceCount) return true;
-
-    UIDestroyTextShape();
-    g_UI.textShapeContext = kbts_CreateShapeContext(NULL, NULL);
-    if (!g_UI.textShapeContext)
-    {
-        AX_WARN("UI text shaping context creation failed");
-        return false;
+        AX_WARN("Clay init skipped, allocation failed: %u bytes", memorySize);
+        return;
     }
 
-    for (u32 i = 0u; i < faceCount; i++)
-    {
-        u32 dataSize = 0u;
-        void* data = SlugGetFontFaceData(font, i, &dataSize);
-        if (!data || dataSize == 0u || dataSize > 0x7FFFFFFFu) continue;
-        g_UI.textShapeFonts[i] = kbts_ShapePushFontFromMemory(g_UI.textShapeContext, data, (int)dataSize, SlugGetFontFaceCollectionIndex(font, i));
-    }
-    g_UI.textShapeFontCount = faceCount;
-    return true;
-}
-
-static u32 UIShapeFontIndex(kbts_font* font)
-{
-    for (u32 i = 0u; i < g_UI.textShapeFontCount; i++)
-    {
-        if (g_UI.textShapeFonts[i] == font) return i;
-    }
-    return UINT32_MAX;
-}
-
-static bool UIAppendTextInput(char* buffer, u32 capacity, bool multiline)
-{
-    char text[256];
-    u32 inputBytes = PlatformConsumeTextInput(text, (u32)sizeof(text));
-    if (inputBytes == 0u || !buffer || capacity == 0u) return false;
-    return UIInsertBytesAtCaret(buffer, capacity, text, inputBytes, multiline);
-}
-
-static bool UIBackspaceText(char* buffer, u32 capacity)
-{
-    u32 len = UIStringLength(buffer, capacity);
-    if (UIDeleteSelection(buffer, &len)) return true;
-    if (g_UI.caret == 0u) return false;
-    UIDeleteCodepointRange(buffer, capacity, g_UI.caret - 1u, g_UI.caret);
-    UISetCaret(g_UI.caret - 1u, false);
-    return true;
-}
-
-static bool UIDeleteTextForward(char* buffer, u32 capacity)
-{
-    u32 len = UIStringLength(buffer, capacity);
-    u32 codepoints = StringCodepointCount(buffer, len);
-    if (UIDeleteSelection(buffer, &len)) return true;
-    if (g_UI.caret >= codepoints) return false;
-    UIDeleteCodepointRange(buffer, capacity, g_UI.caret, g_UI.caret + 1u);
-    UISetCaret(g_UI.caret, false);
-    return true;
-}
-
-static u32 UIMoveCaretWithBreaks(const UITextLayout* layout, u32 caret, bool forward, kbts_break_flags breakFlags)
-{
-    if (!layout || !layout->valid) return caret;
-    s32 delta = forward ? 1 : -1;
-    s32 at = (s32)caret;
-    for (;;)
-    {
-        s32 next = at + delta;
-        if (next < 0 || next > (s32)layout->codepointCount) break;
-        at = next;
-        if (at == (s32)layout->codepointCount || (breakFlags == 0u) || ((layout->breakFlags[at] & breakFlags) == breakFlags)) break;
-    }
-    return (u32)at;
-}
-
-static u32 UITextLayoutHitTest(const UITextLayout* layout, float2 point);
-static float2 UITextLayoutCaretPos(const UITextLayout* layout, u32 caret);
-
-static bool UITextEditBehavior(u64 id, char* buffer, u32 capacity, bool multiline, const UITextLayout* layout)
-{
-    if (g_UI.keyboardFocus != id || !buffer || capacity == 0u) return false;
-
-    bool edited = false;
-    u32 len = UIStringLength(buffer, capacity);
-    u32 codepoints = StringCodepointCount(buffer, len);
-    if (g_UI.caret > codepoints) UISetCaret(codepoints, false);
-    if (g_UI.selectionAnchor > codepoints) g_UI.selectionAnchor = codepoints;
-
-    PlatformTextKeyEvent keys[64];
-    u32 keyCount = PlatformConsumeTextKeyEvents(keys, (u32)ARRAY_SIZE(keys));
-    for (u32 i = 0u; i < keyCount; i++)
-    {
-        bool shift = (keys[i].mod & SDL_KMOD_SHIFT) != 0;
-        bool ctrl = (keys[i].mod & SDL_KMOD_CTRL) != 0;
-        switch (keys[i].key)
-        {
-            case SDLK_A:
-                if (ctrl)
-                {
-                    g_UI.selectionAnchor = 0u;
-                    g_UI.caret = codepoints;
-                }
-                break;
-            case SDLK_C:
-                if (ctrl) UICopySelectionToClipboard(buffer, capacity);
-                break;
-            case SDLK_X:
-                if (ctrl && UICopySelectionToClipboard(buffer, capacity))
-                {
-                    edited |= UIDeleteSelection(buffer, &len);
-                    codepoints = StringCodepointCount(buffer, len);
-                }
-                break;
-            case SDLK_V:
-                if (ctrl)
-                {
-                    edited |= UIPasteClipboardAtCaret(buffer, capacity, multiline);
-                    len = UIStringLength(buffer, capacity);
-                    codepoints = StringCodepointCount(buffer, len);
-                }
-                break;
-            case SDLK_LEFT:
-                if (!shift && UIHasSelection()) UISetCaret(Minu32(g_UI.caret, g_UI.selectionAnchor), false);
-                else UISetCaret(UIMoveCaretWithBreaks(layout, g_UI.caret, false, ctrl ? KBTS_BREAK_FLAG_WORD : KBTS_BREAK_FLAG_GRAPHEME), shift);
-                break;
-            case SDLK_RIGHT:
-                if (!shift && UIHasSelection()) UISetCaret(Maxu32(g_UI.caret, g_UI.selectionAnchor), false);
-                else UISetCaret(UIMoveCaretWithBreaks(layout, g_UI.caret, true, ctrl ? KBTS_BREAK_FLAG_WORD : KBTS_BREAK_FLAG_GRAPHEME), shift);
-                break;
-            case SDLK_UP:
-            case SDLK_DOWN:
-                if (multiline && layout && layout->valid)
-                {
-                    float2 caretPos = UITextLayoutCaretPos(layout, g_UI.caret);
-                    caretPos.y += keys[i].key == SDLK_UP ? -layout->lineHeight : layout->lineHeight;
-                    UISetCaret(UITextLayoutHitTest(layout, caretPos), shift);
-                }
-                break;
-            case SDLK_HOME:
-                UISetCaret(0u, shift);
-                break;
-            case SDLK_END:
-                UISetCaret(codepoints, shift);
-                break;
-            case SDLK_BACKSPACE:
-                edited |= UIBackspaceText(buffer, capacity);
-                len = UIStringLength(buffer, capacity);
-                codepoints = StringCodepointCount(buffer, len);
-                break;
-            case SDLK_DELETE:
-                edited |= UIDeleteTextForward(buffer, capacity);
-                len = UIStringLength(buffer, capacity);
-                codepoints = StringCodepointCount(buffer, len);
-                break;
-            case SDLK_RETURN:
-                if (multiline)
-                {
-                    edited |= UIInsertBytesAtCaret(buffer, capacity, "\n", 1u, true);
-                    len = UIStringLength(buffer, capacity);
-                    codepoints = StringCodepointCount(buffer, len);
-                }
-                break;
-            default:
-                break;
-        }
-    }
-
-    edited |= UIAppendTextInput(buffer, capacity, multiline);
-    return edited;
-}
-
-static void UIUploadBuffer(SDL_GPUCommandBuffer* cmd, SDL_GPUBuffer* buffer, const void* data, size_t size)
-{
-    SDL_GPUTransferBufferCreateInfo transferDesc = {
-        .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
-        .size  = size
-    };
-    SDL_GPUTransferBuffer* transferBuffer = SDL_CreateGPUTransferBuffer(g_GPUDevice, &transferDesc);
-    void* dst = SDL_MapGPUTransferBuffer(g_GPUDevice, transferBuffer, false);
-    MemCopy(dst, data, size);
-    SDL_UnmapGPUTransferBuffer(g_GPUDevice, transferBuffer);
-
-    SDL_GPUCopyPass* copyPass = SDL_BeginGPUCopyPass(cmd);
-    SDL_UploadToGPUBuffer(copyPass,
-        &(SDL_GPUTransferBufferLocation){ .transfer_buffer = transferBuffer, .offset = 0 },
-        &(SDL_GPUBufferRegion){ .buffer = buffer, .offset = 0, .size = size },
-        true);
-    SDL_EndGPUCopyPass(copyPass);
-    SDL_ReleaseGPUTransferBuffer(g_GPUDevice, transferBuffer);
+    g_UILayout.memorySize = memorySize;
+    Clay_Arena arena = Clay_CreateArenaWithCapacityAndMemory(memorySize, g_UILayout.memory);
+    Clay_Initialize(arena, (Clay_Dimensions){ (f32)Maxu32(g_WindowState.prev_width, 1u), (f32)Maxu32(g_WindowState.prev_height, 1u) },
+                           (Clay_ErrorHandler){ UILayoutHandleError });
+    Clay_SetMeasureTextFunction(UIMeasureText, NULL);
+    g_UILayout.initialized = true;
 }
 
 void UIInit(void)
@@ -457,7 +50,9 @@ void UIInit(void)
     MemsetZero(&g_UIRenderer, sizeof(UIRenderer));
     MemsetZero(&g_UI, sizeof(UIContext));
     g_UIRenderer.capacity = UI_MAX_SHAPES;
+    g_UIRenderer.imageCapacity = UI_MAX_IMAGES;
     g_UIRenderer.shapes = (UIShape*)AllocateTLSFGlobal((size_t)g_UIRenderer.capacity * sizeof(UIShape));
+    g_UIRenderer.images = (UIImageCommand*)AllocateTLSFGlobal((size_t)g_UIRenderer.imageCapacity * sizeof(UIImageCommand));
     g_RenderState.uiShapeBuffer = CreateBuffer(NULL, (size_t)g_UIRenderer.capacity * sizeof(UIShape), BReadRasterBit, "UIShapeBuffer");
     g_RenderState.uiShapeDrawArgsBuffer = CreateBuffer(NULL, sizeof(SDL_GPUIndirectDrawCommand), BIndirectBit, "UIShapeDrawArgsBuffer");
 
@@ -484,18 +79,121 @@ void UIInit(void)
     g_UI.floats[UIFloat_FieldWidth]     = 98.0f;
     g_UI.floats[UIFloat_TextWrapWidth]  = 100.0f;
     g_UI.floats[UIFloat_ScrollWidth]    = 16.0f;
+    UILayoutInit();
 }
 
-void UIDestroy(void)
+static void UILayoutBeginFrame(void)
 {
-    UIDestroyTextShape();
-    if (g_UIRenderer.shapes) DeAllocateTLSFGlobal(g_UIRenderer.shapes);
-    g_UIRenderer = (UIRenderer){0};
+    if (!g_UILayout.initialized) return;
+
+    u32 drawableW = Maxu32(g_WindowState.prev_width, 1u);
+    u32 drawableH = Maxu32(g_WindowState.prev_height, 1u);
+    Clay_SetLayoutDimensions((Clay_Dimensions){ (f32)drawableW, (f32)drawableH });
+    Clay_SetPointerState((Clay_Vector2){ g_UI.mouse.x, g_UI.mouse.y }, GetMouseDown(MouseButton_Left) != 0u);
+
+    f32 wheel = GetMouseWheelDelta();
+    Clay_UpdateScrollContainers(true, (Clay_Vector2){ 0.0f, wheel * 24.0f }, GetDeltaTime());
+    PlatformCtx.MouseWheelDelta = 0.0f;
 }
+
+Clay_RenderCommandArray UIEndLayout(void)
+{
+    if (!g_UILayout.initialized) return (Clay_RenderCommandArray){0};
+    return Clay_EndLayout(GetDeltaTime());
+}
+
+u64 UIAutoID(const void* ptr)
+{
+    u64 x = (u64)(uintptr_t)ptr ^ ((u64)g_UI.nextAutoID++ * 0x9E3779B97F4A7C15ull);
+    return MurmurHash(x);
+}
+
+static Clay_Color UIButtonColor(bool hovered, bool selected)
+{
+    if (hovered) return UIColorToClay(UIGetColor(UIColor_Hovered));
+    if (selected) return UIColorToClay(UIGetColor(UIColor_SelectedBorder));
+    return UIColorToClay(UIGetColor(UIColor_Quad));
+}
+
+static Clay_Color UIPanelColor(void)
+{
+    return UIColorToClay(UIGetColor(UIColor_TextBoxBG));
+}
+
+static void UIRenderLayoutRectangle(const Clay_RenderCommand* command)
+{
+    const Clay_RectangleRenderData* data = &command->renderData.rectangle;
+    f32 radius = Maxf32(Maxf32(data->cornerRadius.topLeft, data->cornerRadius.topRight), Maxf32(data->cornerRadius.bottomLeft, data->cornerRadius.bottomRight));
+    UIPushRoundedRect((float2){ command->boundingBox.x, command->boundingBox.y }, (float2){ command->boundingBox.width, command->boundingBox.height }, radius, UIPackClayColor(data->backgroundColor));
+}
+
+static void UIRenderLayoutBorder(const Clay_RenderCommand* command)
+{
+    const Clay_BorderRenderData* data = &command->renderData.border;
+    f32 radius = Maxf32(Maxf32(data->cornerRadius.topLeft, data->cornerRadius.topRight), Maxf32(data->cornerRadius.bottomLeft, data->cornerRadius.bottomRight));
+    f32 width = Maxf32(Maxf32((f32)data->width.left, (f32)data->width.right), Maxf32((f32)data->width.top, (f32)data->width.bottom));
+    if (width <= 0.0f) return;
+
+    bool uniformWidth = data->width.left == data->width.right && data->width.left == data->width.top && data->width.left == data->width.bottom;
+    if (!uniformWidth)
+    {
+        static int warningCount = 0;
+        if (warningCount++ < 4) AX_WARN("Clay non-uniform border is not supported yet");
+        return;
+    }
+
+    UIPushRoundedRect((float2){ command->boundingBox.x, command->boundingBox.y }, (float2){ command->boundingBox.width, command->boundingBox.height }, radius, 0u);
+    UIPushBorder(width, UIPackClayColor(data->color));
+}
+
+static void UIRenderLayoutText(const Clay_RenderCommand* command)
+{
+    const Clay_TextRenderData* data = &command->renderData.text;
+    Clay_StringSlice text = data->stringContents;
+    SlugAppendText2DN(NULL, text.chars, (u32)Maxs32(text.length, 0), (float2){ command->boundingBox.x, command->boundingBox.y }, (f32)Maxu32(data->fontSize, 1u), UIPackClayColor(data->textColor));
+}
+
+static void UIRenderLayoutImage(const Clay_RenderCommand* command)
+{
+    const Clay_ImageRenderData* data = &command->renderData.image;
+    const UIImageData* image = (const UIImageData*)data->imageData;
+    if (!image || !image->texture)
+    {
+        if (!g_UILayout.warnedImage)
+        {
+            AX_WARN("Clay image command skipped, imageData must point to UIImageData with a valid texture");
+            g_UILayout.warnedImage = true;
+        }
+        return;
+    }
+    if (!g_UIRenderer.images || g_UIRenderer.imageCount >= g_UIRenderer.imageCapacity)
+    {
+        AX_WARN("UI image batch full: count=%u capacity=%u", g_UIRenderer.imageCount, g_UIRenderer.imageCapacity);
+        return;
+    }
+
+    UIImageCommand* out = &g_UIRenderer.images[g_UIRenderer.imageCount++];
+    out->texture = image->texture;
+    out->sampler = image->sampler ? image->sampler : g_RenderState.sampler;
+    out->rect[0] = command->boundingBox.x;
+    out->rect[1] = command->boundingBox.y;
+    out->rect[2] = command->boundingBox.width;
+    out->rect[3] = command->boundingBox.height;
+    out->uv[0] = image->uv[0];
+    out->uv[1] = image->uv[1];
+    out->uv[2] = image->uv[2] != 0.0f ? image->uv[2] : 1.0f;
+    out->uv[3] = image->uv[3] != 0.0f ? image->uv[3] : 1.0f;
+    MemCopy(out->clip, g_UI.clipRect, sizeof(out->clip));
+    out->tintColor = UIPackClayColor(data->backgroundColor);
+    out->shapeFence = g_UIRenderer.count;
+    out->radius = Maxf32(Maxf32(data->cornerRadius.topLeft, data->cornerRadius.topRight), Maxf32(data->cornerRadius.bottomLeft, data->cornerRadius.bottomRight));
+}
+
 
 void UIClear(void)
 {
     g_UIRenderer.count = 0u;
+    g_UIRenderer.imageCount = 0u;
 }
 
 void UIBeginFrame(void)
@@ -504,18 +202,27 @@ void UIBeginFrame(void)
     g_UI.nextAutoID = 1u;
     g_UI.wasHovered = false;
     g_UI.anyElementClicked = false;
-    g_UI.screenSize = (float2){ (f32)Maxu32(g_WindowState.prev_drawablew, 1u), (f32)Maxu32(g_WindowState.prev_drawableh, 1u) };
-    g_UI.windowRatio = (float2){ g_UI.screenSize.x / 1920.0f, g_UI.screenSize.y / 1080.0f };
-    g_UI.uiScale = (g_UI.windowRatio.x + g_UI.windowRatio.y) * 0.5f;
-    if (Absf32(g_UI.windowRatio.x - g_UI.windowRatio.y) > 0.6f) g_UI.uiScale = Minf32(g_UI.windowRatio.x, g_UI.windowRatio.y);
-    g_UI.uiScale = Maxf32(g_UI.uiScale, 0.01f);
+    g_UI.screenSize = (float2){ (f32)Maxu32(g_WindowState.prev_width, 1u), (f32)Maxu32(g_WindowState.prev_height, 1u) };
+    g_UI.windowRatio = (float2){ 1.0f, 1.0f };
+    g_UI.uiScale = 1.0f;
+    g_UI.clipStackCount = 0;
+    g_UI.clipRect[0] = 0.0f;
+    g_UI.clipRect[1] = 0.0f;
+    g_UI.clipRect[2] = g_UI.screenSize.x;
+    g_UI.clipRect[3] = g_UI.screenSize.y;
 
     f32 mx, my;
     wGetMouseWindowPos(&mx, &my);
-    g_UI.mouse = (float2){ mx / Maxf32(g_UI.windowRatio.x, 0.01f), my / Maxf32(g_UI.windowRatio.y, 0.01f) };
+    if (PlatformCtx.WindowWidth > 0 && PlatformCtx.WindowHeight > 0)
+    {
+        mx *= g_UI.screenSize.x / (f32)PlatformCtx.WindowWidth;
+        my *= g_UI.screenSize.y / (f32)PlatformCtx.WindowHeight;
+    }
+    g_UI.mouse = (float2){ mx, my };
     if (!GetMouseDown(MouseButton_Left)) g_UI.active = 0u;
     if (!GetMouseDown(MouseButton_Left)) g_UI.textDragFocus = 0u;
     if (!g_UI.keyboardFocus) PlatformConsumeTextKeyEvents(NULL, UINT32_MAX);
+    UILayoutBeginFrame();
 }
 
 void UIEndFrame(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget)
@@ -538,9 +245,6 @@ static bool UIPushShape(float2 pos, float2 size, f32 radius, u32 color, UIShapeT
         return false;
     }
 
-    pos = UIResolvePos(pos);
-    size = UIResolveSize(size);
-    radius = UIResolveScalar(radius);
     size.x = Maxf32(size.x, 0.0f);
     size.y = Maxf32(size.y, 0.0f);
     UIShape* s = &g_UIRenderer.shapes[g_UIRenderer.count++];
@@ -556,6 +260,10 @@ static bool UIPushShape(float2 pos, float2 size, f32 radius, u32 color, UIShapeT
     s->borderColor = color;
     s->shape = (u32)shape;
     s->flags = 0u;
+    s->clip[0] = g_UI.clipRect[0];
+    s->clip[1] = g_UI.clipRect[1];
+    s->clip[2] = g_UI.clipRect[2];
+    s->clip[3] = g_UI.clipRect[3];
     return true;
 }
 
@@ -586,7 +294,220 @@ void UIPushBorder(f32 thickness, u32 color)
     if (g_UIRenderer.count == 0) return;
     UIShape* s = &g_UIRenderer.shapes[g_UIRenderer.count - 1u];
     s->borderColor = color;
-    s->params[1] = UIResolveScalar(thickness);
+    s->params[1] = thickness;
+}
+
+void UIPushClipRect(float2 pos, float2 size)
+{
+    if (g_UI.clipStackCount >= (s32)UI_STACK_SIZE)
+    {
+        AX_WARN("UI clip stack full");
+        return;
+    }
+
+    MemCopy(g_UI.clipStack[g_UI.clipStackCount++], g_UI.clipRect, sizeof(g_UI.clipRect));
+    f32 x0 = pos.x;
+    f32 y0 = pos.y;
+    f32 x1 = pos.x + Maxf32(size.x, 0.0f);
+    f32 y1 = pos.y + Maxf32(size.y, 0.0f);
+    g_UI.clipRect[0] = Maxf32(g_UI.clipRect[0], x0);
+    g_UI.clipRect[1] = Maxf32(g_UI.clipRect[1], y0);
+    g_UI.clipRect[2] = Minf32(g_UI.clipRect[2], x1);
+    g_UI.clipRect[3] = Minf32(g_UI.clipRect[3], y1);
+}
+
+void UIPopClipRect(void)
+{
+    if (g_UI.clipStackCount <= 0)
+    {
+        AX_WARN("UI clip stack underflow");
+        return;
+    }
+
+    MemCopy(g_UI.clipRect, g_UI.clipStack[--g_UI.clipStackCount], sizeof(g_UI.clipRect));
+}
+
+void UIGetClipRect(f32 outClip[4])
+{
+    if (!outClip) return;
+    MemCopy(outClip, g_UI.clipRect, sizeof(g_UI.clipRect));
+}
+
+
+bool UIClicked(void)
+{
+    Clay_PointerData pointer = Clay_GetPointerState();
+    return Clay_Hovered() && pointer.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME;
+}
+
+bool UIButton(Clay_ElementId id, Clay_String label, Clay_Dimensions size, bool selected)
+{
+    bool clicked = false;
+    CLAY(id, {
+        .layout = {
+            .sizing = { CLAY_SIZING_FIXED(size.width), CLAY_SIZING_FIXED(size.height) },
+            .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER }
+        },
+        .backgroundColor = UIButtonColor(Clay_Hovered(), selected),
+        .cornerRadius = CLAY_CORNER_RADIUS(size.height * 0.5f)
+    }) {
+        if (UIClicked()) clicked = true;
+        CLAY_TEXT(label, CLAY_TEXT_CONFIG({
+            .fontSize = (u16)Maxu32((u32)(17.0f * UIGetFloat(UIFloat_TextScale)), 1u),
+            .textColor = UIColorToClay(UIGetColor(UIColor_Text))
+        }));
+    }
+    return clicked;
+}
+
+bool UICheckbox(Clay_ElementId id, Clay_String label, bool* value)
+{
+    bool checked = value && *value;
+    bool changed = false;
+
+    CLAY(id, {
+        .layout = {
+            .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(28.0f) },
+            .childGap = 8,
+            .layoutDirection = CLAY_LEFT_TO_RIGHT,
+            .childAlignment = { .y = CLAY_ALIGN_Y_CENTER }
+        }
+    }) {
+        bool rowHovered = Clay_Hovered();
+        if (value && UIClicked())
+        {
+            *value = !*value;
+            checked = *value;
+            changed = true;
+        }
+
+        CLAY(CLAY_ID_LOCAL("Box"), {
+            .layout = {
+                .sizing = { CLAY_SIZING_FIXED(18.0f), CLAY_SIZING_FIXED(18.0f) },
+                .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER }
+            },
+            .backgroundColor = UIColorToClay(rowHovered ? UIGetColor(UIColor_Hovered) : UIGetColor(UIColor_CheckboxBG)),
+            .cornerRadius = CLAY_CORNER_RADIUS(4.0f),
+            .border = { .color = UIColorToClay(UIGetColor(UIColor_Border)), .width = CLAY_BORDER_ALL((u16)Maxf32(UIGetFloat(UIFloat_LineThickness), 1.0f)) }
+        }) {
+            if (checked)
+            {
+                CLAY(CLAY_ID_LOCAL("Mark"), {
+                    .layout = { .sizing = { CLAY_SIZING_FIXED(10.0f), CLAY_SIZING_FIXED(10.0f) } },
+                    .backgroundColor = UIColorToClay(UIGetColor(UIColor_SliderInside)),
+                    .cornerRadius = CLAY_CORNER_RADIUS(2.0f)
+                }) {}
+            }
+        }
+
+        CLAY_TEXT(label, CLAY_TEXT_CONFIG({
+            .fontSize = (u16)Maxu32((u32)(15.0f * UIGetFloat(UIFloat_TextScale)), 1u),
+            .textColor = UIColorToClay(UIGetColor(UIColor_Text))
+        }));
+    }
+
+    return changed;
+}
+
+void UIProgressBar(Clay_ElementId id, Clay_String label, f32 value01)
+{
+    value01 = Saturatef32(value01);
+    CLAY(id, {
+        .layout = {
+            .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(28.0f) },
+            .childGap = 10,
+            .layoutDirection = CLAY_LEFT_TO_RIGHT,
+            .childAlignment = { .y = CLAY_ALIGN_Y_CENTER }
+        }
+    }) {
+        CLAY_TEXT(label, CLAY_TEXT_CONFIG({
+            .fontSize = (u16)Maxu32((u32)(15.0f * UIGetFloat(UIFloat_TextScale)), 1u),
+            .textColor = UIColorToClay(UIGetColor(UIColor_Text))
+        }));
+
+        CLAY(CLAY_ID_LOCAL("Track"), {
+            .layout = {
+                .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(12.0f) },
+                .childAlignment = { .y = CLAY_ALIGN_Y_CENTER }
+            },
+            .backgroundColor = UIPanelColor(),
+            .cornerRadius = CLAY_CORNER_RADIUS(6.0f)
+        }) {
+            CLAY(CLAY_ID_LOCAL("Fill"), {
+                .layout = { .sizing = { CLAY_SIZING_PERCENT(value01), CLAY_SIZING_FIXED(12.0f) } },
+                .backgroundColor = UIColorToClay(UIGetColor(UIColor_SliderInside)),
+                .cornerRadius = CLAY_CORNER_RADIUS(6.0f)
+            }) {}
+        }
+    }
+}
+
+bool UISliderFloat(Clay_ElementId id, Clay_String label, f32* value, f32 minValue, f32 maxValue)
+{
+    if (!value || maxValue <= minValue) return false;
+
+    bool changed = false;
+    Clay_ElementId trackId = Clay_GetElementIdWithIndex(CLAY_STRING("UISliderTrack"), id.id);
+    Clay_ElementData trackData = Clay_GetElementData(trackId);
+    Clay_PointerData pointer = Clay_GetPointerState();
+    u64 activeId = (u64)id.id;
+    if (trackData.found && Clay_PointerOver(trackId) && pointer.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME)
+    {
+        g_UI.active = activeId;
+    }
+    if (trackData.found && g_UI.active == activeId && GetMouseDown(MouseButton_Left))
+    {
+        f32 t = (pointer.position.x - trackData.boundingBox.x) / Maxf32(trackData.boundingBox.width, 1.0f);
+        f32 newValue = minValue + Saturatef32(t) * (maxValue - minValue);
+        if (newValue != *value)
+        {
+            *value = newValue;
+            changed = true;
+        }
+    }
+
+    f32 value01 = Saturatef32((*value - minValue) / (maxValue - minValue));
+    CLAY(id, {
+        .layout = {
+            .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(34.0f) },
+            .childGap = 10,
+            .layoutDirection = CLAY_LEFT_TO_RIGHT,
+            .childAlignment = { .y = CLAY_ALIGN_Y_CENTER }
+        }
+    }) {
+        CLAY_TEXT(label, CLAY_TEXT_CONFIG({
+            .fontSize = (u16)Maxu32((u32)(15.0f * UIGetFloat(UIFloat_TextScale)), 1u),
+            .textColor = UIColorToClay(UIGetColor(UIColor_Text))
+        }));
+
+        CLAY(trackId, {
+            .layout = {
+                .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(14.0f) },
+                .childAlignment = { .y = CLAY_ALIGN_Y_CENTER }
+            },
+            .backgroundColor = UIColorToClay(UIGetColor(UIColor_TextBoxBG)),
+            .cornerRadius = CLAY_CORNER_RADIUS(7.0f)
+        }) {
+            CLAY(CLAY_ID_LOCAL("Fill"), {
+                .layout = { .sizing = { CLAY_SIZING_PERCENT(value01), CLAY_SIZING_FIXED(14.0f) } },
+                .backgroundColor = UIColorToClay(UIGetColor(UIColor_SliderInside)),
+                .cornerRadius = CLAY_CORNER_RADIUS(7.0f)
+            }) {}
+
+            CLAY(CLAY_ID_LOCAL("Knob"), {
+                .layout = { .sizing = { CLAY_SIZING_FIXED(8.0f), CLAY_SIZING_FIXED(18.0f) } },
+                .floating = {
+                    .attachTo = CLAY_ATTACH_TO_PARENT,
+                    .attachPoints = { CLAY_ATTACH_POINT_LEFT_CENTER, CLAY_ATTACH_POINT_LEFT_CENTER },
+                    .offset = { value01 * Maxf32(trackData.found ? trackData.boundingBox.width - 4.0f : 0.0f, 0.0f), 0.0f }
+                },
+                .backgroundColor = UIColorToClay(UIGetColor(UIColor_Text)),
+                .cornerRadius = CLAY_CORNER_RADIUS(4.0f)
+            }) {}
+        }
+    }
+
+    return changed;
 }
 
 void UISetColor(UIColor what, u32 color)
@@ -605,10 +526,7 @@ void UIPushColor(UIColor what, u32 color)
 {
     if ((u32)what >= UIColor_Count) return;
     s32 count = g_UI.colorStackCount[what] + 1;
-    if ((u32)count >= UI_STACK_SIZE) {
-        AX_WARN("UI color stack full: %u", (u32)what);
-        return;
-    }
+    if ((u32)count >= UI_STACK_SIZE) { AX_WARN("UI color stack full: %u", (u32)what); return; }
     g_UI.colorStackCount[what] = count;
     g_UI.colorStack[what][count] = color;
 }
@@ -616,10 +534,7 @@ void UIPushColor(UIColor what, u32 color)
 void UIPopColor(UIColor what)
 {
     if ((u32)what >= UIColor_Count) return;
-    if (g_UI.colorStackCount[what] < 0) {
-        AX_WARN("UI color stack underflow: %u", (u32)what);
-        return;
-    }
+    if (g_UI.colorStackCount[what] < 0) { AX_WARN("UI color stack underflow: %u", (u32)what); return; }
     g_UI.colorStackCount[what]--;
 }
 
@@ -639,10 +554,7 @@ void UIPushFloat(UIFloat what, f32 value)
 {
     if ((u32)what >= UIFloat_Count) return;
     s32 count = g_UI.floatStackCount[what] + 1;
-    if ((u32)count >= UI_STACK_SIZE) {
-        AX_WARN("UI float stack full: %u", (u32)what);
-        return;
-    }
+    if ((u32)count >= UI_STACK_SIZE) { AX_WARN("UI float stack full: %u", (u32)what); return; }
     g_UI.floatStackCount[what] = count;
     g_UI.floatStack[what][count] = value;
 }
@@ -655,569 +567,160 @@ void UIPushFloatAdd(UIFloat what, f32 value)
 void UIPopFloat(UIFloat what)
 {
     if ((u32)what >= UIFloat_Count) return;
-    if (g_UI.floatStackCount[what] < 0) {
-        AX_WARN("UI float stack underflow: %u", (u32)what);
-        return;
-    }
+    if (g_UI.floatStackCount[what] < 0) { AX_WARN("UI float stack underflow: %u", (u32)what); return; }
     g_UI.floatStackCount[what]--;
 }
 
-bool UIClickCheck(float2 pos, float2 size, UIClickOpt flags)
+UIImageData UIImageFromTexture(Texture* texture)
 {
-    if (flags & UIClickOpt_BigCollision)
-    {
-        f32 grow = Minf32(size.x, size.y) * 0.5f;
-        pos.x -= grow;
-        pos.y -= grow;
-        size.x += grow * 2.0f;
-        size.y += grow * 2.0f;
-    }
-    g_UI.wasHovered = RectPointIntersect(pos, size, g_UI.mouse) != 0u;
-    bool released = GetMouseReleased(MouseButton_Left) != 0u;
-    g_UI.anyElementClicked |= g_UI.wasHovered && released;
-    if ((flags & UIClickOpt_WhileMouseDown) && GetMouseDown(MouseButton_Left)) return g_UI.wasHovered;
-    return g_UI.wasHovered && released;
+    UIImageData image = {0};
+    if (!texture || !texture->handle) { AX_WARN("UIImageFromTexture got null texture"); return image; }
+    image.texture = texture->handle;
+    image.uv[2] = 1.0f;
+    image.uv[3] = 1.0f;
+    return image;
 }
 
-bool UIIsHovered(void)
+void UIRenderCommands(Clay_RenderCommandArray* commands)
 {
-    return g_UI.wasHovered;
-}
+    if (!g_UILayout.initialized || !commands) return;
 
-static bool UITextShapeInternal(const char* text, float2 resolvedPos, f32 size, u32 color, bool append, float2* outSize)
-{
-    if (outSize) *outSize = (float2){0.0f, 0.0f};
-    if (!text) return false;
-
-    SlugFont* font = SlugGetDemoFont();
-    if (!UIEnsureTextShape(font)) return false;
-
-    u32 textBytes = (u32)StringLengthSafe(text, SLUG_MAX_TEXT + 1u);
-    if (textBytes == 0u)
+    for (s32 i = 0; i < commands->length; i++)
     {
-        if (outSize) outSize->y = Maxf32((SlugGetFontAscent(font) - SlugGetFontDescent(font)) * size, size);
-        return true;
-    }
-    if (textBytes > SLUG_MAX_TEXT) return false;
-
-    kbts_ShapeBegin(g_UI.textShapeContext, KBTS_DIRECTION_DONT_KNOW, KBTS_LANGUAGE_DONT_KNOW);
-    kbts_ShapeUtf8(g_UI.textShapeContext, text, (int)textBytes, KBTS_USER_ID_GENERATION_MODE_CODEPOINT_INDEX);
-    kbts_ShapeEnd(g_UI.textShapeContext);
-    if (kbts_ShapeError(g_UI.textShapeContext) != KBTS_SHAPE_ERROR_NONE) return false;
-
-    f32 width = 0.0f;
-    f32 penX = 0.0f;
-    f32 baselineY = resolvedPos.y + SlugGetFontAscent(font) * size;
-    kbts_run run;
-    while (kbts_ShapeRun(g_UI.textShapeContext, &run))
-    {
-        u32 faceIndex = UIShapeFontIndex(run.Font);
-        if (faceIndex == UINT32_MAX) return false;
-        f32 emScale = SlugGetFontFaceEmScale(font, faceIndex);
-        if (emScale <= 0.0f) return false;
-
-        s32 cursorX = 0;
-        s32 cursorY = 0;
-        kbts_glyph* glyph;
-        while (kbts_GlyphIteratorNext(&run.Glyphs, &glyph))
+        Clay_RenderCommand* command = Clay_RenderCommandArray_Get(commands, i);
+        switch (command->commandType)
         {
-            f32 glyphX = (f32)(cursorX + glyph->OffsetX) * emScale;
-            f32 glyphY = (f32)(cursorY + glyph->OffsetY) * emScale;
-            if (append)
-            {
-                SlugAppendGlyph2D(font, faceIndex, glyph->Id, (float2){ resolvedPos.x + penX + glyphX * size, baselineY - glyphY * size }, size, color);
-            }
-            cursorX += glyph->AdvanceX;
-            cursorY += glyph->AdvanceY;
-        }
-        penX += (f32)cursorX * emScale * size;
-        width = Maxf32(width, penX);
-    }
-
-    if (outSize)
-    {
-        outSize->x = width;
-        outSize->y = Maxf32((SlugGetFontAscent(font) - SlugGetFontDescent(font)) * size, size);
-    }
-    return true;
-}
-
-bool UITextDirect(const char* text, float2 resolvedPos, f32 size, u32 color)
-{
-    return UITextShapeInternal(text, resolvedPos, size, color, true, NULL);
-}
-
-static UITextLine* UILayoutBeginLine(UITextLayout* layout, f32 x, f32 y, u32 codepointIndex)
-{
-    if (layout->lineCount >= UI_TEXT_MAX_LINES) return NULL;
-    UITextLine* line = &layout->lines[layout->lineCount++];
-    *line = (UITextLine){0};
-    line->firstCommand = layout->commandCount;
-    line->onePastLastCommand = layout->commandCount;
-    line->minCodepoint = codepointIndex;
-    line->maxCodepoint = codepointIndex;
-    line->direction = KBTS_DIRECTION_DONT_KNOW;
-    line->x = x;
-    line->y = y;
-    return line;
-}
-
-static bool UITextBuildLayout(const char* text, u32 bytes, float2 pos, f32 textScale, bool multiline, UITextLayout* layout)
-{
-    SDL_zero(*layout);
-    SlugFont* font = SlugGetDemoFont();
-    if (!text || !UIEnsureTextShape(font)) return false;
-
-    f32 sizePx = 32.0f * textScale * g_UI.uiScale;
-    layout->ascent = SlugGetFontAscent(font) * sizePx / Maxf32(g_UI.windowRatio.y, 0.01f);
-    layout->lineHeight = Maxf32((SlugGetFontAscent(font) - SlugGetFontDescent(font)) * sizePx, sizePx) / Maxf32(g_UI.windowRatio.y, 0.01f);
-    layout->codepointCount = StringCodepointCount(text, bytes);
-    if (layout->codepointCount > UI_TEXT_MAX_CODEPOINTS) return false;
-
-    UITextLine* line = UILayoutBeginLine(layout, pos.x, pos.y, 0u);
-    if (!line) return false;
-    f32 penX = 0.0f;
-    u32 cpBase = 0u;
-    u32 lineStartByte = 0u;
-
-    while (lineStartByte <= bytes)
-    {
-        u32 lineBytes = 0u;
-        while (lineStartByte + lineBytes < bytes && text[lineStartByte + lineBytes] != '\n') lineBytes++;
-
-        if (lineBytes == 0u)
-        {
-            line->onePastLastCommand = layout->commandCount;
-            line->width = 0.0f;
-            line->maxCodepoint = cpBase;
-            if (!multiline || lineStartByte >= bytes) break;
-
-            lineStartByte += 1u;
-            cpBase += 1u;
-            penX = 0.0f;
-            line = UILayoutBeginLine(layout, pos.x, pos.y + layout->lineHeight * (f32)layout->lineCount, cpBase);
-            if (!line) break;
-            continue;
-        }
-
-        kbts_ShapeBegin(g_UI.textShapeContext, KBTS_DIRECTION_DONT_KNOW, KBTS_LANGUAGE_DONT_KNOW);
-        kbts_ShapeUtf8(g_UI.textShapeContext, text + lineStartByte, (int)lineBytes, KBTS_USER_ID_GENERATION_MODE_CODEPOINT_INDEX);
-        kbts_ShapeEnd(g_UI.textShapeContext);
-        if (kbts_ShapeError(g_UI.textShapeContext) != KBTS_SHAPE_ERROR_NONE) return false;
-
-        kbts_run run;
-        while (kbts_ShapeRun(g_UI.textShapeContext, &run))
-        {
-            u32 faceIndex = UIShapeFontIndex(run.Font);
-            if (faceIndex == UINT32_MAX) return false;
-            f32 emScale = SlugGetFontFaceEmScale(font, faceIndex);
-            if (emScale <= 0.0f) return false;
-            f32 scaleX = emScale * sizePx / Maxf32(g_UI.windowRatio.x, 0.01f);
-            f32 scaleY = emScale * sizePx / Maxf32(g_UI.windowRatio.y, 0.01f);
-
-            if (line->direction == KBTS_DIRECTION_DONT_KNOW) line->direction = run.ParagraphDirection;
-            s32 cursorX = 0;
-            s32 cursorY = 0;
-            kbts_glyph* glyph;
-            while (kbts_GlyphIteratorNext(&run.Glyphs, &glyph))
-            {
-                u32 cp = cpBase + (u32)glyph->UserIdOrCodepointIndex;
-                if (cp < UI_TEXT_MAX_CODEPOINTS)
+            case CLAY_RENDER_COMMAND_TYPE_RECTANGLE: UIRenderLayoutRectangle(command); break;
+            case CLAY_RENDER_COMMAND_TYPE_BORDER:    UIRenderLayoutBorder(command); break;
+            case CLAY_RENDER_COMMAND_TYPE_TEXT:      UIRenderLayoutText(command); break;
+            case CLAY_RENDER_COMMAND_TYPE_SCISSOR_START:
+                UIPushClipRect((float2){ command->boundingBox.x, command->boundingBox.y }, (float2){ command->boundingBox.width, command->boundingBox.height });
+                break;
+            case CLAY_RENDER_COMMAND_TYPE_SCISSOR_END:
+                UIPopClipRect();
+                break;
+            case CLAY_RENDER_COMMAND_TYPE_IMAGE:     UIRenderLayoutImage(command); break;
+            case CLAY_RENDER_COMMAND_TYPE_CUSTOM:
+                if (!g_UILayout.warnedCustom)
                 {
-                    kbts_shape_codepoint shapeCodepoint = {0};
-                    if (kbts_ShapeGetShapeCodepoint(g_UI.textShapeContext, glyph->UserIdOrCodepointIndex, &shapeCodepoint))
-                    {
-                        layout->breakFlags[cp] = shapeCodepoint.BreakFlags;
-                    }
+                    AX_WARN("Clay custom commands are not rendered yet");
+                    g_UILayout.warnedCustom = true;
                 }
-                if (layout->commandCount < UI_TEXT_MAX_COMMANDS)
+                break;
+            case CLAY_RENDER_COMMAND_TYPE_OVERLAY_COLOR_START:
+            case CLAY_RENDER_COMMAND_TYPE_OVERLAY_COLOR_END:
+                if (!g_UILayout.warnedOverlay)
                 {
-                    UITextCommand* cmd = &layout->commands[layout->commandCount++];
-                    cmd->faceIndex = faceIndex;
-                    cmd->glyphIndex = glyph->Id;
-                    cmd->codepointIndex = cp;
-                    cmd->direction = run.Direction;
-                    cmd->pos.x = pos.x + penX + (f32)(cursorX + glyph->OffsetX) * scaleX;
-                    cmd->pos.y = line->y + layout->ascent - (f32)(cursorY + glyph->OffsetY) * scaleY;
-                    cmd->advanceX = (f32)glyph->AdvanceX * scaleX;
-                    cmd->width = Absf32(cmd->advanceX);
-                    line->maxCodepoint = Maxu32(line->maxCodepoint, cp + 1u);
+                    AX_WARN("Clay overlay color commands are not rendered yet");
+                    g_UILayout.warnedOverlay = true;
                 }
-                cursorX += glyph->AdvanceX;
-                cursorY += glyph->AdvanceY;
-            }
-            penX += (f32)cursorX * emScale * sizePx / Maxf32(g_UI.windowRatio.x, 0.01f);
-        }
-
-        line->onePastLastCommand = layout->commandCount;
-        line->width = penX;
-        layout->width = Maxf32(layout->width, penX);
-        if (!multiline || lineStartByte + lineBytes >= bytes) break;
-
-        lineStartByte += lineBytes + 1u;
-        cpBase += StringCodepointCount(text + lineStartByte - lineBytes - 1u, lineBytes + 1u);
-        penX = 0.0f;
-        line = UILayoutBeginLine(layout, pos.x, pos.y + layout->lineHeight * (f32)layout->lineCount, cpBase);
-        if (!line) break;
-    }
-
-    layout->height = layout->lineHeight * Maxf32((f32)layout->lineCount, 1.0f);
-    layout->valid = true;
-    return true;
-}
-
-static void UITextDrawLayout(const UITextLayout* layout)
-{
-    if (!layout || !layout->valid) return;
-    SlugFont* font = SlugGetDemoFont();
-    f32 sizePx = 32.0f * UIGetFloat(UIFloat_TextScale) * g_UI.uiScale;
-    for (u32 i = 0u; i < layout->commandCount; i++)
-    {
-        const UITextCommand* cmd = &layout->commands[i];
-        SlugAppendGlyph2D(font, cmd->faceIndex, cmd->glyphIndex, UIResolvePos(cmd->pos), sizePx, UIGetColor(UIColor_Text));
-    }
-}
-
-static u32 UITextLineCodepointAtX(const UITextLayout* layout, const UITextLine* line, f32 x)
-{
-    if (!layout || !line || line->firstCommand == line->onePastLastCommand) return line ? line->minCodepoint : 0u;
-    u32 result = line->maxCodepoint;
-    u32 prev = UINT32_MAX;
-    bool found = false;
-    for (u32 i = line->firstCommand; i < line->onePastLastCommand; i++)
-    {
-        const UITextCommand* cmd = &layout->commands[i];
-        result = cmd->codepointIndex;
-        if (cmd->codepointIndex != prev && x < cmd->pos.x + cmd->width * 0.5f)
-        {
-            found = true;
-            break;
-        }
-        prev = cmd->codepointIndex;
-    }
-    if (!found) return Minu32(line->maxCodepoint, layout->codepointCount);
-    if (line->direction == KBTS_DIRECTION_RTL && prev != UINT32_MAX) result = prev;
-    return Minu32(result, layout->codepointCount);
-}
-
-static u32 UITextLayoutHitTest(const UITextLayout* layout, float2 point)
-{
-    if (!layout || !layout->valid || layout->lineCount == 0u) return 0u;
-    u32 lineIndex = (u32)(Maxf32(point.y - layout->lines[0].y, 0.0f) / Maxf32(layout->lineHeight, 0.001f));
-    lineIndex = Minu32(lineIndex, layout->lineCount - 1u);
-    return UITextLineCodepointAtX(layout, &layout->lines[lineIndex], point.x);
-}
-
-static float2 UITextLayoutCaretPos(const UITextLayout* layout, u32 caret)
-{
-    if (!layout || !layout->valid || layout->lineCount == 0u) return (float2){0.0f, 0.0f};
-    caret = Minu32(caret, layout->codepointCount);
-    const UITextLine* line = &layout->lines[layout->lineCount - 1u];
-    for (u32 li = 0u; li < layout->lineCount; li++)
-    {
-        if (caret <= layout->lines[li].maxCodepoint)
-        {
-            line = &layout->lines[li];
-            break;
-        }
-    }
-
-    f32 x = line->x + line->width;
-    for (u32 i = line->firstCommand; i < line->onePastLastCommand; i++)
-    {
-        const UITextCommand* cmd = &layout->commands[i];
-        if (cmd->codepointIndex >= caret)
-        {
-            x = cmd->pos.x;
-            break;
-        }
-        x = cmd->pos.x + cmd->advanceX;
-    }
-    return (float2){ x, line->y };
-}
-
-static void UITextDrawSelection(const UITextLayout* layout)
-{
-    if (!layout || !layout->valid || !UIHasSelection()) return;
-    u32 selStart = g_UI.caret;
-    u32 selEnd = g_UI.selectionAnchor;
-    UISelectionRange(&selStart, &selEnd);
-    for (u32 li = 0u; li < layout->lineCount; li++)
-    {
-        const UITextLine* line = &layout->lines[li];
-        f32 minX = FLT_MAX;
-        f32 maxX = -FLT_MAX;
-        for (u32 i = line->firstCommand; i < line->onePastLastCommand; i++)
-        {
-            const UITextCommand* cmd = &layout->commands[i];
-            if (cmd->codepointIndex >= selStart && cmd->codepointIndex < selEnd)
-            {
-                minX = Minf32(minX, Minf32(cmd->pos.x, cmd->pos.x + cmd->advanceX));
-                maxX = Maxf32(maxX, Maxf32(cmd->pos.x, cmd->pos.x + cmd->advanceX));
-            }
-        }
-        if (minX != FLT_MAX && maxX > minX)
-        {
-            UIPushRoundedRect((float2){ minX, line->y + 1.0f }, (float2){ maxX - minX, layout->lineHeight - 2.0f }, 2.0f, 0x884A90E2u);
+                break;
+            case CLAY_RENDER_COMMAND_TYPE_NONE:
+            default:
+                break;
         }
     }
 }
 
-float2 UITextSize(const char* text)
-{
-    f32 size = 32.0f * UIGetFloat(UIFloat_TextScale) * g_UI.uiScale;
-    float2 px;
-    if (!UITextShapeInternal(text, (float2){0.0f, 0.0f}, size, 0u, false, &px)) px = SlugCalcTextSize(SlugGetDemoFont(), text, size);
-    return (float2){ px.x / Maxf32(g_UI.windowRatio.x, 0.01f), px.y / Maxf32(g_UI.windowRatio.y, 0.01f) };
-}
-
-void UIText(const char* text, float2 pos)
-{
-    if (!text) return;
-    f32 size = 32.0f * UIGetFloat(UIFloat_TextScale) * g_UI.uiScale;
-    float2 resolved = UIResolvePos(pos);
-    UITextShapeInternal(text, resolved, size, UIGetColor(UIColor_Text), true, NULL);
-}
-
-bool UIButton(const char* text, float2 pos, float2 size)
-{
-    if (size.x + size.y < MATH_Epsilon)
-    {
-        f32 buttonSpace = UIGetFloat(UIFloat_ButtonSpace);
-        float2 textSize = UITextSize(text);
-        pos.x -= buttonSpace * 2.0f;
-        pos.y += buttonSpace;
-        size = (float2){ textSize.x + buttonSpace * 2.0f, textSize.y + buttonSpace };
-    }
-
-    bool clicked = UIClickCheck(pos, size, UIClickOpt_None);
-    u32 color = g_UI.wasHovered ? UIGetColor(UIColor_Hovered) : UIGetColor(UIColor_Quad);
-    UIPushRoundedRect(pos, size, 6.0f, color);
-    UIPushBorder(UIGetFloat(UIFloat_LineThickness), UIGetColor(UIColor_Border));
-
-    if (text)
-    {
-        float2 textSize = UITextSize(text);
-        float2 textPos = { pos.x + (size.x - textSize.x) * 0.5f, pos.y + (size.y - textSize.y) * 0.5f };
-        UIText(text, textPos);
-    }
-    return clicked;
-}
-
-bool UICheckbox(const char* text, float2 pos, bool* enabled)
-{
-    float2 textSize = UITextSize(text);
-    UIText(text, pos);
-    f32 box = Maxf32(textSize.y * 0.75f, 16.0f);
-    f32 controlX = Maxf32(pos.x + UIGetFloat(UIFloat_ContentStart) - box, pos.x + textSize.x + UIGetFloat(UIFloat_ButtonSpace));
-    float2 boxPos = { controlX, pos.y + (textSize.y - box) * 0.5f };
-    bool clicked = UIClickCheck(boxPos, (float2){ box, box }, UIClickOpt_BigCollision);
-    if (clicked && enabled) *enabled = !*enabled;
-
-    UIPushRoundedRect(boxPos, (float2){ box, box }, 3.0f, UIGetColor(UIColor_CheckboxBG));
-    UIPushBorder(UIGetFloat(UIFloat_LineThickness), UIGetColor(UIColor_Border));
-    if (enabled && *enabled)
-    {
-        f32 pad = box * 0.22f;
-        UIPushRoundedRect((float2){ boxPos.x + pad, boxPos.y + pad }, (float2){ box - pad * 2.0f, box - pad * 2.0f }, 2.0f, UIGetColor(UIColor_SliderInside));
-    }
-    return clicked;
-}
-
-bool UIRadioButton(const char* text, float2 pos, bool* enabled)
-{
-    float2 textSize = UITextSize(text);
-    UIText(text, pos);
-    f32 rd = Maxf32(textSize.y * 0.5f, 16.0f);
-    f32 controlX = Maxf32(pos.x + UIGetFloat(UIFloat_ContentStart) - rd * 0.5f,
-                          pos.x + textSize.x + UIGetFloat(UIFloat_ButtonSpace));
-    float2 boxPos = { controlX, pos.y + (textSize.y - rd) * 0.5f };
-    bool clicked = UIClickCheck(boxPos, (float2){ rd, rd }, UIClickOpt_BigCollision);
-    if (clicked && enabled) *enabled = !*enabled;
-    float2 circlePos = F2AddF(boxPos, rd * 0.5f);
-    UIPushCircle(circlePos, rd, UIGetColor(UIColor_CheckboxBG));
-    UIPushBorder(UIGetFloat(UIFloat_LineThickness), UIGetColor(UIColor_Border));
-    if (enabled && *enabled)
-    {
-        UIPushCircle(circlePos, rd * 0.7f, UIGetColor(UIColor_SliderInside));
-    }
-    return clicked;
-}
-
-bool UISliderFloat(const char* label, float2 pos, f32* value, f32 width)
-{
-    float2 labelSize = UITextSize(label);
-    UIText(label, pos);
-    float2 barSize = { width, UIGetFloat(UIFloat_SliderHeight) };
-    f32 controlX = Maxf32(pos.x + UIGetFloat(UIFloat_ContentStart) - width, pos.x + labelSize.x + UIGetFloat(UIFloat_ButtonSpace));
-    float2 barPos = { controlX, pos.y + (labelSize.y - barSize.y) * 0.5f };
-    u64 id = UIAutoID(value);
-    bool hovered = RectPointIntersect(barPos, barSize, g_UI.mouse) != 0u;
-    if (hovered && GetMousePressed(MouseButton_Left)) g_UI.active = id;
-
-    bool edited = false;
-    if (g_UI.active == id && GetMouseDown(MouseButton_Left))
-    {
-        *value = UIClamp01((g_UI.mouse.x - barPos.x) / Maxf32(barSize.x, 0.001f));
-        edited = true;
-    }
-
-    g_UI.wasHovered = hovered;
-    UIPushRoundedRect(barPos, barSize, barSize.y * 0.5f, UIGetColor(UIColor_TextBoxBG));
-    UIPushBorder(UIGetFloat(UIFloat_LineThickness), UIGetColor(UIColor_Border));
-    if (*value > 0.0f)
-    {
-        float2 fillSize = { barSize.x * UIClamp01(*value), barSize.y };
-        UIPushCapsule(barPos, fillSize, UIGetColor(UIColor_SliderInside));
-    }
-    return edited;
-}
-
-static void UISetKeyboardFocus(u64 id)
-{
-    if (g_UI.keyboardFocus == id) return;
-    g_UI.keyboardFocus = id;
-    if (id) SDL_StartTextInput(g_SDLWindow);
-    else SDL_StopTextInput(g_SDLWindow);
-}
-
-bool UITextBox(const char* label, float2 pos, char* buffer, u32 capacity, f32 width)
-{
-    float2 labelSize = UITextSize(label);
-    if (label) UIText(label, pos);
-
-    f32 height = Maxf32(labelSize.y, 34.0f);
-    f32 controlX = Maxf32(pos.x + UIGetFloat(UIFloat_ContentStart) - width, pos.x + labelSize.x + UIGetFloat(UIFloat_ButtonSpace));
-    float2 boxPos = { controlX, pos.y + (labelSize.y - height) * 0.5f };
-    float2 boxSize = { width, height };
-    u64 id = UIAutoID(buffer);
-    bool hovered = RectPointIntersect(boxPos, boxSize, g_UI.mouse) != 0u;
-    bool focused = g_UI.keyboardFocus == id;
-
-    UIPushRoundedRect(boxPos, boxSize, 4.0f, UIGetColor(UIColor_TextBoxBG));
-    UIPushBorder(UIGetFloat(UIFloat_LineThickness), focused ? UIGetColor(UIColor_SelectedBorder) : UIGetColor(UIColor_Border));
-    UIPushFloat(UIFloat_TextScale, 0.82f);
-
-    float2 textPos = { boxPos.x + 8.0f, boxPos.y + 2.0f };
-    u32 len = UIStringLength(buffer, capacity);
-    UITextLayout layout;
-    UITextBuildLayout(buffer ? buffer : "", len, textPos, UIGetFloat(UIFloat_TextScale), false, &layout);
-    if (GetMousePressed(MouseButton_Left))
-    {
-        if (hovered)
-        {
-            UISetKeyboardFocus(id);
-            bool shift = (SDL_GetModState() & SDL_KMOD_SHIFT) != 0;
-            UISetCaret(UITextLayoutHitTest(&layout, g_UI.mouse), shift);
-            g_UI.textDragFocus = id;
-        }
-        else if (g_UI.keyboardFocus == id) UISetKeyboardFocus(0u);
-    }
-    if (g_UI.textDragFocus == id && GetMouseDown(MouseButton_Left))
-    {
-        UISetCaret(UITextLayoutHitTest(&layout, g_UI.mouse), true);
-    }
-    focused = g_UI.keyboardFocus == id;
-
-    bool edited = UITextEditBehavior(id, buffer, capacity, false, &layout);
-    len = UIStringLength(buffer, capacity);
-    UITextBuildLayout(buffer ? buffer : "", len, textPos, UIGetFloat(UIFloat_TextScale), false, &layout);
-    g_UI.wasHovered = hovered;
-
-    if (focused) UITextDrawSelection(&layout);
-    UITextDrawLayout(&layout);
-    if (focused && FModf(TimeSinceStartup(), 1.0f) > 0.5f)
-    {
-        float2 caretPos = UITextLayoutCaretPos(&layout, g_UI.caret);
-        f32 cursorX = Minf32(caretPos.x + 2.0f, boxPos.x + boxSize.x - 4.0f);
-        UIPushRect((float2){ cursorX, boxPos.y + 6.0f }, (float2){ 1.5f, boxSize.y - 12.0f }, UIGetColor(UIColor_TextBoxCursor));
-    }
-    UIPopFloat(UIFloat_TextScale);
-    return edited;
-}
-
-bool UITextArea(const char* label, float2 pos, char* buffer, u32 capacity, float2 size)
-{
-    if (label) UIText(label, pos);
-    float2 labelSize = UITextSize(label);
-    float2 boxPos = { pos.x, pos.y + labelSize.y + 8.0f };
-    u64 id = UIAutoID(buffer);
-    bool hovered = RectPointIntersect(boxPos, size, g_UI.mouse) != 0u;
-    bool focused = g_UI.keyboardFocus == id;
-
-    UIPushRoundedRect(boxPos, size, 6.0f, UIGetColor(UIColor_TextBoxBG));
-    UIPushBorder(UIGetFloat(UIFloat_LineThickness), focused ? UIGetColor(UIColor_SelectedBorder) : UIGetColor(UIColor_Border));
-    UIPushFloat(UIFloat_TextScale, 0.78f);
-
-    float2 textPos = { boxPos.x + 10.0f, boxPos.y + 8.0f };
-    u32 len = UIStringLength(buffer, capacity);
-    UITextLayout layout;
-    UITextBuildLayout(buffer ? buffer : "", len, textPos, UIGetFloat(UIFloat_TextScale), true, &layout);
-    if (GetMousePressed(MouseButton_Left))
-    {
-        if (hovered)
-        {
-            UISetKeyboardFocus(id);
-            bool shift = (SDL_GetModState() & SDL_KMOD_SHIFT) != 0;
-            UISetCaret(UITextLayoutHitTest(&layout, g_UI.mouse), shift);
-            g_UI.textDragFocus = id;
-        }
-        else if (g_UI.keyboardFocus == id) UISetKeyboardFocus(0u);
-    }
-    if (g_UI.textDragFocus == id && GetMouseDown(MouseButton_Left))
-    {
-        UISetCaret(UITextLayoutHitTest(&layout, g_UI.mouse), true);
-    }
-    focused = g_UI.keyboardFocus == id;
-
-    bool edited = UITextEditBehavior(id, buffer, capacity, true, &layout);
-    len = UIStringLength(buffer, capacity);
-    UITextBuildLayout(buffer ? buffer : "", len, textPos, UIGetFloat(UIFloat_TextScale), true, &layout);
-    g_UI.wasHovered = hovered;
-
-    if (focused) UITextDrawSelection(&layout);
-    UITextDrawLayout(&layout);
-    if (edited || focused && FModf(TimeSinceStartup(), 1.0f) > 0.35f)
-    {
-        float2 caretPos = UITextLayoutCaretPos(&layout, g_UI.caret);
-        f32 cursorX = Minf32(caretPos.x + 2.0f, boxPos.x + size.x - 4.0f);
-        UIPushRect((float2){ cursorX, caretPos.y }, (float2){ 1.5f, layout.lineHeight }, UIGetColor(UIColor_TextBoxCursor));
-    }
-    UIPopFloat(UIFloat_TextScale);
-    return edited;
-}
 
 void UIRender(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget)
 {
-    if (g_UIRenderer.count == 0u) return;
-    if (!g_RenderState.uiShapePipeline || !g_RenderState.uiShapeBuffer || !g_RenderState.uiShapeDrawArgsBuffer)
+    if (g_UIRenderer.count == 0u && g_UIRenderer.imageCount == 0u) return;
+    if (g_UIRenderer.count > 0u && (!g_RenderState.uiShapePipeline || !g_RenderState.uiShapeBuffer))
     {
         AX_WARN("UI render skipped, resources not initialized");
         UIClear();
         return;
     }
 
-    SDL_GPUIndirectDrawCommand draw = {
-        .num_vertices = 6u,
-        .num_instances = g_UIRenderer.count,
-        .first_vertex = 0u,
-        .first_instance = 0u
-    };
-    UIUploadBuffer(cmd, g_RenderState.uiShapeBuffer, g_UIRenderer.shapes, (size_t)g_UIRenderer.count * sizeof(UIShape));
-    UIUploadBuffer(cmd, g_RenderState.uiShapeDrawArgsBuffer, &draw, sizeof(draw));
-
     UIParams params = {0};
-    params.screenScale[0] = (f32)Maxu32(g_WindowState.prev_drawablew, 1u);
-    params.screenScale[1] = (f32)Maxu32(g_WindowState.prev_drawableh, 1u);
+    params.screenScale[0] = (f32)Maxu32(g_WindowState.prev_width, 1u);
+    params.screenScale[1] = (f32)Maxu32(g_WindowState.prev_height, 1u);
     params.screenScale[2] = 1.0f;
     params.screenScale[3] = 0.0f;
 
+    if (g_UIRenderer.count > 0u)
+    {
+        UpdateGPUBuffer(g_RenderState.uiShapeBuffer, g_UIRenderer.shapes, (size_t)g_UIRenderer.count * sizeof(UIShape), 0ull);
+    }
+    if (g_UIRenderer.imageCount > 0u && (!g_RenderState.uiImagePipeline || !g_RenderState.sampler))
+    {
+        AX_WARN("UI image render skipped, resources not initialized");
+        UIClear();
+        return;
+    }
+
     SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmd, colorTarget, 1, NULL);
-    SDL_BindGPUGraphicsPipeline(pass, g_RenderState.uiShapePipeline);
-    SDL_BindGPUVertexStorageBuffers(pass, 0, &g_RenderState.uiShapeBuffer, 1);
-    SDL_PushGPUVertexUniformData(cmd, 0, &params, sizeof(params));
-    SDL_PushGPUFragmentUniformData(cmd, 0, &params, sizeof(params));
-    SDL_DrawGPUPrimitivesIndirect(pass, g_RenderState.uiShapeDrawArgsBuffer, 0, 1);
+    u32 firstShape = 0u;
+    bool shapePipelineBound = false;
+
+    for (u32 i = 0; i < g_UIRenderer.imageCount; i++)
+    {
+        UIImageCommand* image = &g_UIRenderer.images[i];
+        u32 shapeFence = Minu32(image->shapeFence, g_UIRenderer.count);
+        if (shapeFence > firstShape)
+        {
+            if (!shapePipelineBound)
+            {
+                SDL_BindGPUGraphicsPipeline(pass, g_RenderState.uiShapePipeline);
+                SDL_BindGPUVertexStorageBuffers(pass, 0, &g_RenderState.uiShapeBuffer, 1);
+                SDL_PushGPUVertexUniformData(cmd, 0, &params, sizeof(params));
+                SDL_PushGPUFragmentUniformData(cmd, 0, &params, sizeof(params));
+                shapePipelineBound = true;
+            }
+            SDL_DrawGPUPrimitives(pass, 6, shapeFence - firstShape, 0, firstShape);
+            firstShape = shapeFence;
+        }
+
+        SDL_BindGPUGraphicsPipeline(pass, g_RenderState.uiImagePipeline);
+        shapePipelineBound = false;
+
+        UIImageParams imageParams = {0};
+        MemCopy(imageParams.screenScale, params.screenScale, sizeof(imageParams.screenScale));
+        MemCopy(imageParams.rect, image->rect, sizeof(imageParams.rect));
+        MemCopy(imageParams.uv, image->uv, sizeof(imageParams.uv));
+        MemCopy(imageParams.clip, image->clip, sizeof(imageParams.clip));
+        imageParams.tintColor = image->tintColor;
+        imageParams.radius = image->radius;
+
+        SDL_GPUTextureSamplerBinding binding = {
+            .texture = image->texture,
+            .sampler = image->sampler ? image->sampler : g_RenderState.sampler
+        };
+        SDL_BindGPUFragmentSamplers(pass, 0, &binding, 1);
+        SDL_PushGPUVertexUniformData(cmd, 0, &imageParams, sizeof(imageParams));
+        SDL_PushGPUFragmentUniformData(cmd, 0, &imageParams, sizeof(imageParams));
+        SDL_DrawGPUPrimitives(pass, 6, 1, 0, 0);
+    }
+
+    if (g_UIRenderer.count > firstShape)
+    {
+        if (!shapePipelineBound)
+        {
+            SDL_BindGPUGraphicsPipeline(pass, g_RenderState.uiShapePipeline);
+            SDL_BindGPUVertexStorageBuffers(pass, 0, &g_RenderState.uiShapeBuffer, 1);
+            SDL_PushGPUVertexUniformData(cmd, 0, &params, sizeof(params));
+            SDL_PushGPUFragmentUniformData(cmd, 0, &params, sizeof(params));
+        }
+        SDL_DrawGPUPrimitives(pass, 6, g_UIRenderer.count - firstShape, 0, firstShape);
+    }
+
     SDL_EndGPURenderPass(pass);
     UIClear();
+}
+
+static void UILayoutDestroy(void)
+{
+    if (g_UILayout.memory) DeAllocateTLSFGlobal(g_UILayout.memory);
+    g_UILayout = (UILayoutContext){0};
+}
+
+
+void UIDestroy(void)
+{
+    UILayoutDestroy();
+    UIDestroyTextShape();
+    if (g_UIRenderer.shapes) DeAllocateTLSFGlobal(g_UIRenderer.shapes);
+    if (g_UIRenderer.images) DeAllocateTLSFGlobal(g_UIRenderer.images);
+    g_UIRenderer = (UIRenderer){0};
 }

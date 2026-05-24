@@ -41,7 +41,7 @@ ShadowCascadeData GetShadowCascades(void)
     ShadowCascadeData result;
     float shadowNear = Maxf32(g_Camera.nearClip, 0.01f);
     float shadowFar  = Minf32(g_Camera.farClip, SHADOW_MAX_DISTANCE);
-    float aspect     = (float)Maxi32(g_Camera.viewportSize.x, 1) / (float)Maxi32(g_Camera.viewportSize.y, 1);
+    float aspect     = (float)Maxs32(g_Camera.viewportSize.x, 1) / (float)Maxs32(g_Camera.viewportSize.y, 1);
     float tanHalfFov = Tan(g_Camera.verticalFOV * MATH_DegToRad * 0.5f);
 
     float3 sunLightDir   = GetRenderSunDirection();
@@ -202,7 +202,7 @@ void RenderScene(SDL_GPUCommandBuffer* cmd, const ScenePassContext* ctx)
         { .texture = g_WindowState.tex_shadow_color, .sampler = g_RenderState.shadowSampler }
     };
     struct { f32 viewportSize[4]; f32 sunDirection[4]; } fragmentParams = {
-        { (f32)Maxi32(g_Camera.viewportSize.x, 1), (f32)Maxi32(g_Camera.viewportSize.y, 1), 0.0f, 0.0f },
+        { (f32)Maxs32(g_Camera.viewportSize.x, 1), (f32)Maxs32(g_Camera.viewportSize.y, 1), 0.0f, 0.0f },
         { sunDirection.x, sunDirection.y, sunDirection.z, 0.0f }
     };
     SDL_GPUBuffer* fragmentBuffers[2] = {

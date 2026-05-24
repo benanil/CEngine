@@ -17,3 +17,6 @@
 [submodule "Extern/basis_universal"]
 	path = Extern/basis_universal
 	url = https://github.com/BinomialLLC/basis_universal
+[submodule "Extern/clay"]
+	path = Extern/clay
+	url = https://github.com/nicbarker/clay.git

@@ -18,7 +18,6 @@
 #include <math.h>
 
 #define SLUG_EPS (1.0f / 1024.0f)
-#define SLUG_INITIAL_GPU_WORDS (256u * 1024u)
 #define SLUG_BOUNDS_PAD_PX 1.0f
 #define SLUG_BOUNDS_PAD_EM (1.0f / 32.0f)
 
@@ -503,11 +502,11 @@ bool SlugLoadFont(SlugFont* font, const char* path)
         return false;
     }
 
-    font->gpuCurveWords = Maxu32(font->buffers.maxCurveWords, SLUG_INITIAL_GPU_WORDS);
-    font->gpuBandWords = Maxu32(font->buffers.maxBands, SLUG_INITIAL_GPU_WORDS);
+    font->maxVertices = SLUG_MAX_TEXT * SLUG_VERTS_PER_GLYPH;
+    font->gpuCurveWords = Maxu32(font->buffers.maxCurveWords, font->maxVertices);
+    font->gpuBandWords = Maxu32(font->buffers.maxBands, font->maxVertices);
     font->curveBuffer = CreateBuffer(NULL, (size_t)font->gpuCurveWords * sizeof(u32), BReadRasterBit, "SlugCurveBuffer");
     font->bandBuffer  = CreateBuffer(NULL, (size_t)font->gpuBandWords * sizeof(u32), BReadRasterBit, "SlugBandBuffer");
-    font->maxVertices = SLUG_MAX_TEXT * SLUG_VERTS_PER_GLYPH;
     font->vertices = (SlugVertex*)AllocateTLSFGlobal((size_t)font->maxVertices * sizeof(SlugVertex));
     font->vertexBuffer = CreateBuffer(NULL, (size_t)font->maxVertices * sizeof(SlugVertex), BVertexBit, "SlugVertexBuffer");
     font->glyphBuffersDirty = true;
@@ -545,47 +544,14 @@ static void SlugWriteVertex(SlugVertex* v, f32 ox, f32 oy, f32 ex, f32 ey, f32 n
     SlugWriteVertexV(v, VecSetR(ox, oy, 0.0f, 0.0f), ex, ey, VecSetR(nx, ny, 0.0f, 0.0f), glyph, color);
 }
 
-static void SlugUploadVertexBuffer(SDL_GPUCommandBuffer* cmd, SDL_GPUBuffer* buffer, const void* data, size_t size)
-{
-    SDL_GPUTransferBufferCreateInfo transferDesc = {
-        .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
-        .size  = size
-    };
-    SDL_GPUTransferBuffer* transferBuffer = SDL_CreateGPUTransferBuffer(g_GPUDevice, &transferDesc);
-    void* dst = SDL_MapGPUTransferBuffer(g_GPUDevice, transferBuffer, false);
-    MemCopy(dst, data, size);
-    SDL_UnmapGPUTransferBuffer(g_GPUDevice, transferBuffer);
-
-    SDL_GPUCopyPass* copyPass = SDL_BeginGPUCopyPass(cmd);
-    SDL_UploadToGPUBuffer(copyPass,
-        &(SDL_GPUTransferBufferLocation){ .transfer_buffer = transferBuffer, .offset = 0 },
-        &(SDL_GPUBufferRegion){ .buffer = buffer, .offset = 0, .size = size },
-        true);
-    SDL_EndGPUCopyPass(copyPass);
-    SDL_ReleaseGPUTransferBuffer(g_GPUDevice, transferBuffer);
-}
-
 static bool SlugUploadGlyphBuffers(SDL_GPUCommandBuffer* cmd, SlugFont* font)
 {
     if (!font->glyphBuffersDirty) return true;
     if (font->buffers.numCurveWords == 0u || font->buffers.numBands == 0u) return false;
+    if (!font->curveBuffer || !font->bandBuffer) { AX_WARN("invalid font curve or bands"); return false; }
 
-    if (font->buffers.numCurveWords > font->gpuCurveWords)
-    {
-        if (font->curveBuffer) SDL_ReleaseGPUBuffer(g_GPUDevice, font->curveBuffer);
-        font->gpuCurveWords = Maxu32(font->buffers.maxCurveWords, font->buffers.numCurveWords);
-        font->curveBuffer = CreateBuffer(NULL, (size_t)font->gpuCurveWords * sizeof(u32), BReadRasterBit, "SlugCurveBuffer");
-    }
-    if (font->buffers.numBands > font->gpuBandWords)
-    {
-        if (font->bandBuffer) SDL_ReleaseGPUBuffer(g_GPUDevice, font->bandBuffer);
-        font->gpuBandWords = Maxu32(font->buffers.maxBands, font->buffers.numBands);
-        font->bandBuffer = CreateBuffer(NULL, (size_t)font->gpuBandWords * sizeof(u32), BReadRasterBit, "SlugBandBuffer");
-    }
-    if (!font->curveBuffer || !font->bandBuffer) return false;
-
-    SlugUploadVertexBuffer(cmd, font->curveBuffer, font->buffers.curves, (size_t)font->buffers.numCurveWords * sizeof(u32));
-    SlugUploadVertexBuffer(cmd, font->bandBuffer, font->buffers.bands, (size_t)font->buffers.numBands * sizeof(u32));
+    UpdateGPUBuffer(font->curveBuffer, font->buffers.curves, (size_t)font->buffers.numCurveWords * sizeof(u32), 0ll);
+    UpdateGPUBuffer(font->bandBuffer, font->buffers.bands, (size_t)font->buffers.numBands * sizeof(u32), 0ull);
     font->glyphBuffersDirty = false;
     return true;
 }
@@ -593,10 +559,46 @@ static bool SlugUploadGlyphBuffers(SDL_GPUCommandBuffer* cmd, SlugFont* font)
 void SlugClear(SlugFont* font)
 {
     font->numVertices = 0u;
+    font->numBatches = 0u;
+}
+
+static bool SlugClipEqual(const f32 a[4], const f32 b[4])
+{
+    return a[0] == b[0] && a[1] == b[1] && a[2] == b[2] && a[3] == b[3];
+}
+
+static u32 SlugBeginBatch(SlugFont* font, const f32 clip[4])
+{
+    if (font->numBatches > 0u)
+    {
+        SlugBatch* last = &font->batches[font->numBatches - 1u];
+        if (last->firstVertex + last->vertexCount == font->numVertices && SlugClipEqual(last->clip, clip)) return font->numBatches - 1u;
+    }
+
+    if (font->numBatches >= SLUG_MAX_BATCHES)
+    {
+        AX_WARN("Slug batch full: %u", font->numBatches);
+        return UINT32_MAX;
+    }
+
+    u32 batchIndex = font->numBatches++;
+    SlugBatch* batch = &font->batches[batchIndex];
+    batch->firstVertex = font->numVertices;
+    batch->vertexCount = 0u;
+    MemCopy(batch->clip, clip, sizeof(batch->clip));
+    return batchIndex;
+}
+
+static void SlugEndBatch(SlugFont* font, u32 batchIndex)
+{
+    if (batchIndex == UINT32_MAX || batchIndex >= font->numBatches) return;
+    SlugBatch* batch = &font->batches[batchIndex];
+    batch->vertexCount = font->numVertices - batch->firstVertex;
+    if (batch->vertexCount == 0u && batchIndex + 1u == font->numBatches) font->numBatches--;
 }
 
 // if no textedit is needed use this, otherwise UItext functions
-bool SlugAppendText2D(SlugFont* font, const char* text, float2 pos, f32 size, u32 color)
+bool SlugAppendText2DN(SlugFont* font, const char* text, u32 textBytes, float2 pos, f32 size, u32 color)
 {
     if (font == NULL) font = &g_SlugDemoFont;
     if (!font->vertices || !font->vertexBuffer || !font->curveBuffer || !font->bandBuffer)
@@ -605,14 +607,8 @@ bool SlugAppendText2D(SlugFont* font, const char* text, float2 pos, f32 size, u3
         return false;
     }
 
-    u32 textBytes = (u32)StringLengthSafe(text, SLUG_MAX_TEXT + 1u);
-    u32 textLen = StringCodepointCount(text, SLUG_MAX_TEXT);
     if (textBytes == 0u) return true;
-    if (textBytes > SLUG_MAX_TEXT)
-    {
-        AX_WARN("Slug 2D text too long: %u", textBytes);
-        return false;
-    }
+    u32 textLen = StringCodepointCount(text, textBytes);
     if (font->numVertices + textLen * SLUG_VERTS_PER_GLYPH > font->maxVertices)
     {
         AX_WARN("Slug 2D vertex batch full: vertices=%u needed=%u capacity=%u", font->numVertices, textLen * SLUG_VERTS_PER_GLYPH, font->maxVertices);
@@ -620,6 +616,9 @@ bool SlugAppendText2D(SlugFont* font, const char* text, float2 pos, f32 size, u3
     }
 
     f32 invSize = 1.0f / Maxf32(size, 1.0e-6f);
+    f32 clip[4];
+    UIGetClipRect(clip);
+    u32 batchIndex = SlugBeginBatch(font, clip);
     f32 cursor = 0.0f;
     f32 baselineY = pos.y + font->ascent * size;
     const char* at = text;
@@ -663,7 +662,13 @@ bool SlugAppendText2D(SlugFont* font, const char* text, float2 pos, f32 size, u3
         }
         cursor += glyph->advance;
     }
+    SlugEndBatch(font, batchIndex);
     return true;
+}
+
+bool SlugAppendText2D(SlugFont* font, const char* text, float2 pos, f32 size, u32 color)
+{
+    return SlugAppendText2DN(font, text, (u32)StringLengthSafe(text, SLUG_MAX_TEXT + 1u), pos, size, color);
 }
 
 bool SlugAppendText3D(SlugFont* font, const char* text, float3 pos, Quaternion rot, f32 size, u32 color)
@@ -696,6 +701,8 @@ bool SlugAppendText3D(SlugFont* font, const char* text, float3 pos, Quaternion r
     f32 cursor = 0.0f;
     const f32 n = 1.0 / MATH_Sqrt2;
     f32 invSize = 1.0f / Maxf32(size, 1.0e-6f);
+    const f32 clip[4] = { 0.0f, 0.0f, 2147483647.0f, 2147483647.0f };
+    u32 batchIndex = SlugBeginBatch(font, clip);
 
     const char* at = text;
     const char* end = text + textBytes;
@@ -748,6 +755,7 @@ bool SlugAppendText3D(SlugFont* font, const char* text, float3 pos, Quaternion r
         }
         cursor += glyph->advance;
     }
+    SlugEndBatch(font, batchIndex);
     return true;
 }
 
@@ -771,6 +779,9 @@ bool SlugAppendGlyph2D(SlugFont* font, u32 faceIndex, u32 glyphIndex, float2 pos
     SlugVertex* vertices = font->vertices;
     const f32 n = 0.70710678f;
     f32 invSize = 1.0f / Maxf32(size, 1.0e-6f);
+    f32 clip[4];
+    UIGetClipRect(clip);
+    u32 batchIndex = SlugBeginBatch(font, clip);
     f32 pad = SLUG_BOUNDS_PAD_PX * invSize;
     f32 ex0 = glyph->x0 - pad, ey0 = glyph->y0 - pad;
     f32 ex1 = glyph->x1 + pad, ey1 = glyph->y1 + pad;
@@ -794,6 +805,7 @@ bool SlugAppendGlyph2D(SlugFont* font, u32 faceIndex, u32 glyphIndex, float2 pos
         v->jac[0] = invSize;
         v->jac[3] = invSize;
     }
+    SlugEndBatch(font, batchIndex);
     return true;
 }
 
@@ -846,21 +858,24 @@ f32 SlugGetFontDescent(SlugFont* font)
     return font ? font->descent : 0.0f;
 }
 
-float2 SlugCalcTextSize(SlugFont* font, const char* text, f32 size)
+float2 SlugCalcTextSizeN(SlugFont* font, const char* text, u32 bytes, f32 size)
 {
     float2 result = {0.0f, 0.0f};
-    if (!font || !text) return result;
+    if (!font) font = &g_SlugDemoFont;
+    if (!text || bytes == 0u) return result;
 
     f32 lineWidth = 0.0f;
     f32 maxWidth = 0.0f;
     f32 lineHeight = Maxf32((font->ascent - font->descent) * size, size);
     result.y = lineHeight;
 
-    while (*text)
+    const char* at = text;
+    const char* end = text + bytes;
+    while (at < end)
     {
         u32 ch;
-        int step = CodepointFromUtf8(&ch, text, NULL);
-        text += step > 0 ? step : 1;
+        int step = CodepointFromUtf8(&ch, at, end);
+        at += step > 0 ? step : 1;
         if (ch == '\n')
         {
             maxWidth = Maxf32(maxWidth, lineWidth);
@@ -874,6 +889,12 @@ float2 SlugCalcTextSize(SlugFont* font, const char* text, f32 size)
 
     result.x = Maxf32(maxWidth, lineWidth);
     return result;
+}
+
+float2 SlugCalcTextSize(SlugFont* font, const char* text, f32 size)
+{
+    if (!text) return (float2){0.0f, 0.0f};
+    return SlugCalcTextSizeN(font, text, (u32)StringLength(text), size);
 }
 
 void SlugRender(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget, SDL_GPUDepthStencilTargetInfo* depthTarget, SlugFont* font, mat4x4 viewProj)
@@ -891,12 +912,12 @@ void SlugRender(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget, 
         AX_WARN("Slug render skipped, glyph buffers upload failed");
         return;
     }
-    SlugUploadVertexBuffer(cmd, font->vertexBuffer, font->vertices, (size_t)font->numVertices * sizeof(SlugVertex));
+    UpdateGPUBuffer(font->vertexBuffer, font->vertices, (size_t)font->numVertices * sizeof(SlugVertex), 0);
 
     SlugVertexParams params = {0};
     params.matrix = viewProj;
-    params.viewport[0] = (f32)Maxu32(g_WindowState.prev_drawablew, 1u);
-    params.viewport[1] = (f32)Maxu32(g_WindowState.prev_drawableh, 1u);
+    params.viewport[0] = (f32)Maxu32(g_WindowState.prev_width, 1u);
+    params.viewport[1] = (f32)Maxu32(g_WindowState.prev_height, 1u);
 
     SDL_GPUBuffer* storageBuffers[2] = { font->curveBuffer, font->bandBuffer };
     SDL_GPUBufferBinding vertexBinding = { font->vertexBuffer, 0 };
@@ -905,15 +926,31 @@ void SlugRender(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget, 
     SDL_BindGPUVertexBuffers(pass, 0, &vertexBinding, 1);
     SDL_BindGPUFragmentStorageBuffers(pass, 0, storageBuffers, SDL_arraysize(storageBuffers));
     SDL_PushGPUVertexUniformData(cmd, 0, &params, sizeof(params));
-    SDL_DrawGPUPrimitives(pass, font->numVertices, 1, 0, 0);
+    if (font->numBatches == 0u)
+    {
+        SDL_SetGPUScissor(pass, &(SDL_Rect){ 0, 0, (int)Maxu32(g_WindowState.prev_width, 1u), (int)Maxu32(g_WindowState.prev_height, 1u) });
+        SDL_DrawGPUPrimitives(pass, font->numVertices, 1, 0, 0);
+    }
+    for (u32 i = 0u; i < font->numBatches; i++)
+    {
+        const SlugBatch* batch = &font->batches[i];
+        if (batch->vertexCount == 0u) continue;
+        int x = (int)Maxf32(batch->clip[0], 0.0f);
+        int y = (int)Maxf32(batch->clip[1], 0.0f);
+        int x1 = (int)Minf32(Ceilf(batch->clip[2]), (f32)Maxu32(g_WindowState.prev_width, 1u));
+        int y1 = (int)Minf32(Ceilf(batch->clip[3]), (f32)Maxu32(g_WindowState.prev_height, 1u));
+        if (x1 <= x || y1 <= y) continue;
+        SDL_SetGPUScissor(pass, &(SDL_Rect){ x, y, x1 - x, y1 - y });
+        SDL_DrawGPUPrimitives(pass, batch->vertexCount, 1, batch->firstVertex, 0);
+    }
     SDL_EndGPURenderPass(pass);
     SlugClear(font);
 }
 
 void SlugRender2D(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget, SlugFont* font)
 {
-    f32 w = (f32)Maxu32(g_WindowState.prev_drawablew, 1u);
-    f32 h = (f32)Maxu32(g_WindowState.prev_drawableh, 1u);
+    f32 w = (f32)Maxu32(g_WindowState.prev_width, 1u);
+    f32 h = (f32)Maxu32(g_WindowState.prev_height, 1u);
     mat4x4 screen = M44Identity();
     screen.r[0] = VecSetR(2.0f / w, 0.0f, 0.0f, 0.0f);
     screen.r[1] = VecSetR(0.0f, -2.0f / h, 0.0f, 0.0f);

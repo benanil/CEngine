@@ -706,7 +706,7 @@ purefn f32 EaseInOut(f32 x) {
 
 // integral symbol shaped interpolation, similar to EaseInOut
 purefn f32 SmoothStep(f32 edge0, f32 edge1, f32 x) {
-    f32 t = Clamp01f32((x - edge0) / (edge1 - edge0));
+    f32 t = Saturatef32((x - edge0) / (edge1 - edge0));
     return t * t * (3.0f - t * 2.0f);
 }
 

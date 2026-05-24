@@ -142,7 +142,7 @@ typedef struct WindowState
     SDL_GPUTexture* tex_gbuffer_tangent, *tex_gbuffer_albedo_metallic, *tex_gbuffer_shadow_roughness;
     SDL_GPUTexture* tex_hbao, *tex_hbao_blur, *tex_hbao_normal;
     SDL_GPUTexture* tex_shadow_depth, *tex_shadow_color;
-    u32 prev_drawablew, prev_drawableh;
+    u32 prev_width, prev_height;
     u32 hiz_width, hiz_height, hiz_mip_count;
     mat4x4 hiz_view_proj;
     bool hiz_valid;
@@ -174,6 +174,7 @@ typedef struct RenderState
     SDL_GPUGraphicsPipeline* slugPipeline;
     SDL_GPUGraphicsPipeline* slugDepthPipeline;
     SDL_GPUGraphicsPipeline* uiShapePipeline;
+    SDL_GPUGraphicsPipeline* uiImagePipeline;
     SDL_GPUSampler*          sampler;
     SDL_GPUSampler*          hiZSampler;
     SDL_GPUSampler*          shadowSampler;

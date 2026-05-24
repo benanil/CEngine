@@ -74,7 +74,7 @@ static inline int CodepointFromUtf8(unsigned int* out_unicode, const char* in_te
         // All available bytes (at most `len` bytes) are consumed on incomplete/invalid second to last bytes.
         // Invalid or incomplete input may consume less bytes than wanted, therefore every byte has to be inspected in s.
         int get = !!s[0] + !!s[1] + !!s[2] + !!s[3];
-        wanted = Mini32(wanted, get);
+        wanted = Mins32(wanted, get);
         *out_unicode = (unsigned int)'!';
     }
 

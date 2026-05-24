@@ -8,6 +8,7 @@ struct UIShape
     uint borderColor;
     uint shape;
     uint flags;
+    float4 clip;
 };
 
 struct VSOutput
@@ -19,6 +20,7 @@ struct VSOutput
     nointerpolation uint color : COLOR0;
     nointerpolation uint borderColor : COLOR1;
     nointerpolation uint shape : TEXCOORD3;
+    nointerpolation float4 clip : TEXCOORD4;
 };
 
 cbuffer ui_params : register(b0, space1)
@@ -64,11 +66,14 @@ VSOutput vert(uint vertexID : SV_VertexID, uint instanceID : SV_InstanceID)
     o.color = shape.color;
     o.borderColor = shape.borderColor;
     o.shape = shape.shape;
+    o.clip = shape.clip;
     return o;
 }
 
 float4 frag(VSOutput input) : SV_Target0
 {
+    if (input.position.x < input.clip.x || input.position.y < input.clip.y || input.position.x > input.clip.z || input.position.y > input.clip.w) discard;
+
     float radius = input.params.x;
     float border = input.params.y;
     float softness = max(input.params.z, 0.0f);

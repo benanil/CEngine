@@ -48,9 +48,9 @@ purefn u32 MultiplyU32Colors(u32 a, u32 b)
 }
 
 purefn float3 HUEToRGB(f32 h) {
-    f32 r = Clamp01f32(Absf32(h * 6.0f - 3.0f) - 1.0f);
-    f32 g = Clamp01f32(2.0f - Absf32(h * 6.0f - 2.0f));
-    f32 b = Clamp01f32(2.0f - Absf32(h * 6.0f - 4.0f));
+    f32 r = Saturatef32(Absf32(h * 6.0f - 3.0f) - 1.0f);
+    f32 g = Saturatef32(2.0f - Absf32(h * 6.0f - 2.0f));
+    f32 b = Saturatef32(2.0f - Absf32(h * 6.0f - 4.0f));
     return (float3){ r, g, b };
 }
 

@@ -7,6 +7,27 @@ SDL_GPUDevice* g_GPUDevice = NULL;
 static bool g_EnableOcclusion = true;
 static bool g_EnableHBAO = true;
 
+#define RESIZE_RELEASE_DELAY 4u
+
+typedef struct FrameTextureSet_
+{
+    SDL_GPUTexture* tex_depth;
+    SDL_GPUTexture* tex_hiz_depth;
+    SDL_GPUTexture* tex_color;
+    SDL_GPUTexture* tex_gbuffer_tangent;
+    SDL_GPUTexture* tex_gbuffer_albedo_metallic;
+    SDL_GPUTexture* tex_gbuffer_shadow_roughness;
+    SDL_GPUTexture* tex_post;
+    SDL_GPUTexture* tex_hiz;
+    SDL_GPUTexture* tex_hbao;
+    SDL_GPUTexture* tex_hbao_blur;
+    SDL_GPUTexture* tex_hbao_normal;
+    u64 releaseFrame;
+} FrameTextureSet;
+
+static FrameTextureSet g_ResizeReleaseQueue[RESIZE_RELEASE_DELAY];
+static u64 g_RenderFrameIndex;
+
 extern void UIRenderCallback(void); // Editor.c
 
 static void InitRenderSetBuffers(RenderSetBuffers* buffers, RenderSet* set)
@@ -42,24 +63,69 @@ void InitBuffers(void)
     UIInit();
 }
 
-static void ReleaseWindowFrameTextures(WindowState* winstate)
+static void ReleaseFrameTextureSet(FrameTextureSet* set)
 {
-    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_depth);
-    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_hiz_depth);
-    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_color);
-    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_gbuffer_tangent);
-    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_gbuffer_albedo_metallic);
-    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_gbuffer_shadow_roughness);
-    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_post);
-    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_hiz);
-    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_hbao);
-    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_hbao_blur);
-    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_hbao_normal);
+    if (set->tex_depth) SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_depth);
+    if (set->tex_hiz_depth) SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_hiz_depth);
+    if (set->tex_color) SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_color);
+    if (set->tex_gbuffer_tangent) SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_gbuffer_tangent);
+    if (set->tex_gbuffer_albedo_metallic) SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_gbuffer_albedo_metallic);
+    if (set->tex_gbuffer_shadow_roughness) SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_gbuffer_shadow_roughness);
+    if (set->tex_post) SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_post);
+    if (set->tex_hiz) SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_hiz);
+    if (set->tex_hbao) SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_hbao);
+    if (set->tex_hbao_blur) SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_hbao_blur);
+    if (set->tex_hbao_normal) SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_hbao_normal);
+    *set = (FrameTextureSet){0};
+}
+
+static void ReleaseQueuedResizeTextures(bool force)
+{
+    for (u32 i = 0; i < RESIZE_RELEASE_DELAY; i++)
+    {
+        FrameTextureSet* set = &g_ResizeReleaseQueue[i];
+        if (!set->releaseFrame) continue;
+        if (force || g_RenderFrameIndex >= set->releaseFrame) ReleaseFrameTextureSet(set);
+    }
+}
+
+static void QueueWindowFrameTexturesForRelease(WindowState* winstate)
+{
+    FrameTextureSet old = {
+        .tex_depth = winstate->tex_depth,
+        .tex_hiz_depth = winstate->tex_hiz_depth,
+        .tex_color = winstate->tex_color,
+        .tex_gbuffer_tangent = winstate->tex_gbuffer_tangent,
+        .tex_gbuffer_albedo_metallic = winstate->tex_gbuffer_albedo_metallic,
+        .tex_gbuffer_shadow_roughness = winstate->tex_gbuffer_shadow_roughness,
+        .tex_post = winstate->tex_post,
+        .tex_hiz = winstate->tex_hiz,
+        .tex_hbao = winstate->tex_hbao,
+        .tex_hbao_blur = winstate->tex_hbao_blur,
+        .tex_hbao_normal = winstate->tex_hbao_normal,
+        .releaseFrame = g_RenderFrameIndex + RESIZE_RELEASE_DELAY
+    };
+
+    winstate->tex_depth = NULL;
+    winstate->tex_hiz_depth = NULL;
+    winstate->tex_color = NULL;
+    winstate->tex_gbuffer_tangent = NULL;
+    winstate->tex_gbuffer_albedo_metallic = NULL;
+    winstate->tex_gbuffer_shadow_roughness = NULL;
+    winstate->tex_post = NULL;
+    winstate->tex_hiz = NULL;
+    winstate->tex_hbao = NULL;
+    winstate->tex_hbao_blur = NULL;
+    winstate->tex_hbao_normal = NULL;
+
+    u32 slot = (u32)(g_RenderFrameIndex % RESIZE_RELEASE_DELAY);
+    ReleaseFrameTextureSet(&g_ResizeReleaseQueue[slot]);
+    g_ResizeReleaseQueue[slot] = old;
 }
 
 static void ResizeWindowFrameTextures(WindowState* winstate, u32 width, u32 height)
 {
-    ReleaseWindowFrameTextures(winstate);
+    QueueWindowFrameTexturesForRelease(winstate);
     winstate->tex_depth     = CreateDepthTexture(width, height);
     winstate->tex_hiz_depth = CreateHiZDepthTexture(width, height);
     winstate->tex_color     = CreateSceneColorTexture(width, height, SDL_GPU_SAMPLECOUNT_1);
@@ -76,6 +142,7 @@ static void ResizeWindowFrameTextures(WindowState* winstate, u32 width, u32 heig
     winstate->hiz_width     = width;
     winstate->hiz_height    = height;
     winstate->hiz_valid     = false;
+    Camera_RecalculateProjection(&g_Camera, (s32)width, (s32)height);
 }
 
 static SDL_GPUColorTargetInfo MakeMainColorTarget(WindowState* winstate)
@@ -195,6 +262,9 @@ static void AnimateSkinned(SDL_GPUCommandBuffer* cmd)
 
 void Render(void)
 {
+    g_RenderFrameIndex++;
+    ReleaseQueuedResizeTextures(false);
+
     SDL_GPUCommandBuffer* cmd = SDL_AcquireGPUCommandBuffer(g_GPUDevice);
     if (!cmd)
     {
@@ -205,24 +275,28 @@ void Render(void)
     static int swapchainLogged = 0;
     SDL_GPUTexture* swapchainTexture;
     Uint32 screenW, screenH;
-    if (!SDL_WaitAndAcquireGPUSwapchainTexture(cmd, g_SDLWindow, &swapchainTexture, &screenW, &screenH))
+    if (!SDL_AcquireGPUSwapchainTexture(cmd, g_SDLWindow, &swapchainTexture, &screenW, &screenH))
     {
         if (swapchainLogged++ < 4) AX_WARN("Failed to acquire swapchain texture: %s", SDL_GetError());
-        Quit(2);
+        SDL_CancelGPUCommandBuffer(cmd);
+        return;
     }
 
-    if (swapchainTexture == NULL)
+    if (swapchainTexture == NULL || screenW == 0u || screenH == 0u)
     {
-        if (swapchainLogged++ < 4) AX_WARN("Failed to acquire swapchain texture");
+        if (swapchainLogged++ < 4) AX_WARN("Swapchain texture unavailable");
         SDL_CancelGPUCommandBuffer(cmd);
         return;
     }
 
     WindowState* winstate = &g_WindowState;
-    if (winstate->prev_drawablew != screenW || winstate->prev_drawableh != screenH)
+    if (winstate->prev_width != screenW || winstate->prev_height != screenH)
+    {
         ResizeWindowFrameTextures(winstate, screenW, screenH);
-    winstate->prev_drawablew = screenW;
-    winstate->prev_drawableh = screenH;
+        swapchainLogged = 0;
+    }
+    winstate->prev_width = screenW;
+    winstate->prev_height = screenH;
 
     if (GetKeyReleased(SDLK_O))
     {
@@ -355,6 +429,7 @@ static void DestroyRenderSetBuffers(RenderSetBuffers* buffers)
 
 void DestroyPipeline(void)
 {
+    ReleaseQueuedResizeTextures(true);
     DestroyRenderSetBuffers(&g_RenderState.skinnedBuffers);
     DestroyRenderSetBuffers(&g_RenderState.surfaceBuffers);
     if (g_RenderState.skinnedVertexBuffer)     SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.skinnedVertexBuffer);

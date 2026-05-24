@@ -28,6 +28,8 @@
 #include "Shaders/spv/SlugFrag.spv.h"
 #include "Shaders/spv/UIShapeVert.spv.h"
 #include "Shaders/spv/UIShapeFrag.spv.h"
+#include "Shaders/spv/UIImageVert.spv.h"
+#include "Shaders/spv/UIImageFrag.spv.h"
 #include "Shaders/spv/TonemapCompute.spv.h"
 #include "Shaders/spv/HiZBuildCompute.spv.h"
 #include "Shaders/spv/HiZDownscaleCompute.spv.h"
@@ -442,6 +444,60 @@ static void InitUIShapePipeline(void)
     SDL_ReleaseGPUShader(g_GPUDevice, fragment_shader);
 }
 
+static void InitUIImagePipeline(void)
+{
+    SDL_GPUShader* vertex_shader = SDL_CreateGPUShader(g_GPUDevice, &(SDL_GPUShaderCreateInfo){
+        .num_uniform_buffers = 1,
+        .format              = SDL_GetGPUShaderFormats(g_GPUDevice),
+        .code                = Shaders_UIImageVert_spv,
+        .code_size           = sizeof(Shaders_UIImageVert_spv),
+        .num_samplers        = 0,
+        .num_storage_buffers = 0,
+        .stage               = SDL_GPU_SHADERSTAGE_VERTEX,
+        .entrypoint          = "vert"
+    }); CHECK_CREATE(vertex_shader, "UI Image Vertex Shader")
+
+    SDL_GPUShader* fragment_shader = SDL_CreateGPUShader(g_GPUDevice, &(SDL_GPUShaderCreateInfo){
+        .num_uniform_buffers = 1,
+        .format              = SDL_GetGPUShaderFormats(g_GPUDevice),
+        .code                = Shaders_UIImageFrag_spv,
+        .code_size           = sizeof(Shaders_UIImageFrag_spv),
+        .num_samplers        = 1,
+        .num_storage_buffers = 0,
+        .stage               = SDL_GPU_SHADERSTAGE_FRAGMENT,
+        .entrypoint          = "frag"
+    }); CHECK_CREATE(fragment_shader, "UI Image Fragment Shader")
+
+    SDL_GPUColorTargetDescription colorTarget = {
+        .format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
+        .blend_state = {
+            .enable_blend = true,
+            .color_write_mask = 0xF,
+            .color_blend_op = SDL_GPU_BLENDOP_ADD,
+            .alpha_blend_op = SDL_GPU_BLENDOP_ADD,
+            .src_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE,
+            .dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+            .src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE,
+            .dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA
+        }
+    };
+
+    g_RenderState.uiImagePipeline = SDL_CreateGPUGraphicsPipeline(g_GPUDevice, &(SDL_GPUGraphicsPipelineCreateInfo){
+        .vertex_shader   = vertex_shader,
+        .fragment_shader = fragment_shader,
+        .primitive_type  = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
+        .target_info     = (SDL_GPUGraphicsPipelineTargetInfo){
+            .num_color_targets         = 1,
+            .color_target_descriptions = &colorTarget
+        },
+        .multisample_state = (SDL_GPUMultisampleState){ .sample_count = SDL_GPU_SAMPLECOUNT_1 }
+    });
+    CHECK_CREATE(g_RenderState.uiImagePipeline, "UI Image Render Pipeline")
+
+    SDL_ReleaseGPUShader(g_GPUDevice, vertex_shader);
+    SDL_ReleaseGPUShader(g_GPUDevice, fragment_shader);
+}
+
 static void InitSkinedPipeline(void)
 {
     SDL_GPUShader* vertex_shader = SDL_CreateGPUShader(g_GPUDevice, &(SDL_GPUShaderCreateInfo){
@@ -717,6 +773,7 @@ void InitRenderPipelines(void)
     InitLinePipeline();
     InitSlugPipeline();
     InitUIShapePipeline();
+    InitUIImagePipeline();
     InitComputePipelines();
 }
 
@@ -732,6 +789,7 @@ void DestroyRenderPipelines(void)
     if (g_RenderState.slugPipeline) SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.slugPipeline);
     if (g_RenderState.slugDepthPipeline) SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.slugDepthPipeline);
     if (g_RenderState.uiShapePipeline) SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.uiShapePipeline);
+    if (g_RenderState.uiImagePipeline) SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.uiImagePipeline);
     if (g_AnimComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_AnimComputePipeline);
     if (g_AnimVerticesPipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_AnimVerticesPipeline);
     if (g_CullDrawArgsComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_CullDrawArgsComputePipeline);

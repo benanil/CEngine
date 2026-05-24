@@ -292,7 +292,7 @@ static float2 GetGodRaySunPos(mat4x4 viewProj, float* intensity)
     v128f ndcV = VecDiv(clip, VecSet1(w));
     float ndcX = VecGetX(ndcV);
     float ndcY = VecGetY(ndcV);
-    *intensity *= Clamp01f32((facing + 0.2f) / 0.7f);
+    *intensity *= Saturatef32((facing + 0.2f) / 0.7f);
     return (float2){ Clampf32(ndcX * 0.5f + 0.5f, -0.5f, 1.5f), Clampf32(0.5f - ndcY * 0.5f, -0.5f, 1.5f) };
 }
 

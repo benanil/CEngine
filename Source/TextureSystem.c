@@ -393,7 +393,7 @@ static bool AllocateCompressedPageBuffers(CompressedPageBuffers* pages, SDL_GPUT
 {
     SmallMemSet(pages, 0, sizeof(*pages));
     pages->format = format;
-    pages->mipCount = Mini32((s32)mipCount, CompressedPageMaxMips);
+    pages->mipCount = Mins32((s32)mipCount, CompressedPageMaxMips);
     if (pages->mipCount == 0) pages->mipCount = 1;
     for (u32 mip = 0; mip < pages->mipCount; mip++)
     {
@@ -677,7 +677,7 @@ static bool PackClassCompressed(Texture* textures, bool* wanted, u32 textureClas
     u32 numRects = PackTextureRects(textures, wanted, CompressedPageAlign, 16, true, &pack);
 
     CompressedPageBuffers pages;
-    if (!AllocateCompressedPageBuffers(&pages, format, Mini32((s32)MipCountForSize(TEXTURE_PAGE_SIZE, TEXTURE_PAGE_SIZE), CompressedPageMaxMips))) return false;
+    if (!AllocateCompressedPageBuffers(&pages, format, Mins32((s32)MipCountForSize(TEXTURE_PAGE_SIZE, TEXTURE_PAGE_SIZE), CompressedPageMaxMips))) return false;
     FillCompressedDefaultBlocks(&pages, textureClass);
 
     for (u32 i = 0; i < pack.count; i++)

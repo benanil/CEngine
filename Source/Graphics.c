@@ -86,6 +86,10 @@ void GraphicsInit(bool msaa)
     SDL_DestroyProperties(props);
 
     CHECK_CREATE(g_GPUDevice, "GPU device");
+    if (!SDL_SetGPUAllowedFramesInFlight(g_GPUDevice, 3u))
+    {
+        AX_WARN("Failed to set GPU frames in flight: %s", SDL_GetError());
+    }
     /* Claim the windows */
     SDL_ClaimWindowForGPUDevice(g_GPUDevice, g_SDLWindow);
     
@@ -236,7 +240,7 @@ static u32 GetMipCount(u32 width, u32 height)
 {
     u32 levels = 1;
     u32 size = width > height ? width : height;
-    while (size > 1) {
+    while (size > 16) {
         size >>= 1u;
         levels++;
     }
@@ -425,22 +429,6 @@ SDL_GPUTexture* CreateShadowColorTexture(u32 size, u32 layers)
                                 "Shadow Color Texture");
 }
 
-static void MakeRGBAFromRGB(const unsigned char* RESTRICT from, unsigned char* rgba, int numPixels)
-{
-    for (int i = 0; i < numPixels; i++)
-    {
-        MemsetZero(rgba, 4 * sizeof(char));
-        rgba[0] = from[0];
-        rgba[1] = from[1];
-        rgba[2] = from[2];
-        rgba[3] = 255;
-
-        from += 3;
-        rgba += 4;
-    }
-}
-
-
 Texture rImportTexture(const char* path, TexFlags flags, const char* label)
 {
     int width, height, channels;
@@ -473,25 +461,10 @@ Texture rImportTexture(const char* path, TexFlags flags, const char* label)
         return defTexture;
     }
     
-    const SDL_GPUTextureFormat numCompToFormat[5] = 
-    {
-        0, 
-        SDL_GPU_TEXTUREFORMAT_R8_UNORM, 
-        SDL_GPU_TEXTUREFORMAT_R8G8_UNORM,
-        SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM, 
-        SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM, 
-    };
-    
-    if (channels == 3) // shouldn't happen since stb gives us 4 channel
-    {
-        size_t numBytes = width * height * 4;
-        textureLoadBuffer = ArenaPushGlobal(size);
-        MakeRGBAFromRGB(image, textureLoadBuffer, numBytes);
-        STBI_REALLOC(image, numBytes);
-        MemCopy(image, textureLoadBuffer, numBytes);
-        ArenaPopGlobal(numBytes);
-    }
-    Texture texture = rCreateTexture(width, height, image, numCompToFormat[channels], flags, 0, label); 
+    (void)channels;
+    SDL_GPUTextureUsageFlags usage = SDL_GPU_TEXTUREUSAGE_SAMPLER;
+    if (flags & TexFlags_MipMap) usage |= SDL_GPU_TEXTUREUSAGE_COLOR_TARGET;
+    Texture texture = rCreateTexture(width, height, image, SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM, flags, usage, label); 
     texture.type = 0;
     
     bool delBuff = (flags & TexFlags_DontDeleteCPUBuffer) == 0;
@@ -501,21 +474,6 @@ Texture rImportTexture(const char* path, TexFlags flags, const char* label)
         texture.buffer = NULL;
     }
     return texture;
-}
-
-static u64 CalcMipBytes(u32 width, u32 height, u32 bpp, u32 mipLevels)
-{
-    u64 total = 0;
-    u64 w = width;
-    u64 h = height;
-
-    for (u32 i = 0; i < mipLevels; ++i)
-    {
-        total += w * h * bpp;
-        w = w > 1 ? (w >> 1) : 1;
-        h = h > 1 ? (h >> 1) : 1;
-    }
-    return total;
 }
 
 static Texture rCreateTextureEx(

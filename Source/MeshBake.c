@@ -14,7 +14,7 @@ static void JointsForPrimitive(APrimitive* primitive, ASkinedVertex* currVertex)
 {
     const u8* joints = (const u8*)primitive->vertexAttribs[AAttribIdx_JOINTS];
     s32 jointSize    = GraphicsTypeToSize(primitive->jointType);
-    s32 jointOffset  = Maxi32((s32)(primitive->jointStride - (jointSize * primitive->jointCount)), 0);
+    s32 jointOffset  = Maxs32((s32)(primitive->jointStride - (jointSize * primitive->jointCount)), 0);
 
     if (joints == NULL)
     {
@@ -45,7 +45,7 @@ static void WeightsForPrimitive(APrimitive* primitive, ASkinedVertex* currVertex
 {
     const u8* weights = (const u8*)primitive->vertexAttribs[AAttribIdx_WEIGHTS];
     s32 weightSize   = GraphicsTypeToSize(primitive->weightType);
-    s32 weightOffset = Maxi32((s32)(primitive->weightStride - (weightSize * primitive->jointCount)), 0);
+    s32 weightOffset = Maxs32((s32)(primitive->weightStride - (weightSize * primitive->jointCount)), 0);
 
     if (weights == NULL)
     {

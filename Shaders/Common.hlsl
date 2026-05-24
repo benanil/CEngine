@@ -151,12 +151,12 @@ typedef float4x4 mat4x4;
 #define Clamp01f32(x)         saturate(x)
 
 #define Clampf32(x, min, max) clamp(x, min, max)
-#define Clampi32(x, min, max) clamp(x, min, max)
+#define Clamps32(x, min, max) clamp(x, min, max)
 
 #define Minf32(a, b)          min(a, b) 
 #define Maxf32(a, b)          max(a, b) 
-#define Mini32(a, b)          min(a, b) 
-#define Maxi32(a, b)          max(a, b)
+#define Mins32(a, b)          min(a, b) 
+#define Maxs32(a, b)          max(a, b)
 
 #define Absi32(x)             abs(x)
 #define Absf32(x)             abs(x)

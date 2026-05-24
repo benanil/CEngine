@@ -103,7 +103,7 @@ purefn u32 VCALL PackNormalTangent(v128f normal, v128f tangent)
     v128f oct          = OctEncode(normal);
     float diamond      = EncodeTangentDiamond(normal, tangent);
     u32 packedOct      = PackXY11Z10SnormToU32(VecSetR(VecGetX(oct), VecGetY(oct), 0.0f, 0.0f)) & 0x3FFFFFu;
-    u32 packedDiamond  = (u32)(Clamp01f32(diamond) * 511.0f + 0.5f) & 0x1FFu;
+    u32 packedDiamond  = (u32)(Saturatef32(diamond) * 511.0f + 0.5f) & 0x1FFu;
     u32 handedness     = VecGetW(tangent) < 0.0f ? 1u : 0u;
     return packedOct | (packedDiamond << 22) | (handedness << 31);
 }
