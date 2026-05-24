@@ -1,4 +1,4 @@
-#include "CommonStructs.hlsl"
+#include "TextureSampling.hlsl"
 #include "Bitpack.hlsl"
 #include "Math.hlsl"
 
@@ -18,7 +18,14 @@ struct VSInput
     f16_2_io aTexCoords    : TEXCOORD0;
 };
 
-float4 vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("DrawIndex")]] uint drawID : DRAWINDEX) : SV_Position
+struct VSOutput
+{
+    float4 position : SV_Position;
+    f16_2_io texCoords : TEXCOORD0;
+    nointerpolation uint materialIndex : TEXCOORD1;
+};
+
+VSOutput vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("DrawIndex")]] uint drawID : DRAWINDEX)
 {
     PrimitiveGroup group = sPrimitiveGroups[drawID];
     uint denseIdx = sDrawSparseIndices[group.entityOffset + instanceID];
@@ -28,10 +35,27 @@ float4 vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("DrawI
     f16_3 insScale = UnpackVec3XY11Z10Unorm(entity.scale) * f16(10.0);
     f16_3 worldPos = QMulVec3(insRot, f16_3(input.aPos) * insScale);
     float3 finalWorldPos = float3(worldPos) + entity.position.xyz;
-    return mul(uViewProj, float4(finalWorldPos, 1.0));
+
+    VSOutput o;
+    o.position = mul(uViewProj, float4(finalWorldPos, 1.0));
+    o.texCoords = input.aTexCoords;
+    o.materialIndex = group.materialIndex;
+    return o;
 }
 
-float frag(float4 position : SV_Position) : SV_Target0
+Texture2DArray<float4> AlbedoPages : register(t0, space2);
+SamplerState Sampler : register(s0, space2);
+StructuredBuffer<MaterialGPU> sMaterials : register(t1, space2);
+StructuredBuffer<TextureDescriptor> sTextureDescriptors : register(t2, space2);
+
+float frag(VSOutput input) : SV_Target0
 {
-    return position.z;
+    MaterialGPU material = sMaterials[input.materialIndex];
+    if (MaterialIsAlphaMasked(material.flags))
+    {
+        TextureDescriptor albedo = sTextureDescriptors[material.albedoDescriptor];
+        f16_4 albedoSample = SampleTexturePageRGBA(AlbedoPages, Sampler, albedo, float2(input.texCoords));
+        AlphaClipMaterial(material, float(albedoSample.a));
+    }
+    return input.position.z;
 }

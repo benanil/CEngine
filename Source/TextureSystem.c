@@ -143,6 +143,15 @@ static u32 AddDescriptorFlags(u32 pageIndex, float x, float y, float w, float h,
     return idx;
 }
 
+static u32 PackMaterialFlags(const AMaterial* material)
+{
+    u32 cutoff = (u32)(Saturatef32(material->alphaCutoff) * 255.0f + 0.5f);
+    u32 flags = (cutoff << MATERIAL_ALPHA_CUTOFF_SHIFT) & MATERIAL_ALPHA_CUTOFF_MASK;
+    if (material->alphaMode == AMaterialAlphaMode_Mask)
+        flags |= MATERIAL_FLAG_ALPHA_MASK;
+    return flags;
+}
+
 static void MarkWantedTexture(bool wanted[TextureClass_Count][MAX_SCENE_TEXTURES], u32 textureClass, u32 imageIndex)
 {
     if (imageIndex >= MAX_SCENE_TEXTURES || textureClass >= TextureClass_Count)
@@ -838,6 +847,7 @@ void TextureSystem_BuildPages(SceneBundle** bundles, const u32* imageOffsets, u3
             dst->albedoDescriptor = 1;
             dst->normalDescriptor = 2;
             dst->metallicRoughnessDescriptor = 3;
+            dst->flags = PackMaterialFlags(src);
             dst->baseColorFactor = src->baseColorFactor;
             dst->metallicRoughnessFactor = ((u32)src->metallicFactor << 16u) | src->roughnessFactor;
             u32 imageIndex;

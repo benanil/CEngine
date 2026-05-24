@@ -2,6 +2,7 @@
 #include <SDL3/SDL_clipboard.h>
 #include "RenderingInternal.h"
 #include "UI_Internal.h"
+#include "Include/Memory.h"
 #include "Include/UIRenderer.h"
 
 typedef struct UITextCommand_

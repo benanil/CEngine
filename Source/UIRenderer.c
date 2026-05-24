@@ -1,7 +1,9 @@
 #define CLAY_IMPLEMENTATION
 #include "RenderingInternal.h"
 #include "UI_Internal.h"
+#include "Include/Memory.h"
 #include "Include/Platform.h" // PlatformContext.lastTime for milisecond text
+#include "Include/Random.h"
 #include "Include/String.h"
 #include "Extern/kb/kb_text_shape.h"
 

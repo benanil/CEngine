@@ -43,6 +43,7 @@ void main(uint3 tid : SV_DispatchThreadID)
     f16_3 packedNormal;
     f16_3 packedTangent;
     UnpackNormalTangent(tangentFrame, packedNormal, packedTangent);
+    float3 normal = normalize(float3(packedNormal));
 
     float4 albedoMetallic = AlbedoMetallicTexture.Load(int3(pixel, 0));
     float2 shadowRoughness = ShadowRoughnessTexture.Load(int3(pixel, 0));
@@ -51,7 +52,7 @@ void main(uint3 tid : SV_DispatchThreadID)
     float3 worldPos = ReconstructWorldPosition(uv, depth);
     float3 viewDir = cameraPosition.xyz - worldPos;
     float3 color = ApplyPBR(albedoMetallic.rgb,
-                            float3(packedNormal),
+                            normal,
                             viewDir,
                             albedoMetallic.a,
                             shadowRoughness.g,

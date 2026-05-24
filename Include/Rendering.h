@@ -1,6 +1,5 @@
 #ifndef CP_RENDERING
 #define CP_RENDERING
-#include "Animation.h"
 
 void DestroyPipeline();
 

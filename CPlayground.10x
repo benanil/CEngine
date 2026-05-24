@@ -471,6 +471,24 @@
 					<File>
 						<Path>Shaders/UIImage.hlsl</Path>
 					</File>
+					<File>
+						<Path>Shaders/SkinnedShadowDepthOnly.hlsl</Path>
+					</File>
+					<File>
+						<Path>Shaders/SurfaceShadowDepthOnly.hlsl</Path>
+					</File>
+					<File>
+						<Path>Shaders/MLAABlendCompute.hlsl</Path>
+					</File>
+					<File>
+						<Path>Shaders/MLAACommon.hlsl</Path>
+					</File>
+					<File>
+						<Path>Shaders/MLAAEdgeMaskCompute.hlsl</Path>
+					</File>
+					<File>
+						<Path>Shaders/MLAALineLengthCompute.hlsl</Path>
+					</File>
 				</Children>
 			</Folder>
 			<Folder>

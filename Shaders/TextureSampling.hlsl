@@ -1,7 +1,6 @@
 #ifndef TEXTURE_SAMPLING_H
 #define TEXTURE_SAMPLING_H
 
-#include "Common.hlsl"
 #include "CommonStructs.hlsl"
 
 #ifndef TEXTURE_PAGE_SIZE_F

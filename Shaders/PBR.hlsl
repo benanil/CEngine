@@ -22,6 +22,28 @@ float Pow5(float x)
     return x2 * x2 * x;
 }
 
+float PerceptualRoughnessToRoughness(float perceptualRoughness)
+{
+    return perceptualRoughness * perceptualRoughness;
+}
+
+float RoughnessToPerceptualRoughness(float roughness)
+{
+    return sqrt(roughness);
+}
+
+#define SPECULAR_AA_VARIANCE  0.15f
+#define SPECULAR_AA_THRESHOLD 0.25f
+
+float SpecularAntiAliasing(float perceptualRoughness, float3 normalDx, float3 normalDy)
+{
+    float variance = SPECULAR_AA_VARIANCE * (dot(normalDx, normalDx) + dot(normalDy, normalDy));
+    float roughness = PerceptualRoughnessToRoughness(perceptualRoughness);
+    float kernelRoughness = min(2.0f * variance, SPECULAR_AA_THRESHOLD);
+    float squareRoughness = saturate(roughness * roughness + kernelRoughness);
+    return RoughnessToPerceptualRoughness(sqrt(squareRoughness));
+}
+
 float D_GGX(float roughness, float NoH, float3 n, float3 h)
 {
     float3 NxH = cross(n, h);
@@ -77,7 +99,7 @@ float3 DecodeNormalRG(float2 normalRG)
     return normalize(float3(xy, z));
 }
 
-float3 ApplyPBR(float3 albedo, float3 normal, float3 viewDir, float metallic, float roughness, float shadow, float ao, float3 lightDir)
+float3 ApplyPBR(float3 albedo, float3 normal, float3 viewDir, float metallic, float perceptualRoughness, float shadow, float ao, float3 lightDir)
 {
     normal    = normalize(normal);
 
@@ -86,11 +108,12 @@ float3 ApplyPBR(float3 albedo, float3 normal, float3 viewDir, float metallic, fl
     #elif PBR_DEBUG_OUTPUT == 2
         return albedo;
     #elif PBR_DEBUG_OUTPUT == 3
-        return float3(metallic, roughness, 0.0f);
+        return float3(metallic, perceptualRoughness, 0.0f);
     #endif
 
     viewDir   = normalize(viewDir);
-    roughness = clamp(roughness, 0.045f, 1.0f);
+    perceptualRoughness = clamp(perceptualRoughness, 0.045f, 1.0f);
+    float roughness = PerceptualRoughnessToRoughness(perceptualRoughness);
     metallic  = saturate(metallic);
 
     lightDir = normalize(lightDir);

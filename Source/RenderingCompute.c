@@ -38,7 +38,7 @@ void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet
     params.hiZSize[1] = hiZHeight;
     params.hiZMipCount = hiZMipCount;
     params.enableHiZ = enableHiZ ? 1u : 0u;
-    params.hiZDepthBias = 0.005f;
+    params.hiZDepthBias = 0.02f;
 
     SDL_GPUBuffer* ro_buffers[3] = {
         buffers->entity,
@@ -362,6 +362,71 @@ void DispatchTonemapCompute(SDL_GPUCommandBuffer* cmd, SDL_GPUTexture* source, S
     params.sunDirection[1] = sunDir.y;
     params.sunDirection[2] = sunDir.z;
     params.sunDirection[2] = FModf(params.time, MATH_TwoPI);
+    SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
+    SDL_DispatchGPUCompute(pass, (width + 7u) / 8u, (height + 7u) / 8u, 1);
+    SDL_EndGPUComputePass(pass);
+}
+
+void DispatchMLAACompute(SDL_GPUCommandBuffer* cmd, SDL_GPUTexture* source, SDL_GPUTexture* destination, u32 width, u32 height, f32 threshold, bool showEdges)
+{
+    WindowState* winstate = &g_WindowState;
+    if (!source || !destination || !winstate->tex_mlaa_edge_mask || !winstate->tex_mlaa_edge_count)
+    {
+        AX_WARN("MLAA resources are not ready");
+        return;
+    }
+    CHECK_CREATE(g_MLAAEdgeMaskComputePipeline, "MLAA Edge Mask Compute Pipeline");
+    CHECK_CREATE(g_MLAALineLengthComputePipeline, "MLAA Line Length Compute Pipeline");
+    CHECK_CREATE(g_MLAABlendComputePipeline, "MLAA Blend Compute Pipeline");
+
+    struct {
+        u32 outputSize[2];
+        f32 threshold;
+        u32 showEdges;
+    } params = {
+        { width, height },
+        threshold,
+        showEdges ? 1u : 0u
+    };
+
+    SDL_GPUStorageTextureReadWriteBinding edgeMaskOutput = {
+        .texture = winstate->tex_mlaa_edge_mask,
+        .mip_level = 0,
+        .layer = 0,
+        .cycle = true
+    };
+    SDL_GPUComputePass* pass = SDL_BeginGPUComputePass(cmd, &edgeMaskOutput, 1, NULL, 0);
+    SDL_BindGPUComputePipeline(pass, g_MLAAEdgeMaskComputePipeline);
+    SDL_GPUTextureSamplerBinding sourceBinding = { .texture = source, .sampler = g_RenderState.hiZSampler };
+    SDL_BindGPUComputeSamplers(pass, 0, &sourceBinding, 1);
+    SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
+    SDL_DispatchGPUCompute(pass, (width + 7u) / 8u, (height + 7u) / 8u, 1);
+    SDL_EndGPUComputePass(pass);
+
+    SDL_GPUStorageTextureReadWriteBinding edgeCountOutput = {
+        .texture = winstate->tex_mlaa_edge_count,
+        .mip_level = 0,
+        .layer = 0,
+        .cycle = true
+    };
+    pass = SDL_BeginGPUComputePass(cmd, &edgeCountOutput, 1, NULL, 0);
+    SDL_BindGPUComputePipeline(pass, g_MLAALineLengthComputePipeline);
+    SDL_BindGPUComputeStorageTextures(pass, 0, &winstate->tex_mlaa_edge_mask, 1);
+    SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
+    SDL_DispatchGPUCompute(pass, (width + 7u) / 8u, (height + 7u) / 8u, 1);
+    SDL_EndGPUComputePass(pass);
+
+    SDL_GPUStorageTextureReadWriteBinding blendOutput = {
+        .texture = destination,
+        .mip_level = 0,
+        .layer = 0,
+        .cycle = true
+    };
+    pass = SDL_BeginGPUComputePass(cmd, &blendOutput, 1, NULL, 0);
+    SDL_BindGPUComputePipeline(pass, g_MLAABlendComputePipeline);
+    SDL_BindGPUComputeSamplers(pass, 0, &sourceBinding, 1);
+    SDL_GPUTexture* readonlyTextures[2] = { winstate->tex_mlaa_edge_mask, winstate->tex_mlaa_edge_count };
+    SDL_BindGPUComputeStorageTextures(pass, 0, readonlyTextures, SDL_arraysize(readonlyTextures));
     SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
     SDL_DispatchGPUCompute(pass, (width + 7u) / 8u, (height + 7u) / 8u, 1);
     SDL_EndGPUComputePass(pass);

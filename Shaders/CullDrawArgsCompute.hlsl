@@ -181,64 +181,53 @@ bool AABBOccludedHiZ(float3 mn, float3 mx)
     for (uint i = 0; i < 8; i++)
     {
         float4 clip = mul(viewProjection, float4(corners[i], 1.0f));
-        if (clip.w <= 0.0001f)
-        {
-            anyBehind = true;
-            continue;
-        }
-
+        if (clip.w <= 0.0001f) { anyBehind = true; continue; }
         float3 ndc = clip.xyz / clip.w;
         rectMin = min(rectMin, ndc.xy);
         rectMax = max(rectMax, ndc.xy);
-        float depth = saturate(ndc.z);
-        nearestDepth = min(nearestDepth, depth);
+        nearestDepth = min(nearestDepth, saturate(ndc.z));
         anyFront = true;
     }
 
     if (!anyFront || anyBehind)
         return false;
-
     if (rectMax.x < -1.0f || rectMin.x > 1.0f || rectMax.y < -1.0f || rectMin.y > 1.0f)
         return false;
-
     if (nearestDepth >= 1.0f)
         return false;
 
     float2 uvA = rectMin * float2(0.5f, -0.5f) + 0.5f;
     float2 uvB = rectMax * float2(0.5f, -0.5f) + 0.5f;
-    rectMin = min(uvA, uvB);
-    rectMax = max(uvA, uvB);
-    rectMin = clamp(rectMin, 0.0f, 1.0f);
-    rectMax = clamp(rectMax, 0.0f, 1.0f);
+    rectMin = saturate(min(uvA, uvB));
+    rectMax = saturate(max(uvA, uvB));
+
+    float2 rectPadding = 2.0f / float2(hiZSize);
+    rectMin = saturate(rectMin - rectPadding);
+    rectMax = saturate(rectMax + rectPadding);
 
     float2 extentPixels = max((rectMax - rectMin) * float2(hiZSize), 1.0f);
     float mip = clamp(ceil(log2(max(extentPixels.x, extentPixels.y))), 0.0f, float(hiZMipCount - 1u));
+
     float lowerMip = max(mip - 1.0f, 0.0f);
     float2 lowerMipSize = max(floor(float2(hiZSize) / exp2(lowerMip)), 1.0f);
-    float2 lowerMin = floor(rectMin * lowerMipSize);
-    float2 lowerMax = ceil(rectMax * lowerMipSize);
-    float2 lowerDims = lowerMax - lowerMin;
+    float2 lowerDims = ceil(rectMax * lowerMipSize) - floor(rectMin * lowerMipSize);
     if (lowerDims.x <= 2.0f && lowerDims.y <= 2.0f)
         mip = lowerMip;
 
     int selectedMip = int(mip);
     uint2 mipSize = max(hiZSize >> uint(selectedMip), uint2(1u, 1u));
-    float2 mipTexel = 1.0f / float2(mipSize);
-    rectMin = saturate(rectMin - mipTexel);
-    rectMax = saturate(rectMax + mipTexel);
+    float2 mipSizeF = float2(mipSize);
 
-    uint2 p0 = min(uint2(rectMin * float2(mipSize)), mipSize - 1u);
-    uint2 p1 = min(uint2(float2(rectMax.x, rectMin.y) * float2(mipSize)), mipSize - 1u);
-    uint2 p2 = min(uint2(float2(rectMin.x, rectMax.y) * float2(mipSize)), mipSize - 1u);
-    uint2 p3 = min(uint2(rectMax * float2(mipSize)), mipSize - 1u);
-    uint2 pc = min(uint2(((rectMin + rectMax) * 0.5f) * float2(mipSize)), mipSize - 1u);
+    uint2 p0 = uint2(max(floor(rectMin * mipSizeF - 0.001f), 0.0f));
+    uint2 p1 = min(uint2(floor(rectMax * mipSizeF + 0.001f)), mipSize - 1u);
+    uint2 sampleDims = p1 - p0 + 1u;
+    if (sampleDims.x > 8u || sampleDims.y > 8u)
+        return false;
 
-    float d0 = hiZTexture.Load(int3(p0, selectedMip));
-    float d1 = hiZTexture.Load(int3(p1, selectedMip));
-    float d2 = hiZTexture.Load(int3(p2, selectedMip));
-    float d3 = hiZTexture.Load(int3(p3, selectedMip));
-    float d4 = hiZTexture.Load(int3(pc, selectedMip));
-    float maxOccluderDepth = max(max(max(d0, d1), max(d2, d3)), d4);
+    float maxOccluderDepth = 0.0f;
+    for (uint sy = p0.y; sy <= p1.y; sy++)
+        for (uint sx = p0.x; sx <= p1.x; sx++)
+            maxOccluderDepth = max(maxOccluderDepth, hiZTexture.Load(int3(sx, sy, selectedMip)));
 
     return maxOccluderDepth + hiZDepthBias < nearestDepth;
 }

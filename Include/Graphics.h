@@ -15,7 +15,7 @@
 #define MAX_SCENE_TEXTURES      1024
 #define MAX_TEXTURE_DESCRIPTORS 2048
 #define MAX_GPU_MATERIALS       2048
-#define SHADOW_MAP_SIZE         (1023u * 3u)
+#define SHADOW_MAP_SIZE         (1024u * 2u)
 #define SHADOW_CASCADE_COUNT    3u
 
 #if defined(__cplusplus)
@@ -119,11 +119,16 @@ typedef struct Texture_
 
 typedef struct TextureDescriptor_
 {
-    u32 pageIndex;
-    u32 flags;
     float2 uvScale;
     float2 uvBias;
+    u32 pageIndex;
+    u32 flags;
+    u32 padding[2];
 } TextureDescriptor;
+
+#define MATERIAL_FLAG_ALPHA_MASK       (1u << 0)
+#define MATERIAL_ALPHA_CUTOFF_SHIFT    8u
+#define MATERIAL_ALPHA_CUTOFF_MASK     (0xffu << MATERIAL_ALPHA_CUTOFF_SHIFT)
 
 typedef struct MaterialGPU_
 {
@@ -141,6 +146,7 @@ typedef struct WindowState
     SDL_GPUTexture* tex_depth, *tex_hiz_depth, *tex_color, *tex_post, *tex_hiz;
     SDL_GPUTexture* tex_gbuffer_tangent, *tex_gbuffer_albedo_metallic, *tex_gbuffer_shadow_roughness;
     SDL_GPUTexture* tex_hbao, *tex_hbao_blur, *tex_hbao_normal;
+    SDL_GPUTexture* tex_mlaa_edge_mask, *tex_mlaa_edge_count, *tex_mlaa_output;
     SDL_GPUTexture* tex_shadow_depth, *tex_shadow_color;
     u32 prev_width, prev_height;
     u32 hiz_width, hiz_height, hiz_mip_count;
@@ -276,6 +282,12 @@ SDL_GPUTexture* CreatePostProcessTexture(u32 drawablew, u32 drawableh);
 SDL_GPUTexture* CreateHBAOTexture(u32 drawablew, u32 drawableh);
 
 SDL_GPUTexture* CreateHBAONormalTexture(u32 drawablew, u32 drawableh);
+
+SDL_GPUTexture* CreateMLAAEdgeMaskTexture(u32 drawablew, u32 drawableh);
+
+SDL_GPUTexture* CreateMLAAEdgeCountTexture(u32 drawablew, u32 drawableh);
+
+SDL_GPUTexture* CreateMLAAOutputTexture(u32 drawablew, u32 drawableh);
 
 SDL_GPUTexture* Create3DNoise3DTexture(u32 size);
 

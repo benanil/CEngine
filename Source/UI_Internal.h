@@ -2,6 +2,8 @@
 #define CP_UI_INTERNAL
 
 #include "Include/Graphics.h"
+#include "Include/Slug.h"
+#include "Include/UIRenderer.h"
 #include "Include/String.h"
 #include "Extern/kb/kb_text_shape.h"
 

@@ -1,4 +1,5 @@
 #include "RenderingInternal.h"
+#include "Include/Slug.h"
 
 #if defined(PLATFORM_APPLE)
 #include "Shaders/msl/SkinnedFrag.msl.h"
@@ -36,10 +37,17 @@
 #include "Shaders/spv/HBAOCompute.spv.h"
 #include "Shaders/spv/HBAOBlurCompute.spv.h"
 #include "Shaders/spv/ExtractNormalCompute.spv.h"
+#include "Shaders/spv/MLAAEdgeMaskCompute.spv.h"
+#include "Shaders/spv/MLAALineLengthCompute.spv.h"
+#include "Shaders/spv/MLAABlendCompute.spv.h"
 #include "Shaders/spv/SurfaceDepthOnlyVert.spv.h"
 #include "Shaders/spv/SurfaceDepthOnlyFrag.spv.h"
 #include "Shaders/spv/SkinnedDepthOnlyVert.spv.h"
 #include "Shaders/spv/SkinnedDepthOnlyFrag.spv.h"
+#include "Shaders/spv/SurfaceShadowDepthOnlyVert.spv.h"
+#include "Shaders/spv/SurfaceShadowDepthOnlyFrag.spv.h"
+#include "Shaders/spv/SkinnedShadowDepthOnlyVert.spv.h"
+#include "Shaders/spv/SkinnedShadowDepthOnlyFrag.spv.h"
 #endif
 
 #define VFORMAT_F32    SDL_GPU_VERTEXELEMENTFORMAT_FLOAT
@@ -61,6 +69,9 @@ SDL_GPUComputePipeline* g_HBAOComputePipeline = NULL;
 SDL_GPUComputePipeline* g_HBAOBlurComputePipeline = NULL;
 SDL_GPUComputePipeline* g_ExtractNormalComputePipeline = NULL;
 SDL_GPUComputePipeline* g_DeferredLightingComputePipeline = NULL;
+SDL_GPUComputePipeline* g_MLAAEdgeMaskComputePipeline = NULL;
+SDL_GPUComputePipeline* g_MLAALineLengthComputePipeline = NULL;
+SDL_GPUComputePipeline* g_MLAABlendComputePipeline = NULL;
 
 static void InitComputePipelines(void)
 {
@@ -204,6 +215,49 @@ static void InitComputePipelines(void)
         .threadcount_z                  = 1,
     });
     CHECK_CREATE(g_DeferredLightingComputePipeline, "Deferred Lighting Compute Pipeline");
+
+    g_MLAAEdgeMaskComputePipeline = SDL_CreateGPUComputePipeline(g_GPUDevice, &(SDL_GPUComputePipelineCreateInfo){
+        .code                           = Shaders_MLAAEdgeMaskCompute_spv,
+        .code_size                      = sizeof(Shaders_MLAAEdgeMaskCompute_spv),
+        .entrypoint                     = "main",
+        .format                         = SDL_GetGPUShaderFormats(g_GPUDevice),
+        .num_samplers                   = 1,
+        .num_readwrite_storage_textures = 1,
+        .num_uniform_buffers            = 1,
+        .threadcount_x                  = 8,
+        .threadcount_y                  = 8,
+        .threadcount_z                  = 1,
+    });
+    CHECK_CREATE(g_MLAAEdgeMaskComputePipeline, "MLAA Edge Mask Compute Pipeline");
+
+    g_MLAALineLengthComputePipeline = SDL_CreateGPUComputePipeline(g_GPUDevice, &(SDL_GPUComputePipelineCreateInfo){
+        .code                           = Shaders_MLAALineLengthCompute_spv,
+        .code_size                      = sizeof(Shaders_MLAALineLengthCompute_spv),
+        .entrypoint                     = "main",
+        .format                         = SDL_GetGPUShaderFormats(g_GPUDevice),
+        .num_readonly_storage_textures  = 1,
+        .num_readwrite_storage_textures = 1,
+        .num_uniform_buffers            = 1,
+        .threadcount_x                  = 8,
+        .threadcount_y                  = 8,
+        .threadcount_z                  = 1,
+    });
+    CHECK_CREATE(g_MLAALineLengthComputePipeline, "MLAA Line Length Compute Pipeline");
+
+    g_MLAABlendComputePipeline = SDL_CreateGPUComputePipeline(g_GPUDevice, &(SDL_GPUComputePipelineCreateInfo){
+        .code                           = Shaders_MLAABlendCompute_spv,
+        .code_size                      = sizeof(Shaders_MLAABlendCompute_spv),
+        .entrypoint                     = "main",
+        .format                         = SDL_GetGPUShaderFormats(g_GPUDevice),
+        .num_samplers                   = 1,
+        .num_readonly_storage_textures  = 2,
+        .num_readwrite_storage_textures = 1,
+        .num_uniform_buffers            = 1,
+        .threadcount_x                  = 8,
+        .threadcount_y                  = 8,
+        .threadcount_z                  = 1,
+    });
+    CHECK_CREATE(g_MLAABlendComputePipeline, "MLAA Blend Compute Pipeline");
 }
 
 static void InitSamplers(void)
@@ -671,8 +725,8 @@ static void InitDepthOnlyPipelines(void)
         .format              = SDL_GetGPUShaderFormats(g_GPUDevice),
         .code                = Shaders_SurfaceDepthOnlyFrag_spv,
         .code_size           = sizeof(Shaders_SurfaceDepthOnlyFrag_spv),
-        .num_samplers        = 0,
-        .num_storage_buffers = 0,
+        .num_samplers        = 1,
+        .num_storage_buffers = 2,
         .stage               = SDL_GPU_SHADERSTAGE_FRAGMENT,
         .entrypoint          = "frag"
     });
@@ -691,6 +745,46 @@ static void InitDepthOnlyPipelines(void)
         .format              = SDL_GetGPUShaderFormats(g_GPUDevice),
         .code                = Shaders_SkinnedDepthOnlyFrag_spv,
         .code_size           = sizeof(Shaders_SkinnedDepthOnlyFrag_spv),
+        .num_samplers        = 1,
+        .num_storage_buffers = 2,
+        .stage               = SDL_GPU_SHADERSTAGE_FRAGMENT,
+        .entrypoint          = "frag"
+    });
+    SDL_GPUShader* surface_shadow_vertex_shader = SDL_CreateGPUShader(g_GPUDevice, &(SDL_GPUShaderCreateInfo){
+        .num_uniform_buffers = 1,
+        .format              = SDL_GetGPUShaderFormats(g_GPUDevice),
+        .code                = Shaders_SurfaceShadowDepthOnlyVert_spv,
+        .code_size           = sizeof(Shaders_SurfaceShadowDepthOnlyVert_spv),
+        .num_samplers        = 0,
+        .num_storage_buffers = 3,
+        .stage               = SDL_GPU_SHADERSTAGE_VERTEX,
+        .entrypoint          = "vert"
+    });
+    SDL_GPUShader* surface_shadow_fragment_shader = SDL_CreateGPUShader(g_GPUDevice, &(SDL_GPUShaderCreateInfo){
+        .num_uniform_buffers = 0,
+        .format              = SDL_GetGPUShaderFormats(g_GPUDevice),
+        .code                = Shaders_SurfaceShadowDepthOnlyFrag_spv,
+        .code_size           = sizeof(Shaders_SurfaceShadowDepthOnlyFrag_spv),
+        .num_samplers        = 0,
+        .num_storage_buffers = 0,
+        .stage               = SDL_GPU_SHADERSTAGE_FRAGMENT,
+        .entrypoint          = "frag"
+    });
+    SDL_GPUShader* skinned_shadow_vertex_shader = SDL_CreateGPUShader(g_GPUDevice, &(SDL_GPUShaderCreateInfo){
+        .num_uniform_buffers = 1,
+        .format              = SDL_GetGPUShaderFormats(g_GPUDevice),
+        .code                = Shaders_SkinnedShadowDepthOnlyVert_spv,
+        .code_size           = sizeof(Shaders_SkinnedShadowDepthOnlyVert_spv),
+        .num_samplers        = 0,
+        .num_storage_buffers = 4,
+        .stage               = SDL_GPU_SHADERSTAGE_VERTEX,
+        .entrypoint          = "vert"
+    });
+    SDL_GPUShader* skinned_shadow_fragment_shader = SDL_CreateGPUShader(g_GPUDevice, &(SDL_GPUShaderCreateInfo){
+        .num_uniform_buffers = 0,
+        .format              = SDL_GetGPUShaderFormats(g_GPUDevice),
+        .code                = Shaders_SkinnedShadowDepthOnlyFrag_spv,
+        .code_size           = sizeof(Shaders_SkinnedShadowDepthOnlyFrag_spv),
         .num_samplers        = 0,
         .num_storage_buffers = 0,
         .stage               = SDL_GPU_SHADERSTAGE_FRAGMENT,
@@ -700,6 +794,10 @@ static void InitDepthOnlyPipelines(void)
     CHECK_CREATE(surface_fragment_shader, "Surface Depth Fragment Shader")
     CHECK_CREATE(skinned_vertex_shader, "Skinned Depth Vertex Shader")
     CHECK_CREATE(skinned_fragment_shader, "Skinned Depth Fragment Shader")
+    CHECK_CREATE(surface_shadow_vertex_shader, "Surface Shadow Vertex Shader")
+    CHECK_CREATE(surface_shadow_fragment_shader, "Surface Shadow Fragment Shader")
+    CHECK_CREATE(skinned_shadow_vertex_shader, "Skinned Shadow Vertex Shader")
+    CHECK_CREATE(skinned_shadow_fragment_shader, "Skinned Shadow Fragment Shader")
 
     const SDL_GPUVertexAttribute surface_attributes[3] = {
         { .location = 0, .buffer_slot = 0, .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3, .offset = offsetof(AVertex, position) },
@@ -749,8 +847,10 @@ static void InitDepthOnlyPipelines(void)
 
     g_RenderState.surfaceDepthPipeline = SDL_CreateGPUGraphicsPipeline(g_GPUDevice, &surface_desc);
     g_RenderState.skinnedDepthPipeline = SDL_CreateGPUGraphicsPipeline(g_GPUDevice, &skinned_desc);
-    surface_desc.multisample_state = (SDL_GPUMultisampleState){ .sample_count = SDL_GPU_SAMPLECOUNT_1 };
-    skinned_desc.multisample_state = (SDL_GPUMultisampleState){ .sample_count = SDL_GPU_SAMPLECOUNT_1 };
+    surface_desc.vertex_shader = surface_shadow_vertex_shader;
+    surface_desc.fragment_shader = surface_shadow_fragment_shader;
+    skinned_desc.vertex_shader = skinned_shadow_vertex_shader;
+    skinned_desc.fragment_shader = skinned_shadow_fragment_shader;
     g_RenderState.surfaceShadowPipeline = SDL_CreateGPUGraphicsPipeline(g_GPUDevice, &surface_desc);
     g_RenderState.skinnedShadowPipeline = SDL_CreateGPUGraphicsPipeline(g_GPUDevice, &skinned_desc);
     CHECK_CREATE(g_RenderState.surfaceDepthPipeline, "Surface Depth Pipeline")
@@ -762,6 +862,10 @@ static void InitDepthOnlyPipelines(void)
     SDL_ReleaseGPUShader(g_GPUDevice, surface_fragment_shader);
     SDL_ReleaseGPUShader(g_GPUDevice, skinned_vertex_shader);
     SDL_ReleaseGPUShader(g_GPUDevice, skinned_fragment_shader);
+    SDL_ReleaseGPUShader(g_GPUDevice, surface_shadow_vertex_shader);
+    SDL_ReleaseGPUShader(g_GPUDevice, surface_shadow_fragment_shader);
+    SDL_ReleaseGPUShader(g_GPUDevice, skinned_shadow_vertex_shader);
+    SDL_ReleaseGPUShader(g_GPUDevice, skinned_shadow_fragment_shader);
 }
 
 void InitRenderPipelines(void)
@@ -800,4 +904,7 @@ void DestroyRenderPipelines(void)
     if (g_HBAOBlurComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_HBAOBlurComputePipeline);
     if (g_ExtractNormalComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_ExtractNormalComputePipeline);
     if (g_DeferredLightingComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_DeferredLightingComputePipeline);
+    if (g_MLAAEdgeMaskComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_MLAAEdgeMaskComputePipeline);
+    if (g_MLAALineLengthComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_MLAALineLengthComputePipeline);
+    if (g_MLAABlendComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_MLAABlendComputePipeline);
 }

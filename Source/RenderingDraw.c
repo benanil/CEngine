@@ -57,8 +57,8 @@ ShadowCascadeData GetShadowCascades(void)
     {
         float split = CascadeSplitDistance(shadowNear, shadowFar, cascade);
         result.splitDistances[cascade] = split;
-        float nearDist = previousSplit;
-        float farDist  = split;
+        float nearDist = cascade > 0 ? Maxf32(shadowNear, previousSplit - SHADOW_CASCADE_OVERLAP) : previousSplit;
+        float farDist  = cascade + 1u < SHADOW_CASCADE_COUNT ? Minf32(shadowFar, split + SHADOW_CASCADE_OVERLAP) : split;
         previousSplit  = split;
 
         float nearH = tanHalfFov * nearDist;
@@ -121,6 +121,11 @@ void RenderDepth(SDL_GPUCommandBuffer* cmd, const DepthPassContext* ctx)
 {
     SDL_GPUBufferBinding vertex_binding = { g_RenderState.skinnedVertexBuffer, 0 };
     SDL_GPUBufferBinding index_binding  = { g_RenderState.indexBuffer, 0 };
+    SDL_GPUTextureSamplerBinding albedoSampler = { .texture = g_RenderState.albedoPages.handle, .sampler = g_RenderState.sampler };
+    SDL_GPUBuffer* fragmentBuffers[2] = {
+        g_RenderState.materialBuffer,
+        g_RenderState.textureDescriptorBuffer
+    };
 
     SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmd, ctx->colorTarget, ctx->colorTarget ? 1 : 0, ctx->depthTarget);
     if (ctx->viewport) SDL_SetGPUViewport(pass, ctx->viewport);
@@ -138,6 +143,11 @@ void RenderDepth(SDL_GPUCommandBuffer* cmd, const DepthPassContext* ctx)
             g_RenderState.skinnedAnimatedVertices
         };
         SDL_BindGPUVertexStorageBuffers(pass, 0, buffers, SDL_arraysize(buffers));
+        if (ctx->alphaClip)
+        {
+            SDL_BindGPUFragmentSamplers(pass, 0, &albedoSampler, 1);
+            SDL_BindGPUFragmentStorageBuffers(pass, 0, fragmentBuffers, SDL_arraysize(fragmentBuffers));
+        }
         SDL_PushGPUVertexUniformData(cmd, 0, &ctx->viewProj, sizeof(mat4x4));
         SDL_DrawGPUIndexedPrimitivesIndirect(pass, g_RenderState.skinnedBuffers.drawArgs, 0, skinnedSet.numGroups);
     }
@@ -155,6 +165,11 @@ void RenderDepth(SDL_GPUCommandBuffer* cmd, const DepthPassContext* ctx)
             g_RenderState.surfaceBuffers.drawSparseIndices
         };
         SDL_BindGPUVertexStorageBuffers(pass, 0, surfaceBuffers, SDL_arraysize(surfaceBuffers));
+        if (ctx->alphaClip)
+        {
+            SDL_BindGPUFragmentSamplers(pass, 0, &albedoSampler, 1);
+            SDL_BindGPUFragmentStorageBuffers(pass, 0, fragmentBuffers, SDL_arraysize(fragmentBuffers));
+        }
         SDL_PushGPUVertexUniformData(cmd, 0, &ctx->viewProj, sizeof(mat4x4));
         SDL_DrawGPUIndexedPrimitivesIndirect(pass, g_RenderState.surfaceBuffers.drawArgs, 0, surfaceSet.numGroups);
     }

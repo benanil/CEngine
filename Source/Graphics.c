@@ -111,6 +111,9 @@ void GraphicsInit(bool msaa)
     winstate->tex_hbao        = CreateHBAOTexture(Maxu32((u32)drawablew / 2u, 1u), Maxu32((u32)drawableh / 2u, 1u));
     winstate->tex_hbao_blur   = CreateHBAOTexture(Maxu32((u32)drawablew / 2u, 1u), Maxu32((u32)drawableh / 2u, 1u));
     winstate->tex_hbao_normal = CreateHBAONormalTexture(Maxu32((u32)drawablew / 2u, 1u), Maxu32((u32)drawableh / 2u, 1u));
+    winstate->tex_mlaa_edge_mask = CreateMLAAEdgeMaskTexture(drawablew, drawableh);
+    winstate->tex_mlaa_edge_count = CreateMLAAEdgeCountTexture(drawablew, drawableh);
+    winstate->tex_mlaa_output = CreateMLAAOutputTexture(drawablew, drawableh);
     winstate->tex_shadow_depth = CreateShadowDepthTexture(SHADOW_MAP_SIZE);
     winstate->tex_shadow_color = CreateShadowColorTexture(SHADOW_MAP_SIZE, SHADOW_CASCADE_COUNT);
     g_RenderState.skyNoise3D = Create3DNoise3DTexture(64u);
@@ -139,6 +142,9 @@ void GraphicsDestroy()
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_hbao);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_hbao_blur);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_hbao_normal);
+    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_mlaa_edge_mask);
+    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_mlaa_edge_count);
+    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_mlaa_output);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_shadow_depth);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_shadow_color);
     SDL_ReleaseGPUTexture(g_GPUDevice, g_RenderState.skyNoise3D);
@@ -413,6 +419,27 @@ SDL_GPUTexture* CreateHBAONormalTexture(u32 drawablew, u32 drawableh)
     return CreateTexture2D(drawablew, drawableh, SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
                             SDL_GPU_TEXTUREUSAGE_SAMPLER | SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_WRITE,
                             SDL_GPU_SAMPLECOUNT_1, 1, "HBAO Normal Texture");
+}
+
+SDL_GPUTexture* CreateMLAAEdgeMaskTexture(u32 drawablew, u32 drawableh)
+{
+    return CreateTexture2D(drawablew, drawableh, SDL_GPU_TEXTUREFORMAT_R32_UINT,
+                           SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_READ | SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_WRITE,
+                           SDL_GPU_SAMPLECOUNT_1, 1, "MLAA Edge Mask Texture");
+}
+
+SDL_GPUTexture* CreateMLAAEdgeCountTexture(u32 drawablew, u32 drawableh)
+{
+    return CreateTexture2D(drawablew, drawableh, SDL_GPU_TEXTUREFORMAT_R32G32_UINT,
+                           SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_READ | SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_WRITE,
+                           SDL_GPU_SAMPLECOUNT_1, 1, "MLAA Edge Count Texture");
+}
+
+SDL_GPUTexture* CreateMLAAOutputTexture(u32 drawablew, u32 drawableh)
+{
+    return CreateTexture2D(drawablew, drawableh, SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
+                           SDL_GPU_TEXTUREUSAGE_SAMPLER | SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_WRITE,
+                           SDL_GPU_SAMPLECOUNT_1, 1, "MLAA Output Texture");
 }
 
 SDL_GPUTexture* CreateShadowDepthTexture(u32 size)

@@ -1,5 +1,4 @@
 #include "../Include/RenderLimits.h"
-#include "CommonStructs.hlsl"
 #include "TextureSampling.hlsl"
 #include "PBR.hlsl"
 #include "Bitpack.hlsl"
@@ -112,8 +111,10 @@ GBufferOutput frag(VSOutput input)
     TextureDescriptor normalDesc = sTextureDescriptors[material.normalDescriptor];
     TextureDescriptor mrDesc = sTextureDescriptors[material.metallicRoughnessDescriptor];
 
-    float4 baseFactor = float4(1.0, 1.0, 1.0, 1.0); // UnpackColor4Uint(material.baseColorFactor);
-    f16_3 baseColor = SRGBToLinear(SampleTexturePageRGBA(AlbedoPages, Sampler, albedo, float2(input.texCoords)).rgb) * f16_3(baseFactor.rgb);
+    f16_4 albedoSample = SampleTexturePageRGBA(AlbedoPages, Sampler, albedo, float2(input.texCoords));
+    float4 baseFactor = UnpackColor4Uint(material.baseColorFactor);
+    AlphaClipMaterial(material, float(albedoSample.a));
+    f16_3 baseColor = SRGBToLinear(albedoSample.rgb) * f16_3(baseFactor.rgb);
     float3 tangentNormal = DecodeNormalRG(float2(SampleTexturePageRG(NormalPages, Sampler, normalDesc, float2(input.texCoords))));
     f16_2 mr = SampleTexturePageRG(MetallicRoughnessPages, Sampler, mrDesc, float2(input.texCoords));
 
@@ -136,6 +137,8 @@ GBufferOutput frag(VSOutput input)
     metallic = 0.0f;
     roughness = 1.0f;
     #endif
+
+    roughness = SpecularAntiAliasing(roughness, ddx(N), ddy(N));
 
     float3 T = normalize(float3(input.tangent) - dot(float3(input.tangent), N) * N);
     GBufferOutput output;

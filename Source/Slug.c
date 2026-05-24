@@ -6,6 +6,7 @@
 #define HMMemcpy(mem, src, size) MemCopy(mem, src, size)
 #define HM_HASHMAP_IMPLEMENTATION
 #include "RenderingInternal.h"
+#include "Include/Memory.h"
 #include "Include/Slug.h"
 #include "Include/FileSystem.h"
 #include "Include/String.h"
