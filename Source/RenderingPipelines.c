@@ -34,6 +34,9 @@
 #include "Shaders/spv/TonemapCompute.spv.h"
 #include "Shaders/spv/HiZBuildCompute.spv.h"
 #include "Shaders/spv/HiZDownscaleCompute.spv.h"
+#include "Shaders/spv/SDSMDepthBoundsInitial.spv.h"
+#include "Shaders/spv/SDSMDepthBoundsReduce.spv.h"
+#include "Shaders/spv/SDSMSetupShadows.spv.h"
 #include "Shaders/spv/HBAOCompute.spv.h"
 #include "Shaders/spv/HBAOBlurCompute.spv.h"
 #include "Shaders/spv/ExtractNormalCompute.spv.h"
@@ -65,6 +68,9 @@ SDL_GPUComputePipeline* g_CullDrawArgsComputePipeline = NULL;
 SDL_GPUComputePipeline* g_TonemapComputePipeline = NULL;
 SDL_GPUComputePipeline* g_HiZBuildComputePipeline = NULL;
 SDL_GPUComputePipeline* g_HiZDownscaleComputePipeline = NULL;
+SDL_GPUComputePipeline* g_SDSMDepthBoundsInitialPipeline = NULL;
+SDL_GPUComputePipeline* g_SDSMDepthBoundsReducePipeline = NULL;
+SDL_GPUComputePipeline* g_SDSMSetupShadowsPipeline = NULL;
 SDL_GPUComputePipeline* g_HBAOComputePipeline = NULL;
 SDL_GPUComputePipeline* g_HBAOBlurComputePipeline = NULL;
 SDL_GPUComputePipeline* g_ExtractNormalComputePipeline = NULL;
@@ -124,7 +130,6 @@ static void InitComputePipelines(void)
         .entrypoint                     = "main",
         .format                         = SDL_GetGPUShaderFormats(g_GPUDevice),
         .num_samplers                   = 1,
-        .num_readonly_storage_textures  = 1,
         .num_readwrite_storage_textures = 1,
         .num_uniform_buffers            = 1,
         .threadcount_x                  = 8,
@@ -146,6 +151,48 @@ static void InitComputePipelines(void)
         .threadcount_z                  = 1,
     });
     CHECK_CREATE(g_HiZDownscaleComputePipeline, "Hi-Z Downscale Compute Pipeline");
+
+    g_SDSMDepthBoundsInitialPipeline = SDL_CreateGPUComputePipeline(g_GPUDevice, &(SDL_GPUComputePipelineCreateInfo){
+        .code                           = Shaders_SDSMDepthBoundsInitial_spv,
+        .code_size                      = sizeof(Shaders_SDSMDepthBoundsInitial_spv),
+        .entrypoint                     = "main",
+        .format                         = SDL_GetGPUShaderFormats(g_GPUDevice),
+        .num_samplers                   = 1,
+        .num_readwrite_storage_textures = 1,
+        .num_uniform_buffers            = 1,
+        .threadcount_x                  = 8,
+        .threadcount_y                  = 8,
+        .threadcount_z                  = 1,
+    });
+    CHECK_CREATE(g_SDSMDepthBoundsInitialPipeline, "SDSM Depth Bounds Initial Pipeline");
+
+    g_SDSMDepthBoundsReducePipeline = SDL_CreateGPUComputePipeline(g_GPUDevice, &(SDL_GPUComputePipelineCreateInfo){
+        .code                           = Shaders_SDSMDepthBoundsReduce_spv,
+        .code_size                      = sizeof(Shaders_SDSMDepthBoundsReduce_spv),
+        .entrypoint                     = "main",
+        .format                         = SDL_GetGPUShaderFormats(g_GPUDevice),
+        .num_readonly_storage_textures  = 1,
+        .num_readwrite_storage_textures = 1,
+        .num_uniform_buffers            = 1,
+        .threadcount_x                  = 8,
+        .threadcount_y                  = 8,
+        .threadcount_z                  = 1,
+    });
+    CHECK_CREATE(g_SDSMDepthBoundsReducePipeline, "SDSM Depth Bounds Reduce Pipeline");
+
+    g_SDSMSetupShadowsPipeline = SDL_CreateGPUComputePipeline(g_GPUDevice, &(SDL_GPUComputePipelineCreateInfo){
+        .code                           = Shaders_SDSMSetupShadows_spv,
+        .code_size                      = sizeof(Shaders_SDSMSetupShadows_spv),
+        .entrypoint                     = "main",
+        .format                         = SDL_GetGPUShaderFormats(g_GPUDevice),
+        .num_readonly_storage_textures  = 1,
+        .num_readwrite_storage_buffers  = 1,
+        .num_uniform_buffers            = 1,
+        .threadcount_x                  = 1,
+        .threadcount_y                  = 1,
+        .threadcount_z                  = 1,
+    });
+    CHECK_CREATE(g_SDSMSetupShadowsPipeline, "SDSM Setup Shadows Pipeline");
 
     g_TonemapComputePipeline = SDL_CreateGPUComputePipeline(g_GPUDevice, &(SDL_GPUComputePipelineCreateInfo){
         .code                           = Shaders_TonemapCompute_spv,
@@ -294,7 +341,7 @@ static void InitSamplers(void)
         .address_mode_v  = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
         .address_mode_w  = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
         .min_lod         = 0.0f,
-        .max_lod         = 0.0f
+        .max_lod         = SHADOW_CASCADE_COUNT
     });
     CHECK_CREATE(g_RenderState.shadowSampler, "Shadow Sampler")
 }
@@ -560,7 +607,7 @@ static void InitSkinedPipeline(void)
         .code                = Shaders_SkinnedVert_spv,
         .code_size           = sizeof(Shaders_SkinnedVert_spv),
         .num_samplers        = 0,
-        .num_storage_buffers = 4,
+        .num_storage_buffers = 5,
         .stage               = SDL_GPU_SHADERSTAGE_VERTEX,
         .entrypoint          = "vert"
     });
@@ -633,7 +680,7 @@ static void InitSurfacePipeline(void)
         .code                = Shaders_SurfaceVert_spv,
         .code_size           = sizeof(Shaders_SurfaceVert_spv),
         .num_samplers        = 0,
-        .num_storage_buffers = 3,
+        .num_storage_buffers = 4,
         .stage               = SDL_GPU_SHADERSTAGE_VERTEX,
         .entrypoint          = "vert"
     });
@@ -756,7 +803,7 @@ static void InitDepthOnlyPipelines(void)
         .code                = Shaders_SurfaceShadowDepthOnlyVert_spv,
         .code_size           = sizeof(Shaders_SurfaceShadowDepthOnlyVert_spv),
         .num_samplers        = 0,
-        .num_storage_buffers = 3,
+        .num_storage_buffers = 4,
         .stage               = SDL_GPU_SHADERSTAGE_VERTEX,
         .entrypoint          = "vert"
     });
@@ -776,7 +823,7 @@ static void InitDepthOnlyPipelines(void)
         .code                = Shaders_SkinnedShadowDepthOnlyVert_spv,
         .code_size           = sizeof(Shaders_SkinnedShadowDepthOnlyVert_spv),
         .num_samplers        = 0,
-        .num_storage_buffers = 4,
+        .num_storage_buffers = 5,
         .stage               = SDL_GPU_SHADERSTAGE_VERTEX,
         .entrypoint          = "vert"
     });
@@ -900,6 +947,9 @@ void DestroyRenderPipelines(void)
     if (g_TonemapComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_TonemapComputePipeline);
     if (g_HiZBuildComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_HiZBuildComputePipeline);
     if (g_HiZDownscaleComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_HiZDownscaleComputePipeline);
+    if (g_SDSMDepthBoundsInitialPipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_SDSMDepthBoundsInitialPipeline);
+    if (g_SDSMDepthBoundsReducePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_SDSMDepthBoundsReducePipeline);
+    if (g_SDSMSetupShadowsPipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_SDSMSetupShadowsPipeline);
     if (g_HBAOComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_HBAOComputePipeline);
     if (g_HBAOBlurComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_HBAOBlurComputePipeline);
     if (g_ExtractNormalComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_ExtractNormalComputePipeline);

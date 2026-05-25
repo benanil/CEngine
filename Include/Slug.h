@@ -82,6 +82,7 @@ typedef struct SlugFont_
     SlugBatch batches[SLUG_MAX_BATCHES];
     u32 numBatches;
     bool glyphBuffersDirty;
+    bool ownsFontData;
 } SlugFont;
 
 bool SlugLoadFont(SlugFont* font, const char* path);

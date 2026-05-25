@@ -2,16 +2,18 @@
 #include "CommonStructs.hlsl"
 #include "Bitpack.hlsl"
 #include "Math.hlsl"
+#include "ShadowCascade.hlsl"
 
 cbuffer vs_params : register(b0, space1)
 {
-    float4x4 uViewProj;
+    uint uCascadeIndex;
 };
 
 StructuredBuffer<Entity>         sEntities         : register(t0);
 StructuredBuffer<PrimitiveGroup> sPrimitiveGroups  : register(t1);
 StructuredBuffer<uint>           sDrawSparseIndices : register(t2);
 StructuredBuffer<AnimatedVert>   sAnimatedVert     : register(t3);
+StructuredBuffer<ShadowCascadeBuffer> sShadowCascades : register(t4);
 
 struct VSInput
 {
@@ -36,7 +38,7 @@ float4 vert(VSInput input,
     Entity entity = sEntities[denseIdx];
     f16_3 localPos = UnpackAnimatedPosition(uint2(animated.packed0, animated.packed1));
     float3 finalWorldPos = float3(localPos) + entity.position.xyz;
-    return mul(uViewProj, float4(finalWorldPos, 1.0));
+    return MulShadowCascade(sShadowCascades[0], uCascadeIndex, float4(finalWorldPos, 1.0));
 }
 
 float frag(float4 position : SV_Position) : SV_Target0

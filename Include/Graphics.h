@@ -16,14 +16,6 @@
 #define MAX_TEXTURE_DESCRIPTORS 2048
 #define MAX_GPU_MATERIALS       2048
 
-#define SHADOW_MAP_SIZE            (1024u * 2u)
-#define SHADOW_CASCADE_COUNT       3u
-#define SHADOW_MAX_DISTANCE        300.0f
-#define SHADOW_NEAR_PLANE          1.0f
-#define SHADOW_CAMERA_DISTANCE     200.0f
-#define SHADOW_CASTER_DEPTH_MARGIN 150.0f
-#define SHADOW_CASCADE_OVERLAP     10.0f
-
 #if defined(__cplusplus)
 extern "C" {
 #endif
@@ -149,15 +141,16 @@ typedef struct MaterialGPU_
 
 typedef struct WindowState
 {
-    SDL_GPUTexture* tex_depth, *tex_hiz_depth, *tex_color, *tex_post, *tex_hiz;
+    SDL_GPUTexture* tex_depth, *tex_hiz_depth, *tex_color, *tex_post, *tex_hiz, *tex_sdsm_bounds;
     SDL_GPUTexture* tex_gbuffer_tangent, *tex_gbuffer_albedo_metallic, *tex_gbuffer_shadow_roughness;
     SDL_GPUTexture* tex_hbao, *tex_hbao_blur, *tex_hbao_normal;
     SDL_GPUTexture* tex_mlaa_edge_mask, *tex_mlaa_edge_count, *tex_mlaa_output;
     SDL_GPUTexture* tex_shadow_depth, *tex_shadow_color;
     u32 prev_width, prev_height;
-    u32 hiz_width, hiz_height, hiz_mip_count;
+    u32 hiz_width, hiz_height, hiz_mip_count, sdsm_mip_count;
     mat4x4 hiz_view_proj;
     bool hiz_valid;
+    bool sdsm_valid;
 } WindowState;
 
 typedef struct RenderSetBuffers_
@@ -198,6 +191,7 @@ typedef struct RenderState
     SDL_GPUBuffer*           uiShapeBuffer;
     SDL_GPUBuffer*           uiShapeDrawArgsBuffer;
     SDL_GPUBuffer*           skinnedAnimatedVertices;
+    SDL_GPUBuffer*           shadowCascadeBuffer;
     RenderSetBuffers         skinnedBuffers;
     RenderSetBuffers         surfaceBuffers;
     
@@ -276,6 +270,7 @@ SDL_GPUTexture* CreateDepthTexture(u32 drawablew, u32 drawableh);
 SDL_GPUTexture* CreateHiZDepthTexture(u32 drawablew, u32 drawableh);
 
 SDL_GPUTexture* CreateHiZTexture(u32 drawablew, u32 drawableh, u32* mipCount);
+SDL_GPUTexture* CreateSDSMDepthBoundsTexture(u32 drawablew, u32 drawableh, u32* mipCount);
 
 SDL_GPUTexture* CreateSceneColorTexture(u32 drawablew, u32 drawableh, SDL_GPUSampleCount sampleCount);
 

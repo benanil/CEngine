@@ -3,16 +3,15 @@
 #include "Bitpack.hlsl"
 #include "Math.hlsl"
 #include "Shadow.hlsl"
+#include "ShadowCascade.hlsl"
 
 #define CSM_DEBUG_CASCADES 0
 
 cbuffer vs_params : register(b0, space1)
 {
     float4x4 uViewProj;
-    float4x4 uLightViewProj[3];
     float4 uCameraPosition;
     float4 uCameraForward;
-    float4 uCascadeSplits;
 };
 
 cbuffer ps_params : register(b0, space3)
@@ -24,11 +23,12 @@ cbuffer ps_params : register(b0, space3)
 StructuredBuffer<Entity>         sEntities          : register(t0);
 StructuredBuffer<PrimitiveGroup> sPrimitiveGroups   : register(t1);
 StructuredBuffer<uint>           sDrawSparseIndices : register(t2);
+StructuredBuffer<ShadowCascadeBuffer> sShadowCascades : register(t3);
 
 Texture2DArray<float4> AlbedoPages            : register(t0, space2);
 Texture2DArray<float2> NormalPages            : register(t1, space2);
 Texture2DArray<float2> MetallicRoughnessPages : register(t2, space2);
-Texture2DArray<float>  ShadowMap              : register(t3, space2);
+Texture2D<float>       ShadowMap              : register(t3, space2);
 SamplerState           Sampler                : register(s0, space2);
 SamplerState           ShadowSampler          : register(s3, space2);
 
@@ -54,7 +54,7 @@ struct VSOutput
     float4   shadowPos1 : TEXCOORD4;
     float4   shadowPos2 : TEXCOORD5;
     float    viewDepth  : TEXCOORD6;
-    nointerpolation float2 cascadeSplits : TEXCOORD7;
+    nointerpolation float3 cascadeSplits : TEXCOORD7;
     nointerpolation uint materialIndex : TEXCOORD8;
     nointerpolation float handedness : TEXCOORD9;
 };
@@ -93,11 +93,12 @@ VSOutput vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("Dra
     o.tangent   = tbn[1];
     o.bitangent = tbn[0];
     o.viewDir   = uCameraPosition.xyz - finalWorldPos;
-    o.shadowPos0 = mul(uLightViewProj[0], float4(finalWorldPos, 1.0));
-    o.shadowPos1 = mul(uLightViewProj[1], float4(finalWorldPos, 1.0));
-    o.shadowPos2 = mul(uLightViewProj[2], float4(finalWorldPos, 1.0));
+    ShadowCascadeBuffer cascades = sShadowCascades[0];
+    o.shadowPos0 = MulShadowCascade(cascades, 0u, float4(finalWorldPos, 1.0));
+    o.shadowPos1 = MulShadowCascade(cascades, 1u, float4(finalWorldPos, 1.0));
+    o.shadowPos2 = MulShadowCascade(cascades, 2u, float4(finalWorldPos, 1.0));
     o.viewDepth = dot(finalWorldPos - uCameraPosition.xyz, uCameraForward.xyz);
-    o.cascadeSplits = uCascadeSplits.xy;
+    o.cascadeSplits = cascades.splitDistances.xyz;
     o.materialIndex = group.materialIndex;
     o.handedness = float(tangentHandedness);
     return o;
@@ -131,6 +132,7 @@ GBufferOutput frag(VSOutput input)
 
     #if CSM_DEBUG_CASCADES
     f16_3 cascadeColor = cascadeIndex == 0u ? f16_3(1.0f, 0.0f, 0.0f) : (cascadeIndex == 1u ? f16_3(0.0f, 1.0f, 0.0f) : f16_3(0.0f, 0.0f, 1.0f));
+    cascadeColor = input.viewDepth > input.cascadeSplits.z ? f16_3(1.0f, 0.0f, 1.0f) : cascadeColor;
     baseColor  = lerp(cascadeColor * f16(0.12f), cascadeColor, f16(saturate(shadow)));
     metallic   = 0.0f; roughness  = 1.0f;
     #endif

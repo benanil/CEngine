@@ -30,9 +30,15 @@ COMPUTE_SHADERS = [
     ("TonemapCompute"         , "main"),
     ("HiZBuildCompute"        , "main"),
     ("HiZDownscaleCompute"    , "main"),
+    ("SDSMDepthBoundsInitial" , "main"),
+    ("SDSMDepthBoundsReduce"  , "main"),
+    ("SDSMSetupShadows"       , "main"),
     ("ExtractNormalCompute"   , "main"),
     ("HBAOCompute"            , "main"),
-    ("HBAOBlurCompute"        , "main")
+    ("HBAOBlurCompute"        , "main"),
+    ("MLAAEdgeMaskCompute"    , "main"),
+    ("MLAALineLengthCompute"  , "main"),
+    ("MLAABlendCompute"       , "main")
 ]
 
 def run_cmd(args: list[str], error_msg: str):

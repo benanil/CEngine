@@ -28,6 +28,8 @@ typedef struct DepthPassContext_
     SDL_GPUGraphicsPipeline* skinnedPipeline;
     SDL_GPUGraphicsPipeline* surfacePipeline;
     mat4x4 viewProj;
+    u32 cascadeIndex;
+    bool useShadowCascades;
     bool alphaClip;
 } DepthPassContext;
 
@@ -55,6 +57,9 @@ extern SDL_GPUComputePipeline* g_CullDrawArgsComputePipeline;
 extern SDL_GPUComputePipeline* g_TonemapComputePipeline;
 extern SDL_GPUComputePipeline* g_HiZBuildComputePipeline;
 extern SDL_GPUComputePipeline* g_HiZDownscaleComputePipeline;
+extern SDL_GPUComputePipeline* g_SDSMDepthBoundsInitialPipeline;
+extern SDL_GPUComputePipeline* g_SDSMDepthBoundsReducePipeline;
+extern SDL_GPUComputePipeline* g_SDSMSetupShadowsPipeline;
 extern SDL_GPUComputePipeline* g_HBAOComputePipeline;
 extern SDL_GPUComputePipeline* g_HBAOBlurComputePipeline;
 extern SDL_GPUComputePipeline* g_ExtractNormalComputePipeline;
@@ -78,6 +83,8 @@ void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd,
                                  bool enableVisibilityOutput);
 
 void DispatchHiZBuildCompute(SDL_GPUCommandBuffer* cmd);
+void DispatchSDSMSetupShadowsCompute(SDL_GPUCommandBuffer* cmd, mat4x4 viewProj);
+void DispatchSDSMDepthBoundsCompute(SDL_GPUCommandBuffer* cmd);
 void DispatchHBAOCompute(SDL_GPUCommandBuffer* cmd, bool enabled, u32 width, u32 height);
 void DispatchDeferredLightingCompute(SDL_GPUCommandBuffer* cmd, u32 width, u32 height, mat4x4 viewProj);
 void DispatchTonemapCompute(SDL_GPUCommandBuffer* cmd, SDL_GPUTexture* source, SDL_GPUTexture* depth, SDL_GPUTexture* destination, u32 width, u32 height, mat4x4 viewProj);

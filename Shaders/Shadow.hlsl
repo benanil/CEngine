@@ -35,7 +35,7 @@ static const float2 ShadowKernel[32] =
     float2(-0.191099, -0.707353)
 };
 
-float SampleShadow(Texture2DArray<float> shadowMap, SamplerState samp,
+float SampleShadow(Texture2D<float> shadowMap, SamplerState samp,
                    float4 shadowPos, uint cascadeIndex,
                    float3 normal, float3 lightDir)
 {
@@ -45,11 +45,12 @@ float SampleShadow(Texture2DArray<float> shadowMap, SamplerState samp,
     if (shadowPos.w <= 0.0f || any(uv < 0.0f) || any(uv > 1.0f) || depth < 0.0f || depth > 1.0f)
         return 1.0f;
 
-    uint width, height, layers;
-    shadowMap.GetDimensions(width, height, layers);
-    float2 texel = 1.0f / float2(width, height);
+    uint width, height;
+    shadowMap.GetDimensions(width, height);
+    float cascadeSize = float(max(width >> cascadeIndex, 1u));
+    float2 texel = 1.0f / float2(cascadeSize, cascadeSize);
 
-    float cascadeBiasScale = cascadeIndex == 0u ? 1.2f : (cascadeIndex == 1u ? 2.8f : 2.6f);
+    float cascadeBiasScale = 1.0 + cascadeIndex * 1.0;
     float ndotl = saturate(dot(normal, lightDir));
     float bias  = max(0.0009f * (1.0f - ndotl), 0.00025f) * cascadeBiasScale;
 
@@ -60,8 +61,8 @@ float SampleShadow(Texture2DArray<float> shadowMap, SamplerState samp,
     for (int i = 0; i < 16; i++)
     {
         if (i >= kernelSize) break;
-        float2 sampleUV = uv + ShadowKernel[i] * texel * (2.0f + float(i >> 3));
-        float  mapDepth = shadowMap.Sample(samp, float3(sampleUV, float(cascadeIndex)));
+        float2 sampleUV = uv + ShadowKernel[i] * texel * (1.0f + float(i >> 3));
+        float  mapDepth = shadowMap.SampleLevel(samp, sampleUV, float(cascadeIndex));
         shadow += float(mapDepth >= (depth - bias));
     }
     return max(shadow / float(kernelSize), 0.2f);

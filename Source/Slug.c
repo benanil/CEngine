@@ -34,6 +34,7 @@ typedef struct SlugVertexParams_
 } SlugVertexParams;
 
 static SlugFont g_SlugDemoFont;
+static SlugFont g_SlugDemo3DFont;
 
 static u32 SlugPackU16(u32 x, u32 y)
 {
@@ -469,6 +470,7 @@ bool SlugLoadFont(SlugFont* font, const char* path)
     font->ttfData = ttf;
     font->ttfSize = (u32)fileSize;
     font->emScale = emScale;
+    font->ownsFontData = true;
     s32 ascent, descent, lineGap;
     stbtt_GetFontVMetrics(&info, &ascent, &descent, &lineGap);
     font->ascent = (f32)ascent * emScale;
@@ -497,8 +499,11 @@ bool SlugLoadFont(SlugFont* font, const char* path)
         HMDestroy(&font->unicodeGlyphs);
         DeAllocateTLSFGlobal(font->buffers.curves);
         DeAllocateTLSFGlobal(font->buffers.bands);
-        SlugFreeFallbackFonts(font);
-        FreeAllText(font->ttfData);
+        if (font->ownsFontData)
+        {
+            SlugFreeFallbackFonts(font);
+            FreeAllText(font->ttfData);
+        }
         SDL_zero(*font);
         return false;
     }
@@ -523,9 +528,62 @@ void SlugDestroyFont(SlugFont* font)
     HMDestroy(&font->unicodeGlyphs);
     if (font->buffers.curves) DeAllocateTLSFGlobal(font->buffers.curves);
     if (font->buffers.bands) DeAllocateTLSFGlobal(font->buffers.bands);
-    SlugFreeFallbackFonts(font);
-    if (font->ttfData) FreeAllText(font->ttfData);
+    if (font->ownsFontData)
+    {
+        SlugFreeFallbackFonts(font);
+        if (font->ttfData) FreeAllText(font->ttfData);
+    }
     SDL_zero(*font);
+}
+
+static bool SlugCloneFont(SlugFont* dst, const SlugFont* src, const char* label)
+{
+    SDL_zero(*dst);
+    if (!src || !src->vertices || !src->curveBuffer || !src->bandBuffer || !src->vertexBuffer) return false;
+    MemCopy(dst->glyphs, src->glyphs, sizeof(dst->glyphs));
+    dst->ttfData = src->ttfData;
+    dst->ttfSize = src->ttfSize;
+    dst->emScale = src->emScale;
+    MemCopy(dst->fallbackFonts, src->fallbackFonts, sizeof(dst->fallbackFonts));
+    dst->numFallbackFonts = src->numFallbackFonts;
+    dst->ascent  = src->ascent;
+    dst->descent = src->descent;
+    dst->buffers.numCurveWords = src->buffers.numCurveWords;
+    dst->buffers.maxCurveWords = src->buffers.maxCurveWords;
+    dst->buffers.numBands = src->buffers.numBands;
+    dst->buffers.maxBands = src->buffers.maxBands;
+    dst->gpuCurveWords = src->gpuCurveWords;
+    dst->gpuBandWords  = src->gpuBandWords;
+    dst->maxVertices   = src->maxVertices;
+    dst->ownsFontData  = false;
+    dst->unicodeGlyphs = HMCopy(&src->unicodeGlyphs);
+
+    size_t curveBytes   = (size_t)dst->buffers.maxCurveWords * sizeof(u32);
+    size_t bandBytes    = (size_t)dst->buffers.maxBands * sizeof(u32);
+    size_t vertexBytes  = (size_t)dst->maxVertices * sizeof(SlugVertex);
+    dst->buffers.curves = (u32*)AllocateTLSFGlobal(curveBytes);
+    dst->buffers.bands  = (u32*)AllocateTLSFGlobal(bandBytes);
+    dst->vertices       = (SlugVertex*)AllocateTLSFGlobal(vertexBytes);
+    if (!dst->buffers.curves || !dst->buffers.bands || !dst->vertices)
+    {
+        AX_WARN("Slug font clone allocation failed: %s", label ? label : "SlugClone");
+        SlugDestroyFont(dst);
+        return false;
+    }
+    MemCopy(dst->buffers.curves, src->buffers.curves, (size_t)src->buffers.numCurveWords * sizeof(u32));
+    MemCopy(dst->buffers.bands, src->buffers.bands, (size_t)src->buffers.numBands * sizeof(u32));
+
+    dst->curveBuffer  = CreateBuffer(NULL, (size_t)dst->gpuCurveWords * sizeof(u32), BReadRasterBit, label ? label : "SlugCloneCurveBuffer");
+    dst->bandBuffer   = CreateBuffer(NULL, (size_t)dst->gpuBandWords * sizeof(u32), BReadRasterBit, label ? label : "SlugCloneBandBuffer");
+    dst->vertexBuffer = CreateBuffer(NULL, vertexBytes, BVertexBit, label ? label : "SlugCloneVertexBuffer");
+    if (!dst->curveBuffer || !dst->bandBuffer || !dst->vertexBuffer)
+    {
+        AX_WARN("Slug font clone GPU buffer allocation failed: %s", label ? label : "SlugClone");
+        SlugDestroyFont(dst);
+        return false;
+    }
+    dst->glyphBuffersDirty = true;
+    return true;
 }
 
 static void SlugWriteVertexV(SlugVertex* v, v128f pos, f32 ex, f32 ey, v128f normal, const SlugGlyph* glyph, u32 color)
@@ -702,7 +760,12 @@ bool SlugAppendText3D(SlugFont* font, const char* text, float3 pos, Quaternion r
     f32 cursor = 0.0f;
     const f32 n = 1.0 / MATH_Sqrt2;
     f32 invSize = 1.0f / Maxf32(size, 1.0e-6f);
-    const f32 clip[4] = { 0.0f, 0.0f, 2147483647.0f, 2147483647.0f };
+    const f32 clip[4] = {
+        0.0f,
+        0.0f,
+        (f32)Maxu32(g_WindowState.prev_width, 1u),
+        (f32)Maxu32(g_WindowState.prev_height, 1u)
+    };
     u32 batchIndex = SlugBeginBatch(font, clip);
 
     const char* at = text;
@@ -969,17 +1032,19 @@ void SlugInitDemo(void)
 {
     // if (!SlugLoadFont(&g_SlugDemoFont, "Assets/Fonts/Quivira.otf")) AX_WARN("Slug demo font load failed");
     if (!SlugLoadFont(&g_SlugDemoFont, "Assets/Fonts/JetBrainsMono-Regular.ttf")) AX_WARN("Slug demo font load failed");
+    if (!SlugCloneFont(&g_SlugDemo3DFont, &g_SlugDemoFont, "Slug3DDemoFont")) AX_WARN("Slug 3D demo font clone failed");
 }
 
 void SlugDestroyDemo(void)
 {
     SlugDestroyFont(&g_SlugDemoFont);
+    SlugDestroyFont(&g_SlugDemo3DFont);
 }
 
 void RenderSlugDemo(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget, SDL_GPUDepthStencilTargetInfo* depthTarget, mat4x4 viewProj)
 {
     Quaternion rot = QFromAxisAngle(F3Up(), -MATH_PI * 0.5);
-    SlugAppendText3D(&g_SlugDemoFont, "Anılcan Gülkaya", (float3){ -2.0f, -2.0f, -3.0f }, rot, 0.35f, 0xFFFFFFFFu);
-    SlugAppendText3D(&g_SlugDemoFont, "Quivira.otf buffer renderer", (float3){ -2.0f, -2.55f, -3.0f }, QIdentity(), 0.22f, 0xFFFFC060u);
-    SlugRender(cmd, colorTarget, depthTarget, &g_SlugDemoFont, viewProj);
+    SlugAppendText3D(&g_SlugDemo3DFont, "Anılcan Gülkaya", (float3){ 0.0f, 16.0f, 0.0f }, rot, 0.35f, 0xFFFFFFFFu);
+    SlugAppendText3D(&g_SlugDemo3DFont, "Sane GPU Driven Game Engine", (float3){ 0.0f, 16.55f, 0.0f }, QIdentity(), 0.22f, 0xFFFFC060u);
+    SlugRender(cmd, colorTarget, depthTarget, &g_SlugDemo3DFont, viewProj);
 }

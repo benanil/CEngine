@@ -3,45 +3,75 @@
 Texture2D<uint> EdgeMaskTexture : register(t0, space0);
 [[vk::image_format("rg32ui")]] RWTexture2D<uint2> EdgeCountTexture : register(u0, space1);
 
+// Fast bit-scanning helper to find how far an edge extends
+uint FindEdgeDistance(uint edgeMask, int2 startPos, int2 stepDir, uint targetBit)
+{
+    // If the starting pixel doesn't even have this edge, it's 0 length
+    if ((edgeMask & targetBit) == 0u) return 0u;
+
+    uint count = 0u;
+    bool edgeFound = true;
+
+    // We keep a tight scalar loop instead of forcing huge unrolled vector registers
+    [loop]
+    for (int i = 1; i <= int(MLAA_MAX_EDGE_LENGTH); i++)
+    {
+        int2 scanPos = ClampPixel(startPos + stepDir * i);
+        uint nextPixel = EdgeMaskTexture.Load(int3(scanPos, 0));
+
+        // Mask out the bit we care about
+        if (edgeFound && ((nextPixel & targetBit) != 0u))
+        {
+            count++;
+        }
+        else
+        {
+            // Edge broke or hit a stop bit. Append the stop bit to our final count.
+            // (Assuming MLAA_STOP_BIT format matches your encoding layout)
+            return count | MLAA_STOP_BIT;
+        }
+    }
+    return count;
+}
+
 [numthreads(8, 8, 1)]
-void main(uint3 tid : SV_DispatchThreadID)
+void main(uint3 tid : SV_DispatchThreadID, uint3 gtid : SV_GroupThreadID)
 {
     if (tid.x >= outputSize.x || tid.y >= outputSize.y) return;
 
     int2 p = int2(tid.xy);
     uint pixel = EdgeMaskTexture.Load(int3(p, 0));
-    uint4 edgeCount = uint4(0u, 0u, 0u, 0u);
-
-    if ((pixel & (MLAA_UPPER_MASK | MLAA_RIGHT_MASK)) != 0u)
+    
+    // OPTIMIZATION 1: Global Wave Early Out
+    // If no pixels in the current wave have an edge, the entire wave skips memory lookups
+    bool anyEdge = (pixel & (MLAA_UPPER_MASK | MLAA_RIGHT_MASK)) != 0u;
+    if (!WaveActiveAnyTrue(anyEdge))
     {
-        uint4 edgeDirMask = uint4(MLAA_UPPER_MASK, MLAA_UPPER_MASK, MLAA_RIGHT_MASK, MLAA_RIGHT_MASK);
-        uint4 edgeFound = uint4(
-            (pixel & edgeDirMask.x) != 0u ? 0xffffffffu : 0u,
-            (pixel & edgeDirMask.y) != 0u ? 0xffffffffu : 0u,
-            (pixel & edgeDirMask.z) != 0u ? 0xffffffffu : 0u,
-            (pixel & edgeDirMask.w) != 0u ? 0xffffffffu : 0u);
-        uint4 stopBit = uint4(
-            edgeFound.x != 0u ? MLAA_STOP_BIT : 0u,
-            edgeFound.y != 0u ? MLAA_STOP_BIT : 0u,
-            edgeFound.z != 0u ? MLAA_STOP_BIT : 0u,
-            edgeFound.w != 0u ? MLAA_STOP_BIT : 0u);
-
-        [unroll]
-        for (int i = 1; i <= int(MLAA_MAX_EDGE_LENGTH); i++)
-        {
-            uint4 mask;
-            mask.x = EdgeMaskTexture.Load(int3(ClampPixel(p + int2(-i,  0)), 0));
-            mask.y = EdgeMaskTexture.Load(int3(ClampPixel(p + int2( i,  0)), 0));
-            mask.z = EdgeMaskTexture.Load(int3(ClampPixel(p + int2( 0,  i)), 0));
-            mask.w = EdgeMaskTexture.Load(int3(ClampPixel(p + int2( 0, -i)), 0));
-
-            edgeFound &= (mask & edgeDirMask);
-            edgeCount.x = edgeFound.x != 0u ? edgeCount.x + 1u : (edgeCount.x | stopBit.x);
-            edgeCount.y = edgeFound.y != 0u ? edgeCount.y + 1u : (edgeCount.y | stopBit.y);
-            edgeCount.z = edgeFound.z != 0u ? edgeCount.z + 1u : (edgeCount.z | stopBit.z);
-            edgeCount.w = edgeFound.w != 0u ? edgeCount.w + 1u : (edgeCount.w | stopBit.w);
-        }
+        EdgeCountTexture[tid.xy] = uint2(0u, 0u);
+        return;
     }
 
-    EdgeCountTexture[tid.xy] = uint2(EncodeCount(edgeCount.x, edgeCount.y), EncodeCount(edgeCount.z, edgeCount.w));
+    uint hCountNeg = 0u;
+    uint hCountPos = 0u;
+    uint vCountPos = 0u;
+    uint vCountNeg = 0u;
+
+    // OPTIMIZATION 2: Branching Scalarization
+    // Only lanes containing active edges execute the memory walks
+    if (anyEdge)
+    {
+        // Scan Left (-X) & Right (+X) for Upper Edges
+        hCountNeg = FindEdgeDistance(pixel, p, int2(-1,  0), MLAA_UPPER_MASK);
+        hCountPos = FindEdgeDistance(pixel, p, int2( 1,  0), MLAA_UPPER_MASK);
+
+        // Scan Down (+Y) & Up (-Y) for Right Edges
+        vCountPos = FindEdgeDistance(pixel, p, int2( 0,  1), MLAA_RIGHT_MASK);
+        vCountNeg = FindEdgeDistance(pixel, p, int2( 0, -1), MLAA_RIGHT_MASK);
+    }
+
+    // Pack values exactly as expected by your original EncodeCount function
+    uint encodedH = EncodeCount(hCountNeg, hCountPos);
+    uint encodedV = EncodeCount(vCountPos, vCountNeg);
+
+    EdgeCountTexture[tid.xy] = uint2(encodedH, encodedV);
 }

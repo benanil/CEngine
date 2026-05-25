@@ -5,11 +5,15 @@
 #include "Include/Platform.h" // PlatformContext.lastTime for milisecond text
 #include "Include/Random.h"
 #include "Include/String.h"
+#include "Include/Algorithm.h"
 #include "Extern/kb/kb_text_shape.h"
 
 UIRenderer g_UIRenderer;
 UIContext g_UI;
 UILayoutContext g_UILayout;
+
+static char g_UISliderValueLabels[64][96];
+static u32  g_UISliderValueLabelIndex;
 
 static void UIRenderLayoutImage(const Clay_RenderCommand* command);
 
@@ -94,7 +98,7 @@ static void UILayoutBeginFrame(void)
     Clay_SetPointerState((Clay_Vector2){ g_UI.mouse.x, g_UI.mouse.y }, GetMouseDown(MouseButton_Left) != 0u);
 
     f32 wheel = GetMouseWheelDelta();
-    Clay_UpdateScrollContainers(true, (Clay_Vector2){ 0.0f, wheel * 24.0f }, GetDeltaTime());
+    Clay_UpdateScrollContainers(false, (Clay_Vector2){ 0.0f, wheel * 24.0f }, GetDeltaTime());
     PlatformCtx.MouseWheelDelta = 0.0f;
 }
 
@@ -201,6 +205,7 @@ void UIClear(void)
 void UIBeginFrame(void)
 {
     UIClear();
+    g_UISliderValueLabelIndex = 0u;
     g_UI.nextAutoID = 1u;
     g_UI.wasHovered = false;
     g_UI.anyElementClicked = false;
@@ -446,21 +451,28 @@ void UIProgressBar(Clay_ElementId id, Clay_String label, f32 value01)
 
 bool UISliderFloat(Clay_ElementId id, Clay_String label, f32* value, f32 minValue, f32 maxValue)
 {
-    if (!value || maxValue <= minValue) return false;
+    if (!value || !IsFiniteF32(minValue) || !IsFiniteF32(maxValue) || maxValue <= minValue) return false;
 
     bool changed = false;
+    f32 currentValue = IsFiniteF32(*value) ? *value : minValue;
+    f32 clampedValue = Clampf32(currentValue, minValue, maxValue);
+    if (clampedValue != *value)
+    {
+        *value = clampedValue;
+        changed = true;
+    }
+
     Clay_ElementId trackId = Clay_GetElementIdWithIndex(CLAY_STRING("UISliderTrack"), id.id);
     Clay_ElementData trackData = Clay_GetElementData(trackId);
-    Clay_PointerData pointer = Clay_GetPointerState();
     u64 activeId = (u64)id.id;
-    if (trackData.found && Clay_PointerOver(trackId) && pointer.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME)
+    if (trackData.found && Clay_PointerOver(trackId) && GetMousePressed(MouseButton_Left))
     {
         g_UI.active = activeId;
     }
     if (trackData.found && g_UI.active == activeId && GetMouseDown(MouseButton_Left))
     {
-        f32 t = (pointer.position.x - trackData.boundingBox.x) / Maxf32(trackData.boundingBox.width, 1.0f);
-        f32 newValue = minValue + Saturatef32(t) * (maxValue - minValue);
+        f32 t = (g_UI.mouse.x - trackData.boundingBox.x) / Maxf32(trackData.boundingBox.width, 1.0f);
+        f32 newValue = Clampf32(minValue + t * (maxValue - minValue), minValue, maxValue);
         if (newValue != *value)
         {
             *value = newValue;
@@ -468,10 +480,11 @@ bool UISliderFloat(Clay_ElementId id, Clay_String label, f32* value, f32 minValu
         }
     }
 
-    f32 value01 = Saturatef32((*value - minValue) / (maxValue - minValue));
+    f32 value01 = Saturatef32((Clampf32(*value, minValue, maxValue) - minValue) / (maxValue - minValue));
     CLAY(id, {
         .layout = {
             .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(34.0f) },
+            .padding = { 0, 4, 0, 0 },
             .childGap = 10,
             .layoutDirection = CLAY_LEFT_TO_RIGHT,
             .childAlignment = { .y = CLAY_ALIGN_Y_CENTER }
@@ -482,34 +495,70 @@ bool UISliderFloat(Clay_ElementId id, Clay_String label, f32* value, f32 minValu
             .textColor = UIColorToClay(UIGetColor(UIColor_Text))
         }));
 
+        CLAY(CLAY_ID_LOCAL("Spacer"), {
+            .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(1.0f) } }
+        }) {}
+
+        f32 knobWidth = 8.0f;
+        f32 knobOffset = value01 * Maxf32(trackData.found ? trackData.boundingBox.width - knobWidth : 0.0f, 0.0f);
         CLAY(trackId, {
             .layout = {
-                .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(14.0f) },
+                .sizing = { CLAY_SIZING_FIXED(UIGetFloat(UIFloat_TextBoxWidth)), CLAY_SIZING_FIXED(14.0f) },
+                .layoutDirection = CLAY_LEFT_TO_RIGHT,
                 .childAlignment = { .y = CLAY_ALIGN_Y_CENTER }
             },
             .backgroundColor = UIColorToClay(UIGetColor(UIColor_TextBoxBG)),
             .cornerRadius = CLAY_CORNER_RADIUS(7.0f)
         }) {
             CLAY(CLAY_ID_LOCAL("Fill"), {
-                .layout = { .sizing = { CLAY_SIZING_PERCENT(value01), CLAY_SIZING_FIXED(14.0f) } },
+                .layout = { .sizing = { CLAY_SIZING_FIXED(knobOffset), CLAY_SIZING_FIXED(14.0f) } },
                 .backgroundColor = UIColorToClay(UIGetColor(UIColor_SliderInside)),
                 .cornerRadius = CLAY_CORNER_RADIUS(7.0f)
             }) {}
 
             CLAY(CLAY_ID_LOCAL("Knob"), {
-                .layout = { .sizing = { CLAY_SIZING_FIXED(8.0f), CLAY_SIZING_FIXED(18.0f) } },
-                .floating = {
-                    .attachTo = CLAY_ATTACH_TO_PARENT,
-                    .attachPoints = { CLAY_ATTACH_POINT_LEFT_CENTER, CLAY_ATTACH_POINT_LEFT_CENTER },
-                    .offset = { value01 * Maxf32(trackData.found ? trackData.boundingBox.width - 4.0f : 0.0f, 0.0f), 0.0f }
-                },
+                .layout = { .sizing = { CLAY_SIZING_FIXED(knobWidth), CLAY_SIZING_FIXED(18.0f) } },
                 .backgroundColor = UIColorToClay(UIGetColor(UIColor_Text)),
                 .cornerRadius = CLAY_CORNER_RADIUS(4.0f)
+            }) {}
+
+            CLAY(CLAY_ID_LOCAL("Remainder"), {
+                .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(1.0f) } }
             }) {}
         }
     }
 
     return changed;
+}
+
+bool UISliderFloatValue(Clay_ElementId id, Clay_String label, f32* value, f32 minValue, f32 maxValue, int decimals)
+{
+    if (!value) return false;
+
+    u32 index = g_UISliderValueLabelIndex++ % (u32)(sizeof(g_UISliderValueLabels) / sizeof(g_UISliderValueLabels[0]));
+    char* text = g_UISliderValueLabels[index];
+    u32 capacity = (u32)sizeof(g_UISliderValueLabels[0]);
+    u32 length = 0u;
+
+    u32 labelLength = (u32)Maxs32(label.length, 0);
+    for (u32 i = 0u; i < labelLength && length + 1u < capacity; i++) text[length++] = label.chars[i];
+    if (length + 2u < capacity)
+    {
+        text[length++] = ':';
+        text[length++] = ' ';
+    }
+
+    f32 displayValue = IsFiniteF32(*value) ? *value : minValue;
+    if (IsFiniteF32(minValue) && IsFiniteF32(maxValue) && maxValue > minValue) displayValue = Clampf32(displayValue, minValue, maxValue);
+    if (length < capacity)
+    {
+        length += (u32)FloatToString(text + length, displayValue, Maxs32(decimals, 0));
+        if (length >= capacity) length = capacity - 1u;
+    }
+    text[length] = '\0';
+
+    Clay_String valueLabel = { .isStaticallyAllocated = false, .length = (s32)length, .chars = text };
+    return UISliderFloat(id, valueLabel, value, minValue, maxValue);
 }
 
 void UISetColor(UIColor what, u32 color)

@@ -6,9 +6,28 @@ WindowState    g_WindowState;
 RenderState    g_RenderState;
 SDL_GPUDevice* g_GPUDevice = NULL;
 
-static bool g_EnableOcclusion = true;
-static bool g_EnableHBAO = true;
-static bool g_EnableMLAA = true;
+RenderSettings g_RenderSettings = {
+    .enableOcclusion = true,
+    .enableHBAO = true,
+    .enableMLAA = true,
+    .showMLAAEdges = false,
+    .hbaoRadius = 1.3f,
+    .hbaoBias = 0.5f,
+    .hbaoIntensity = 2.0f,
+    .hbaoPower = 2.0f,
+    .mlaaThreshold = 0.08f,
+    .exposure = 1.0f,
+    .gamma = 2.2f,
+    .godRayIntensity = 2.5f,
+    .sunYaw = 116.565f,
+    .sunPitch = 63.435f,
+    .shadowMaxDistance = SHADOW_MAX_DISTANCE,
+    .shadowCameraDistance = SHADOW_CAMERA_DISTANCE,
+    .shadowCasterDepthMargin = SHADOW_CASTER_DEPTH_MARGIN,
+    .shadowCascadeOverlap = SHADOW_CASCADE_OVERLAP,
+    .shadowSplitNearDistance = SHADOW_SPLIT_NEAR_DISTANCE,
+    .shadowPSSMLambda = SHADOW_PSSM_LAMBDA
+};
 
 #define RESIZE_RELEASE_DELAY 4u
 
@@ -22,6 +41,7 @@ typedef struct FrameTextureSet_
     SDL_GPUTexture* tex_gbuffer_shadow_roughness;
     SDL_GPUTexture* tex_post;
     SDL_GPUTexture* tex_hiz;
+    SDL_GPUTexture* tex_sdsm_bounds;
     SDL_GPUTexture* tex_hbao;
     SDL_GPUTexture* tex_hbao_blur;
     SDL_GPUTexture* tex_hbao_normal;
@@ -64,6 +84,8 @@ void InitBuffers(void)
     g_RenderState.surfaceVertexBuffer = CreateBuffer(gGFX.SurfaceVertexBuffer, MAX_VERTEX * sizeof(AVertex), BVertexBit, "CPSurfaceVertexBuffer");
     g_RenderState.indexBuffer = CreateBuffer(gGFX.IndexBuffer, MAX_INDEX * sizeof(int), SDL_GPU_BUFFERUSAGE_INDEX, "CPIndexBuffer");
     g_RenderState.skinnedAnimatedVertices = CreateBuffer(NULL, animatedVertexSize, BReadRasterBit | BWriteComputeBit, "CPAnimatedVertices");
+    g_RenderState.shadowCascadeBuffer = CreateBuffer(NULL, sizeof(mat4x4) * SHADOW_CASCADE_COUNT + sizeof(float) * 4,
+                                                      BReadRasterBit | BReadCompute | BWriteComputeBit, "CPShadowCascadeBuffer");
     g_RenderState.lineBuffer = CreateBuffer(NULL, sizeof(ALineVertex) * MAX_LINE_COUNT, BVertexBit | BWriteComputeBit, "CPLineVertexBuffer");
     g_RenderState.lineDrawArgsBuffer = CreateBuffer(NULL, sizeof(u32) * 8, BIndirectBit | BWriteComputeBit, "CPLinedrawArgsBuffer");
     UIInit();
@@ -79,6 +101,7 @@ static void ReleaseFrameTextureSet(FrameTextureSet* set)
     if (set->tex_gbuffer_shadow_roughness) SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_gbuffer_shadow_roughness);
     if (set->tex_post) SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_post);
     if (set->tex_hiz) SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_hiz);
+    if (set->tex_sdsm_bounds) SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_sdsm_bounds);
     if (set->tex_hbao) SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_hbao);
     if (set->tex_hbao_blur) SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_hbao_blur);
     if (set->tex_hbao_normal) SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_hbao_normal);
@@ -109,6 +132,7 @@ static void QueueWindowFrameTexturesForRelease(WindowState* winstate)
         .tex_gbuffer_shadow_roughness = winstate->tex_gbuffer_shadow_roughness,
         .tex_post = winstate->tex_post,
         .tex_hiz = winstate->tex_hiz,
+        .tex_sdsm_bounds = winstate->tex_sdsm_bounds,
         .tex_hbao = winstate->tex_hbao,
         .tex_hbao_blur = winstate->tex_hbao_blur,
         .tex_hbao_normal = winstate->tex_hbao_normal,
@@ -126,6 +150,7 @@ static void QueueWindowFrameTexturesForRelease(WindowState* winstate)
     winstate->tex_gbuffer_shadow_roughness = NULL;
     winstate->tex_post = NULL;
     winstate->tex_hiz = NULL;
+    winstate->tex_sdsm_bounds = NULL;
     winstate->tex_hbao = NULL;
     winstate->tex_hbao_blur = NULL;
     winstate->tex_hbao_normal = NULL;
@@ -149,6 +174,7 @@ static void ResizeWindowFrameTextures(WindowState* winstate, u32 width, u32 heig
     winstate->tex_gbuffer_shadow_roughness = CreateGBufferShadowRoughnessTexture(width, height);
     winstate->tex_post      = CreatePostProcessTexture(width, height);
     winstate->tex_hiz       = CreateHiZTexture(width, height, &winstate->hiz_mip_count);
+    winstate->tex_sdsm_bounds = CreateSDSMDepthBoundsTexture(width, height, &winstate->sdsm_mip_count);
     u32 hbaoWidth = Maxu32(width / 2u, 1u);
     u32 hbaoHeight = Maxu32(height / 2u, 1u);
     winstate->tex_hbao        = CreateHBAOTexture(hbaoWidth, hbaoHeight);
@@ -160,6 +186,7 @@ static void ResizeWindowFrameTextures(WindowState* winstate, u32 width, u32 heig
     winstate->hiz_width     = width;
     winstate->hiz_height    = height;
     winstate->hiz_valid     = false;
+    winstate->sdsm_valid    = false;
     Camera_RecalculateProjection(&g_Camera, (s32)width, (s32)height);
 }
 
@@ -230,8 +257,9 @@ static SDL_GPUDepthStencilTargetInfo MakeDepthTarget(SDL_GPUTexture* texture, SD
 
 static SDL_GPUDepthStencilTargetInfo MakeShadowDepthTarget(SDL_GPUTexture* texture, u32 layer)
 {
-    (void)layer;
-    return MakeDepthTarget(texture, SDL_GPU_LOADOP_CLEAR, false);
+    SDL_GPUDepthStencilTargetInfo target = MakeDepthTarget(texture, SDL_GPU_LOADOP_CLEAR, false);
+    target.mip_level = layer;
+    return target;
 }
 
 static SDL_GPUColorTargetInfo MakeHiZDepthTarget(WindowState* winstate)
@@ -254,7 +282,7 @@ static SDL_GPUColorTargetInfo MakeShadowColorTarget(WindowState* winstate, u32 l
     target.store_op = SDL_GPU_STOREOP_STORE;
     target.clear_color.r = 1.0f;
     target.texture = winstate->tex_shadow_color;
-    target.layer_or_depth_plane = layer;
+    target.mip_level = layer;
     target.cycle = false;
     return target;
 }
@@ -316,22 +344,6 @@ void Render(void)
     winstate->prev_width = screenW;
     winstate->prev_height = screenH;
 
-    if (GetKeyReleased(SDLK_O))
-    {
-        g_EnableOcclusion = !g_EnableOcclusion;
-        AX_LOG("Hi-Z occlusion %s", g_EnableOcclusion ? "enabled" : "disabled");
-    }
-    if (GetKeyReleased(SDLK_H))
-    {
-        g_EnableHBAO = !g_EnableHBAO;
-        AX_LOG("HBAO %s", g_EnableHBAO ? "enabled" : "disabled");
-    }
-    if (GetKeyReleased(SDLK_M))
-    {
-        g_EnableMLAA = !g_EnableMLAA;
-        AX_LOG("MLAA %s", g_EnableMLAA ? "enabled" : "disabled");
-    }
-
     SDL_GPUColorTargetInfo        color_target      = MakeMainColorTarget(winstate);
     SDL_GPUColorTargetInfo        color_load_target = MakeLoadedSceneColorTarget(winstate);
     SDL_GPUColorTargetInfo        gbuffer_targets[3];
@@ -343,77 +355,68 @@ void Render(void)
     UploadRenderSetEntities(&surfaceSet, &g_RenderState.surfaceBuffers);
 
     mat4x4 viewProj = M44Multiply(g_Camera.view, g_Camera.projection);
-    bool enableHiZ  = g_EnableOcclusion && winstate->hiz_valid;
+    bool enableHiZ  = g_RenderSettings.enableOcclusion && winstate->hiz_valid;
     mat4x4 hiZViewProj = enableHiZ ? winstate->hiz_view_proj : viewProj;
 
     FrustumPlanes cameraFrustum = CreateFrustumPlanes(viewProj);
     CullScene(cmd, cameraFrustum, hiZViewProj, enableHiZ, true);
     AnimateSkinned(cmd);
 
-    static ShadowCascadeData cachedShadowCascades;
-    static u32 shadowFrameIndex = 0;
-    static bool shadowCacheValid = false;
-    static const u8 cascadeCadance[] = { 0x5D, 0x22, 0x80 }; // 01011101, 00100010, 10000000
     ShadowCascadeData shadowCascades = GetShadowCascades();
-    u32 shadowFrame = (shadowFrameIndex++) & 7;
-    u8 frameBit = (1 << shadowFrame); 
+    DispatchSDSMSetupShadowsCompute(cmd, viewProj);
 
     for (u32 cascade = 0; cascade < SHADOW_CASCADE_COUNT; cascade++)
     {
-        bool updateCascade = !shadowCacheValid || ((cascadeCadance[cascade] & frameBit) != 0);
-        if (!updateCascade) continue;
-
-        cachedShadowCascades.lightViewProj[cascade] = shadowCascades.lightViewProj[cascade];
-        cachedShadowCascades.splitDistances[cascade] = shadowCascades.splitDistances[cascade];
-
-        mat4x4 shadowViewProj = cachedShadowCascades.lightViewProj[cascade];
-        FrustumPlanes shadowFrustum = CreateFrustumPlanes(shadowViewProj);
-        // planes.planes[4] = planes.planes[5] = VecZero(); // disable near, far plane frustum check
-        CullScene(cmd, shadowFrustum, shadowViewProj, false, false);
+        mat4x4 shadowViewProj = shadowCascades.lightViewProj[cascade];
+        CullScene(cmd, CreateFrustumPlanes(shadowViewProj), shadowViewProj, false, false);
 
         SDL_GPUColorTargetInfo shadow_color_target = MakeShadowColorTarget(winstate, cascade);
         SDL_GPUDepthStencilTargetInfo shadow_depth_target = MakeShadowDepthTarget(winstate->tex_shadow_depth, cascade);
         RenderDepth(cmd, &(DepthPassContext){
-            .colorTarget     = &shadow_color_target,
-            .depthTarget     = &shadow_depth_target,
-            .skinnedPipeline = g_RenderState.skinnedShadowPipeline,
-            .surfacePipeline = g_RenderState.surfaceShadowPipeline,
-            .viewProj        = shadowViewProj,
-            .alphaClip       = false
+            .colorTarget       = &shadow_color_target,
+            .depthTarget       = &shadow_depth_target,
+            .skinnedPipeline   = g_RenderState.skinnedShadowPipeline,
+            .surfacePipeline   = g_RenderState.surfaceShadowPipeline,
+            .viewProj          = shadowViewProj,
+            .cascadeIndex      = cascade,
+            .useShadowCascades = true,
+            .alphaClip         = false
         });
     }
 
     CullScene(cmd, cameraFrustum, hiZViewProj, enableHiZ, true);
 
     RenderDepth(cmd, &(DepthPassContext){
-        .colorTarget     = &hiz_depth_target,
-        .depthTarget     = &depth_target,
-        .skinnedPipeline = g_RenderState.skinnedDepthPipeline,
-        .surfacePipeline = g_RenderState.surfaceDepthPipeline,
-        .viewProj        = viewProj,
-        .alphaClip       = true
+        .colorTarget       = &hiz_depth_target,
+        .depthTarget       = &depth_target,
+        .skinnedPipeline   = g_RenderState.skinnedDepthPipeline,
+        .surfacePipeline   = g_RenderState.surfaceDepthPipeline,
+        .viewProj          = viewProj,
+        .cascadeIndex      = 0,
+        .useShadowCascades = false,
+        .alphaClip         = true
     });
     RenderScene(cmd, &(ScenePassContext){
         .colorTargets    = gbuffer_targets,
         .numColorTargets = SDL_arraysize(gbuffer_targets),
         .depthTarget     = &main_depth_target,
-        .shadowCascades  = cachedShadowCascades,
+        .shadowCascades  = shadowCascades,
         .viewProj        = viewProj
     });
-    DispatchHBAOCompute(cmd, g_EnableHBAO, screenW, screenH);
+    DispatchHBAOCompute(cmd, g_RenderSettings.enableHBAO, screenW, screenH);
     DispatchDeferredLightingCompute(cmd, screenW, screenH, viewProj);
     RenderLines(cmd, &color_load_target, &main_depth_target, viewProj);
     DispatchHiZBuildCompute(cmd);
+    DispatchSDSMDepthBoundsCompute(cmd);
 
     winstate->hiz_view_proj = viewProj;
     winstate->hiz_valid = true;
-    shadowCacheValid = true;
 
     DispatchTonemapCompute(cmd, winstate->tex_color, winstate->tex_hiz_depth, winstate->tex_post, screenW, screenH, viewProj);
     SDL_GPUTexture* finalTexture = winstate->tex_post;
-    if (g_EnableMLAA && winstate->tex_mlaa_output)
+    if (g_RenderSettings.enableMLAA && winstate->tex_mlaa_output)
     {
-        DispatchMLAACompute(cmd, winstate->tex_post, winstate->tex_mlaa_output, screenW, screenH, 0.08f, false);
+        DispatchMLAACompute(cmd, winstate->tex_post, winstate->tex_mlaa_output, screenW, screenH, g_RenderSettings.mlaaThreshold, g_RenderSettings.showMLAAEdges);
         finalTexture = winstate->tex_mlaa_output;
     }
 

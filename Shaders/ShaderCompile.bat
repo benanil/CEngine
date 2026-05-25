@@ -13,7 +13,7 @@ set GRAPHICS_SHADERS=Skinned:vert:frag Surface:vert:frag LineDebug:vert:frag Slu
 
 rem One HLSL file per compute pass:
 rem FileName:ComputeEntry
-set COMPUTE_SHADERS=AnimationCompute:main AnimateVertices:main CullDrawArgsCompute:main TexturePageCopyRGBA:main TexturePageCopyRG:main DeferredLighting:main TonemapCompute:main HiZBuildCompute:main HiZDownscaleCompute:main ExtractNormalCompute:main HBAOCompute:main HBAOBlurCompute:main MLAAEdgeMaskCompute:main MLAALineLengthCompute:main MLAABlendCompute:main
+set COMPUTE_SHADERS=AnimationCompute:main AnimateVertices:main CullDrawArgsCompute:main TexturePageCopyRGBA:main TexturePageCopyRG:main DeferredLighting:main TonemapCompute:main HiZBuildCompute:main HiZDownscaleCompute:main SDSMDepthBoundsInitial:main SDSMDepthBoundsReduce:main SDSMSetupShadows:main ExtractNormalCompute:main HBAOCompute:main HBAOBlurCompute:main MLAAEdgeMaskCompute:main MLAALineLengthCompute:main MLAABlendCompute:main
 
 if not exist %SPV_DIR% mkdir %SPV_DIR%
 

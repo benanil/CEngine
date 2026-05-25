@@ -50,30 +50,26 @@ extern void Quit(int rc);
 
 void GraphicsInit(bool msaa)
 {
+    VkPhysicalDeviceFeatures vk10_features = {
+        .shaderInt16 = VK_TRUE,
+    };
+
     VkPhysicalDeviceVulkan12Features vk12_features = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
         .pNext = NULL,
-        .shaderFloat16 = VK_TRUE
-        // .shaderSubgroupExtendedTypes = VK_TRUE,
-        // .subgroupBroadcastDynamicId  = VK_TRUE,
+        .shaderFloat16 = VK_TRUE,
     };
 
     VkPhysicalDeviceVulkan11Features vk11_features = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
         .pNext = &vk12_features,
         .shaderDrawParameters = VK_TRUE,
-        // this is supported on mobile devices and amd latest
-        // .storageInputOutput16 = VK_TRUE,
-    };
-
-    VkPhysicalDeviceFeatures vk10_features = {
-        .shaderInt16 = VK_TRUE,
     };
 
     SDL_GPUVulkanOptions options = {
         .vulkan_api_version = VULKAN_MAKE_API_VERSION(0, 1, 2, 0),
         .feature_list = &vk11_features,
-        .vulkan_10_physical_device_features = &vk10_features
+        .vulkan_10_physical_device_features = &vk10_features,
     };
 
     SDL_PropertiesID props = SDL_CreateProperties();
@@ -108,6 +104,7 @@ void GraphicsInit(bool msaa)
     winstate->tex_gbuffer_shadow_roughness = CreateGBufferShadowRoughnessTexture(drawablew, drawableh);
     winstate->tex_post    = CreatePostProcessTexture(drawablew, drawableh);
     winstate->tex_hiz     = CreateHiZTexture(drawablew, drawableh, &winstate->hiz_mip_count);
+    winstate->tex_sdsm_bounds = CreateSDSMDepthBoundsTexture(drawablew, drawableh, &winstate->sdsm_mip_count);
     winstate->tex_hbao        = CreateHBAOTexture(Maxu32((u32)drawablew / 2u, 1u), Maxu32((u32)drawableh / 2u, 1u));
     winstate->tex_hbao_blur   = CreateHBAOTexture(Maxu32((u32)drawablew / 2u, 1u), Maxu32((u32)drawableh / 2u, 1u));
     winstate->tex_hbao_normal = CreateHBAONormalTexture(Maxu32((u32)drawablew / 2u, 1u), Maxu32((u32)drawableh / 2u, 1u));
@@ -120,6 +117,7 @@ void GraphicsInit(bool msaa)
     winstate->hiz_width   = drawablew;
     winstate->hiz_height  = drawableh;
     winstate->hiz_valid   = false;
+    winstate->sdsm_valid  = false;
     
     gGFX.SkinnedVertexBuffer = OSAllocAligned(sizeof(ASkinedVertex) * MAX_SKINNED_SOURCE_VERTEX, 4);
     gGFX.SurfaceVertexBuffer = OSAllocAligned(sizeof(AVertex) * MAX_SURFACE_VERTEX, 4);
@@ -139,6 +137,7 @@ void GraphicsDestroy()
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_gbuffer_shadow_roughness);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_post);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_hiz);
+    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_sdsm_bounds);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_hbao);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_hbao_blur);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_hbao_normal);
@@ -379,6 +378,17 @@ SDL_GPUTexture* CreateSceneColorTexture(u32 drawablew, u32 drawableh, SDL_GPUSam
                             usage, sampleCount, 1, "Scene Color Texture");
 }
 
+SDL_GPUTexture* CreateSDSMDepthBoundsTexture(u32 drawablew, u32 drawableh, u32* mipCount)
+{
+    u32 width = Maxu32((drawablew + 1u) / 2u, 1u);
+    u32 height = Maxu32((drawableh + 1u) / 2u, 1u);
+    u32 levels = GetMipCount(width, height);
+    if (mipCount) *mipCount = levels;
+    return CreateTexture2D(width, height, SDL_GPU_TEXTUREFORMAT_R32G32_FLOAT,
+                           SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_READ | SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_WRITE,
+                           SDL_GPU_SAMPLECOUNT_1, levels, "SDSM Depth Bounds Texture");
+}
+
 SDL_GPUTexture* CreateGBufferTangentTexture(u32 drawablew, u32 drawableh)
 {
     return CreateTexture2D(drawablew, drawableh, SDL_GPU_TEXTUREFORMAT_R32_UINT,
@@ -446,14 +456,15 @@ SDL_GPUTexture* CreateShadowDepthTexture(u32 size)
 {
     return CreateTexture2D(size, size, SDL_GPU_TEXTUREFORMAT_D32_FLOAT,
                            SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET,
-                           SDL_GPU_SAMPLECOUNT_1, 1, "Shadow Depth Texture");
+                           SDL_GPU_SAMPLECOUNT_1, SHADOW_CASCADE_COUNT, "Shadow Depth Texture");
 }
 
 SDL_GPUTexture* CreateShadowColorTexture(u32 size, u32 layers)
 {
-    return CreateTexture2DArray(size, size, layers, SDL_GPU_TEXTUREFORMAT_R32_FLOAT,
-                                SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER,
-                                "Shadow Color Texture");
+    (void)layers;
+    return CreateTexture2D(size, size, SDL_GPU_TEXTUREFORMAT_R32_FLOAT,
+                           SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER,
+                           SDL_GPU_SAMPLECOUNT_1, SHADOW_CASCADE_COUNT, "Shadow Color Texture");
 }
 
 Texture rImportTexture(const char* path, TexFlags flags, const char* label)

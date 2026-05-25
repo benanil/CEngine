@@ -5,6 +5,19 @@
 #define MAX_GROUP               (MAX_ENTITY >> 1)
 #define MAX_BUNDLES             (MAX_ENTITY >> 2)
 
+#define SHADOW_MAP_SIZE            (1024u * 2u)
+#define SHADOW_CASCADE_COUNT       3u
+#define SHADOW_MAX_DISTANCE        200.0f
+#define SHADOW_NEAR_PLANE          1.0f
+#define SHADOW_CAMERA_DISTANCE     200.0f
+#define SHADOW_CASTER_DEPTH_MARGIN 150.0f
+#define SHADOW_CASCADE_OVERLAP     10.0f
+#define SHADOW_SPLIT_NEAR_DISTANCE 10.0f
+#define SHADOW_PSSM_LAMBDA         0.75f
+
+#define SDSM_NEAR_PADDING          5.0f
+#define SDSM_FAR_PADDING           25.0f
+
 #define MatrixNumInt32          6
 #define MAX_BONES               96
 #define MaxBoneDepth            32

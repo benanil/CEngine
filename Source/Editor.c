@@ -2,8 +2,16 @@
 #include "Include/UIRenderer.h"
 #include "Include/Platform.h"
 #include "Include/Random.h"
+#include "Include/Rendering.h"
 
 extern WindowState g_WindowState;
+
+static u32 EditorCStringLength(const char* text)
+{
+    u32 length = 0;
+    while (text[length]) length++;
+    return length;
+}
 
 static void ShowFps(void)
 {
@@ -32,223 +40,225 @@ static void ShowFps(void)
     SlugAppendText2DN(NULL, msText, msLen + 3, (float2){w - msSize.x, 68.0f }, 32.0f, 0xFFCCCCFF);
 }
 
-static void ClayTestUI(void)
+static void EditorSliderFloat(Clay_ElementId id, const char* label, f32* value, f32 minValue, f32 maxValue, int decimals)
 {
-    static u32 selectedButton = UINT32_MAX;
-    static bool checkboxValue = true;
-    static f32 sliderValue = 0.35f;
-    static char clayTextEdit[512] = "Editable multiline text\ninside a Clay layout slot.";
-    static bool imageLoadAttempted = false;
-    static Texture testTexture;
-    static UIImageData testImage;
+    Clay_String labelString = { .isStaticallyAllocated = true, .length = (s32)EditorCStringLength(label), .chars = label };
+    UISliderFloatValue(id, labelString, value, minValue, maxValue, decimals);
+}
 
-    if (!imageLoadAttempted)
+static void EditorSectionHeader(const char* title)
+{
+    Clay_String titleString = { .isStaticallyAllocated = true, .length = (s32)EditorCStringLength(title), .chars = title };
+    CLAY_TEXT(titleString, CLAY_TEXT_CONFIG({
+        .fontSize = 16,
+        .textColor = { 185, 205, 245, 255 }
+    }));
+}
+
+static void EditorDivider(Clay_ElementId id)
+{
+    CLAY(id, {
+        .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(1.0f) } },
+        .backgroundColor = { 49, 66, 102, 130 }
+    }) {}
+}
+
+static void EditorDrawScrollBar(Clay_ElementId id)
+{
+    static u64 activeScrollBar;
+    static f32 dragOffsetY;
+    Clay_ElementData element = Clay_GetElementData(id);
+    Clay_ScrollContainerData scroll = Clay_GetScrollContainerData(id);
+    u64 scrollId = (u64)id.id;
+    if (!GetMouseDown(MouseButton_Left) && activeScrollBar == scrollId) activeScrollBar = 0u;
+    if (!element.found || !scroll.found || !scroll.scrollPosition) return;
+
+    f32 containerH = Maxf32(scroll.scrollContainerDimensions.height, 1.0f);
+    f32 contentH = Maxf32(scroll.contentDimensions.height, containerH);
+    f32 maxScroll = contentH - containerH;
+    if (maxScroll <= 1.0f) return;
+
+    f32 trackW = 5.0f;
+    f32 trackX = element.boundingBox.x + element.boundingBox.width - trackW;
+    f32 trackY = element.boundingBox.y;
+    f32 thumbH = Maxf32(containerH * (containerH / contentH), 28.0f);
+    thumbH = Minf32(thumbH, containerH);
+    f32 t = Saturatef32(-scroll.scrollPosition->y / maxScroll);
+    f32 thumbY = trackY + t * (containerH - thumbH);
+
+    Clay_PointerData pointer = Clay_GetPointerState();
+    float2 mouse      = { pointer.position.x, pointer.position.y };
+    float2 thumbPos   = { trackX - 4.0f, thumbY };
+    float2 thumbSize  = { trackW + 8.0f, thumbH };
+    float2 trackPos   = { trackX - 4.0f, trackY };
+    float2 trackSize  = { trackW + 8.0f, containerH };
+    bool thumbHovered = RectPointIntersect(thumbPos, thumbSize, mouse) != 0u;
+    bool trackHovered = RectPointIntersect(trackPos, trackSize, mouse) != 0u;
+
+    if (GetMousePressed(MouseButton_Left) && (thumbHovered || trackHovered))
     {
-        imageLoadAttempted = true;
-        testTexture = rImportTexture("Assets/Textures/Test.jpg", TexFlags_MipMap, "ClayTestImage");
-        testImage = UIImageFromTexture(&testTexture);
+        activeScrollBar = scrollId;
+        dragOffsetY = thumbHovered ? mouse.y - thumbY : thumbH * 0.5f;
     }
 
-    Clay_BeginLayout();
-    Clay_ElementId textEditId = CLAY_ID("ClayTextEditSlot");
+    if (activeScrollBar == scrollId && GetMouseDown(MouseButton_Left))
+    {
+        f32 scrollRange = Maxf32(containerH - thumbH, 1.0f);
+        f32 newT = Saturatef32((mouse.y - trackY - dragOffsetY) / scrollRange);
+        scroll.scrollPosition->y = -newT * maxScroll;
+        t = newT;
+        thumbY = trackY + t * (containerH - thumbH);
+    }
 
-    CLAY(CLAY_ID("ClayTestRoot"), {
+    UIPushRoundedRect((float2){ trackX, trackY }, (float2){ trackW, containerH }, 2.5f, 0x66334466u);
+    u32 thumbColor = (activeScrollBar == scrollId || thumbHovered) ? 0xFFE6EEFFu : 0xCC9AB5FFu;
+    UIPushRoundedRect((float2){ trackX, thumbY }, (float2){ trackW, thumbH }, 2.5f, thumbColor);
+}
+
+static Clay_ElementDeclaration EditorScrollPanelDeclaration(f32 height)
+{
+    Clay_ElementDeclaration declaration = {
+        .layout = {
+            .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(height) },
+            .padding = { 0, 10, 0, 0 },
+            .childGap = 12,
+            .layoutDirection = CLAY_TOP_TO_BOTTOM
+        },
+        .clip = { .vertical = true, .childOffset = Clay_GetScrollOffset() }
+    };
+    return declaration;
+}
+
+static void GraphicsEditorUI(void)
+{
+    RenderSettings* settings = &g_RenderSettings;
+    Clay_BeginLayout();
+
+    Clay_ElementDeclaration EditorPanelBoxDeclaration = 
+    {
+        .layout = {
+            .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) },
+            .padding = { 14, 14, 12, 12 },
+            .childGap = 10,
+            .layoutDirection = CLAY_TOP_TO_BOTTOM
+        },
+        .backgroundColor = { 16, 21, 34, 215 },
+        .cornerRadius = CLAY_CORNER_RADIUS(12.0f),
+        .border = { .color = { 38, 54, 88, 140 }, .width = CLAY_BORDER_ALL(1) }
+    };
+
+    CLAY(CLAY_ID("GraphicsEditorRoot"), {
         .layout = {
             .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_GROW(0) },
-            .padding = { 0, 0, 0, 0 },
-            .childAlignment = { .x = CLAY_ALIGN_X_LEFT, .y = CLAY_ALIGN_Y_CENTER },
+            .padding = { 18, 18, 18, 18 },
+            .childAlignment = { .x = CLAY_ALIGN_X_LEFT, .y = CLAY_ALIGN_Y_TOP },
         }
     }) {
         ShowFps();
 
-        CLAY(CLAY_ID("ClayTestPanel"), {
+        CLAY(CLAY_ID("GraphicsEditorPanel"), {
             .layout = {
-                .sizing = { CLAY_SIZING_FIXED(420.0f), CLAY_SIZING_GROW(0) },
-                .padding = { 22, 22, 22, 22 },
-                .childGap = 14,
-                .layoutDirection = CLAY_TOP_TO_BOTTOM
-            },
-            .backgroundColor = { 14, 17, 27, 248 },
-            .cornerRadius = CLAY_CORNER_RADIUS(0.0f),
-            .border = { .color = { 55, 78, 120, 180 }, .width = CLAY_BORDER_ALL(4) }
-        }) {
-            CLAY(CLAY_ID("ClayTestHeader"), {
-                .layout = {
-                    .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) },
-                    .childGap = 6,
-                    .layoutDirection = CLAY_TOP_TO_BOTTOM
-                }
-            }) {
-                CLAY_TEXT(CLAY_STRING("Clay Layout Test"), CLAY_TEXT_CONFIG({
-                    .fontSize = 26,
-                    .textColor = { 220, 232, 255, 255 }
-                }));
-                CLAY_TEXT(CLAY_STRING("Left-docked full-height panel."), CLAY_TEXT_CONFIG({
-                    .fontSize = 14,
-                    .textColor = { 110, 130, 170, 255 }
-                }));
-                CLAY_TEXT(CLAY_STRING("Multiline Clay text line 1\nline 2: clipped, measured, and rendered by Slug"), CLAY_TEXT_CONFIG({
-                    .fontSize = 14,
-                    .lineHeight = 18,
-                    .textColor = { 155, 176, 220, 255 }
-                }));
-            }
-
-            CLAY(CLAY_ID("ClayTestDivider"), {
-                .layout = {
-                    .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(1.0f) },
-                },
-                .backgroundColor = { 45, 60, 95, 140 }
-            }) {}
-
-            CLAY(CLAY_ID("ClayTestControls"), {
-                .layout = {
-                    .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) },
-                    .padding = { 16, 16, 14, 14 },
-                    .childGap = 14,
-                    .layoutDirection = CLAY_TOP_TO_BOTTOM
-                },
-                .backgroundColor = { 18, 22, 34, 200 },
-                .cornerRadius = CLAY_CORNER_RADIUS(10.0f),
-                .border = { .color = { 40, 56, 88, 120 }, .width = CLAY_BORDER_ALL(1) }
-            }) {
-                UICheckbox(CLAY_ID("ClayTestCheckbox"), CLAY_STRING("Enable feature"), &checkboxValue);
-                UISliderFloat(CLAY_ID("ClayTestSlider"), CLAY_STRING("Intensity"), &sliderValue, 0.0f, 1.0f);
-                UIProgressBar(CLAY_ID("ClayTestProgress"), CLAY_STRING("Progress"), sliderValue);
-            }
-
-            CLAY(CLAY_ID("ClayTestRow"), {
-                .layout = {
-                    .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(40.0f) },
-                    .childGap = 10,
-                    .layoutDirection = CLAY_LEFT_TO_RIGHT,
-                    .childAlignment = { .y = CLAY_ALIGN_Y_CENTER }
-                }
-            }) {
-                const Clay_String buttonNames[3] = {
-                    CLAY_STRING_CONST("Alpha"),
-                    CLAY_STRING_CONST("Beta"),
-                    CLAY_STRING_CONST("Gamma")
-                };
-                for (u32 i = 0; i < 3u; i++)
-                {
-                    Clay_String label = i == selectedButton ? CLAY_STRING("Selected") : buttonNames[i];
-                    if (UIButton(CLAY_IDI("ClayTestPill", i), label, (Clay_Dimensions){ 96.0f, 34.0f }, i == selectedButton)) selectedButton = i;
-                }
-            }
-
-            CLAY(textEditId, {
-                .layout = {
-                    .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(96.0f) }
-                }
-            }) {}
-
-            CLAY(CLAY_ID("ClayScrollTest"), {
-                .layout = {
-                    .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_GROW(0) },
-                    .padding = { 10, 10, 10, 10 },
-                    .childGap = 8,
-                    .layoutDirection = CLAY_TOP_TO_BOTTOM
-                },
-                .backgroundColor = { 9, 11, 18, 255 },
-                .cornerRadius = CLAY_CORNER_RADIUS(10.0f),
-                .border = { .color = { 30, 42, 68, 120 }, .width = CLAY_BORDER_ALL(1) },
-                .clip = { .vertical = true, .childOffset = Clay_GetScrollOffset() }
-            }) {
-                for (u32 i = 0; i < 8u; i++)
-                {
-                    f32 t = (f32)i / 7.0f;
-                    CLAY(CLAY_IDI("ClayScrollBlock", i), {
-                        .layout = {
-                            .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(30.0f) },
-                            .padding = { 12, 12, 6, 6 },
-                            .childAlignment = { .y = CLAY_ALIGN_Y_CENTER }
-                        },
-                        .backgroundColor = {
-                            28.0f + t * 20.0f,
-                            42.0f + t * 38.0f,
-                            100.0f + t * 80.0f,
-                            255.0f
-                        },
-                        .cornerRadius = CLAY_CORNER_RADIUS(6.0f)
-                    }) {
-                        CLAY_TEXT(CLAY_STRING("This Slug text is clipped by Clay scissor"), CLAY_TEXT_CONFIG({
-                            .fontSize = 14,
-                            .wrapMode = CLAY_TEXT_WRAP_NONE,
-                            .textColor = { 200, 215, 245, 230 }
-                        }));
-                    }
-                }
-            }
-        }
-
-        CLAY(CLAY_ID("ClayImageGridPanel"), {
-            .layout = {
-                .sizing = { CLAY_SIZING_FIXED(500.0f), CLAY_SIZING_FIXED(380.0f) },
-                .padding = { 16, 16, 16, 16 },
+                .sizing = { CLAY_SIZING_FIXED(500.0f), CLAY_SIZING_FIT(0) },
+                .padding = { 18, 18, 18, 18 },
                 .childGap = 12,
                 .layoutDirection = CLAY_TOP_TO_BOTTOM
             },
-            .floating = {
-                .attachTo = CLAY_ATTACH_TO_PARENT,
-                .attachPoints = { CLAY_ATTACH_POINT_RIGHT_BOTTOM, CLAY_ATTACH_POINT_RIGHT_BOTTOM },
-                .offset = { -24.0f, -24.0f },
-                .zIndex = 10
-            },
-            .backgroundColor = { 12, 15, 24, 245 },
-            .cornerRadius = CLAY_CORNER_RADIUS(18.0f),
-            .border = { .color = { 72, 96, 150, 180 }, .width = CLAY_BORDER_ALL(2) }
+            .backgroundColor = { 10, 13, 22, 238 },
+            .cornerRadius = CLAY_CORNER_RADIUS(14.0f),
+            .border = { .color = { 68, 94, 148, 190 }, .width = CLAY_BORDER_ALL(2) }
         }) {
-            CLAY(CLAY_ID("ClayImageGridHeader"), {
+            CLAY(CLAY_ID("GraphicsEditorHeader"), {
                 .layout = {
                     .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) },
                     .childGap = 4,
                     .layoutDirection = CLAY_TOP_TO_BOTTOM
                 }
             }) {
-                CLAY_TEXT(CLAY_STRING("Scrollable Image Grid"), CLAY_TEXT_CONFIG({
-                    .fontSize = 20,
-                    .textColor = { 225, 235, 255, 255 }
+                CLAY_TEXT(CLAY_STRING("Graphics Editor"), CLAY_TEXT_CONFIG({
+                    .fontSize = 24,
+                    .textColor = { 230, 238, 255, 255 }
                 }));
-                CLAY_TEXT(CLAY_STRING("Assets/Textures/Test.jpg repeated in a clipped 2D grid"), CLAY_TEXT_CONFIG({
-                    .fontSize = 13,
-                    .textColor = { 135, 154, 196, 255 }
+                CLAY_TEXT(CLAY_STRING("Runtime render controls."), CLAY_TEXT_CONFIG({
+                    .fontSize = 14,
+                    .textColor = { 130, 152, 196, 255 }
                 }));
             }
 
-            CLAY(CLAY_ID("ClayImageGridScroll"), {
+            EditorDivider(CLAY_ID("GraphicsEditorDivider0"));
+
+            CLAY(CLAY_ID("GraphicsEditorScroll"), EditorScrollPanelDeclaration(590.0f)) {
+                CLAY(CLAY_ID("GraphicsEditorFeatureBox"), EditorPanelBoxDeclaration) {
+                    EditorSectionHeader("Features");
+                    UICheckbox(CLAY_ID("EditorEnableOcclusion"), CLAY_STRING("Hi-Z occlusion culling"), &settings->enableOcclusion);
+                    UICheckbox(CLAY_ID("EditorEnableHBAO")     , CLAY_STRING("HBAO ambient occlusion"), &settings->enableHBAO);
+                    UICheckbox(CLAY_ID("EditorEnableMLAA")     , CLAY_STRING("Anti-aliasing (MLAA)"), &settings->enableMLAA);
+                    UICheckbox(CLAY_ID("EditorShowMLAAEdges")  , CLAY_STRING("Show MLAA edge mask"), &settings->showMLAAEdges);
+                }
+
+                CLAY(CLAY_ID("GraphicsEditorSunBox"), EditorPanelBoxDeclaration) {
+                    EditorSectionHeader("Sun");
+                    EditorSliderFloat(CLAY_ID("EditorSunYaw")  , "Yaw"  , &settings->sunYaw  , -180.0f, 180.0f, 1);
+                    EditorSliderFloat(CLAY_ID("EditorSunPitch"), "Pitch", &settings->sunPitch, -10.0f, 89.0f, 1);
+                }
+
+                CLAY(CLAY_ID("GraphicsEditorShadowBox"), EditorPanelBoxDeclaration) {
+                    EditorSectionHeader("Shadows");
+                    EditorSliderFloat(CLAY_ID("EditorShadowMaxDistance")   , "Max distance"   , &settings->shadowMaxDistance      , 25.0f, 1000.0f, 1);
+                    EditorSliderFloat(CLAY_ID("EditorShadowCameraDistance"), "Camera distance", &settings->shadowCameraDistance   , 10.0f,  500.0f, 1);
+                    EditorSliderFloat(CLAY_ID("EditorShadowCasterMargin")  , "Caster margin"  , &settings->shadowCasterDepthMargin, 10.0f,  500.0f, 1);
+                    EditorSliderFloat(CLAY_ID("EditorShadowCascadeOverlap"), "Cascade overlap", &settings->shadowCascadeOverlap   ,  0.0f,   80.0f, 1);
+                    EditorSliderFloat(CLAY_ID("EditorShadowSplitNear")     , "Split near"     , &settings->shadowSplitNearDistance,  1.0f,   80.0f, 1);
+                    EditorSliderFloat(CLAY_ID("EditorShadowPSSM")          , "PSSM lambda"    , &settings->shadowPSSMLambda       ,  0.0f,    1.0f, 2);
+                }
+
+                CLAY(CLAY_ID("GraphicsEditorHBAOBox"), EditorPanelBoxDeclaration) {
+                    EditorSectionHeader("HBAO");
+                    EditorSliderFloat(CLAY_ID("EditorHBAORadius")   , "Radius"   , &settings->hbaoRadius   , 0.05f, 5.0f, 2);
+                    EditorSliderFloat(CLAY_ID("EditorHBAOBias")     , "Bias"     , &settings->hbaoBias     ,  0.0f, 1.0f, 2);
+                    EditorSliderFloat(CLAY_ID("EditorHBAOIntensity"), "Intensity", &settings->hbaoIntensity,  0.0f, 6.0f, 2);
+                    EditorSliderFloat(CLAY_ID("EditorHBAOPower")    , "Power"    , &settings->hbaoPower    , 0.25f, 6.0f, 2);
+                }
+
+                CLAY(CLAY_ID("GraphicsEditorPostBox"), EditorPanelBoxDeclaration) {
+                    EditorSectionHeader("Post / AA");
+                    EditorSliderFloat(CLAY_ID("EditorMLAAThreshold"), "MLAA threshold", &settings->mlaaThreshold  , 0.01f, 0.25f, 3);
+                    EditorSliderFloat(CLAY_ID("EditorExposure")     , "Exposure"      , &settings->exposure       , 0.10f, 4.00f, 2);
+                    EditorSliderFloat(CLAY_ID("EditorGamma")        , "Gamma"         , &settings->gamma          , 1.00f, 3.20f, 2);
+                    EditorSliderFloat(CLAY_ID("EditorGodRays")      , "God rays"      , &settings->godRayIntensity, 0.00f, 8.00f, 2);
+                }
+            }
+
+            CLAY(CLAY_ID("GraphicsEditorButtons"), {
                 .layout = {
-                    .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_GROW(0) },
-                    .padding = { 10, 10, 10, 10 },
-                    .childGap = 12,
-                    .layoutDirection = CLAY_TOP_TO_BOTTOM
-                },
-                .backgroundColor = { 6, 8, 14, 255 },
-                .cornerRadius = CLAY_CORNER_RADIUS(12.0f),
-                .border = { .color = { 36, 50, 84, 160 }, .width = CLAY_BORDER_ALL(1) },
-                .clip = { .vertical = true, .childOffset = Clay_GetScrollOffset() }
+                    .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(38.0f) },
+                    .childGap = 10,
+                    .layoutDirection = CLAY_LEFT_TO_RIGHT
+                }
             }) {
-                for (u32 y = 0; y < 16u; y++)
+                if (UIButton(CLAY_ID("EditorResetGraphics"), CLAY_STRING("Reset"), (Clay_Dimensions){ 100.0f, 34.0f }, false))
                 {
-                    CLAY(CLAY_IDI("ClayImageGridRow", y), {
-                        .layout = {
-                            .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(96.0f) },
-                            .childGap = 12,
-                            .layoutDirection = CLAY_LEFT_TO_RIGHT
-                        }
-                    }) {
-                        for (u32 x = 0; x < 4u; x++)
-                        {
-                            u32 index = y * 4u + x;
-                            CLAY(CLAY_IDI("ClayImageGridCell", index), {
-                                .layout = {
-                                    .sizing = { CLAY_SIZING_FIXED(96.0f), CLAY_SIZING_FIXED(96.0f) }
-                                },
-                                .cornerRadius = CLAY_CORNER_RADIUS(10.0f),
-                                .image = { .imageData = testImage.texture ? &testImage : NULL }
-                            }) {}
-                        }
-                    }
+                    *settings = (RenderSettings){
+                        .enableOcclusion = true,
+                        .enableHBAO = true,
+                        .enableMLAA = true,
+                        .showMLAAEdges = false,
+                        .hbaoRadius = 1.3f,
+                        .hbaoBias = 0.5f,
+                        .hbaoIntensity = 2.0f,
+                        .hbaoPower = 2.0f,
+                        .mlaaThreshold = 0.08f,
+                        .exposure = 1.0f,
+                        .gamma = 2.2f,
+                        .godRayIntensity = 2.5f,
+                        .sunYaw = 116.565f,
+                        .sunPitch = 63.435f,
+                        .shadowMaxDistance = SHADOW_MAX_DISTANCE,
+                        .shadowCameraDistance = SHADOW_CAMERA_DISTANCE,
+                        .shadowCasterDepthMargin = SHADOW_CASTER_DEPTH_MARGIN,
+                        .shadowCascadeOverlap = SHADOW_CASCADE_OVERLAP,
+                        .shadowSplitNearDistance = SHADOW_SPLIT_NEAR_DISTANCE,
+                        .shadowPSSMLambda = SHADOW_PSSM_LAMBDA
+                    };
                 }
             }
         }
@@ -256,33 +266,17 @@ static void ClayTestUI(void)
 
     Clay_RenderCommandArray commands = UIEndLayout();
     UIRenderCommands(&commands);
-
-    Clay_ElementData textEditData = Clay_GetElementData(textEditId);
-    if (textEditData.found)
-    {
-        UITextArea(NULL,
-                   (float2){ textEditData.boundingBox.x, textEditData.boundingBox.y },
-                   clayTextEdit,
-                   (u32)sizeof(clayTextEdit),
-                   (float2){ textEditData.boundingBox.width, textEditData.boundingBox.height });
-    }
+    EditorDrawScrollBar(CLAY_ID("GraphicsEditorScroll"));
 }
 
 void UIRenderCallback(void)
 {
-    // static bool enabled = true;
-    // static f32 slider = 0.62f;
-    // static char textBox[128] = "edit me";
     // static char textArea[512] = "Text area 中文测试 日本語テスト\nArabic: العربية\nGreek: Ελληνικά";
-    // UIPushRoundedRect((float2){ 32.0f, 32.0f }, (float2){ 760.0f, 500.0f }, 1.5f, UIGetColor(UIColor_Quad));
-    // UIPushBorder(UIGetFloat(UIFloat_LineThickness) * 2.0f, UIGetColor(UIColor_Border));
-    // UIPushFloat(UIFloat_TextScale, 0.86f);
     // UIText("SDF + Slug Immediate UI", (float2){ 56.0f, 56.0f });
-    // UIPopFloat(UIFloat_TextScale);
     // UITextArea("Text Area", (float2){ 56.0f, 292.0f }, textArea, (u32)sizeof(textArea), (float2){ 520.0f, 160.0f });
     if (GetKeyPressed('c'))
     {
         Clay_SetDebugModeEnabled(!Clay_IsDebugModeEnabled());
     }
-    ClayTestUI();
+    GraphicsEditorUI();
 }

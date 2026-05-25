@@ -430,16 +430,19 @@
 						<Path>Shaders/HiZBuildCompute.hlsl</Path>
 					</File>
 					<File>
+						<Path>Shaders/HiZDownscaleCompute.hlsl</Path>
+					</File>
+					<File>
 						<Path>Shaders/SkinnedDepthOnly.hlsl</Path>
 					</File>
 					<File>
 						<Path>Shaders/SurfaceDepthOnly.hlsl</Path>
 					</File>
 					<File>
-						<Path>Shaders/HiZDownscaleCompute.hlsl</Path>
+						<Path>Shaders/Shadow.hlsl</Path>
 					</File>
 					<File>
-						<Path>Shaders/Shadow.hlsl</Path>
+						<Path>Shaders/ShadowCascade.hlsl</Path>
 					</File>
 					<File>
 						<Path>Shaders/HBAOBlurCompute.hlsl</Path>
@@ -457,10 +460,10 @@
 						<Path>Shaders/DeferredLighting.hlsl</Path>
 					</File>
 					<File>
-						<Path>Shaders/ExtractNormalCompute.hlsl</Path>
+						<Path>Shaders/Sky.hlsl</Path>
 					</File>
 					<File>
-						<Path>Shaders/Sky.hlsl</Path>
+						<Path>Shaders/ExtractNormalCompute.hlsl</Path>
 					</File>
 					<File>
 						<Path>Shaders/Slug.hlsl</Path>
@@ -488,6 +491,15 @@
 					</File>
 					<File>
 						<Path>Shaders/MLAALineLengthCompute.hlsl</Path>
+					</File>
+					<File>
+						<Path>Shaders/SDSMDepthBoundsInitial.hlsl</Path>
+					</File>
+					<File>
+						<Path>Shaders/SDSMDepthBoundsReduce.hlsl</Path>
+					</File>
+					<File>
+						<Path>Shaders/SDSMSetupShadows.hlsl</Path>
 					</File>
 				</Children>
 			</Folder>

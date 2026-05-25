@@ -78,6 +78,8 @@ void HMDestroy(HashMap* hm);
 
 void HMClear(HashMap* hm);
 
+HashMap HMCopy(const HashMap* src);
+
 void* HMFind(const HashMap* hm, uint64_t key);
 
 bool HMContains(const HashMap* hm, uint64_t key);
@@ -354,6 +356,33 @@ void HMReserve(HashMap* hm, uint32_t capacity) {
         HMReallocateBuckets(hm, HMCalcNumBuckets(shifts));
         HMClearAndFillBuckets(hm);
     }
+}
+
+HashMap HMCopy(const HashMap* src) {
+    HashMap dst;
+    HMMemset(&dst, 0, sizeof(HashMap));
+    dst.count             = src->count;
+    dst.capacity          = src->capacity;
+    dst.numBuckets        = src->numBuckets;
+    dst.maxBucketCapacity = src->maxBucketCapacity;
+    dst.valueSize         = src->valueSize;
+    dst.shifts            = src->shifts;
+
+    if (src->capacity > 0) {
+        dst.keys = (uint64_t*)HMRealloc(NULL, dst.capacity * sizeof(uint64_t));
+        dst.values = HMRealloc(NULL, (size_t)dst.capacity * dst.valueSize);
+        if (src->count > 0) {
+            HMMemcpy(dst.keys, src->keys, dst.count * sizeof(uint64_t));
+            HMMemcpy(dst.values, src->values, (size_t)dst.count * dst.valueSize);
+        }
+    }
+
+    if (src->numBuckets > 0) {
+        dst.buckets = (HMBucket*)HMRealloc(NULL, dst.numBuckets * sizeof(HMBucket));
+        HMMemcpy(dst.buckets, src->buckets, dst.numBuckets * sizeof(HMBucket));
+    }
+
+    return dst;
 }
 
 void HMClear(HashMap* hm) {

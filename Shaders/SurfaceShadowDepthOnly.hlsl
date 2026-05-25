@@ -1,15 +1,17 @@
 #include "CommonStructs.hlsl"
 #include "Bitpack.hlsl"
 #include "Math.hlsl"
+#include "ShadowCascade.hlsl"
 
 cbuffer vs_params : register(b0, space1)
 {
-    float4x4 uViewProj;
+    uint uCascadeIndex;
 };
 
 StructuredBuffer<Entity>         sEntities         : register(t0);
 StructuredBuffer<PrimitiveGroup> sPrimitiveGroups  : register(t1);
 StructuredBuffer<uint>           sDrawSparseIndices : register(t2);
+StructuredBuffer<ShadowCascadeBuffer> sShadowCascades : register(t3);
 
 struct VSInput
 {
@@ -28,7 +30,7 @@ float4 vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("DrawI
     f16_3 insScale = UnpackVec3XY11Z10Unorm(entity.scale) * f16(10.0);
     f16_3 worldPos = QMulVec3(insRot, f16_3(input.aPos) * insScale);
     float3 finalWorldPos = float3(worldPos) + entity.position.xyz;
-    return mul(uViewProj, float4(finalWorldPos, 1.0));
+    return MulShadowCascade(sShadowCascades[0], uCascadeIndex, float4(finalWorldPos, 1.0));
 }
 
 float frag(float4 position : SV_Position) : SV_Target0
