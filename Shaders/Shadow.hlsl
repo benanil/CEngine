@@ -42,18 +42,18 @@ float SampleShadow(Texture2DArray<float> shadowMap, SamplerState samp,
     float3 proj  = shadowPos.xyz / shadowPos.w;
     float2 uv    = proj.xy * float2(0.5f, -0.5f) + 0.5f;
     float  depth = proj.z;
-    // if (shadowPos.w <= 0.0f || any(uv < 0.0f) || any(uv > 1.0f) || depth < 0.0f || depth > 1.0f)
-    //     return 1.0f;
+    if (shadowPos.w <= 0.0f || any(uv < 0.0f) || any(uv > 1.0f) || depth < 0.0f || depth > 1.0f)
+        return 1.0f;
 
     uint width, height, layers;
     shadowMap.GetDimensions(width, height, layers);
     float2 texel = 1.0f / float2(width, height);
 
-    float cascadeBiasScale = cascadeIndex == 0u ? 1.2f : (cascadeIndex == 1u ? 3.8f : 2.6f);
+    float cascadeBiasScale = cascadeIndex == 0u ? 1.2f : (cascadeIndex == 1u ? 2.8f : 2.6f);
     float ndotl = saturate(dot(normal, lightDir));
     float bias  = max(0.0009f * (1.0f - ndotl), 0.00025f) * cascadeBiasScale;
 
-    int kernelSize = cascadeIndex == 0u ? 16 : 12;
+    int kernelSize = 16 - (cascadeIndex * 4);
     float shadow = 0.0f;
 
     [unroll]
@@ -64,6 +64,5 @@ float SampleShadow(Texture2DArray<float> shadowMap, SamplerState samp,
         float  mapDepth = shadowMap.Sample(samp, float3(sampleUV, float(cascadeIndex)));
         shadow += float(mapDepth >= (depth - bias));
     }
-
     return max(shadow / float(kernelSize), 0.2f);
 }

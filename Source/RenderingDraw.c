@@ -17,23 +17,11 @@ static inline v128f VCALL AddScaled(v128f a, v128f b, float scale)
 
 static float CascadeSplitDistance(float shadowNear, float shadowFar, u32 cascade)
 {
-    const float splits[SHADOW_CASCADE_COUNT] = {
-        SHADOW_CASCADE_SPLIT0,
-        SHADOW_CASCADE_SPLIT1,
-        SHADOW_MAX_DISTANCE
-    };
-    float split = Minf32(splits[cascade], shadowFar);
-    if (cascade > 0)
-    {
-        split = Maxf32(split, Minf32(splits[cascade - 1u], shadowFar));
-    }
-    return Maxf32(split, shadowNear);
-}
-
-static u32 GetShadowCascadeMapSize(u32 cascade)
-{
-    (void)cascade;
-    return SHADOW_MAP_SIZE;
+    const float lambda = 0.7f;
+    float p = (float)(cascade + 1u) / (float)SHADOW_CASCADE_COUNT;
+    float logSplit = shadowNear * Powf(shadowFar / shadowNear, p);
+    float uniformSplit = Lerpf(shadowNear, shadowFar, p);
+    return Maxf32(shadowNear, Minf32(shadowFar, Lerpf(uniformSplit, logSplit, lambda)));
 }
 
 ShadowCascadeData GetShadowCascades(void)
@@ -78,18 +66,17 @@ ShadowCascadeData GetShadowCascades(void)
             AddScaled(AddScaled(farCenter,  cameraUp, -farH),  cameraRight,  farW)
         };
 
-        v128f center = VecZero();
-        for (u32 i = 0; i < 8u; i++) center = VecAdd(center, corners[i]);
+        v128f center = VecAdd(VecAdd(corners[0], corners[1]), VecAdd(corners[2], corners[3]));
+        center = VecAdd(center, VecAdd(VecAdd(corners[4], corners[5]), VecAdd(corners[6], corners[7])));
         center = VecMul(center, VecSet1(1.0f / 8.0f));
 
-        float radius = 0.0f;
+        v128f radiusSq = VecZero();
         for (u32 i = 0; i < 8u; i++)
         {
-            float dist = Vec3LenfV(VecSub(corners[i], center));
-            radius = Maxf32(radius, dist);
+            v128f toCorner = VecSub(corners[i], center);
+            radiusSq = VecMax(radiusSq, Vec3DotV(toCorner, toCorner));
         }
-        radius = Maxf32(radius, 1.0f);
-
+        float radius = Maxf32(Sqrtf(VecGetX(radiusSq)), 1.0f);
         float eyeDistance = radius + SHADOW_CAMERA_DISTANCE + SHADOW_CASTER_DEPTH_MARGIN;
         v128f eye = AddScaled(center, lightDir, eyeDistance);
         
@@ -99,17 +86,26 @@ ShadowCascadeData GetShadowCascades(void)
             upVec = VecSetR(0.0f, 0.0f, 1.0f, 0.0f);
         }
         mat4x4 view = M44LookAtRHVec(eye, lightViewDir, upVec);
-        float extent = Ceilf(radius * 2.0f + 2.0f);
+
+        v128f minLight = VecSet1( FLT_MAX);
+        v128f maxLight = VecSet1(-FLT_MAX);
+        for (u32 i = 0; i < 8u; i++)
+        {
+            v128f cornerLight = TransformPoint(view, corners[i]);
+            minLight = VecMin(minLight, cornerLight);
+            maxLight = VecMax(maxLight, cornerLight);
+        }
+
+        v128f extentXY = VecSub(maxLight, minLight);
+        extentXY = VecMax(extentXY, VecSwapPairs(extentXY));
+        float extent = Ceilf(VecGetX(VecAddf(extentXY, 2.0f)));
         float halfExtent = extent * 0.5f;
-        v128f texelSize = VecSet1(extent / (float)GetShadowCascadeMapSize(cascade));
+        float texelSize = extent / (float)SHADOW_MAP_SIZE;
+        v128f centerLight = VecMul(VecAdd(minLight, maxLight), VecSet1(0.5f));
+        centerLight = VecMul(VecFloor(VecAddf(VecDiv(centerLight, VecSet1(texelSize)), 0.5f)), VecSet1(texelSize));
 
-        // completely replacing the skewed minLight/maxLight AABB logic.
-        v128f originLS = TransformPoint(view, center);
-        v128f originLS_snapped = VecMul(VecFloor(VecAdd(VecDiv(originLS, texelSize), VecSet1(0.5f))), texelSize);
-        v128f offset = VecSub(originLS, originLS_snapped);
-
-        mat4x4 proj = M44OrthoRH(VecGetX(offset) - halfExtent, VecGetX(offset) + halfExtent,
-                                 VecGetY(offset) - halfExtent, VecGetY(offset) + halfExtent,
+        mat4x4 proj = M44OrthoRH(VecGetX(centerLight) - halfExtent, VecGetX(centerLight) + halfExtent,
+                                 VecGetY(centerLight) - halfExtent, VecGetY(centerLight) + halfExtent,
                                  SHADOW_NEAR_PLANE, eyeDistance + radius + SHADOW_CASTER_DEPTH_MARGIN);
         result.lightViewProj[cascade] = M44Multiply(view, proj);
     }

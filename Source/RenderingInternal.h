@@ -13,14 +13,6 @@
 #define BIndirectBit     SDL_GPU_BUFFERUSAGE_INDIRECT
 #define BVertexBit       SDL_GPU_BUFFERUSAGE_VERTEX
 
-#define SHADOW_MAX_DISTANCE    400.0f
-#define SHADOW_NEAR_PLANE      1.0f
-#define SHADOW_CAMERA_DISTANCE 200.0f
-#define SHADOW_CASTER_DEPTH_MARGIN 150.0f
-#define SHADOW_CASCADE_SPLIT0  24.0f
-#define SHADOW_CASCADE_SPLIT1  70.0f
-#define SHADOW_CASCADE_OVERLAP 10.0f
-
 typedef struct ShadowCascadeData_
 {
     mat4x4 lightViewProj[SHADOW_CASCADE_COUNT];

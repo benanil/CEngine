@@ -16,10 +16,26 @@ cbuffer vs_params : register(b0, space1)
     float4 uCascadeSplits;
 };
 
-StructuredBuffer<Entity>         sEntities         : register(t0);
-StructuredBuffer<PrimitiveGroup> sPrimitiveGroups  : register(t1);
+cbuffer ps_params : register(b0, space3)
+{
+    float4 uViewportSize;
+    float4 uSunDirection;
+};
+
+StructuredBuffer<Entity>         sEntities          : register(t0);
+StructuredBuffer<PrimitiveGroup> sPrimitiveGroups   : register(t1);
 StructuredBuffer<uint>           sDrawSparseIndices : register(t2);
-StructuredBuffer<AnimatedVert>   sAnimatedVert     : register(t3);
+StructuredBuffer<AnimatedVert>   sAnimatedVert      : register(t3);
+// frag
+Texture2DArray<float4> AlbedoPages            : register(t0, space2);
+Texture2DArray<float2> NormalPages            : register(t1, space2);
+Texture2DArray<float2> MetallicRoughnessPages : register(t2, space2);
+Texture2DArray<float>  ShadowMap              : register(t3, space2);
+SamplerState           Sampler                : register(s0, space2);
+SamplerState           ShadowSampler          : register(s1, space2);
+
+StructuredBuffer<MaterialGPU>        sMaterials          : register(t4, space2);
+StructuredBuffer<TextureDescriptor>  sTextureDescriptors : register(t5, space2);
 
 struct VSInput
 {
@@ -88,22 +104,6 @@ VSOutput vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("Dra
     return o;
 }
 
-Texture2DArray<float4> AlbedoPages            : register(t0, space2);
-Texture2DArray<float2> NormalPages            : register(t1, space2);
-Texture2DArray<float2> MetallicRoughnessPages : register(t2, space2);
-Texture2DArray<float>  ShadowMap              : register(t3, space2);
-SamplerState           Sampler                : register(s0, space2);
-SamplerState           ShadowSampler          : register(s1, space2);
-
-StructuredBuffer<MaterialGPU>        sMaterials          : register(t4, space2);
-StructuredBuffer<TextureDescriptor>  sTextureDescriptors : register(t5, space2);
-
-cbuffer ps_params : register(b0, space3)
-{
-    float4 uViewportSize;
-    float4 uSunDirection;
-};
-
 GBufferOutput frag(VSOutput input)
 {
     MaterialGPU material = sMaterials[input.materialIndex];
@@ -133,7 +133,7 @@ GBufferOutput frag(VSOutput input)
 
     #if CSM_DEBUG_CASCADES
     f16_3 cascadeColor = cascadeIndex == 0u ? f16_3(1.0f, 0.0f, 0.0f) : (cascadeIndex == 1u ? f16_3(0.0f, 1.0f, 0.0f) : f16_3(0.0f, 0.0f, 1.0f));
-    baseColor = lerp(baseColor, cascadeColor, f16(0.65));
+    baseColor = lerp(cascadeColor * f16(0.12f), cascadeColor, f16(saturate(shadow)));
     metallic = 0.0f;
     roughness = 1.0f;
     #endif

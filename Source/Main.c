@@ -78,24 +78,25 @@ s32 InitScene()
     u32 skinnedBundle = RenderSet_AddSceneBundle(&skinnedSet, gPaladin);
     u32 surfaceBundle = RenderSet_AddSceneBundle(&surfaceSet, gSponza);
 
-    for (s32 i = 0; i < 7; i++)
+    const int numCharacters = 7;
+    const int charGridStride = (int)Ceilf(Sqrtf((float)numCharacters));
+    for (s32 i = 0; i < numCharacters; i++)
     {
-        u64 hash = MurmurHash(i + 123);
-        v128f pos = VecMulf(VecSetR(f32_(i & 3), 0.0f, f32_(i >> 2), 0.0f), 1.5f);
-    
-        float randomAngle = NextDouble01(hash) * 2.0f * MATH_PI; // Random angle 0 to 360 degrees
-        v128f rot = QFromAxisAngle(F3Up(), randomAngle); 
+        u64 hash = MurmurHash((u64)i + 123);
+        v128f pos = VecMulf(VecSetR(f32_(i % charGridStride), 0.0f, f32_(i / charGridStride), 0.0f), 1.5f);
+        v128f rot = QFromAxisAngle(F3Up(), (float)(NextDouble01(hash) * 2.0 * MATH_PI));
         v128f scale = VecSet1(0.01f);
-    
         if (!RenderSet_AddScene(&skinnedSet, skinnedBundle, pos, rot, scale, true))
             break;
     }
-    
-    for (s32 i = 0; i < 4; i++)
+
+    const int numSurface = 1;
+    const int surfaceGridStride = (int)Ceilf(Sqrtf((float)numSurface));
+    for (s32 i = 0; i < numSurface; i++)
     {
-        u64 hash = MurmurHash(i + 123);
-        v128f pos = VecMulf(VecSetR(f32_(i & 7), 0.0f, f32_(i >> 3), 0.0f), 100.5f);
-        v128f rot = QFromEuler(NextDouble01(hash) * MATH_PI, MATH_PI, 0.0f); // VecSetR(0.0f, 0.0f, 0.0f, 1.0f);  // x=0, y=random, z=0, w=random
+        u64 hash = MurmurHash((u64)i + 456);
+        v128f pos = VecMulf(VecSetR(f32_(i % surfaceGridStride), 0.0f, f32_(i / surfaceGridStride), 0.0f), 100.5f);
+        v128f rot = QFromEuler(0.0f, (float)(NextDouble01(hash) * MATH_PI), 0.0f);
         v128f scale = VecSet1(0.1f);
         if (!RenderSet_AddScene(&surfaceSet, surfaceBundle, pos, rot, scale, false))
             break;

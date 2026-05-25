@@ -257,6 +257,7 @@ typedef __m128i v128u;
 #define VecMax(a, b)                _mm_max_ps(a, b)
 #define VecMin(a, b)                _mm_min_ps(a, b)
 #define VecFloor(a)                 _mm_floor_ps(a)
+#define VecCeil(v)                  _mm_ceil_ps(v)        // SSE4.1
 
 #define VecCmpGt(a, b)              _mm_cmpgt_ps(a, b) /* greater than */
 #define VecCmpGe(a, b)              _mm_cmpge_ps(a, b) /* greater or equal */
@@ -511,6 +512,7 @@ VecSetR( \
 #define VecMax(a, b)                vmaxq_f32(a, b)
 #define VecMin(a, b)                vminq_f32(a, b)
 #define VecFloor(a)                 vrndmq_f32(a)
+#define VecCeil(v)                  vrndpq_f32(v)         
                                     
 #define VecCmpGt(a, b)              vcgtq_f32(a, b) // greater or equal
 #define VecCmpGe(a, b)              vcgeq_f32(a, b) // greater or equal

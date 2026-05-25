@@ -353,7 +353,7 @@ void Render(void)
     static ShadowCascadeData cachedShadowCascades;
     static u32 shadowFrameIndex = 0;
     static bool shadowCacheValid = false;
-    static const u8 cascadeCadance[] = { 0x55, 0x22, 0x80 }; // 01010101, 00100010, 10000000
+    static const u8 cascadeCadance[] = { 0x5D, 0x22, 0x80 }; // 01011101, 00100010, 10000000
     ShadowCascadeData shadowCascades = GetShadowCascades();
     u32 shadowFrame = (shadowFrameIndex++) & 7;
     u8 frameBit = (1 << shadowFrame); 

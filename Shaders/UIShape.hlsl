@@ -14,13 +14,13 @@ struct UIShape
 struct VSOutput
 {
     float4 position : SV_Position;
-    float2 local : TEXCOORD0;
-    nointerpolation float2 halfSize : TEXCOORD1;
-    nointerpolation float4 params : TEXCOORD2;
-    nointerpolation uint color : COLOR0;
+    float2 local    : TEXCOORD0;
+    nointerpolation float2 halfSize  : TEXCOORD1;
+    nointerpolation float4 params    : TEXCOORD2;
+    nointerpolation uint color       : COLOR0;
     nointerpolation uint borderColor : COLOR1;
-    nointerpolation uint shape : TEXCOORD3;
-    nointerpolation float4 clip : TEXCOORD4;
+    nointerpolation uint shape       : TEXCOORD3;
+    nointerpolation float4 clip      : TEXCOORD4;
 };
 
 cbuffer ui_params : register(b0, space1)
@@ -44,7 +44,6 @@ float EvaluateSdf(float2 p, float2 halfSize, float radius)
 VSOutput vert(uint vertexID : SV_VertexID, uint instanceID : SV_InstanceID)
 {
     UIShape shape = ShapeBuffer[instanceID];
-    // Generate corner coordinates branchlessly using bits: (0,0), (0,1), (1,0), (1,0), (0,1), (1,1)
     float2 uv = float2((vertexID == 2u || vertexID == 3u || vertexID == 5u), 
                        (vertexID == 1u || vertexID == 4u || vertexID == 5u));
 

@@ -33,7 +33,7 @@ void main(uint3 tid : SV_DispatchThreadID)
     uint2 pixel = tid.xy;
     float2 uv = (float2(pixel) + 0.5f) / float2(outputSize);
     float depth = DepthTexture.Load(int3(pixel, 0));
-    if (depth > 0.9992f)
+    if (depth >= 0.9999f)
     {
         OutputTexture[pixel] = float4(0.0f, 0.0f, 0.0f, 1.0f);
         return;

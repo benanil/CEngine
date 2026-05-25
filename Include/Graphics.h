@@ -15,8 +15,14 @@
 #define MAX_SCENE_TEXTURES      1024
 #define MAX_TEXTURE_DESCRIPTORS 2048
 #define MAX_GPU_MATERIALS       2048
-#define SHADOW_MAP_SIZE         (1024u * 2u)
-#define SHADOW_CASCADE_COUNT    3u
+
+#define SHADOW_MAP_SIZE            (1024u * 2u)
+#define SHADOW_CASCADE_COUNT       3u
+#define SHADOW_MAX_DISTANCE        300.0f
+#define SHADOW_NEAR_PLANE          1.0f
+#define SHADOW_CAMERA_DISTANCE     200.0f
+#define SHADOW_CASTER_DEPTH_MARGIN 150.0f
+#define SHADOW_CASCADE_OVERLAP     10.0f
 
 #if defined(__cplusplus)
 extern "C" {

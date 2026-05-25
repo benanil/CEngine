@@ -8,10 +8,16 @@ cbuffer vs_params : register(b0, space1)
     float4x4 uViewProj;
 };
 
-StructuredBuffer<Entity>         sEntities         : register(t0);
-StructuredBuffer<PrimitiveGroup> sPrimitiveGroups  : register(t1);
+StructuredBuffer<Entity>         sEntities          : register(t0);
+StructuredBuffer<PrimitiveGroup> sPrimitiveGroups   : register(t1);
 StructuredBuffer<uint>           sDrawSparseIndices : register(t2);
-StructuredBuffer<AnimatedVert>   sAnimatedVert     : register(t3);
+StructuredBuffer<AnimatedVert>   sAnimatedVert      : register(t3);
+
+StructuredBuffer<MaterialGPU> sMaterials : register(t1, space2);
+StructuredBuffer<TextureDescriptor> sTextureDescriptors : register(t2, space2);
+
+Texture2DArray<float4> AlbedoPages : register(t0, space2);
+SamplerState           Sampler     : register(s0, space2);
 
 struct VSInput
 {
@@ -29,8 +35,7 @@ struct VSOutput
     nointerpolation uint materialIndex : TEXCOORD1;
 };
 
-VSOutput vert(VSInput input, 
-            uint instanceID : SV_InstanceID, 
+VSOutput vert(VSInput input, uint instanceID : SV_InstanceID, 
             [[vk::builtin("DrawIndex")]] uint drawID : DRAWINDEX,
             uint vertexId : SV_VertexID)
 {
@@ -50,11 +55,6 @@ VSOutput vert(VSInput input,
     o.materialIndex = group.materialIndex;
     return o;
 }
-
-Texture2DArray<float4> AlbedoPages : register(t0, space2);
-SamplerState Sampler : register(s0, space2);
-StructuredBuffer<MaterialGPU> sMaterials : register(t1, space2);
-StructuredBuffer<TextureDescriptor> sTextureDescriptors : register(t2, space2);
 
 float frag(VSOutput input) : SV_Target0
 {

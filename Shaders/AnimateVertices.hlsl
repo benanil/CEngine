@@ -27,7 +27,7 @@ StructuredBuffer<uint>           sDrawSparseIndices : register(t3);
 StructuredBuffer<SkinnedVertex>  sVertexBuffer      : register(t4);
 StructuredBuffer<IndexedDrawCommand> sDrawArgs      : register(t5);
 
-RWStructuredBuffer<AnimatedVert> sAnimatedVert     : register(u0, space1);
+RWStructuredBuffer<AnimatedVert> sAnimatedVert      : register(u0, space1);
 
 [numthreads(1, 32, 1)]
 void main(uint3 globalID : SV_DispatchThreadID, uint3 groupID : SV_GroupID, uint3 groupThreadID : SV_GroupThreadID)

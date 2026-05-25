@@ -28,7 +28,7 @@ float ComputeGodRays(float2 uv)
         float2 diff = sampleUV - sunPos;
         diff.x *= float(outputSize.x) / max(float(outputSize.y), 1.0f);
         float hasSun = dot(diff, diff) < 0.004f ? 1.0f : 0.0f;
-        float hasSky = DepthTexture.SampleLevel(DepthSampler, sampleUV, 0.0f) > 0.9992f ? 1.0f : 0.0f;
+        float hasSky = DepthTexture.SampleLevel(DepthSampler, sampleUV, 0.0f) >= 0.9999f ? 1.0f : 0.0f;
         float raySample = (0.35f * hasSun * hasSky + 0.012f * hasSky) * illuminationDecay * weight;
         result += raySample;
         illuminationDecay *= decay;

@@ -71,7 +71,7 @@ void main(uint3 tid : SV_DispatchThreadID)
     float2 uv = (float2(tid.xy) + 0.5f) / float2(outputSize);
     float3 color = SourceTexture.SampleLevel(SourceSampler, uv, 0.0f).rgb;
     float depth = DepthTexture.SampleLevel(DepthSampler, uv, 0.0f);
-    if (depth > 0.9992f)
+    if (depth >= 0.9999f)
     {
         color = ComputeSky(SkyRayDirection(uv));
     }
