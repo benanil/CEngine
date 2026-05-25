@@ -1,16 +1,19 @@
 #define CLAY_IMPLEMENTATION
-#include "RenderingInternal.h"
 #include "UI_Internal.h"
 #include "Include/Memory.h"
 #include "Include/Platform.h" // PlatformContext.lastTime for milisecond text
 #include "Include/Random.h"
 #include "Include/String.h"
 #include "Include/Algorithm.h"
+#include "Include/Rendering.h"
 #include "Extern/kb/kb_text_shape.h"
 
 UIRenderer g_UIRenderer;
 UIContext g_UI;
 UILayoutContext g_UILayout;
+
+extern WindowState  g_WindowState;
+extern RenderState  g_RenderState;
 
 static char g_UISliderValueLabels[64][96];
 static u32  g_UISliderValueLabelIndex;

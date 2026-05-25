@@ -34,9 +34,6 @@
 #include "Shaders/spv/TonemapCompute.spv.h"
 #include "Shaders/spv/HiZBuildCompute.spv.h"
 #include "Shaders/spv/HiZDownscaleCompute.spv.h"
-#include "Shaders/spv/SDSMDepthBoundsInitial.spv.h"
-#include "Shaders/spv/SDSMDepthBoundsReduce.spv.h"
-#include "Shaders/spv/SDSMSetupShadows.spv.h"
 #include "Shaders/spv/HBAOCompute.spv.h"
 #include "Shaders/spv/HBAOBlurCompute.spv.h"
 #include "Shaders/spv/ExtractNormalCompute.spv.h"
@@ -53,24 +50,12 @@
 #include "Shaders/spv/SkinnedShadowDepthOnlyFrag.spv.h"
 #endif
 
-#define VFORMAT_F32    SDL_GPU_VERTEXELEMENTFORMAT_FLOAT
-#define VFORMAT_FLOAT3 SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3
-#define VFORMAT_FLOAT4 SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4
-#define VFORMAT_UINT   SDL_GPU_VERTEXELEMENTFORMAT_UINT
-#define VFORMAT_HALF2  SDL_GPU_VERTEXELEMENTFORMAT_HALF2
-#define VFORMAT_HALF4  SDL_GPU_VERTEXELEMENTFORMAT_HALF4
-#define VFORMAT_UBYTE4 SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4
-#define VFORMAT_NBYTE4 SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4_NORM
-
 SDL_GPUComputePipeline* g_AnimComputePipeline = NULL;
 SDL_GPUComputePipeline* g_AnimVerticesPipeline = NULL;
 SDL_GPUComputePipeline* g_CullDrawArgsComputePipeline = NULL;
 SDL_GPUComputePipeline* g_TonemapComputePipeline = NULL;
 SDL_GPUComputePipeline* g_HiZBuildComputePipeline = NULL;
 SDL_GPUComputePipeline* g_HiZDownscaleComputePipeline = NULL;
-SDL_GPUComputePipeline* g_SDSMDepthBoundsInitialPipeline = NULL;
-SDL_GPUComputePipeline* g_SDSMDepthBoundsReducePipeline = NULL;
-SDL_GPUComputePipeline* g_SDSMSetupShadowsPipeline = NULL;
 SDL_GPUComputePipeline* g_HBAOComputePipeline = NULL;
 SDL_GPUComputePipeline* g_HBAOBlurComputePipeline = NULL;
 SDL_GPUComputePipeline* g_ExtractNormalComputePipeline = NULL;
@@ -151,48 +136,6 @@ static void InitComputePipelines(void)
         .threadcount_z                  = 1,
     });
     CHECK_CREATE(g_HiZDownscaleComputePipeline, "Hi-Z Downscale Compute Pipeline");
-
-    g_SDSMDepthBoundsInitialPipeline = SDL_CreateGPUComputePipeline(g_GPUDevice, &(SDL_GPUComputePipelineCreateInfo){
-        .code                           = Shaders_SDSMDepthBoundsInitial_spv,
-        .code_size                      = sizeof(Shaders_SDSMDepthBoundsInitial_spv),
-        .entrypoint                     = "main",
-        .format                         = SDL_GetGPUShaderFormats(g_GPUDevice),
-        .num_samplers                   = 1,
-        .num_readwrite_storage_textures = 1,
-        .num_uniform_buffers            = 1,
-        .threadcount_x                  = 8,
-        .threadcount_y                  = 8,
-        .threadcount_z                  = 1,
-    });
-    CHECK_CREATE(g_SDSMDepthBoundsInitialPipeline, "SDSM Depth Bounds Initial Pipeline");
-
-    g_SDSMDepthBoundsReducePipeline = SDL_CreateGPUComputePipeline(g_GPUDevice, &(SDL_GPUComputePipelineCreateInfo){
-        .code                           = Shaders_SDSMDepthBoundsReduce_spv,
-        .code_size                      = sizeof(Shaders_SDSMDepthBoundsReduce_spv),
-        .entrypoint                     = "main",
-        .format                         = SDL_GetGPUShaderFormats(g_GPUDevice),
-        .num_readonly_storage_textures  = 1,
-        .num_readwrite_storage_textures = 1,
-        .num_uniform_buffers            = 1,
-        .threadcount_x                  = 8,
-        .threadcount_y                  = 8,
-        .threadcount_z                  = 1,
-    });
-    CHECK_CREATE(g_SDSMDepthBoundsReducePipeline, "SDSM Depth Bounds Reduce Pipeline");
-
-    g_SDSMSetupShadowsPipeline = SDL_CreateGPUComputePipeline(g_GPUDevice, &(SDL_GPUComputePipelineCreateInfo){
-        .code                           = Shaders_SDSMSetupShadows_spv,
-        .code_size                      = sizeof(Shaders_SDSMSetupShadows_spv),
-        .entrypoint                     = "main",
-        .format                         = SDL_GetGPUShaderFormats(g_GPUDevice),
-        .num_readonly_storage_textures  = 1,
-        .num_readwrite_storage_buffers  = 1,
-        .num_uniform_buffers            = 1,
-        .threadcount_x                  = 1,
-        .threadcount_y                  = 1,
-        .threadcount_z                  = 1,
-    });
-    CHECK_CREATE(g_SDSMSetupShadowsPipeline, "SDSM Setup Shadows Pipeline");
 
     g_TonemapComputePipeline = SDL_CreateGPUComputePipeline(g_GPUDevice, &(SDL_GPUComputePipelineCreateInfo){
         .code                           = Shaders_TonemapCompute_spv,
@@ -914,6 +857,7 @@ static void InitDepthOnlyPipelines(void)
     SDL_ReleaseGPUShader(g_GPUDevice, skinned_shadow_vertex_shader);
     SDL_ReleaseGPUShader(g_GPUDevice, skinned_shadow_fragment_shader);
 }
+extern void InitSDSM();
 
 void InitRenderPipelines(void)
 {
@@ -921,6 +865,7 @@ void InitRenderPipelines(void)
     InitSkinedPipeline();
     InitSurfacePipeline();
     InitDepthOnlyPipelines();
+    InitSDSM();
     InitLinePipeline();
     InitSlugPipeline();
     InitUIShapePipeline();
@@ -928,8 +873,11 @@ void InitRenderPipelines(void)
     InitComputePipelines();
 }
 
+extern void DestroySDSM();
+
 void DestroyRenderPipelines(void)
 {
+    DestroySDSM();
     if (g_RenderState.skinnedPipeline) SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.skinnedPipeline);
     if (g_RenderState.surfacePipeline) SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.surfacePipeline);
     if (g_RenderState.skinnedDepthPipeline) SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.skinnedDepthPipeline);
@@ -947,9 +895,6 @@ void DestroyRenderPipelines(void)
     if (g_TonemapComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_TonemapComputePipeline);
     if (g_HiZBuildComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_HiZBuildComputePipeline);
     if (g_HiZDownscaleComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_HiZDownscaleComputePipeline);
-    if (g_SDSMDepthBoundsInitialPipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_SDSMDepthBoundsInitialPipeline);
-    if (g_SDSMDepthBoundsReducePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_SDSMDepthBoundsReducePipeline);
-    if (g_SDSMSetupShadowsPipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_SDSMSetupShadowsPipeline);
     if (g_HBAOComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_HBAOComputePipeline);
     if (g_HBAOBlurComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_HBAOBlurComputePipeline);
     if (g_ExtractNormalComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_ExtractNormalComputePipeline);

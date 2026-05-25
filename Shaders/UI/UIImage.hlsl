@@ -1,4 +1,4 @@
-#include "PBR.hlsl"
+#include "../Bitpack.hlsl"
 
 struct VSOutput
 {

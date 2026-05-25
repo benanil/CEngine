@@ -5,7 +5,7 @@
 #define MAX_GROUP               (MAX_ENTITY >> 1)
 #define MAX_BUNDLES             (MAX_ENTITY >> 2)
 
-#define SHADOW_MAP_SIZE            (1024u * 2u)
+#define SHADOW_MAP_SIZE            (1024u * 3u)
 #define SHADOW_CASCADE_COUNT       3u
 #define SHADOW_MAX_DISTANCE        200.0f
 #define SHADOW_NEAR_PLANE          1.0f

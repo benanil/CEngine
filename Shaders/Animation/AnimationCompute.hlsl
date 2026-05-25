@@ -1,9 +1,9 @@
 #define INT16_SUPPORTED 0
 
-#include "../Include/RenderLimits.h"
-#include "Bitpack.hlsl"
-#include "Math.hlsl"
-#include "CommonStructs.hlsl"
+#include "../../Include/RenderLimits.h"
+#include "../Bitpack.hlsl"
+#include "../Math.hlsl"
+#include "../CommonStructs.hlsl"
 
 struct Pose {
     f16_4 translation;

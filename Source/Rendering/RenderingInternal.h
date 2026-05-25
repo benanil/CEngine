@@ -7,11 +7,6 @@
 #include "Include/Camera.h"
 #include "Include/RenderSet.h"
 
-#define BReadRasterBit   SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ
-#define BWriteComputeBit SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE
-#define BReadCompute     SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ
-#define BIndirectBit     SDL_GPU_BUFFERUSAGE_INDIRECT
-#define BVertexBit       SDL_GPU_BUFFERUSAGE_VERTEX
 
 typedef struct ShadowCascadeData_
 {

@@ -91,30 +91,36 @@ target_sources(${EXECUTABLE_NAME} PRIVATE
     Source/Main.c
     Extern/dynarray.c
     Extern/tlsf.c
-    Source/Memory.c
-    Source/RenderSet.c
-    Source/FileSystem.c
-    Source/Platform.c
-    Source/Graphics.c
-    Source/TextureSystem.c
-    Source/Rendering.c
-    Source/RenderingPipelines.c
-    Source/RenderingCompute.c
-    Source/RenderingDraw.c
-    Source/UIRenderer.c
-    Source/KBTextShape.c
-    Source/Slug.c
-    Source/GLTFParser.c
-    Source/SceneNormalize.c
-    Source/AnimationBake.c
-    Source/MeshBake.c
+    Extern/ExternAll.cpp
+
     Source/Animation.c
     Source/Algorithm.c
-    Source/AssetManager.c
+    Source/Memory.c
+    Source/FileSystem.c
+    Source/Platform.c
     Source/Editor.c
-    Source/UIText.c
-    Source/BasisBinding.cpp
-    Extern/ExternAll.cpp
+    Source/AnimationBake.c
+
+    Source/Rendering/Graphics.c
+    Source/Rendering/Rendering.c
+    Source/Rendering/RenderSet.c
+    Source/Rendering/RenderingPipelines.c
+    Source/Rendering/RenderingCompute.c
+    Source/Rendering/RenderingDraw.c
+    Source/Rendering/Shadow.c
+
+    Source/UI/KBTextShape.c
+    Source/UI/Slug.c
+    Source/UI/UIRenderer.c
+    Source/UI/UIText.c
+
+    Source/AssetManagement/GLTFParser.c
+    Source/AssetManagement/SceneNormalize.c
+    Source/AssetManagement/MeshBake.c
+    Source/AssetManagement/AssetManager.c
+    Source/AssetManagement/BasisBinding.cpp
+    Source/AssetManagement/TextureSystem.c
+    
     ${BASIS_ENCODER_SOURCES}
 )
 

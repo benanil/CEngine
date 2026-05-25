@@ -7,15 +7,6 @@
     #define PBR_DEBUG_OUTPUT 0
 #endif
 
-float4 UnpackColor4Uint(uint color)
-{
-    return float4(
-        float((color >> 0u)  & 0xFFu),
-        float((color >> 8u)  & 0xFFu),
-        float((color >> 16u) & 0xFFu),
-        float((color >> 24u) & 0xFFu)) * (1.0f / 255.0f);
-}
-
 float Pow5(float x)
 {
     float x2 = x * x;

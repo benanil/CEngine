@@ -1,4 +1,4 @@
-#include "NoiseHash.hlsl"
+#include "../NoiseHash.hlsl"
 
 float EaseOut(float x)
 {

@@ -6,8 +6,6 @@
 
 #define SLUG_WEIGHT 1
 
-#include "PBR.hlsl"
-
 struct VSInput
 {
     float4 pos : POSITION0;
@@ -35,6 +33,15 @@ cbuffer vs_params : register(b0, space1)
 
 StructuredBuffer<uint> CurveBuffer : register(t0, space2);
 StructuredBuffer<uint> BandBuffer  : register(t1, space2);
+
+float4 UnpackColor4Uint(uint color)
+{
+    return float4(
+        float((color >> 0u)  & 0xFFu),
+        float((color >> 8u)  & 0xFFu),
+        float((color >> 16u) & 0xFFu),
+        float((color >> 24u) & 0xFFu)) * (1.0f / 255.0f);
+}
 
 uint2 UnpackU16(uint v)
 {

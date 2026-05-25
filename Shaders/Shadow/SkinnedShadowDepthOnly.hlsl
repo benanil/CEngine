@@ -1,7 +1,7 @@
 #include "../Include/RenderLimits.h"
-#include "CommonStructs.hlsl"
-#include "Bitpack.hlsl"
-#include "Math.hlsl"
+#include "../CommonStructs.hlsl"
+#include "../Bitpack.hlsl"
+#include "../Math.hlsl"
 #include "ShadowCascade.hlsl"
 
 cbuffer vs_params : register(b0, space1)

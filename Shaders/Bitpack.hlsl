@@ -71,6 +71,15 @@ f16_3 UnpackVec3XY11Z10Unorm(uint packed) {
     );
 }
 
+float4 UnpackColor4Uint(uint color)
+{
+    return float4(
+        float((color >> 0u)  & 0xFFu),
+        float((color >> 8u)  & 0xFFu),
+        float((color >> 16u) & 0xFFu),
+        float((color >> 24u) & 0xFFu)) * (1.0f / 255.0f);
+}
+
 f16_3 UnpackColor3Uint(uint color)
 {
     const f16 tof1 = f16(1.0 / 255.0);

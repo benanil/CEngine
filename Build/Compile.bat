@@ -1,6 +1,8 @@
 
 @echo off
 setlocal
+python Build/Compile.py "%1"
+exit
 
 call Shaders\ShaderCompile.bat || exit /b %ERRORLEVEL%
 

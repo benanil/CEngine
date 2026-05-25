@@ -1,7 +1,7 @@
-#include "../Include/RenderLimits.h"
-#include "CommonStructs.hlsl"
-#include "Bitpack.hlsl"
-#include "Math.hlsl"
+#include "../../Include/RenderLimits.h"
+#include "../CommonStructs.hlsl"
+#include "../Bitpack.hlsl"
+#include "../Math.hlsl"
 
 struct SkinnedVertex
 {

@@ -1,7 +1,7 @@
-#include "../Include/RenderLimits.h"
-#include "Bitpack.hlsl"
-#include "Math.hlsl"
-#include "CommonStructs.hlsl"
+#include "../../Include/RenderLimits.h"
+#include "../Bitpack.hlsl"
+#include "../Math.hlsl"
+#include "../CommonStructs.hlsl"
 
 #define DEBUG_CULLED_AABBS 0
 

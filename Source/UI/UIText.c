@@ -1,9 +1,10 @@
 
 #include <SDL3/SDL_clipboard.h>
-#include "RenderingInternal.h"
-#include "UI_Internal.h"
+#include "Include/Graphics.h"
+#include "Include/Platform.h"
 #include "Include/Memory.h"
 #include "Include/UIRenderer.h"
+#include "UI_Internal.h"
 
 typedef struct UITextCommand_
 {
@@ -42,6 +43,8 @@ typedef struct UITextLayout_
     f32 height;
     bool valid;
 } UITextLayout;
+
+extern SDL_Window* g_SDLWindow;
 
 static u32 UIStringLength(const char* text, u32 capacity)
 {

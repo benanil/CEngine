@@ -376,12 +376,6 @@
 						<Children></Children>
 					</Folder>
 					<File>
-						<Path>Shaders/AnimateVertices.hlsl</Path>
-					</File>
-					<File>
-						<Path>Shaders/AnimationCompute.hlsl</Path>
-					</File>
-					<File>
 						<Path>Shaders/Bitpack.hlsl</Path>
 					</File>
 					<File>
@@ -391,9 +385,6 @@
 						<Path>Shaders/ShaderCompile.bat</Path>
 					</File>
 					<File>
-						<Path>Shaders/CullDrawArgsCompute.hlsl</Path>
-					</File>
-					<File>
 						<Path>Shaders/CommonStructs.hlsl</Path>
 					</File>
 					<File>
@@ -401,9 +392,6 @@
 					</File>
 					<File>
 						<Path>Shaders/LineDebug.hlsl</Path>
-					</File>
-					<File>
-						<Path>Shaders/Skinned.hlsl</Path>
 					</File>
 					<File>
 						<Path>Shaders/CompileShaders.py</Path>
@@ -424,34 +412,7 @@
 						<Path>Shaders/PBR.hlsl</Path>
 					</File>
 					<File>
-						<Path>Shaders/TonemapCompute.hlsl</Path>
-					</File>
-					<File>
-						<Path>Shaders/HiZBuildCompute.hlsl</Path>
-					</File>
-					<File>
-						<Path>Shaders/HiZDownscaleCompute.hlsl</Path>
-					</File>
-					<File>
-						<Path>Shaders/SkinnedDepthOnly.hlsl</Path>
-					</File>
-					<File>
 						<Path>Shaders/SurfaceDepthOnly.hlsl</Path>
-					</File>
-					<File>
-						<Path>Shaders/Shadow.hlsl</Path>
-					</File>
-					<File>
-						<Path>Shaders/ShadowCascade.hlsl</Path>
-					</File>
-					<File>
-						<Path>Shaders/HBAOBlurCompute.hlsl</Path>
-					</File>
-					<File>
-						<Path>Shaders/HBAOCompute.hlsl</Path>
-					</File>
-					<File>
-						<Path>Shaders/GodRays.hlsl</Path>
 					</File>
 					<File>
 						<Path>Shaders/NoiseHash.hlsl</Path>
@@ -460,46 +421,63 @@
 						<Path>Shaders/DeferredLighting.hlsl</Path>
 					</File>
 					<File>
-						<Path>Shaders/Sky.hlsl</Path>
-					</File>
-					<File>
 						<Path>Shaders/ExtractNormalCompute.hlsl</Path>
 					</File>
+					<Folder>
+						<Path>Shaders/UI</Path>
+						<IncludeFilter>*.c,*.cc,*.cpp,*.c++,*.cp,*.cxx,*.h,*.hh,*.hpp,*.h++,*.hp,*.hxx,*.inl,*.cs,*.rs,*.java,*.jav,*.js,*.jsc,*.jsx,*.json,*.cls,*.py,*.rpy,*.php,*.php3,*.phl,*.phtml,*.rhtml,*.tpl,*.phps,*.lua,*.html,*.html5,*.htm,*.xml,*.xaml,*.css,*.ssi,*.haml,*.yaml,*.bat,*.wbf,*.wbt,*.txt,*.cmake,*.make,*.makefile,*.mak,*.mk,*.sh,*.bash,*.csv,*.asp,*.pl,*.mac,*.ws,*.vbs,*.perl,*.src,*.rss,*.inc,*.f,*.go,*.prl,*.plx,*.rb,*.lsp,*.lpx,*.ps1,*.command,*.cbl,*.cob,*.qs,*.wxs,*.ph,*.msc,*.glsl,*.hlsl,*.fx,*.vert,*.tesc,*.tese,*.geom,*.frag,*.comp,*.pssl,*.scons,*.cu,*.jai,</IncludeFilter>
+						<ExcludeFilter>Extern/SDL3/examples,Extern/SDL3/test,</ExcludeFilter>
+						<SyncFiles>true</SyncFiles>
+						<Recursive>true</Recursive>
+						<ShowEmptyFolders>true</ShowEmptyFolders>
+						<IncludeFilesWithoutExt>false</IncludeFilesWithoutExt>
+						<Children></Children>
+					</Folder>
+					<Folder>
+						<Path>Shaders/PostProcessing</Path>
+						<IncludeFilter>*.c,*.cc,*.cpp,*.c++,*.cp,*.cxx,*.h,*.hh,*.hpp,*.h++,*.hp,*.hxx,*.inl,*.cs,*.rs,*.java,*.jav,*.js,*.jsc,*.jsx,*.json,*.cls,*.py,*.rpy,*.php,*.php3,*.phl,*.phtml,*.rhtml,*.tpl,*.phps,*.lua,*.html,*.html5,*.htm,*.xml,*.xaml,*.css,*.ssi,*.haml,*.yaml,*.bat,*.wbf,*.wbt,*.txt,*.cmake,*.make,*.makefile,*.mak,*.mk,*.sh,*.bash,*.csv,*.asp,*.pl,*.mac,*.ws,*.vbs,*.perl,*.src,*.rss,*.inc,*.f,*.go,*.prl,*.plx,*.rb,*.lsp,*.lpx,*.ps1,*.command,*.cbl,*.cob,*.qs,*.wxs,*.ph,*.msc,*.glsl,*.hlsl,*.fx,*.vert,*.tesc,*.tese,*.geom,*.frag,*.comp,*.pssl,*.scons,*.cu,*.jai,</IncludeFilter>
+						<ExcludeFilter>Extern/SDL3/examples,Extern/SDL3/test,</ExcludeFilter>
+						<SyncFiles>true</SyncFiles>
+						<Recursive>true</Recursive>
+						<ShowEmptyFolders>true</ShowEmptyFolders>
+						<IncludeFilesWithoutExt>false</IncludeFilesWithoutExt>
+						<Children></Children>
+					</Folder>
+					<Folder>
+						<Path>Shaders/Shadow</Path>
+						<IncludeFilter>*.c,*.cc,*.cpp,*.c++,*.cp,*.cxx,*.h,*.hh,*.hpp,*.h++,*.hp,*.hxx,*.inl,*.cs,*.rs,*.java,*.jav,*.js,*.jsc,*.jsx,*.json,*.cls,*.py,*.rpy,*.php,*.php3,*.phl,*.phtml,*.rhtml,*.tpl,*.phps,*.lua,*.html,*.html5,*.htm,*.xml,*.xaml,*.css,*.ssi,*.haml,*.yaml,*.bat,*.wbf,*.wbt,*.txt,*.cmake,*.make,*.makefile,*.mak,*.mk,*.sh,*.bash,*.csv,*.asp,*.pl,*.mac,*.ws,*.vbs,*.perl,*.src,*.rss,*.inc,*.f,*.go,*.prl,*.plx,*.rb,*.lsp,*.lpx,*.ps1,*.command,*.cbl,*.cob,*.qs,*.wxs,*.ph,*.msc,*.glsl,*.hlsl,*.fx,*.vert,*.tesc,*.tese,*.geom,*.frag,*.comp,*.pssl,*.scons,*.cu,*.jai,</IncludeFilter>
+						<ExcludeFilter>Extern/SDL3/examples,Extern/SDL3/test,</ExcludeFilter>
+						<SyncFiles>true</SyncFiles>
+						<Recursive>true</Recursive>
+						<ShowEmptyFolders>true</ShowEmptyFolders>
+						<IncludeFilesWithoutExt>false</IncludeFilesWithoutExt>
+						<Children></Children>
+					</Folder>
+					<Folder>
+						<Path>Shaders/Animation</Path>
+						<IncludeFilter>*.c,*.cc,*.cpp,*.c++,*.cp,*.cxx,*.h,*.hh,*.hpp,*.h++,*.hp,*.hxx,*.inl,*.cs,*.rs,*.java,*.jav,*.js,*.jsc,*.jsx,*.json,*.cls,*.py,*.rpy,*.php,*.php3,*.phl,*.phtml,*.rhtml,*.tpl,*.phps,*.lua,*.html,*.html5,*.htm,*.xml,*.xaml,*.css,*.ssi,*.haml,*.yaml,*.bat,*.wbf,*.wbt,*.txt,*.cmake,*.make,*.makefile,*.mak,*.mk,*.sh,*.bash,*.csv,*.asp,*.pl,*.mac,*.ws,*.vbs,*.perl,*.src,*.rss,*.inc,*.f,*.go,*.prl,*.plx,*.rb,*.lsp,*.lpx,*.ps1,*.command,*.cbl,*.cob,*.qs,*.wxs,*.ph,*.msc,*.glsl,*.hlsl,*.fx,*.vert,*.tesc,*.tese,*.geom,*.frag,*.comp,*.pssl,*.scons,*.cu,*.jai,</IncludeFilter>
+						<ExcludeFilter>Extern/SDL3/examples,Extern/SDL3/test,</ExcludeFilter>
+						<SyncFiles>true</SyncFiles>
+						<Recursive>true</Recursive>
+						<ShowEmptyFolders>true</ShowEmptyFolders>
+						<IncludeFilesWithoutExt>false</IncludeFilesWithoutExt>
+						<Children></Children>
+					</Folder>
+					<Folder>
+						<Path>Shaders/PreProcessing</Path>
+						<IncludeFilter>*.c,*.cc,*.cpp,*.c++,*.cp,*.cxx,*.h,*.hh,*.hpp,*.h++,*.hp,*.hxx,*.inl,*.cs,*.rs,*.java,*.jav,*.js,*.jsc,*.jsx,*.json,*.cls,*.py,*.rpy,*.php,*.php3,*.phl,*.phtml,*.rhtml,*.tpl,*.phps,*.lua,*.html,*.html5,*.htm,*.xml,*.xaml,*.css,*.ssi,*.haml,*.yaml,*.bat,*.wbf,*.wbt,*.txt,*.cmake,*.make,*.makefile,*.mak,*.mk,*.sh,*.bash,*.csv,*.asp,*.pl,*.mac,*.ws,*.vbs,*.perl,*.src,*.rss,*.inc,*.f,*.go,*.prl,*.plx,*.rb,*.lsp,*.lpx,*.ps1,*.command,*.cbl,*.cob,*.qs,*.wxs,*.ph,*.msc,*.glsl,*.hlsl,*.fx,*.vert,*.tesc,*.tese,*.geom,*.frag,*.comp,*.pssl,*.scons,*.cu,*.jai,</IncludeFilter>
+						<ExcludeFilter>Extern/SDL3/examples,Extern/SDL3/test,</ExcludeFilter>
+						<SyncFiles>true</SyncFiles>
+						<Recursive>true</Recursive>
+						<ShowEmptyFolders>true</ShowEmptyFolders>
+						<IncludeFilesWithoutExt>false</IncludeFilesWithoutExt>
+						<Children></Children>
+					</Folder>
 					<File>
-						<Path>Shaders/Slug.hlsl</Path>
+						<Path>Shaders/Skinned.hlsl</Path>
 					</File>
 					<File>
-						<Path>Shaders/UIShape.hlsl</Path>
-					</File>
-					<File>
-						<Path>Shaders/UIImage.hlsl</Path>
-					</File>
-					<File>
-						<Path>Shaders/SkinnedShadowDepthOnly.hlsl</Path>
-					</File>
-					<File>
-						<Path>Shaders/SurfaceShadowDepthOnly.hlsl</Path>
-					</File>
-					<File>
-						<Path>Shaders/MLAABlendCompute.hlsl</Path>
-					</File>
-					<File>
-						<Path>Shaders/MLAACommon.hlsl</Path>
-					</File>
-					<File>
-						<Path>Shaders/MLAAEdgeMaskCompute.hlsl</Path>
-					</File>
-					<File>
-						<Path>Shaders/MLAALineLengthCompute.hlsl</Path>
-					</File>
-					<File>
-						<Path>Shaders/SDSMDepthBoundsInitial.hlsl</Path>
-					</File>
-					<File>
-						<Path>Shaders/SDSMDepthBoundsReduce.hlsl</Path>
-					</File>
-					<File>
-						<Path>Shaders/SDSMSetupShadows.hlsl</Path>
+						<Path>Shaders/SkinnedDepthOnly.hlsl</Path>
 					</File>
 				</Children>
 			</Folder>
@@ -512,17 +490,41 @@
 				<ShowEmptyFolders>true</ShowEmptyFolders>
 				<IncludeFilesWithoutExt>false</IncludeFilesWithoutExt>
 				<Children>
+					<Folder>
+						<Path>Source/Rendering</Path>
+						<IncludeFilter>*.c,*.cc,*.cpp,*.c++,*.cp,*.cxx,*.h,*.hh,*.hpp,*.h++,*.hp,*.hxx,*.inl,*.cs,*.rs,*.java,*.jav,*.js,*.jsc,*.jsx,*.json,*.cls,*.py,*.rpy,*.php,*.php3,*.phl,*.phtml,*.rhtml,*.tpl,*.phps,*.lua,*.html,*.html5,*.htm,*.xml,*.xaml,*.css,*.ssi,*.haml,*.yaml,*.bat,*.wbf,*.wbt,*.txt,*.cmake,*.make,*.makefile,*.mak,*.mk,*.sh,*.bash,*.csv,*.asp,*.pl,*.mac,*.ws,*.vbs,*.perl,*.src,*.rss,*.inc,*.f,*.go,*.prl,*.plx,*.rb,*.lsp,*.lpx,*.ps1,*.command,*.cbl,*.cob,*.qs,*.wxs,*.ph,*.msc,*.glsl,*.hlsl,*.fx,*.vert,*.tesc,*.tese,*.geom,*.frag,*.comp,*.pssl,*.scons,*.cu,*.jai,</IncludeFilter>
+						<ExcludeFilter>Extern/SDL3/examples,Extern/SDL3/test,</ExcludeFilter>
+						<SyncFiles>true</SyncFiles>
+						<Recursive>true</Recursive>
+						<ShowEmptyFolders>true</ShowEmptyFolders>
+						<IncludeFilesWithoutExt>false</IncludeFilesWithoutExt>
+						<Children></Children>
+					</Folder>
+					<Folder>
+						<Path>Source/UI</Path>
+						<IncludeFilter>*.c,*.cc,*.cpp,*.c++,*.cp,*.cxx,*.h,*.hh,*.hpp,*.h++,*.hp,*.hxx,*.inl,*.cs,*.rs,*.java,*.jav,*.js,*.jsc,*.jsx,*.json,*.cls,*.py,*.rpy,*.php,*.php3,*.phl,*.phtml,*.rhtml,*.tpl,*.phps,*.lua,*.html,*.html5,*.htm,*.xml,*.xaml,*.css,*.ssi,*.haml,*.yaml,*.bat,*.wbf,*.wbt,*.txt,*.cmake,*.make,*.makefile,*.mak,*.mk,*.sh,*.bash,*.csv,*.asp,*.pl,*.mac,*.ws,*.vbs,*.perl,*.src,*.rss,*.inc,*.f,*.go,*.prl,*.plx,*.rb,*.lsp,*.lpx,*.ps1,*.command,*.cbl,*.cob,*.qs,*.wxs,*.ph,*.msc,*.glsl,*.hlsl,*.fx,*.vert,*.tesc,*.tese,*.geom,*.frag,*.comp,*.pssl,*.scons,*.cu,*.jai,</IncludeFilter>
+						<ExcludeFilter>Extern/SDL3/examples,Extern/SDL3/test,</ExcludeFilter>
+						<SyncFiles>true</SyncFiles>
+						<Recursive>true</Recursive>
+						<ShowEmptyFolders>true</ShowEmptyFolders>
+						<IncludeFilesWithoutExt>false</IncludeFilesWithoutExt>
+						<Children></Children>
+					</Folder>
+					<Folder>
+						<Path>Source/AssetManagement</Path>
+						<IncludeFilter>*.c,*.cc,*.cpp,*.c++,*.cp,*.cxx,*.h,*.hh,*.hpp,*.h++,*.hp,*.hxx,*.inl,*.cs,*.rs,*.java,*.jav,*.js,*.jsc,*.jsx,*.json,*.cls,*.py,*.rpy,*.php,*.php3,*.phl,*.phtml,*.rhtml,*.tpl,*.phps,*.lua,*.html,*.html5,*.htm,*.xml,*.xaml,*.css,*.ssi,*.haml,*.yaml,*.bat,*.wbf,*.wbt,*.txt,*.cmake,*.make,*.makefile,*.mak,*.mk,*.sh,*.bash,*.csv,*.asp,*.pl,*.mac,*.ws,*.vbs,*.perl,*.src,*.rss,*.inc,*.f,*.go,*.prl,*.plx,*.rb,*.lsp,*.lpx,*.ps1,*.command,*.cbl,*.cob,*.qs,*.wxs,*.ph,*.msc,*.glsl,*.hlsl,*.fx,*.vert,*.tesc,*.tese,*.geom,*.frag,*.comp,*.pssl,*.scons,*.cu,*.jai,</IncludeFilter>
+						<ExcludeFilter>Extern/SDL3/examples,Extern/SDL3/test,</ExcludeFilter>
+						<SyncFiles>true</SyncFiles>
+						<Recursive>true</Recursive>
+						<ShowEmptyFolders>true</ShowEmptyFolders>
+						<IncludeFilesWithoutExt>false</IncludeFilesWithoutExt>
+						<Children></Children>
+					</Folder>
 					<File>
 						<Path>Source/Algorithm.c</Path>
 					</File>
 					<File>
-						<Path>Source/AssetManager.c</Path>
-					</File>
-					<File>
 						<Path>Source/FileSystem.c</Path>
-					</File>
-					<File>
-						<Path>Source/Graphics.c</Path>
 					</File>
 					<File>
 						<Path>Source/Main.c</Path>
@@ -540,58 +542,10 @@
 						<Path>Source/Animation.c</Path>
 					</File>
 					<File>
-						<Path>Source/GLTFParser.c</Path>
-					</File>
-					<File>
-						<Path>Source/BasisBinding.cpp</Path>
-					</File>
-					<File>
-						<Path>Source/SceneNormalize.c</Path>
-					</File>
-					<File>
 						<Path>Source/AnimationBake.c</Path>
 					</File>
 					<File>
-						<Path>Source/MeshBake.c</Path>
-					</File>
-					<File>
-						<Path>Source/TextureSystem.c</Path>
-					</File>
-					<File>
-						<Path>Source/RenderSet.c</Path>
-					</File>
-					<File>
-						<Path>Source/Rendering.c</Path>
-					</File>
-					<File>
-						<Path>Source/RenderingCompute.c</Path>
-					</File>
-					<File>
-						<Path>Source/RenderingDraw.c</Path>
-					</File>
-					<File>
-						<Path>Source/RenderingInternal.h</Path>
-					</File>
-					<File>
-						<Path>Source/RenderingPipelines.c</Path>
-					</File>
-					<File>
-						<Path>Source/Slug.c</Path>
-					</File>
-					<File>
-						<Path>Source/UIRenderer.c</Path>
-					</File>
-					<File>
-						<Path>Source/KBTextShape.c</Path>
-					</File>
-					<File>
 						<Path>Source/Editor.c</Path>
-					</File>
-					<File>
-						<Path>Source/UIText.c</Path>
-					</File>
-					<File>
-						<Path>Source/UI_Internal.h</Path>
 					</File>
 				</Children>
 			</Folder>
@@ -599,7 +553,7 @@
 				<Path>CMakeLists.txt</Path>
 			</File>
 			<Folder>
-				<Path>vsbuild</Path>
+				<Path>.opencode</Path>
 				<IncludeFilter>*.c,*.cc,*.cpp,*.c++,*.cp,*.cxx,*.h,*.hh,*.hpp,*.h++,*.hp,*.hxx,*.inl,*.cs,*.rs,*.java,*.jav,*.js,*.jsc,*.jsx,*.json,*.cls,*.py,*.rpy,*.php,*.php3,*.phl,*.phtml,*.rhtml,*.tpl,*.phps,*.lua,*.html,*.html5,*.htm,*.xml,*.xaml,*.css,*.ssi,*.haml,*.yaml,*.bat,*.wbf,*.wbt,*.txt,*.cmake,*.make,*.makefile,*.mak,*.mk,*.sh,*.bash,*.csv,*.asp,*.pl,*.mac,*.ws,*.vbs,*.perl,*.src,*.rss,*.inc,*.f,*.go,*.prl,*.plx,*.rb,*.lsp,*.lpx,*.ps1,*.command,*.cbl,*.cob,*.qs,*.wxs,*.ph,*.msc,*.glsl,*.hlsl,*.fx,*.vert,*.tesc,*.tese,*.geom,*.frag,*.comp,*.pssl,*.scons,*.cu,*.jai,</IncludeFilter>
 				<ExcludeFilter>Extern/SDL3/examples,Extern/SDL3/test,</ExcludeFilter>
 				<SyncFiles>true</SyncFiles>
@@ -609,7 +563,7 @@
 				<Children></Children>
 			</Folder>
 			<Folder>
-				<Path>.opencode</Path>
+				<Path>Build</Path>
 				<IncludeFilter>*.c,*.cc,*.cpp,*.c++,*.cp,*.cxx,*.h,*.hh,*.hpp,*.h++,*.hp,*.hxx,*.inl,*.cs,*.rs,*.java,*.jav,*.js,*.jsc,*.jsx,*.json,*.cls,*.py,*.rpy,*.php,*.php3,*.phl,*.phtml,*.rhtml,*.tpl,*.phps,*.lua,*.html,*.html5,*.htm,*.xml,*.xaml,*.css,*.ssi,*.haml,*.yaml,*.bat,*.wbf,*.wbt,*.txt,*.cmake,*.make,*.makefile,*.mak,*.mk,*.sh,*.bash,*.csv,*.asp,*.pl,*.mac,*.ws,*.vbs,*.perl,*.src,*.rss,*.inc,*.f,*.go,*.prl,*.plx,*.rb,*.lsp,*.lpx,*.ps1,*.command,*.cbl,*.cob,*.qs,*.wxs,*.ph,*.msc,*.glsl,*.hlsl,*.fx,*.vert,*.tesc,*.tese,*.geom,*.frag,*.comp,*.pssl,*.scons,*.cu,*.jai,</IncludeFilter>
 				<ExcludeFilter>Extern/SDL3/examples,Extern/SDL3/test,</ExcludeFilter>
 				<SyncFiles>true</SyncFiles>
@@ -630,16 +584,6 @@
 			</Folder>
 			<Folder>
 				<Path>Release</Path>
-				<IncludeFilter>*.c,*.cc,*.cpp,*.c++,*.cp,*.cxx,*.h,*.hh,*.hpp,*.h++,*.hp,*.hxx,*.inl,*.cs,*.rs,*.java,*.jav,*.js,*.jsc,*.jsx,*.json,*.cls,*.py,*.rpy,*.php,*.php3,*.phl,*.phtml,*.rhtml,*.tpl,*.phps,*.lua,*.html,*.html5,*.htm,*.xml,*.xaml,*.css,*.ssi,*.haml,*.yaml,*.bat,*.wbf,*.wbt,*.txt,*.cmake,*.make,*.makefile,*.mak,*.mk,*.sh,*.bash,*.csv,*.asp,*.pl,*.mac,*.ws,*.vbs,*.perl,*.src,*.rss,*.inc,*.f,*.go,*.prl,*.plx,*.rb,*.lsp,*.lpx,*.ps1,*.command,*.cbl,*.cob,*.qs,*.wxs,*.ph,*.msc,*.glsl,*.hlsl,*.fx,*.vert,*.tesc,*.tese,*.geom,*.frag,*.comp,*.pssl,*.scons,*.cu,*.jai,</IncludeFilter>
-				<ExcludeFilter>Extern/SDL3/examples,Extern/SDL3/test,</ExcludeFilter>
-				<SyncFiles>true</SyncFiles>
-				<Recursive>true</Recursive>
-				<ShowEmptyFolders>true</ShowEmptyFolders>
-				<IncludeFilesWithoutExt>false</IncludeFilesWithoutExt>
-				<Children></Children>
-			</Folder>
-			<Folder>
-				<Path>Build</Path>
 				<IncludeFilter>*.c,*.cc,*.cpp,*.c++,*.cp,*.cxx,*.h,*.hh,*.hpp,*.h++,*.hp,*.hxx,*.inl,*.cs,*.rs,*.java,*.jav,*.js,*.jsc,*.jsx,*.json,*.cls,*.py,*.rpy,*.php,*.php3,*.phl,*.phtml,*.rhtml,*.tpl,*.phps,*.lua,*.html,*.html5,*.htm,*.xml,*.xaml,*.css,*.ssi,*.haml,*.yaml,*.bat,*.wbf,*.wbt,*.txt,*.cmake,*.make,*.makefile,*.mak,*.mk,*.sh,*.bash,*.csv,*.asp,*.pl,*.mac,*.ws,*.vbs,*.perl,*.src,*.rss,*.inc,*.f,*.go,*.prl,*.plx,*.rb,*.lsp,*.lpx,*.ps1,*.command,*.cbl,*.cob,*.qs,*.wxs,*.ph,*.msc,*.glsl,*.hlsl,*.fx,*.vert,*.tesc,*.tese,*.geom,*.frag,*.comp,*.pssl,*.scons,*.cu,*.jai,</IncludeFilter>
 				<ExcludeFilter>Extern/SDL3/examples,Extern/SDL3/test,</ExcludeFilter>
 				<SyncFiles>true</SyncFiles>

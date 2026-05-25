@@ -1,5 +1,5 @@
-#include "ShadowCascade.hlsl"
-#include "../Include/RenderLimits.h"
+#include "Shadow.hlsl"
+#include "../../Include/RenderLimits.h"
 
 cbuffer SDSMSetupParams : register(b0, space2)
 {

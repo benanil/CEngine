@@ -5,11 +5,12 @@
 #define HMMemset(mem, val, size) SDL_memset(mem, val, size)
 #define HMMemcpy(mem, src, size) MemCopy(mem, src, size)
 #define HM_HASHMAP_IMPLEMENTATION
-#include "RenderingInternal.h"
+
 #include "Include/Memory.h"
 #include "Include/Slug.h"
 #include "Include/FileSystem.h"
 #include "Include/String.h"
+#include "Include/Platform.h"
 
 #define STBTT_malloc(size, user) ((void)(user), AllocateTLSFGlobal(size))
 #define STBTT_free(ptr, user)    ((void)(user), DeAllocateTLSFGlobal(ptr))
@@ -32,6 +33,10 @@ typedef struct SlugVertexParams_
     mat4x4 matrix;
     f32 viewport[4];
 } SlugVertexParams;
+
+extern SDL_GPUDevice* g_GPUDevice;
+extern WindowState  g_WindowState;
+extern RenderState g_RenderState;
 
 static SlugFont g_SlugDemoFont;
 static SlugFont g_SlugDemo3DFont;
