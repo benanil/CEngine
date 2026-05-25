@@ -1,19 +1,19 @@
-#include "../Include/RenderLimits.h"
+#include "../../Include/RenderLimits.h"
 #include "../CommonStructs.hlsl"
 #include "../Bitpack.hlsl"
 #include "../Math.hlsl"
-#include "ShadowCascade.hlsl"
+#include "Shadow.hlsl"
+
+StructuredBuffer<Entity>              sEntities         : register(t0);
+StructuredBuffer<PrimitiveGroup>      sPrimitiveGroups  : register(t1);
+StructuredBuffer<uint>                sDrawSparseIndices : register(t2);
+StructuredBuffer<AnimatedVert>        sAnimatedVert     : register(t3);
+StructuredBuffer<ShadowCascadeBuffer> sShadowCascades  : register(t4);
 
 cbuffer vs_params : register(b0, space1)
 {
     uint uCascadeIndex;
 };
-
-StructuredBuffer<Entity>         sEntities         : register(t0);
-StructuredBuffer<PrimitiveGroup> sPrimitiveGroups  : register(t1);
-StructuredBuffer<uint>           sDrawSparseIndices : register(t2);
-StructuredBuffer<AnimatedVert>   sAnimatedVert     : register(t3);
-StructuredBuffer<ShadowCascadeBuffer> sShadowCascades : register(t4);
 
 struct VSInput
 {

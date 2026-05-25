@@ -203,6 +203,7 @@ static void GraphicsEditorUI(void)
 
                 CLAY(CLAY_ID("GraphicsEditorShadowBox"), EditorPanelBoxDeclaration) {
                     EditorSectionHeader("Shadows");
+                    UICheckbox(CLAY_ID("EditorEnableSDSM"), CLAY_STRING("Sample distribution shadow maps"), &settings->enableSDSM);
                     EditorSliderFloat(CLAY_ID("EditorShadowMaxDistance")   , "Max distance"   , &settings->shadowMaxDistance      , 25.0f, 1000.0f, 1);
                     EditorSliderFloat(CLAY_ID("EditorShadowCameraDistance"), "Camera distance", &settings->shadowCameraDistance   , 10.0f,  500.0f, 1);
                     EditorSliderFloat(CLAY_ID("EditorShadowCasterMargin")  , "Caster margin"  , &settings->shadowCasterDepthMargin, 10.0f,  500.0f, 1);
@@ -242,6 +243,7 @@ static void GraphicsEditorUI(void)
                         .enableHBAO = true,
                         .enableMLAA = true,
                         .showMLAAEdges = false,
+                        .enableSDSM = false,
                         .hbaoRadius = 1.3f,
                         .hbaoBias = 0.5f,
                         .hbaoIntensity = 2.0f,

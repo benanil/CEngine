@@ -9,6 +9,7 @@ typedef struct RenderSettings_
     bool enableHBAO;
     bool enableMLAA;
     bool showMLAAEdges;
+    bool enableSDSM;
     f32 hbaoRadius;
     f32 hbaoBias;
     f32 hbaoIntensity;

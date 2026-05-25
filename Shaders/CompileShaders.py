@@ -9,14 +9,16 @@ SHADER_DIR = Path("Shaders")
 SPV_DIR    = SHADER_DIR / "spv"
 
 GRAPHICS_SHADERS = [
-    ("Surface"         , "vert", "frag"),
-    ("LineDebug"       , "vert", "frag"),
-    ("SurfaceDepthOnly", "vert", "frag"),
-    ("UI/Slug"         , "vert", "frag"),
-    ("UI/UIShape"      , "vert", "frag"),
-    ("UI/UIImage"      , "vert", "frag"),
-    ("Skinned"         , "vert", "frag"),
-    ("SkinnedDepthOnly", "vert", "frag")
+    ("Surface"                , "vert", "frag"),
+    ("SurfaceDepthOnly"       , "vert", "frag"),
+    ("Skinned"                , "vert", "frag"),
+    ("SkinnedDepthOnly"       , "vert", "frag"),
+    ("LineDebug"              , "vert", "frag"),
+    ("UI/Slug"                , "vert", "frag"),
+    ("UI/UIShape"             , "vert", "frag"),
+    ("UI/UIImage"             , "vert", "frag"),
+    ("Shadow/SurfaceShadowDepthOnly" , "vert", "frag"),
+    ("Shadow/SkinnedShadowDepthOnly" , "vert", "frag"),
 ]
 
 COMPUTE_SHADERS = [

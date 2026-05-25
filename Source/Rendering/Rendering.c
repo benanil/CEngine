@@ -8,25 +8,26 @@ SDL_GPUDevice* g_GPUDevice = NULL;
 
 RenderSettings g_RenderSettings = {
     .enableOcclusion = true,
-    .enableHBAO = true,
-    .enableMLAA = true,
-    .showMLAAEdges = false,
-    .hbaoRadius = 1.3f,
-    .hbaoBias = 0.5f,
-    .hbaoIntensity = 2.0f,
-    .hbaoPower = 2.0f,
-    .mlaaThreshold = 0.08f,
-    .exposure = 1.0f,
-    .gamma = 2.2f,
+    .enableHBAO      = true,
+    .enableMLAA      = true,
+    .showMLAAEdges   = false,
+    .enableSDSM      = true,
+    .hbaoRadius      = 1.3f,
+    .hbaoBias        = 0.5f,
+    .hbaoIntensity   = 2.0f,
+    .hbaoPower       = 2.0f,
+    .mlaaThreshold   = 0.08f,
+    .exposure        = 1.0f,
+    .gamma           = 2.2f,
     .godRayIntensity = 2.5f,
-    .sunYaw = 116.565f,
-    .sunPitch = 63.435f,
-    .shadowMaxDistance = SHADOW_MAX_DISTANCE,
-    .shadowCameraDistance = SHADOW_CAMERA_DISTANCE,
+    .sunYaw          = 116.565f,
+    .sunPitch        = 63.435f,
+    .shadowMaxDistance       = SHADOW_MAX_DISTANCE,
+    .shadowCameraDistance    = SHADOW_CAMERA_DISTANCE,
     .shadowCasterDepthMargin = SHADOW_CASTER_DEPTH_MARGIN,
-    .shadowCascadeOverlap = SHADOW_CASCADE_OVERLAP,
+    .shadowCascadeOverlap    = SHADOW_CASCADE_OVERLAP,
     .shadowSplitNearDistance = SHADOW_SPLIT_NEAR_DISTANCE,
-    .shadowPSSMLambda = SHADOW_PSSM_LAMBDA
+    .shadowPSSMLambda        = SHADOW_PSSM_LAMBDA
 };
 
 #define RESIZE_RELEASE_DELAY 4u
@@ -306,6 +307,100 @@ static void AnimateSkinned(SDL_GPUCommandBuffer* cmd)
     DispatchAnimateVerticesCompute(cmd, &skinnedSet);
 }
 
+static void UploadShadowCascadeBuffer(const ShadowCascadeData* cascades)
+{
+    struct {
+        mat4x4 lightViewProj[SHADOW_CASCADE_COUNT];
+        float  splitDistances[4];
+    } gpuCascades;
+
+    for (u32 cascade = 0; cascade < SHADOW_CASCADE_COUNT; cascade++)
+    {
+        gpuCascades.lightViewProj[cascade] = M44Transpose(cascades->lightViewProj[cascade]);
+        gpuCascades.splitDistances[cascade] = cascades->splitDistances[cascade];
+    }
+    gpuCascades.splitDistances[3] = cascades->splitDistances[SHADOW_CASCADE_COUNT - 1u];
+
+    UpdateGPUBuffer(g_RenderState.shadowCascadeBuffer, &gpuCascades, sizeof(gpuCascades), 0);
+}
+
+static ShadowCascadeData CascadedShadowmaps(SDL_GPUCommandBuffer* cmd)
+{
+    static ShadowCascadeData cachedShadowCascades;
+    static u32 shadowFrameIndex = 0;
+    static bool shadowCacheValid = false;
+    static const u8 cascadeCadance[] = { 0x5D, 0x22, 0x80 }; // 01011101, 00100010, 10000000
+    ShadowCascadeData shadowCascades = GetShadowCascades();
+    bool updateCascades[SHADOW_CASCADE_COUNT];
+    u32 shadowFrame = (shadowFrameIndex++) & 7;
+    u8 frameBit = (1u << shadowFrame);
+
+    for (u32 cascade = 0; cascade < SHADOW_CASCADE_COUNT; cascade++)
+    {
+        bool updateCascade = !shadowCacheValid || ((cascadeCadance[cascade] & frameBit) != 0);
+        updateCascades[cascade] = updateCascade;
+        if (!updateCascade) continue;
+
+        cachedShadowCascades.lightViewProj[cascade] = shadowCascades.lightViewProj[cascade];
+        cachedShadowCascades.splitDistances[cascade] = shadowCascades.splitDistances[cascade];
+    }
+
+    UploadShadowCascadeBuffer(&cachedShadowCascades);
+
+    for (u32 cascade = 0; cascade < SHADOW_CASCADE_COUNT; cascade++)
+    {
+        if (!updateCascades[cascade]) continue;
+
+        mat4x4 shadowViewProj = cachedShadowCascades.lightViewProj[cascade];
+        FrustumPlanes shadowFrustum = CreateFrustumPlanes(shadowViewProj);
+        // planes.planes[4] = planes.planes[5] = VecZero(); // disable near, far plane frustum check
+        CullScene(cmd, shadowFrustum, shadowViewProj, false, false);
+
+        WindowState* winstate = &g_WindowState;
+        SDL_GPUColorTargetInfo shadow_color_target = MakeShadowColorTarget(winstate, cascade);
+        SDL_GPUDepthStencilTargetInfo shadow_depth_target = MakeShadowDepthTarget(winstate->tex_shadow_depth, cascade);
+        RenderDepth(cmd, &(DepthPassContext){
+            .colorTarget       = &shadow_color_target,
+            .depthTarget       = &shadow_depth_target,
+            .skinnedPipeline   = g_RenderState.skinnedShadowPipeline,
+            .surfacePipeline   = g_RenderState.surfaceShadowPipeline,
+            .viewProj          = shadowViewProj,
+            .cascadeIndex      = cascade,
+            .useShadowCascades = true,
+            .alphaClip         = false
+        });
+    }
+    shadowCacheValid = true;
+    return cachedShadowCascades;
+}
+
+static ShadowCascadeData SampleDistributionShadowMaps(SDL_GPUCommandBuffer* cmd, mat4x4 viewProj)
+{
+    ShadowCascadeData shadowCascades = GetShadowCascades();
+    DispatchSDSMSetupShadowsCompute(cmd, viewProj);
+
+    for (u32 cascade = 0; cascade < SHADOW_CASCADE_COUNT; cascade++)
+    {
+        mat4x4 shadowViewProj = shadowCascades.lightViewProj[cascade];
+        CullScene(cmd, CreateFrustumPlanes(shadowViewProj), shadowViewProj, false, false);
+
+        WindowState* winstate = &g_WindowState;
+        SDL_GPUColorTargetInfo shadow_color_target = MakeShadowColorTarget(winstate, cascade);
+        SDL_GPUDepthStencilTargetInfo shadow_depth_target = MakeShadowDepthTarget(winstate->tex_shadow_depth, cascade);
+        RenderDepth(cmd, &(DepthPassContext){
+            .colorTarget       = &shadow_color_target,
+            .depthTarget       = &shadow_depth_target,
+            .skinnedPipeline   = g_RenderState.skinnedShadowPipeline,
+            .surfacePipeline   = g_RenderState.surfaceShadowPipeline,
+            .viewProj          = shadowViewProj,
+            .cascadeIndex      = cascade,
+            .useShadowCascades = true,
+            .alphaClip         = false
+        });
+    }
+    return shadowCascades;
+}
+
 void Render(void)
 {
     g_RenderFrameIndex++;
@@ -361,28 +456,9 @@ void Render(void)
     FrustumPlanes cameraFrustum = CreateFrustumPlanes(viewProj);
     CullScene(cmd, cameraFrustum, hiZViewProj, enableHiZ, true);
     AnimateSkinned(cmd);
-
-    ShadowCascadeData shadowCascades = GetShadowCascades();
-    DispatchSDSMSetupShadowsCompute(cmd, viewProj);
-
-    for (u32 cascade = 0; cascade < SHADOW_CASCADE_COUNT; cascade++)
-    {
-        mat4x4 shadowViewProj = shadowCascades.lightViewProj[cascade];
-        CullScene(cmd, CreateFrustumPlanes(shadowViewProj), shadowViewProj, false, false);
-
-        SDL_GPUColorTargetInfo shadow_color_target = MakeShadowColorTarget(winstate, cascade);
-        SDL_GPUDepthStencilTargetInfo shadow_depth_target = MakeShadowDepthTarget(winstate->tex_shadow_depth, cascade);
-        RenderDepth(cmd, &(DepthPassContext){
-            .colorTarget       = &shadow_color_target,
-            .depthTarget       = &shadow_depth_target,
-            .skinnedPipeline   = g_RenderState.skinnedShadowPipeline,
-            .surfacePipeline   = g_RenderState.surfaceShadowPipeline,
-            .viewProj          = shadowViewProj,
-            .cascadeIndex      = cascade,
-            .useShadowCascades = true,
-            .alphaClip         = false
-        });
-    }
+    ShadowCascadeData shadowCascades = g_RenderSettings.enableSDSM ? 
+                                       SampleDistributionShadowMaps(cmd, viewProj) : 
+                                       CascadedShadowmaps(cmd);
 
     CullScene(cmd, cameraFrustum, hiZViewProj, enableHiZ, true);
 
@@ -407,7 +483,7 @@ void Render(void)
     DispatchDeferredLightingCompute(cmd, screenW, screenH, viewProj);
     RenderLines(cmd, &color_load_target, &main_depth_target, viewProj);
     DispatchHiZBuildCompute(cmd);
-    DispatchSDSMDepthBoundsCompute(cmd);
+    if (g_RenderSettings.enableSDSM) DispatchSDSMDepthBoundsCompute(cmd);
 
     winstate->hiz_view_proj = viewProj;
     winstate->hiz_valid = true;

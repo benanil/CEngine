@@ -1,7 +1,7 @@
 #include "../CommonStructs.hlsl"
 #include "../Bitpack.hlsl"
 #include "../Math.hlsl"
-#include "ShadowCascade.hlsl"
+#include "Shadow.hlsl"
 
 cbuffer vs_params : register(b0, space1)
 {
