@@ -695,6 +695,13 @@ void GenerateTextureMips(Texture texture)
     SDL_ReleaseGPUFence(g_GPUDevice, fence);
 }
 
+void ReleaseTexture(Texture* texture)
+{
+    SDL_ReleaseGPUTexture(g_GPUDevice, texture->handle);
+    texture->handle = NULL;
+    texture->width = texture->height = 0;
+}
+
 void rDeleteTexture(Texture texture)
 {
 

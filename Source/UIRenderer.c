@@ -576,10 +576,15 @@ void UIPopFloat(UIFloat what)
 UIImageData UIImageFromTexture(Texture* texture)
 {
     UIImageData image = {0};
-    if (!texture || !texture->handle) { AX_WARN("UIImageFromTexture got null texture"); return image; }
-    image.texture = texture->handle;
+    static int warnCount = 0;
     image.uv[2] = 1.0f;
     image.uv[3] = 1.0f;
+    if (!texture || !texture->handle )
+    {
+        if (warnCount++ < 8) AX_WARN("UIImageFromTexture got null texture");
+        image.texture = g_RenderState.textures[0].handle;
+    }
+    else image.texture = texture->handle;
     return image;
 }
 

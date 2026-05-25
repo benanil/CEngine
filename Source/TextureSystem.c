@@ -13,9 +13,6 @@
 #include "Shaders/spv/TexturePageCopyRG.spv.h"
 #endif
 
-extern RenderState g_RenderState;
-extern SDL_GPUDevice* g_GPUDevice;
-
 enum { TextureClass_Albedo, TextureClass_Normal, TextureClass_MetallicRoughness, TextureClass_Count };
 enum { TextureType_Normal = 1u << 0, TextureType_MetallicRoughness = 1u << 1 };
 enum { TextureDesc_Invalid = 0u, TextureDesc_Albedo = 1u, TextureDesc_Normal = 2u, TextureDesc_MetallicRoughness = 3u };
@@ -57,6 +54,9 @@ typedef struct PageCopyRequest_
     u32 width, height;
     u32 padding;
 } PageCopyRequest;
+
+extern RenderState g_RenderState;
+extern SDL_GPUDevice* g_GPUDevice;
 
 static TextureDescriptor gTextureDescriptors[MAX_TEXTURE_DESCRIPTORS];
 static MaterialGPU gMaterials[MAX_GPU_MATERIALS];
@@ -853,11 +853,23 @@ void TextureSystem_BuildPages(SceneBundle** bundles, const u32* imageOffsets, u3
             u32 imageIndex;
 
             if (ResolveGlobalImageIndex(bundle, imageOffsets[b], src->baseColorTexture.index, &imageIndex))
+            {
                 dst->albedoDescriptor = gAlbedoDescriptor[imageIndex];
+                SDL_ReleaseGPUTexture(g_GPUDevice, g_RenderState.textures[imageIndex].handle);
+                g_RenderState.textures[imageIndex].handle = NULL;
+            }
             if (ResolveGlobalImageIndex(bundle, imageOffsets[b], src->textures[0].index, &imageIndex))
+            {
                 dst->normalDescriptor = gNormalDescriptor[imageIndex];
+                SDL_ReleaseGPUTexture(g_GPUDevice, g_RenderState.textures[imageIndex].handle);
+                g_RenderState.textures[imageIndex].handle = NULL;
+            }
             if (ResolveGlobalImageIndex(bundle, imageOffsets[b], src->metallicRoughnessTexture.index, &imageIndex))
+            {
                 dst->metallicRoughnessDescriptor = gMetallicRoughnessDescriptor[imageIndex];
+                SDL_ReleaseGPUTexture(g_GPUDevice, g_RenderState.textures[imageIndex].handle);
+                g_RenderState.textures[imageIndex].handle = NULL;
+            }
         }
     }
     size_t descriptorOffset = 0;

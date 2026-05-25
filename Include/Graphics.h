@@ -257,6 +257,8 @@ void UploadTextureRegion(Texture texture, u32 layer, u32 x, u32 y, u32 width, u3
 
 void GenerateTextureMips(Texture texture);
 
+void ReleaseTexture(Texture* texture);
+
 s32 GraphicsTypeToSize(GraphicType type);
 
 SDL_GPUBuffer* CreateBuffer(void* buffer, size_t bufferSize, SDL_GPUBufferUsageFlags bufferUsage, const char* debugName);
