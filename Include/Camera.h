@@ -149,7 +149,7 @@ static inline float2 InfiniteMouse(float2 point)
     wGetMonitorSize(&monitorSize.x, &monitorSize.y);
     if (monitorSize.x <= 4 || monitorSize.y <= 4) return point;
     
-    #ifndef __ANDROID__
+    #ifdef PLATFORM_WINDOWS
     if (point.x > monitorSize.x - 2) { point.x = 3.0f; SetCursorPos((int)point.x, (int)point.y); }
     if (point.y > monitorSize.y - 2) { point.y = 3.0f; SetCursorPos((int)point.x, (int)point.y); }
         

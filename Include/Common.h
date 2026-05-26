@@ -511,7 +511,7 @@ static inline void MemSet(void* dst, uint8_t value, size_t size)
 {
     uint8_t* d = (uint8_t*)dst;
     
-    v128u xmm_value = _mm_set1_epi8(value);
+    v128u xmm_value = VecSetBytes(value);
     size_t simd_count = size >> 4;  // Divide by 16
     
     if (simd_count > 0) 

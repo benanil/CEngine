@@ -205,8 +205,10 @@ inline v128f VCALL QuaternionFromM33Vec(v128f r0, v128f r1, v128f r2)
     static const v128f XMMPMP = { -1.0f, +1.0f, -1.0f, +1.0f };
     static const v128f XMMMPP = { -1.0f, -1.0f, +1.0f, +1.0f };
     #if defined(AX_ARM)
-    static const v128u Select0110 = { 0u, ~0u, ~0u, 0u } ;
-    static const v128u Select0010 = { 0u,  0u, ~0u, 0u } ;
+   static const v128u Select0110 = { 0u, ~0u, ~0u, 0u } ;
+   static const v128u Select0010 = { 0u,  0u, ~0u, 0u } ;
+   static const v128u g_XMSelect1110 = { ~0u, ~0u, ~0u, 0u } ;
+   static const v128u g_XMSelect1011 = { ~0u, 0u, ~0u, ~0u } ;
 
     float32x4_t r00 = vdupq_lane_f32(vget_low_f32(r0), 0);
     float32x4_t r11 = vdupq_lane_f32(vget_low_f32(r1), 1);

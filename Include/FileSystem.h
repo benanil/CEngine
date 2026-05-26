@@ -12,6 +12,7 @@
 #endif
 
 #include "Common.h"
+#include <stdio.h>
 
 #if defined(__cplusplus)
 extern "C" {
@@ -32,7 +33,7 @@ typedef struct AFile_ {
 #elif defined(__ANDROID__)
     AAsset* asset;
 #else
-    struct FILE FILE; // forward declare FILE
+    FILE* file;
 #endif
 } AFile;
 

@@ -77,9 +77,16 @@ set(BASIS_ENCODER_SOURCES
 foreach(src ${BASIS_ENCODER_SOURCES})
     set_source_files_properties(${src} PROPERTIES
         COMPILE_DEFINITIONS "NOMINMAX;BASISU_SUPPORT_ZSTD=0;BASISD_SUPPORT_KTX2_ZSTD=0"
-        COMPILE_OPTIONS "/wd4244;/wd4267;/wd4018;/wd4005"
     )
 endforeach()
+
+if(MSVC)
+    foreach(src ${BASIS_ENCODER_SOURCES})
+        set_source_files_properties(${src} PROPERTIES
+            COMPILE_OPTIONS "/wd4244;/wd4267;/wd4018;/wd4005"
+        )
+    endforeach()
+endif()
 
 set_source_files_properties(
     Extern/basis_universal/transcoder/basisu_transcoder.cpp

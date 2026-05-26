@@ -39,7 +39,7 @@ purefn u64 MurmurHashInverse(u64 x) {
 }
 
 // todo: find way of random seed generation
-#if !defined(_MSCVER) && !defined(__ANDROID__)
+#if !defined(_MSCVER) && !defined(__ANDROID__) && (defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86))
 #include <immintrin.h> // intrin.h is included defaultly with msvc
 #else
 #include <time.h>
@@ -49,7 +49,7 @@ purefn u64 MurmurHashInverse(u64 x) {
 // also seeds are cryptographic 
 purefn u32 Seed32() {
     u32 result;
-    #if !defined(__ANDROID__)
+    #if !defined(__ANDROID__) && (defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86))
     _rdseed32_step(&result); // or faster __rdtsc
     #else
     result = WangHash(time(nullptr));

@@ -4,8 +4,8 @@
 #define SIMD_H
 
 // this is a helper file for working with ARM neon and SSE-SSE4.2 intrinsics, 
-// But everytime writing both versions can be pain, so I’ve used macros for this purpose,.
-// another reason why I’ve used macros is if I use operator overriding or functions for abstracting intrinsics,
+// But everytime writing both versions can be pain, so I've used macros for this purpose,.
+// another reason why I've used macros is if I use operator overriding or functions for abstracting intrinsics,
 // in debug mode, code compiles down to call instruction which is slower than instruction itself
 // and macro's allows many more optimizations that compiler can do.
 // a bit more explanation here: https://medium.com/@anilcangulkaya7/what-is-simd-and-how-to-use-it-3d1125faac89
@@ -116,6 +116,29 @@ extern "C" {
     #define purefn static __forceinline __declspec(noalias)
 #else
     #define purefn static inline __attribute__((always_inline))
+#endif
+
+#ifdef _MSC_VER
+    #define TrailingZeroCount32(x) _tzcnt_u32(x)
+    #define TrailingZeroCount64(x) _tzcnt_u64(x)
+#elif defined(__GNUC__) || !defined(__MINGW32__)
+    #define TrailingZeroCount32(x) __builtin_ctz(x)
+    #define TrailingZeroCount64(x) __builtin_ctzll(x)
+#else
+    // fallback implementation
+    static inline uint32_t PopCount32_fallback(uint32_t x) {
+        x = x - ((x >> 1) & 0x55555555);
+        x = (x & 0x33333333) + ((x >> 2) & 0x33333333);
+        x = (x + (x >> 4)) & 0x0F0F0F0F;
+        return (x * 0x01010101) >> 24;
+    }
+    static inline uint64_t PopCount64_fallback(uint64_t x) {
+        x -= ((x >> 1) & 0x5555555555555555ull);
+        x = (x & 0x3333333333333333ull) + (x >> 2 & 0x3333333333333333ull);
+        return ((x + (x >> 4)) & 0xf0f0f0f0f0f0f0full) * 0x101010101010101ull >> 56;
+    }
+    #define TrailingZeroCount32(x) PopCount32_fallback((x & -(x)) - 1u)
+    #define TrailingZeroCount64(x) PopCount64_fallback((x & -(x)) - 1ull)
 #endif
 
 
@@ -369,6 +392,9 @@ typedef uint32x4_t v128u;
 #define VecLoadA(x)                 vld1q_f32(x)
 #define VecLoadI(x)                 vld1q_s32((const s32*)x)
 #define VecLoadIU(x)                vld1q_u32((const u32*)x)
+#define VecStore(ptr, x)            vst1q_f32(ptr, x)
+#define VecStoreA(ptr, x)           vst1q_f32(ptr, x)
+#define VecStoreI(ptr, x)           vst1q_s32((s32*)ptr, x)
 #define VecStoreU(ptr, x)           vst1q_u32((u32*)ptr, x)
 #define VecSetBytes(x)              vdupq_n_u8(x)
                                     
@@ -389,8 +415,8 @@ typedef uint32x4_t v128u;
 #define VecPack16(x)                vqmovn_u32(x)                /* narrow u32 -> u16 with saturation */
 #define VecStoreLo64(p, v)          vst1_s16((int16_t*)(p), vget_low_s16(v)) /* store lower 64 bits */
 #define VecStoreHi64(p, v)          vst2_s16((int16_t*)(p), vget_high_s16(v)) /* store higher 64 bits */
-#define VecLoadLo64(p, v)           vld1_s16((int16_t*)(p)) /* store lower 64 bits */
-#define VecLoadHi64(p, v)           vld2_s16((int16_t*)(p)) /* store higher 64 bits */
+#define VecLoadLo64(p, v)           vcombine_f32(vld1_f32((float*)(p)), vget_high_f32(v)) /* load lower 64 bits */
+#define VecLoadHi64(p, v)           vcombine_f32(vget_low_f32(v), vld1_f32((float*)(p))) /* load higher 64 bits */
 
 // Get Set                          
 #define VecSplatX(v)                vdupq_lane_f32(vget_low_f32(v), 0)
@@ -433,6 +459,7 @@ typedef uint32x4_t v128u;
 #define VecHadd(a, b)               vpaddq_f32(a, b)
 #define VecSqrt(a)                  vsqrtq_f32(a)
 #define VecRcp(a)                   vrecpeq_f32(a)
+#define VecRSqrt(a)                 vrsqrteq_f32(a)
 #define VecNeg(a)                   vnegq_f32(a)
                                     
 // Vector Math                      
@@ -502,10 +529,10 @@ VecSetR( \
 #define VecSwapHalvesU(a)           vcombine_u32(vget_high_u32(a), vget_low_u32(a))
 
 #define VecNot(a)                   vreinterpretq_f32_u32(vmvnq_u32(vreinterpretq_u32_f32(a)))
-#define VecAnd(a, b)                vreinterpretq_f32_u32(vandq_u32(vreinterpretq_u32_f32(a), b))
-#define VecAndNot(a, b)             vreinterpretq_f32_u32(vandnotq_u32(vreinterpretq_u32_f32(a), b))
-#define VecOr(a, b)                 vreinterpretq_f32_u32(vorrq_u32(vreinterpretq_u32_f32(a), b))
-#define VecXor(a, b)                vreinterpretq_f32_u32(veorq_u32(vreinterpretq_u32_f32(a), b))
+#define VecAnd(a, b)                vreinterpretq_f32_u32(vandq_u32(vreinterpretq_u32_f32(a), vreinterpretq_u32_f32(b)))
+#define VecAndNot(a, b)             vreinterpretq_f32_u32(vbicq_u32(vreinterpretq_u32_f32(b), vreinterpretq_u32_f32(a)))
+#define VecOr(a, b)                 vreinterpretq_f32_u32(vorrq_u32(vreinterpretq_u32_f32(a), vreinterpretq_u32_f32(b)))
+#define VecXor(a, b)                vreinterpretq_f32_u32(veorq_u32(vreinterpretq_u32_f32(a), vreinterpretq_u32_f32(b)))
                                     
 #define VecMask(a, msk)             VecSelect(vdupq_n_f32(0.0f), a, msk)
                                     
@@ -532,8 +559,8 @@ VecSetR( \
 #define VeciSet(x, y, z, w)         ARMCreateVecI(w, z, y, x)
 #define VeciDup64(x)                vreinterpretq_u32_u64(vdupq_n_u64(x))
 
-#define VeciLoadA(x)                vld1q_u32(x)
-#define VeciLoad(x)                 vld1q_u32(x)
+#define VeciLoadA(x)                vld1q_u32((const u32*)(x))
+#define VeciLoad(x)                 vld1q_u32((const u32*)(x))
 #define VeciLoad64(qword)           vcombine_u32(vcreate_u32(qword), vcreate_u32(0ull)) /* loads 64bit integer to first 8 bytes of register */
 
 #define VeciSetX(v, x)       ((v) = vsetq_lane_u32(x, v, 0))
@@ -545,7 +572,7 @@ VecSetR( \
 #define VeciSub(a, b)               vsubq_u32(a, b)
 #define VeciMul(a, b)               vmulq_u32(a, b)
 
-#define VecBitcastU32(x)            vreinterpretq_f32_u32(x)
+#define VecBitcastU32(x)            vreinterpretq_u32_f32(x)
 #define VeciBitcastF32(x)           vreinterpretq_u32_f32(x)
 #define VecFromInt(x, y, z, w)      VeciBitcastF32(ARMCreateVecI(x, y, z, w))
 #define VecFromInt1(x)              VeciBitcastF32(vdupq_n_u32(x))
@@ -803,8 +830,8 @@ typedef struct Vec8x32u_ { v128u lo, hi; } v256u;
 #define VeciMul256(a, b)      (v256u){ VeciMul   ((a).lo, (b).lo), VeciMul   ((a).hi, (b).hi) }
 #define VeciDiv256(a, b)      (v256u){ VeciDiv   ((a).lo, (b).lo), VeciDiv   ((a).hi, (b).hi) }
 
-#define VecLoadI256(ptr)      (v256u){ VecLoadI(ptr)    , VecLoadI((char*)(ptr) + 16)     }
-#define VecStoreI256(ptr, x)  (v256u){ VecStoreI(ptr, x), VecStoreI((char*)(ptr) + 16, x) }
+#define VecLoadI256(ptr)      (v256u){ VecLoadI(ptr), VecLoadI((char*)(ptr) + 16) }
+#define VecStoreI256(ptr, x)  do { VecStoreI(ptr, (x).lo); VecStoreI((char*)(ptr) + 16, (x).hi); } while(0)
 #define VeciSet1_256(x)       (v256u){ VeciSet1(x)      , VeciSet1(x)                     }
 #define VecSetBytes256(x)     (v256u){ VecSetBytes(x)   , VecSetBytes(x)                  }
 

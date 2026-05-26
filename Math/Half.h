@@ -165,7 +165,7 @@ static inline void Float4ToHalf4V(u64* result, v128f f4)
     #ifdef AX_SUPPORT_AVX2
     _mm_storel_pi((__m64*)result, _mm_castsi128_ps(_mm_cvtps_ph(f4, _MM_FROUND_TO_NEAREST_INT)));
     #elif defined(AX_SUPPORT_NEON)
-    vst1_f16(result, vcvt_f16_f32(f4);
+    vst1_f16(result, vcvt_f16_f32(f4));
     #else
     STATIC_ASSERT(0, "undefined Float4ToHalf4V");
     #endif
