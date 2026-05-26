@@ -30,12 +30,13 @@ typedef enum UIColor_
     UIColor_SliderInside,
     UIColor_TextBoxCursor,
     UIColor_SelectedBorder,
+    UIColor_SubText ,
     UIColor_Count
 } UIColor;
 
 typedef enum UIFloat_
 {
-    UIFloat_LineThickness = 0,
+    UIFloat_BorderWidth = 0,
     UIFloat_ContentStart,
     UIFloat_ButtonSpace,
     UIFloat_TextScale,
@@ -45,6 +46,7 @@ typedef enum UIFloat_
     UIFloat_FieldWidth,
     UIFloat_TextWrapWidth,
     UIFloat_ScrollWidth,
+    UIFloat_CornerRadius,
     UIFloat_Count
 } UIFloat;
 
@@ -84,6 +86,7 @@ void UIGetClipRect(f32 outClip[4]);
 
 void UISetColor(UIColor what, u32 color);
 u32  UIGetColor(UIColor what);
+Clay_Color UIGetClayColor(UIColor what);
 void UIPushColor(UIColor what, u32 color);
 void UIPopColor(UIColor what);
 void UISetFloat(UIFloat what, f32 value);

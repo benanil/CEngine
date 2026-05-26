@@ -602,7 +602,7 @@ bool UITextArea(const char* label, float2 pos, char* buffer, u32 capacity, float
     bool focused = g_UI.keyboardFocus == id;
 
     UIPushRoundedRect(boxPos, size, 6.0f, UIGetColor(UIColor_TextBoxBG));
-    UIPushBorder(UIGetFloat(UIFloat_LineThickness), focused ? UIGetColor(UIColor_SelectedBorder) : UIGetColor(UIColor_Border));
+    UIPushBorder(UIGetFloat(UIFloat_BorderWidth), focused ? UIGetColor(UIColor_SelectedBorder) : UIGetColor(UIColor_Border));
     UIPushFloat(UIFloat_TextScale, 0.78f);
 
     float2 textPos = { boxPos.x + 10.0f, boxPos.y + 8.0f };

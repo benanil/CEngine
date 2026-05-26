@@ -67,27 +67,28 @@ void UIInit(void)
 
     for (u32 i = 0; i < UIColor_Count; i++) g_UI.colorStackCount[i] = -1;
     for (u32 i = 0; i < UIFloat_Count; i++) g_UI.floatStackCount[i] = -1;
-    g_UI.colors[UIColor_Text]           = 0xFFE1E1E1u;
-    g_UI.colors[UIColor_Quad]           = 0xEE111111u;
-    g_UI.colors[UIColor_Hovered]        = 0x8CFFFFFFu;
-    g_UI.colors[UIColor_Line]           = 0xFFDEDEDEu;
-    g_UI.colors[UIColor_Border]         = 0xFF484848u;
-    g_UI.colors[UIColor_CheckboxBG]     = 0xFF0B0B0Bu;
-    g_UI.colors[UIColor_TextBoxBG]      = 0xFF0B0B0Bu;
-    g_UI.colors[UIColor_SliderInside]   = 0xCF888888u;
-    g_UI.colors[UIColor_TextBoxCursor]  = 0xFF11FF11u;
-    g_UI.colors[UIColor_SelectedBorder] = 0xFF008CFAu;
-
-    g_UI.floats[UIFloat_LineThickness]  = 1.5f;
+    g_UI.colors[UIColor_Text]           = 0xFFEAEAEAu;
+    g_UI.colors[UIColor_SubText]        = UIPackClayColor((Clay_Color){ 140, 140, 140, 255 });
+    g_UI.colors[UIColor_Quad]           = 0xFF1A1A1Au;
+    g_UI.colors[UIColor_Hovered]        = 0x28E8A400u;
+    g_UI.colors[UIColor_Line]           = 0xFF3D3D3Du;
+    g_UI.colors[UIColor_Border]         = UIPackClayColor((Clay_Color){ 55, 55, 55, 200 });
+    g_UI.colors[UIColor_CheckboxBG]     = 0xFF141414u;
+    g_UI.colors[UIColor_TextBoxBG]      = 0xFF141414u;
+    g_UI.colors[UIColor_SliderInside]   = 0xFFE8A400u;
+    g_UI.colors[UIColor_TextBoxCursor]  = 0xFFE8A400u;
+    g_UI.colors[UIColor_SelectedBorder] = 0xFFE8A400u;
+    g_UI.floats[UIFloat_BorderWidth]    = 3.0f;
     g_UI.floats[UIFloat_ContentStart]   = 160.0f;
-    g_UI.floats[UIFloat_ButtonSpace]    = 12.0f;
+    g_UI.floats[UIFloat_ButtonSpace]    = 10.0f;
     g_UI.floats[UIFloat_TextScale]      = 1.0f;
     g_UI.floats[UIFloat_TextBoxWidth]   = 175.0f;
-    g_UI.floats[UIFloat_SliderHeight]   = 18.0f;
+    g_UI.floats[UIFloat_SliderHeight]   = 16.0f;
     g_UI.floats[UIFloat_Depth]          = 0.9f;
     g_UI.floats[UIFloat_FieldWidth]     = 98.0f;
     g_UI.floats[UIFloat_TextWrapWidth]  = 100.0f;
-    g_UI.floats[UIFloat_ScrollWidth]    = 16.0f;
+    g_UI.floats[UIFloat_ScrollWidth]    = 14.0f;
+    g_UI.floats[UIFloat_CornerRadius]   = 4.0f;
     UILayoutInit();
 }
 
@@ -119,14 +120,14 @@ u64 UIAutoID(const void* ptr)
 
 static Clay_Color UIButtonColor(bool hovered, bool selected)
 {
-    if (hovered) return UIColorToClay(UIGetColor(UIColor_Hovered));
-    if (selected) return UIColorToClay(UIGetColor(UIColor_SelectedBorder));
-    return UIColorToClay(UIGetColor(UIColor_Quad));
+    if (hovered) return UIGetClayColor(UIColor_Hovered);
+    if (selected) return UIGetClayColor(UIColor_SelectedBorder);
+    return UIGetClayColor(UIColor_Quad);
 }
 
 static Clay_Color UIPanelColor(void)
 {
-    return UIColorToClay(UIGetColor(UIColor_TextBoxBG));
+    return UIGetClayColor(UIColor_TextBoxBG);
 }
 
 static void UIRenderLayoutRectangle(const Clay_RenderCommand* command)
@@ -359,12 +360,13 @@ bool UIButton(Clay_ElementId id, Clay_String label, Clay_Dimensions size, bool s
             .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER }
         },
         .backgroundColor = UIButtonColor(Clay_Hovered(), selected),
-        .cornerRadius = CLAY_CORNER_RADIUS(size.height * 0.5f)
+        .cornerRadius = CLAY_CORNER_RADIUS(size.height * 0.5f),
+        .border = { .color = UIGetClayColor(UIColor_Border), .width = CLAY_BORDER_ALL((u16)Maxf32(UIGetFloat(UIFloat_BorderWidth), 1.0f)) } 
     }) {
         if (UIClicked()) clicked = true;
         CLAY_TEXT(label, CLAY_TEXT_CONFIG({
             .fontSize = (u16)Maxu32((u32)(17.0f * UIGetFloat(UIFloat_TextScale)), 1u),
-            .textColor = UIColorToClay(UIGetColor(UIColor_Text))
+            .textColor = UIGetClayColor(UIColor_Text)
         }));
     }
     return clicked;
@@ -397,14 +399,14 @@ bool UICheckbox(Clay_ElementId id, Clay_String label, bool* value)
                 .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER }
             },
             .backgroundColor = UIColorToClay(rowHovered ? UIGetColor(UIColor_Hovered) : UIGetColor(UIColor_CheckboxBG)),
-            .cornerRadius = CLAY_CORNER_RADIUS(4.0f),
-            .border = { .color = UIColorToClay(UIGetColor(UIColor_Border)), .width = CLAY_BORDER_ALL((u16)Maxf32(UIGetFloat(UIFloat_LineThickness), 1.0f)) }
+            .cornerRadius = CLAY_CORNER_RADIUS(UIGetFloat(UIFloat_CornerRadius)),
+            .border = { .color = UIGetClayColor(UIColor_Border), .width = CLAY_BORDER_ALL((u16)Maxf32(UIGetFloat(UIFloat_BorderWidth), 1.0f)) }
         }) {
             if (checked)
             {
                 CLAY(CLAY_ID_LOCAL("Mark"), {
                     .layout = { .sizing = { CLAY_SIZING_FIXED(10.0f), CLAY_SIZING_FIXED(10.0f) } },
-                    .backgroundColor = UIColorToClay(UIGetColor(UIColor_SliderInside)),
+                    .backgroundColor = UIGetClayColor(UIColor_SliderInside),
                     .cornerRadius = CLAY_CORNER_RADIUS(2.0f)
                 }) {}
             }
@@ -412,7 +414,7 @@ bool UICheckbox(Clay_ElementId id, Clay_String label, bool* value)
 
         CLAY_TEXT(label, CLAY_TEXT_CONFIG({
             .fontSize = (u16)Maxu32((u32)(15.0f * UIGetFloat(UIFloat_TextScale)), 1u),
-            .textColor = UIColorToClay(UIGetColor(UIColor_Text))
+            .textColor = UIGetClayColor(UIColor_Text)
         }));
     }
 
@@ -432,7 +434,7 @@ void UIProgressBar(Clay_ElementId id, Clay_String label, f32 value01)
     }) {
         CLAY_TEXT(label, CLAY_TEXT_CONFIG({
             .fontSize = (u16)Maxu32((u32)(15.0f * UIGetFloat(UIFloat_TextScale)), 1u),
-            .textColor = UIColorToClay(UIGetColor(UIColor_Text))
+            .textColor = UIGetClayColor(UIColor_Text)
         }));
 
         CLAY(CLAY_ID_LOCAL("Track"), {
@@ -441,12 +443,12 @@ void UIProgressBar(Clay_ElementId id, Clay_String label, f32 value01)
                 .childAlignment = { .y = CLAY_ALIGN_Y_CENTER }
             },
             .backgroundColor = UIPanelColor(),
-            .cornerRadius = CLAY_CORNER_RADIUS(6.0f)
+            .cornerRadius = CLAY_CORNER_RADIUS(UIGetFloat(UIFloat_CornerRadius))
         }) {
             CLAY(CLAY_ID_LOCAL("Fill"), {
                 .layout = { .sizing = { CLAY_SIZING_PERCENT(value01), CLAY_SIZING_FIXED(12.0f) } },
-                .backgroundColor = UIColorToClay(UIGetColor(UIColor_SliderInside)),
-                .cornerRadius = CLAY_CORNER_RADIUS(6.0f)
+                .backgroundColor = UIGetClayColor(UIColor_SliderInside),
+                .cornerRadius = CLAY_CORNER_RADIUS(UIGetFloat(UIFloat_CornerRadius))
             }) {}
         }
     }
@@ -495,34 +497,27 @@ bool UISliderFloat(Clay_ElementId id, Clay_String label, f32* value, f32 minValu
     }) {
         CLAY_TEXT(label, CLAY_TEXT_CONFIG({
             .fontSize = (u16)Maxu32((u32)(15.0f * UIGetFloat(UIFloat_TextScale)), 1u),
-            .textColor = UIColorToClay(UIGetColor(UIColor_Text))
+            .textColor = UIGetClayColor(UIColor_Text)
         }));
 
         CLAY(CLAY_ID_LOCAL("Spacer"), {
             .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(1.0f) } }
         }) {}
 
-        f32 knobWidth = 8.0f;
-        f32 knobOffset = value01 * Maxf32(trackData.found ? trackData.boundingBox.width - knobWidth : 0.0f, 0.0f);
+        f32 knobOffset = value01 * Maxf32(trackData.found ? trackData.boundingBox.width : 0.0f, 0.0f);
         CLAY(trackId, {
             .layout = {
                 .sizing = { CLAY_SIZING_FIXED(UIGetFloat(UIFloat_TextBoxWidth)), CLAY_SIZING_FIXED(14.0f) },
                 .layoutDirection = CLAY_LEFT_TO_RIGHT,
                 .childAlignment = { .y = CLAY_ALIGN_Y_CENTER }
             },
-            .backgroundColor = UIColorToClay(UIGetColor(UIColor_TextBoxBG)),
+            .backgroundColor = UIGetClayColor(UIColor_TextBoxBG),
             .cornerRadius = CLAY_CORNER_RADIUS(7.0f)
         }) {
             CLAY(CLAY_ID_LOCAL("Fill"), {
                 .layout = { .sizing = { CLAY_SIZING_FIXED(knobOffset), CLAY_SIZING_FIXED(14.0f) } },
-                .backgroundColor = UIColorToClay(UIGetColor(UIColor_SliderInside)),
+                .backgroundColor = UIGetClayColor(UIColor_SliderInside),
                 .cornerRadius = CLAY_CORNER_RADIUS(7.0f)
-            }) {}
-
-            CLAY(CLAY_ID_LOCAL("Knob"), {
-                .layout = { .sizing = { CLAY_SIZING_FIXED(knobWidth), CLAY_SIZING_FIXED(18.0f) } },
-                .backgroundColor = UIColorToClay(UIGetColor(UIColor_Text)),
-                .cornerRadius = CLAY_CORNER_RADIUS(4.0f)
             }) {}
 
             CLAY(CLAY_ID_LOCAL("Remainder"), {
@@ -574,6 +569,11 @@ u32 UIGetColor(UIColor what)
     if ((u32)what >= UIColor_Count) return 0xFFFFFFFFu;
     s32 count = g_UI.colorStackCount[what];
     return count >= 0 ? g_UI.colorStack[what][count] : g_UI.colors[what];
+}
+
+Clay_Color UIGetClayColor(UIColor what)
+{
+    return UIColorToClay(UIGetColor(what));
 }
 
 void UIPushColor(UIColor what, u32 color)
