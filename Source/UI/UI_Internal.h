@@ -17,11 +17,30 @@ typedef struct UIRenderer_
 {
     UIShape* shapes;
     struct UIImageCommand_* images;
+    struct UIOrderedTextCommand_* texts;
+    struct UIDrawCommand_* commands;
     u32 count;
     u32 imageCount;
+    u32 textCount;
+    u32 commandCount;
     u32 capacity;
     u32 imageCapacity;
+    u32 textCapacity;
+    u32 commandCapacity;
 } UIRenderer;
+
+typedef enum UIDrawCommandType_
+{
+    UIDrawCommand_Image = 0,
+    UIDrawCommand_Text
+} UIDrawCommandType;
+
+typedef struct UIDrawCommand_
+{
+    u32 shapeFence;
+    u32 index;
+    u32 type;
+} UIDrawCommand;
 
 typedef struct UIImageCommand_
 {
@@ -34,6 +53,13 @@ typedef struct UIImageCommand_
     u32 shapeFence;
     f32 radius;
 } UIImageCommand;
+
+typedef struct UIOrderedTextCommand_
+{
+    u32 shapeFence;
+    u32 firstBatch;
+    u32 batchCount;
+} UIOrderedTextCommand;
 
 typedef struct UIImageParams_
 {
@@ -96,5 +122,6 @@ extern UIContext g_UI;
 extern UILayoutContext g_UILayout;
 
 void UIDestroyTextShape(void);
+void UIRecordTextBatches(u32 firstBatch, u32 batchCount);
 
 #endif // ui internal

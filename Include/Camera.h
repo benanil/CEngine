@@ -4,7 +4,6 @@
 #include "../Math/Matrix.h"
 #include "Platform.h"
 #include <SDL3/SDL_keycode.h>
-#include <SDL3/SDL_mouse.h>
 
 //#include "sokol/sokol_app.h"
 
@@ -171,7 +170,7 @@ static inline void CameraUpdate(Camera* camera, f32 dt)
     
     if (!pressing)
     {
-        SDL_SetCursor(SDL_GetDefaultCursor());
+        wSetCursor(wCursor_Default);
         GetMousePos(&camera->mouseOld.x, &camera->mouseOld.y);
         camera->wasPressing = false;
         return;
@@ -181,9 +180,7 @@ static inline void CameraUpdate(Camera* camera, f32 dt)
     GetMousePos(&mousePos.x, &mousePos.y);
     float2 diff = F2Sub(mousePos, camera->mouseOld);
     
-    static SDL_Cursor* cursor = NULL;
-    if (!cursor) cursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_MOVE);
-    if (cursor) SDL_SetCursor(cursor);
+    wSetCursor(wCursor_Move);
          
     // if platform is android left side is for movement, right side is for rotating camera
     #ifdef __ANDROID__

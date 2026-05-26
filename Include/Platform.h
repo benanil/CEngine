@@ -81,6 +81,17 @@ typedef enum MouseButton_ {
     MouseButton_Backward = 1 << 4
 } MouseButton;
 
+typedef enum wCursor_
+{
+    wCursor_Default = 0,
+    wCursor_ResizeEW,
+    wCursor_ResizeNS,
+    wCursor_ResizeNWSE,
+    wCursor_ResizeNESW,
+    wCursor_Move,
+    wCursor_Count
+} wCursor;
+
 // Mouse
 void GetMousePos(f32* x, f32* y);
 void SetMousePos(f32 x, f32 y);
@@ -93,6 +104,7 @@ u8   AnyMouseKeyDown();
 u8   GetMouseDown(s32 button);
 u8   GetMouseReleased(s32 button);
 u8   GetMousePressed(s32 button);
+void wSetCursor(wCursor cursor);
 
 
 // Keyboard

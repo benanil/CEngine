@@ -120,6 +120,7 @@ target_sources(${EXECUTABLE_NAME} PRIVATE
     Source/UI/Slug.c
     Source/UI/UIRenderer.c
     Source/UI/UIText.c
+    Source/UI/UIWindow.c
 
     Source/AssetManagement/GLTFParser.c
     Source/AssetManagement/SceneNormalize.c

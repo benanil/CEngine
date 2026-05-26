@@ -1,5 +1,6 @@
 #include "Include/Slug.h"
 #include "Include/UIRenderer.h"
+#include "Include/UIWindow.h"
 #include "Include/Platform.h"
 #include "Include/Random.h"
 #include "Include/Rendering.h"
@@ -116,6 +117,60 @@ static void EditorSpacing(Clay_ElementId id, float pixels)
     }) {}
 }
 
+static void WindowTestUI(void)
+{
+    static bool open = true;
+    static bool enabled = true;
+    static f32 testValue = 0.35f;
+    static f32 exposure = 1.0f;
+    static char textBuffer[512] = "Text area in a dockable window.\nTry selecting, typing, and overlapping windows.";
+    static UITextAreaCustomData textCustomData;
+    static u32 customDataIndex;
+
+    if (!UIBeginWindow("Window Test", (float2){ 560.0f, 80.0f }, (float2){ 380.0f, 360.0f }, &open, 0u)) return;
+
+    CLAY_TEXT(CLAY_STRING("Example floating window"), CLAY_TEXT_CONFIG({
+        .fontSize = 22,
+        .textColor = UIGetClayColor(UIColor_Text)
+    }));
+    CLAY_TEXT(CLAY_STRING("Drag title bar, resize edges/corners, collapse or close."), CLAY_TEXT_CONFIG({
+        .fontSize = 14,
+        .textColor = UIGetClayColor(UIColor_SubText)
+    }));
+
+    Clay_ElementData windowElement = Clay_GetElementData(CLAY_ID("Window Test"));
+    EditorDivider(CLAY_ID("WindowTestDivider0"));
+    UICheckbox(CLAY_ID("WindowTestEnabled"), CLAY_STRING("Enable test option"), &enabled);
+    UISliderFloatValue(CLAY_ID("WindowTestSlider"), CLAY_STRING("Window value"), &testValue, 0.0f, 1.0f, 2);
+    UISliderFloatValue(CLAY_ID("WindowTestExposure"), CLAY_STRING("Local exposure"), &exposure, 0.1f, 4.0f, 2);
+
+    textCustomData.type = UICustomType_TextArea;
+    textCustomData.buffer = textBuffer;
+    textCustomData.capacity = sizeof(textBuffer);
+    CLAY(CLAY_ID("WindowTestTextArea"), {
+        .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_GROW(100.0f) } },
+        .custom = { .customData = &textCustomData }
+    }) {}
+
+    CLAY(CLAY_ID("WindowTestButtons"), {
+        .layout = {
+            .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(38.0f) },
+            .childGap = 10,
+            .layoutDirection = CLAY_LEFT_TO_RIGHT
+        }
+    }) {
+        if (UIButton(CLAY_ID("WindowTestReset"), CLAY_STRING("Reset"), (Clay_Dimensions){ 96.0f, 34.0f }, false))
+        {
+            enabled = true;
+            testValue = 0.35f;
+            exposure = 1.0f;
+        }
+        UIButton(CLAY_ID("WindowTestButton"), CLAY_STRING("Button"), (Clay_Dimensions){ 96.0f, 34.0f }, false);
+    }
+
+    UIEndWindow();
+}
+
 static Clay_ElementDeclaration EditorScrollPanelDeclaration(f32 height)
 {
     Clay_ElementDeclaration declaration = {
@@ -133,6 +188,7 @@ static Clay_ElementDeclaration EditorScrollPanelDeclaration(f32 height)
 static void GraphicsEditorUI(void)
 {
     RenderSettings* settings = &g_RenderSettings;
+    static bool editorOpen = true;
     Clay_BeginLayout();
     Clay_ElementDeclaration EditorPanelBoxDeclaration = 
     {
@@ -154,17 +210,10 @@ static void GraphicsEditorUI(void)
         }
     }) {
         ShowFps();
-        CLAY(CLAY_ID("GraphicsEditorPanel"), {
-            .layout = {
-                .sizing = { CLAY_SIZING_FIXED(500.0f), CLAY_SIZING_FIT(0) },
-                .padding = { 18, 18, 18, 18 },
-                .childGap = 12,
-                .layoutDirection = CLAY_TOP_TO_BOTTOM
-            },
-            .backgroundColor = { 26, 26, 26, 245 },
-            .cornerRadius = CLAY_CORNER_RADIUS(UIGetFloat(UIFloat_CornerRadius)),
-            .border = { .color = UIGetClayColor(UIColor_Border), .width = CLAY_BORDER_ALL(UIGetFloat(UIFloat_BorderWidth)) }
-        }) {
+        WindowTestUI();
+        Clay_ElementId windowID = (Clay_ElementId) { .id = StringToHash("Graphics Editor", 5381u) };
+        if (UIBeginWindowId(windowID,"Graphics Editor", (float2){ 18.0f, 18.0f }, (float2){ 500.0f, 760.0f }, &editorOpen, 0u))
+        {
             CLAY(CLAY_ID("GraphicsEditorHeader"), {
                 .layout = {
                     .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) },
@@ -182,7 +231,8 @@ static void GraphicsEditorUI(void)
                 }));
             }
             //EditorSpacing(CLAY_ID("GraphicsEditorDivider0"), 6.0f);
-            CLAY(CLAY_ID("GraphicsEditorScroll"), EditorScrollPanelDeclaration(590.0f)) {
+            UIWindow* window = UIGetWindow(windowID);
+            CLAY(CLAY_ID("GraphicsEditorScroll"), EditorScrollPanelDeclaration(window->scale.y - 200.0f)) {
                 CLAY(CLAY_ID("GraphicsEditorFeatureBox"), EditorPanelBoxDeclaration) {
                     EditorSectionHeader("Features");
                     UICheckbox(CLAY_ID("EditorEnableOcclusion"), CLAY_STRING("Hi-Z occlusion culling"), &settings->enableOcclusion);
@@ -254,11 +304,11 @@ static void GraphicsEditorUI(void)
                     };
                 }
             }
+            UIEndWindow();
         }
     }
     Clay_RenderCommandArray commands = UIEndLayout();
     UIRenderCommands(&commands);
-    EditorDrawScrollBar(CLAY_ID("GraphicsEditorScroll"));
 }
 
 void UIRenderCallback(void)

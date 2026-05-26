@@ -455,6 +455,8 @@ static bool UITextBuildLayout(const char* text, u32 bytes, float2 pos, f32 textS
     UITextLine* line = UILayoutBeginLine(layout, pos.x, pos.y, 0u);
     if (!line) return false;
     f32 penX = 0.0f;
+    f32 wrapOffsetX = 0.0f;
+    f32 wrapWidth = multiline ? UIGetFloat(UIFloat_TextWrapWidth) : 0.0f;
     u32 cpBase = 0u;
     u32 lineStartByte = 0u;
 
@@ -499,7 +501,23 @@ static bool UITextBuildLayout(const char* text, u32 bytes, float2 pos, f32 textS
             kbts_glyph* glyph;
             while (kbts_GlyphIteratorNext(&run.Glyphs, &glyph))
             {
+                if (!line) break;
                 u32 cp = cpBase + (u32)glyph->UserIdOrCodepointIndex;
+                f32 glyphX = pos.x + penX + (f32)(cursorX + glyph->OffsetX) * scaleX - wrapOffsetX;
+                f32 advanceX = (f32)glyph->AdvanceX * scaleX;
+                f32 glyphWidth = Absf32(advanceX);
+                bool canWrap = wrapWidth > 1.0f && line->firstCommand != layout->commandCount;
+                if (canWrap && glyphX + glyphWidth > pos.x + wrapWidth)
+                {
+                    line->onePastLastCommand = layout->commandCount;
+                    line->width = wrapWidth;
+                    layout->width = Maxf32(layout->width, line->width);
+                    wrapOffsetX += glyphX - pos.x;
+                    line = UILayoutBeginLine(layout, pos.x, pos.y + layout->lineHeight * (f32)layout->lineCount, cp);
+                    if (!line) break;
+                    glyphX = pos.x;
+                }
+
                 if (cp < UI_TEXT_MAX_CODEPOINTS)
                 {
                     kbts_shape_codepoint shapeCodepoint = {0};
@@ -515,26 +533,29 @@ static bool UITextBuildLayout(const char* text, u32 bytes, float2 pos, f32 textS
                     cmd->glyphIndex = glyph->Id;
                     cmd->codepointIndex = cp;
                     cmd->direction = run.Direction;
-                    cmd->pos.x = pos.x + penX + (f32)(cursorX + glyph->OffsetX) * scaleX;
+                    cmd->pos.x = glyphX;
                     cmd->pos.y = line->y + layout->ascent - (f32)(cursorY + glyph->OffsetY) * scaleY;
-                    cmd->advanceX = (f32)glyph->AdvanceX * scaleX;
-                    cmd->width = Absf32(cmd->advanceX);
+                    cmd->advanceX = advanceX;
+                    cmd->width = glyphWidth;
                     line->maxCodepoint = Maxu32(line->maxCodepoint, cp + 1u);
                 }
                 cursorX += glyph->AdvanceX;
                 cursorY += glyph->AdvanceY;
             }
+            if (!line) break;
             penX += (f32)cursorX * emScale * sizePx / Maxf32(g_UI.windowRatio.x, 0.01f);
         }
+        if (!line) break;
 
         line->onePastLastCommand = layout->commandCount;
-        line->width = penX;
-        layout->width = Maxf32(layout->width, penX);
+        line->width = Maxf32(penX - wrapOffsetX, 0.0f);
+        layout->width = Maxf32(layout->width, line->width);
         if (!multiline || lineStartByte + lineBytes >= bytes) break;
 
         lineStartByte += lineBytes + 1u;
         cpBase += StringCodepointCount(text + lineStartByte - lineBytes - 1u, lineBytes + 1u);
         penX = 0.0f;
+        wrapOffsetX = 0.0f;
         line = UILayoutBeginLine(layout, pos.x, pos.y + layout->lineHeight * (f32)layout->lineCount, cpBase);
         if (!line) break;
     }
@@ -606,6 +627,7 @@ bool UITextArea(const char* label, float2 pos, char* buffer, u32 capacity, float
     UIPushFloat(UIFloat_TextScale, 0.78f);
 
     float2 textPos = { boxPos.x + 10.0f, boxPos.y + 8.0f };
+    UIPushFloat(UIFloat_TextWrapWidth, Maxf32(size.x - 20.0f, 1.0f));
     u32 len = UIStringLength(buffer, capacity);
     UITextLayout layout;
     UITextBuildLayout(buffer ? buffer : "", len, textPos, UIGetFloat(UIFloat_TextScale), true, &layout);
@@ -632,13 +654,20 @@ bool UITextArea(const char* label, float2 pos, char* buffer, u32 capacity, float
     g_UI.wasHovered = hovered;
 
     if (focused) UITextDrawSelection(&layout);
+
+    SlugFont* font = SlugGetDemoFont();
+    SlugForceNewBatch(font);
+    u32 firstBatch = font->numBatches;
     UITextDrawLayout(&layout);
+    UIRecordTextBatches(firstBatch, font->numBatches - firstBatch);
+
     if (edited || focused && FModf(TimeSinceStartup(), 0.5f) > 0.20f)
     {
         float2 caretPos = UITextLayoutCaretPos(&layout, g_UI.caret);
         f32 cursorX = Minf32(caretPos.x + 2.0f, boxPos.x + size.x - 4.0f);
         UIPushRect((float2){ cursorX, caretPos.y }, (float2){ 1.5f, layout.lineHeight }, UIGetColor(UIColor_TextBoxCursor));
     }
+    UIPopFloat(UIFloat_TextWrapWidth);
     UIPopFloat(UIFloat_TextScale);
     return edited;
 }

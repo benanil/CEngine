@@ -13,6 +13,7 @@
 
 #include <SDL3/SDL_events.h>
 #include <SDL3/SDL_dialog.h>
+#include <SDL3/SDL_mouse.h>
 
 #define STB_SPRINTF_IMPLEMENTATION
 #include "Extern/stb/stb_sprintf.h"
@@ -25,6 +26,8 @@ static ALIGNAS(SIMD_NUM_BYTES) u64 DownKeys[8];
 static ALIGNAS(SIMD_NUM_BYTES) u64 LastKeys[8]; 
 static ALIGNAS(SIMD_NUM_BYTES) u64 PressedKeys[8];
 static ALIGNAS(SIMD_NUM_BYTES) u64 ReleasedKeys[8];
+static SDL_Cursor* g_Cursors[wCursor_Count];
+static wCursor g_CurrentCursor = wCursor_Count;
 
 inline static s32 GetRealKey(s32 x)
 {
@@ -176,6 +179,28 @@ u8 AnyMouseKeyDown()            { return PlatformCtx.MouseDown > 0; }
 u8 GetMouseDown(s32 button)     { return !!(PlatformCtx.MouseDown     & button); }
 u8 GetMouseReleased(s32 button) { return !!(PlatformCtx.MouseReleased & button); }
 u8 GetMousePressed(s32 button)  { return !!(PlatformCtx.MousePressed  & button); }
+
+void wSetCursor(wCursor cursor)
+{
+    if ((u32)cursor >= (u32)wCursor_Count) cursor = wCursor_Default;
+    if (g_CurrentCursor == cursor) return;
+
+    SDL_SystemCursor systemCursor = SDL_SYSTEM_CURSOR_DEFAULT;
+    switch (cursor)
+    {
+        case wCursor_ResizeEW:   systemCursor = SDL_SYSTEM_CURSOR_EW_RESIZE; break;
+        case wCursor_ResizeNS:   systemCursor = SDL_SYSTEM_CURSOR_NS_RESIZE; break;
+        case wCursor_ResizeNWSE: systemCursor = SDL_SYSTEM_CURSOR_NWSE_RESIZE; break;
+        case wCursor_ResizeNESW: systemCursor = SDL_SYSTEM_CURSOR_NESW_RESIZE; break;
+        case wCursor_Move:       systemCursor = SDL_SYSTEM_CURSOR_MOVE; break;
+        case wCursor_Default:
+        default:                 systemCursor = SDL_SYSTEM_CURSOR_DEFAULT; break;
+    }
+
+    if (!g_Cursors[cursor]) g_Cursors[cursor] = SDL_CreateSystemCursor(systemCursor);
+    if (g_Cursors[cursor]) SDL_SetCursor(g_Cursors[cursor]);
+    g_CurrentCursor = cursor;
+}
 
 u32 PlatformConsumeTextInput(char* dst, u32 capacity)
 {
