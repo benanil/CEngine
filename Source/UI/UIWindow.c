@@ -22,6 +22,8 @@ static u32 g_UIWindowState;
 static u32 g_UIWindowSnapMask;
 static s32 g_UIWindowDockTarget = -1;
 static u32 g_UIWindowDockMask;
+static s32 g_UIWindowResizeHorizontalNeighbor = -1;
+static s32 g_UIWindowResizeVerticalNeighbor = -1;
 static bool g_UIWindowContentOpen;
 static bool g_UIWindowCursorRequested;
 static bool g_UIWindowCursorOwned;
@@ -273,12 +275,17 @@ static bool UIWindowDockCanSplit(UIWindow* dragged, UIWindow* target, u32 mask)
 
 static u32 UIWindowSnapMaskFromMouse(float2 mouse)
 {
-    const f32 zone = 56.0f;
+    const f32 edgeZone = 56.0f;
+    const f32 centerZone = 220.0f;
     float2 screen = g_UI.screenSize;
-    if (mouse.x <= zone) return UIWindowSnap_Left;
-    if (mouse.x >= screen.x - zone) return UIWindowSnap_Right;
-    if (mouse.y <= zone) return UIWindowSnap_Top;
-    if (mouse.y >= screen.y - zone) return UIWindowSnap_Bottom;
+    f32 centerX = screen.x * 0.5f;
+    f32 centerY = screen.y * 0.5f;
+    bool nearCenterX = Absf32(mouse.x - centerX) <= centerZone * 0.5f;
+    bool nearCenterY = Absf32(mouse.y - centerY) <= centerZone * 0.5f;
+    if (mouse.x <= edgeZone && nearCenterY) return UIWindowSnap_Left;
+    if (mouse.x >= screen.x - edgeZone && nearCenterY) return UIWindowSnap_Right;
+    if (mouse.y <= edgeZone && nearCenterX) return UIWindowSnap_Top;
+    if (mouse.y >= screen.y - edgeZone && nearCenterX) return UIWindowSnap_Bottom;
     return 0u;
 }
 
@@ -298,14 +305,15 @@ static void UIWindowDrawSnapPreview(UIWindow* window)
     if (g_UIWindowState != UIWindowState_Move_TabBar || g_UIWindowActive != g_UIWindowCurrent) return;
 
     float2 screen = g_UI.screenSize;
-    const f32 zone = 56.0f;
+    const f32 edgeZone = 56.0f;
+    const f32 centerZone = 220.0f;
     const u32 zoneColor = 0x22E8A400u;
     s16 zIndex = (s16)(window->depth + 96u);
 
-    UIWindowDrawSnapRect(CLAY_ID("UIWindowSnapLeft"), (float2){ 0.0f, 0.0f }, (float2){ zone, screen.y }, zoneColor, zIndex);
-    UIWindowDrawSnapRect(CLAY_ID("UIWindowSnapRight"), (float2){ screen.x - zone, 0.0f }, (float2){ zone, screen.y }, zoneColor, zIndex);
-    UIWindowDrawSnapRect(CLAY_ID("UIWindowSnapTop"), (float2){ 0.0f, 0.0f }, (float2){ screen.x, zone }, zoneColor, zIndex);
-    UIWindowDrawSnapRect(CLAY_ID("UIWindowSnapBottom"), (float2){ 0.0f, screen.y - zone }, (float2){ screen.x, zone }, zoneColor, zIndex);
+    UIWindowDrawSnapRect(CLAY_ID("UIWindowSnapLeft"), (float2){ 0.0f, screen.y * 0.5f - centerZone * 0.5f }, (float2){ edgeZone, centerZone }, zoneColor, zIndex);
+    UIWindowDrawSnapRect(CLAY_ID("UIWindowSnapRight"), (float2){ screen.x - edgeZone, screen.y * 0.5f - centerZone * 0.5f }, (float2){ edgeZone, centerZone }, zoneColor, zIndex);
+    UIWindowDrawSnapRect(CLAY_ID("UIWindowSnapTop"), (float2){ screen.x * 0.5f - centerZone * 0.5f, 0.0f }, (float2){ centerZone, edgeZone }, zoneColor, zIndex);
+    UIWindowDrawSnapRect(CLAY_ID("UIWindowSnapBottom"), (float2){ screen.x * 0.5f - centerZone * 0.5f, screen.y - edgeZone }, (float2){ centerZone, edgeZone }, zoneColor, zIndex);
 
     g_UIWindowDockTarget = UIWindowFindDockTarget(g_UIWindowCurrent, g_UI.mouse, &g_UIWindowDockMask);
     if (g_UIWindowDockTarget >= 0)
@@ -366,11 +374,15 @@ static u32 UIWindowResizeHitMask(UIWindow* window, float2 mouse)
     const f32 cornerDist = 18.0f;
     float2 pos = window->position;
     float2 size = window->scale;
+    f32 contentY = pos.y + window->topHeight;
+    f32 scrollLaneW = Maxf32(UIGetFloat(UIFloat_ScrollWidth) + 12.0f, edgeDist * 2.0f);
+    bool inScrollbarLane = mouse.x >= pos.x + size.x - scrollLaneW && mouse.x <= pos.x + size.x && mouse.y >= contentY && mouse.y <= pos.y + size.y - cornerDist;
 
     bool left   = Absf32(mouse.x - pos.x) < edgeDist && mouse.y >= pos.y && mouse.y <= pos.y + size.y;
     bool right  = Absf32(mouse.x - (pos.x + size.x)) < edgeDist && mouse.y >= pos.y && mouse.y <= pos.y + size.y;
     bool top    = Absf32(mouse.y - pos.y) < edgeDist && mouse.x >= pos.x && mouse.x <= pos.x + size.x;
     bool bottom = Absf32(mouse.y - (pos.y + size.y)) < edgeDist && mouse.x >= pos.x && mouse.x <= pos.x + size.x;
+    if (inScrollbarLane) right = false;
 
     bool nearLeft   = mouse.x >= pos.x && mouse.x <= pos.x + cornerDist;
     bool nearRight  = mouse.x <= pos.x + size.x && mouse.x >= pos.x + size.x - cornerDist;
@@ -467,6 +479,7 @@ static u32 UIWindowHandleResize(UIWindow* window, s32 windowIndex, float2 mouse,
 {
     if ((window->flags & UIWindowFlags_NoResize) != 0u || window->isCollapsed) return 0u;
     if (g_UIWindowState == UIWindowState_Move_TabBar) return 0u;
+    if (g_UI.scrollBarActive) return 0u;
     if (g_UIWindowActive != windowIndex) return 0u;
 
     float2 pos = window->position;
@@ -485,22 +498,23 @@ static u32 UIWindowHandleResize(UIWindow* window, s32 windowIndex, float2 mouse,
         if (g_UIWindowState == UIWindowState_None)
         {
             g_UIWindowState = hoverMask;
+            u32 resizeMask = g_UIWindowState & UIWindowState_Resize_EdgeMask;
+            g_UIWindowResizeHorizontalNeighbor = -1;
+            g_UIWindowResizeVerticalNeighbor = -1;
+            if ((resizeMask & UIWindowState_Resize_RightEdge) != 0u) g_UIWindowResizeHorizontalNeighbor = UIWindowFindSharedEdgeWindow(windowIndex, UIWindowState_Resize_RightEdge);
+            else if ((resizeMask & UIWindowState_Resize_LeftEdge) != 0u) g_UIWindowResizeHorizontalNeighbor = UIWindowFindSharedEdgeWindow(windowIndex, UIWindowState_Resize_LeftEdge);
+            if ((resizeMask & UIWindowState_Resize_BottomEdge) != 0u) g_UIWindowResizeVerticalNeighbor = UIWindowFindSharedEdgeWindow(windowIndex, UIWindowState_Resize_BottomEdge);
+            else if ((resizeMask & UIWindowState_Resize_TopEdge) != 0u) g_UIWindowResizeVerticalNeighbor = UIWindowFindSharedEdgeWindow(windowIndex, UIWindowState_Resize_TopEdge);
         }
 
-        u32 resizeMask = g_UIWindowState & UIWindowState_Resize_EdgeMask;
-        s32 horizontalNeighbor = -1;
-        s32 verticalNeighbor = -1;
-        if ((resizeMask & UIWindowState_Resize_RightEdge) != 0u) horizontalNeighbor = UIWindowFindSharedEdgeWindow(windowIndex, UIWindowState_Resize_RightEdge);
-        else if ((resizeMask & UIWindowState_Resize_LeftEdge) != 0u) horizontalNeighbor = UIWindowFindSharedEdgeWindow(windowIndex, UIWindowState_Resize_LeftEdge);
-        if ((resizeMask & UIWindowState_Resize_BottomEdge) != 0u) verticalNeighbor = UIWindowFindSharedEdgeWindow(windowIndex, UIWindowState_Resize_BottomEdge);
-        else if ((resizeMask & UIWindowState_Resize_TopEdge) != 0u) verticalNeighbor = UIWindowFindSharedEdgeWindow(windowIndex, UIWindowState_Resize_TopEdge);
+        if ((g_UIWindowState & UIWindowState_Resize_EdgeMask) != 0u) g_UI.windowResizeActive = true;
 
         if ((g_UIWindowState & UIWindowState_Resize_LeftEdge) != 0u)
         {
             f32 right = pos.x + size.x;
-            if (horizontalNeighbor >= 0)
+            if (g_UIWindowResizeHorizontalNeighbor >= 0)
             {
-                UIWindow* other = &g_UIWindows[horizontalNeighbor];
+                UIWindow* other = &g_UIWindows[g_UIWindowResizeHorizontalNeighbor];
                 f32 otherLeft = other->position.x;
                 f32 boundary = Clampf32(mouse.x, otherLeft + other->minScale.x, right - window->minScale.x);
                 other->scale.x = boundary - otherLeft;
@@ -516,9 +530,9 @@ static u32 UIWindowHandleResize(UIWindow* window, s32 windowIndex, float2 mouse,
         }
         if ((g_UIWindowState & UIWindowState_Resize_RightEdge) != 0u)
         {
-            if (horizontalNeighbor >= 0)
+            if (g_UIWindowResizeHorizontalNeighbor >= 0)
             {
-                UIWindow* other = &g_UIWindows[horizontalNeighbor];
+                UIWindow* other = &g_UIWindows[g_UIWindowResizeHorizontalNeighbor];
                 f32 otherRight = other->position.x + other->scale.x;
                 f32 boundary = Clampf32(mouse.x, pos.x + window->minScale.x, otherRight - other->minScale.x);
                 size.x = boundary - pos.x;
@@ -530,9 +544,9 @@ static u32 UIWindowHandleResize(UIWindow* window, s32 windowIndex, float2 mouse,
         if ((g_UIWindowState & UIWindowState_Resize_TopEdge) != 0u)
         {
             f32 bottom = pos.y + size.y;
-            if (verticalNeighbor >= 0)
+            if (g_UIWindowResizeVerticalNeighbor >= 0)
             {
-                UIWindow* other = &g_UIWindows[verticalNeighbor];
+                UIWindow* other = &g_UIWindows[g_UIWindowResizeVerticalNeighbor];
                 f32 otherTop = other->position.y;
                 f32 boundary = Clampf32(mouse.y, otherTop + other->minScale.y, bottom - window->minScale.y);
                 other->scale.y = boundary - otherTop;
@@ -548,9 +562,9 @@ static u32 UIWindowHandleResize(UIWindow* window, s32 windowIndex, float2 mouse,
         }
         if ((g_UIWindowState & UIWindowState_Resize_BottomEdge) != 0u)
         {
-            if (verticalNeighbor >= 0)
+            if (g_UIWindowResizeVerticalNeighbor >= 0)
             {
-                UIWindow* other = &g_UIWindows[verticalNeighbor];
+                UIWindow* other = &g_UIWindows[g_UIWindowResizeVerticalNeighbor];
                 f32 otherBottom = other->position.y + other->scale.y;
                 f32 boundary = Clampf32(mouse.y, pos.y + window->minScale.y, otherBottom - other->minScale.y);
                 size.y = boundary - pos.y;
@@ -581,6 +595,8 @@ void UIWindowBeginFrame(void)
         g_UIWindowSnapMask = 0u;
         g_UIWindowDockTarget = -1;
         g_UIWindowDockMask = 0u;
+        g_UIWindowResizeHorizontalNeighbor = -1;
+        g_UIWindowResizeVerticalNeighbor = -1;
     }
 }
 
@@ -694,7 +710,7 @@ bool UIBeginWindowId(Clay_ElementId id, const char* title, float2 position, floa
         .backgroundColor = UIColorToClay(UIGetColor(UIColor_Quad) & 0xF8FFFFFFu),
         .cornerRadius = CLAY_CORNER_RADIUS(UIGetFloat(UIFloat_CornerRadius)),
         .border = { .color = UIGetClayColor(UIColor_Border), .width = CLAY_BORDER_ALL(borderWidth) },
-        .floating = { .offset = { window->position.x, window->position.y }, .zIndex = (s16)window->depth, .attachTo = CLAY_ATTACH_TO_ROOT }
+        .floating = { .offset = { window->position.x, window->position.y }, .zIndex = (s16)(window->depth + 1u), .attachTo = CLAY_ATTACH_TO_ROOT }
     };
     Clay__OpenElementWithId(id);
     Clay__ConfigureOpenElement(outer);

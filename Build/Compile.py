@@ -17,13 +17,27 @@ VSWHERE = Path(
 )
 
 
-def run_cmd(args: list[str], error_msg: str, env=None):
+def run_cmd(args: list[str], error_msg: str, env=None, quiet: bool = False):
     print(" ".join(str(a) for a in args))
 
-    result = subprocess.run(args, env=env)
+    result = subprocess.run(
+        args,
+        env=env,
+        capture_output=quiet,
+        text=quiet,
+        encoding="mbcs" if quiet and platform.system() == "Windows" else None,
+        errors="replace" if quiet else None,
+    )
 
     if result.returncode != 0:
         print(error_msg)
+        if quiet:
+            if result.stdout:
+                print("----- stdout -----")
+                print(result.stdout)
+            if result.stderr:
+                print("----- stderr -----")
+                print(result.stderr)
         sys.exit(result.returncode)
 
 
@@ -188,10 +202,12 @@ def configure_and_build(config: str, env: dict[str, str]):
             "-S", ".",
             "-B", str(build_dir),
             "-G", generator,
+            "--log-level=WARNING",
             f"-DCMAKE_BUILD_TYPE={config}",
         ],
         f"[ERROR] CMake configure failed for {config}",
         env=env,
+        quiet=True,
     )
 
     run_cmd(

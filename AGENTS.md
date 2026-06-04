@@ -7,7 +7,8 @@ most of the time no need for float3 v128f mostly more convinient performance wis
 when you do early return do AX_WARN or AX_INFO to notice ourselfs
 
 # Memory allocations
-for small allocations use stack
+for small transient allocations use stack
+if persistent and smaller than 1gb and also single instance use static memory
 if not fitting use Include/Memory.h 
 for temp under 256 mb 
 void* ArenaPushGlobal(uint64_t size); 

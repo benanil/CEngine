@@ -216,6 +216,16 @@ VSOutput vert(VSInput input)
     return o;
 }
 
+VSOutput vert2d(VSInput input)
+{
+    VSOutput o;
+    o.texcoord = input.tex.xy;
+    o.position = float4(input.pos.x * slug_viewport.z - 1.0f, 1.0f - input.pos.y * slug_viewport.w, input.z, 1.0f);
+    SlugUnpack(input.tex, input.bnd, o.banding, o.glyph);
+    o.color = UnpackColor4Uint(input.col);
+    return o;
+}
+
 float4 frag(VSOutput input) : SV_Target0
 {
     float coverage = SlugRender(input.texcoord, input.banding, input.glyph);

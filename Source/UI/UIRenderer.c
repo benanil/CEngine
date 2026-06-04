@@ -16,32 +16,27 @@ UILayoutContext g_UILayout;
 extern WindowState  g_WindowState;
 extern RenderState  g_RenderState;
 
-static char g_UISliderValueLabels[64][96];
-static u32  g_UISliderValueLabelIndex;
+static char                 g_UISliderValueLabels[64][96];
+static u32                  g_UISliderValueLabelIndex;
+static UIShape              g_UIShapeStorage[UI_MAX_SHAPES];
+static UIImageCommand       g_UIImageStorage[UI_MAX_IMAGES];
+static UIOrderedTextCommand g_UITextStorage[UI_MAX_TEXTS];
+static UIBatch              g_UIBatchStorage[UI_MAX_BATCHES];
+static u8                   g_UILayoutMemory[8u * 1024u * 1024u];
 
 void UIRecordTextBatches(u32 firstBatch, u32 batchCount)
 {
     if (batchCount == 0u) return;
+    UIBeginBatch();
     if (!g_UIRenderer.texts || g_UIRenderer.textCount >= g_UIRenderer.textCapacity)
     {
         AX_WARN("UI text command batch full: count=%u capacity=%u", g_UIRenderer.textCount, g_UIRenderer.textCapacity);
         return;
     }
-    if (!g_UIRenderer.commands || g_UIRenderer.commandCount >= g_UIRenderer.commandCapacity)
-    {
-        AX_WARN("UI command stream full: count=%u capacity=%u", g_UIRenderer.commandCount, g_UIRenderer.commandCapacity);
-        return;
-    }
 
     UIOrderedTextCommand* out = &g_UIRenderer.texts[g_UIRenderer.textCount++];
-    out->shapeFence = g_UIRenderer.count;
     out->firstBatch = firstBatch;
     out->batchCount = batchCount;
-
-    UIDrawCommand* draw = &g_UIRenderer.commands[g_UIRenderer.commandCount++];
-    draw->shapeFence = out->shapeFence;
-    draw->index = g_UIRenderer.textCount - 1u;
-    draw->type = UIDrawCommand_Text;
 }
 
 static void UIRenderLayoutImage(const Clay_RenderCommand* command);
@@ -65,15 +60,15 @@ static void UILayoutInit(void)
     if (g_UILayout.initialized) return;
 
     u32 memorySize = Clay_MinMemorySize();
-    g_UILayout.memory = AllocateTLSFGlobal(memorySize);
-    if (!g_UILayout.memory)
+    if (memorySize > (u32)sizeof(g_UILayoutMemory))
     {
-        AX_WARN("Clay init skipped, allocation failed: %u bytes", memorySize);
+        AX_WARN("Clay init skipped, static arena too small: needed=%u capacity=%u", memorySize, (u32)sizeof(g_UILayoutMemory));
         return;
     }
 
     g_UILayout.memorySize = memorySize;
-    Clay_Arena arena = Clay_CreateArenaWithCapacityAndMemory(memorySize, g_UILayout.memory);
+    g_UILayout.memory = g_UILayoutMemory;
+    Clay_Arena arena = Clay_CreateArenaWithCapacityAndMemory(sizeof(g_UILayoutMemory), g_UILayout.memory);
     Clay_Initialize(arena, (Clay_Dimensions){ (f32)Maxu32(g_WindowState.prev_width, 1u), (f32)Maxu32(g_WindowState.prev_height, 1u) },
                            (Clay_ErrorHandler){ UILayoutHandleError });
     Clay_SetMeasureTextFunction(UIMeasureText, NULL);
@@ -84,14 +79,15 @@ void UIInit(void)
 {
     MemsetZero(&g_UIRenderer, sizeof(UIRenderer));
     MemsetZero(&g_UI, sizeof(UIContext));
-    g_UIRenderer.capacity = UI_MAX_SHAPES;
+    g_UIRenderer.activeBatch   = UINT32_MAX;
+    g_UIRenderer.capacity      = UI_MAX_SHAPES;
     g_UIRenderer.imageCapacity = UI_MAX_IMAGES;
-    g_UIRenderer.textCapacity = UI_MAX_TEXTS;
-    g_UIRenderer.commandCapacity = UI_MAX_COMMANDS;
-    g_UIRenderer.shapes = (UIShape*)AllocateTLSFGlobal((size_t)g_UIRenderer.capacity * sizeof(UIShape));
-    g_UIRenderer.images = (UIImageCommand*)AllocateTLSFGlobal((size_t)g_UIRenderer.imageCapacity * sizeof(UIImageCommand));
-    g_UIRenderer.texts = (UIOrderedTextCommand*)AllocateTLSFGlobal((size_t)g_UIRenderer.textCapacity * sizeof(UIOrderedTextCommand));
-    g_UIRenderer.commands = (UIDrawCommand*)AllocateTLSFGlobal((size_t)g_UIRenderer.commandCapacity * sizeof(UIDrawCommand));
+    g_UIRenderer.textCapacity  = UI_MAX_TEXTS;
+    g_UIRenderer.batchCapacity = UI_MAX_BATCHES;
+    g_UIRenderer.shapes  = g_UIShapeStorage;
+    g_UIRenderer.images  = g_UIImageStorage;
+    g_UIRenderer.texts   = g_UITextStorage;
+    g_UIRenderer.batches = g_UIBatchStorage;
     g_RenderState.uiShapeBuffer = CreateBuffer(NULL, (size_t)g_UIRenderer.capacity * sizeof(UIShape), BReadRasterBit, "UIShapeBuffer");
     g_RenderState.uiShapeDrawArgsBuffer = CreateBuffer(NULL, sizeof(SDL_GPUIndirectDrawCommand), BIndirectBit, "UIShapeDrawArgsBuffer");
 
@@ -191,7 +187,6 @@ static void UIRenderLayoutText(const Clay_RenderCommand* command)
     const Clay_TextRenderData* data = &command->renderData.text;
     Clay_StringSlice text = data->stringContents;
     SlugFont* font = SlugGetDemoFont();
-    SlugForceNewBatch(font);
     u32 firstBatch = font->numBatches;
     SlugAppendText2DN(NULL, text.chars, (u32)Maxs32(text.length, 0), (float2){ command->boundingBox.x, command->boundingBox.y }, (f32)Maxu32(data->fontSize, 1u), UIPackClayColor(data->textColor));
     UIRecordTextBatches(firstBatch, font->numBatches - firstBatch);
@@ -227,7 +222,7 @@ static void UIRenderLayoutScrollBar(const Clay_RenderCommand* command)
     if (!scroll.found || !scroll.scrollPosition) return;
 
     f32 containerH = Maxf32(scroll.scrollContainerDimensions.height, 1.0f);
-    f32 contentH = Maxf32(scroll.contentDimensions.height, containerH);
+    f32 contentH   = Maxf32(scroll.contentDimensions.height, containerH);
     f32 maxScroll = contentH - containerH;
     if (maxScroll <= 1.0f) return;
 
@@ -241,20 +236,22 @@ static void UIRenderLayoutScrollBar(const Clay_RenderCommand* command)
     f32 thumbY = trackY + t * (containerH - thumbH);
 
     float2 mouse = g_UI.mouse;
-    float2 thumbPos = { trackX - 4.0f, thumbY };
+    float2 thumbPos  = { trackX - 4.0f, thumbY };
     float2 thumbSize = { trackW + 8.0f, thumbH };
-    float2 trackPos = { trackX - 4.0f, trackY };
+    float2 trackPos  = { trackX - 4.0f, trackY };
     float2 trackSize = { trackW + 8.0f, containerH };
     bool thumbHovered = RectPointIntersect(thumbPos, thumbSize, mouse) != 0u;
     bool trackHovered = RectPointIntersect(trackPos, trackSize, mouse) != 0u;
 
-    if (GetMousePressed(MouseButton_Left) && (thumbHovered || trackHovered))
+    if (!g_UI.windowResizeActive && GetMousePressed(MouseButton_Left) && (thumbHovered || trackHovered))
     {
         drag.id = command->id;
         drag.dragOffsetY = thumbHovered ? mouse.y - thumbY : thumbH * 0.5f;
+        g_UI.scrollBarActive = true;
     }
-    if (drag.id == command->id && GetMouseDown(MouseButton_Left))
+    if (!g_UI.windowResizeActive && drag.id == command->id && GetMouseDown(MouseButton_Left))
     {
+        g_UI.scrollBarActive = true;
         f32 scrollRange = Maxf32(containerH - thumbH, 1.0f);
         f32 newT = Saturatef32((mouse.y - trackY - drag.dragOffsetY) / scrollRange);
         scroll.scrollPosition->y = -newT * maxScroll;
@@ -269,6 +266,7 @@ static void UIRenderLayoutScrollBar(const Clay_RenderCommand* command)
 
 static void UIRenderLayoutImage(const Clay_RenderCommand* command)
 {
+    UIBeginBatch();
     const Clay_ImageRenderData* data = &command->renderData.image;
     const UIImageData* image = (const UIImageData*)data->imageData;
     if (!image || !image->texture)
@@ -285,11 +283,6 @@ static void UIRenderLayoutImage(const Clay_RenderCommand* command)
         AX_WARN("UI image batch full: count=%u capacity=%u", g_UIRenderer.imageCount, g_UIRenderer.imageCapacity);
         return;
     }
-    if (!g_UIRenderer.commands || g_UIRenderer.commandCount >= g_UIRenderer.commandCapacity)
-    {
-        AX_WARN("UI command stream full: count=%u capacity=%u", g_UIRenderer.commandCount, g_UIRenderer.commandCapacity);
-        return;
-    }
 
     UIImageCommand* out = &g_UIRenderer.images[g_UIRenderer.imageCount++];
     out->texture = image->texture;
@@ -304,22 +297,56 @@ static void UIRenderLayoutImage(const Clay_RenderCommand* command)
     out->uv[3] = image->uv[3] != 0.0f ? image->uv[3] : 1.0f;
     MemCopy(out->clip, g_UI.clipRect, sizeof(out->clip));
     out->tintColor = UIPackClayColor(data->backgroundColor);
-    out->shapeFence = g_UIRenderer.count;
     out->radius = Maxf32(Maxf32(data->cornerRadius.topLeft, data->cornerRadius.topRight), Maxf32(data->cornerRadius.bottomLeft, data->cornerRadius.bottomRight));
-
-    UIDrawCommand* draw = &g_UIRenderer.commands[g_UIRenderer.commandCount++];
-    draw->shapeFence = out->shapeFence;
-    draw->index = g_UIRenderer.imageCount - 1u;
-    draw->type = UIDrawCommand_Image;
 }
-
 
 void UIClear(void)
 {
     g_UIRenderer.count = 0u;
     g_UIRenderer.imageCount = 0u;
     g_UIRenderer.textCount = 0u;
-    g_UIRenderer.commandCount = 0u;
+    g_UIRenderer.batchCount = 0u;
+    g_UIRenderer.activeBatch = UINT32_MAX;
+}
+
+void UIBeginBatch(void)
+{
+    if (g_UIRenderer.activeBatch != UINT32_MAX) return;
+    if (!g_UIRenderer.batches || g_UIRenderer.batchCount >= g_UIRenderer.batchCapacity)
+    {
+        AX_WARN("UI batch stream full: count=%u capacity=%u", g_UIRenderer.batchCount, g_UIRenderer.batchCapacity);
+        return;
+    }
+
+    SlugFont* font = SlugGetDemoFont();
+    SlugBeginTextBatch(font);
+    u32 index = g_UIRenderer.batchCount++;
+    UIBatch* batch = &g_UIRenderer.batches[index];
+    batch->firstShape = g_UIRenderer.count;
+    batch->shapeCount = 0u;
+    batch->firstImage = g_UIRenderer.imageCount;
+    batch->imageCount = 0u;
+    batch->firstTextBatch = font->numBatches;
+    batch->textBatchCount = 0u;
+    g_UIRenderer.activeBatch = index;
+}
+
+void UIEndBatch(void)
+{
+    if (g_UIRenderer.activeBatch == UINT32_MAX) return;
+
+    SlugFont* font = SlugGetDemoFont();
+    UIBatch* batch = &g_UIRenderer.batches[g_UIRenderer.activeBatch];
+    batch->shapeCount = g_UIRenderer.count - batch->firstShape;
+    batch->imageCount = g_UIRenderer.imageCount - batch->firstImage;
+    batch->textBatchCount = font->numBatches - batch->firstTextBatch;
+    SlugEndTextBatch(font);
+
+    if (batch->shapeCount == 0u && batch->imageCount == 0u && batch->textBatchCount == 0u && g_UIRenderer.activeBatch + 1u == g_UIRenderer.batchCount)
+    {
+        g_UIRenderer.batchCount--;
+    }
+    g_UIRenderer.activeBatch = UINT32_MAX;
 }
 
 void UIBeginFrame(void)
@@ -329,6 +356,11 @@ void UIBeginFrame(void)
     g_UI.nextAutoID = 1u;
     g_UI.wasHovered = false;
     g_UI.anyElementClicked = false;
+    if (!GetMouseDown(MouseButton_Left))
+    {
+        g_UI.scrollBarActive = false;
+        g_UI.windowResizeActive = false;
+    }
     g_UI.screenSize = (float2){ (f32)Maxu32(g_WindowState.prev_width, 1u), (f32)Maxu32(g_WindowState.prev_height, 1u) };
     g_UI.windowRatio = (float2){ 1.0f, 1.0f };
     g_UI.uiScale = 1.0f;
@@ -363,6 +395,7 @@ void UIEndFrame(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget)
 
 static bool UIPushShape(float2 pos, float2 size, f32 radius, u32 color, UIShapeType shape)
 {
+    UIBeginBatch();
     if (!g_UIRenderer.shapes)
     {
         AX_WARN("UI push skipped, resources not initialized");
@@ -630,7 +663,7 @@ bool UISliderFloat(Clay_ElementId id, Clay_String label, f32* value, f32 minValu
                 .childAlignment = { .y = CLAY_ALIGN_Y_CENTER }
             },
             .backgroundColor = UIGetClayColor(UIColor_TextBoxBG),
-            .cornerRadius = CLAY_CORNER_RADIUS(7.0f)
+            .cornerRadius = CLAY_CORNER_RADIUS(7.0f),
         }) {
             CLAY(CLAY_ID_LOCAL("Fill"), {
                 .layout = { .sizing = { CLAY_SIZING_FIXED(knobOffset), CLAY_SIZING_FIXED(14.0f) } },
@@ -760,11 +793,28 @@ UIImageData UIImageFromTexture(Texture* texture)
 
 void UIRenderCommands(Clay_RenderCommandArray* commands)
 {
-    if (!g_UILayout.initialized || !commands) return;
+    if (!g_UILayout.initialized || !commands || commands->length <= 0) return;
+
+    s32 currentZ = Clay_RenderCommandArray_Get(commands, 0)->zIndex;
+    s32 batchStarted = false;
 
     for (s32 i = 0; i < commands->length; i++)
     {
         Clay_RenderCommand* command = Clay_RenderCommandArray_Get(commands, i);
+        s32 commandCanDraw = (command->commandType != CLAY_RENDER_COMMAND_TYPE_SCISSOR_END) &
+                             (command->commandType != CLAY_RENDER_COMMAND_TYPE_OVERLAY_COLOR_START) &
+                             (command->commandType != CLAY_RENDER_COMMAND_TYPE_OVERLAY_COLOR_END);
+        if (command->zIndex != currentZ)
+        {
+            if (batchStarted) UIEndBatch();
+            currentZ = command->zIndex;
+            batchStarted = false;
+        }
+        if (commandCanDraw && !batchStarted)
+        {
+            UIBeginBatch();
+            batchStarted = true;
+        }
         switch (command->commandType)
         {
             case CLAY_RENDER_COMMAND_TYPE_RECTANGLE: UIRenderLayoutRectangle(command); break;
@@ -794,6 +844,7 @@ void UIRenderCommands(Clay_RenderCommandArray* commands)
                 break;
         }
     }
+    if (batchStarted) UIEndBatch();
 }
 
 
@@ -802,9 +853,15 @@ static SDL_GPURenderPass* UIBeginPassIfNeeded(SDL_GPUCommandBuffer* cmd, SDL_GPU
     return pass ? pass : SDL_BeginGPURenderPass(cmd, colorTarget, 1, NULL);
 }
 
+static void UISetFullScissor(SDL_GPURenderPass* pass)
+{
+    SDL_SetGPUScissor(pass, &(SDL_Rect){ 0, 0, (int)Maxu32(g_WindowState.prev_width, 1u), (int)Maxu32(g_WindowState.prev_height, 1u) });
+}
+
 static void UIDrawShapeRange(SDL_GPUCommandBuffer* cmd, SDL_GPURenderPass* pass, UIParams* params, u32 firstShape, u32 shapeCount, bool* shapePipelineBound)
 {
     if (shapeCount == 0u) return;
+    UISetFullScissor(pass);
     if (!*shapePipelineBound)
     {
         SDL_BindGPUGraphicsPipeline(pass, g_RenderState.uiShapePipeline);
@@ -818,6 +875,7 @@ static void UIDrawShapeRange(SDL_GPUCommandBuffer* cmd, SDL_GPURenderPass* pass,
 
 static void UIDrawImageCommand(SDL_GPUCommandBuffer* cmd, SDL_GPURenderPass* pass, UIImageCommand* image, UIParams* params)
 {
+    UISetFullScissor(pass);
     SDL_BindGPUGraphicsPipeline(pass, g_RenderState.uiImagePipeline);
 
     UIImageParams imageParams = {0};
@@ -840,7 +898,8 @@ static void UIDrawImageCommand(SDL_GPUCommandBuffer* cmd, SDL_GPURenderPass* pas
 
 void UIRender(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget)
 {
-    if (g_UIRenderer.count == 0u && g_UIRenderer.imageCount == 0u && g_UIRenderer.textCount == 0u) return;
+    UIEndBatch();
+    if (g_UIRenderer.count == 0u && g_UIRenderer.imageCount == 0u && g_UIRenderer.textCount == 0u && g_UIRenderer.batchCount == 0u) return;
     if (g_UIRenderer.count > 0u && (!g_RenderState.uiShapePipeline || !g_RenderState.uiShapeBuffer))
     {
         AX_WARN("UI render skipped, resources not initialized");
@@ -865,56 +924,59 @@ void UIRender(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget)
         return;
     }
 
+    SlugFont* font = SlugGetDemoFont();
+    bool hasText = g_UIRenderer.textCount > 0u;
+    if (hasText && !SlugPrepare2D(cmd, font)) hasText = false;
+
     SDL_GPURenderPass* pass = NULL;
-    u32 firstShape = 0u;
     bool shapePipelineBound = false;
+    bool slugPipelineBound = false;
 
-    for (u32 commandIndex = 0u; commandIndex < g_UIRenderer.commandCount; commandIndex++)
+    for (u32 batchIndex = 0u; batchIndex < g_UIRenderer.batchCount; batchIndex++)
     {
-        UIDrawCommand* command = &g_UIRenderer.commands[commandIndex];
-        u32 shapeFence = command->shapeFence;
-        shapeFence = Minu32(shapeFence, g_UIRenderer.count);
-        if (shapeFence > firstShape)
+        UIBatch* batch = &g_UIRenderer.batches[batchIndex];
+        if (batch->shapeCount > 0u)
         {
             pass = UIBeginPassIfNeeded(cmd, colorTarget, pass);
-            UIDrawShapeRange(cmd, pass, &params, firstShape, shapeFence - firstShape, &shapePipelineBound);
-            firstShape = shapeFence;
+            UIDrawShapeRange(cmd, pass, &params, batch->firstShape, batch->shapeCount, &shapePipelineBound);
+            slugPipelineBound = false;
         }
 
-        if (command->type == UIDrawCommand_Image)
+        for (u32 i = 0u; i < batch->imageCount; i++)
         {
-            if (command->index >= g_UIRenderer.imageCount) continue;
+            u32 imageIndex = batch->firstImage + i;
+            if (imageIndex >= g_UIRenderer.imageCount) continue;
             pass = UIBeginPassIfNeeded(cmd, colorTarget, pass);
-            UIDrawImageCommand(cmd, pass, &g_UIRenderer.images[command->index], &params);
+            UIDrawImageCommand(cmd, pass, &g_UIRenderer.images[imageIndex], &params);
             shapePipelineBound = false;
+            slugPipelineBound = false;
         }
-        else
+
+        if (batch->textBatchCount > 0u)
         {
-            if (command->index >= g_UIRenderer.textCount) continue;
-            if (pass)
+            if (hasText)
             {
-                SDL_EndGPURenderPass(pass);
-                pass = NULL;
+                pass = UIBeginPassIfNeeded(cmd, colorTarget, pass);
+                if (!slugPipelineBound)
+                {
+                    SlugBind2D(cmd, pass, font);
+                    slugPipelineBound = true;
+                }
+                SlugDraw2DBatches(pass, font, batch->firstTextBatch, batch->textBatchCount, true);
                 shapePipelineBound = false;
             }
-            UIOrderedTextCommand* text = &g_UIRenderer.texts[command->index];
-            SlugRender2DBatches(cmd, colorTarget, SlugGetDemoFont(), text->firstBatch, text->batchCount, true);
         }
-    }
-
-    if (g_UIRenderer.count > firstShape)
-    {
-        pass = UIBeginPassIfNeeded(cmd, colorTarget, pass);
-        UIDrawShapeRange(cmd, pass, &params, firstShape, g_UIRenderer.count - firstShape, &shapePipelineBound);
     }
 
     if (pass) SDL_EndGPURenderPass(pass);
+
+    if (hasText) SlugClear(font);
+
     UIClear();
 }
 
 static void UILayoutDestroy(void)
 {
-    if (g_UILayout.memory) DeAllocateTLSFGlobal(g_UILayout.memory);
     g_UILayout = (UILayoutContext){0};
 }
 
@@ -923,7 +985,5 @@ void UIDestroy(void)
 {
     UILayoutDestroy();
     UIDestroyTextShape();
-    if (g_UIRenderer.shapes) DeAllocateTLSFGlobal(g_UIRenderer.shapes);
-    if (g_UIRenderer.images) DeAllocateTLSFGlobal(g_UIRenderer.images);
     g_UIRenderer = (UIRenderer){0};
 }

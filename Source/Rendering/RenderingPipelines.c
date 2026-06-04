@@ -26,6 +26,7 @@
 #include "Shaders/spv/LineDebugVert.spv.h"
 #include "Shaders/spv/LineDebugFrag.spv.h"
 #include "Shaders/spv/SlugVert.spv.h"
+#include "Shaders/spv/Slug2DVert.spv.h"
 #include "Shaders/spv/SlugFrag.spv.h"
 #include "Shaders/spv/UIShapeVert.spv.h"
 #include "Shaders/spv/UIShapeFrag.spv.h"
@@ -365,6 +366,17 @@ static void InitSlugPipeline(void)
         .entrypoint          = "vert"
     }); CHECK_CREATE(vertex_shader, "Slug Vertex Shader")
 
+    SDL_GPUShader* vertex_2d_shader = SDL_CreateGPUShader(g_GPUDevice, &(SDL_GPUShaderCreateInfo){
+        .num_uniform_buffers = 1,
+        .format              = SDL_GetGPUShaderFormats(g_GPUDevice),
+        .code                = Shaders_Slug2DVert_spv,
+        .code_size           = sizeof(Shaders_Slug2DVert_spv),
+        .num_samplers        = 0,
+        .num_storage_buffers = 0,
+        .stage               = SDL_GPU_SHADERSTAGE_VERTEX,
+        .entrypoint          = "vert2d"
+    }); CHECK_CREATE(vertex_2d_shader, "Slug 2D Vertex Shader")
+
     SDL_GPUShader* fragment_shader = SDL_CreateGPUShader(g_GPUDevice, &(SDL_GPUShaderCreateInfo){
         .num_uniform_buffers = 0,
         .format              = SDL_GetGPUShaderFormats(g_GPUDevice),
@@ -418,6 +430,12 @@ static void InitSlugPipeline(void)
     g_RenderState.slugPipeline = SDL_CreateGPUGraphicsPipeline(g_GPUDevice, &pipelinedesc);
     CHECK_CREATE(g_RenderState.slugPipeline, "Slug Render Pipeline")
 
+    pipelinedesc.vertex_shader = vertex_2d_shader;
+    g_RenderState.slug2DPipeline = SDL_CreateGPUGraphicsPipeline(g_GPUDevice, &pipelinedesc);
+    CHECK_CREATE(g_RenderState.slug2DPipeline, "Slug 2D Render Pipeline")
+
+    pipelinedesc.vertex_shader = vertex_shader;
+
     pipelinedesc.target_info.depth_stencil_format = SDL_GPU_TEXTUREFORMAT_D32_FLOAT;
     pipelinedesc.target_info.has_depth_stencil_target = true;
     pipelinedesc.depth_stencil_state = (SDL_GPUDepthStencilState){
@@ -429,6 +447,7 @@ static void InitSlugPipeline(void)
     CHECK_CREATE(g_RenderState.slugDepthPipeline, "Slug Depth Render Pipeline")
 
     SDL_ReleaseGPUShader(g_GPUDevice, vertex_shader);
+    SDL_ReleaseGPUShader(g_GPUDevice, vertex_2d_shader);
     SDL_ReleaseGPUShader(g_GPUDevice, fragment_shader);
 }
 

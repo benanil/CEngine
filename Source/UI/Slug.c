@@ -285,7 +285,7 @@ static void SlugBuildGlyph(stbtt_fontinfo* info, u32 codePoint, f32 emScale, Slu
 {
     SlugBuildGlyphByIndex(info, (u32)stbtt_FindGlyphIndex(info, (int)codePoint), emScale, buffers, glyph);
 }
-
+// some european characters that might be usefull
 static const u32 g_SlugUnicodeCodepoints[] = {
     0x00FCu, 0x00F6u, 0x00E7u, 0x011Fu, 0x015Fu, 0x0131u, 0x00E4u, 0x00DFu,
     0x00F1u, 0x00E5u, 0x00E2u, 0x00E1u, 0x00E6u, 0x00EAu, 0x0142u, 0x0107u,
@@ -732,10 +732,21 @@ bool SlugAppendText2DN(SlugFont* font, const char* text, u32 textBytes, float2 p
     return true;
 }
 
-void SlugForceNewBatch(SlugFont* font)
+void SlugBeginTextBatch(SlugFont* font)
 {
     if (font == NULL) font = &g_SlugDemoFont;
     font->forceNewBatch = true;
+}
+
+void SlugEndTextBatch(SlugFont* font)
+{
+    if (font == NULL) font = &g_SlugDemoFont;
+    font->forceNewBatch = true;
+}
+
+void SlugForceNewBatch(SlugFont* font)
+{
+    SlugBeginTextBatch(font);
 }
 
 bool SlugAppendText2D(SlugFont* font, const char* text, float2 pos, f32 size, u32 color)
@@ -1036,23 +1047,29 @@ void SlugRender2D(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget
     SlugRender(cmd, colorTarget, NULL, font, screen);
 }
 
-void SlugRender2DBatches(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget, SlugFont* font, u32 firstBatch, u32 batchCount, bool clearRenderedBatches)
+bool SlugPrepare2D(SDL_GPUCommandBuffer* cmd, SlugFont* font)
 {
     if (font == NULL) font = &g_SlugDemoFont;
-    SDL_GPUGraphicsPipeline* pipeline = g_RenderState.slugPipeline;
-    if (!font->vertexBuffer || !font->curveBuffer || !font->bandBuffer || !pipeline)
+    if (!font->vertexBuffer || !font->curveBuffer || !font->bandBuffer || !g_RenderState.slug2DPipeline)
     {
         AX_WARN("Slug render skipped, resources not initialized");
-        return;
+        return false;
     }
-    if (font->numVertices == 0u || firstBatch >= font->numBatches || batchCount == 0u) return;
+    if (font->numVertices == 0u) return false;
 
     if (!SlugUploadGlyphBuffers(cmd, font))
     {
         AX_WARN("Slug render skipped, glyph buffers upload failed");
-        return;
+        return false;
     }
     UpdateGPUBuffer(font->vertexBuffer, font->vertices, (size_t)font->numVertices * sizeof(SlugVertex), 0);
+    return true;
+}
+
+void SlugBind2D(SDL_GPUCommandBuffer* cmd, SDL_GPURenderPass* pass, SlugFont* font)
+{
+    if (font == NULL) font = &g_SlugDemoFont;
+    if (!pass || !font->vertexBuffer || !font->curveBuffer || !font->bandBuffer || !g_RenderState.slugPipeline) return;
 
     f32 w = (f32)Maxu32(g_WindowState.prev_width, 1u);
     f32 h = (f32)Maxu32(g_WindowState.prev_height, 1u);
@@ -1064,14 +1081,24 @@ void SlugRender2DBatches(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colo
     params.matrix.r[3] = VecSetR(-1.0f, 1.0f, 0.0f, 1.0f);
     params.viewport[0] = w;
     params.viewport[1] = h;
+    params.viewport[2] = 2.0f / w;
+    params.viewport[3] = 2.0f / h;
 
     SDL_GPUBuffer* storageBuffers[2] = { font->curveBuffer, font->bandBuffer };
     SDL_GPUBufferBinding vertexBinding = { font->vertexBuffer, 0 };
-    SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmd, colorTarget, 1, NULL);
-    SDL_BindGPUGraphicsPipeline(pass, pipeline);
+    SDL_BindGPUGraphicsPipeline(pass, g_RenderState.slug2DPipeline);
     SDL_BindGPUVertexBuffers(pass, 0, &vertexBinding, 1);
     SDL_BindGPUFragmentStorageBuffers(pass, 0, storageBuffers, SDL_arraysize(storageBuffers));
     SDL_PushGPUVertexUniformData(cmd, 0, &params, sizeof(params));
+}
+
+void SlugDraw2DBatches(SDL_GPURenderPass* pass, SlugFont* font, u32 firstBatch, u32 batchCount, bool clearRenderedBatches)
+{
+    if (font == NULL) font = &g_SlugDemoFont;
+    if (!pass || font->numVertices == 0u || firstBatch >= font->numBatches || batchCount == 0u) return;
+
+    f32 w = (f32)Maxu32(g_WindowState.prev_width, 1u);
+    f32 h = (f32)Maxu32(g_WindowState.prev_height, 1u);
 
     u32 endBatch = Minu32(firstBatch + batchCount, font->numBatches);
     for (u32 i = firstBatch; i < endBatch; i++)
@@ -1087,6 +1114,17 @@ void SlugRender2DBatches(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colo
         SDL_DrawGPUPrimitives(pass, batch->vertexCount, 1, batch->firstVertex, 0);
         if (clearRenderedBatches) batch->vertexCount = 0u;
     }
+}
+
+void SlugRender2DBatches(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget, SlugFont* font, u32 firstBatch, u32 batchCount, bool clearRenderedBatches)
+{
+    if (font == NULL) font = &g_SlugDemoFont;
+    if (firstBatch >= font->numBatches || batchCount == 0u) return;
+    if (!SlugPrepare2D(cmd, font)) return;
+
+    SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmd, colorTarget, 1, NULL);
+    SlugBind2D(cmd, pass, font);
+    SlugDraw2DBatches(pass, font, firstBatch, batchCount, clearRenderedBatches);
     SDL_EndGPURenderPass(pass);
 }
 

@@ -192,6 +192,7 @@ typedef struct RenderState
     SDL_GPUGraphicsPipeline* surfaceShadowPipeline;
     SDL_GPUGraphicsPipeline* linePipeline;
     SDL_GPUGraphicsPipeline* slugPipeline;
+    SDL_GPUGraphicsPipeline* slug2DPipeline;
     SDL_GPUGraphicsPipeline* slugDepthPipeline;
     SDL_GPUGraphicsPipeline* uiShapePipeline;
     SDL_GPUGraphicsPipeline* uiImagePipeline;

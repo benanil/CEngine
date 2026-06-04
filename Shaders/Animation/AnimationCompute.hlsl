@@ -35,7 +35,7 @@ StructuredBuffer<AnimationData>      animData              : register(t2); // pe
 StructuredBuffer<uint>               joints                : register(t3); // per instance * bone
 StructuredBuffer<uint>               inverseBindMatrices   : register(t4); // per skin * bone
 StructuredBuffer<AnimationInstance>  animInstances         : register(t5); // per instance 
-StructuredBuffer<uint>               visibleSparseIndices   : register(t6); // unique visible instances
+StructuredBuffer<uint>               visibleSparseIndices  : register(t6); // unique visible instances
 
 RWStructuredBuffer<uint> outBoneMtx          : register(u0, space1); // per instance * bone
 

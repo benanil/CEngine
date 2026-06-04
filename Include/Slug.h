@@ -93,7 +93,12 @@ bool SlugAppendText2DN(SlugFont* font, const char* text, u32 textBytes, float2 p
 bool SlugAppendText2D(SlugFont* font, const char* text, float2 pos, f32 size, u32 color);
 bool SlugAppendText3D(SlugFont* font, const char* text, float3 pos, Quaternion rot, f32 size, u32 color);
 bool SlugAppendGlyph2D(SlugFont* font, u32 faceIndex, u32 glyphIndex, float2 pos, f32 size, u32 color);
+void SlugBeginTextBatch(SlugFont* font);
+void SlugEndTextBatch(SlugFont* font);
 void SlugForceNewBatch(SlugFont* font);
+bool SlugPrepare2D(SDL_GPUCommandBuffer* cmd, SlugFont* font);
+void SlugBind2D(SDL_GPUCommandBuffer* cmd, SDL_GPURenderPass* pass, SlugFont* font);
+void SlugDraw2DBatches(SDL_GPURenderPass* pass, SlugFont* font, u32 firstBatch, u32 batchCount, bool clearRenderedBatches);
 void SlugRender2DBatches(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget, SlugFont* font, u32 firstBatch, u32 batchCount, bool clearRenderedBatches);
 float2 SlugCalcTextSize(SlugFont* font, const char* text, f32 size);
 float2 SlugCalcTextSizeN(SlugFont* font, const char* text, u32 bytes, f32 size);

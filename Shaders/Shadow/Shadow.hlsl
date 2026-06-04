@@ -65,7 +65,7 @@ float SampleShadow(Texture2D<float> shadowMap, SamplerState samp,
     float cascadeSize = float(max(width >> cascadeIndex, 1u));
     float2 texel = 1.0f / float2(cascadeSize, cascadeSize);
 
-    float cascadeBiasScale = 1.0 + cascadeIndex * 1.0;
+    float cascadeBiasScale = 1.0 + (cascadeIndex * 0.15);
     float ndotl = saturate(dot(normal, lightDir));
     float bias  = max(0.0009f * (1.0f - ndotl), 0.00025f) * cascadeBiasScale;
 

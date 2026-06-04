@@ -18,29 +18,17 @@ typedef struct UIRenderer_
     UIShape* shapes;
     struct UIImageCommand_* images;
     struct UIOrderedTextCommand_* texts;
-    struct UIDrawCommand_* commands;
+    struct UIBatch_* batches;
     u32 count;
     u32 imageCount;
     u32 textCount;
-    u32 commandCount;
+    u32 batchCount;
     u32 capacity;
     u32 imageCapacity;
     u32 textCapacity;
-    u32 commandCapacity;
+    u32 batchCapacity;
+    u32 activeBatch;
 } UIRenderer;
-
-typedef enum UIDrawCommandType_
-{
-    UIDrawCommand_Image = 0,
-    UIDrawCommand_Text
-} UIDrawCommandType;
-
-typedef struct UIDrawCommand_
-{
-    u32 shapeFence;
-    u32 index;
-    u32 type;
-} UIDrawCommand;
 
 typedef struct UIImageCommand_
 {
@@ -50,16 +38,24 @@ typedef struct UIImageCommand_
     f32 uv[4];
     f32 clip[4];
     u32 tintColor;
-    u32 shapeFence;
     f32 radius;
 } UIImageCommand;
 
 typedef struct UIOrderedTextCommand_
 {
-    u32 shapeFence;
     u32 firstBatch;
     u32 batchCount;
 } UIOrderedTextCommand;
+
+typedef struct UIBatch_
+{
+    u32 firstShape;
+    u32 shapeCount;
+    u32 firstImage;
+    u32 imageCount;
+    u32 firstTextBatch;
+    u32 textBatchCount;
+} UIBatch;
 
 typedef struct UIImageParams_
 {
@@ -81,6 +77,8 @@ typedef struct UIContext_
     f32 uiScale;
     bool wasHovered;
     bool anyElementClicked;
+    bool scrollBarActive;
+    bool windowResizeActive;
     u64 active;
     u64 keyboardFocus;
     u64 textDragFocus;

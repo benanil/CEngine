@@ -11,26 +11,13 @@ extern "C" {
 #define UI_MAX_SHAPES 8192u
 #define UI_MAX_IMAGES 1024u
 #define UI_MAX_TEXTS  4096u
-#define UI_MAX_COMMANDS (UI_MAX_IMAGES + UI_MAX_TEXTS)
+#define UI_MAX_BATCHES (UI_MAX_IMAGES + UI_MAX_TEXTS)
 
-typedef struct UIImageData_
-{
-    SDL_GPUTexture* texture;
-    SDL_GPUSampler* sampler;
-    f32 uv[4]; // x, y, width, height. Zero width/height means full image.
-} UIImageData;
 
 typedef enum UICustomType_
 {
     UICustomType_TextArea = 1
 } UICustomType;
-
-typedef struct UITextAreaCustomData_
-{
-    u32 type;
-    char* buffer;
-    u32 capacity;
-} UITextAreaCustomData;
 
 typedef enum UIColor_
 {
@@ -83,11 +70,27 @@ typedef struct UIShape_
     f32 clip[4];   // x0, y0, x1, y1 in framebuffer pixels.
 } UIShape;
 
+typedef struct UIImageData_
+{
+    SDL_GPUTexture* texture;
+    SDL_GPUSampler* sampler;
+    f32 uv[4]; // x, y, width, height. Zero width/height means full image.
+} UIImageData;
+
+typedef struct UITextAreaCustomData_
+{
+    u32 type;
+    char* buffer;
+    u32 capacity;
+} UITextAreaCustomData;
+
 void UIInit(void);
 void UIDestroy(void);
 void UIBeginFrame(void);
 void UIEndFrame(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget);
 void UIClear(void);
+void UIBeginBatch(void);
+void UIEndBatch(void);
 
 bool UIPushRect(float2 pos, float2 size, u32 color);
 bool UIPushRoundedRect(float2 pos, float2 size, f32 radius, u32 color);

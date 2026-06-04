@@ -656,7 +656,6 @@ bool UITextArea(const char* label, float2 pos, char* buffer, u32 capacity, float
     if (focused) UITextDrawSelection(&layout);
 
     SlugFont* font = SlugGetDemoFont();
-    SlugForceNewBatch(font);
     u32 firstBatch = font->numBatches;
     UITextDrawLayout(&layout);
     UIRecordTextBatches(firstBatch, font->numBatches - firstBatch);
