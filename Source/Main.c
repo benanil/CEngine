@@ -61,7 +61,7 @@ s32 InitScene()
         return 0;
     }
     
-    s32 sponzaRes = LoadGLTFCached("Assets/Meshes/Bistro/Bistro.gltf", gSponza, g_RenderState.textures + gPaladin->numImages);
+    s32 sponzaRes = LoadGLTFCached("Assets/Meshes/Sponza/scene.gltf", gSponza, g_RenderState.textures + gPaladin->numImages);
     if (!sponzaRes)
     {
         AX_ERROR("gltf Bistro/sponza load failed: %d ", sponzaRes);
@@ -90,7 +90,7 @@ s32 InitScene()
             break;
     }
 
-    const int numSurface = 1;
+    const int numSurface = 4;
     const int surfaceGridStride = (int)Ceilf(Sqrtf((float)numSurface));
     for (s32 i = 0; i < numSurface; i++)
     {

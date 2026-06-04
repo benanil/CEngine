@@ -20,6 +20,7 @@ RenderSettings g_RenderSettings = {
     .exposure        = 1.0f,
     .gamma           = 2.2f,
     .godRayIntensity = 2.5f,
+    .lodDistanceModifier = 0.25f,
     .sunYaw          = 116.565f,
     .sunPitch        = 63.435f,
     .shadowMaxDistance       = SHADOW_MAX_DISTANCE,
@@ -61,11 +62,12 @@ static void InitRenderSetBuffers(RenderSetBuffers* buffers, RenderSet* set)
 {
     size_t groupBytes  = set->maxGroups * sizeof(PrimitiveGroup);
     size_t entityBytes = set->maxEntities * sizeof(Entity);
+    size_t lodMultiplier = MESH_LOD_COUNT;
 
     buffers->primitiveGroup    = CreateBuffer(set->primitiveGroups, groupBytes, BReadCompute, "CPPrimitiveGroups");
-    buffers->drawSparseIndices = CreateBuffer(NULL, set->maxEntities * sizeof(u32), BReadRasterBit | BReadCompute | BWriteComputeBit, "CPDrawSparseIndices");
+    buffers->drawSparseIndices = CreateBuffer(NULL, set->maxEntities * lodMultiplier * sizeof(u32), BReadRasterBit | BReadCompute | BWriteComputeBit, "CPDrawSparseIndices");
     buffers->sparseToDense     = CreateBuffer(set->sparseID, set->maxEntities * sizeof(u32), BReadCompute, "CPSparseToDense");
-    buffers->drawArgs          = CreateBuffer(NULL, set->maxGroups * sizeof(SDL_GPUIndexedIndirectDrawCommand), BIndirectBit | BReadCompute | BWriteComputeBit, "CPDrawArgs");
+    buffers->drawArgs          = CreateBuffer(NULL, set->maxGroups * lodMultiplier * sizeof(SDL_GPUIndexedIndirectDrawCommand), BIndirectBit | BReadCompute | BWriteComputeBit, "CPDrawArgs");
     buffers->denseToPrimitive  = CreateBuffer(set->denseToPrimitiveIndex, set->maxEntities * sizeof(u32), BReadCompute, "CPDenseToPrimitive");
     buffers->entity            = CreateBuffer(set->entities, entityBytes, BReadRasterBit | BReadCompute, "CPEntities");
     buffers->visibilityMask    = CreateBuffer(NULL, set->maxEntities * sizeof(u32), BReadCompute | BWriteComputeBit, "CPVisibilityMask");
@@ -81,9 +83,12 @@ void InitBuffers(void)
 
     AnimInitBuffers();
     const size_t animatedVertexSize = sizeof(u32) * 2 * MAX_ANIMATED_VERTEX;
-    g_RenderState.skinnedVertexBuffer = CreateBuffer(gGFX.SkinnedVertexBuffer, MAX_SKINNED_SOURCE_VERTEX * sizeof(ASkinedVertex), BVertexBit | BReadCompute, "CPSkinnedVertexBuffer");
-    g_RenderState.surfaceVertexBuffer = CreateBuffer(gGFX.SurfaceVertexBuffer, MAX_VERTEX * sizeof(AVertex), BVertexBit, "CPSurfaceVertexBuffer");
-    g_RenderState.indexBuffer = CreateBuffer(gGFX.IndexBuffer, MAX_INDEX * sizeof(int), SDL_GPU_BUFFERUSAGE_INDEX, "CPIndexBuffer");
+    g_RenderState.skinnedVertexBuffer = CreateBuffer(NULL, MAX_SKINNED_SOURCE_VERTEX * sizeof(ASkinedVertex), BVertexBit | BReadCompute, "CPSkinnedVertexBuffer");
+    g_RenderState.surfaceVertexBuffer = CreateBuffer(NULL, MAX_VERTEX * sizeof(AVertex), BVertexBit, "CPSurfaceVertexBuffer");
+    g_RenderState.indexBuffer = CreateBuffer(NULL, MAX_INDEX * sizeof(int), SDL_GPU_BUFFERUSAGE_INDEX, "CPIndexBuffer");
+    if (gGFX.NumSkinnedVertices > 0) UpdateGPUBuffer(g_RenderState.skinnedVertexBuffer, gGFX.SkinnedVertexBuffer, gGFX.NumSkinnedVertices * sizeof(ASkinedVertex), 0);
+    if (gGFX.NumSurfaceVertices > 0) UpdateGPUBuffer(g_RenderState.surfaceVertexBuffer, gGFX.SurfaceVertexBuffer, gGFX.NumSurfaceVertices * sizeof(AVertex), 0);
+    if (gGFX.NumIndices > 0) UpdateGPUBuffer(g_RenderState.indexBuffer, gGFX.IndexBuffer, gGFX.NumIndices * sizeof(u32), 0);
     g_RenderState.skinnedAnimatedVertices = CreateBuffer(NULL, animatedVertexSize, BReadRasterBit | BWriteComputeBit, "CPAnimatedVertices");
     g_RenderState.shadowCascadeBuffer = CreateBuffer(NULL, sizeof(mat4x4) * SHADOW_CASCADE_COUNT + sizeof(float) * 4,
                                                       BReadRasterBit | BReadCompute | BWriteComputeBit, "CPShadowCascadeBuffer");
@@ -292,13 +297,12 @@ static void UploadRenderSetEntities(RenderSet* set, RenderSetBuffers* buffers)
 {
     if (set->numEntities == 0) return;
     UpdateGPUBuffer(buffers->entity, set->entities, set->numEntities * sizeof(Entity), 0ull);
-    UpdateGPUBuffer(buffers->sparseToDense, set->sparseID, set->numEntities * sizeof(u32), 0ull);
 }
 
-static void CullScene(SDL_GPUCommandBuffer* cmd, FrustumPlanes planes, mat4x4 viewProj, bool enableHiZ, bool outputSkinnedVisibility)
+static void CullScene(SDL_GPUCommandBuffer* cmd, FrustumPlanes planes, mat4x4 viewProj, bool enableHiZ, bool outputSkinnedVisibility, bool enableSurfaceLOD)
 {
-    DispatchCullDrawArgsCompute(cmd, &skinnedSet, &g_RenderState.skinnedBuffers, planes, viewProj, enableHiZ, outputSkinnedVisibility);
-    DispatchCullDrawArgsCompute(cmd, &surfaceSet, &g_RenderState.surfaceBuffers, planes, viewProj, enableHiZ, false);
+    DispatchCullDrawArgsCompute(cmd, &skinnedSet, &g_RenderState.skinnedBuffers, planes, viewProj, enableHiZ, outputSkinnedVisibility, false);
+    DispatchCullDrawArgsCompute(cmd, &surfaceSet, &g_RenderState.surfaceBuffers, planes, viewProj, enableHiZ, false, enableSurfaceLOD);
 }
 
 static void AnimateSkinned(SDL_GPUCommandBuffer* cmd)
@@ -354,7 +358,7 @@ static ShadowCascadeData CascadedShadowmaps(SDL_GPUCommandBuffer* cmd)
         mat4x4 shadowViewProj = cachedShadowCascades.lightViewProj[cascade];
         FrustumPlanes shadowFrustum = CreateFrustumPlanes(shadowViewProj);
         // planes.planes[4] = planes.planes[5] = VecZero(); // disable near, far plane frustum check
-        CullScene(cmd, shadowFrustum, shadowViewProj, false, false);
+        CullScene(cmd, shadowFrustum, shadowViewProj, false, false, false);
 
         WindowState* winstate = &g_WindowState;
         SDL_GPUColorTargetInfo shadow_color_target = MakeShadowColorTarget(winstate, cascade);
@@ -367,7 +371,8 @@ static ShadowCascadeData CascadedShadowmaps(SDL_GPUCommandBuffer* cmd)
             .viewProj          = shadowViewProj,
             .cascadeIndex      = cascade,
             .useShadowCascades = true,
-            .alphaClip         = false
+            .alphaClip         = false,
+            .enableLOD         = false
         });
     }
     shadowCacheValid = true;
@@ -382,7 +387,7 @@ static ShadowCascadeData SampleDistributionShadowMaps(SDL_GPUCommandBuffer* cmd,
     for (u32 cascade = 0; cascade < SHADOW_CASCADE_COUNT; cascade++)
     {
         mat4x4 shadowViewProj = shadowCascades.lightViewProj[cascade];
-        CullScene(cmd, CreateFrustumPlanes(shadowViewProj), shadowViewProj, false, false);
+        CullScene(cmd, CreateFrustumPlanes(shadowViewProj), shadowViewProj, false, false, false);
 
         WindowState* winstate = &g_WindowState;
         SDL_GPUColorTargetInfo shadow_color_target = MakeShadowColorTarget(winstate, cascade);
@@ -395,7 +400,8 @@ static ShadowCascadeData SampleDistributionShadowMaps(SDL_GPUCommandBuffer* cmd,
             .viewProj          = shadowViewProj,
             .cascadeIndex      = cascade,
             .useShadowCascades = true,
-            .alphaClip         = false
+            .alphaClip         = false,
+            .enableLOD         = false
         });
     }
     return shadowCascades;
@@ -454,13 +460,13 @@ void Render(void)
     mat4x4 hiZViewProj = enableHiZ ? winstate->hiz_view_proj : viewProj;
 
     FrustumPlanes cameraFrustum = CreateFrustumPlanes(viewProj);
-    CullScene(cmd, cameraFrustum, hiZViewProj, enableHiZ, true);
+    CullScene(cmd, cameraFrustum, hiZViewProj, enableHiZ, true, true);
     AnimateSkinned(cmd);
     ShadowCascadeData shadowCascades = g_RenderSettings.enableSDSM ? 
                                        SampleDistributionShadowMaps(cmd, viewProj) : 
                                        CascadedShadowmaps(cmd);
 
-    CullScene(cmd, cameraFrustum, hiZViewProj, enableHiZ, true);
+    CullScene(cmd, cameraFrustum, hiZViewProj, enableHiZ, true, true);
 
     RenderDepth(cmd, &(DepthPassContext){
         .colorTarget       = &hiz_depth_target,
@@ -470,7 +476,8 @@ void Render(void)
         .viewProj          = viewProj,
         .cascadeIndex      = 0,
         .useShadowCascades = false,
-        .alphaClip         = true
+        .alphaClip         = true,
+        .enableLOD         = true
     });
     RenderScene(cmd, &(ScenePassContext){
         .colorTargets    = gbuffer_targets,

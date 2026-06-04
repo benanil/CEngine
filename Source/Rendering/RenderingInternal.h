@@ -26,6 +26,7 @@ typedef struct DepthPassContext_
     u32 cascadeIndex;
     bool useShadowCascades;
     bool alphaClip;
+    bool enableLOD;
 } DepthPassContext;
 
 typedef struct ScenePassContext_
@@ -73,9 +74,10 @@ void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd,
                                  RenderSet* renderSet,
                                  RenderSetBuffers* buffers,
                                  FrustumPlanes frustumPlanes,
-                                 mat4x4 viewProj,
-                                 bool enableHiZ,
-                                 bool enableVisibilityOutput);
+                                  mat4x4 viewProj,
+                                  bool enableHiZ,
+                                  bool enableVisibilityOutput,
+                                  bool enableLOD);
 
 void DispatchHiZBuildCompute(SDL_GPUCommandBuffer* cmd);
 void DispatchSDSMSetupShadowsCompute(SDL_GPUCommandBuffer* cmd, mat4x4 viewProj);

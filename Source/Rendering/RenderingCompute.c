@@ -5,7 +5,8 @@ void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet
                                  FrustumPlanes frustumPlanes,
                                  mat4x4 viewProj,
                                  bool enableHiZ,
-                                 bool enableVisibilityOutput)
+                                 bool enableVisibilityOutput,
+                                 bool enableLOD)
 {
     if (renderSet->numGroups == 0) return;
     CHECK_CREATE(g_CullDrawArgsComputePipeline, "Cull Draw Args Compute Pipeline");
@@ -20,7 +21,11 @@ void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet
         u32 hiZMipCount;
         u32 enableHiZ;
         f32 hiZDepthBias;
-        f32 hiZPadding[3];
+        u32 lodCount;
+        u32 sparseIndexLODStride;
+        u32 enableLODSelection;
+        f32 lodDistanceModifier;
+        f32 lodPadding[3];
     } params;
 
     WindowState* winstate = &g_WindowState;
@@ -39,6 +44,10 @@ void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet
     params.hiZMipCount = hiZMipCount;
     params.enableHiZ = enableHiZ ? 1u : 0u;
     params.hiZDepthBias = 0.02f;
+    params.lodCount = enableLOD ? MESH_LOD_COUNT : 1u;
+    params.sparseIndexLODStride = renderSet->maxEntities;
+    params.enableLODSelection = enableLOD ? 1u : 0u;
+    params.lodDistanceModifier = Maxf32(g_RenderSettings.lodDistanceModifier, 0.001f);
 
     SDL_GPUBuffer* ro_buffers[3] = {
         buffers->entity,
@@ -63,7 +72,7 @@ void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet
         SDL_BindGPUComputeStorageTextures(pass, 0, &hiZTexture, 1);
     SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
 
-    u32 resetCount = renderSet->numGroups;
+    u32 resetCount = renderSet->numGroups * params.lodCount;
     if (enableVisibilityOutput && renderSet->numEntities > resetCount) resetCount = renderSet->numEntities;
     SDL_DispatchGPUCompute(pass, (resetCount + 63) / 64, 1, 1);
 

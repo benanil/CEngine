@@ -239,6 +239,7 @@ static void GraphicsEditorUI(void)
                     UICheckbox(CLAY_ID("EditorEnableHBAO")     , CLAY_STRING("HBAO ambient occlusion"), &settings->enableHBAO);
                     UICheckbox(CLAY_ID("EditorEnableMLAA")     , CLAY_STRING("Anti-aliasing (MLAA)"), &settings->enableMLAA);
                     UICheckbox(CLAY_ID("EditorShowMLAAEdges")  , CLAY_STRING("Show MLAA edge mask"), &settings->showMLAAEdges);
+                    EditorSliderFloat(CLAY_ID("EditorLODDistanceModifier"), "LOD distance", &settings->lodDistanceModifier, 0.05f, 4.0f, 2);
                 }
                 CLAY(CLAY_ID("GraphicsEditorSunBox"), EditorPanelBoxDeclaration) {
                     EditorSectionHeader("Sun");

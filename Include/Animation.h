@@ -81,6 +81,10 @@ typedef struct GPUAnimationData_
     u32 numJoints;
     u32 numNodes;
     f32 duration;
+    u32 jointOffset;
+    u32 invBindOffset;
+    u32 hierarchyOffset;
+    u32 padding;
 } GPUAnimationData;
 
 

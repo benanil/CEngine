@@ -27,6 +27,10 @@ struct AnimationData {
     uint numJoints;
     uint numNodes;
     float duration;
+    uint jointOffset;
+    uint invBindOffset;
+    uint hierarchyOffset;
+    uint padding;
 };
 
 StructuredBuffer<uint>               animPoses             : register(t0); // per bone * frame
@@ -71,21 +75,21 @@ f16_2x4 LoadPose(int i, int frameOffset, int frame)
     return result;
 }
 
-AnimNode GetAnimNode(int idx)
+AnimNode GetAnimNode(int idx, uint hierarchyOffset)
 {
-    u16 packed = animHierarchy[idx];
+    u16 packed = animHierarchy[hierarchyOffset + idx];
     AnimNode node;
     node.childrenStartIndex = packed & 0xFF;
     node.numChildren        = (packed >> 8) & 0xFF;
     return node;
 }
 
-u16 GetParentIndex(u16 idx) { return (u16)(animHierarchy[idx] & 0xFFFF); }
+u16 GetParentIndex(u16 idx, uint hierarchyOffset) { return (u16)(animHierarchy[hierarchyOffset + idx] & 0xFFFF); }
 
-f16_4x4 LoadMatrix(int idx)
+f16_4x4 LoadMatrix(int idx, uint invBindOffset)
 {
     const int MatrixSize = 8;
-    int mtx = idx * MatrixSize;
+    int mtx = int(invBindOffset + idx) * MatrixSize;
     f16_4x4 result;
     result[0] = GetHalf4(inverseBindMatrices, mtx + 0);
     result[1] = GetHalf4(inverseBindMatrices, mtx + 2);
@@ -94,12 +98,12 @@ f16_4x4 LoadMatrix(int idx)
     return result;
 }
 
-void FlattenBoneMatrices(uint numNodes, inout Pose poses[MAX_BONES])
+void FlattenBoneMatrices(uint numNodes, uint hierarchyOffset, inout Pose poses[MAX_BONES])
 {
     // 0 is root node
     for (u16 idx = 1; idx < numNodes; idx++)
     {
-        u16 parentIdx = GetParentIndex(idx);
+        u16 parentIdx = GetParentIndex(idx, hierarchyOffset);
         // if (parentIdx == 0xFFFFu) continue;
         Pose parent = poses[parentIdx];
         Pose pose = poses[idx];
@@ -136,14 +140,14 @@ void main(uint3 GlobalInvocationID : SV_DispatchThreadID)
         poses[i].rotation    = QNlerp(a[1], b[1], animProgress);
     }
 
-    FlattenBoneMatrices(data.numNodes, poses);
+    FlattenBoneMatrices(data.numNodes, data.hierarchyOffset, poses);
 
     int numJoints = int(data.numJoints);
     for (s16 i = 0; i < numJoints; i++)
     {
-        Pose pose = poses[joints[i]];
+        Pose pose = poses[joints[data.jointOffset + i]];
         f16_4x4 mat = M44PositionRotationVec(pose.translation, pose.rotation);
-        mat = M44Multiply(LoadMatrix(i), mat);
+        mat = M44Multiply(LoadMatrix(i, data.invBindOffset), mat);
         int outIdx = instanceIdx * MAX_BONES + i;
         WriteBone((f16_3x4)M44Transpose(mat), outIdx);
     }

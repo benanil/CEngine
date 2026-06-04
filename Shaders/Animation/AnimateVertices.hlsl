@@ -62,11 +62,11 @@ void main(uint3 globalID : SV_DispatchThreadID, uint3 groupID : SV_GroupID, uint
             break; 
 
         uint animatedLocalVertex = animatedBase + localVertex;
-        if (animatedLocalVertex >= uint(MAX_SKINNED_VERTEX_PER_ANIM_INSTANCE))
+        uint outVertex = sparse * uint(MAX_SKINNED_VERTEX_PER_ANIM_INSTANCE) + animatedLocalVertex;
+        if (animatedLocalVertex >= uint(MAX_SKINNED_VERTEX_PER_ANIM_INSTANCE) || outVertex >= maxAnimatedVertices)
             break;
 
         uint sourceVertex = group.vertexOffset + localVertex;
-        uint outVertex = sparse * uint(MAX_SKINNED_VERTEX_PER_ANIM_INSTANCE) + animatedLocalVertex;
 
         SkinnedVertex input = sVertexBuffer[sourceVertex];
         f16_4 packedPos = f16_4(UnpackHalf2(input.positionXY), UnpackHalf2(input.positionZW));

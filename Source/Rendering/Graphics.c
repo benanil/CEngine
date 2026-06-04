@@ -202,13 +202,31 @@ SDL_GPUBuffer* CreateBuffer(
     SDL_GPUBufferRegion dst_region = { .buffer = gpu_buffer, .offset = 0, .size  = bufferSize };
     SDL_UploadToGPUBuffer(copy_pass, &src_location, &dst_region, false);
     SDL_EndGPUCopyPass(copy_pass);
-    SDL_SubmitGPUCommandBuffer(cmd);
+    SDL_GPUFence* fence = SDL_SubmitGPUCommandBufferAndAcquireFence(cmd);
+    SDL_WaitForGPUFences(g_GPUDevice, true, &fence, 1);
+    SDL_ReleaseGPUFence(g_GPUDevice, fence);
 
     SDL_ReleaseGPUTransferBuffer(g_GPUDevice, upload_buf);
     return gpu_buffer;
 }
 
+static void UpdateGPUBufferSingle(SDL_GPUBuffer* buffer, const void* data, size_t bufferSize, size_t offset);
+
 void UpdateGPUBuffer(SDL_GPUBuffer* buffer, const void* data, size_t bufferSize, size_t offset)
+{
+    const size_t maxUploadChunk = 16ull * 1024ull * 1024ull;
+    const u8* src = (const u8*)data;
+    while (bufferSize > 0)
+    {
+        size_t chunkSize = Minu64(bufferSize, maxUploadChunk);
+        UpdateGPUBufferSingle(buffer, src, chunkSize, offset);
+        src += chunkSize;
+        offset += chunkSize;
+        bufferSize -= chunkSize;
+    }
+}
+
+static void UpdateGPUBufferSingle(SDL_GPUBuffer* buffer, const void* data, size_t bufferSize, size_t offset)
 {
     SDL_GPUTransferBufferCreateInfo transferBufferCreateInfo;
     transferBufferCreateInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;

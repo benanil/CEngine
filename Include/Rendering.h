@@ -18,6 +18,7 @@ typedef struct RenderSettings_
     f32 exposure;
     f32 gamma;
     f32 godRayIntensity;
+    f32 lodDistanceModifier;
     f32 sunYaw;
     f32 sunPitch;
     f32 shadowMaxDistance;

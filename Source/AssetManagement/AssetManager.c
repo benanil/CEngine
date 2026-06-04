@@ -556,7 +556,7 @@ void SaveSceneImages(SceneBundle* scene, const u8* savePath, bool deleteRemainin
 
         const s32 quality = 0; // 100 is max
         s32 r = basis_compress_file((const char*)srcPath, (const char*)pathBuf, type, 16, quality, -1);
-        if (r) AX_ERROR("Failed: %s (%d)\n", srcPath, r);
+        if (r) AX_WARN("Failed: %s (%d)\n", srcPath, r);
 
         n = IntToString(pathBuf, type, 0);
         pathBuf[n++] = '\n';
@@ -684,7 +684,6 @@ s32 LoadGLTFCached(const char* path, SceneBundle* scene, Texture* textures)
             AX_WARN("asset import failed during mesh bake: %s vertices=%d indices=%d", path, scene->totalVertices, scene->totalIndices);
             return 0;
         }
-        OptimizeMesh(scene);
         if (!SaveGLTFBinary(scene, buffer))
         {
             AX_WARN("asset cache save failed: %s", buffer);
@@ -717,7 +716,7 @@ s32 LoadGLTFCached(const char* path, SceneBundle* scene, Texture* textures)
 /*//////////////////////////////////////////////////////////////////////////*/
 
 // ZSTD_CCtx* zstdCompressorCTX = NULL;
-const s32 ABMMeshVersion = 65;
+const s32 ABMMeshVersion = 77;
 
 u8 IsABMLastVersion(const u8* path)
 {
@@ -842,6 +841,11 @@ s32 SaveGLTFBinary(const SceneBundle* gltf, const u8* path)
             AFileWrite(&primitive->numIndices , sizeof(s32), file, 1);
             AFileWrite(&primitive->numVertices, sizeof(s32), file, 1);
             AFileWrite(&primitive->indexOffset, sizeof(s32), file, 1);
+            AFileWrite(primitive->lodIndexOffset, sizeof(s32) * 4, file, 1);
+            AFileWrite(primitive->lodNumIndices, sizeof(s32) * 4, file, 1);
+            AFileWrite(primitive->lodVertexOffset, sizeof(s32) * 4, file, 1);
+            AFileWrite(primitive->lodNumVertices, sizeof(s32) * 4, file, 1);
+            AFileWrite(primitive->lodAnimatedVertexOffset, sizeof(s32) * 4, file, 1);
             AFileWrite(&primitive->jointType  , sizeof(u16), file, 1);
             AFileWrite(&primitive->jointCount , sizeof(u16), file, 1);
             AFileWrite(&primitive->jointStride, sizeof(u16), file, 1);
@@ -1122,6 +1126,11 @@ s32 LoadSceneBundleBinary(const u8* path, SceneBundle* gltf)
             AFileRead(&primitive->numIndices , sizeof(s32), file, 1);
             AFileRead(&primitive->numVertices, sizeof(s32), file, 1);
             AFileRead(&primitive->indexOffset, sizeof(s32), file, 1);
+            AFileRead(primitive->lodIndexOffset, sizeof(s32) * 4, file, 1);
+            AFileRead(primitive->lodNumIndices, sizeof(s32) * 4, file, 1);
+            AFileRead(primitive->lodVertexOffset, sizeof(s32) * 4, file, 1);
+            AFileRead(primitive->lodNumVertices, sizeof(s32) * 4, file, 1);
+            AFileRead(primitive->lodAnimatedVertexOffset, sizeof(s32) * 4, file, 1);
             AFileRead(&primitive->jointType  , sizeof(u16), file, 1);
             AFileRead(&primitive->jointCount , sizeof(u16), file, 1);
             AFileRead(&primitive->jointStride, sizeof(u16), file, 1);

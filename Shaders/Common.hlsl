@@ -36,6 +36,7 @@
 #define USE_16BIT_TYPES (INT16_SUPPORTED && FLOAT16_SUPPORTED)
 
 #ifdef __10X__ 
+    #define in
     #define out
     #define inout
 #endif

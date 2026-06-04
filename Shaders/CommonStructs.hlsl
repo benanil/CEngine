@@ -2,6 +2,7 @@
 #define COMMON_STRUCTS
 
 #include "Common.hlsl"
+#include "../Include/RenderLimits.h"
 
 typedef struct IndexedDrawCommand_
 {
@@ -51,6 +52,11 @@ typedef struct PrimitiveGroup_
     uint numVertices;
     float4 aabbMin;
     float4 aabbMax;
+    uint4 lodIndexOffset;
+    uint4 lodNumIndices;
+    uint4 lodVertexOffset;
+    uint4 lodNumVertices;
+    uint4 lodAnimatedVertexOffset;
 } PrimitiveGroup;
 
 // Animated vertex cache format, 8 bytes per vertex. 

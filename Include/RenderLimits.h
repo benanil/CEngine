@@ -4,6 +4,7 @@
 #define MAX_ENTITY              65535u
 #define MAX_GROUP               (MAX_ENTITY >> 1)
 #define MAX_BUNDLES             (MAX_ENTITY >> 2)
+#define MESH_LOD_COUNT          3u
 
 #define SHADOW_MAP_SIZE            (1024u * 3u)
 #define SHADOW_CASCADE_COUNT       3u
@@ -43,6 +44,6 @@
 #define MAX_SKINNED_VERTEX_PER_ANIM_INSTANCE 65536ull
 #define MAX_ANIMATED_VERTEX (MAX_ANIM_INSTANCES * MAX_SKINNED_VERTEX_PER_ANIM_INSTANCE)
 #define MAX_VERTEX MAX_SURFACE_VERTEX
-#define MAX_INDEX  9600000ull
+#define MAX_INDEX  16000000ull
 
 #endif

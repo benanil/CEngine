@@ -24,13 +24,16 @@
 extern RenderState  g_RenderState;
 
 u32 animPoses[MAX_BONES * MAX_GPU_ANIM_FRAMES * ANIM_POSE_NUM_INT32]; // 32mb
-u32 animHierarchy[ANIM_NODE_COUNT + ANIM_CHILD_PACKED_COUNT];
+u32 animHierarchy[MAX_SKIN_COUNT * ANIM_NODE_COUNT];
 u32 animJoints[MAX_BONES * MAX_SKIN_COUNT];
 u32 invBindMatrices[MAX_BONES * MAX_SKIN_COUNT * ANIM_MATRIX_NUM_INT32];
 GPUAnimationInstance animInstances[MAX_ANIM_INSTANCES];
 GPUAnimationData animData[MAX_ANIM_COUNT];
 u32 NumGPUAnimations = 0;
 s32 AnimTotalFrameOffset = 0;
+static u32 AnimTotalJointOffset = 0;
+static u32 AnimTotalInvBindOffset = 0;
+static u32 AnimTotalHierarchyOffset = 0;
 
 static void StoreHalf4(u32* dst, v128f src)
 {
@@ -57,13 +60,19 @@ static void UpdateBuffers()
     // todo
 }
 
-static int AnimationGetGPUData(const SceneBundle* bundle, Pose poses[MAX_BONES], int animIdx, int frameOffset)
+static int AnimationGetGPUData(const SceneBundle* bundle, Pose poses[MAX_BONES], int animIdx, int frameOffset,
+                               u32 jointOffset, u32 invBindOffset, u32 hierarchyOffset)
 {
     const AAnimation* animation = &bundle->animations[animIdx];
     const ASkin*      skin      = &bundle->skins[0];
     int numFrames = (int)(animation->duration * ANIM_NUM_FRAMES);
     int numPose   = frameOffset * MAX_BONES;
-    MemsetZero(animHierarchy, sizeof(animHierarchy));
+
+    if (NumGPUAnimations >= MAX_ANIM_COUNT)
+    {
+        AX_WARN("animation GPU data capacity exceeded anims=%d", NumGPUAnimations);
+        return 0;
+    }
 
     for (int i = 0; i < numFrames; i++)
     {
@@ -84,29 +93,55 @@ static int AnimationGetGPUData(const SceneBundle* bundle, Pose poses[MAX_BONES],
         .rootNodeIndex = (u32)bundle->rootNode,
         .numJoints     = (u32)skin->numJoints,
         .numNodes      = (u32)bundle->numNodes,
-        .duration      = animation->duration
+        .duration      = animation->duration,
+        .jointOffset   = jointOffset,
+        .invBindOffset = invBindOffset,
+        .hierarchyOffset = hierarchyOffset,
+        .padding       = 0u,
     };
+
+    return numFrames;
+}
+
+static bool StoreBundleSkinGPUData(const SceneBundle* bundle, u32* jointOffset, u32* invBindOffset, u32* hierarchyOffset)
+{
+    const ASkin* skin = &bundle->skins[0];
+    *jointOffset = AnimTotalJointOffset;
+    *invBindOffset = AnimTotalInvBindOffset;
+    *hierarchyOffset = AnimTotalHierarchyOffset;
+
+    if (*jointOffset + (u32)skin->numJoints > MAX_BONES * MAX_SKIN_COUNT ||
+        *invBindOffset + (u32)skin->numJoints > MAX_BONES * MAX_SKIN_COUNT ||
+        *hierarchyOffset + (u32)bundle->numNodes > MAX_SKIN_COUNT * ANIM_NODE_COUNT)
+    {
+        AX_WARN("animation skin GPU data capacity exceeded joints=%d hierarchy=%d", *jointOffset, *hierarchyOffset);
+        return false;
+    }
 
     for (int i = 0; i < bundle->numNodes; i++)
     {
         const ANode* node = i < bundle->numNodes ? &bundle->nodes[i] : NULL;
         u32 parent = node && node->parent >= 0 ? (u32)node->parent : 0xFFFFu;
-        animHierarchy[i] = parent;
+        animHierarchy[*hierarchyOffset + (u32)i] = parent;
     }
 
     for (int i = 0; i < skin->numJoints; i++)
-        animJoints[i] = (u32)skin->joints[i];
+        animJoints[*jointOffset + (u32)i] = (u32)skin->joints[i];
 
     const mat4x4* inv = (const mat4x4*)skin->inverseBindMatrices;
     for (int i = 0; i < skin->numJoints; i++)
     {
-        u32* outMtx = invBindMatrices + (i * ANIM_MATRIX_NUM_INT32);
+        u32* outMtx = invBindMatrices + ((*invBindOffset + (u32)i) * ANIM_MATRIX_NUM_INT32);
         StoreHalf4(outMtx + 0, inv[i].r[0]);
         StoreHalf4(outMtx + 2, inv[i].r[1]);
         StoreHalf4(outMtx + 4, inv[i].r[2]);
         StoreHalf4(outMtx + 6, inv[i].r[3]);
     }
-    return numFrames;
+
+    AnimTotalJointOffset += (u32)skin->numJoints;
+    AnimTotalInvBindOffset += (u32)skin->numJoints;
+    AnimTotalHierarchyOffset += (u32)bundle->numNodes;
+    return true;
 }
 
 void InitAnimationInstances(void)
@@ -157,16 +192,23 @@ s32 SceneBundleCreateAnimations(const SceneBundle* bundle)
     if (!SceneBundleInitAnimations(bundle, poses))
         return 0;
 
+    u32 jointOffset = 0;
+    u32 invBindOffset = 0;
+    u32 hierarchyOffset = 0;
+    if (!StoreBundleSkinGPUData(bundle, &jointOffset, &invBindOffset, &hierarchyOffset))
+        return 0;
+
     for (u32 animIdx = 0; animIdx < bundle->numAnimations; animIdx++)
     {
         s32 numFrames = (s32)(bundle->animations[animIdx].duration * ANIM_NUM_FRAMES);
         if (AnimTotalFrameOffset + numFrames > MAX_GPU_ANIM_FRAMES)
         {
-            NumGPUAnimations = animIdx;
             AX_WARN("animation couldn't added frame capacity is not enough");
             break;
         }
-        numFrames = AnimationGetGPUData(bundle, poses, (int)animIdx, AnimTotalFrameOffset);
+        numFrames = AnimationGetGPUData(bundle, poses, (int)animIdx, AnimTotalFrameOffset,
+                                        jointOffset, invBindOffset, hierarchyOffset);
+        if (numFrames == 0) break;
         AnimTotalFrameOffset += numFrames;
     }
     AX_LOG("num animation: %d", NumGPUAnimations);

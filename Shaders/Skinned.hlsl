@@ -3,8 +3,8 @@
 #include "PBR.hlsl"
 #include "Bitpack.hlsl"
 #include "Math.hlsl"
-#include "Shadow.hlsl"
-#include "ShadowCascade.hlsl"
+#include "Shadow/Shadow.hlsl"
+#include "Shadow/ShadowCascade.hlsl"
 
 #define CSM_DEBUG_CASCADES 0
 
@@ -48,19 +48,19 @@ struct VSInput
 
 struct VSOutput
 {
-    float4   position  : SV_Position;
-    f16_2_io texCoords : TEXCOORD0;
-    f16_3_io normal    : NORMAL;
-    f16_3_io tangent   : TANGENT0;
-    f16_3_io bitangent : TEXCOORD1;
-    f16_3_io viewDir   : TEXCOORD2;
+    float4   position   : SV_Position;
+    f16_2_io texCoords  : TEXCOORD0;
+    f16_3_io normal     : NORMAL;
+    f16_3_io tangent    : TANGENT0;
+    f16_3_io bitangent  : TEXCOORD1;
+    f16_3_io viewDir    : TEXCOORD2;
     float4   shadowPos0 : TEXCOORD3;
     float4   shadowPos1 : TEXCOORD4;
     float4   shadowPos2 : TEXCOORD5;
     float    viewDepth  : TEXCOORD6;
     nointerpolation float3 cascadeSplits : TEXCOORD7;
-    nointerpolation uint materialIndex : TEXCOORD8;
-    nointerpolation float handedness : TEXCOORD9;
+    nointerpolation uint   materialIndex : TEXCOORD8;
+    nointerpolation float  handedness : TEXCOORD9;
 };
 
 struct GBufferOutput

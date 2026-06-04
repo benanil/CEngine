@@ -22,8 +22,10 @@ struct VSInput
 
 float4 vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("DrawIndex")]] uint drawID : DRAWINDEX) : SV_Position
 {
-    PrimitiveGroup group = sPrimitiveGroups[drawID];
-    uint denseIdx = sDrawSparseIndices[group.entityOffset + instanceID];
+    uint primitiveIdx = drawID / MESH_LOD_COUNT;
+    uint lod = drawID - primitiveIdx * MESH_LOD_COUNT;
+    PrimitiveGroup group = sPrimitiveGroups[primitiveIdx];
+    uint denseIdx = sDrawSparseIndices[lod * MAX_ENTITY + group.entityOffset + instanceID];
     Entity entity = sEntities[denseIdx];
 
     f16_4 insRot   = normalize(UnpackRGBA16Snorm(entity.rotation[0], entity.rotation[1]));

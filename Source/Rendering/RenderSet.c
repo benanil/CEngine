@@ -85,6 +85,14 @@ u32 RenderSet_AddSceneBundle(RenderSet* set, const SceneBundle* sceneBundle)
             group->entityOffset   = set->numEntities;
             VecStore(group->aabbMin, VecLoad(primitive->min));
             VecStore(group->aabbMax, VecLoad(primitive->max));
+            for (u32 lod = 0; lod < MESH_LOD_COUNT; lod++)
+            {
+                group->lodIndexOffset[lod] = (u32)primitive->lodIndexOffset[lod];
+                group->lodNumIndices[lod]  = (u32)primitive->lodNumIndices[lod];
+                group->lodVertexOffset[lod] = (u32)primitive->lodVertexOffset[lod];
+                group->lodNumVertices[lod] = (u32)primitive->lodNumVertices[lod];
+                group->lodAnimatedVertexOffset[lod] = (u32)primitive->lodAnimatedVertexOffset[lod];
+            }
             localVertexOffset += (u32)primitive->numVertices;
         }
     }

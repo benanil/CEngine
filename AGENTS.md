@@ -15,3 +15,12 @@ void* ArenaPushGlobal(uint64_t size);
 void ArenaPopGlobal(uint64_t size);
 if persistent or big memory use AllocateTLSFGlobal/DeAllocateTLSFGlobal or OSAlloc
 no need to use MMAX, MMIN etc macros use functions such as Maxf32 and such
+
+# Code Order
+first includes > defines macros > enums > structs
+extern variables > global variables > static variables and static functions > public functions
+preferably initialization is at the beginning of the functions then destroy is at the end
+
+# Notes
+if you change something in helper hlsl files such as commonstructs.hlsl, math.hlsl, shadow.hlsl 
+you have to force recompile otherwise python will not detect your change

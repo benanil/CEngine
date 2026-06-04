@@ -34,6 +34,11 @@ typedef struct PrimitiveGroup_
     u32 numVertices;
     float aabbMin[4];
     float aabbMax[4];
+    u32 lodIndexOffset[4];
+    u32 lodNumIndices[4];
+    u32 lodVertexOffset[4];
+    u32 lodNumVertices[4];
+    u32 lodAnimatedVertexOffset[4];
 } PrimitiveGroup;
 
 typedef struct Range_

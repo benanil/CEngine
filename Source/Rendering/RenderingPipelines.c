@@ -20,9 +20,9 @@
 #include "Shaders/spv/SurfaceFrag.spv.h"
 #include "Shaders/spv/SurfaceVert.spv.h"
 #include "Shaders/spv/DeferredLighting.spv.h"
-#include "Shaders/spv/CullDrawArgsCompute.spv.h"
-#include "Shaders/spv/AnimationCompute.spv.h"
-#include "Shaders/spv/AnimateVertices.spv.h"
+#include "Shaders/spv/PreProcessing/CullDrawArgsCompute.spv.h"
+#include "Shaders/spv/Animation/AnimationCompute.spv.h"
+#include "Shaders/spv/Animation/AnimateVertices.spv.h"
 #include "Shaders/spv/LineDebugVert.spv.h"
 #include "Shaders/spv/LineDebugFrag.spv.h"
 #include "Shaders/spv/SlugVert.spv.h"
@@ -45,10 +45,24 @@
 #include "Shaders/spv/SurfaceDepthOnlyFrag.spv.h"
 #include "Shaders/spv/SkinnedDepthOnlyVert.spv.h"
 #include "Shaders/spv/SkinnedDepthOnlyFrag.spv.h"
-#include "Shaders/spv/SurfaceShadowDepthOnlyVert.spv.h"
-#include "Shaders/spv/SurfaceShadowDepthOnlyFrag.spv.h"
-#include "Shaders/spv/SkinnedShadowDepthOnlyVert.spv.h"
-#include "Shaders/spv/SkinnedShadowDepthOnlyFrag.spv.h"
+#include "Shaders/spv/Shadow/SurfaceShadowDepthOnlyVert.spv.h"
+#include "Shaders/spv/Shadow/SurfaceShadowDepthOnlyFrag.spv.h"
+#include "Shaders/spv/Shadow/SkinnedShadowDepthOnlyVert.spv.h"
+#include "Shaders/spv/Shadow/SkinnedShadowDepthOnlyFrag.spv.h"
+#define Shaders_AnimationCompute_spv Shaders_Animation_AnimationCompute_spv
+#define Shaders_AnimationCompute_spv_size Shaders_Animation_AnimationCompute_spv_size
+#define Shaders_AnimateVertices_spv Shaders_Animation_AnimateVertices_spv
+#define Shaders_AnimateVertices_spv_size Shaders_Animation_AnimateVertices_spv_size
+#define Shaders_CullDrawArgsCompute_spv Shaders_PreProcessing_CullDrawArgsCompute_spv
+#define Shaders_CullDrawArgsCompute_spv_size Shaders_PreProcessing_CullDrawArgsCompute_spv_size
+#define Shaders_SurfaceShadowDepthOnlyVert_spv Shaders_Shadow_SurfaceShadowDepthOnlyVert_spv
+#define Shaders_SurfaceShadowDepthOnlyVert_spv_size Shaders_Shadow_SurfaceShadowDepthOnlyVert_spv_size
+#define Shaders_SurfaceShadowDepthOnlyFrag_spv Shaders_Shadow_SurfaceShadowDepthOnlyFrag_spv
+#define Shaders_SurfaceShadowDepthOnlyFrag_spv_size Shaders_Shadow_SurfaceShadowDepthOnlyFrag_spv_size
+#define Shaders_SkinnedShadowDepthOnlyVert_spv Shaders_Shadow_SkinnedShadowDepthOnlyVert_spv
+#define Shaders_SkinnedShadowDepthOnlyVert_spv_size Shaders_Shadow_SkinnedShadowDepthOnlyVert_spv_size
+#define Shaders_SkinnedShadowDepthOnlyFrag_spv Shaders_Shadow_SkinnedShadowDepthOnlyFrag_spv
+#define Shaders_SkinnedShadowDepthOnlyFrag_spv_size Shaders_Shadow_SkinnedShadowDepthOnlyFrag_spv_size
 #endif
 
 SDL_GPUComputePipeline* g_AnimComputePipeline = NULL;
