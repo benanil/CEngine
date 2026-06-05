@@ -7,7 +7,7 @@
 #include "Shadow/ShadowCascade.hlsl"
 
 #define CSM_DEBUG_CASCADES 0
-#define SKINNED_LOD_DEBUG_COLORS 0
+#define SKINNED_LOD_DEBUG_COLORS 1
 
 cbuffer vs_params : register(b0, space1)
 {

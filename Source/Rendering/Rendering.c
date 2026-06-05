@@ -302,8 +302,23 @@ static void UploadRenderSetEntities(RenderSet* set, RenderSetBuffers* buffers)
 
 static void CullScene(SDL_GPUCommandBuffer* cmd, FrustumPlanes planes, mat4x4 viewProj, bool enableHiZ, bool enableSurfaceLOD, u32 forcedLOD)
 {
-    DispatchCullDrawArgsCompute(cmd, &skinnedSet, &g_RenderState.skinnedBuffers, planes, viewProj, enableHiZ, false, true, forcedLOD);
-    DispatchCullDrawArgsCompute(cmd, &surfaceSet, &g_RenderState.surfaceBuffers, planes, viewProj, enableHiZ, false, enableSurfaceLOD, forcedLOD);
+    DispatchCullDrawArgsCompute(cmd, &skinnedSet, &g_RenderState.skinnedBuffers, planes, viewProj, enableHiZ, false, false, true, forcedLOD);
+    DispatchCullDrawArgsCompute(cmd, &surfaceSet, &g_RenderState.surfaceBuffers, planes, viewProj, enableHiZ, false, false, enableSurfaceLOD, forcedLOD);
+}
+
+static void GatherSkinnedAnimationVisibility(SDL_GPUCommandBuffer* cmd, FrustumPlanes cameraFrustum, mat4x4 cameraViewProj, bool enableHiZ)
+{
+    DispatchCullDrawArgsCompute(cmd, &skinnedSet, &g_RenderState.skinnedBuffers, cameraFrustum, cameraViewProj,
+                                enableHiZ, true, true, true, ~0u);
+
+    ShadowCascadeData cascades = GetShadowCascades();
+    for (u32 cascade = 0; cascade < SHADOW_CASCADE_COUNT; cascade++)
+    {
+        mat4x4 shadowViewProj = cascades.lightViewProj[cascade];
+        FrustumPlanes shadowFrustum = CreateFrustumPlanes(shadowViewProj);
+        DispatchCullDrawArgsCompute(cmd, &skinnedSet, &g_RenderState.skinnedBuffers, shadowFrustum, shadowViewProj,
+                                    false, true, false, false, 1u);
+    }
 }
 
 static void AnimateSkinned(SDL_GPUCommandBuffer* cmd)
@@ -461,6 +476,7 @@ void Render(void)
     mat4x4 hiZViewProj = enableHiZ ? winstate->hiz_view_proj : viewProj;
 
     FrustumPlanes cameraFrustum = CreateFrustumPlanes(viewProj);
+    GatherSkinnedAnimationVisibility(cmd, cameraFrustum, hiZViewProj, enableHiZ);
     AnimateSkinned(cmd);
     ShadowCascadeData shadowCascades = g_RenderSettings.enableSDSM ? 
                                        SampleDistributionShadowMaps(cmd, viewProj) : 

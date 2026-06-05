@@ -101,7 +101,7 @@ static void InitComputePipelines(void)
         .entrypoint                    = "main",
         .format                        = SDL_GetGPUShaderFormats(g_GPUDevice),
         .num_uniform_buffers           = 1,
-        .num_readonly_storage_buffers  = 6,
+        .num_readonly_storage_buffers  = 7,
         .num_readwrite_storage_buffers = 1,
         .threadcount_x                 = 1,
         .threadcount_y                 = 32,

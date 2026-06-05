@@ -43,7 +43,8 @@ cbuffer params : register(b0, space2)
     uint   enableLODSelection;
     uint   forcedLOD;
     float  lodDistanceModifier;
-    float2 lodPadding;
+    uint   resetVisibilityOutput;
+    float  padding;
 };
 
 uint WangHash(uint x)
@@ -250,7 +251,7 @@ void Initialize(uint idx)
         lineDrawCommand[1].firstVertex   = 0;
         lineDrawCommand[1].firstInstance = 0;
 
-        if (enableVisibilityOutput != 0u)
+        if (enableVisibilityOutput != 0u && resetVisibilityOutput != 0u)
         {
             visibleCount[0] = 0;
 
@@ -264,7 +265,7 @@ void Initialize(uint idx)
         }
     }
 
-    if (enableVisibilityOutput != 0u && idx < maxEntityID)
+    if (enableVisibilityOutput != 0u && resetVisibilityOutput != 0u && idx < maxEntityID)
     {
         visibilityMask[idx] = 0;
     }
@@ -352,7 +353,6 @@ void main(uint3 tid : SV_DispatchThreadID)
         uint old;
         InterlockedCompareExchange(visibilityMask[visibleSparse], 0, 1, old);
 
-        InterlockedMax(dispatchArgs[1].groupCountY, (localVisibleIdx + 32u) / 32u);
         InterlockedMax(dispatchArgs[1].groupCountZ, (group.lodNumVertices[lod] + 31u) / 32u);
 
         if (old == 0u)
@@ -361,6 +361,7 @@ void main(uint3 tid : SV_DispatchThreadID)
             InterlockedAdd(visibleCount[0], 1, visibleSlot);
 
             visibleSparseIndices[visibleSlot] = visibleSparse;
+            InterlockedMax(dispatchArgs[1].groupCountY, (visibleSlot + 32u) / 32u);
 
             if ((visibleSlot & 31u) == 0u)
             {

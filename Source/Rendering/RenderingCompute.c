@@ -4,8 +4,9 @@ void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet
                                  RenderSetBuffers* buffers,
                                  FrustumPlanes frustumPlanes,
                                  mat4x4 viewProj,
-                                 bool enableHiZ,
+                                  bool enableHiZ,
                                   bool enableVisibilityOutput,
+                                  bool resetVisibilityOutput,
                                   bool enableLOD,
                                   u32 forcedLOD)
 {
@@ -27,7 +28,8 @@ void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet
         u32 enableLODSelection;
         u32 forcedLOD;
         f32 lodDistanceModifier;
-        f32 lodPadding[2];
+        u32 resetVisibilityOutput;
+        f32 padding;
     } params;
 
     WindowState* winstate = &g_WindowState;
@@ -40,6 +42,7 @@ void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet
     params.numPrimitiveGroups = renderSet->numGroups;
     params.mode = 0;
     params.enableVisibilityOutput = enableVisibilityOutput ? 1u : 0u;
+    params.resetVisibilityOutput = resetVisibilityOutput ? 1u : 0u;
     params.viewProjection = viewProj;
     params.hiZSize[0] = hiZWidth;
     params.hiZSize[1] = hiZHeight;
@@ -51,7 +54,7 @@ void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet
     params.enableLODSelection = enableLOD ? 1u : 0u;
     params.forcedLOD = forcedLOD;
     params.lodDistanceModifier = Maxf32(g_RenderSettings.lodDistanceModifier, 0.001f);
-    params.lodPadding[0] = params.lodPadding[1] = 0.0f;
+    params.padding = 0.0f;
 
     SDL_GPUBuffer* ro_buffers[3] = {
         buffers->entity,
@@ -474,7 +477,7 @@ void DispatchAnimationCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet)
     SDL_BindGPUComputePipeline(pass, g_AnimComputePipeline);
     SDL_BindGPUComputeStorageBuffers(pass, 0, ro_buffers, SDL_arraysize(ro_buffers));
     SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
-    SDL_DispatchGPUCompute(pass, (renderSet->numEntities + 31u) / 32u, 1, 1);
+    SDL_DispatchGPUComputeIndirect(pass, g_RenderState.skinnedBuffers.dispatchArgs, 0);
 
     SDL_EndGPUComputePass(pass);
 }
@@ -523,19 +526,20 @@ void DispatchAnimateVerticesCompute(SDL_GPUCommandBuffer* cmd, RenderSet* render
         { g_RenderState.skinnedAnimatedVertices }
     };
 
-    SDL_GPUBuffer* ro_buffers[6] = {
+    SDL_GPUBuffer* ro_buffers[7] = {
         g_RenderState.boneBuffer,
         g_RenderState.skinnedBuffers.entity,
         g_RenderState.skinnedBuffers.primitiveGroup,
-        g_RenderState.skinnedBuffers.drawSparseIndices,
+        g_RenderState.skinnedBuffers.visibleSparseIndices,
         g_RenderState.skinnedVertexBuffer,
-        g_RenderState.skinnedBuffers.drawArgs
+        g_RenderState.skinnedBuffers.drawArgs,
+        g_RenderState.skinnedBuffers.sparseToDense
     };
 
     SDL_GPUComputePass* pass = SDL_BeginGPUComputePass(cmd, NULL, 0, rw_bindings, SDL_arraysize(rw_bindings));
     SDL_BindGPUComputePipeline(pass, g_AnimVerticesPipeline);
     SDL_BindGPUComputeStorageBuffers(pass, 0, ro_buffers, SDL_arraysize(ro_buffers));
     SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
-    SDL_DispatchGPUCompute(pass, params.numPrimitiveGroups, (maxGroupEntities + 31u) / 32u, (maxLODVertices + 31u) / 32u);
+    SDL_DispatchGPUComputeIndirect(pass, g_RenderState.skinnedBuffers.dispatchArgs, sizeof(u32) * 3);
     SDL_EndGPUComputePass(pass);
 }
