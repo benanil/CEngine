@@ -142,6 +142,87 @@ void DispatchHiZBuildCompute(SDL_GPUCommandBuffer* cmd)
     }
 }
 
+void DispatchCullLightsCompute(SDL_GPUCommandBuffer* cmd, FrustumPlanes frustumPlanes, mat4x4 viewProj, bool enableFrustum, bool enableHiZ, u32 width, u32 height)
+{
+    WindowState* winstate = &g_WindowState;
+    if (!g_RenderState.lightBuffer || !g_RenderState.lightDrawInfoBuffer || !g_RenderState.lightDrawArgsBuffer ||
+        !g_RenderState.lineBuffer || !g_RenderState.lineDrawArgsBuffer)
+    {
+        AX_WARN("Light culling buffers are not ready");
+        return;
+    }
+    CHECK_CREATE(g_CullLightsComputePipeline, "Cull Lights Compute Pipeline");
+
+    struct {
+        FrustumPlanes planes;
+        u32 numLights;
+        u32 mode;
+        u32 outputSize[2];
+        mat4x4 viewProjection;
+        u32 hiZSize[2];
+        u32 hiZMipCount;
+        u32 enableHiZ;
+        f32 hiZDepthBias;
+        f32 cameraPosition[3];
+        u32 enableFrustum;
+        mat4x4 invViewProjection;
+        u32 showLightRects;
+        f32 cameraRight[3];
+        u32 padding0;
+        f32 cameraUp[3];
+        u32 padding1;
+    } params = {0};
+
+    MemCopy(&params.planes, frustumPlanes.planes, sizeof(FrustumPlanes));
+    params.numLights = g_RenderState.numLights;
+    params.outputSize[0] = width;
+    params.outputSize[1] = height;
+    params.viewProjection = viewProj;
+    params.hiZSize[0] = winstate->hiz_width;
+    params.hiZSize[1] = winstate->hiz_height;
+    params.hiZMipCount = winstate->hiz_mip_count;
+    params.enableHiZ = (enableHiZ && winstate->tex_hiz) ? 1u : 0u;
+    params.hiZDepthBias = 0.02f;
+    params.cameraPosition[0] = g_Camera.position.x;
+    params.cameraPosition[1] = g_Camera.position.y;
+    params.cameraPosition[2] = g_Camera.position.z;
+    params.enableFrustum = enableFrustum ? 1u : 0u;
+    params.invViewProjection = M44Inverse(viewProj);
+    params.showLightRects = g_RenderSettings.showLightRects ? 1u : 0u;
+    params.cameraRight[0] = g_Camera.Right.x;
+    params.cameraRight[1] = g_Camera.Right.y;
+    params.cameraRight[2] = g_Camera.Right.z;
+    params.cameraUp[0] = g_Camera.Up.x;
+    params.cameraUp[1] = g_Camera.Up.y;
+    params.cameraUp[2] = g_Camera.Up.z;
+
+    SDL_GPUBuffer* ro_buffers[1] = { g_RenderState.lightBuffer };
+    SDL_GPUStorageBufferReadWriteBinding rw_bindings[4] = {
+        { g_RenderState.lightDrawInfoBuffer },
+        { g_RenderState.lightDrawArgsBuffer },
+        { g_RenderState.lineBuffer },
+        { g_RenderState.lineDrawArgsBuffer }
+    };
+
+    SDL_GPUComputePass* pass = SDL_BeginGPUComputePass(cmd, NULL, 0, rw_bindings, SDL_arraysize(rw_bindings));
+    SDL_BindGPUComputePipeline(pass, g_CullLightsComputePipeline);
+    SDL_BindGPUComputeStorageBuffers(pass, 0, ro_buffers, SDL_arraysize(ro_buffers));
+    if (winstate->tex_hiz)
+        SDL_BindGPUComputeStorageTextures(pass, 0, &winstate->tex_hiz, 1);
+
+    params.mode = 0u;
+    SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
+    SDL_DispatchGPUCompute(pass, 1, 1, 1);
+
+    if (g_RenderState.numLights > 0u)
+    {
+        params.mode = 1u;
+        SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
+        SDL_DispatchGPUCompute(pass, (g_RenderState.numLights + 63u) / 64u, 1, 1);
+    }
+    SDL_EndGPUComputePass(pass);
+}
+
 void DispatchHBAOCompute(SDL_GPUCommandBuffer* cmd, bool enabled, u32 width, u32 height)
 {
     WindowState* winstate = &g_WindowState;

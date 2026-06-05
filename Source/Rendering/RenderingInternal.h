@@ -50,6 +50,7 @@ extern RenderSet      surfaceSet;
 extern SDL_GPUComputePipeline* g_AnimComputePipeline;
 extern SDL_GPUComputePipeline* g_AnimVerticesPipeline;
 extern SDL_GPUComputePipeline* g_CullDrawArgsComputePipeline;
+extern SDL_GPUComputePipeline* g_CullLightsComputePipeline;
 extern SDL_GPUComputePipeline* g_TonemapComputePipeline;
 extern SDL_GPUComputePipeline* g_HiZBuildComputePipeline;
 extern SDL_GPUComputePipeline* g_HiZDownscaleComputePipeline;
@@ -86,6 +87,7 @@ void DispatchSDSMSetupShadowsCompute(SDL_GPUCommandBuffer* cmd, mat4x4 viewProj)
 void DispatchSDSMDepthBoundsCompute(SDL_GPUCommandBuffer* cmd);
 void DispatchHBAOCompute(SDL_GPUCommandBuffer* cmd, bool enabled, u32 width, u32 height);
 void DispatchDeferredLightingCompute(SDL_GPUCommandBuffer* cmd, u32 width, u32 height, mat4x4 viewProj);
+void DispatchCullLightsCompute(SDL_GPUCommandBuffer* cmd, FrustumPlanes frustumPlanes, mat4x4 viewProj, bool enableFrustum, bool enableHiZ, u32 width, u32 height);
 void DispatchTonemapCompute(SDL_GPUCommandBuffer* cmd, SDL_GPUTexture* source, SDL_GPUTexture* depth, SDL_GPUTexture* destination, u32 width, u32 height, mat4x4 viewProj);
 void DispatchMLAACompute(SDL_GPUCommandBuffer* cmd, SDL_GPUTexture* source, SDL_GPUTexture* destination, u32 width, u32 height, f32 threshold, bool showEdges);
 void DispatchAnimationCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet);
@@ -94,6 +96,7 @@ void DispatchAnimateVerticesCompute(SDL_GPUCommandBuffer* cmd, RenderSet* render
 void RenderDepth(SDL_GPUCommandBuffer* cmd, const DepthPassContext* ctx);
 
 void RenderScene(SDL_GPUCommandBuffer* cmd, const ScenePassContext* ctx);
+void RenderDeferredLights(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget, mat4x4 viewProj, u32 width, u32 height);
 void RenderLines(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget, SDL_GPUDepthStencilTargetInfo* depthTarget, mat4x4 viewProj);
 
 #endif

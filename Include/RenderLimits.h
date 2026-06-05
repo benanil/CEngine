@@ -36,6 +36,7 @@
 
 
 #define MAX_LINE_COUNT (MAX_ENTITY * 100)
+#define MAX_LIGHT_COUNT 1024u
 
 // max animation bounds is 4095 * 0.002 = 8.19mt cube
 // because we are using 0.002 bit precision

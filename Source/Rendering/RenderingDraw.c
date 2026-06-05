@@ -165,6 +165,59 @@ void RenderScene(SDL_GPUCommandBuffer* cmd, const ScenePassContext* ctx)
     SDL_EndGPURenderPass(pass);
 }
 
+void RenderDeferredLights(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget, mat4x4 viewProj, u32 width, u32 height)
+{
+    WindowState* winstate = &g_WindowState;
+    if (g_RenderState.numLights == 0u)
+        return;
+    if (!g_RenderState.deferredLightPipeline || !g_RenderState.lightBuffer || !g_RenderState.lightDrawInfoBuffer ||
+        !g_RenderState.lightDrawArgsBuffer || !winstate->tex_gbuffer_tangent || !winstate->tex_gbuffer_albedo_metallic ||
+        !winstate->tex_gbuffer_shadow_roughness || !winstate->tex_hiz_depth || !winstate->tex_hbao_blur)
+    {
+        AX_WARN("Deferred light rendering is not ready");
+        return;
+    }
+
+    SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmd, colorTarget, 1, NULL);
+    SDL_BindGPUGraphicsPipeline(pass, g_RenderState.deferredLightPipeline);
+
+    SDL_GPUBuffer* vertexBuffers[1] = {
+        g_RenderState.lightDrawInfoBuffer
+    };
+    SDL_GPUBuffer* fragmentBuffers[2] = {
+        g_RenderState.lightBuffer,
+        g_RenderState.lightDrawInfoBuffer
+    };
+    SDL_BindGPUVertexStorageBuffers(pass, 0, vertexBuffers, SDL_arraysize(vertexBuffers));
+    SDL_BindGPUFragmentStorageBuffers(pass, 0, fragmentBuffers, SDL_arraysize(fragmentBuffers));
+
+    SDL_GPUTextureSamplerBinding inputs[5] = {
+        { .texture = winstate->tex_gbuffer_tangent, .sampler = g_RenderState.hiZSampler },
+        { .texture = winstate->tex_gbuffer_albedo_metallic, .sampler = g_RenderState.hiZSampler },
+        { .texture = winstate->tex_gbuffer_shadow_roughness, .sampler = g_RenderState.hiZSampler },
+        { .texture = winstate->tex_hiz_depth, .sampler = g_RenderState.hiZSampler },
+        { .texture = winstate->tex_hbao_blur, .sampler = g_RenderState.sampler }
+    };
+    SDL_BindGPUFragmentSamplers(pass, 0, inputs, SDL_arraysize(inputs));
+
+    struct {
+        u32 outputSize[2];
+        f32 padding0[2];
+        mat4x4 invViewProj;
+        f32 cameraPosition[4];
+    } params = {0};
+    params.outputSize[0] = width;
+    params.outputSize[1] = height;
+    params.invViewProj = M44Inverse(viewProj);
+    params.cameraPosition[0] = g_Camera.position.x;
+    params.cameraPosition[1] = g_Camera.position.y;
+    params.cameraPosition[2] = g_Camera.position.z;
+    SDL_PushGPUFragmentUniformData(cmd, 0, &params, sizeof(params));
+
+    SDL_DrawGPUPrimitivesIndirect(pass, g_RenderState.lightDrawArgsBuffer, 0, 1);
+    SDL_EndGPURenderPass(pass);
+}
+
 void RenderLines(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget, SDL_GPUDepthStencilTargetInfo* depthTarget, mat4x4 viewProj)
 {
     SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmd, colorTarget, 1, depthTarget);

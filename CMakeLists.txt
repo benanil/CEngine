@@ -158,6 +158,14 @@ target_include_directories(${EXECUTABLE_NAME} PRIVATE
 target_compile_definitions(${EXECUTABLE_NAME} PRIVATE
     BASISU_NO_ITERATOR_DEBUG_LEVEL
 )
+
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -nostdlib")
+list(REMOVE_ITEM CMAKE_CXX_IMPLICIT_LINK_LIBRARIES stdc++)
+# Prevent CMake from implicitly adding standard library link arguments
+set_target_properties(CPlayground PROPERTIES 
+    LINK_DEPENDS_NO_SHARED TRUE
+)
+
 # Link SDL to our executable. This also makes its include directory available to us. 
 target_link_libraries(${EXECUTABLE_NAME} PUBLIC SDL3::SDL3) # If using satelite libraries, SDL must be the last item in the list. 
 

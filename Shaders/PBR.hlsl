@@ -90,6 +90,8 @@ float3 DecodeNormalRG(float2 normalRG)
     return normalize(float3(xy, z));
 }
 
+float3 ApplyPBRLight(float3 albedo, float3 normal, float3 viewDir, float metallic, float perceptualRoughness, float3 radiance, float3 lightDir);
+
 float3 ApplyPBR(float3 albedo, float3 normal, float3 viewDir, float metallic, float perceptualRoughness, float shadow, float ao, float3 lightDir)
 {
     normal    = normalize(normal);
@@ -102,14 +104,24 @@ float3 ApplyPBR(float3 albedo, float3 normal, float3 viewDir, float metallic, fl
         return float3(metallic, perceptualRoughness, 0.0f);
     #endif
 
+    lightDir = normalize(lightDir);
+    float3 radiance = float3(3.0f, 2.9f, 2.7f) * 2.0f;
+
+    float3 direct = ApplyPBRLight(albedo, normal, viewDir, metallic, perceptualRoughness, radiance, lightDir) * shadow;
+    float3 ambient = albedo * 0.1f * saturate(ao);
+    return ambient + direct;
+}
+
+float3 ApplyPBRLight(float3 albedo, float3 normal, float3 viewDir, float metallic, float perceptualRoughness, float3 radiance, float3 lightDir)
+{
+    normal    = normalize(normal);
     viewDir   = normalize(viewDir);
+    lightDir  = normalize(lightDir);
     perceptualRoughness = clamp(perceptualRoughness, 0.045f, 1.0f);
     float roughness = PerceptualRoughnessToRoughness(perceptualRoughness);
     metallic  = saturate(metallic);
 
-    lightDir = normalize(lightDir);
     float3 halfVec  = normalize(viewDir + lightDir);
-    float3 radiance = float3(3.0f, 2.9f, 2.7f) * 2.0f;
 
     float NdotL = saturate(dot(normal, lightDir));
     float NdotV = saturate(dot(normal, viewDir));
@@ -124,9 +136,7 @@ float3 ApplyPBR(float3 albedo, float3 normal, float3 viewDir, float metallic, fl
 
     float3 specular = D * V * F;
     float3 diffuseColor = (1.0f - F) * (1.0f - metallic) * albedo * diffuse;
-    float3 direct = (diffuseColor + specular) * radiance * NdotL * shadow;
-    float3 ambient = albedo * 0.1f * saturate(ao);
-    return ambient + direct;
+    return (diffuseColor + specular) * radiance * NdotL;
 }
 
 #endif

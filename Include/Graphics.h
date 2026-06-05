@@ -101,6 +101,34 @@ typedef struct ALineVertex_
     u32 color;
 } ALineVertex;
 
+enum LightType_
+{
+    LightType_Point = 0,
+    LightType_Spot  = 1,
+    LightType_Rect  = 2,
+};
+typedef u32 LightType;
+
+typedef struct LightGPU_
+{
+    f32 positionRadius[4];
+    f32 directionCone[4];
+    f32 colorIntensity[4];
+    f32 rightSize[4];
+    u32 type;
+    u32 flags;
+    u32 shadowIndex;
+    u32 padding;
+} LightGPU;
+
+typedef struct LightDrawInfo_
+{
+    f32 uvRect[4];
+    u32 lightIndex;
+    u32 flags;
+    u32 padding[2];
+} LightDrawInfo;
+
 typedef struct GPUMesh_
 {
     s32 numVertex, numIndex;
@@ -191,6 +219,7 @@ typedef struct RenderState
     SDL_GPUGraphicsPipeline* skinnedShadowPipeline;
     SDL_GPUGraphicsPipeline* surfaceShadowPipeline;
     SDL_GPUGraphicsPipeline* linePipeline;
+    SDL_GPUGraphicsPipeline* deferredLightPipeline;
     SDL_GPUGraphicsPipeline* slugPipeline;
     SDL_GPUGraphicsPipeline* slug2DPipeline;
     SDL_GPUGraphicsPipeline* slugDepthPipeline;
@@ -204,6 +233,9 @@ typedef struct RenderState
     SDL_GPUBuffer*           indexBuffer;
     SDL_GPUBuffer*           lineBuffer;
     SDL_GPUBuffer*           lineDrawArgsBuffer;
+    SDL_GPUBuffer*           lightBuffer;
+    SDL_GPUBuffer*           lightDrawInfoBuffer;
+    SDL_GPUBuffer*           lightDrawArgsBuffer;
     SDL_GPUBuffer*           uiShapeBuffer;
     SDL_GPUBuffer*           uiShapeDrawArgsBuffer;
     SDL_GPUBuffer*           skinnedAnimatedVertices;
@@ -227,6 +259,7 @@ typedef struct RenderState
     Texture                  normalPages;
     Texture                  metallicRoughnessPages;
     SDL_GPUTexture*          skyNoise3D;
+    u32                      numLights;
     Texture                  textures[MAX_SCENE_TEXTURES];
 } RenderState;
 

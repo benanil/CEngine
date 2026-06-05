@@ -23,6 +23,8 @@ static UIImageCommand       g_UIImageStorage[UI_MAX_IMAGES];
 static UIOrderedTextCommand g_UITextStorage[UI_MAX_TEXTS];
 static UIBatch              g_UIBatchStorage[UI_MAX_BATCHES];
 static u8                   g_UILayoutMemory[8u * 1024u * 1024u];
+static char                 g_UIFrameStringMemory[64u * 1024u];
+static Arena                g_UIFrameStringArena;
 
 void UIRecordTextBatches(u32 firstBatch, u32 batchCount)
 {
@@ -88,6 +90,9 @@ void UIInit(void)
     g_UIRenderer.images  = g_UIImageStorage;
     g_UIRenderer.texts   = g_UITextStorage;
     g_UIRenderer.batches = g_UIBatchStorage;
+    g_UIFrameStringArena.buf = g_UIFrameStringMemory;
+    g_UIFrameStringArena.buffLen = sizeof(g_UIFrameStringMemory);
+    g_UIFrameStringArena.currOffset = 0u;
     g_RenderState.uiShapeBuffer = CreateBuffer(NULL, (size_t)g_UIRenderer.capacity * sizeof(UIShape), BReadRasterBit, "UIShapeBuffer");
     g_RenderState.uiShapeDrawArgsBuffer = CreateBuffer(NULL, sizeof(SDL_GPUIndirectDrawCommand), BIndirectBit, "UIShapeDrawArgsBuffer");
 
@@ -385,12 +390,24 @@ void UIBeginFrame(void)
     UILayoutBeginFrame();
 }
 
+char* UIFrameStringAlloc(u32 size)
+{
+    if (size == 0u) return NULL;
+    if (ArenaRemaining(&g_UIFrameStringArena) < size)
+    {
+        AX_WARN("UI frame string arena full: requested=%u remaining=%llu", size, (u64)ArenaRemaining(&g_UIFrameStringArena));
+        return NULL;
+    }
+    return (char*)ArenaAllocAlign(&g_UIFrameStringArena, size, 1u);
+}
+
 void UIEndFrame(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget)
 {
     UIWindowEndFrame();
     UIRender(cmd, colorTarget);
     SlugRender2D(cmd, colorTarget, SlugGetDemoFont());
     g_UI.mouseOld = g_UI.mouse;
+    ArenaReset(&g_UIFrameStringArena);
 }
 
 static bool UIPushShape(float2 pos, float2 size, f32 radius, u32 color, UIShapeType shape)

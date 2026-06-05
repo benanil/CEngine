@@ -5,7 +5,7 @@
 #include "Shadow/Shadow.hlsl"
 
 #define CSM_DEBUG_CASCADES 0
-#define LOD_DEBUG_COLORS 1
+#define LOD_DEBUG_COLORS 0
 
 cbuffer vs_params : register(b0, space1)
 {

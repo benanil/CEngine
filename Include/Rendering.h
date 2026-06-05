@@ -10,6 +10,10 @@ typedef struct RenderSettings_
     bool enableMLAA;
     bool showMLAAEdges;
     bool enableSDSM;
+    bool enableLocalLights;
+    bool enableLightFrustumCulling;
+    bool enableLightOcclusionCulling;
+    bool showLightRects;
     f32 hbaoRadius;
     f32 hbaoBias;
     f32 hbaoIntensity;
@@ -29,6 +33,13 @@ typedef struct RenderSettings_
     f32 shadowPSSMLambda;
 } RenderSettings;
 
+typedef struct RenderLightDebugInfo_
+{
+    u32 totalLights;
+    u32 submittedLights;
+    u32 maxLights;
+} RenderLightDebugInfo;
+
 extern RenderSettings g_RenderSettings;
 
 void DestroyPipeline();
@@ -42,5 +53,9 @@ int InitScene();
 void InitBuffers();
 
 void RendererInit();
+
+void RendererSetLights(const LightGPU* lights, u32 count);
+u32 RendererGetLightCount(void);
+RenderLightDebugInfo RendererGetLightDebugInfo(void);
 
 #endif

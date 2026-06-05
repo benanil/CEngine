@@ -101,6 +101,24 @@ static void EditorSectionHeader(const char* title)
     }));
 }
 
+static void EditorTextU32(const char* label, u32 value)
+{
+    u32 len = (u32)StringLength(label);
+    char* text = UIFrameStringAlloc(len + 16u);
+    if (!text) return;
+    MemCopy(text, label, len);
+    text[len++] = ':';
+    text[len++] = ' ';
+    len += (u32)IntToString(text + len, (int64_t)value, 0);
+    text[len] = '\0';
+
+    Clay_String string = { .isStaticallyAllocated = false, .length = (s32)len, .chars = text };
+    CLAY_TEXT(string, CLAY_TEXT_CONFIG({
+        .fontSize = 14,
+        .textColor = UIGetClayColor(UIColor_Text)
+    }));
+}
+
 static void EditorDivider(Clay_ElementId id)
 {
     CLAY(id, {
@@ -241,6 +259,17 @@ static void GraphicsEditorUI(void)
                     UICheckbox(CLAY_ID("EditorShowMLAAEdges")  , CLAY_STRING("Show MLAA edge mask"), &settings->showMLAAEdges);
                     EditorSliderFloat(CLAY_ID("EditorLODDistanceModifier"), "LOD distance", &settings->lodDistanceModifier, 0.05f, 4.0f, 2);
                 }
+                CLAY(CLAY_ID("GraphicsEditorLightBox"), EditorPanelBoxDeclaration) {
+                    RenderLightDebugInfo lightInfo = RendererGetLightDebugInfo();
+                    EditorSectionHeader("Lights");
+                    UICheckbox(CLAY_ID("EditorEnableLocalLights"), CLAY_STRING("Local lights"), &settings->enableLocalLights);
+                    UICheckbox(CLAY_ID("EditorLightFrustumCull"), CLAY_STRING("Light frustum culling"), &settings->enableLightFrustumCulling);
+                    UICheckbox(CLAY_ID("EditorLightOcclusionCull"), CLAY_STRING("Light occlusion culling"), &settings->enableLightOcclusionCulling);
+                    UICheckbox(CLAY_ID("EditorShowLightRects"), CLAY_STRING("Show light rects"), &settings->showLightRects);
+                    EditorTextU32("Total lights", lightInfo.totalLights);
+                    EditorTextU32("Submitted lights", lightInfo.submittedLights);
+                    EditorTextU32("Max lights", lightInfo.maxLights);
+                }
                 CLAY(CLAY_ID("GraphicsEditorSunBox"), EditorPanelBoxDeclaration) {
                     EditorSectionHeader("Sun");
                     EditorSliderFloat(CLAY_ID("EditorSunYaw")  , "Yaw"  , &settings->sunYaw  , -180.0f, 180.0f, 1);
@@ -286,6 +315,10 @@ static void GraphicsEditorUI(void)
                         .enableMLAA = true,
                         .showMLAAEdges = false,
                         .enableSDSM = false,
+                        .enableLocalLights = true,
+                        .enableLightFrustumCulling = true,
+                        .enableLightOcclusionCulling = true,
+                        .showLightRects = false,
                         .hbaoRadius = 1.3f,
                         .hbaoBias = 0.5f,
                         .hbaoIntensity = 2.0f,

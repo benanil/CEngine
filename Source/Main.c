@@ -17,6 +17,7 @@
 
 static Uint32 frames = 0;
 static s32 done = 0;
+static LightGPU g_DemoLights[8];
 
 Camera       g_Camera;
 SDL_Window*  g_SDLWindow;
@@ -27,6 +28,59 @@ SceneBundle* gSponza;
 
 extern RenderSet    skinnedSet;
 extern RenderSet    surfaceSet;
+
+static void UpdateDemoLights(void)
+{
+    static const f32 colors[8][3] = {
+        { 1.00f, 0.35f, 0.20f },
+        { 0.25f, 0.55f, 1.00f },
+        { 0.35f, 1.00f, 0.45f },
+        { 1.00f, 0.85f, 0.25f },
+        { 0.95f, 0.25f, 1.00f },
+        { 0.25f, 1.00f, 0.95f },
+        { 1.00f, 0.55f, 0.25f },
+        { 0.55f, 0.35f, 1.00f }
+    };
+
+    f32 time = (f32)PlatformCtx.FrameCount * 0.016f;
+    for (u32 i = 0; i < SDL_arraysize(g_DemoLights); i++)
+    {
+        f32 fi = (f32)i;
+        f32 angle = time * (0.35f + fi * 0.045f) + fi * (MATH_TwoPI / 8.0f);
+        f32 orbit = 5.0f + (f32)(i % 4u) * 2.0f;
+        f32 x = Cos(angle) * orbit;
+        f32 y = 2.5f + Sin(angle * 1.7f + fi) * 1.25f;
+        f32 z = Sin(angle) * orbit;
+        f32 radius = 7.0f + (f32)(i % 3u) * 2.0f;
+
+        f32 dx = -x;
+        f32 dy = 1.0f - y;
+        f32 dz = -z;
+        f32 invLen = 1.0f / Maxf32(Sqrtf(dx * dx + dy * dy + dz * dz), 0.001f);
+
+        g_DemoLights[i].positionRadius[0] = x;
+        g_DemoLights[i].positionRadius[1] = y;
+        g_DemoLights[i].positionRadius[2] = z;
+        g_DemoLights[i].positionRadius[3] = radius;
+        g_DemoLights[i].directionCone[0] = dx * invLen;
+        g_DemoLights[i].directionCone[1] = dy * invLen;
+        g_DemoLights[i].directionCone[2] = dz * invLen;
+        g_DemoLights[i].directionCone[3] = 0.65f;
+        g_DemoLights[i].colorIntensity[0] = colors[i][0];
+        g_DemoLights[i].colorIntensity[1] = colors[i][1];
+        g_DemoLights[i].colorIntensity[2] = colors[i][2];
+        g_DemoLights[i].colorIntensity[3] = 16.0f + (f32)(i % 4u) * 5.0f;
+        g_DemoLights[i].rightSize[0] = 1.0f;
+        g_DemoLights[i].rightSize[1] = 0.0f;
+        g_DemoLights[i].rightSize[2] = 0.0f;
+        g_DemoLights[i].rightSize[3] = 0.0f;
+        g_DemoLights[i].type = (i % 3u == 1u) ? LightType_Spot : LightType_Point;
+        g_DemoLights[i].flags = 0u;
+        g_DemoLights[i].shadowIndex = 0u;
+        g_DemoLights[i].padding = 0u;
+    }
+    RendererSetLights(g_DemoLights, SDL_arraysize(g_DemoLights));
+}
 
 
 static void MainLoop(void)
@@ -41,6 +95,7 @@ static void MainLoop(void)
     SetPressedAndReleasedKeys();
     PlatformUpdate();
     CameraUpdate(&g_Camera, PlatformCtx.DeltaTime);
+    UpdateDemoLights();
 
     if (!done) Render();
     // else emscripten_cancel_main_loop();
@@ -61,7 +116,7 @@ s32 InitScene()
         return 0;
     }
     
-    s32 sponzaRes = LoadGLTFCached("Assets/Meshes/Sponza/scene.gltf", gSponza, g_RenderState.textures + gPaladin->numImages);
+    s32 sponzaRes = LoadGLTFCached("Assets/Meshes/Bistro/Bistro.glb", gSponza, g_RenderState.textures + gPaladin->numImages);
     if (!sponzaRes)
     {
         AX_ERROR("gltf Bistro/sponza load failed: %d ", sponzaRes);
@@ -90,12 +145,12 @@ s32 InitScene()
             break;
     }
 
-    const int numSurface = 1024;
+    const int numSurface = 4;
     const int surfaceGridStride = (int)Ceilf(Sqrtf((float)numSurface));
     for (s32 i = 0; i < numSurface; i++)
     {
         u64 hash = MurmurHash((u64)i + 456);
-        v128f pos = VecMulf(VecSetR(f32_(i % surfaceGridStride), -0.2f, f32_(i / surfaceGridStride), 0.0f), 25.5f);
+        v128f pos = VecMulf(VecSetR(f32_(i % surfaceGridStride), -0.0f, f32_(i / surfaceGridStride), 0.0f), 150.0f);
         v128f rot = QIdentity(); // QFromEuler(0.0f, (float)(NextDouble01(hash) * MATH_PI), 0.0f);
         v128f scale = VecSet1(0.1f);
         if (!RenderSet_AddScene(&surfaceSet, surfaceBundle, pos, rot, scale, false))
@@ -103,6 +158,7 @@ s32 InitScene()
     }
     
     InitBuffers();
+    UpdateDemoLights();
     return 1;
 }
 

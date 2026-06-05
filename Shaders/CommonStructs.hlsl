@@ -120,4 +120,30 @@ typedef struct LineVertex_
     uint color;
 } LineVertex;
 
+#define LIGHT_TYPE_POINT 0u
+#define LIGHT_TYPE_SPOT  1u
+#define LIGHT_TYPE_RECT  2u
+
+#define LIGHT_DRAW_FULLSCREEN 1u
+
+typedef struct LightGPU_
+{
+    float4 positionRadius;
+    float4 directionCone;
+    float4 colorIntensity;
+    float4 rightSize;
+    uint type;
+    uint flags;
+    uint shadowIndex;
+    uint padding;
+} LightGPU;
+
+typedef struct LightDrawInfo_
+{
+    float4 uvRect;
+    uint lightIndex;
+    uint flags;
+    uint2 padding;
+} LightDrawInfo;
+
 #endif

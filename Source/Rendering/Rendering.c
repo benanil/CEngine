@@ -13,6 +13,10 @@ RenderSettings g_RenderSettings = {
     .enableMLAA      = true,
     .showMLAAEdges   = false,
     .enableSDSM      = false,
+    .enableLocalLights = true,
+    .enableLightFrustumCulling = true,
+    .enableLightOcclusionCulling = true,
+    .showLightRects = false,
     .hbaoRadius      = 1.3f,
     .hbaoBias        = 0.5f,
     .hbaoIntensity   = 2.0f,
@@ -56,8 +60,38 @@ typedef struct FrameTextureSet_
 
 static FrameTextureSet g_ResizeReleaseQueue[RESIZE_RELEASE_DELAY];
 static u64 g_RenderFrameIndex;
+static LightGPU g_RenderLights[MAX_LIGHT_COUNT];
+static RenderLightDebugInfo g_LightDebugInfo;
 
 extern void UIRenderCallback(void); // Editor.c
+
+void RendererSetLights(const LightGPU* lights, u32 count)
+{
+    if (!lights && count > 0u)
+    {
+        AX_WARN("RendererSetLights called with null lights");
+        count = 0u;
+    }
+    count = Minu32(count, MAX_LIGHT_COUNT);
+    if (count > 0u) MemCopy(g_RenderLights, lights, sizeof(LightGPU) * count);
+    g_RenderState.numLights = count;
+    g_LightDebugInfo.totalLights = count;
+    g_LightDebugInfo.maxLights = MAX_LIGHT_COUNT;
+}
+
+u32 RendererGetLightCount(void)
+{
+    return g_RenderState.numLights;
+}
+
+RenderLightDebugInfo RendererGetLightDebugInfo(void)
+{
+    g_LightDebugInfo.totalLights = g_RenderState.numLights;
+    if (!g_RenderSettings.enableLocalLights || g_RenderState.numLights == 0u)
+        g_LightDebugInfo.submittedLights = 0u;
+    g_LightDebugInfo.maxLights = MAX_LIGHT_COUNT;
+    return g_LightDebugInfo;
+}
 
 static void InitRenderSetBuffers(RenderSetBuffers* buffers, RenderSet* set)
 {
@@ -95,7 +129,23 @@ void InitBuffers(void)
                                                       BReadRasterBit | BReadCompute | BWriteComputeBit, "CPShadowCascadeBuffer");
     g_RenderState.lineBuffer = CreateBuffer(NULL, sizeof(ALineVertex) * MAX_LINE_COUNT, BVertexBit | BWriteComputeBit, "CPLineVertexBuffer");
     g_RenderState.lineDrawArgsBuffer = CreateBuffer(NULL, sizeof(u32) * 8, BIndirectBit | BWriteComputeBit, "CPLinedrawArgsBuffer");
+    g_RenderState.lightBuffer = CreateBuffer(NULL, sizeof(LightGPU) * MAX_LIGHT_COUNT, BReadRasterBit | BReadCompute, "CPLightBuffer");
+    g_RenderState.lightDrawInfoBuffer = CreateBuffer(NULL, sizeof(LightDrawInfo) * MAX_LIGHT_COUNT, BReadRasterBit | BReadCompute | BWriteComputeBit, "CPLightDrawInfoBuffer");
+    g_RenderState.lightDrawArgsBuffer = CreateBuffer(NULL, sizeof(SDL_GPUIndirectDrawCommand), BIndirectBit | BWriteComputeBit, "CPLightDrawArgsBuffer");
+
+    g_LightDebugInfo.maxLights = MAX_LIGHT_COUNT;
     UIInit();
+}
+
+static void UploadLightBuffer(void)
+{
+    if (!g_RenderState.lightBuffer || g_RenderState.numLights == 0u)
+    {
+        g_LightDebugInfo.submittedLights = 0u;
+        return;
+    }
+    UpdateGPUBuffer(g_RenderState.lightBuffer, g_RenderLights, sizeof(LightGPU) * g_RenderState.numLights, 0);
+    g_LightDebugInfo.submittedLights = g_RenderState.numLights;
 }
 
 static void ReleaseFrameTextureSet(FrameTextureSet* set)
@@ -470,6 +520,7 @@ void Render(void)
     SDL_GPUColorTargetInfo        hiz_depth_target  = MakeHiZDepthTarget(winstate);
     UploadRenderSetEntities(&skinnedSet, &g_RenderState.skinnedBuffers);
     UploadRenderSetEntities(&surfaceSet, &g_RenderState.surfaceBuffers);
+    UploadLightBuffer();
 
     mat4x4 viewProj = M44Multiply(g_Camera.view, g_Camera.projection);
     bool enableHiZ  = g_RenderSettings.enableOcclusion && winstate->hiz_valid;
@@ -504,8 +555,16 @@ void Render(void)
     });
     DispatchHBAOCompute(cmd, g_RenderSettings.enableHBAO, screenW, screenH);
     DispatchDeferredLightingCompute(cmd, screenW, screenH, viewProj);
-    RenderLines(cmd, &color_load_target, &main_depth_target, viewProj);
     DispatchHiZBuildCompute(cmd);
+    if (g_RenderSettings.enableLocalLights)
+    {
+        DispatchCullLightsCompute(cmd, cameraFrustum, viewProj,
+                                  g_RenderSettings.enableLightFrustumCulling,
+                                  g_RenderSettings.enableOcclusion && g_RenderSettings.enableLightOcclusionCulling,
+                                  screenW, screenH);
+        RenderDeferredLights(cmd, &color_load_target, viewProj, screenW, screenH);
+    }
+    RenderLines(cmd, &color_load_target, &main_depth_target, viewProj);
     if (g_RenderSettings.enableSDSM) DispatchSDSMDepthBoundsCompute(cmd);
 
     winstate->hiz_view_proj = viewProj;
@@ -571,6 +630,9 @@ void DestroyPipeline(void)
     if (g_RenderState.indexBuffer)             SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.indexBuffer);
     if (g_RenderState.lineBuffer)              SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lineBuffer);
     if (g_RenderState.lineDrawArgsBuffer)      SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lineDrawArgsBuffer);
+    if (g_RenderState.lightBuffer)             SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lightBuffer);
+    if (g_RenderState.lightDrawInfoBuffer)     SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lightDrawInfoBuffer);
+    if (g_RenderState.lightDrawArgsBuffer)     SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lightDrawArgsBuffer);
     if (g_RenderState.uiShapeBuffer)           SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.uiShapeBuffer);
     if (g_RenderState.uiShapeDrawArgsBuffer)   SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.uiShapeDrawArgsBuffer);
     UIDestroy();

@@ -10,6 +10,7 @@ SPV_DIR    = SHADER_DIR / "spv"
 
 GRAPHICS_SHADERS = [
     ("Surface"                , "vert", "frag"),
+    ("DeferredLightVolume"    , "vert", "frag"),
     ("SurfaceDepthOnly"       , "vert", "frag"),
     ("Skinned"                , "vert", "frag"),
     ("SkinnedDepthOnly"       , "vert", "frag"),
@@ -36,6 +37,7 @@ COMPUTE_SHADERS = [
     ("Animation/AnimationCompute"          , "main"),
     ("Animation/AnimateVertices"           , "main"),
     ("PreProcessing/CullDrawArgsCompute"   , "main"),
+    ("PreProcessing/CullLightsCompute"      , "main"),
     ("PreProcessing/HiZBuildCompute"       , "main"),
     ("PreProcessing/HiZDownscaleCompute"   , "main"),
     ("PostProcessing/TonemapCompute"       , "main"),

@@ -89,6 +89,7 @@ void UIDestroy(void);
 void UIBeginFrame(void);
 void UIEndFrame(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget);
 void UIClear(void);
+char* UIFrameStringAlloc(u32 size);
 void UIBeginBatch(void);
 void UIEndBatch(void);
 
