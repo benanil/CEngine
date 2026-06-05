@@ -23,7 +23,7 @@
 #define MAX_BONES               96
 #define MaxBoneDepth            32
 // 1024 animation is 512mb memory on gpu
-#define MAX_ANIM_INSTANCES      1024
+#define MAX_ANIM_INSTANCES      1024ull
 #define ANIM_NUM_FRAMES         24
 #define MAX_ANIM_DURATION       8
 #define MAX_ANIM_COUNT          128

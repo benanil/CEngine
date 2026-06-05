@@ -29,11 +29,13 @@ float4 vert(VSInput input,
             [[vk::builtin("DrawIndex")]] uint drawID : DRAWINDEX,
             uint vertexId : SV_VertexID) : SV_Position
 {
-    PrimitiveGroup group = sPrimitiveGroups[drawID];
-    uint denseIdx  = sDrawSparseIndices[group.entityOffset + instanceID];
-    uint localVertex = vertexId - group.vertexOffset;
+    uint primitiveIdx = drawID / MESH_LOD_COUNT;
+    uint lod = drawID - primitiveIdx * MESH_LOD_COUNT;
+    PrimitiveGroup group = sPrimitiveGroups[primitiveIdx];
+    uint denseIdx  = sDrawSparseIndices[lod * uint(MAX_ANIM_INSTANCES) + group.entityOffset + instanceID];
+    uint localVertex = vertexId - group.lodVertexOffset[lod];
     uint sparse = sEntities[denseIdx].sparse;
-    uint animatedVertex = sparse * uint(MAX_SKINNED_VERTEX_PER_ANIM_INSTANCE) + group.animatedVertexOffset + localVertex;
+    uint animatedVertex = sparse * uint(MAX_SKINNED_VERTEX_PER_ANIM_INSTANCE) + group.lodAnimatedVertexOffset[lod] + localVertex;
     AnimatedVert animated = sAnimatedVert[animatedVertex];
     Entity entity = sEntities[denseIdx];
     f16_3 localPos = UnpackAnimatedPosition(uint2(animated.packed0, animated.packed1));

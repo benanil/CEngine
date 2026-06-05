@@ -16,8 +16,6 @@ struct SkinnedVertex
 cbuffer params : register(b0, space2)
 {
     uint numPrimitiveGroups;
-    uint maxAnimatedVertices;
-    uint2 padding;
 }
 
 StructuredBuffer<uint>           sBoneMtx           : register(t0);
@@ -25,28 +23,31 @@ StructuredBuffer<Entity>         sEntities          : register(t1);
 StructuredBuffer<PrimitiveGroup> sPrimitiveGroups   : register(t2);
 StructuredBuffer<uint>           sDrawSparseIndices : register(t3);
 StructuredBuffer<SkinnedVertex>  sVertexBuffer      : register(t4);
-StructuredBuffer<IndexedDrawCommand> sDrawArgs      : register(t5);
+StructuredBuffer<IndexedDrawCommand> sDrawArgs      : register(t5); // unused; kept for binding layout
 
 RWStructuredBuffer<AnimatedVert> sAnimatedVert      : register(u0, space1);
 
 [numthreads(1, 32, 1)]
 void main(uint3 globalID : SV_DispatchThreadID, uint3 groupID : SV_GroupID, uint3 groupThreadID : SV_GroupThreadID)
 {
-    uint primitiveIdx = globalID.x;
-    if (primitiveIdx >= numPrimitiveGroups)
+    uint drawIdx = globalID.x;
+    if (drawIdx >= numPrimitiveGroups)
         return;
 
+    uint primitiveIdx = drawIdx / MESH_LOD_COUNT;
+    uint lod = drawIdx - primitiveIdx * MESH_LOD_COUNT;
     PrimitiveGroup group = sPrimitiveGroups[primitiveIdx];
-    IndexedDrawCommand drawArg = sDrawArgs[primitiveIdx];
 
     uint instanceSlot = groupID.y * 32u + groupThreadID.y;
-    if (instanceSlot >= drawArg.numInstances)
+    if (instanceSlot >= group.numEntities)
         return;
 
     uint vertexBase = groupID.z * 32u;
-    uint animatedBase = group.animatedVertexOffset;
+    uint animatedBase = group.lodAnimatedVertexOffset[lod];
+    uint numVertices = group.lodNumVertices[lod];
+    uint sourceVertexBase = group.lodVertexOffset[lod];
 
-    uint denseIdx = sDrawSparseIndices[group.entityOffset + instanceSlot];
+    uint denseIdx = group.entityOffset + instanceSlot;
     Entity entity = sEntities[denseIdx];
     uint sparse = entity.sparse;
 
@@ -58,15 +59,15 @@ void main(uint3 globalID : SV_DispatchThreadID, uint3 groupID : SV_GroupID, uint
     for (uint vertexOffset = 0; vertexOffset < 32u; vertexOffset++)
     {
         uint localVertex = vertexBase + vertexOffset;
-        if (localVertex >= group.numVertices)
+        if (localVertex >= numVertices)
             break; 
 
         uint animatedLocalVertex = animatedBase + localVertex;
         uint outVertex = sparse * uint(MAX_SKINNED_VERTEX_PER_ANIM_INSTANCE) + animatedLocalVertex;
-        if (animatedLocalVertex >= uint(MAX_SKINNED_VERTEX_PER_ANIM_INSTANCE) || outVertex >= maxAnimatedVertices)
+        if (animatedLocalVertex >= uint(MAX_SKINNED_VERTEX_PER_ANIM_INSTANCE) || outVertex >= uint(MAX_ANIMATED_VERTEX))
             break;
 
-        uint sourceVertex = group.vertexOffset + localVertex;
+        uint sourceVertex = sourceVertexBase + localVertex;
 
         SkinnedVertex input = sVertexBuffer[sourceVertex];
         f16_4 packedPos = f16_4(UnpackHalf2(input.positionXY), UnpackHalf2(input.positionZW));

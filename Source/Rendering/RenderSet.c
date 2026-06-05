@@ -2,6 +2,7 @@
 #include "Include/RenderSet.h"
 #include "Include/Graphics.h"
 #include "Include/Memory.h"
+#include "Include/Algorithm.h"
 #include "Include/Random.h"
 #include "Include/Platform.h"
 #include "Math/Half.h"
@@ -74,10 +75,10 @@ u32 RenderSet_AddSceneBundle(RenderSet* set, const SceneBundle* sceneBundle)
             group->valid          = 1;
             group->numEntities    = 0;
             group->capacity       = 0;
-            group->animatedVertexOffset = localVertexOffset;
+            group->animatedVertexOffset = (set == &skinnedSet) ? (u32)primitive->lodAnimatedVertexOffset[0] : localVertexOffset;
             group->numIndices     = (u32)primitive->numIndices;
             group->indexOffset    = (u32)primitive->indexOffset;
-            group->vertexOffset   = vertexBase + localVertexOffset;
+            group->vertexOffset   = (set == &skinnedSet) ? (u32)primitive->lodVertexOffset[0] : vertexBase + localVertexOffset;
             group->meshIndex      = m;
             group->primitiveIndex = p;
             group->materialIndex  = (u32)(sceneBundle->materialOffset + primitive->material);

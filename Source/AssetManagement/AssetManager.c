@@ -716,7 +716,7 @@ s32 LoadGLTFCached(const char* path, SceneBundle* scene, Texture* textures)
 /*//////////////////////////////////////////////////////////////////////////*/
 
 // ZSTD_CCtx* zstdCompressorCTX = NULL;
-const s32 ABMMeshVersion = 77;
+const s32 ABMMeshVersion = 78;
 
 u8 IsABMLastVersion(const u8* path)
 {

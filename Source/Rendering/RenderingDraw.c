@@ -46,7 +46,7 @@ void RenderDepth(SDL_GPUCommandBuffer* cmd, const DepthPassContext* ctx)
         }
         if (ctx->useShadowCascades) SDL_PushGPUVertexUniformData(cmd, 0, &ctx->cascadeIndex, sizeof(u32));
         else SDL_PushGPUVertexUniformData(cmd, 0, &ctx->viewProj, sizeof(mat4x4));
-        SDL_DrawGPUIndexedPrimitivesIndirect(pass, g_RenderState.skinnedBuffers.drawArgs, 0, skinnedSet.numGroups);
+        SDL_DrawGPUIndexedPrimitivesIndirect(pass, g_RenderState.skinnedBuffers.drawArgs, 0, skinnedSet.numGroups * MESH_LOD_COUNT);
     }
 
     if (surfaceSet.numGroups > 0)
@@ -137,7 +137,7 @@ void RenderScene(SDL_GPUCommandBuffer* cmd, const ScenePassContext* ctx)
 
         SDL_PushGPUVertexUniformData(cmd, 0, &vertexParams, sizeof(vertexParams));
         SDL_PushGPUFragmentUniformData(cmd, 0, &fragmentParams, sizeof(fragmentParams));
-        SDL_DrawGPUIndexedPrimitivesIndirect(pass, g_RenderState.skinnedBuffers.drawArgs, 0, skinnedSet.numGroups);
+        SDL_DrawGPUIndexedPrimitivesIndirect(pass, g_RenderState.skinnedBuffers.drawArgs, 0, skinnedSet.numGroups * MESH_LOD_COUNT);
     }
 
     if (surfaceSet.numGroups > 0)

@@ -77,7 +77,8 @@ void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd,
                                   mat4x4 viewProj,
                                   bool enableHiZ,
                                   bool enableVisibilityOutput,
-                                  bool enableLOD);
+                                  bool enableLOD,
+                                  u32 forcedLOD);
 
 void DispatchHiZBuildCompute(SDL_GPUCommandBuffer* cmd);
 void DispatchSDSMSetupShadowsCompute(SDL_GPUCommandBuffer* cmd, mat4x4 viewProj);

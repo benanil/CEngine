@@ -7,6 +7,7 @@
 #include "Shadow/ShadowCascade.hlsl"
 
 #define CSM_DEBUG_CASCADES 0
+#define SKINNED_LOD_DEBUG_COLORS 0
 
 cbuffer vs_params : register(b0, space1)
 {
@@ -61,6 +62,7 @@ struct VSOutput
     nointerpolation float3 cascadeSplits : TEXCOORD7;
     nointerpolation uint   materialIndex : TEXCOORD8;
     nointerpolation float  handedness : TEXCOORD9;
+    nointerpolation uint   lodIndex : TEXCOORD10;
 };
 
 struct GBufferOutput
@@ -72,11 +74,13 @@ struct GBufferOutput
 
 VSOutput vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("DrawIndex")]] uint drawID : DRAWINDEX, uint vertexID : SV_VertexID)
 {
-    PrimitiveGroup group = sPrimitiveGroups[drawID];
-    uint denseIdx  = sDrawSparseIndices[group.entityOffset + instanceID];
-    uint localVertex = vertexID - group.vertexOffset;
+    uint primitiveIdx = drawID / MESH_LOD_COUNT;
+    uint lod = drawID - primitiveIdx * MESH_LOD_COUNT;
+    PrimitiveGroup group = sPrimitiveGroups[primitiveIdx];
+    uint denseIdx  = sDrawSparseIndices[lod * uint(MAX_ANIM_INSTANCES) + group.entityOffset + instanceID];
+    uint localVertex = vertexID - group.lodVertexOffset[lod];
     uint sparse = sEntities[denseIdx].sparse;
-    uint animatedVertex = sparse * uint(MAX_SKINNED_VERTEX_PER_ANIM_INSTANCE) + group.animatedVertexOffset + localVertex;
+    uint animatedVertex = sparse * uint(MAX_SKINNED_VERTEX_PER_ANIM_INSTANCE) + group.lodAnimatedVertexOffset[lod] + localVertex;
     AnimatedVert animated = sAnimatedVert[animatedVertex];
     Entity entity = sEntities[denseIdx];
     uint2 packedAnimated = uint2(animated.packed0, animated.packed1);
@@ -102,6 +106,7 @@ VSOutput vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("Dra
     o.cascadeSplits = cascades.splitDistances.xyz;
     o.materialIndex = group.materialIndex;
     o.handedness = float(tangentHandedness);
+    o.lodIndex = lod;
     return o;
 }
 
@@ -116,6 +121,11 @@ GBufferOutput frag(VSOutput input)
     float4 baseFactor = UnpackColor4Uint(material.baseColorFactor);
     AlphaClipMaterial(material, float(albedoSample.a));
     f16_3 baseColor = SRGBToLinear(albedoSample.rgb) * f16_3(baseFactor.rgb);
+    // 
+#if SKINNED_LOD_DEBUG_COLORS
+    f16_3 lodColor = input.lodIndex == 0u ? f16_3(1.0h, 1.0h, 1.0h) : (input.lodIndex == 1u ? f16_3(0.25h, 1.0h, 0.25h) : f16_3(1.0h, 0.25h, 0.25h));
+    baseColor = lodColor;
+#endif
     float3 tangentNormal = DecodeNormalRG(float2(SampleTexturePageRG(NormalPages, Sampler, normalDesc, float2(input.texCoords))));
     f16_2 mr = SampleTexturePageRG(MetallicRoughnessPages, Sampler, mrDesc, float2(input.texCoords));
 

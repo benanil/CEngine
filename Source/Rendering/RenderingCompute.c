@@ -5,8 +5,9 @@ void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet
                                  FrustumPlanes frustumPlanes,
                                  mat4x4 viewProj,
                                  bool enableHiZ,
-                                 bool enableVisibilityOutput,
-                                 bool enableLOD)
+                                  bool enableVisibilityOutput,
+                                  bool enableLOD,
+                                  u32 forcedLOD)
 {
     if (renderSet->numGroups == 0) return;
     CHECK_CREATE(g_CullDrawArgsComputePipeline, "Cull Draw Args Compute Pipeline");
@@ -24,8 +25,9 @@ void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet
         u32 lodCount;
         u32 sparseIndexLODStride;
         u32 enableLODSelection;
+        u32 forcedLOD;
         f32 lodDistanceModifier;
-        f32 lodPadding[3];
+        f32 lodPadding[2];
     } params;
 
     WindowState* winstate = &g_WindowState;
@@ -44,10 +46,12 @@ void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet
     params.hiZMipCount = hiZMipCount;
     params.enableHiZ = enableHiZ ? 1u : 0u;
     params.hiZDepthBias = 0.02f;
-    params.lodCount = enableLOD ? MESH_LOD_COUNT : 1u;
+    params.lodCount = (enableLOD || forcedLOD < MESH_LOD_COUNT) ? MESH_LOD_COUNT : 1u;
     params.sparseIndexLODStride = renderSet->maxEntities;
     params.enableLODSelection = enableLOD ? 1u : 0u;
+    params.forcedLOD = forcedLOD;
     params.lodDistanceModifier = Maxf32(g_RenderSettings.lodDistanceModifier, 0.001f);
+    params.lodPadding[0] = params.lodPadding[1] = 0.0f;
 
     SDL_GPUBuffer* ro_buffers[3] = {
         buffers->entity,
@@ -470,9 +474,23 @@ void DispatchAnimationCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet)
     SDL_BindGPUComputePipeline(pass, g_AnimComputePipeline);
     SDL_BindGPUComputeStorageBuffers(pass, 0, ro_buffers, SDL_arraysize(ro_buffers));
     SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
-    SDL_DispatchGPUComputeIndirect(pass, g_RenderState.skinnedBuffers.dispatchArgs, 0);
+    SDL_DispatchGPUCompute(pass, (renderSet->numEntities + 31u) / 32u, 1, 1);
 
     SDL_EndGPUComputePass(pass);
+}
+
+static void GetSkinnedAnimationDispatchSize(RenderSet* renderSet, u32* maxGroupEntities, u32* maxLODVertices)
+{
+    *maxGroupEntities = 0;
+    *maxLODVertices = 0;
+
+    for (u32 groupIdx = 0; groupIdx < renderSet->numGroups; groupIdx++)
+    {
+        PrimitiveGroup* group = renderSet->primitiveGroups + groupIdx;
+        *maxGroupEntities = Maxu32(*maxGroupEntities, group->numEntities);
+        for (u32 lod = 0; lod < MESH_LOD_COUNT; lod++)
+            *maxLODVertices = Maxu32(*maxLODVertices, group->lodNumVertices[lod]);
+    }
 }
 
 void DispatchAnimateVerticesCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet)
@@ -480,14 +498,11 @@ void DispatchAnimateVerticesCompute(SDL_GPUCommandBuffer* cmd, RenderSet* render
     if (renderSet->numGroups == 0) return;
     CHECK_CREATE(g_AnimVerticesPipeline, "Animation vertices Pipeline")
 
-    struct {
-        u32 numPrimitiveGroups;
-        u32 maxAnimatedVertices;
-        u32 padding[2];
-    } params;
-    params.numPrimitiveGroups = renderSet->numGroups;
-    params.maxAnimatedVertices = MAX_ANIMATED_VERTEX;
-    params.padding[0] = params.padding[1] = 0;
+    u32 numPrimitiveGroups = numPrimitiveGroups = renderSet->numGroups * MESH_LOD_COUNT;
+    u32 maxGroupEntities = 0;
+    u32 maxLODVertices = 0;
+    GetSkinnedAnimationDispatchSize(renderSet, &maxGroupEntities, &maxLODVertices);
+    if (maxGroupEntities == 0 || maxLODVertices == 0) return;
 
     SDL_GPUStorageBufferReadWriteBinding rw_bindings[1] = {
         { g_RenderState.skinnedAnimatedVertices }
@@ -505,7 +520,7 @@ void DispatchAnimateVerticesCompute(SDL_GPUCommandBuffer* cmd, RenderSet* render
     SDL_GPUComputePass* pass = SDL_BeginGPUComputePass(cmd, NULL, 0, rw_bindings, SDL_arraysize(rw_bindings));
     SDL_BindGPUComputePipeline(pass, g_AnimVerticesPipeline);
     SDL_BindGPUComputeStorageBuffers(pass, 0, ro_buffers, SDL_arraysize(ro_buffers));
-    SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
-    SDL_DispatchGPUComputeIndirect(pass, g_RenderState.skinnedBuffers.dispatchArgs, sizeof(u32) * 3);
+    SDL_PushGPUComputeUniformData(cmd, 0, &numPrimitiveGroups, sizeof(numPrimitiveGroups));
+    SDL_DispatchGPUCompute(pass, numPrimitiveGroups, (maxGroupEntities + 31u) / 32u, (maxLODVertices + 31u) / 32u);
     SDL_EndGPUComputePass(pass);
 }

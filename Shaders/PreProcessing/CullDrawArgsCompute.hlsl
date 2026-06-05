@@ -6,10 +6,14 @@
 #define DEBUG_CULLED_AABBS 0
 #define SMALL_OBJECT_CULL_ENABLED   1
 
-#define SMALL_CULL_PIXEL_DIAMETER   6.0f
-#define SMALL_CULL_DEPTH_THRESHOLD  0.70f
+#define SMALL_CULL_PIXEL_DIAMETER   1.0f
+#define SMALL_CULL_DEPTH_THRESHOLD  0.98f
 
-#define HIZ_RECT_PADDING_PIXELS     2.0f
+#define LOD0_PIXEL_DIAMETER         128.0f
+#define LOD1_PIXEL_DIAMETER         40.0f
+#define LOD_PIXEL_QUANTUM           8.0f
+
+#define HIZ_RECT_PADDING_PIXELS     1.0f
 #define CLIP_MIN_W                  0.0001f
 
 Texture2D<float>                 hiZTexture            : register(t0);
@@ -41,8 +45,9 @@ cbuffer params : register(b0, space2)
     uint   lodCount;
     uint   sparseIndexLODStride;
     uint   enableLODSelection;
+    uint   forcedLOD;
     float  lodDistanceModifier;
-    float3 lodPadding;
+    float2 lodPadding;
 };
 
 struct ProjectedAABB
@@ -275,6 +280,9 @@ bool ProjectedRectOutside(in ProjectedAABB proj)
 bool AABBTooSmallAndFar(in ProjectedAABB proj)
 {
     #if SMALL_OBJECT_CULL_ENABLED
+    if (enableHiZ == 0u)
+        return false;
+
     if (proj.anyFront == 0u || proj.anyBehind != 0u)
         return false;
 
@@ -350,18 +358,25 @@ bool AABBOccludedHiZ(in ProjectedAABB proj)
 
 uint SelectLOD(in ProjectedAABB proj)
 {
-    if (lodCount <= 1u || enableLODSelection == 0u)
+    if (lodCount <= 1u)
+        return 0u;
+
+    if (forcedLOD < lodCount)
+        return forcedLOD;
+
+    if (enableLODSelection == 0u)
         return 0u;
 
     if (proj.anyFront == 0u)
         return 0u;
 
-    float screenDiameter = proj.screenDiameterNDC * lodDistanceModifier;
+    float screenDiameter = proj.screenDiameterPixels * lodDistanceModifier;
+    screenDiameter = floor(screenDiameter / LOD_PIXEL_QUANTUM) * LOD_PIXEL_QUANTUM;
 
-    if (screenDiameter > 0.20f)
+    if (screenDiameter > LOD0_PIXEL_DIAMETER)
         return 0u;
 
-    if (screenDiameter > 0.06f)
+    if (screenDiameter > LOD1_PIXEL_DIAMETER)
         return min(1u, lodCount - 1u);
 
     return min(2u, lodCount - 1u);
@@ -473,9 +488,9 @@ void main(uint3 tid : SV_DispatchThreadID)
 
     uint lod = 0u;
 
-    if (enableLODSelection != 0u && lodCount > 1u)
+    if ((enableLODSelection != 0u || forcedLOD < lodCount) && lodCount > 1u)
     {
-        if (!needProjection)
+        if (forcedLOD >= lodCount && !needProjection)
             ProjectAABB(proj, worldMin, worldMax);
 
         lod = SelectLOD(proj);

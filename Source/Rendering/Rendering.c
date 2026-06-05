@@ -1,6 +1,7 @@
 #include "RenderingInternal.h"
 #include "Include/Slug.h"
 #include "Include/UIRenderer.h"
+#include "Include/Platform.h"
 
 WindowState    g_WindowState;
 RenderState    g_RenderState;
@@ -299,10 +300,10 @@ static void UploadRenderSetEntities(RenderSet* set, RenderSetBuffers* buffers)
     UpdateGPUBuffer(buffers->entity, set->entities, set->numEntities * sizeof(Entity), 0ull);
 }
 
-static void CullScene(SDL_GPUCommandBuffer* cmd, FrustumPlanes planes, mat4x4 viewProj, bool enableHiZ, bool outputSkinnedVisibility, bool enableSurfaceLOD)
+static void CullScene(SDL_GPUCommandBuffer* cmd, FrustumPlanes planes, mat4x4 viewProj, bool enableHiZ, bool enableSurfaceLOD, u32 forcedLOD)
 {
-    DispatchCullDrawArgsCompute(cmd, &skinnedSet, &g_RenderState.skinnedBuffers, planes, viewProj, enableHiZ, outputSkinnedVisibility, false);
-    DispatchCullDrawArgsCompute(cmd, &surfaceSet, &g_RenderState.surfaceBuffers, planes, viewProj, enableHiZ, false, enableSurfaceLOD);
+    DispatchCullDrawArgsCompute(cmd, &skinnedSet, &g_RenderState.skinnedBuffers, planes, viewProj, enableHiZ, false, true, forcedLOD);
+    DispatchCullDrawArgsCompute(cmd, &surfaceSet, &g_RenderState.surfaceBuffers, planes, viewProj, enableHiZ, false, enableSurfaceLOD, forcedLOD);
 }
 
 static void AnimateSkinned(SDL_GPUCommandBuffer* cmd)
@@ -358,7 +359,7 @@ static ShadowCascadeData CascadedShadowmaps(SDL_GPUCommandBuffer* cmd)
         mat4x4 shadowViewProj = cachedShadowCascades.lightViewProj[cascade];
         FrustumPlanes shadowFrustum = CreateFrustumPlanes(shadowViewProj);
         // planes.planes[4] = planes.planes[5] = VecZero(); // disable near, far plane frustum check
-        CullScene(cmd, shadowFrustum, shadowViewProj, false, false, false);
+        CullScene(cmd, shadowFrustum, shadowViewProj, false, false, 1u);
 
         WindowState* winstate = &g_WindowState;
         SDL_GPUColorTargetInfo shadow_color_target = MakeShadowColorTarget(winstate, cascade);
@@ -387,7 +388,7 @@ static ShadowCascadeData SampleDistributionShadowMaps(SDL_GPUCommandBuffer* cmd,
     for (u32 cascade = 0; cascade < SHADOW_CASCADE_COUNT; cascade++)
     {
         mat4x4 shadowViewProj = shadowCascades.lightViewProj[cascade];
-        CullScene(cmd, CreateFrustumPlanes(shadowViewProj), shadowViewProj, false, false, false);
+        CullScene(cmd, CreateFrustumPlanes(shadowViewProj), shadowViewProj, false, false, 1u);
 
         WindowState* winstate = &g_WindowState;
         SDL_GPUColorTargetInfo shadow_color_target = MakeShadowColorTarget(winstate, cascade);
@@ -460,13 +461,12 @@ void Render(void)
     mat4x4 hiZViewProj = enableHiZ ? winstate->hiz_view_proj : viewProj;
 
     FrustumPlanes cameraFrustum = CreateFrustumPlanes(viewProj);
-    CullScene(cmd, cameraFrustum, hiZViewProj, enableHiZ, true, true);
     AnimateSkinned(cmd);
     ShadowCascadeData shadowCascades = g_RenderSettings.enableSDSM ? 
                                        SampleDistributionShadowMaps(cmd, viewProj) : 
                                        CascadedShadowmaps(cmd);
 
-    CullScene(cmd, cameraFrustum, hiZViewProj, enableHiZ, true, true);
+    CullScene(cmd, cameraFrustum, hiZViewProj, enableHiZ, true, ~0u);
 
     RenderDepth(cmd, &(DepthPassContext){
         .colorTarget       = &hiz_depth_target,
