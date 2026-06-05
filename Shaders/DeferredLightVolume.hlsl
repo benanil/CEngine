@@ -18,7 +18,8 @@ Texture2D<float2> ShadowRoughnessTexture : register(t2, space2);
 Texture2D<float>  DepthTexture           : register(t3, space2);
 Texture2D<float>  AmbientOcclusion       : register(t4, space2);
 SamplerState      Sampler                : register(s0, space2);
-StructuredBuffer<LightGPU> PS_Lights : register(t5, space2);
+
+StructuredBuffer<LightGPU>      PS_Lights    : register(t5, space2);
 StructuredBuffer<LightDrawInfo> PS_DrawInfos : register(t6, space2);
 
 struct VSOutput
@@ -49,7 +50,7 @@ VSOutput vert(uint vertexID : SV_VertexID, uint instanceID : SV_InstanceID)
 
     VSOutput output;
     output.uv = corners[vertexID];
-    output.position = float4(output.uv.x * 2.0f - 1.0f, 1.0f - output.uv.y * 2.0f, 0.0f, 1.0f);
+    output.position  = float4(output.uv.x * 2.0f - 1.0f, 1.0f - output.uv.y * 2.0f, 0.0f, 1.0f);
     output.drawIndex = instanceID;
     return output;
 }
@@ -95,14 +96,14 @@ float4 frag(VSOutput input) : SV_Target0
     UnpackNormalTangent(tangentFrame, packedNormal, packedTangent);
     float3 normal = normalize(float3(packedNormal));
 
-    float4 albedoMetallic = AlbedoMetallicTexture.Load(int3(pixel, 0));
+    float4 albedoMetallic  = AlbedoMetallicTexture.Load(int3(pixel, 0));
     float2 shadowRoughness = ShadowRoughnessTexture.Load(int3(pixel, 0));
     float ao = AmbientOcclusion.SampleLevel(Sampler, input.uv, 0.0f);
     float3 worldPos = ReconstructWorldPosition(input.uv, depth);
-    float3 viewDir = cameraPosition.xyz - worldPos;
-
-    LightDrawInfo info = PS_DrawInfos[input.drawIndex];
-    LightGPU light = PS_Lights[info.lightIndex];
+    float3 viewDir  = cameraPosition.xyz - worldPos;
+    
+    LightDrawInfo info  = PS_DrawInfos[input.drawIndex];
+    LightGPU      light = PS_Lights[info.lightIndex];
     float3 color = ApplyLocalLight(albedoMetallic.rgb, normal, viewDir, albedoMetallic.a, shadowRoughness.g, light, worldPos, ao);
     return float4(color, 1.0f);
 }

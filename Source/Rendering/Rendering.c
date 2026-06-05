@@ -8,32 +8,32 @@ RenderState    g_RenderState;
 SDL_GPUDevice* g_GPUDevice = NULL;
 
 RenderSettings g_RenderSettings = {
-    .enableOcclusion = true,
-    .enableHBAO      = true,
-    .enableMLAA      = true,
-    .showMLAAEdges   = false,
-    .enableSDSM      = false,
-    .enableLocalLights = true,
-    .enableLightFrustumCulling = true,
+    .enableOcclusion             = true,
+    .enableHBAO                  = true,
+    .enableMLAA                  = true,
+    .showMLAAEdges               = false,
+    .enableSDSM                  = false,
+    .enableLocalLights           = true,
+    .enableLightFrustumCulling   = true,
     .enableLightOcclusionCulling = true,
-    .showLightRects = false,
-    .hbaoRadius      = 1.3f,
-    .hbaoBias        = 0.5f,
-    .hbaoIntensity   = 2.0f,
-    .hbaoPower       = 2.0f,
-    .mlaaThreshold   = 0.08f,
-    .exposure        = 1.0f,
-    .gamma           = 2.2f,
-    .godRayIntensity = 2.5f,
-    .lodDistanceModifier = 0.25f,
-    .sunYaw          = 116.565f,
-    .sunPitch        = 63.435f,
-    .shadowMaxDistance       = SHADOW_MAX_DISTANCE,
-    .shadowCameraDistance    = SHADOW_CAMERA_DISTANCE,
-    .shadowCasterDepthMargin = SHADOW_CASTER_DEPTH_MARGIN,
-    .shadowCascadeOverlap    = SHADOW_CASCADE_OVERLAP,
-    .shadowSplitNearDistance = SHADOW_SPLIT_NEAR_DISTANCE,
-    .shadowPSSMLambda        = SHADOW_PSSM_LAMBDA
+    .showLightRects              = false,
+    .hbaoRadius                  = 1.3f,
+    .hbaoBias                    = 0.5f,
+    .hbaoIntensity               = 2.0f,
+    .hbaoPower                   = 2.0f,
+    .mlaaThreshold               = 0.08f,
+    .exposure                    = 1.0f,
+    .gamma                       = 2.2f,
+    .godRayIntensity             = 2.5f,
+    .lodDistanceModifier         = 0.75f,
+    .sunYaw                      = 116.565f,
+    .sunPitch                    = 63.435f,
+    .shadowMaxDistance           = SHADOW_MAX_DISTANCE,
+    .shadowCameraDistance        = SHADOW_CAMERA_DISTANCE,
+    .shadowCasterDepthMargin     = SHADOW_CASTER_DEPTH_MARGIN,
+    .shadowCascadeOverlap        = SHADOW_CASCADE_OVERLAP,
+    .shadowSplitNearDistance     = SHADOW_SPLIT_NEAR_DISTANCE,
+    .shadowPSSMLambda            = SHADOW_PSSM_LAMBDA
 };
 
 #define RESIZE_RELEASE_DELAY 4u
@@ -150,21 +150,21 @@ static void UploadLightBuffer(void)
 
 static void ReleaseFrameTextureSet(FrameTextureSet* set)
 {
-    if (set->tex_depth) SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_depth);
-    if (set->tex_hiz_depth) SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_hiz_depth);
-    if (set->tex_color) SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_color);
-    if (set->tex_gbuffer_tangent) SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_gbuffer_tangent);
-    if (set->tex_gbuffer_albedo_metallic) SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_gbuffer_albedo_metallic);
+    if (set->tex_depth)                    SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_depth);
+    if (set->tex_hiz_depth)                SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_hiz_depth);
+    if (set->tex_color)                    SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_color);
+    if (set->tex_gbuffer_tangent)          SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_gbuffer_tangent);
+    if (set->tex_gbuffer_albedo_metallic)  SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_gbuffer_albedo_metallic);
     if (set->tex_gbuffer_shadow_roughness) SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_gbuffer_shadow_roughness);
-    if (set->tex_post) SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_post);
-    if (set->tex_hiz) SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_hiz);
-    if (set->tex_sdsm_bounds) SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_sdsm_bounds);
-    if (set->tex_hbao) SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_hbao);
-    if (set->tex_hbao_blur) SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_hbao_blur);
-    if (set->tex_hbao_normal) SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_hbao_normal);
-    if (set->tex_mlaa_edge_mask) SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_mlaa_edge_mask);
-    if (set->tex_mlaa_edge_count) SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_mlaa_edge_count);
-    if (set->tex_mlaa_output) SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_mlaa_output);
+    if (set->tex_post)                     SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_post);
+    if (set->tex_hiz)                      SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_hiz);
+    if (set->tex_sdsm_bounds)              SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_sdsm_bounds);
+    if (set->tex_hbao)                     SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_hbao);
+    if (set->tex_hbao_blur)                SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_hbao_blur);
+    if (set->tex_hbao_normal)              SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_hbao_normal);
+    if (set->tex_mlaa_edge_mask)           SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_mlaa_edge_mask);
+    if (set->tex_mlaa_edge_count)          SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_mlaa_edge_count);
+    if (set->tex_mlaa_output)              SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_mlaa_output);
     *set = (FrameTextureSet){0};
 }
 
@@ -181,40 +181,29 @@ static void ReleaseQueuedResizeTextures(bool force)
 static void QueueWindowFrameTexturesForRelease(WindowState* winstate)
 {
     FrameTextureSet old = {
-        .tex_depth = winstate->tex_depth,
-        .tex_hiz_depth = winstate->tex_hiz_depth,
-        .tex_color = winstate->tex_color,
-        .tex_gbuffer_tangent = winstate->tex_gbuffer_tangent,
-        .tex_gbuffer_albedo_metallic = winstate->tex_gbuffer_albedo_metallic,
+        .tex_depth                    = winstate->tex_depth,
+        .tex_hiz_depth                = winstate->tex_hiz_depth,
+        .tex_color                    = winstate->tex_color,
+        .tex_gbuffer_tangent          = winstate->tex_gbuffer_tangent,
+        .tex_gbuffer_albedo_metallic  = winstate->tex_gbuffer_albedo_metallic,
         .tex_gbuffer_shadow_roughness = winstate->tex_gbuffer_shadow_roughness,
-        .tex_post = winstate->tex_post,
-        .tex_hiz = winstate->tex_hiz,
-        .tex_sdsm_bounds = winstate->tex_sdsm_bounds,
-        .tex_hbao = winstate->tex_hbao,
-        .tex_hbao_blur = winstate->tex_hbao_blur,
-        .tex_hbao_normal = winstate->tex_hbao_normal,
-        .tex_mlaa_edge_mask = winstate->tex_mlaa_edge_mask,
-        .tex_mlaa_edge_count = winstate->tex_mlaa_edge_count,
-        .tex_mlaa_output = winstate->tex_mlaa_output,
-        .releaseFrame = g_RenderFrameIndex + RESIZE_RELEASE_DELAY
+        .tex_post                     = winstate->tex_post,
+        .tex_hiz                      = winstate->tex_hiz,
+        .tex_sdsm_bounds              = winstate->tex_sdsm_bounds,
+        .tex_hbao                     = winstate->tex_hbao,
+        .tex_hbao_blur                = winstate->tex_hbao_blur,
+        .tex_hbao_normal              = winstate->tex_hbao_normal,
+        .tex_mlaa_edge_mask           = winstate->tex_mlaa_edge_mask,
+        .tex_mlaa_edge_count          = winstate->tex_mlaa_edge_count,
+        .tex_mlaa_output              = winstate->tex_mlaa_output,
+        .releaseFrame                 = g_RenderFrameIndex + RESIZE_RELEASE_DELAY
     };
-
-    winstate->tex_depth = NULL;
-    winstate->tex_hiz_depth = NULL;
-    winstate->tex_color = NULL;
-    winstate->tex_gbuffer_tangent = NULL;
-    winstate->tex_gbuffer_albedo_metallic = NULL;
-    winstate->tex_gbuffer_shadow_roughness = NULL;
-    winstate->tex_post = NULL;
-    winstate->tex_hiz = NULL;
-    winstate->tex_sdsm_bounds = NULL;
-    winstate->tex_hbao = NULL;
-    winstate->tex_hbao_blur = NULL;
-    winstate->tex_hbao_normal = NULL;
-    winstate->tex_mlaa_edge_mask = NULL;
-    winstate->tex_mlaa_edge_count = NULL;
-    winstate->tex_mlaa_output = NULL;
-
+    winstate->tex_depth = winstate->tex_hiz_depth = winstate->tex_color = winstate->tex_gbuffer_tangent 
+                        = winstate->tex_gbuffer_albedo_metallic = winstate->tex_gbuffer_shadow_roughness 
+                        = winstate->tex_post = winstate->tex_hiz = winstate->tex_sdsm_bounds = winstate->tex_hbao 
+                        = winstate->tex_hbao_blur = winstate->tex_hbao_normal = winstate->tex_mlaa_edge_mask 
+                        = winstate->tex_mlaa_edge_count = winstate->tex_mlaa_output = NULL;
+    
     u32 slot = (u32)(g_RenderFrameIndex % RESIZE_RELEASE_DELAY);
     ReleaseFrameTextureSet(&g_ResizeReleaseQueue[slot]);
     g_ResizeReleaseQueue[slot] = old;
@@ -223,21 +212,21 @@ static void QueueWindowFrameTexturesForRelease(WindowState* winstate)
 static void ResizeWindowFrameTextures(WindowState* winstate, u32 width, u32 height)
 {
     QueueWindowFrameTexturesForRelease(winstate);
-    winstate->tex_depth     = CreateDepthTexture(width, height);
-    winstate->tex_hiz_depth = CreateHiZDepthTexture(width, height);
-    winstate->tex_color     = CreateSceneColorTexture(width, height, SDL_GPU_SAMPLECOUNT_1);
+    winstate->tex_depth           = CreateDepthTexture(width, height);
+    winstate->tex_hiz_depth       = CreateHiZDepthTexture(width, height);
+    winstate->tex_color           = CreateSceneColorTexture(width, height, SDL_GPU_SAMPLECOUNT_1);
+    winstate->tex_post            = CreatePostProcessTexture(width, height);
+    winstate->tex_hiz             = CreateHiZTexture(width, height, &winstate->hiz_mip_count);
+    winstate->tex_sdsm_bounds     = CreateSDSMDepthBoundsTexture(width, height, &winstate->sdsm_mip_count);
     winstate->tex_gbuffer_tangent = CreateGBufferTangentTexture(width, height);
     winstate->tex_gbuffer_albedo_metallic = CreateGBufferAlbedoMetallicTexture(width, height);
     winstate->tex_gbuffer_shadow_roughness = CreateGBufferShadowRoughnessTexture(width, height);
-    winstate->tex_post      = CreatePostProcessTexture(width, height);
-    winstate->tex_hiz       = CreateHiZTexture(width, height, &winstate->hiz_mip_count);
-    winstate->tex_sdsm_bounds = CreateSDSMDepthBoundsTexture(width, height, &winstate->sdsm_mip_count);
-    u32 hbaoWidth = Maxu32(width / 2u, 1u);
+    u32 hbaoWidth  = Maxu32(width / 2u, 1u);
     u32 hbaoHeight = Maxu32(height / 2u, 1u);
-    winstate->tex_hbao        = CreateHBAOTexture(hbaoWidth, hbaoHeight);
-    winstate->tex_hbao_blur   = CreateHBAOTexture(hbaoWidth, hbaoHeight);
-    winstate->tex_hbao_normal = CreateHBAONormalTexture(hbaoWidth, hbaoHeight);
-    winstate->tex_mlaa_edge_mask = CreateMLAAEdgeMaskTexture(width, height);
+    winstate->tex_hbao            = CreateHBAOTexture(hbaoWidth, hbaoHeight);
+    winstate->tex_hbao_blur       = CreateHBAOTexture(hbaoWidth, hbaoHeight);
+    winstate->tex_hbao_normal     = CreateHBAONormalTexture(hbaoWidth, hbaoHeight);
+    winstate->tex_mlaa_edge_mask  = CreateMLAAEdgeMaskTexture(width, height);
     winstate->tex_mlaa_edge_count = CreateMLAAEdgeCountTexture(width, height);
     winstate->tex_mlaa_output = CreateMLAAOutputTexture(width, height);
     winstate->hiz_width     = width;
@@ -399,7 +388,7 @@ static ShadowCascadeData CascadedShadowmaps(SDL_GPUCommandBuffer* cmd)
     static ShadowCascadeData cachedShadowCascades;
     static u32 shadowFrameIndex = 0;
     static bool shadowCacheValid = false;
-    static const u8 cascadeCadance[] = { 0x5D, 0x22, 0x80 }; // 01011101, 00100010, 10000000
+    static const u8 cascadeCadance[] = { 0x5D, 0x22, 0x44 }; // 01011101, 00100010, 01000100
     ShadowCascadeData shadowCascades = GetShadowCascades();
     bool updateCascades[SHADOW_CASCADE_COUNT];
     u32 shadowFrame = (shadowFrameIndex++) & 7;
@@ -513,11 +502,12 @@ void Render(void)
 
     SDL_GPUColorTargetInfo        color_target      = MakeMainColorTarget(winstate);
     SDL_GPUColorTargetInfo        color_load_target = MakeLoadedSceneColorTarget(winstate);
-    SDL_GPUColorTargetInfo        gbuffer_targets[3];
-    MakeGBufferTargets(winstate, gbuffer_targets);
     SDL_GPUDepthStencilTargetInfo depth_target      = MakeDepthTarget(winstate->tex_depth, SDL_GPU_LOADOP_CLEAR, true);
     SDL_GPUDepthStencilTargetInfo main_depth_target = MakeDepthTarget(winstate->tex_depth, SDL_GPU_LOADOP_LOAD, false);
     SDL_GPUColorTargetInfo        hiz_depth_target  = MakeHiZDepthTarget(winstate);
+    SDL_GPUColorTargetInfo        gbuffer_targets[3];
+    MakeGBufferTargets(winstate, gbuffer_targets);
+
     UploadRenderSetEntities(&skinnedSet, &g_RenderState.skinnedBuffers);
     UploadRenderSetEntities(&surfaceSet, &g_RenderState.surfaceBuffers);
     UploadLightBuffer();

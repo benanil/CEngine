@@ -42,7 +42,7 @@ static void UpdateDemoLights(void)
         { 0.55f, 0.35f, 1.00f }
     };
 
-    f32 time = (f32)PlatformCtx.FrameCount * 0.016f;
+    f32 time = (f32)PlatformCtx.FrameCount * 0.006f;
     for (u32 i = 0; i < SDL_arraysize(g_DemoLights); i++)
     {
         f32 fi = (f32)i;
@@ -116,7 +116,7 @@ s32 InitScene()
         return 0;
     }
     
-    s32 sponzaRes = LoadGLTFCached("Assets/Meshes/Bistro/Bistro.glb", gSponza, g_RenderState.textures + gPaladin->numImages);
+    s32 sponzaRes = LoadGLTFCached("Assets/Meshes/Sponza/scene.gltf", gSponza, g_RenderState.textures + gPaladin->numImages);
     if (!sponzaRes)
     {
         AX_ERROR("gltf Bistro/sponza load failed: %d ", sponzaRes);

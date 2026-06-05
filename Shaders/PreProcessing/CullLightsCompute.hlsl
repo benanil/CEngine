@@ -7,30 +7,30 @@
 Texture2D<float> hiZTexture : register(t0);
 StructuredBuffer<LightGPU> lights : register(t1);
 
-RWStructuredBuffer<LightDrawInfo> drawInfos : register(u0, space1);
-RWStructuredBuffer<IndirectDrawCommand> drawArgs : register(u1, space1);
-RWStructuredBuffer<LineVertex> lineVertices : register(u2, space1);
+RWStructuredBuffer<LightDrawInfo>       drawInfos       : register(u0, space1);
+RWStructuredBuffer<IndirectDrawCommand> drawArgs        : register(u1, space1);
+RWStructuredBuffer<LineVertex>          lineVertices    : register(u2, space1);
 RWStructuredBuffer<IndirectDrawCommand> lineDrawCommand : register(u3, space1);
 
 cbuffer Params : register(b0, space2)
 {
-    float4 frustumPlanes[6];
-    uint   numLights;
-    uint   mode;
-    uint2  outputSize;
+    float4   frustumPlanes[6];
+    uint     numLights;
+    uint     mode;
+    uint2    outputSize;
     float4x4 viewProjection;
-    uint2  hiZSize;
-    uint   hiZMipCount;
-    uint   enableHiZ;
-    float  hiZDepthBias;
-    float3 cameraPosition;
-    uint   enableFrustum;
+    uint2    hiZSize;
+    uint     hiZMipCount;
+    uint     enableHiZ;
+    float    hiZDepthBias;
+    float3   cameraPosition;
+    uint     enableFrustum;
     float4x4 invViewProjection;
-    uint   showLightRects;
-    float3 cameraRight;
-    uint   padding0;
-    float3 cameraUp;
-    uint   padding1;
+    uint     showLightRects;
+    float3   cameraRight;
+    uint     padding0;
+    float3   cameraUp;
+    uint     padding1;
 };
 
 float3 ReconstructWorldPosition(float2 uv, float depth)

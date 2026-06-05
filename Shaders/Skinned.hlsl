@@ -4,10 +4,9 @@
 #include "Bitpack.hlsl"
 #include "Math.hlsl"
 #include "Shadow/Shadow.hlsl"
-#include "Shadow/ShadowCascade.hlsl"
 
 #define CSM_DEBUG_CASCADES 0
-#define SKINNED_LOD_DEBUG_COLORS 1
+#define SKINNED_LOD_DEBUG_COLORS 0
 
 cbuffer vs_params : register(b0, space1)
 {
@@ -22,10 +21,10 @@ cbuffer ps_params : register(b0, space3)
     float4 uSunDirection;
 };
 
-StructuredBuffer<Entity>         sEntities          : register(t0);
-StructuredBuffer<PrimitiveGroup> sPrimitiveGroups   : register(t1);
-StructuredBuffer<uint>           sDrawSparseIndices : register(t2);
-StructuredBuffer<AnimatedVert>   sAnimatedVert      : register(t3);
+StructuredBuffer<Entity>         sEntities            : register(t0);
+StructuredBuffer<PrimitiveGroup> sPrimitiveGroups     : register(t1);
+StructuredBuffer<uint>           sDrawSparseIndices   : register(t2);
+StructuredBuffer<AnimatedVert>   sAnimatedVert        : register(t3);
 StructuredBuffer<ShadowCascadeBuffer> sShadowCascades : register(t4);
 // frag
 Texture2DArray<float4> AlbedoPages            : register(t0, space2);
