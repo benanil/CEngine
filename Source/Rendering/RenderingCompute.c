@@ -498,7 +498,22 @@ void DispatchAnimateVerticesCompute(SDL_GPUCommandBuffer* cmd, RenderSet* render
     if (renderSet->numGroups == 0) return;
     CHECK_CREATE(g_AnimVerticesPipeline, "Animation vertices Pipeline")
 
-    u32 numPrimitiveGroups = numPrimitiveGroups = renderSet->numGroups * MESH_LOD_COUNT;
+    struct {
+        u32 numPrimitiveGroups;
+        u32 viewportSize[2];
+        u32 shadowLOD;
+        f32 lodDistanceModifier;
+        f32 padding[3];
+        mat4x4 viewProjection;
+    } params;
+    params.numPrimitiveGroups = renderSet->numGroups * MESH_LOD_COUNT;
+    params.viewportSize[0] = (u32)Maxs32(g_Camera.viewportSize.x, 1);
+    params.viewportSize[1] = (u32)Maxs32(g_Camera.viewportSize.y, 1);
+    params.shadowLOD = Minu32(1u, MESH_LOD_COUNT - 1u);
+    params.lodDistanceModifier = Maxf32(g_RenderSettings.lodDistanceModifier, 0.001f);
+    params.padding[0] = params.padding[1] = params.padding[2] = 0.0f;
+    params.viewProjection = M44Multiply(g_Camera.view, g_Camera.projection);
+
     u32 maxGroupEntities = 0;
     u32 maxLODVertices = 0;
     GetSkinnedAnimationDispatchSize(renderSet, &maxGroupEntities, &maxLODVertices);
@@ -520,7 +535,7 @@ void DispatchAnimateVerticesCompute(SDL_GPUCommandBuffer* cmd, RenderSet* render
     SDL_GPUComputePass* pass = SDL_BeginGPUComputePass(cmd, NULL, 0, rw_bindings, SDL_arraysize(rw_bindings));
     SDL_BindGPUComputePipeline(pass, g_AnimVerticesPipeline);
     SDL_BindGPUComputeStorageBuffers(pass, 0, ro_buffers, SDL_arraysize(ro_buffers));
-    SDL_PushGPUComputeUniformData(cmd, 0, &numPrimitiveGroups, sizeof(numPrimitiveGroups));
-    SDL_DispatchGPUCompute(pass, numPrimitiveGroups, (maxGroupEntities + 31u) / 32u, (maxLODVertices + 31u) / 32u);
+    SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
+    SDL_DispatchGPUCompute(pass, params.numPrimitiveGroups, (maxGroupEntities + 31u) / 32u, (maxLODVertices + 31u) / 32u);
     SDL_EndGPUComputePass(pass);
 }

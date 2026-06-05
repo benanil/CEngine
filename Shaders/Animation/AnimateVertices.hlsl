@@ -2,6 +2,7 @@
 #include "../CommonStructs.hlsl"
 #include "../Bitpack.hlsl"
 #include "../Math.hlsl"
+#include "../LOD.hlsl"
 
 struct SkinnedVertex
 {
@@ -16,6 +17,11 @@ struct SkinnedVertex
 cbuffer params : register(b0, space2)
 {
     uint numPrimitiveGroups;
+    uint2 viewportSize;
+    uint shadowLOD;
+    float lodDistanceModifier;
+    float3 padding;
+    float4x4 viewProjection;
 }
 
 StructuredBuffer<uint>           sBoneMtx           : register(t0);
@@ -50,6 +56,11 @@ void main(uint3 globalID : SV_DispatchThreadID, uint3 groupID : SV_GroupID, uint
     uint denseIdx = group.entityOffset + instanceSlot;
     Entity entity = sEntities[denseIdx];
     uint sparse = entity.sparse;
+
+    uint cameraLOD = SelectEntityLOD(entity, group, viewProjection, viewportSize, lodDistanceModifier);
+    uint requiredShadowLOD = min(shadowLOD, MESH_LOD_COUNT - 1u);
+    if (lod != cameraLOD && lod != requiredShadowLOD)
+        return;
 
     uint boneStart = sparse * MAX_BONES;
     f16_4 insRot = normalize(UnpackRGBA16Snorm(entity.rotation[0], entity.rotation[1]));

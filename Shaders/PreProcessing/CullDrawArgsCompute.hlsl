@@ -2,6 +2,7 @@
 #include "../Bitpack.hlsl"
 #include "../Math.hlsl"
 #include "../CommonStructs.hlsl"
+#include "../LOD.hlsl"
 
 #define DEBUG_CULLED_AABBS 0
 #define SMALL_OBJECT_CULL_ENABLED   1
@@ -9,12 +10,7 @@
 #define SMALL_CULL_PIXEL_DIAMETER   1.0f
 #define SMALL_CULL_DEPTH_THRESHOLD  0.98f
 
-#define LOD0_PIXEL_DIAMETER         128.0f
-#define LOD1_PIXEL_DIAMETER         40.0f
-#define LOD_PIXEL_QUANTUM           8.0f
-
 #define HIZ_RECT_PADDING_PIXELS     1.0f
-#define CLIP_MIN_W                  0.0001f
 
 Texture2D<float>                 hiZTexture            : register(t0);
 StructuredBuffer<Entity>         entities              : register(t1);
@@ -49,52 +45,6 @@ cbuffer params : register(b0, space2)
     float  lodDistanceModifier;
     float2 lodPadding;
 };
-
-struct ProjectedAABB
-{
-    float2 ndcMin;
-    float2 ndcMax;
-
-    float2 uvMin;
-    float2 uvMax;
-
-    float  nearestDepth;
-    float  screenDiameterNDC;
-    float  screenDiameterPixels;
-
-    uint   anyFront;
-    uint   anyBehind;
-};
-
-float3x3 M33FromQuaternionF32(float4 q)
-{
-    float x2 = q.x + q.x;
-    float y2 = q.y + q.y;
-    float z2 = q.z + q.z;
-
-    float xx = q.x * x2;
-    float yy = q.y * y2;
-    float zz = q.z * z2;
-
-    float xy = q.x * y2;
-    float xz = q.x * z2;
-    float yz = q.y * z2;
-
-    float wx = q.w * x2;
-    float wy = q.w * y2;
-    float wz = q.w * z2;
-
-    float3x3 m;
-    m[0] = float3(1.0f - yy - zz, xy + wz,        xz - wy);
-    m[1] = float3(xy - wz,        1.0f - xx - zz, yz + wx);
-    m[2] = float3(xz + wy,        yz - wx,        1.0f - xx - yy);
-    return m;
-}
-
-float3 QMulVec3F32(float4 q, float3 v)
-{
-    return v + cross(q.xyz, cross(q.xyz, v) + v * q.w) * 2.0f;
-}
 
 uint WangHash(uint x)
 {
@@ -159,40 +109,6 @@ void AddAABBLine(float3 worldMin, float3 worldMax)
     AddAABBLineColored(worldMin, worldMax, WangHash(d.x + d.y + d.z));
 }
 
-void BuildWorldAABB(
-    Entity entity,
-    PrimitiveGroup group,
-    out float3 worldCenter,
-    out float3 worldExtent,
-    out float3 worldMin,
-    out float3 worldMax)
-{
-    float3 localMin = group.aabbMin.xyz;
-    float3 localMax = group.aabbMax.xyz;
-
-    float3 localCenter = (localMin + localMax) * 0.5f;
-    float3 localExtent = (localMax - localMin) * 0.5f;
-
-    float4 q = VecNorm(UnpackRGBA16Snorm(entity.rotation.x, entity.rotation.y));
-    float3 s = float3(UnpackVec3XY11Z10Unorm(entity.scale.x)) * 10.0f;
-
-    float3x3 rotM = M33FromQuaternionF32(q);
-
-    float3 axisX = rotM[0] * s.x;
-    float3 axisY = rotM[1] * s.y;
-    float3 axisZ = rotM[2] * s.z;
-
-    worldCenter = entity.position.xyz + QMulVec3F32(q, localCenter * s);
-
-    worldExtent =
-        abs(axisX) * localExtent.x +
-        abs(axisY) * localExtent.y +
-        abs(axisZ) * localExtent.z;
-
-    worldMin = worldCenter - worldExtent;
-    worldMax = worldCenter + worldExtent;
-}
-
 bool AABBVisible(float3 center, float3 extent)
 {
     [unroll]
@@ -207,74 +123,6 @@ bool AABBVisible(float3 center, float3 extent)
     }
 
     return true;
-}
-
-void ProjectCorner(float3 p, inout ProjectedAABB proj)
-{
-    float4 clip = mul(viewProjection, float4(p, 1.0f));
-
-    if (clip.w <= CLIP_MIN_W)
-    {
-        proj.anyBehind = 1u;
-        return;
-    }
-
-    float3 ndc = clip.xyz / clip.w;
-    proj.ndcMin = min(proj.ndcMin, ndc.xy);
-    proj.ndcMax = max(proj.ndcMax, ndc.xy);
-
-    proj.nearestDepth = min(proj.nearestDepth, saturate(ndc.z));
-    proj.anyFront = 1u;
-}
-
-void ProjectAABB(out ProjectedAABB proj, float3 mn, float3 mx)
-{
-    proj.ndcMin = float2( 1e30f,  1e30f);
-    proj.ndcMax = float2(-1e30f, -1e30f);
-
-    proj.uvMin = 0.0f;
-    proj.uvMax = 0.0f;
-
-    proj.nearestDepth = 1.0f;
-    proj.screenDiameterNDC = 0.0f;
-    proj.screenDiameterPixels = 0.0f;
-
-    proj.anyFront = 0u;
-    proj.anyBehind = 0u;
-
-    ProjectCorner(float3(mn.x, mn.y, mn.z), proj);
-    ProjectCorner(float3(mx.x, mn.y, mn.z), proj);
-    ProjectCorner(float3(mn.x, mx.y, mn.z), proj);
-    ProjectCorner(float3(mx.x, mx.y, mn.z), proj);
-
-    ProjectCorner(float3(mn.x, mn.y, mx.z), proj);
-    ProjectCorner(float3(mx.x, mn.y, mx.z), proj);
-    ProjectCorner(float3(mn.x, mx.y, mx.z), proj);
-    ProjectCorner(float3(mx.x, mx.y, mx.z), proj);
-
-    if (proj.anyFront == 0u)
-        return;
-
-    float2 uvA = proj.ndcMin * float2(0.5f, -0.5f) + 0.5f;
-    float2 uvB = proj.ndcMax * float2(0.5f, -0.5f) + 0.5f;
-
-    proj.uvMin = saturate(min(uvA, uvB));
-    proj.uvMax = saturate(max(uvA, uvB));
-
-    float2 rectPixels = (proj.uvMax - proj.uvMin) * max(float2(hiZSize), float2(1.0f, 1.0f));
-
-    proj.screenDiameterNDC = max(proj.ndcMax.x - proj.ndcMin.x,
-                                 proj.ndcMax.y - proj.ndcMin.y);
-
-    proj.screenDiameterPixels = max(rectPixels.x, rectPixels.y);
-}
-
-bool ProjectedRectOutside(in ProjectedAABB proj)
-{
-    return proj.ndcMax.x < -1.0f ||
-           proj.ndcMin.x >  1.0f ||
-           proj.ndcMax.y < -1.0f ||
-           proj.ndcMin.y >  1.0f;
 }
 
 bool AABBTooSmallAndFar(in ProjectedAABB proj)
@@ -370,16 +218,7 @@ uint SelectLOD(in ProjectedAABB proj)
     if (proj.anyFront == 0u)
         return 0u;
 
-    float screenDiameter = proj.screenDiameterPixels * lodDistanceModifier;
-    screenDiameter = floor(screenDiameter / LOD_PIXEL_QUANTUM) * LOD_PIXEL_QUANTUM;
-
-    if (screenDiameter > LOD0_PIXEL_DIAMETER)
-        return 0u;
-
-    if (screenDiameter > LOD1_PIXEL_DIAMETER)
-        return min(1u, lodCount - 1u);
-
-    return min(2u, lodCount - 1u);
+    return SelectLODFromScreenDiameter(proj.screenDiameterPixels * lodDistanceModifier, lodCount);
 }
 
 void Initialize(uint idx)
@@ -467,7 +306,7 @@ void main(uint3 tid : SV_DispatchThreadID)
 
     if (needProjection)
     {
-        ProjectAABB(proj, worldMin, worldMax);
+        ProjectAABB(proj, worldMin, worldMax, viewProjection, hiZSize);
         tooSmallFar = AABBTooSmallAndFar(proj);
 
         if (!tooSmallFar)
@@ -491,7 +330,7 @@ void main(uint3 tid : SV_DispatchThreadID)
     if ((enableLODSelection != 0u || forcedLOD < lodCount) && lodCount > 1u)
     {
         if (forcedLOD >= lodCount && !needProjection)
-            ProjectAABB(proj, worldMin, worldMax);
+            ProjectAABB(proj, worldMin, worldMax, viewProjection, hiZSize);
 
         lod = SelectLOD(proj);
     }

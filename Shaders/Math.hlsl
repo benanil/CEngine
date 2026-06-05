@@ -58,6 +58,36 @@ f16_3 QMulVec3(f16_4 quat, f16_3 vec) {
     return vec + (cross(quat.xyz, cross(quat.xyz, vec) + (vec * quat.w)) * 2.0);
 }
 
+float3 QMulVec3F32(float4 quat, float3 vec)
+{
+    return vec + cross(quat.xyz, cross(quat.xyz, vec) + vec * quat.w) * 2.0f;
+}
+
+float3x3 M33FromQuaternionF32(float4 q)
+{
+    float x2 = q.x + q.x;
+    float y2 = q.y + q.y;
+    float z2 = q.z + q.z;
+
+    float xx = q.x * x2;
+    float yy = q.y * y2;
+    float zz = q.z * z2;
+
+    float xy = q.x * y2;
+    float xz = q.x * z2;
+    float yz = q.y * z2;
+
+    float wx = q.w * x2;
+    float wy = q.w * y2;
+    float wz = q.w * z2;
+
+    float3x3 m;
+    m[0] = float3(1.0f - yy - zz, xy + wz,        xz - wy);
+    m[1] = float3(xy - wz,        1.0f - xx - zz, yz + wx);
+    m[2] = float3(xz + wy,        yz - wx,        1.0f - xx - yy);
+    return m;
+}
+
 f16_4 QMulVec3V(f16_4 quat, f16_4 v)
 {
     f16_3 vec = v.xyz;

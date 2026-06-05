@@ -492,6 +492,9 @@
 						<IncludeFilesWithoutExt>false</IncludeFilesWithoutExt>
 						<Children></Children>
 					</Folder>
+					<File>
+						<Path>Shaders/LOD.hlsl</Path>
+					</File>
 				</Children>
 			</Folder>
 			<Folder>
