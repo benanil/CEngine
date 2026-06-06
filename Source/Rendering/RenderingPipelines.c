@@ -28,22 +28,22 @@
 #include "Shaders/spv/Animation/AnimateVertices.spv.h"
 #include "Shaders/spv/LineDebugVert.spv.h"
 #include "Shaders/spv/LineDebugFrag.spv.h"
-#include "Shaders/spv/SlugVert.spv.h"
+#include "Shaders/spv/UI/SlugVert.spv.h"
 #include "Shaders/spv/Slug2DVert.spv.h"
-#include "Shaders/spv/SlugFrag.spv.h"
-#include "Shaders/spv/UIShapeVert.spv.h"
-#include "Shaders/spv/UIShapeFrag.spv.h"
-#include "Shaders/spv/UIImageVert.spv.h"
-#include "Shaders/spv/UIImageFrag.spv.h"
-#include "Shaders/spv/TonemapCompute.spv.h"
-#include "Shaders/spv/HiZBuildCompute.spv.h"
-#include "Shaders/spv/HiZDownscaleCompute.spv.h"
-#include "Shaders/spv/HBAOCompute.spv.h"
-#include "Shaders/spv/HBAOBlurCompute.spv.h"
+#include "Shaders/spv/UI/SlugFrag.spv.h"
+#include "Shaders/spv/UI/UIShapeVert.spv.h"
+#include "Shaders/spv/UI/UIShapeFrag.spv.h"
+#include "Shaders/spv/UI/UIImageVert.spv.h"
+#include "Shaders/spv/UI/UIImageFrag.spv.h"
+#include "Shaders/spv/PostProcessing/TonemapCompute.spv.h"
+#include "Shaders/spv/PreProcessing/HiZBuildCompute.spv.h"
+#include "Shaders/spv/PreProcessing/HiZDownscaleCompute.spv.h"
+#include "Shaders/spv/PostProcessing/HBAOCompute.spv.h"
+#include "Shaders/spv/PostProcessing/HBAOBlurCompute.spv.h"
 #include "Shaders/spv/ExtractNormalCompute.spv.h"
-#include "Shaders/spv/MLAAEdgeMaskCompute.spv.h"
-#include "Shaders/spv/MLAALineLengthCompute.spv.h"
-#include "Shaders/spv/MLAABlendCompute.spv.h"
+#include "Shaders/spv/PostProcessing/MLAAEdgeMaskCompute.spv.h"
+#include "Shaders/spv/PostProcessing/MLAALineLengthCompute.spv.h"
+#include "Shaders/spv/PostProcessing/MLAABlendCompute.spv.h"
 #include "Shaders/spv/SurfaceDepthOnlyVert.spv.h"
 #include "Shaders/spv/SurfaceDepthOnlyFrag.spv.h"
 #include "Shaders/spv/SkinnedDepthOnlyVert.spv.h"
@@ -52,6 +52,10 @@
 #include "Shaders/spv/Shadow/SurfaceShadowDepthOnlyFrag.spv.h"
 #include "Shaders/spv/Shadow/SkinnedShadowDepthOnlyVert.spv.h"
 #include "Shaders/spv/Shadow/SkinnedShadowDepthOnlyFrag.spv.h"
+#include "Shaders/spv/Shadow/SurfacePointShadowDepthOnlyVert.spv.h"
+#include "Shaders/spv/Shadow/SurfacePointShadowDepthOnlyFrag.spv.h"
+#include "Shaders/spv/Shadow/SkinnedPointShadowDepthOnlyVert.spv.h"
+#include "Shaders/spv/Shadow/SkinnedPointShadowDepthOnlyFrag.spv.h"
 #define Shaders_AnimationCompute_spv Shaders_Animation_AnimationCompute_spv
 #define Shaders_AnimationCompute_spv_size Shaders_Animation_AnimationCompute_spv_size
 #define Shaders_AnimateVertices_spv Shaders_Animation_AnimateVertices_spv
@@ -60,6 +64,34 @@
 #define Shaders_CullDrawArgsCompute_spv_size Shaders_PreProcessing_CullDrawArgsCompute_spv_size
 #define Shaders_CullLightsCompute_spv Shaders_PreProcessing_CullLightsCompute_spv
 #define Shaders_CullLightsCompute_spv_size Shaders_PreProcessing_CullLightsCompute_spv_size
+#define Shaders_TonemapCompute_spv Shaders_PostProcessing_TonemapCompute_spv
+#define Shaders_TonemapCompute_spv_size Shaders_PostProcessing_TonemapCompute_spv_size
+#define Shaders_HiZBuildCompute_spv Shaders_PreProcessing_HiZBuildCompute_spv
+#define Shaders_HiZBuildCompute_spv_size Shaders_PreProcessing_HiZBuildCompute_spv_size
+#define Shaders_HiZDownscaleCompute_spv Shaders_PreProcessing_HiZDownscaleCompute_spv
+#define Shaders_HiZDownscaleCompute_spv_size Shaders_PreProcessing_HiZDownscaleCompute_spv_size
+#define Shaders_HBAOCompute_spv Shaders_PostProcessing_HBAOCompute_spv
+#define Shaders_HBAOCompute_spv_size Shaders_PostProcessing_HBAOCompute_spv_size
+#define Shaders_HBAOBlurCompute_spv Shaders_PostProcessing_HBAOBlurCompute_spv
+#define Shaders_HBAOBlurCompute_spv_size Shaders_PostProcessing_HBAOBlurCompute_spv_size
+#define Shaders_MLAAEdgeMaskCompute_spv Shaders_PostProcessing_MLAAEdgeMaskCompute_spv
+#define Shaders_MLAAEdgeMaskCompute_spv_size Shaders_PostProcessing_MLAAEdgeMaskCompute_spv_size
+#define Shaders_MLAALineLengthCompute_spv Shaders_PostProcessing_MLAALineLengthCompute_spv
+#define Shaders_MLAALineLengthCompute_spv_size Shaders_PostProcessing_MLAALineLengthCompute_spv_size
+#define Shaders_MLAABlendCompute_spv Shaders_PostProcessing_MLAABlendCompute_spv
+#define Shaders_MLAABlendCompute_spv_size Shaders_PostProcessing_MLAABlendCompute_spv_size
+#define Shaders_SlugVert_spv Shaders_UI_SlugVert_spv
+#define Shaders_SlugVert_spv_size Shaders_UI_SlugVert_spv_size
+#define Shaders_SlugFrag_spv Shaders_UI_SlugFrag_spv
+#define Shaders_SlugFrag_spv_size Shaders_UI_SlugFrag_spv_size
+#define Shaders_UIShapeVert_spv Shaders_UI_UIShapeVert_spv
+#define Shaders_UIShapeVert_spv_size Shaders_UI_UIShapeVert_spv_size
+#define Shaders_UIShapeFrag_spv Shaders_UI_UIShapeFrag_spv
+#define Shaders_UIShapeFrag_spv_size Shaders_UI_UIShapeFrag_spv_size
+#define Shaders_UIImageVert_spv Shaders_UI_UIImageVert_spv
+#define Shaders_UIImageVert_spv_size Shaders_UI_UIImageVert_spv_size
+#define Shaders_UIImageFrag_spv Shaders_UI_UIImageFrag_spv
+#define Shaders_UIImageFrag_spv_size Shaders_UI_UIImageFrag_spv_size
 #define Shaders_SurfaceShadowDepthOnlyVert_spv Shaders_Shadow_SurfaceShadowDepthOnlyVert_spv
 #define Shaders_SurfaceShadowDepthOnlyVert_spv_size Shaders_Shadow_SurfaceShadowDepthOnlyVert_spv_size
 #define Shaders_SurfaceShadowDepthOnlyFrag_spv Shaders_Shadow_SurfaceShadowDepthOnlyFrag_spv
@@ -68,6 +100,14 @@
 #define Shaders_SkinnedShadowDepthOnlyVert_spv_size Shaders_Shadow_SkinnedShadowDepthOnlyVert_spv_size
 #define Shaders_SkinnedShadowDepthOnlyFrag_spv Shaders_Shadow_SkinnedShadowDepthOnlyFrag_spv
 #define Shaders_SkinnedShadowDepthOnlyFrag_spv_size Shaders_Shadow_SkinnedShadowDepthOnlyFrag_spv_size
+#define Shaders_SurfacePointShadowDepthOnlyVert_spv Shaders_Shadow_SurfacePointShadowDepthOnlyVert_spv
+#define Shaders_SurfacePointShadowDepthOnlyVert_spv_size Shaders_Shadow_SurfacePointShadowDepthOnlyVert_spv_size
+#define Shaders_SurfacePointShadowDepthOnlyFrag_spv Shaders_Shadow_SurfacePointShadowDepthOnlyFrag_spv
+#define Shaders_SurfacePointShadowDepthOnlyFrag_spv_size Shaders_Shadow_SurfacePointShadowDepthOnlyFrag_spv_size
+#define Shaders_SkinnedPointShadowDepthOnlyVert_spv Shaders_Shadow_SkinnedPointShadowDepthOnlyVert_spv
+#define Shaders_SkinnedPointShadowDepthOnlyVert_spv_size Shaders_Shadow_SkinnedPointShadowDepthOnlyVert_spv_size
+#define Shaders_SkinnedPointShadowDepthOnlyFrag_spv Shaders_Shadow_SkinnedPointShadowDepthOnlyFrag_spv
+#define Shaders_SkinnedPointShadowDepthOnlyFrag_spv_size Shaders_Shadow_SkinnedPointShadowDepthOnlyFrag_spv_size
 #endif
 
 SDL_GPUComputePipeline* g_AnimComputePipeline = NULL;
@@ -406,8 +446,8 @@ static void InitDeferredLightPipeline(void)
         .format              = SDL_GetGPUShaderFormats(g_GPUDevice),
         .code                = Shaders_DeferredLightVolumeFrag_spv,
         .code_size           = sizeof(Shaders_DeferredLightVolumeFrag_spv),
-        .num_samplers        = 5,
-        .num_storage_buffers = 2,
+        .num_samplers        = 7,
+        .num_storage_buffers = 4,
         .stage               = SDL_GPU_SHADERSTAGE_FRAGMENT,
         .entrypoint          = "frag"
     }); CHECK_CREATE(fragment_shader, "Deferred Light Fragment Shader")
@@ -877,6 +917,46 @@ static void InitDepthOnlyPipelines(void)
         .stage               = SDL_GPU_SHADERSTAGE_FRAGMENT,
         .entrypoint          = "frag"
     });
+    SDL_GPUShader* surface_point_shadow_vertex_shader = SDL_CreateGPUShader(g_GPUDevice, &(SDL_GPUShaderCreateInfo){
+        .num_uniform_buffers = 1,
+        .format              = SDL_GetGPUShaderFormats(g_GPUDevice),
+        .code                = Shaders_SurfacePointShadowDepthOnlyVert_spv,
+        .code_size           = sizeof(Shaders_SurfacePointShadowDepthOnlyVert_spv),
+        .num_samplers        = 0,
+        .num_storage_buffers = 4,
+        .stage               = SDL_GPU_SHADERSTAGE_VERTEX,
+        .entrypoint          = "vert"
+    });
+    SDL_GPUShader* surface_point_shadow_fragment_shader = SDL_CreateGPUShader(g_GPUDevice, &(SDL_GPUShaderCreateInfo){
+        .num_uniform_buffers = 0,
+        .format              = SDL_GetGPUShaderFormats(g_GPUDevice),
+        .code                = Shaders_SurfacePointShadowDepthOnlyFrag_spv,
+        .code_size           = sizeof(Shaders_SurfacePointShadowDepthOnlyFrag_spv),
+        .num_samplers        = 0,
+        .num_storage_buffers = 0,
+        .stage               = SDL_GPU_SHADERSTAGE_FRAGMENT,
+        .entrypoint          = "frag"
+    });
+    SDL_GPUShader* skinned_point_shadow_vertex_shader = SDL_CreateGPUShader(g_GPUDevice, &(SDL_GPUShaderCreateInfo){
+        .num_uniform_buffers = 1,
+        .format              = SDL_GetGPUShaderFormats(g_GPUDevice),
+        .code                = Shaders_SkinnedPointShadowDepthOnlyVert_spv,
+        .code_size           = sizeof(Shaders_SkinnedPointShadowDepthOnlyVert_spv),
+        .num_samplers        = 0,
+        .num_storage_buffers = 5,
+        .stage               = SDL_GPU_SHADERSTAGE_VERTEX,
+        .entrypoint          = "vert"
+    });
+    SDL_GPUShader* skinned_point_shadow_fragment_shader = SDL_CreateGPUShader(g_GPUDevice, &(SDL_GPUShaderCreateInfo){
+        .num_uniform_buffers = 0,
+        .format              = SDL_GetGPUShaderFormats(g_GPUDevice),
+        .code                = Shaders_SkinnedPointShadowDepthOnlyFrag_spv,
+        .code_size           = sizeof(Shaders_SkinnedPointShadowDepthOnlyFrag_spv),
+        .num_samplers        = 0,
+        .num_storage_buffers = 0,
+        .stage               = SDL_GPU_SHADERSTAGE_FRAGMENT,
+        .entrypoint          = "frag"
+    });
     CHECK_CREATE(surface_vertex_shader, "Surface Depth Vertex Shader")
     CHECK_CREATE(surface_fragment_shader, "Surface Depth Fragment Shader")
     CHECK_CREATE(skinned_vertex_shader, "Skinned Depth Vertex Shader")
@@ -885,6 +965,10 @@ static void InitDepthOnlyPipelines(void)
     CHECK_CREATE(surface_shadow_fragment_shader, "Surface Shadow Fragment Shader")
     CHECK_CREATE(skinned_shadow_vertex_shader, "Skinned Shadow Vertex Shader")
     CHECK_CREATE(skinned_shadow_fragment_shader, "Skinned Shadow Fragment Shader")
+    CHECK_CREATE(surface_point_shadow_vertex_shader, "Surface Point Shadow Vertex Shader")
+    CHECK_CREATE(surface_point_shadow_fragment_shader, "Surface Point Shadow Fragment Shader")
+    CHECK_CREATE(skinned_point_shadow_vertex_shader, "Skinned Point Shadow Vertex Shader")
+    CHECK_CREATE(skinned_point_shadow_fragment_shader, "Skinned Point Shadow Fragment Shader")
 
     const SDL_GPUVertexAttribute surface_attributes[3] = {
         { .location = 0, .buffer_slot = 0, .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3, .offset = offsetof(AVertex, position) },
@@ -940,10 +1024,18 @@ static void InitDepthOnlyPipelines(void)
     skinned_desc.fragment_shader = skinned_shadow_fragment_shader;
     g_RenderState.surfaceShadowPipeline = SDL_CreateGPUGraphicsPipeline(g_GPUDevice, &surface_desc);
     g_RenderState.skinnedShadowPipeline = SDL_CreateGPUGraphicsPipeline(g_GPUDevice, &skinned_desc);
+    surface_desc.vertex_shader = surface_point_shadow_vertex_shader;
+    surface_desc.fragment_shader = surface_point_shadow_fragment_shader;
+    skinned_desc.vertex_shader = skinned_point_shadow_vertex_shader;
+    skinned_desc.fragment_shader = skinned_point_shadow_fragment_shader;
+    g_RenderState.surfacePointShadowPipeline = SDL_CreateGPUGraphicsPipeline(g_GPUDevice, &surface_desc);
+    g_RenderState.skinnedPointShadowPipeline = SDL_CreateGPUGraphicsPipeline(g_GPUDevice, &skinned_desc);
     CHECK_CREATE(g_RenderState.surfaceDepthPipeline, "Surface Depth Pipeline")
     CHECK_CREATE(g_RenderState.skinnedDepthPipeline, "Skinned Depth Pipeline")
     CHECK_CREATE(g_RenderState.surfaceShadowPipeline, "Surface Shadow Pipeline")
     CHECK_CREATE(g_RenderState.skinnedShadowPipeline, "Skinned Shadow Pipeline")
+    CHECK_CREATE(g_RenderState.surfacePointShadowPipeline, "Surface Point Shadow Pipeline")
+    CHECK_CREATE(g_RenderState.skinnedPointShadowPipeline, "Skinned Point Shadow Pipeline")
 
     SDL_ReleaseGPUShader(g_GPUDevice, surface_vertex_shader);
     SDL_ReleaseGPUShader(g_GPUDevice, surface_fragment_shader);
@@ -953,6 +1045,10 @@ static void InitDepthOnlyPipelines(void)
     SDL_ReleaseGPUShader(g_GPUDevice, surface_shadow_fragment_shader);
     SDL_ReleaseGPUShader(g_GPUDevice, skinned_shadow_vertex_shader);
     SDL_ReleaseGPUShader(g_GPUDevice, skinned_shadow_fragment_shader);
+    SDL_ReleaseGPUShader(g_GPUDevice, surface_point_shadow_vertex_shader);
+    SDL_ReleaseGPUShader(g_GPUDevice, surface_point_shadow_fragment_shader);
+    SDL_ReleaseGPUShader(g_GPUDevice, skinned_point_shadow_vertex_shader);
+    SDL_ReleaseGPUShader(g_GPUDevice, skinned_point_shadow_fragment_shader);
 }
 extern void InitSDSM();
 
@@ -981,6 +1077,8 @@ void DestroyRenderPipelines(void)
     if (g_RenderState.skinnedDepthPipeline) SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.skinnedDepthPipeline);
     if (g_RenderState.surfaceDepthPipeline) SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.surfaceDepthPipeline);
     if (g_RenderState.skinnedShadowPipeline) SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.skinnedShadowPipeline);
+    if (g_RenderState.surfacePointShadowPipeline) SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.surfacePointShadowPipeline);
+    if (g_RenderState.skinnedPointShadowPipeline) SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.skinnedPointShadowPipeline);
     if (g_RenderState.surfaceShadowPipeline) SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.surfaceShadowPipeline);
     if (g_RenderState.linePipeline) SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.linePipeline);
     if (g_RenderState.deferredLightPipeline) SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.deferredLightPipeline);

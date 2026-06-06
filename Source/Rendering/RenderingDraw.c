@@ -36,15 +36,15 @@ void RenderDepth(SDL_GPUCommandBuffer* cmd, const DepthPassContext* ctx)
             g_RenderState.skinnedBuffers.primitiveGroup,
             g_RenderState.skinnedBuffers.drawSparseIndices,
             g_RenderState.skinnedAnimatedVertices,
-            g_RenderState.shadowCascadeBuffer
+            ctx->usePointShadowSides ? g_RenderState.pointShadowMatrixBuffer : (ctx->useSpotShadowSides ? g_RenderState.spotShadowMatrixBuffer : g_RenderState.shadowCascadeBuffer)
         };
-        SDL_BindGPUVertexStorageBuffers(pass, 0, buffers, ctx->useShadowCascades ? SDL_arraysize(buffers) : 4);
+        SDL_BindGPUVertexStorageBuffers(pass, 0, buffers, (ctx->useShadowCascades || ctx->usePointShadowSides || ctx->useSpotShadowSides) ? SDL_arraysize(buffers) : 4);
         if (ctx->alphaClip)
         {
             SDL_BindGPUFragmentSamplers(pass, 0, &albedoSampler, 1);
             SDL_BindGPUFragmentStorageBuffers(pass, 0, fragmentBuffers, SDL_arraysize(fragmentBuffers));
         }
-        if (ctx->useShadowCascades) SDL_PushGPUVertexUniformData(cmd, 0, &ctx->cascadeIndex, sizeof(u32));
+        if (ctx->useShadowCascades || ctx->usePointShadowSides || ctx->useSpotShadowSides) SDL_PushGPUVertexUniformData(cmd, 0, &ctx->cascadeIndex, sizeof(u32));
         else SDL_PushGPUVertexUniformData(cmd, 0, &ctx->viewProj, sizeof(mat4x4));
         SDL_DrawGPUIndexedPrimitivesIndirect(pass, g_RenderState.skinnedBuffers.drawArgs, 0, skinnedSet.numGroups * MESH_LOD_COUNT);
     }
@@ -60,15 +60,15 @@ void RenderDepth(SDL_GPUCommandBuffer* cmd, const DepthPassContext* ctx)
             g_RenderState.surfaceBuffers.entity,
             g_RenderState.surfaceBuffers.primitiveGroup,
             g_RenderState.surfaceBuffers.drawSparseIndices,
-            g_RenderState.shadowCascadeBuffer
+            ctx->usePointShadowSides ? g_RenderState.pointShadowMatrixBuffer : (ctx->useSpotShadowSides ? g_RenderState.spotShadowMatrixBuffer : g_RenderState.shadowCascadeBuffer)
         };
-        SDL_BindGPUVertexStorageBuffers(pass, 0, surfaceBuffers, ctx->useShadowCascades ? SDL_arraysize(surfaceBuffers) : 3);
+        SDL_BindGPUVertexStorageBuffers(pass, 0, surfaceBuffers, (ctx->useShadowCascades || ctx->usePointShadowSides || ctx->useSpotShadowSides) ? SDL_arraysize(surfaceBuffers) : 3);
         if (ctx->alphaClip)
         {
             SDL_BindGPUFragmentSamplers(pass, 0, &albedoSampler, 1);
             SDL_BindGPUFragmentStorageBuffers(pass, 0, fragmentBuffers, SDL_arraysize(fragmentBuffers));
         }
-        if (ctx->useShadowCascades) SDL_PushGPUVertexUniformData(cmd, 0, &ctx->cascadeIndex, sizeof(u32));
+        if (ctx->useShadowCascades || ctx->usePointShadowSides || ctx->useSpotShadowSides) SDL_PushGPUVertexUniformData(cmd, 0, &ctx->cascadeIndex, sizeof(u32));
         else SDL_PushGPUVertexUniformData(cmd, 0, &ctx->viewProj, sizeof(mat4x4));
         SDL_DrawGPUIndexedPrimitivesIndirect(pass, g_RenderState.surfaceBuffers.drawArgs, 0, surfaceSet.numGroups * MESH_LOD_COUNT);
     }
@@ -171,8 +171,11 @@ void RenderDeferredLights(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* col
     if (g_RenderState.numLights == 0u)
         return;
     if (!g_RenderState.deferredLightPipeline || !g_RenderState.lightBuffer || !g_RenderState.lightDrawInfoBuffer ||
+        !g_RenderState.pointShadowMatrixBuffer ||
+        !g_RenderState.spotShadowMatrixBuffer ||
         !g_RenderState.lightDrawArgsBuffer || !winstate->tex_gbuffer_tangent || !winstate->tex_gbuffer_albedo_metallic ||
-        !winstate->tex_gbuffer_shadow_roughness || !winstate->tex_hiz_depth || !winstate->tex_hbao_blur)
+        !winstate->tex_gbuffer_shadow_roughness || !winstate->tex_hiz_depth || !winstate->tex_hbao_blur ||
+        !winstate->tex_point_shadow_color || !winstate->tex_spot_shadow_color)
     {
         AX_WARN("Deferred light rendering is not ready");
         return;
@@ -184,19 +187,23 @@ void RenderDeferredLights(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* col
     SDL_GPUBuffer* vertexBuffers[1] = {
         g_RenderState.lightDrawInfoBuffer
     };
-    SDL_GPUBuffer* fragmentBuffers[2] = {
+    SDL_GPUBuffer* fragmentBuffers[4] = {
         g_RenderState.lightBuffer,
-        g_RenderState.lightDrawInfoBuffer
+        g_RenderState.lightDrawInfoBuffer,
+        g_RenderState.pointShadowMatrixBuffer,
+        g_RenderState.spotShadowMatrixBuffer
     };
     SDL_BindGPUVertexStorageBuffers(pass, 0, vertexBuffers, SDL_arraysize(vertexBuffers));
     SDL_BindGPUFragmentStorageBuffers(pass, 0, fragmentBuffers, SDL_arraysize(fragmentBuffers));
 
-    SDL_GPUTextureSamplerBinding inputs[5] = {
+    SDL_GPUTextureSamplerBinding inputs[7] = {
         { .texture = winstate->tex_gbuffer_tangent, .sampler = g_RenderState.hiZSampler },
         { .texture = winstate->tex_gbuffer_albedo_metallic, .sampler = g_RenderState.hiZSampler },
         { .texture = winstate->tex_gbuffer_shadow_roughness, .sampler = g_RenderState.hiZSampler },
         { .texture = winstate->tex_hiz_depth, .sampler = g_RenderState.hiZSampler },
-        { .texture = winstate->tex_hbao_blur, .sampler = g_RenderState.sampler }
+        { .texture = winstate->tex_hbao_blur, .sampler = g_RenderState.sampler },
+        { .texture = winstate->tex_point_shadow_color, .sampler = g_RenderState.shadowSampler },
+        { .texture = winstate->tex_spot_shadow_color, .sampler = g_RenderState.shadowSampler }
     };
     SDL_BindGPUFragmentSamplers(pass, 0, inputs, SDL_arraysize(inputs));
 

@@ -5,26 +5,167 @@
 
 #include "Extern/tlsf.h"
 
+#include <stddef.h>
+#include <stdint.h>
+#include <stdbool.h>
+
 #ifndef PLATFORM_WINDOWS
-    #include <sys/mman.h>
-    #include <unistd.h>
-    #include <errno.h>
+#include <sys/mman.h>
+#include <unistd.h>
+#include <errno.h>
 #else
 #ifndef NOMINMAX
-    #define NOMINMAX
-    #define WIN32_LEAN_AND_MEAN 
-    #define VC_EXTRALEAN
+#define NOMINMAX
 #endif
-    #include <Windows.h>
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
 #endif
+#ifndef VC_EXTRALEAN
+#define VC_EXTRALEAN
+#endif
+
+#include <Windows.h>
+#include <intrin.h>
+#endif
+
+#ifndef ARRAY_COUNT
+#define ARRAY_COUNT(a) (sizeof(a) / sizeof((a)[0]))
+#endif
+
+#ifndef KiB
+#define KiB(x) ((size_t)(x) * 1024ull)
+#endif
+
+#ifndef MiB
+#define MiB(x) ((size_t)(x) * 1024ull * 1024ull)
+#endif
+
+#if defined(_MSC_VER)
+#define MEMORY_ALIGN_DECL(N) __declspec(align(N))
+#define RETURN_ADDRESS() _ReturnAddress()
+#else
+#define MEMORY_ALIGN_DECL(N) __attribute__((aligned(N)))
+#define RETURN_ADDRESS() __builtin_return_address(0)
+#endif
+
+#define MEMORY_GUARD_WORDS 16u
+#define ARENA_GUARD_BEFORE 0x1111222233334444ull
+#define ARENA_GUARD_AFTER  0xAAAABBBBCCCCDDDDull
+
+typedef struct DebugArenaStorage
+{
+    u64 before[MEMORY_GUARD_WORDS];
+    char memory[ARENA_MEMORY_SIZE];
+    u64 after[MEMORY_GUARD_WORDS];
+} DebugArenaStorage;
+
+typedef struct AlignedAllocHeader
+{
+    void*  raw;
+    size_t rawSize;
+} AlignedAllocHeader;
 
 Arena  GlobalArena = { 0, 0, 0 };
 tlsf_t GlobalTLSF = NULL;
-char   ArenaMemory[ARENA_MEMORY_SIZE];
+
+static MEMORY_ALIGN_DECL(64) DebugArenaStorage g_ArenaStorage;
+
 void*  TLSFMemory = NULL;
 size_t TLSFMemorySize = 0;
 
-size_t OSGetPageSize(void) {
+void*  g_LastTLSFPtr = NULL;
+size_t g_LastTLSFSize = 0;
+void*  g_LastTLSFCaller = NULL;
+const char* g_LastTLSFOp = NULL;
+
+static bool g_MemoryInitialized = false;
+
+static size_t AlignUpSize(size_t value, size_t align)
+{
+    const size_t mask = align - 1u;
+    ASSERT((align & mask) == 0);
+    return (value + mask) & ~mask;
+}
+
+static bool AddSizeOverflow(size_t a, size_t b, size_t* out)
+{
+    if (a > SIZE_MAX - b)
+        return true;
+
+    *out = a + b;
+    return false;
+}
+
+static bool MulSizeOverflow(size_t a, size_t b, size_t* out)
+{
+    if (a && b > SIZE_MAX / a)
+        return true;
+
+    *out = a * b;
+    return false;
+}
+
+static void InitArenaGuards(void)
+{
+    for (u32 i = 0; i < MEMORY_GUARD_WORDS; i++)
+    {
+        g_ArenaStorage.before[i] = ARENA_GUARD_BEFORE;
+        g_ArenaStorage.after[i]  = ARENA_GUARD_AFTER;
+    }
+}
+static void PrintArenaDebugAddresses(void)
+{
+    AX_WARN("Arena debug:");
+    AX_WARN("  before[0]     = %p", &g_ArenaStorage.before[0]);
+    AX_WARN("  before[15]    = %p", &g_ArenaStorage.before[15]);
+    AX_WARN("  memory start  = %p", g_ArenaStorage.memory);
+    AX_WARN("  memory end    = %p", g_ArenaStorage.memory + ARENA_MEMORY_SIZE);
+    AX_WARN("  after[0]      = %p", &g_ArenaStorage.after[0]);
+    AX_WARN("  GlobalArena.buf=%p curr=%llu len=%llu",
+             GlobalArena.buf,
+             (u64)GlobalArena.currOffset,
+             (u64)GlobalArena.buffLen);
+}
+static void CheckArenaGuards(const char* where)
+{
+    return;
+    for (u32 i = 0; i < MEMORY_GUARD_WORDS; i++)
+    {
+        if (g_ArenaStorage.before[i] != ARENA_GUARD_BEFORE)
+        {
+            PrintArenaDebugAddresses();
+            AX_ERROR("Arena underrun at %s guard=%u value=0x%llX",
+                     where, i, g_ArenaStorage.before[i]);
+            ASSERT(g_ArenaStorage.before[i] == ARENA_GUARD_BEFORE);
+        }
+
+        if (g_ArenaStorage.after[i] != ARENA_GUARD_AFTER)
+        {
+            AX_ERROR("Arena overflow at %s guard=%u value=0x%llX",
+                     where, i, g_ArenaStorage.after[i]);
+            ASSERT(g_ArenaStorage.after[i] == ARENA_GUARD_AFTER);
+        }
+    }
+}
+
+static void ResetTLSFDebugState(void)
+{
+    g_LastTLSFPtr    = NULL;
+    g_LastTLSFSize   = 0;
+    g_LastTLSFCaller = NULL;
+    g_LastTLSFOp     = NULL;
+}
+
+static void SetTLSFBreadcrumb(const char* op, void* ptr, size_t size)
+{
+    g_LastTLSFOp     = op;
+    g_LastTLSFPtr    = ptr;
+    g_LastTLSFSize   = size;
+    g_LastTLSFCaller = RETURN_ADDRESS();
+}
+
+size_t OSGetPageSize(void)
+{
     #ifdef PLATFORM_WINDOWS
     SYSTEM_INFO si;
     GetSystemInfo(&si);
@@ -34,83 +175,197 @@ size_t OSGetPageSize(void) {
     #endif
 }
 
-size_t OSRoundToPage(size_t size) {
-    size_t page_size = OSGetPageSize();
-    return (size + page_size - 1) & ~(page_size - 1);
+size_t OSRoundToPage(size_t size)
+{
+    const size_t pageSize = OSGetPageSize();
+    return AlignUpSize(size, pageSize);
 }
 
-void* OSAlloc(size_t size) 
+void* OSAlloc(size_t size)
 {
-    if (size == 0)  return NULL;
+    if (size == 0)
+        return NULL;
+
+    size = OSRoundToPage(size);
+
     #ifdef PLATFORM_WINDOWS
-    DWORD mask = MEM_COMMIT | MEM_RESERVE | MEM_LARGE_PAGES; 
-    void *ptr = VirtualAlloc(NULL, size, mask, PAGE_READWRITE);
+    void* ptr = NULL;
+
+    SIZE_T largePageSize = GetLargePageMinimum();
+    if (largePageSize)
+    {
+        size_t largeSize = AlignUpSize(size, (size_t)largePageSize);
+        ptr = VirtualAlloc(NULL, largeSize,
+                           MEM_COMMIT | MEM_RESERVE | MEM_LARGE_PAGES,
+                           PAGE_READWRITE);
+    }
+
     if (!ptr)
         ptr = VirtualAlloc(NULL, size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-    #else
-    void *ptr = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-    #endif
+
     return ptr;
-}
-
-int OSFree(void *ptr, size_t size) {
-    if (ptr == NULL)  return -1;
-    #ifdef PLATFORM_WINDOWS
-    (void)size; /* Windows doesn't need size for VirtualFree */
-    if (VirtualFree(ptr, 0, MEM_RELEASE))  return 0;
-    else return (int)GetLastError();
     #else
-    if (munmap(ptr, size) == 0) return 0;
-    else return errno;
+    void* ptr = mmap(NULL, size, PROT_READ | PROT_WRITE,
+                     MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+
+    if (ptr == MAP_FAILED)
+        return NULL;
+
+    return ptr;
     #endif
 }
 
-void InitGlobalArena()
+int OSFree(void* ptr, size_t size)
 {
-    GlobalArena.buf = ArenaMemory;
-    GlobalArena.buffLen = ARENA_MEMORY_SIZE;
-    GlobalArena.currOffset = 0;
-    size_t tlsfSize = (size_t)TLSF_MEMORY_SIZE;
-    const size_t minTLSFSize = TLSF_MEMORY_SIZE >> 2;
+    if (!ptr)
+        return -1;
+
+    #ifdef PLATFORM_WINDOWS
+    (void)size;
+    return VirtualFree(ptr, 0, MEM_RELEASE) ? 0 : (int)GetLastError();
+    #else
+    size = OSRoundToPage(size);
+    return munmap(ptr, size) == 0 ? 0 : errno;
+    #endif
+}
+
+static bool InitTLSF(size_t requestedSize)
+{
+    /*
+    Original TLSF has a maximum representable block size. Also avoid exactly
+    block_size_max because some versions map that to one-past the FL table.
+    */
+    size_t maxBlock = tlsf_block_size_max();
+    if (maxBlock > tlsf_align_size())
+        maxBlock -= tlsf_align_size();
+
+    size_t maxTotal = tlsf_size() + tlsf_pool_overhead() + maxBlock;
+    size_t tlsfSize = requestedSize;
+
+    if (tlsfSize > maxTotal)
+    {
+        AX_WARN("TLSF backing size clamped: requested=%llu mb max=%llu mb",
+                (u64)requestedSize / 1024ull / 1024ull,
+                (u64)maxTotal / 1024ull / 1024ull);
+        tlsfSize = maxTotal;
+    }
+
+    const size_t minTLSFSize =
+        tlsf_size() + tlsf_pool_overhead() + tlsf_block_size_min();
+
     while (tlsfSize >= minTLSFSize)
     {
         TLSFMemory = OSAlloc(tlsfSize);
-        if (TLSFMemory) break;
-        tlsfSize >>= 1;
+        if (TLSFMemory)
+            break;
+
+        tlsfSize >>= 1u;
+        tlsfSize = OSRoundToPage(tlsfSize);
     }
+
     if (!TLSFMemory)
     {
-        AX_ERROR("Failed to allocate TLSF backing memory: requested=%llu mb", (u64)TLSF_MEMORY_SIZE / 1024ull / 1024ull);
-        return;
+        AX_ERROR("Failed to allocate TLSF backing memory: requested=%llu mb",
+                 (u64)requestedSize / 1024ull / 1024ull);
+        return false;
     }
-    TLSFMemorySize = tlsfSize;
+
+    TLSFMemorySize = OSRoundToPage(tlsfSize);
+
+    if (((uintptr_t)TLSFMemory & (uintptr_t)(tlsf_align_size() - 1u)) != 0)
+    {
+        AX_ERROR("TLSF memory is not aligned: memory=%p align=%llu",
+                 TLSFMemory, (u64)tlsf_align_size());
+        OSFree(TLSFMemory, TLSFMemorySize);
+        TLSFMemory = NULL;
+        TLSFMemorySize = 0;
+        return false;
+    }
+
+    GlobalTLSF = tlsf_create(TLSFMemory);
+    if (!GlobalTLSF)
+    {
+        AX_ERROR("tlsf_create failed memory=%p size=%llu",
+                 TLSFMemory, (u64)TLSFMemorySize);
+        OSFree(TLSFMemory, TLSFMemorySize);
+        TLSFMemory = NULL;
+        TLSFMemorySize = 0;
+        return false;
+    }
+
+    size_t poolOffset = tlsf_size();
+    size_t poolSize = TLSFMemorySize - poolOffset;
+
+    pool_t pool = tlsf_add_pool(GlobalTLSF,
+                                (char*)TLSFMemory + poolOffset,
+                                poolSize);
+
+    if (!pool)
+    {
+        AX_ERROR("tlsf_add_pool failed tlsf=%p memory=%p total=%llu poolSize=%llu",
+                 GlobalTLSF,
+                 TLSFMemory,
+                 (u64)TLSFMemorySize,
+                 (u64)poolSize);
+
+        GlobalTLSF = NULL;
+        OSFree(TLSFMemory, TLSFMemorySize);
+        TLSFMemory = NULL;
+        TLSFMemorySize = 0;
+        return false;
+    }
+
     if (TLSFMemorySize != (size_t)TLSF_MEMORY_SIZE)
-        AX_WARN("TLSF backing allocation reduced: requested=%llu mb actual=%llu mb", (u64)TLSF_MEMORY_SIZE / 1024ull / 1024ull, (u64)TLSFMemorySize / 1024ull / 1024ull);
-    GlobalTLSF = tlsf_create_with_pool(TLSFMemory, TLSFMemorySize);
+    {
+        AX_WARN("TLSF backing allocation adjusted: requested=%llu mb actual=%llu mb",
+                (u64)TLSF_MEMORY_SIZE / 1024ull / 1024ull,
+                (u64)TLSFMemorySize / 1024ull / 1024ull);
+    }
+
+    AX_LOG("TLSF initialized tlsf=%p memory=%p total=%llu mb pool=%p poolSize=%llu mb",
+            GlobalTLSF,
+            TLSFMemory,
+            (u64)TLSFMemorySize / 1024ull / 1024ull,
+            pool,
+            (u64)poolSize / 1024ull / 1024ull);
+
+    return true;
 }
 
-Arena* GetGlobalArena()
+void InitGlobalArena(void)
+{
+    InitArenaGuards();
+
+    GlobalArena.buf        = g_ArenaStorage.memory;
+    GlobalArena.buffLen    = ARENA_MEMORY_SIZE;
+    GlobalArena.currOffset = 0;
+
+    GlobalTLSF = NULL;
+    TLSFMemory = NULL;
+    TLSFMemorySize = 0;
+    ResetTLSFDebugState();
+
+    if (!InitTLSF((size_t)TLSF_MEMORY_SIZE))
+    {
+        AX_ERROR("InitGlobalArena failed");
+        ASSERT(false);
+        return;
+    }
+
+    g_MemoryInitialized = true;
+    CheckArenaGuards("InitGlobalArena");
+}
+
+Arena* GetGlobalArena(void)
 {
     return &GlobalArena;
 }
 
 uint64_t AlignAddress(uint64_t addr, uint64_t align)
 {
-    const uint64_t mask = align - 1;
+    const uint64_t mask = align - 1u;
     ASSERT((align & mask) == 0);
     return (addr + mask) & ~mask;
-}
-
-static bool CheckTLSFFail(void* ptr, size_t requestedSize)
-{
-    if (ptr == NULL)
-    {
-        AX_ERROR("TLSF Memory Allocating failed request:%llu mb total tlsf size:%llu mb",
-                 (u64)requestedSize / 1024ull / 1024ull,
-                 (u64)TLSFMemorySize / 1024ull / 1024ull);
-        return false;
-    }
-    return true;
 }
 
 void* AlignPointer(void* ptr, uint64_t align)
@@ -118,95 +373,214 @@ void* AlignPointer(void* ptr, uint64_t align)
     return (void*)AlignAddress((uint64_t)ptr, align);
 }
 
+static void CheckMemorySystem(const char* op)
+{
+    CheckArenaGuards(op);
+
+    if (!g_MemoryInitialized || !GlobalTLSF || !TLSFMemory || TLSFMemorySize == 0)
+    {
+        AX_ERROR("Memory system invalid during %s initialized=%d tlsf=%p memory=%p size=%llu lastOp=%s lastPtr=%p lastSize=%llu lastCaller=%p",
+                 op,
+                 g_MemoryInitialized ? 1 : 0,
+                 GlobalTLSF,
+                 TLSFMemory,
+                 (u64)TLSFMemorySize,
+                 g_LastTLSFOp ? g_LastTLSFOp : "none",
+                 g_LastTLSFPtr,
+                 (u64)g_LastTLSFSize,
+                 g_LastTLSFCaller);
+        ASSERT(false);
+    }
+}
+
+static bool CheckTLSFFail(void* ptr, size_t requestedSize)
+{
+    if (ptr)
+        return true;
+
+    AX_ERROR("TLSF allocation failed request=%llu bytes / %.3f mb, total=%llu bytes / %.3f mb, tlsf=%p memory=%p lastOp=%s lastPtr=%p lastSize=%llu lastCaller=%p",
+             (u64)requestedSize,
+             (double)requestedSize / (1024.0 * 1024.0),
+             (u64)TLSFMemorySize,
+             (double)TLSFMemorySize / (1024.0 * 1024.0),
+             GlobalTLSF,
+             TLSFMemory,
+             g_LastTLSFOp ? g_LastTLSFOp : "none",
+             g_LastTLSFPtr,
+             (u64)g_LastTLSFSize,
+             g_LastTLSFCaller);
+
+    ASSERT(false);
+    return false;
+}
+
 void* OSAllocAligned(uint64_t bytes, uint64_t align)
 {
-    uint64_t actualBytes = bytes + align;
-    uint8_t* pRawMem     = (uint8_t*)OSAlloc(actualBytes);
-    if (pRawMem == NULL) return NULL;
-    uint8_t* pAlignedMem = (uint8_t*)AlignPointer(pRawMem, align);
+    if (bytes == 0)
+        return NULL;
 
-    if (pAlignedMem == pRawMem)
-        pAlignedMem += align;
+    if (align < sizeof(void*))
+        align = sizeof(void*);
 
-    uint8_t shift      = (uint8_t)(pAlignedMem - pRawMem);
-    pAlignedMem[-1]    = (uint8_t)(shift & 0xFF);
-    return pAlignedMem;
+    ASSERT((align & (align - 1u)) == 0);
+
+    size_t total = 0;
+    if (AddSizeOverflow((size_t)bytes, (size_t)align, &total) ||
+        AddSizeOverflow(total, sizeof(AlignedAllocHeader), &total))
+    {
+        AX_ERROR("OSAllocAligned overflow bytes=%llu align=%llu", (u64)bytes, (u64)align);
+        ASSERT(false);
+        return NULL;
+    }
+
+    void* raw = OSAlloc(total);
+    if (!raw)
+        return NULL;
+
+    uintptr_t start = (uintptr_t)raw + sizeof(AlignedAllocHeader);
+    uintptr_t aligned = AlignAddress(start, align);
+
+    AlignedAllocHeader* header = ((AlignedAllocHeader*)aligned) - 1;
+    header->raw = raw;
+    header->rawSize = OSRoundToPage(total);
+
+    return (void*)aligned;
 }
 
 void OSFreeAligned(void* pMem, size_t size)
 {
-    if (pMem == NULL)
+    (void)size;
+
+    if (!pMem)
         return;
 
-    uint8_t* pAlignedMem = (uint8_t*)pMem;
-    uint64_t shift       = pAlignedMem[-1];
-    if (shift == 0) shift = 256;
-    uint8_t* pRawMem = pAlignedMem - shift;
-    OSFree(pRawMem, size);
+    AlignedAllocHeader* header = ((AlignedAllocHeader*)pMem) - 1;
+    OSFree(header->raw, header->rawSize);
 }
 
 void* AllocAligned(uint64_t bytes, uint64_t align)
 {
-    uint64_t actualBytes = bytes + align;
-    uint8_t* pRawMem     = (uint8_t*)tlsf_malloc(GlobalTLSF, actualBytes);
-    if (!CheckTLSFFail(pRawMem, actualBytes)) return NULL;
-    uint8_t* pAlignedMem = (uint8_t*)AlignPointer(pRawMem, align);
+    if (bytes == 0)
+        return NULL;
 
-    if (pAlignedMem == pRawMem)
-        pAlignedMem += align;
+    if (align < tlsf_align_size())
+        align = tlsf_align_size();
 
-    uint8_t shift      = (uint8_t)(pAlignedMem - pRawMem);
-    pAlignedMem[-1]    = (uint8_t)(shift & 0xFF);
-    return pAlignedMem;
+    ASSERT((align & (align - 1u)) == 0);
+
+    CheckMemorySystem("AllocAligned");
+
+    SetTLSFBreadcrumb("memalign", NULL, (size_t)bytes);
+    void* ptr = tlsf_memalign(GlobalTLSF, (size_t)align, (size_t)bytes);
+
+    if (!CheckTLSFFail(ptr, (size_t)bytes))
+        return NULL;
+
+    return ptr;
 }
 
 void FreeAligned(void* pMem)
 {
-    uint8_t* pAlignedMem = (uint8_t*)pMem;
-    uint64_t shift       = pAlignedMem[-1];
-    if (shift == 0) shift = 256;
+    if (!pMem)
+        return;
 
-    uint8_t* pRawMem = pAlignedMem - shift;
-    tlsf_free(GlobalTLSF, pRawMem);
+    CheckMemorySystem("FreeAligned");
+
+    SetTLSFBreadcrumb("free-aligned", pMem, 0);
+    tlsf_free(GlobalTLSF, pMem);
 }
 
 void* AllocZeroTLSFGlobal(size_t count, size_t size)
 {
-    size_t bytes = count * size;
-    void* ptr = tlsf_malloc(GlobalTLSF, bytes);
-    if (!CheckTLSFFail(ptr, bytes)) return NULL;
+    size_t bytes = 0;
+    if (MulSizeOverflow(count, size, &bytes))
+    {
+        AX_ERROR("AllocZeroTLSFGlobal overflow count=%llu size=%llu", (u64)count, (u64)size);
+        ASSERT(false);
+        return NULL;
+    }
+
+    if (bytes == 0)
+        return NULL;
+
+    void* ptr = AllocateTLSFGlobal(bytes);
+    if (!ptr)
+        return NULL;
+
     MemsetZero(ptr, bytes);
     return ptr;
 }
 
 void* AllocateTLSFGlobal(size_t size)
 {
+    if (size == 0)
+        return NULL;
+
+    CheckMemorySystem("malloc");
+
+    SetTLSFBreadcrumb("malloc", NULL, size);
     void* ptr = tlsf_malloc(GlobalTLSF, size);
-    if (!CheckTLSFFail(ptr, size)) return NULL;
+
+    if (!CheckTLSFFail(ptr, size))
+        return NULL;
+
+    #if defined(_DEBUG) || defined(DEBUG) || defined(Debug)
     MemSet(ptr, 0xCD, size);
+    #endif
+
     return ptr;
 }
 
 void* ReAllocateTLSFGlobal(void* ptr, size_t size)
 {
+    CheckMemorySystem("realloc");
+
+    if (!ptr)
+        return AllocateTLSFGlobal(size);
+
+    if (size == 0)
+    {
+        SetTLSFBreadcrumb("realloc-free", ptr, 0);
+        tlsf_free(GlobalTLSF, ptr);
+        return NULL;
+    }
+
+    SetTLSFBreadcrumb("realloc", ptr, size);
     void* res = tlsf_realloc(GlobalTLSF, ptr, size);
-    if (!CheckTLSFFail(res, size)) return NULL;
+
+    if (!CheckTLSFFail(res, size))
+        return NULL;
+
     return res;
 }
 
 void DeAllocateTLSFGlobal(void* buff)
 {
+    if (!buff)
+        return;
+
+    CheckMemorySystem("free");
+
+    SetTLSFBreadcrumb("free", buff, 0);
     tlsf_free(GlobalTLSF, buff);
 }
+
+/*//////////////////////////////////////////////////////////////////////////*/
+/*                                  Arena                                   */
+/*//////////////////////////////////////////////////////////////////////////*/
 
 static inline void CheckArenaSize(void)
 {
     if (GlobalArena.buf == NULL)
     {
-        GlobalArena.buf        = ArenaMemory;
+        InitArenaGuards();
+
+        GlobalArena.buf        = g_ArenaStorage.memory;
         GlobalArena.buffLen    = ARENA_MEMORY_SIZE;
         GlobalArena.currOffset = 0;
     }
+
+    CheckArenaGuards("CheckArenaSize");
 }
 
 void ArenaInit(Arena* a, size_t backing_buffer_length)
@@ -215,6 +589,12 @@ void ArenaInit(Arena* a, size_t backing_buffer_length)
     a->buf        = (char*)OSAlloc(aligned_size);
     a->buffLen    = aligned_size;
     a->currOffset = 0;
+
+    if (!a->buf)
+    {
+        AX_ERROR("ArenaInit failed size=%llu", (u64)aligned_size);
+        ASSERT(false);
+    }
 }
 
 void ArenaFree(Arena* a)
@@ -230,28 +610,73 @@ void ArenaFree(Arena* a)
 
 void ArenaReset(Arena* a)
 {
+    ASSERT(a);
     a->currOffset = 0;
+
+    if (a == &GlobalArena)
+        CheckArenaGuards("ArenaReset");
 }
 
 void* ArenaAllocAlign(Arena* a, size_t size, size_t align)
 {
+    ASSERT(a);
+    ASSERT(a->buf);
+    ASSERT((align & (align - 1u)) == 0);
+
+    if (a == &GlobalArena)
+        CheckArenaGuards("before ArenaAllocAlign");
+
     size_t curr_ptr = (size_t)a->buf + a->currOffset;
     size_t offset   = AlignAddress(curr_ptr, align);
     offset         -= (size_t)a->buf;
 
-    ASSERT(offset + size <= a->buffLen);
-    void* ptr      = &a->buf[offset];
-    a->currOffset  = offset + size;
+    if (offset > a->buffLen || size > a->buffLen - offset)
+    {
+        AX_ERROR("ArenaAllocAlign failed size=%llu align=%llu curr=%llu offset=%llu capacity=%llu",
+                 (u64)size,
+                 (u64)align,
+                 (u64)a->currOffset,
+                 (u64)offset,
+                 (u64)a->buffLen);
+        ASSERT(false);
+        return NULL;
+    }
+
+    void* ptr     = &a->buf[offset];
+    a->currOffset = offset + size;
+
+    if (a == &GlobalArena)
+        CheckArenaGuards("after ArenaAllocAlign");
+
     return ptr;
 }
 
 void ArenaPopAligned(Arena* a, void* ptr, size_t size, size_t align)
 {
+    (void)ptr;
+
+    ASSERT(a);
+    ASSERT((align & (align - 1u)) == 0);
+
     size_t curr_ptr = (size_t)a->buf + a->currOffset;
-    size_t aligned  = AlignAddress((size_t)a->buf + (a->currOffset - size), align);
-    size_t padded   = curr_ptr - aligned;
+
+    if (size > a->currOffset)
+    {
+        AX_ERROR("ArenaPopAligned underflow size=%llu curr=%llu",
+                 (u64)size, (u64)a->currOffset);
+        ASSERT(false);
+        a->currOffset = 0;
+        return;
+    }
+
+    size_t aligned = AlignAddress((size_t)a->buf + (a->currOffset - size), align);
+    size_t padded  = curr_ptr - aligned;
+
     ASSERT(a->currOffset >= padded);
     a->currOffset -= padded;
+
+    if (a == &GlobalArena)
+        CheckArenaGuards("ArenaPopAligned");
 }
 
 void* ArenaAlloc(Arena* a, size_t size)
@@ -262,17 +687,22 @@ void* ArenaAlloc(Arena* a, size_t size)
 void* ArenaAllocZero(Arena* a, size_t size)
 {
     void* ptr = ArenaAllocAlign(a, size, DEFAULT_ALIGN);
-    MemSet(ptr, 0, size);
+    if (ptr)
+        MemSet(ptr, 0, size);
     return ptr;
 }
 
 size_t ArenaRemaining(Arena* a)
 {
+    ASSERT(a);
+    ASSERT(a->currOffset <= a->buffLen);
     return a->buffLen - a->currOffset;
 }
 
 ArenaMark ArenaSave(Arena* a)
 {
+    ASSERT(a);
+
     ArenaMark mark;
     mark.offset = a->currOffset;
     return mark;
@@ -280,48 +710,85 @@ ArenaMark ArenaSave(Arena* a)
 
 void ArenaRestore(Arena* a, ArenaMark mark)
 {
+    ASSERT(a);
     ASSERT(mark.offset <= a->currOffset);
+    ASSERT(mark.offset <= a->buffLen);
+
     a->currOffset = mark.offset;
+
+    if (a == &GlobalArena)
+        CheckArenaGuards("ArenaRestore");
 }
 
 uint64_t ArenaRemainingCurrent(void)
 {
+    CheckArenaSize();
+    ASSERT(GlobalArena.currOffset <= GlobalArena.buffLen);
     return GlobalArena.buffLen - GlobalArena.currOffset;
 }
 
 uint64_t ArenaGetCurrentOffset(void)
 {
+    CheckArenaSize();
     return GlobalArena.currOffset;
 }
 
 void ArenaSetCurrentOffset(size_t offset)
 {
+    CheckArenaSize();
+
+    if (offset > GlobalArena.buffLen)
+    {
+        AX_ERROR("ArenaSetCurrentOffset invalid offset=%llu capacity=%llu",
+                 (u64)offset, (u64)GlobalArena.buffLen);
+        ASSERT(false);
+        offset = GlobalArena.buffLen;
+    }
+
     GlobalArena.currOffset = offset;
+    CheckArenaGuards("ArenaSetCurrentOffset");
 }
 
 void* ArenaPushGlobal(uint64_t size)
 {
     CheckArenaSize();
-    if (GlobalArena.currOffset + size > GlobalArena.buffLen)
+
+    size = AlignUpSize((size_t)size, DEFAULT_ALIGN);
+
+    if (GlobalArena.currOffset > GlobalArena.buffLen ||
+        size > GlobalArena.buffLen - GlobalArena.currOffset)
     {
-        AX_ERROR("Arena push failed: out of memory");
+        AX_ERROR("Arena push failed: requested=%llu curr=%llu capacity=%llu",
+                 (u64)size,
+                 (u64)GlobalArena.currOffset,
+                 (u64)GlobalArena.buffLen);
+        ASSERT(false);
         return NULL;
     }
-    void* result           = GlobalArena.buf + GlobalArena.currOffset;
+
+    void* result = GlobalArena.buf + GlobalArena.currOffset;
     GlobalArena.currOffset += size;
+
+    CheckArenaGuards("ArenaPushGlobal");
     return result;
 }
 
 void ArenaPopGlobal(uint64_t size)
 {
+    CheckArenaSize();
+
+    size = AlignUpSize((size_t)size, DEFAULT_ALIGN);
+
     if (GlobalArena.currOffset < size)
     {
-        AX_WARN("arena trying to free more than allocated");
+        AX_WARN("arena trying to free more than allocated: pop=%llu curr=%llu",
+                (u64)size, (u64)GlobalArena.currOffset);
         size = GlobalArena.currOffset;
     }
-    GlobalArena.currOffset -= size;
-}
 
+    GlobalArena.currOffset -= size;
+    CheckArenaGuards("ArenaPopGlobal");
+}
 
 /*//////////////////////////////////////////////////////////////////////////*/
 /*                          FixedPow2Allocator                              */
@@ -329,37 +796,70 @@ void ArenaPopGlobal(uint64_t size)
 
 void FixedPow2Allocator_Init(FixedPow2Allocator* alloc, size_t initialSize)
 {
-    // WARNING initial size must be power of two
-    ASSERT((initialSize & (initialSize - 1)) == 0);
+    ASSERT(alloc);
+    ASSERT(initialSize);
+    ASSERT((initialSize & (initialSize - 1u)) == 0);
+
     alloc->currentCapacity = initialSize;
     alloc->base = (FixedFragment*)AllocateTLSFGlobal(sizeof(FixedFragment));
+    ASSERT(alloc->base);
+
     alloc->current = alloc->base;
     alloc->base->next = NULL;
     alloc->base->ptr = (char*)AllocateTLSFGlobal(initialSize);
     alloc->base->size = 0;
+
+    ASSERT(alloc->base->ptr);
 }
 
 void FixedPow2Allocator_CheckFixGrow(FixedPow2Allocator* alloc, size_t countBytes)
 {
-    int64_t newSize = alloc->current->size + countBytes;
+    ASSERT(alloc);
+    ASSERT(alloc->current);
+
+    size_t newSize = 0;
+    if (AddSizeOverflow(alloc->current->size, countBytes, &newSize))
+    {
+        AX_ERROR("FixedPow2Allocator size overflow current=%llu add=%llu",
+                 (u64)alloc->current->size, (u64)countBytes);
+        ASSERT(false);
+        return;
+    }
+
     if (newSize >= alloc->currentCapacity)
     {
         while (alloc->currentCapacity < newSize)
-            alloc->currentCapacity <<= 1;
+        {
+            if (alloc->currentCapacity > (SIZE_MAX >> 1u))
+            {
+                AX_ERROR("FixedPow2Allocator capacity overflow capacity=%llu needed=%llu",
+                         (u64)alloc->currentCapacity, (u64)newSize);
+                ASSERT(false);
+                return;
+            }
+
+            alloc->currentCapacity <<= 1u;
+        }
 
         alloc->current->next = (FixedFragment*)AllocateTLSFGlobal(sizeof(FixedFragment));
+        ASSERT(alloc->current->next);
+
         alloc->current = alloc->current->next;
         alloc->current->next = NULL;
         alloc->current->ptr = (char*)AllocateTLSFGlobal(alloc->currentCapacity);
         alloc->current->size = 0;
+
+        ASSERT(alloc->current->ptr);
     }
 }
 
 void* FixedPow2Allocator_Allocate(FixedPow2Allocator* alloc, size_t countBytes)
 {
     FixedPow2Allocator_CheckFixGrow(alloc, countBytes);
+
     void* ptr = alloc->current->ptr + alloc->current->size;
     alloc->current->size += countBytes;
+
     MemsetZero(ptr, countBytes);
     return ptr;
 }
@@ -367,36 +867,66 @@ void* FixedPow2Allocator_Allocate(FixedPow2Allocator* alloc, size_t countBytes)
 void* FixedPow2Allocator_AllocateUninitialized(FixedPow2Allocator* alloc, size_t countBytes)
 {
     FixedPow2Allocator_CheckFixGrow(alloc, countBytes);
+
     void* ptr = alloc->current->ptr + alloc->current->size;
     alloc->current->size += countBytes;
+
     #if defined(_DEBUG) || defined(DEBUG) || defined(Debug)
     MemSet(ptr, 0xCD, countBytes);
     #endif
+
     return ptr;
 }
 
 void FixedPow2Allocator_Copy(FixedPow2Allocator* alloc, const FixedPow2Allocator* other)
 {
-    if (!other->base) return;
+    ASSERT(alloc);
+
+    if (!other || !other->base)
+        return;
 
     size_t totalSize = 0;
     FixedFragment* start = other->base;
+
     while (start)
     {
-        totalSize += start->size;
+        if (AddSizeOverflow(totalSize, start->size, &totalSize))
+        {
+            AX_ERROR("FixedPow2Allocator_Copy total size overflow");
+            ASSERT(false);
+            return;
+        }
+
         start = start->next;
     }
 
-    alloc->currentCapacity = 1ULL << (64 - LeadingZeroCount64(totalSize));
+    size_t capacity = 1;
+    while (capacity < totalSize)
+    {
+        if (capacity > (SIZE_MAX >> 1u))
+        {
+            AX_ERROR("FixedPow2Allocator_Copy capacity overflow total=%llu", (u64)totalSize);
+            ASSERT(false);
+            return;
+        }
+
+        capacity <<= 1u;
+    }
+
+    alloc->currentCapacity = capacity;
     alloc->base = (FixedFragment*)AllocZeroTLSFGlobal(1, sizeof(FixedFragment));
+    ASSERT(alloc->base);
+
     alloc->base->next = NULL;
     alloc->base->ptr = (char*)AllocateTLSFGlobal(alloc->currentCapacity);
     alloc->base->size = totalSize;
     alloc->current = alloc->base;
 
-    // copy other's memory
+    ASSERT(alloc->base->ptr);
+
     char* curr = alloc->base->ptr;
     start = other->base;
+
     while (start)
     {
         SmallMemCpy(curr, start->ptr, start->size);
@@ -407,20 +937,31 @@ void FixedPow2Allocator_Copy(FixedPow2Allocator* alloc, const FixedPow2Allocator
 
 void* FixedPow2Allocator_TakeOwnership(FixedPow2Allocator* alloc)
 {
+    ASSERT(alloc);
+
     void* result = alloc->base;
     alloc->base = NULL;
+    alloc->current = NULL;
+    alloc->currentCapacity = 0;
+
     return result;
 }
 
 void FixedPow2Allocator_Destroy(FixedPow2Allocator* alloc)
 {
-    // test {} 
-    if (!alloc->base) return;
+    if (!alloc || !alloc->base)
+        return;
+
     while (alloc->base)
     {
         DeAllocateTLSFGlobal(alloc->base->ptr);
+
         FixedFragment* oldBase = alloc->base;
         alloc->base = alloc->base->next;
+
         DeAllocateTLSFGlobal(oldBase);
     }
+
+    alloc->current = NULL;
+    alloc->currentCapacity = 0;
 }

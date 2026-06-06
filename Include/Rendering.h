@@ -31,6 +31,8 @@ typedef struct RenderSettings_
     f32 shadowCascadeOverlap;
     f32 shadowSplitNearDistance;
     f32 shadowPSSMLambda;
+    f32 maxVisiblePointShadows;
+    f32 maxVisibleSpotShadows;
 } RenderSettings;
 
 typedef struct RenderLightDebugInfo_

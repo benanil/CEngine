@@ -103,6 +103,7 @@ s32 SceneBundleInitAnimations(const SceneBundle* prefab, Pose pose[MAX_BONES]);
 // use negative normTime to sample animation reversely
 void SampleSkinnedAnimationPose(const SceneBundle* bundle, Pose pose[MAX_BONES], s32 animIdx, f32 normTime);
 
+s32 SceneBundleCreateAnimations(const SceneBundle* bundle);
 
 // this is here for reference not used now
 typedef struct AnimatedCharacter_

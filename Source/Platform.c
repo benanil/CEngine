@@ -14,6 +14,7 @@
 #include <SDL3/SDL_events.h>
 #include <SDL3/SDL_dialog.h>
 #include <SDL3/SDL_mouse.h>
+#include <SDL3/SDL_timer.h>
 
 #define STB_SPRINTF_IMPLEMENTATION
 #include "Extern/stb/stb_sprintf.h"
@@ -292,7 +293,7 @@ s64 TimeToMicroseconds(s64 t) { return Int64MulDiv(t, 1000000, PlatformCtx.CPUFr
 void PlatformInit()
 {
     EnableConsoleColors();
-    SDL_SetLogPriorities(SDL_LOG_PRIORITY_VERBOSE);
+    SDL_SetLogPriorities(2); //SDL_LOG_PRIORITY_VERBOSE);
     PlatformCtx.SecondsSinceLastClick = 0.0f;
     PlatformCtx.CPUFrequency          = SDL_GetPerformanceFrequency();
     PlatformCtx.StartupTime           = SDL_GetPerformanceCounter();

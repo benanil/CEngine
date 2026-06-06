@@ -226,13 +226,13 @@ static inline void Float4ToHalf4(void* result, const f32* f4)
 
 #else
 
-purefn void Half8ToFloat8(f32* float8, const f16* half8)
+void Half8ToFloat8(f32* float8, const f16* half8)
 {
     Half4ToFloat4(float8    , half8);
     Half4ToFloat4(float8 + 4, half8 + 4);
 }
 
-purefn void Float8ToHalf8(f16* result, const f32* float8)
+void Float8ToHalf8(f16* result, const f32* float8)
 {
     Float4ToHalf4(result    , float8);
     Float4ToHalf4(result + 4, float8 + 4);

@@ -4,8 +4,10 @@
 #include "Include/Platform.h"
 #include "Include/Random.h"
 #include "Include/Rendering.h"
+#include "Include/Algorithm.h"
 
 extern WindowState g_WindowState;
+extern RenderState g_RenderState;
 
 static void ShowFps(void)
 {
@@ -141,8 +143,6 @@ static void WindowTestUI(void)
     static bool enabled = true;
     static f32 testValue = 0.35f;
     static f32 exposure = 1.0f;
-    static char textBuffer[512] = "Text area in a dockable window.\nTry selecting, typing, and overlapping windows.";
-    static UITextAreaCustomData textCustomData;
     static u32 customDataIndex;
 
     if (!UIBeginWindow("Window Test", (float2){ 560.0f, 80.0f }, (float2){ 380.0f, 360.0f }, &open, 0u)) return;
@@ -162,6 +162,8 @@ static void WindowTestUI(void)
     UISliderFloatValue(CLAY_ID("WindowTestSlider"), CLAY_STRING("Window value"), &testValue, 0.0f, 1.0f, 2);
     UISliderFloatValue(CLAY_ID("WindowTestExposure"), CLAY_STRING("Local exposure"), &exposure, 0.1f, 4.0f, 2);
 
+    static char textBuffer[512] = "Text area in a dockable window.\nTry selecting, typing, and overlapping windows.\0";
+    static UITextAreaCustomData textCustomData;
     textCustomData.type = UICustomType_TextArea;
     textCustomData.buffer = textBuffer;
     textCustomData.capacity = sizeof(textBuffer);
@@ -269,6 +271,8 @@ static void GraphicsEditorUI(void)
                     EditorTextU32("Total lights", lightInfo.totalLights);
                     EditorTextU32("Submitted lights", lightInfo.submittedLights);
                     EditorTextU32("Max lights", lightInfo.maxLights);
+                    UIEditInt(CLAY_ID("EditorMaxVisiblePointShadows"), CLAY_STRING("Point shadow maps"), &settings->maxVisiblePointShadows, 0, POINT_SHADOW_MAX_LIGHTS);
+                    UIEditInt(CLAY_ID("EditorMaxVisibleSpotShadows"), CLAY_STRING("Spot shadow maps"), &settings->maxVisibleSpotShadows, 0, SPOT_SHADOW_MAX_LIGHTS);
                 }
                 CLAY(CLAY_ID("GraphicsEditorSunBox"), EditorPanelBoxDeclaration) {
                     EditorSectionHeader("Sun");
@@ -334,7 +338,9 @@ static void GraphicsEditorUI(void)
                         .shadowCasterDepthMargin = SHADOW_CASTER_DEPTH_MARGIN,
                         .shadowCascadeOverlap = SHADOW_CASCADE_OVERLAP,
                         .shadowSplitNearDistance = SHADOW_SPLIT_NEAR_DISTANCE,
-                        .shadowPSSMLambda = SHADOW_PSSM_LAMBDA
+                        .shadowPSSMLambda = SHADOW_PSSM_LAMBDA,
+                        .maxVisiblePointShadows = (f32)POINT_SHADOW_MAX_LIGHTS,
+                        .maxVisibleSpotShadows = (f32)SPOT_SHADOW_MAX_LIGHTS
                     };
                 }
             }

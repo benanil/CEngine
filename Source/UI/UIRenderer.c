@@ -204,10 +204,11 @@ static void UIRenderLayoutCustom(const Clay_RenderCommand* command)
     if (custom && custom->type == UICustomType_TextArea)
     {
         UITextArea(NULL,
-                   (float2){ command->boundingBox.x, command->boundingBox.y },
-                   custom->buffer,
-                   custom->capacity,
-                   (float2){ command->boundingBox.width, command->boundingBox.height });
+                        (float2){ command->boundingBox.x, command->boundingBox.y },
+                        custom->buffer,
+                        custom->capacity,
+                        (float2){ command->boundingBox.width, command->boundingBox.height }
+                        );
         return;
     }
 
@@ -725,6 +726,294 @@ bool UISliderFloatValue(Clay_ElementId id, Clay_String label, f32* value, f32 mi
 
     Clay_String valueLabel = { .isStaticallyAllocated = false, .length = (s32)length, .chars = text };
     return UISliderFloat(id, valueLabel, value, minValue, maxValue);
+}
+
+typedef struct UIEditSlot_
+{
+    u64 id;
+    char buffer[32];
+    f32 lastValue;
+    UITextAreaCustomData textData;
+} UIEditSlot;
+
+static UIEditSlot* UIGetEditSlot(Clay_ElementId id)
+{
+    static UIEditSlot slots[32];
+    UIEditSlot* empty = NULL;
+    u64 editId = (u64)id.id;
+
+    for (u32 i = 0u; i < (u32)(sizeof(slots) / sizeof(slots[0])); i++)
+    {
+        if (slots[i].id == editId) return &slots[i];
+        if (!slots[i].id && !empty) empty = &slots[i];
+    }
+
+    if (!empty)
+    {
+        AX_WARN("UI numeric edit slot limit reached");
+        return NULL;
+    }
+
+    empty->id = editId;
+    empty->buffer[0] = '\0';
+    empty->lastValue = FLT_MAX;
+    return empty;
+}
+
+static void UIFormatInt(char* buffer, u32 capacity, s32 value)
+{
+    if (!buffer || capacity == 0u) return;
+    int len = IntToString(buffer, (int64_t)value, 0);
+    if ((u32)len >= capacity) len = (int)capacity - 1;
+    buffer[len] = '\0';
+}
+
+static void UIFormatFloat(char* buffer, u32 capacity, f32 value, int decimals)
+{
+    if (!buffer || capacity == 0u) return;
+    int len = FloatToString(buffer, value, Maxs32(decimals, 0));
+    if ((u32)len >= capacity) len = (int)capacity - 1;
+    buffer[len] = '\0';
+}
+
+static bool UIFilterNumericBuffer(char* buffer, u32 capacity, bool allowFloat)
+{
+    if (!buffer || capacity == 0u) return false;
+
+    bool changed = false;
+    bool hasDot = false;
+    u32 write = 0u;
+    for (u32 read = 0u; read + 1u < capacity && buffer[read]; read++)
+    {
+        char c = buffer[read];
+        bool keep = false;
+        if (c >= '0' && c <= '9') keep = true;
+        else if (c == '-' && write == 0u) keep = true;
+        else if (allowFloat && c == '.' && !hasDot) { keep = true; hasDot = true; }
+
+        if (keep) buffer[write++] = c;
+        else changed = true;
+    }
+
+    changed |= buffer[write] != '\0';
+    buffer[write] = '\0';
+    return changed;
+}
+
+static bool UIParseIntBuffer(const char* buffer, s32* outValue)
+{
+    if (!buffer || !outValue) return false;
+
+    s32 sign = 1;
+    u32 i = 0u;
+    if (buffer[i] == '-') { sign = -1; i++; }
+
+    bool hasDigits = false;
+    s32 value = 0;
+    for (; buffer[i]; i++)
+    {
+        char c = buffer[i];
+        if (c < '0' || c > '9') return false;
+        hasDigits = true;
+        value = value * 10 + (s32)(c - '0');
+    }
+
+    if (!hasDigits) return false;
+    *outValue = value * sign;
+    return true;
+}
+
+static bool UIParseFloatBuffer(const char* buffer, f32* outValue)
+{
+    if (!buffer || !outValue) return false;
+
+    f32 sign = 1.0f;
+    u32 i = 0u;
+    if (buffer[i] == '-') { sign = -1.0f; i++; }
+
+    bool hasDigits = false;
+    f32 value = 0.0f;
+    for (; buffer[i] >= '0' && buffer[i] <= '9'; i++)
+    {
+        hasDigits = true;
+        value = value * 10.0f + (f32)(buffer[i] - '0');
+    }
+
+    if (buffer[i] == '.')
+    {
+        f32 scale = 0.1f;
+        i++;
+        for (; buffer[i] >= '0' && buffer[i] <= '9'; i++)
+        {
+            hasDigits = true;
+            value += (f32)(buffer[i] - '0') * scale;
+            scale *= 0.1f;
+        }
+    }
+
+    if (buffer[i] || !hasDigits) return false;
+    *outValue = value * sign;
+    return true;
+}
+
+bool UIEditInt(Clay_ElementId id, Clay_String label, f32* value, s32 minValue, s32 maxValue)
+{
+    if (!value || maxValue < minValue) return false;
+
+    UIEditSlot* slot = UIGetEditSlot(id);
+    if (!slot) return false;
+
+    bool changed = false;
+    s32 current = Clamps32((s32)(*value), minValue, maxValue);
+    if ((f32)current != *value)
+    {
+        *value = (f32)current;
+        changed = true;
+    }
+
+    if (slot->buffer[0] == '\0' || slot->lastValue != *value)
+    {
+        UIFormatInt(slot->buffer, (u32)sizeof(slot->buffer), current);
+        slot->lastValue = *value;
+    }
+
+    CLAY(id, {
+        .layout = {
+            .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(34.0f) },
+            .padding = { 0, 4, 0, 0 },
+            .childGap = 8,
+            .layoutDirection = CLAY_LEFT_TO_RIGHT,
+            .childAlignment = { .y = CLAY_ALIGN_Y_CENTER }
+        }
+    }) {
+        CLAY_TEXT(label, CLAY_TEXT_CONFIG({
+            .fontSize = (u16)Maxu32((u32)(15.0f * UIGetFloat(UIFloat_TextScale)), 1u),
+            .textColor = UIGetClayColor(UIColor_Text)
+        }));
+
+        CLAY(CLAY_ID_LOCAL("Spacer"), {
+            .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(1.0f) } }
+        }) {}
+
+        if (UIButton(CLAY_ID_LOCAL("Dec"), CLAY_STRING("<"), (Clay_Dimensions){ 28.0f, 28.0f }, false))
+        {
+            current = Clamps32(current - 1, minValue, maxValue);
+            *value = (f32)current;
+            UIFormatInt(slot->buffer, (u32)sizeof(slot->buffer), current);
+            changed = true;
+        }
+
+        slot->textData.type = UICustomType_TextArea;
+        slot->textData.buffer = slot->buffer;
+        slot->textData.capacity = sizeof(slot->buffer);
+        slot->textData.flags = UITextAreaFlags_CenterX | UITextAreaFlags_CenterY;
+        CLAY(CLAY_ID_LOCAL("Text"), {
+            .layout = { .sizing = { CLAY_SIZING_FIXED(72.0f), CLAY_SIZING_FIXED(28.0f) } },
+            .custom = { .customData = &slot->textData }
+        }) {}
+
+        if (UIButton(CLAY_ID_LOCAL("Inc"), CLAY_STRING(">"), (Clay_Dimensions){ 28.0f, 28.0f }, false))
+        {
+            current = Clamps32(current + 1, minValue, maxValue);
+            *value = (f32)current;
+            UIFormatInt(slot->buffer, (u32)sizeof(slot->buffer), current);
+            changed = true;
+        }
+    }
+
+    UIFilterNumericBuffer(slot->buffer, (u32)sizeof(slot->buffer), false);
+    s32 parsed;
+    if (UIParseIntBuffer(slot->buffer, &parsed))
+    {
+        parsed = Clamps32(parsed, minValue, maxValue);
+        if ((f32)parsed != *value)
+        {
+            *value = (f32)parsed;
+            changed = true;
+        }
+        slot->lastValue = *value;
+    }
+
+    return changed;
+}
+
+bool UIEditFloat(Clay_ElementId id, Clay_String label, f32* value, f32 minValue, f32 maxValue, f32 step, int decimals)
+{
+    if (!value || !IsFiniteF32(minValue) || !IsFiniteF32(maxValue) || maxValue < minValue) return false;
+
+    UIEditSlot* slot = UIGetEditSlot(id);
+    if (!slot) return false;
+
+    bool changed = false;
+    f32 current = Clampf32(IsFiniteF32(*value) ? *value : minValue, minValue, maxValue);
+    if (current != *value)
+    {
+        *value = current;
+        changed = true;
+    }
+
+    if (slot->buffer[0] == '\0' || slot->lastValue != *value)
+    {
+        UIFormatFloat(slot->buffer, (u32)sizeof(slot->buffer), current, decimals);
+        slot->lastValue = *value;
+    }
+
+    CLAY(id, {
+        .layout = {
+            .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(34.0f) },
+            .padding = { 0, 4, 0, 0 },
+            .childGap = 8,
+            .layoutDirection = CLAY_LEFT_TO_RIGHT,
+            .childAlignment = { .y = CLAY_ALIGN_Y_CENTER }
+        }
+    }) {
+        CLAY_TEXT(label, CLAY_TEXT_CONFIG({
+            .fontSize = (u16)Maxu32((u32)(15.0f * UIGetFloat(UIFloat_TextScale)), 1u),
+            .textColor = UIGetClayColor(UIColor_Text)
+        }));
+
+        CLAY(CLAY_ID_LOCAL("Spacer"), {
+            .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(1.0f) } }
+        }) {}
+
+        if (UIButton(CLAY_ID_LOCAL("Dec"), CLAY_STRING("<"), (Clay_Dimensions){ 28.0f, 28.0f }, false))
+        {
+            *value = Clampf32(*value - step, minValue, maxValue);
+            UIFormatFloat(slot->buffer, (u32)sizeof(slot->buffer), *value, decimals);
+            changed = true;
+        }
+
+        slot->textData.type = UICustomType_TextArea;
+        slot->textData.buffer = slot->buffer;
+        slot->textData.capacity = sizeof(slot->buffer);
+        slot->textData.flags = UITextAreaFlags_CenterX | UITextAreaFlags_CenterY;
+        CLAY(CLAY_ID_LOCAL("Text"), {
+            .layout = { .sizing = { CLAY_SIZING_FIXED(82.0f), CLAY_SIZING_FIXED(28.0f) } },
+            .custom = { .customData = &slot->textData }
+        }) {}
+
+        if (UIButton(CLAY_ID_LOCAL("Inc"), CLAY_STRING(">"), (Clay_Dimensions){ 28.0f, 28.0f }, false))
+        {
+            *value = Clampf32(*value + step, minValue, maxValue);
+            UIFormatFloat(slot->buffer, (u32)sizeof(slot->buffer), *value, decimals);
+            changed = true;
+        }
+    }
+
+    UIFilterNumericBuffer(slot->buffer, (u32)sizeof(slot->buffer), true);
+    f32 parsed;
+    if (UIParseFloatBuffer(slot->buffer, &parsed))
+    {
+        parsed = Clampf32(parsed, minValue, maxValue);
+        if (parsed != *value)
+        {
+            *value = parsed;
+            changed = true;
+        }
+        slot->lastValue = *value;
+    }
+
+    return changed;
 }
 
 void UISetColor(UIColor what, u32 color)

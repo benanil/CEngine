@@ -1,8 +1,15 @@
 #include "RenderingInternal.h"
 
-#include "Shaders/spv/SDSMDepthBoundsInitial.spv.h"
-#include "Shaders/spv/SDSMDepthBoundsReduce.spv.h"
-#include "Shaders/spv/SDSMSetupShadows.spv.h"
+#include "Shaders/spv/Shadow/SDSMDepthBoundsInitial.spv.h"
+#include "Shaders/spv/Shadow/SDSMDepthBoundsReduce.spv.h"
+#include "Shaders/spv/Shadow/SDSMSetupShadows.spv.h"
+
+#define Shaders_SDSMDepthBoundsInitial_spv Shaders_Shadow_SDSMDepthBoundsInitial_spv
+#define Shaders_SDSMDepthBoundsInitial_spv_size Shaders_Shadow_SDSMDepthBoundsInitial_spv_size
+#define Shaders_SDSMDepthBoundsReduce_spv Shaders_Shadow_SDSMDepthBoundsReduce_spv
+#define Shaders_SDSMDepthBoundsReduce_spv_size Shaders_Shadow_SDSMDepthBoundsReduce_spv_size
+#define Shaders_SDSMSetupShadows_spv Shaders_Shadow_SDSMSetupShadows_spv
+#define Shaders_SDSMSetupShadows_spv_size Shaders_Shadow_SDSMSetupShadows_spv_size
 
 SDL_GPUComputePipeline* g_SDSMDepthBoundsInitialPipeline = NULL;
 SDL_GPUComputePipeline* g_SDSMDepthBoundsReducePipeline = NULL;
@@ -84,6 +91,7 @@ ShadowCascadeData GetShadowCascades(void)
     v128f lightDir       = Vec3Load(&sunLightDir.x);
     v128f lightViewDir   = VecMul(lightDir, VecSet1(-1.0f));
     v128f cameraPosition = Vec3Load(&g_Camera.position.x);
+
     v128f cameraFront    = Vec3Load(&g_Camera.Front.x);
     v128f cameraRight    = Vec3Load(&g_Camera.Right.x);
     v128f cameraUp       = Vec3Load(&g_Camera.Up.x);

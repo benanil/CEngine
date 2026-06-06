@@ -8,7 +8,7 @@
 #include "GLTFParser.h"
 #include "RenderLimits.h"
 
-#define CHECK_CREATE(var, thing) { if (!(var)) { AX_ERROR("Failed to create %s: %s", thing, SDL_GetError()); Quit(2); } }
+#define CHECK_CREATE(var, thing) { if (!(var)) { AX_ERROR("Failed to create %s: %s", thing, SDL_GetError()); /*Quit(2);*/ } }
 
 #define TEXTURE_PAGE_SIZE       4096
 #define TEXTURE_PAGE_LAYERS     8
@@ -109,6 +109,9 @@ enum LightType_
 };
 typedef u32 LightType;
 
+#define LIGHT_FLAG_SHADOWED (1u << 0)
+#define LIGHT_SHADOW_INDEX_INVALID 0xffffffffu
+
 typedef struct LightGPU_
 {
     f32 positionRadius[4];
@@ -189,6 +192,8 @@ typedef struct WindowState
     SDL_GPUTexture* tex_hbao, *tex_hbao_blur, *tex_hbao_normal;
     SDL_GPUTexture* tex_mlaa_edge_mask, *tex_mlaa_edge_count, *tex_mlaa_output;
     SDL_GPUTexture* tex_shadow_depth, *tex_shadow_color;
+    SDL_GPUTexture* tex_point_shadow_depth, *tex_point_shadow_color;
+    SDL_GPUTexture* tex_spot_shadow_depth, *tex_spot_shadow_color;
     u32 prev_width, prev_height;
     u32 hiz_width, hiz_height, hiz_mip_count, sdsm_mip_count;
     mat4x4 hiz_view_proj;
@@ -218,6 +223,8 @@ typedef struct RenderState
     SDL_GPUGraphicsPipeline* surfaceDepthPipeline;
     SDL_GPUGraphicsPipeline* skinnedShadowPipeline;
     SDL_GPUGraphicsPipeline* surfaceShadowPipeline;
+    SDL_GPUGraphicsPipeline* skinnedPointShadowPipeline;
+    SDL_GPUGraphicsPipeline* surfacePointShadowPipeline;
     SDL_GPUGraphicsPipeline* linePipeline;
     SDL_GPUGraphicsPipeline* deferredLightPipeline;
     SDL_GPUGraphicsPipeline* slugPipeline;
@@ -234,6 +241,8 @@ typedef struct RenderState
     SDL_GPUBuffer*           lineBuffer;
     SDL_GPUBuffer*           lineDrawArgsBuffer;
     SDL_GPUBuffer*           lightBuffer;
+    SDL_GPUBuffer*           pointShadowMatrixBuffer;
+    SDL_GPUBuffer*           spotShadowMatrixBuffer;
     SDL_GPUBuffer*           lightDrawInfoBuffer;
     SDL_GPUBuffer*           lightDrawArgsBuffer;
     SDL_GPUBuffer*           uiShapeBuffer;
@@ -310,7 +319,7 @@ void ReleaseTexture(Texture* texture);
 
 s32 GraphicsTypeToSize(GraphicType type);
 
-SDL_GPUBuffer* CreateBuffer(void* buffer, size_t bufferSize, SDL_GPUBufferUsageFlags bufferUsage, const char* debugName);
+SDL_GPUBuffer* CreateBuffer(const void* buffer, size_t bufferSize, SDL_GPUBufferUsageFlags bufferUsage, const char* debugName);
 
 void UpdateGPUBuffer(SDL_GPUBuffer* buffer, const void* data, size_t bufferSize, size_t offset);
 
@@ -346,6 +355,14 @@ SDL_GPUTexture* Create3DNoise3DTexture(u32 size);
 SDL_GPUTexture* CreateShadowDepthTexture(u32 size);
 
 SDL_GPUTexture* CreateShadowColorTexture(u32 size, u32 layers);
+
+SDL_GPUTexture* CreatePointShadowDepthTexture(void);
+
+SDL_GPUTexture* CreatePointShadowColorTexture(void);
+
+SDL_GPUTexture* CreateSpotShadowDepthTexture(void);
+
+SDL_GPUTexture* CreateSpotShadowColorTexture(void);
 
 #if defined(__cplusplus)
 }

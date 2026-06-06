@@ -113,6 +113,10 @@ void GraphicsInit(bool msaa)
     winstate->tex_mlaa_output = CreateMLAAOutputTexture(drawablew, drawableh);
     winstate->tex_shadow_depth = CreateShadowDepthTexture(SHADOW_MAP_SIZE);
     winstate->tex_shadow_color = CreateShadowColorTexture(SHADOW_MAP_SIZE, SHADOW_CASCADE_COUNT);
+    winstate->tex_point_shadow_depth = CreatePointShadowDepthTexture();
+    winstate->tex_point_shadow_color = CreatePointShadowColorTexture();
+    winstate->tex_spot_shadow_depth = CreateSpotShadowDepthTexture();
+    winstate->tex_spot_shadow_color = CreateSpotShadowColorTexture();
     g_RenderState.skyNoise3D = Create3DNoise3DTexture(64u);
     winstate->hiz_width   = drawablew;
     winstate->hiz_height  = drawableh;
@@ -146,6 +150,10 @@ void GraphicsDestroy()
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_mlaa_output);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_shadow_depth);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_shadow_color);
+    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_point_shadow_depth);
+    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_point_shadow_color);
+    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_spot_shadow_depth);
+    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_spot_shadow_color);
     SDL_ReleaseGPUTexture(g_GPUDevice, g_RenderState.skyNoise3D);
     SDL_ReleaseWindowFromGPUDevice(g_GPUDevice, g_SDLWindow);
 
@@ -483,6 +491,38 @@ SDL_GPUTexture* CreateShadowColorTexture(u32 size, u32 layers)
     return CreateTexture2D(size, size, SDL_GPU_TEXTUREFORMAT_R32_FLOAT,
                            SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER,
                            SDL_GPU_SAMPLECOUNT_1, SHADOW_CASCADE_COUNT, "Shadow Color Texture");
+}
+
+SDL_GPUTexture* CreatePointShadowDepthTexture(void)
+{
+    return CreateTexture2D(POINT_SHADOW_SIZE, POINT_SHADOW_SIZE,
+                           SDL_GPU_TEXTUREFORMAT_D32_FLOAT,
+                           SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET,
+                           SDL_GPU_SAMPLECOUNT_1, 1, "Point Shadow Depth Texture");
+}
+
+SDL_GPUTexture* CreatePointShadowColorTexture(void)
+{
+    return CreateTexture2DArray(POINT_SHADOW_SIZE, POINT_SHADOW_SIZE, POINT_SHADOW_LAYER_COUNT,
+                                SDL_GPU_TEXTUREFORMAT_R32_FLOAT,
+                                SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER,
+                                "Point Shadow Color Texture");
+}
+
+SDL_GPUTexture* CreateSpotShadowDepthTexture(void)
+{
+    return CreateTexture2D(SPOT_SHADOW_SIZE, SPOT_SHADOW_SIZE,
+                           SDL_GPU_TEXTUREFORMAT_D32_FLOAT,
+                           SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET,
+                           SDL_GPU_SAMPLECOUNT_1, 1, "Spot Shadow Depth Texture");
+}
+
+SDL_GPUTexture* CreateSpotShadowColorTexture(void)
+{
+    return CreateTexture2DArray(SPOT_SHADOW_SIZE, SPOT_SHADOW_SIZE, SPOT_SHADOW_MAX_LIGHTS,
+                                SDL_GPU_TEXTUREFORMAT_R32_FLOAT,
+                                SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER,
+                                "Spot Shadow Color Texture");
 }
 
 Texture rImportTexture(const char* path, TexFlags flags, const char* label)

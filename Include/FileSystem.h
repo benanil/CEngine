@@ -44,8 +44,8 @@ typedef void(*FolderVisitFn)(const char* path, void* data);
 const char* GetFileExtension(const char* path, int size);
 
 int      ChangeExtension (      char* path, int pathLen, const char* newExt);
-void     GetBaseDir      (const u8* path, u8* out);
-s32      GetFileNameNoExt(const u8* path, u8* out);
+void     GetBaseDir      (const char* path, char* out);
+s32      GetFileNameNoExt(const char* path, char* out);
 bool     FileHasExtension(const char* path, int size   , const char* extension);
 char*    PathGoBackwards (      char* path, int end, bool skipSeparator);               // returns pointer to the end of the new path
 int      CopyFilename    (      char* out , uint64_t outLen, const char* path, int end); // returns length of filename

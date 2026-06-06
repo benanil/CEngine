@@ -9,11 +9,11 @@ set SPV_DIR=Shaders\spv
 
 rem One HLSL file per graphics pass:
 rem FileName:VertexEntry:FragmentEntry
-set GRAPHICS_SHADERS=Skinned:vert:frag Surface:vert:frag LineDebug:vert:frag Slug:vert:frag UIShape:vert:frag SurfaceDepthOnly:vert:frag SkinnedDepthOnly:vert:frag SurfaceShadowDepthOnly:vert:frag SkinnedShadowDepthOnly:vert:frag
+set GRAPHICS_SHADERS=Skinned:vert:frag Surface:vert:frag LineDebug:vert:frag UI\Slug:vert:frag UI\UIShape:vert:frag UI\UIImage:vert:frag SurfaceDepthOnly:vert:frag SkinnedDepthOnly:vert:frag Shadow\SurfaceShadowDepthOnly:vert:frag Shadow\SkinnedShadowDepthOnly:vert:frag Shadow\SurfacePointShadowDepthOnly:vert:frag Shadow\SkinnedPointShadowDepthOnly:vert:frag
 
 rem One HLSL file per compute pass:
 rem FileName:ComputeEntry
-set COMPUTE_SHADERS=AnimationCompute:main AnimateVertices:main CullDrawArgsCompute:main TexturePageCopyRGBA:main TexturePageCopyRG:main DeferredLighting:main TonemapCompute:main HiZBuildCompute:main HiZDownscaleCompute:main SDSMDepthBoundsInitial:main SDSMDepthBoundsReduce:main SDSMSetupShadows:main ExtractNormalCompute:main HBAOCompute:main HBAOBlurCompute:main MLAAEdgeMaskCompute:main MLAALineLengthCompute:main MLAABlendCompute:main
+set COMPUTE_SHADERS=Animation\AnimationCompute:main Animation\AnimateVertices:main PreProcessing\CullDrawArgsCompute:main PreProcessing\CullLightsCompute:main TexturePageCopyRGBA:main TexturePageCopyRG:main DeferredLighting:main PostProcessing\TonemapCompute:main PreProcessing\HiZBuildCompute:main PreProcessing\HiZDownscaleCompute:main Shadow\SDSMDepthBoundsInitial:main Shadow\SDSMDepthBoundsReduce:main Shadow\SDSMSetupShadows:main ExtractNormalCompute:main PostProcessing\HBAOCompute:main PostProcessing\HBAOBlurCompute:main PostProcessing\MLAAEdgeMaskCompute:main PostProcessing\MLAALineLengthCompute:main PostProcessing\MLAABlendCompute:main
 
 if not exist %SPV_DIR% mkdir %SPV_DIR%
 

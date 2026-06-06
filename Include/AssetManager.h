@@ -20,17 +20,17 @@
 extern "C" {
 #endif
 
-s32 LoadFBX(const u8* path, SceneBundle* fbxScene, f32 scale);
+s32 LoadFBX(const char* path, SceneBundle* fbxScene, f32 scale);
 
 /* Binary asset cache */
-s32 SaveGLTFBinary(const SceneBundle* gltf, const u8* path);
+s32 SaveGLTFBinary(const SceneBundle* gltf, const char* path);
 
-s32 LoadSceneBundleBinary(const u8* path, SceneBundle* gltf);
+s32 LoadSceneBundleBinary(const char* path, SceneBundle* gltf);
 
 s32 LoadGLTFCached(const char* path, SceneBundle* scene, Texture* textures);
 
 // ABM = AX binary mesh
-u8 IsABMLastVersion(const u8* path);
+u8 IsABMLastVersion(const char* path);
 
 /* Mesh baking */
 // returns 0 on not enough memory
@@ -48,12 +48,12 @@ void BakeGLTFAnimations(SceneBundle* gltf);
 void CreateVerticesIndicesSkined(SceneBundle* gltf);
 
 /* Texture/image cache */
-u8 IsTextureLastVersion(const u8* path);
+u8 IsTextureLastVersion(const char* path);
 
-void SaveSceneImages(SceneBundle* scene, const u8* savePath, bool deleteRemaining);
+void SaveSceneImages(SceneBundle* scene, const char* savePath, bool deleteRemaining);
 
 // returns: 0 = noFile, 1 = success, 2 = missingImages, 3 = fileNumImage missmatch
-s32 LoadSceneImages(const u8* texturePath, Texture* textures, s32 numImages);
+s32 LoadSceneImages(const char* texturePath, Texture* textures, s32 numImages);
 
 #if defined(__cplusplus)
 }

@@ -1,6 +1,7 @@
 #include "PBR.hlsl"
 #include "Bitpack.hlsl"
 #include "CommonStructs.hlsl"
+#include "Shadow/Shadow.hlsl"
 
 cbuffer DeferredLightParams : register(b0, space3)
 {
@@ -17,10 +18,16 @@ Texture2D<float4> AlbedoMetallicTexture  : register(t1, space2);
 Texture2D<float2> ShadowRoughnessTexture : register(t2, space2);
 Texture2D<float>  DepthTexture           : register(t3, space2);
 Texture2D<float>  AmbientOcclusion       : register(t4, space2);
+Texture2DArray<float> PointShadowTexture : register(t5, space2);
+Texture2DArray<float> SpotShadowTexture  : register(t6, space2);
 SamplerState      Sampler                : register(s0, space2);
+SamplerState      PointShadowSampler     : register(s5, space2);
+SamplerState      SpotShadowSampler      : register(s6, space2);
 
-StructuredBuffer<LightGPU>      PS_Lights    : register(t5, space2);
-StructuredBuffer<LightDrawInfo> PS_DrawInfos : register(t6, space2);
+StructuredBuffer<LightGPU>      PS_Lights    : register(t7, space2);
+StructuredBuffer<LightDrawInfo> PS_DrawInfos : register(t8, space2);
+StructuredBuffer<PointShadowMatrix> PS_PointShadowMatrices : register(t9, space2);
+StructuredBuffer<PointShadowMatrix> PS_SpotShadowMatrices  : register(t10, space2);
 
 struct VSOutput
 {
@@ -55,6 +62,83 @@ VSOutput vert(uint vertexID : SV_VertexID, uint instanceID : SV_InstanceID)
     return output;
 }
 
+uint PointShadowFace(float3 lightToWorld)
+{
+    float3 a = abs(lightToWorld);
+    if (a.x >= a.y && a.x >= a.z)
+        return lightToWorld.x >= 0.0f ? 0u : 1u;
+    if (a.y >= a.z)
+        return lightToWorld.y >= 0.0f ? 2u : 3u;
+    return lightToWorld.z >= 0.0f ? 4u : 5u;
+}
+
+float SamplePointShadow(LightGPU light, float3 worldPos, float3 normal, float3 lightDir)
+{
+    if ((light.flags & LIGHT_FLAG_SHADOWED) == 0u || light.shadowIndex >= POINT_SHADOW_MAX_LIGHTS)
+        return 1.0f;
+
+    float3 lightToWorld = worldPos - light.positionRadius.xyz;
+    uint face = PointShadowFace(lightToWorld);
+    uint layer = light.shadowIndex * POINT_SHADOW_FACE_COUNT + face;
+    float4 shadowPos = MulPointShadowSide(PS_PointShadowMatrices[layer], float4(worldPos, 1.0f));
+    float3 proj = shadowPos.xyz / max(abs(shadowPos.w), 0.00001f);
+    float2 uv = proj.xy * float2(0.5f, -0.5f) + 0.5f;
+    float depth = proj.z;
+    if (shadowPos.w <= 0.0f || any(uv < 0.0f) || any(uv > 1.0f) || depth < 0.0f || depth > 1.0f)
+        return 1.0f;
+
+    uint width, height, layers;
+    PointShadowTexture.GetDimensions(width, height, layers);
+    if (layer >= layers)
+        return 1.0f;
+
+    float ndotl = saturate(dot(normal, lightDir));
+    float bias = max(0.0025f * (1.0f - ndotl), 0.0008f);
+    float2 texel = 1.0f / float2(max(width, 1u), max(height, 1u));
+    float shadow = 0.0f;
+
+    [unroll]
+    for (int i = 0; i < 8; i++)
+    {
+        float2 sampleUV = uv + ShadowKernel[i] * texel * 1.5f;
+        float mapDepth = PointShadowTexture.SampleLevel(PointShadowSampler, float3(sampleUV, float(layer)), 0.0f);
+        shadow += float(mapDepth >= depth - bias);
+    }
+    return max(shadow * 0.125f, 0.15f);
+}
+
+float SampleSpotShadow(LightGPU light, float3 worldPos, float3 normal, float3 lightDir)
+{
+    if ((light.flags & LIGHT_FLAG_SHADOWED) == 0u || light.shadowIndex >= SPOT_SHADOW_MAX_LIGHTS)
+        return 1.0f;
+
+    uint width, height, layers;
+    SpotShadowTexture.GetDimensions(width, height, layers);
+    if (light.shadowIndex >= layers)
+        return 1.0f;
+
+    float4 shadowPos = MulPointShadowSide(PS_SpotShadowMatrices[light.shadowIndex], float4(worldPos, 1.0f));
+    float3 proj = shadowPos.xyz / max(abs(shadowPos.w), 0.00001f);
+    float2 uv = proj.xy * float2(0.5f, -0.5f) + 0.5f;
+    float depth = proj.z;
+    if (shadowPos.w <= 0.0f || any(uv < 0.0f) || any(uv > 1.0f) || depth < 0.0f || depth > 1.0f)
+        return 1.0f;
+
+    float ndotl = saturate(dot(normal, lightDir));
+    float bias = max(0.0015f * (1.0f - ndotl), 0.0005f);
+    float2 texel = 1.0f / float2(max(width, 1u), max(height, 1u));
+    float shadow = 0.0f;
+
+    [unroll]
+    for (int i = 0; i < 8; i++)
+    {
+        float2 sampleUV = uv + ShadowKernel[i] * texel * 1.25f;
+        float mapDepth = SpotShadowTexture.SampleLevel(SpotShadowSampler, float3(sampleUV, float(light.shadowIndex)), 0.0f);
+        shadow += float(mapDepth >= depth - bias);
+    }
+    return max(shadow * (1.0f / 8.0f), 0.15f);
+}
+
 float3 ApplyLocalLight(float3 albedo, float3 normal, float3 viewDir, float metallic, float perceptualRoughness, LightGPU light, float3 worldPos, float ao)
 {
     float3 lightVector = light.positionRadius.xyz - worldPos;
@@ -76,7 +160,9 @@ float3 ApplyLocalLight(float3 albedo, float3 normal, float3 viewDir, float metal
         attenuation *= spot * spot;
     }
 
-    float3 radiance = light.colorIntensity.rgb * light.colorIntensity.w * attenuation;
+    float shadow = light.type == LIGHT_TYPE_POINT ? SamplePointShadow(light, worldPos, normal, lightDir) :
+                   (light.type == LIGHT_TYPE_SPOT ? SampleSpotShadow(light, worldPos, normal, lightDir) : 1.0f);
+    float3 radiance = light.colorIntensity.rgb * light.colorIntensity.w * attenuation * shadow;
     return ApplyPBRLight(albedo, normal, viewDir, metallic, perceptualRoughness, radiance, lightDir) * saturate(ao);
 }
 

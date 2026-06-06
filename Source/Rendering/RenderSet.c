@@ -248,7 +248,7 @@ u32 RenderSet_AddScene(RenderSet* set, u32 bundleIdx, v128f position, v128f rota
 
     rotation = VecNorm(rotation);
     NodeTransform sceneTransform = { position, rotation, scale };
-    NodeTransform* world = (NodeTransform*)ArenaPushGlobal(sizeof(NodeTransform) * (u32)bundle->numNodes);
+    NodeTransform* world = (NodeTransform*)ArenaAllocAlign(&GlobalArena, sizeof(NodeTransform) * (u32)bundle->numNodes, _Alignof(v128f));
     for (u32 i = 0; i < (u32)bundle->numNodes; i++)
     {
         const ANode* node = bundle->nodes + i;
@@ -276,7 +276,7 @@ u32 RenderSet_AddScene(RenderSet* set, u32 bundleIdx, v128f position, v128f rota
         added += AddNodeEntity(set, range, bundle, (u32)node->index, sparseIdx, world[i].position, world[i].rotation, world[i].scale);
     }
 
-    ArenaPopGlobal(sizeof(NodeTransform) * (u32)bundle->numNodes);
+    ArenaPopAligned(&GlobalArena, world, sizeof(NodeTransform) * (u32)bundle->numNodes, _Alignof(v128f));
     return added;
 }
 

@@ -25,6 +25,8 @@ typedef struct DepthPassContext_
     mat4x4 viewProj;
     u32 cascadeIndex;
     bool useShadowCascades;
+    bool usePointShadowSides;
+    bool useSpotShadowSides;
     bool alphaClip;
     bool enableLOD;
 } DepthPassContext;

@@ -1032,7 +1032,7 @@ int ParseGLTF(const char* path, SceneBundle* result, float scale)
         if (source == NULL)
         {
             result->error = AError_GLB_PARSING_FAILED;
-            AX_WARN("glb header parse failed", path); 
+            AX_WARN("glb header parse failed %s", path); 
             return 0; // json must exist
         }
     }

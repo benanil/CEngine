@@ -19,6 +19,12 @@ typedef enum UICustomType_
     UICustomType_TextArea = 1
 } UICustomType;
 
+typedef enum UITextAreaFlagBits_
+{
+    UITextAreaFlags_CenterX = 1u << 0,
+    UITextAreaFlags_CenterY = 1u << 1
+} UITextAreaFlagBits;
+
 typedef enum UIColor_
 {
     UIColor_Text = 0,
@@ -82,6 +88,7 @@ typedef struct UITextAreaCustomData_
     u32 type;
     char* buffer;
     u32 capacity;
+    u32 flags;
 } UITextAreaCustomData;
 
 void UIInit(void);
@@ -114,6 +121,7 @@ void UIPushFloatAdd(UIFloat what, f32 value);
 void UIPopFloat(UIFloat what);
 
 bool   UITextArea(const char* label, float2 pos, char* buffer, u32 capacity, float2 size);
+bool   UITextAreaFlags(const char* label, float2 pos, char* buffer, u32 capacity, float2 size, u32 flags);
 void   UIRender(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget);
 UIImageData UIImageFromTexture(Texture* texture);
 
@@ -125,6 +133,8 @@ bool UICheckbox(Clay_ElementId id, Clay_String label, bool* value);
 void UIProgressBar(Clay_ElementId id, Clay_String label, f32 value01);
 bool UISliderFloat(Clay_ElementId id, Clay_String label, f32* value, f32 minValue, f32 maxValue);
 bool UISliderFloatValue(Clay_ElementId id, Clay_String label, f32* value, f32 minValue, f32 maxValue, int decimals);
+bool UIEditInt(Clay_ElementId id, Clay_String label, f32* value, s32 minValue, s32 maxValue);
+bool UIEditFloat(Clay_ElementId id, Clay_String label, f32* value, f32 minValue, f32 maxValue, f32 step, int decimals);
 
 u64 UIAutoID(const void* ptr);
 

@@ -85,7 +85,7 @@ static char* GetNameFromFBX(ufbx_string ustr, FixedPow2Allocator* stringAllocato
 }
 #endif
 
-s32 LoadFBX(const u8* path, SceneBundle* fbxScene, f32 scale)
+s32 LoadFBX(const char* path, SceneBundle* fbxScene, f32 scale)
 {
 #if !AX_GAME_BUILD
     MemsetZero(fbxScene, sizeof(SceneBundle));
@@ -107,7 +107,7 @@ s32 LoadFBX(const u8* path, SceneBundle* fbxScene, f32 scale)
     ufbx_error error;
     ufbx_scene* uscene;
     
-    uscene = ufbx_load_file(path, &opts, &error);
+    uscene = ufbx_load_file((const char*)path, &opts, &error);
     
     if (!uscene) {
         AX_ERROR("fbx mesh load failed! %s", error.info);
@@ -313,12 +313,12 @@ s32 LoadFBX(const u8* path, SceneBundle* fbxScene, f32 scale)
         // is this embedded
         if (utexture->content.size)
         {
-            u8* buffer = FixedPow2Allocator_AllocateUninitialized(allocator, 512);
+            char* buffer = FixedPow2Allocator_AllocateUninitialized(allocator, 512);
             MemsetZero(buffer, 512);
             s32 pathLen = StringLengthSafe(path, 512);
             SmallMemCpy(buffer, path, pathLen);
             
-            u8* fbxPath = PathGoBackwards(buffer, pathLen, false);
+            char* fbxPath = PathGoBackwards(buffer, pathLen, false);
             // concat: FbxPath/TextureName
             SmallMemCpy(fbxPath, utexture->name.data, utexture->name.length); 
             SmallMemCpy(fbxPath + utexture->name.length, ".png", 4); // FbxPath/TextureName.png
@@ -466,9 +466,9 @@ s32 LoadFBX(const u8* path, SceneBundle* fbxScene, f32 scale)
     return 1;
 }
 
-void SaveSceneImages(SceneBundle* scene, const u8* savePath, bool deleteRemaining)
+void SaveSceneImages(SceneBundle* scene, const char* savePath, bool deleteRemaining)
 {
-    u8 pathBuf[2048], baseDir[2048], name[512], bdcPath[2048], tmpPath[2048], srcPath[2048];
+    char pathBuf[2048], baseDir[2048], name[512], bdcPath[2048], tmpPath[2048], srcPath[2048];
 
     // .bdc path
     s32 len = StringLengthSafe(savePath, sizeof(bdcPath));
@@ -490,7 +490,7 @@ void SaveSceneImages(SceneBundle* scene, const u8* savePath, bool deleteRemainin
 
     for (s32 i = 0; i < scene->numImages; i++)
     {
-        const u8* src = scene->images[i].path;
+        const char* src = scene->images[i].path;
         if (src == NULL || src[0] == '\0')
         {
             AX_WARN("scene image has no path, writing empty cache entry index:%d", i);
@@ -571,7 +571,7 @@ void SaveSceneImages(SceneBundle* scene, const u8* savePath, bool deleteRemainin
 }
 
 // result: 1 fine, 2 some file is not exist, 3 not enough images for scene
-s32 LoadSceneImages(const u8* texturePath, Texture* textures, s32 numImages)
+s32 LoadSceneImages(const char* texturePath, Texture* textures, s32 numImages)
 {
     if (numImages <= 0)
         return 1;
@@ -580,11 +580,11 @@ s32 LoadSceneImages(const u8* texturePath, Texture* textures, s32 numImages)
     if (!AFileExist(file))
         return 0;
 
-    u8 buffer[2048];
-    u8 typeBuffer[64];
-    u8 baseDir[2048];
-    u8 fileName[512];
-    u8 basisPath[2048];
+    char buffer[2048];
+    char typeBuffer[64];
+    char baseDir[2048];
+    char fileName[512];
+    char basisPath[2048];
     GetBaseDir(texturePath, baseDir);
 
     s32 result = 1;
@@ -718,7 +718,7 @@ s32 LoadGLTFCached(const char* path, SceneBundle* scene, Texture* textures)
 // ZSTD_CCtx* zstdCompressorCTX = NULL;
 const s32 ABMMeshVersion = 78;
 
-u8 IsABMLastVersion(const u8* path)
+u8 IsABMLastVersion(const char* path)
 {
     if (!FileExist(path))
     {
@@ -763,7 +763,7 @@ static void WriteGLTFString(const char* str, AFile file)
     if (str) AFileWrite(str, (uint64_t)(nameLen + 1), file, 1);
 }
 
-s32 SaveGLTFBinary(const SceneBundle* gltf, const u8* path)
+s32 SaveGLTFBinary(const SceneBundle* gltf, const char* path)
 {
 #if !AX_GAME_BUILD
     AX_LOG("abm save: %s version=%d meshes=%d nodes=%d skins=%d animations=%d",
@@ -1020,7 +1020,7 @@ void ReadGLTFString(char** str, AFile file, FixedPow2Allocator* stringAllocator)
     }
 }
 
-s32 LoadSceneBundleBinary(const u8* path, SceneBundle* gltf)
+s32 LoadSceneBundleBinary(const char* path, SceneBundle* gltf)
 {
     AX_LOG("abm load: %s", path);
     AFile file = AFileOpen(path, AOpenFlag_ReadBinary);

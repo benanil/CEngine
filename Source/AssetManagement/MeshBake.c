@@ -438,7 +438,7 @@ s32 BakeSceneMeshesAndAnimations(SceneBundle* gltf)
     if ((vertexCursor + gltf->totalVertices) > maxVertices ||
         (gGFX.NumIndices  + gltf->totalIndices) > MAX_INDEX)
     {
-        AX_WARN("mesh bake failed: vertex/index buffer capacity exceeded vertices=%d/%d indices=%d/%d",
+        AX_WARN("mesh bake failed: vertex/index buffer capacity exceeded vertices=%d/%d indices=%d/%llu",
                 vertexCursor + gltf->totalVertices, maxVertices,
                 gGFX.NumIndices + gltf->totalIndices, MAX_INDEX);
         return 0;
@@ -547,15 +547,15 @@ void OptimizeMesh(SceneBundle* gltf)
 
     size_t vertexSize = gltf->numSkins > 0 ? sizeof(ASkinedVertex) : sizeof(AVertex);
     int* remap = ArenaAllocGlobal(gltf->totalIndices * sizeof(s32));
-    size_t totalVertices = meshopt_generateVertexRemap(remap, (const u32 *)gltf->allIndices,
+    size_t totalVertices = meshopt_generateVertexRemap((u32*)remap, (const u32 *)gltf->allIndices,
                                                        (size_t)gltf->totalIndices, gltf->allVertices,
                                                        (size_t)gltf->totalVertices, vertexSize);
 
     int* temp = ArenaAllocGlobal(gltf->totalIndices * sizeof(s32));
-    meshopt_remapIndexBuffer(temp, gltf->allIndices, (size_t)gltf->totalIndices, remap);
+    meshopt_remapIndexBuffer((u32*)temp, gltf->allIndices, (size_t)gltf->totalIndices, (u32*)remap);
 
     void* vertexBufferNew = ArenaAllocGlobal((size_t)gltf->totalVertices * vertexSize);
-    meshopt_remapVertexBuffer(vertexBufferNew, gltf->allVertices, (size_t)gltf->totalVertices, vertexSize, remap);
+    meshopt_remapVertexBuffer(vertexBufferNew, gltf->allVertices, (size_t)gltf->totalVertices, vertexSize, (u32*)remap);
 
     MemSet(gltf->allVertices, 0, (size_t)gltf->totalVertices * vertexSize);
     MemSet(gltf->allIndices , 0, (size_t)gltf->totalIndices * sizeof(s32));
@@ -567,7 +567,7 @@ void OptimizeMesh(SceneBundle* gltf)
     ArenaPopGlobal((size_t)gltf->totalIndices * sizeof(s32));
     ArenaPopGlobal((size_t)gltf->totalVertices * vertexSize);
 
-    meshopt_optimizeVertexCache(gltf->allIndices , gltf->allIndices, gltf->totalIndices, (size_t)totalVertices);
-    meshopt_optimizeVertexFetch(gltf->allVertices, gltf->allIndices, gltf->totalIndices,
+    meshopt_optimizeVertexCache((u32*)gltf->allIndices , (const u32*)gltf->allIndices, gltf->totalIndices, (size_t)totalVertices);
+    meshopt_optimizeVertexFetch(gltf->allVertices, (u32*)gltf->allIndices, gltf->totalIndices,
                                 gltf->allVertices, (size_t)totalVertices, vertexSize);
 }

@@ -124,6 +124,9 @@ typedef struct LineVertex_
 #define LIGHT_TYPE_SPOT  1u
 #define LIGHT_TYPE_RECT  2u
 
+#define LIGHT_FLAG_SHADOWED 1u
+#define LIGHT_SHADOW_INDEX_INVALID 0xffffffffu
+
 #define LIGHT_DRAW_FULLSCREEN 1u
 
 typedef struct LightGPU_

@@ -69,6 +69,8 @@ static SDL_GPUComputePipeline* gCopyRGBAPipeline;
 static SDL_GPUComputePipeline* gCopyRGPipeline;
 static u32 gNumCopyRequests;
 
+extern void Quit(int rc);
+
 static u32 MipCountForSize(u32 width, u32 height)
 {
     u32 levels = 1;

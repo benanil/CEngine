@@ -433,13 +433,6 @@ static UITextLine* UILayoutBeginLine(UITextLayout* layout, f32 x, f32 y, u32 cod
     return line;
 }
 
-static bool UITextShapeInternal(const char* text, float2 resolvedPos, f32 size, u32 color, bool append, float2* outSize)
-{
-    if (!text) return false;
-    u32 textBytes = (u32)StringLengthSafe(text, SLUG_MAX_TEXT + 1u);
-    return UITextShapeInternalN(text, textBytes, resolvedPos, size, color, append, outSize);
-}
-
 static bool UITextBuildLayout(const char* text, u32 bytes, float2 pos, f32 textScale, bool multiline, UITextLayout* layout)
 {
     SDL_zero(*layout);
@@ -629,8 +622,8 @@ bool UITextArea(const char* label, float2 pos, char* buffer, u32 capacity, float
     float2 textPos = { boxPos.x + 10.0f, boxPos.y + 8.0f };
     UIPushFloat(UIFloat_TextWrapWidth, Maxf32(size.x - 20.0f, 1.0f));
     u32 len = UIStringLength(buffer, capacity);
-    UITextLayout layout;
-    UITextBuildLayout(buffer ? buffer : "", len, textPos, UIGetFloat(UIFloat_TextScale), true, &layout);
+    static UITextLayout layout;
+    UITextBuildLayout(buffer ? buffer : "?", len, textPos, UIGetFloat(UIFloat_TextScale), true, &layout);
     if (GetMousePressed(MouseButton_Left))
     {
         if (hovered)
@@ -650,7 +643,7 @@ bool UITextArea(const char* label, float2 pos, char* buffer, u32 capacity, float
 
     bool edited = UITextEditBehavior(id, buffer, capacity, true, &layout);
     len = UIStringLength(buffer, capacity);
-    UITextBuildLayout(buffer ? buffer : "", len, textPos, UIGetFloat(UIFloat_TextScale), true, &layout);
+    UITextBuildLayout(buffer ? buffer : "?", len, textPos, UIGetFloat(UIFloat_TextScale), true, &layout);
     g_UI.wasHovered = hovered;
 
     if (focused) UITextDrawSelection(&layout);

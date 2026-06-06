@@ -148,14 +148,10 @@ static inline float2 InfiniteMouse(float2 point)
     wGetMonitorSize(&monitorSize.x, &monitorSize.y);
     if (monitorSize.x <= 4 || monitorSize.y <= 4) return point;
     
-    #ifdef PLATFORM_WINDOWS
-    if (point.x > monitorSize.x - 2) { point.x = 3.0f; SetCursorPos((int)point.x, (int)point.y); }
-    if (point.y > monitorSize.y - 2) { point.y = 3.0f; SetCursorPos((int)point.x, (int)point.y); }
-        
-    if (point.x < 2) { point.x = (f32)(monitorSize.x - 3); SetCursorPos((int)point.x, (int)point.y); }
-    if (point.y < 2) { point.y = (f32)(monitorSize.y - 3); SetCursorPos((int)point.x, (int)point.y); }
-    #endif
-
+    if (point.x > monitorSize.x - 2) { point.x = 3.0f;                    SDL_WarpMouseGlobal((int)point.x, (int)point.y); }
+    if (point.y > monitorSize.y - 2) { point.y = 3.0f;                    SDL_WarpMouseGlobal((int)point.x, (int)point.y); }
+    if (point.x < 2)                 { point.x = (f32)(monitorSize.x - 3); SDL_WarpMouseGlobal((int)point.x, (int)point.y); }
+    if (point.y < 2)                 { point.y = (f32)(monitorSize.y - 3); SDL_WarpMouseGlobal((int)point.x, (int)point.y); }
     return point;
 }
 

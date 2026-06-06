@@ -67,6 +67,7 @@ set(BASIS_ENCODER_SOURCES
     Extern/BasisCompressWrapper.cpp
     Extern/basis_universal/transcoder/basisu_transcoder.cpp
     Extern/basis_universal/encoder/3rdparty/android_astc_decomp.cpp
+    Extern/ufbx.c
     # Extern/basis_universal/encoder/3rdparty/exr_reader.hh
     # Extern/basis_universal/encoder/3rdparty/qoi.h
     # Extern/basis_universal/encoder/3rdparty/streamreader.hh
@@ -154,6 +155,14 @@ target_include_directories(${EXECUTABLE_NAME} PRIVATE
     Extern/basis_universal/encoder
     Extern/basis_universal/transcoder
 )
+
+target_compile_options(${EXECUTABLE_NAME} PRIVATE
+    $<$<CXX_COMPILER_ID:Clang>:/arch:AVX2>
+    $<$<C_COMPILER_ID:Clang>:/arch:AVX2>
+    #$<$<CONFIG:Release>:/fsanitize=address>
+)
+
+#target_link_options(${EXECUTABLE_NAME} PRIVATE $<$<CONFIG:Release>:/fsanitize=address>)
 
 target_compile_definitions(${EXECUTABLE_NAME} PRIVATE
     BASISU_NO_ITERATOR_DEBUG_LEVEL

@@ -158,14 +158,14 @@ purefn u64 Xoroshiro128Plus(u64 s[2])
     return result;
 }
 
-purefn u32 StringToHash(const u8* str, u32 hash)
+purefn u32 StringToHash(const char* str, u32 hash)
 {
     while (*str)
         hash = *str++ + (hash << 6u) + (hash << 16u) - hash;
     return hash;
 }
 
-purefn u32 PathToHash(const u8* str)
+purefn u32 PathToHash(const char* str)
 {
     u32 hash = 0u, idx = 0u, shift = 0u;
     while (str[idx] && idx < 4u)

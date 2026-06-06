@@ -1,4 +1,6 @@
 #include "RenderingInternal.h"
+#include <SDL3/SDL_timer.h>
+#include <SDL3/SDL_time.h>
 
 void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet,
                                  RenderSetBuffers* buffers,

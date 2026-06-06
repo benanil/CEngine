@@ -627,7 +627,7 @@ bool UIAnyWindowHovered(void)
 
 bool UIBeginWindow(const char* title, float2 position, float2 scale, bool* open, u32 flags)
 {
-    u32 hash = StringToHash((const u8*)title, 5381u);
+    u32 hash = StringToHash(title, 5381u);
     return UIBeginWindowId((Clay_ElementId){ .id = hash }, title, position, scale, open, flags);
 }
 

@@ -8,12 +8,14 @@
 
 #include "Include/Memory.h"
 #include "Include/Slug.h"
+#include "Include/UIRenderer.h" // UIGetClipRect
 #include "Include/FileSystem.h"
 #include "Include/String.h"
 #include "Include/Platform.h"
+#include <windows.h>
 
-#define STBTT_malloc(size, user) ((void)(user), AllocateTLSFGlobal(size))
-#define STBTT_free(ptr, user)    ((void)(user), DeAllocateTLSFGlobal(ptr))
+#define STBTT_malloc(size, user) ((void)(user), SDL_malloc(size))
+#define STBTT_free(ptr, user)    ((void)(user), SDL_free(ptr))
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "Extern/stb/stb_truetype.h"
 
@@ -117,17 +119,49 @@ static void SlugAppendCubicApprox(SlugCurve* curves, u32* count, f32 p0x, f32 p0
     curves[(*count)++] = (SlugCurve){ { midx, midy }, { (3.0f * p123x - p3x) * 0.5f, (3.0f * p123y - p3y) * 0.5f }, { p3x, p3y } };
 }
 
+static void SlugLogFontInfo(const stbtt_fontinfo* info)
+{
+    if (!info) { AX_LOG("stbtt_fontinfo: NULL"); return; }
+    AX_LOG("stbtt_fontinfo: data=%p fontstart=%d numGlyphs=%d", info->data, info->fontstart, info->numGlyphs);
+    AX_LOG("  tables: loca=%d head=%d glyf=%d hhea=%d hmtx=%d kern=%d gpos=%d svg=%d", info->loca, info->head, info->glyf, info->hhea, info->hmtx, info->kern, info->gpos, info->svg);
+    AX_LOG("  index_map=%d indexToLocFormat=%d", info->index_map, info->indexToLocFormat);
+    AX_LOG("  cff:         data=%p cursor=%d size=%d", info->cff.data,         info->cff.cursor,         info->cff.size);
+    AX_LOG("  charstrings: data=%p cursor=%d size=%d", info->charstrings.data, info->charstrings.cursor, info->charstrings.size);
+    AX_LOG("  gsubrs:      data=%p cursor=%d size=%d", info->gsubrs.data,      info->gsubrs.cursor,      info->gsubrs.size);
+    AX_LOG("  subrs:       data=%p cursor=%d size=%d", info->subrs.data,       info->subrs.cursor,       info->subrs.size);
+    AX_LOG("  fontdicts:   data=%p cursor=%d size=%d", info->fontdicts.data,   info->fontdicts.cursor,   info->fontdicts.size);
+    AX_LOG("  fdselect:    data=%p cursor=%d size=%d", info->fdselect.data,    info->fdselect.cursor,    info->fdselect.size);
+}
+
 static u32 SlugExtractCurves(stbtt_fontinfo* info, u32 glyphIndex, f32 emScale, SlugCurve** outCurves)
 {
-    stbtt_vertex* vertices = NULL;
-    s32 numVertices = stbtt_GetGlyphShape(info, (int)glyphIndex, &vertices);
-    if (numVertices <= 0)
+    *outCurves = NULL;
+
+    if (!info || !info->data)
     {
-        *outCurves = NULL;
+        AX_WARN("SlugExtractCurves: invalid font info");
         return 0;
     }
 
+    if (glyphIndex >= (u32)info->numGlyphs)
+    {
+        AX_WARN("SlugExtractCurves: invalid glyph index %u / %d", glyphIndex, info->numGlyphs);
+        return 0;
+    }
+
+    stbtt_vertex* vertices = NULL;
+    s32 numVertices = stbtt_GetGlyphShape(info, (int)glyphIndex, &vertices);
+
+    if (numVertices <= 0 || !vertices)
+        return 0;
+
     SlugCurve* curves = (SlugCurve*)AllocateTLSFGlobal((size_t)numVertices * 2u * sizeof(SlugCurve));
+    if (!curves)
+    {
+        stbtt_FreeShape(info, vertices);
+        return 0;
+    }
+
     u32 numCurves = 0;
     f32 px = 0.0f;
     f32 py = 0.0f;
@@ -136,45 +170,71 @@ static u32 SlugExtractCurves(stbtt_fontinfo* info, u32 glyphIndex, f32 emScale, 
     {
         f32 x = (f32)vertices[i].x * emScale;
         f32 y = (f32)vertices[i].y * emScale;
+
         switch (vertices[i].type)
         {
             case STBTT_vmove:
-                px = x; py = y;
+                px = x;
+                py = y;
                 break;
+
             case STBTT_vline:
                 curves[numCurves++] = (SlugCurve){ { px, py }, { x, y }, { x, y } };
-                px = x; py = y;
+                px = x;
+                py = y;
                 break;
+
             case STBTT_vcurve:
             {
                 f32 cx = (f32)vertices[i].cx * emScale;
                 f32 cy = (f32)vertices[i].cy * emScale;
                 curves[numCurves++] = (SlugCurve){ { px, py }, { cx, cy }, { x, y } };
-                px = x; py = y;
+                px = x;
+                py = y;
             } break;
+
             case STBTT_vcubic:
             {
+                if (numCurves + 2u > (u32)numVertices * 2u)
+                    break;
+
                 f32 c1x = (f32)vertices[i].cx  * emScale;
                 f32 c1y = (f32)vertices[i].cy  * emScale;
                 f32 c2x = (f32)vertices[i].cx1 * emScale;
                 f32 c2y = (f32)vertices[i].cy1 * emScale;
+
                 SlugAppendCubicApprox(curves, &numCurves, px, py, c1x, c1y, c2x, c2y, x, y);
-                px = x; py = y;
+
+                px = x;
+                py = y;
             } break;
-            default:
-                px = x; py = y;
-                break;
         }
     }
 
     stbtt_FreeShape(info, vertices);
+
+    if (numCurves == 0u)
+    {
+        DeAllocateTLSFGlobal(curves);
+        return 0;
+    }
+
     *outCurves = curves;
     return numCurves;
 }
-
 static void SlugBuildGlyphByIndex(stbtt_fontinfo* info, u32 glyphIndex, f32 emScale, SlugBuildBuffers* buffers, SlugGlyph* glyph)
 {
     *glyph = (SlugGlyph){0};
+    if (!info || !info->data)
+    {
+        AX_WARN("SlugBuildGlyphByIndex: invalid font info");
+        return;
+    }
+    if (glyphIndex >= (u32)info->numGlyphs)
+    {
+        AX_WARN("SlugBuildGlyphByIndex: invalid glyph index %u / %d", glyphIndex, info->numGlyphs);
+        return;
+    }
 
     s32 advance, lsb;
     stbtt_GetGlyphHMetrics(info, (int)glyphIndex, &advance, &lsb);
@@ -196,6 +256,7 @@ static void SlugBuildGlyphByIndex(stbtt_fontinfo* info, u32 glyphIndex, f32 emSc
         return;
     }
 
+    u32 mark = (u32)ArenaGetCurrentOffset();
     u32* curveIndexes = (u32*)ArenaPushGlobal((u64)numCurves * sizeof(u32));
     for (u32 i = 0; i < numCurves; i++)
     {
@@ -224,7 +285,6 @@ static void SlugBuildGlyphByIndex(stbtt_fontinfo* info, u32 glyphIndex, f32 emSc
     glyph->glyphBandEntry = bandHeaderOffset;
     buffers->numBands += totalBands;
 
-    u32 mark = (u32)ArenaGetCurrentOffset();
     u32* bandIndexes = (u32*)ArenaPushGlobal((u64)numCurves * sizeof(u32));
     f32* bandMaximums = (f32*)ArenaPushGlobal((u64)numCurves * sizeof(f32));
 
@@ -277,7 +337,6 @@ static void SlugBuildGlyphByIndex(stbtt_fontinfo* info, u32 glyphIndex, f32 emSc
     }
 
     ArenaSetCurrentOffset(mark);
-    ArenaPopGlobal((u64)numCurves * sizeof(u32));
     DeAllocateTLSFGlobal(curves);
 }
 
@@ -320,10 +379,14 @@ static bool SlugLoadFallbackFont(SlugFont* font, const char* path)
     for (s32 i = 0; i < fontCount && font->numFallbackFonts < SLUG_MAX_FALLBACK_FONTS; i++)
     {
         s32 offset = stbtt_GetFontOffsetForIndex((const unsigned char*)ttf, i);
-        if (offset < 0) continue;
-
-        stbtt_fontinfo info;
-        if (!stbtt_InitFont(&info, (const unsigned char*)ttf, offset)) continue;
+        if (offset < 0) offset = 0;
+        stbtt_fontinfo info = { 0 };
+        if (!stbtt_InitFont(&info, (const unsigned char*)ttf, offset))
+        {
+            AX_WARN("Failed to init Slug font: %s", path);
+            FreeAllText(ttf);
+            return false;
+        }
 
         SlugFallbackFont* fallback = &font->fallbackFonts[font->numFallbackFonts++];
         fallback->ttfData = ttf;
@@ -341,6 +404,7 @@ static bool SlugLoadFallbackFont(SlugFont* font, const char* path)
 static bool SlugInitFontInfoForFace(SlugFont* font, u32 faceIndex, stbtt_fontinfo* info, f32* emScale)
 {
     if (!font || !info || !emScale) return false;
+    *info = (stbtt_fontinfo){0};
     if (faceIndex == 0u)
     {
         if (!font->ttfData) return false;
@@ -480,7 +544,7 @@ bool SlugLoadFont(SlugFont* font, const char* path)
     stbtt_GetFontVMetrics(&info, &ascent, &descent, &lineGap);
     font->ascent = (f32)ascent * emScale;
     font->descent = (f32)descent * emScale;
-    SlugLoadFallbackFonts(font);
+    // SlugLoadFallbackFonts(font);
 
     for (u32 codePoint = 0; codePoint < SLUG_MAX_GLYPHS; codePoint++)
     {
@@ -707,7 +771,7 @@ bool SlugAppendText2DN(SlugFont* font, const char* text, u32 textBytes, float2 p
             f32 ox1 = pos.x + (cursor + ex1) * size;
             f32 oy0 = baselineY - ey0 * size;
             f32 oy1 = baselineY - ey1 * size;
-            const f32 n = 1.0f / MATH_PI;
+            const f32 n = 1.0f / MATH_Sqrt2;
             struct { f32 ox, oy, ex, ey, nx, ny; } corners[4] = {
                 { ox0, oy0, ex0, ey0, -n,  n },
                 { ox1, oy0, ex1, ey0,  n,  n },

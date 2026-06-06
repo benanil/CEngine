@@ -149,7 +149,7 @@ void InitAnimationInstances(void)
     for (u32 i = 0; i < MAX_ANIM_INSTANCES; i++)
     {
         u32 hash = WangHash(i + 645u);
-        u32 animIdx = hash % NumGPUAnimations;
+        u32 animIdx = Maxu32(hash % NumGPUAnimations, 1u);
         f32 duration = animData[animIdx].duration;
 
         animInstances[i] = (GPUAnimationInstance){

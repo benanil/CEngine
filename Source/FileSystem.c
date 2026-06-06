@@ -89,7 +89,7 @@ bool FileHasExtension(const char* path, int size, const char* extension)
     return true;
 }
 
-void GetBaseDir(const u8* path, u8* out)
+void GetBaseDir(const char* path, char* out)
 {
     s32 len = (s32)StringLengthSafe(path, 2048);
     for (s32 i = len - 1; i >= 0; --i)
@@ -104,7 +104,7 @@ void GetBaseDir(const u8* path, u8* out)
     SmallMemCpy(out, "./", 3);
 }
 
-s32 GetFileNameNoExt(const u8* path, u8* out)
+s32 GetFileNameNoExt(const char* path, char* out)
 {
     s32 len = (s32)StringLengthSafe(path, 512);
     s32 start = 0;
@@ -470,7 +470,7 @@ char* ReadAllFile(const char* fileName, char* buffer, uint64_t bufferSize)
     uint64_t fileSize = AFileSize(file);
     if (fileSize > bufferSize)
     {
-        AX_WARN("buffer is not enough! %s, bufferSize: %d, needed:%d", fileName, bufferSize, fileSize);
+        AX_WARN("buffer is not enough! %s, bufferSize: %llu, needed:%llu", fileName, bufferSize, fileSize);
         return NULL;
     }
 
@@ -617,7 +617,7 @@ bool CombinePaths(char* dst, uint64_t dstSize, const char* a, const char* b)
     int bLen = StringLength(b);
     if (aLen + bLen + 1 > dstSize)
     {
-        AX_WARN("Combine path len is too long! capacity: %d, requested:%d, %s %s", dstSize, aLen + bLen, a, b);
+        AX_WARN("Combine path len is too long! capacity: %llu, requested:%d, %s %s", dstSize, aLen + bLen, a, b);
         return false;
     }
     SmallMemCpy(dst, a, aLen);
