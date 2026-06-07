@@ -45,7 +45,7 @@ typedef enum UIFloat_
 {
     UIFloat_BorderWidth = 0,
     UIFloat_ContentStart,
-    UIFloat_ButtonSpace,
+    UIFloat_ButtonSize,
     UIFloat_TextScale,
     UIFloat_TextBoxWidth,
     UIFloat_SliderHeight,
@@ -119,6 +119,8 @@ f32  UIGetFloat(UIFloat what);
 void UIPushFloat(UIFloat what, f32 value);
 void UIPushFloatAdd(UIFloat what, f32 value);
 void UIPopFloat(UIFloat what);
+
+Clay_Color UIPanelColor(void);
 
 bool   UITextArea(const char* label, float2 pos, char* buffer, u32 capacity, float2 size);
 bool   UITextAreaFlags(const char* label, float2 pos, char* buffer, u32 capacity, float2 size, u32 flags);

@@ -605,7 +605,7 @@ static void UISetKeyboardFocus(u64 id)
     else SDL_StopTextInput(g_SDLWindow);
 }
 
-bool UITextArea(const char* label, float2 pos, char* buffer, u32 capacity, float2 size)
+bool UITextAreaFlags(const char* label, float2 pos, char* buffer, u32 capacity, float2 size, u32 flags)
 {
     f32 labelFontSize = 32.0f * UIGetFloat(UIFloat_TextScale) * g_UI.uiScale;
     if (label) SlugAppendText2D(NULL, label, pos, labelFontSize, UIGetColor(UIColor_Text));
@@ -617,9 +617,16 @@ bool UITextArea(const char* label, float2 pos, char* buffer, u32 capacity, float
 
     UIPushRoundedRect(boxPos, size, 6.0f, UIGetColor(UIColor_TextBoxBG));
     UIPushBorder(UIGetFloat(UIFloat_BorderWidth), focused ? UIGetColor(UIColor_SelectedBorder) : UIGetColor(UIColor_Border));
-    UIPushFloat(UIFloat_TextScale, 0.78f);
+    UIPushFloat(UIFloat_TextScale, 0.5f);
 
     float2 textPos = { boxPos.x + 10.0f, boxPos.y + 8.0f };
+    float2 textSize = SlugCalcTextSize(NULL, buffer, 32.0f * UIGetFloat(UIFloat_TextScale));
+    if (flags & UITextAreaFlags_CenterX)
+        textPos.x = boxPos.x + (size.x * 0.5f - (textSize.x * 0.5f));
+
+    if (flags & UITextAreaFlags_CenterY)
+        textPos.y = boxPos.y + (size.y * 0.5f - (textSize.y * 0.5f));
+
     UIPushFloat(UIFloat_TextWrapWidth, Maxf32(size.x - 20.0f, 1.0f));
     u32 len = UIStringLength(buffer, capacity);
     static UITextLayout layout;
@@ -662,4 +669,9 @@ bool UITextArea(const char* label, float2 pos, char* buffer, u32 capacity, float
     UIPopFloat(UIFloat_TextWrapWidth);
     UIPopFloat(UIFloat_TextScale);
     return edited;
+}
+
+bool UITextArea(const char* label, float2 pos, char* buffer, u32 capacity, float2 size)
+{
+    return UITextAreaFlags(label, pos, buffer, capacity, size, 0);
 }

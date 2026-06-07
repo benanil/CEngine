@@ -26,9 +26,6 @@
 #define SPOT_SHADOW_MAX_LIGHTS     16u
 #define SPOT_SHADOW_NEAR_PLANE     0.05f
 
-#define SDSM_NEAR_PADDING          5.0f
-#define SDSM_FAR_PADDING           25.0f
-
 #define MatrixNumInt32          6
 #define MAX_BONES               96
 #define MaxBoneDepth            32

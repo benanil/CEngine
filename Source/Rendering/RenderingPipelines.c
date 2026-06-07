@@ -1050,7 +1050,7 @@ static void InitDepthOnlyPipelines(void)
     SDL_ReleaseGPUShader(g_GPUDevice, skinned_point_shadow_vertex_shader);
     SDL_ReleaseGPUShader(g_GPUDevice, skinned_point_shadow_fragment_shader);
 }
-extern void InitSDSM();
+extern void InitShadows();
 
 void InitRenderPipelines(void)
 {
@@ -1058,7 +1058,7 @@ void InitRenderPipelines(void)
     InitSkinedPipeline();
     InitSurfacePipeline();
     InitDepthOnlyPipelines();
-    InitSDSM();
+    InitShadows();
     InitLinePipeline();
     InitDeferredLightPipeline();
     InitSlugPipeline();
@@ -1067,11 +1067,11 @@ void InitRenderPipelines(void)
     InitComputePipelines();
 }
 
-extern void DestroySDSM();
+extern void DestroyShadows();
 
 void DestroyRenderPipelines(void)
 {
-    DestroySDSM();
+    DestroyShadows();
     if (g_RenderState.skinnedPipeline) SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.skinnedPipeline);
     if (g_RenderState.surfacePipeline) SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.surfacePipeline);
     if (g_RenderState.skinnedDepthPipeline) SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.skinnedDepthPipeline);

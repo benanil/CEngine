@@ -56,9 +56,6 @@ extern SDL_GPUComputePipeline* g_CullLightsComputePipeline;
 extern SDL_GPUComputePipeline* g_TonemapComputePipeline;
 extern SDL_GPUComputePipeline* g_HiZBuildComputePipeline;
 extern SDL_GPUComputePipeline* g_HiZDownscaleComputePipeline;
-extern SDL_GPUComputePipeline* g_SDSMDepthBoundsInitialPipeline;
-extern SDL_GPUComputePipeline* g_SDSMDepthBoundsReducePipeline;
-extern SDL_GPUComputePipeline* g_SDSMSetupShadowsPipeline;
 extern SDL_GPUComputePipeline* g_HBAOComputePipeline;
 extern SDL_GPUComputePipeline* g_HBAOBlurComputePipeline;
 extern SDL_GPUComputePipeline* g_ExtractNormalComputePipeline;
@@ -85,8 +82,6 @@ void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd,
                                   u32 forcedLOD);
 
 void DispatchHiZBuildCompute(SDL_GPUCommandBuffer* cmd);
-void DispatchSDSMSetupShadowsCompute(SDL_GPUCommandBuffer* cmd, mat4x4 viewProj);
-void DispatchSDSMDepthBoundsCompute(SDL_GPUCommandBuffer* cmd);
 void DispatchHBAOCompute(SDL_GPUCommandBuffer* cmd, bool enabled, u32 width, u32 height);
 void DispatchDeferredLightingCompute(SDL_GPUCommandBuffer* cmd, u32 width, u32 height, mat4x4 viewProj);
 void DispatchCullLightsCompute(SDL_GPUCommandBuffer* cmd, FrustumPlanes frustumPlanes, mat4x4 viewProj, bool enableFrustum, bool enableHiZ, u32 width, u32 height);

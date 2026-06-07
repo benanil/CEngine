@@ -104,7 +104,6 @@ void GraphicsInit(bool msaa)
     winstate->tex_gbuffer_shadow_roughness = CreateGBufferShadowRoughnessTexture(drawablew, drawableh);
     winstate->tex_post    = CreatePostProcessTexture(drawablew, drawableh);
     winstate->tex_hiz     = CreateHiZTexture(drawablew, drawableh, &winstate->hiz_mip_count);
-    winstate->tex_sdsm_bounds = CreateSDSMDepthBoundsTexture(drawablew, drawableh, &winstate->sdsm_mip_count);
     winstate->tex_hbao        = CreateHBAOTexture(Maxu32((u32)drawablew / 2u, 1u), Maxu32((u32)drawableh / 2u, 1u));
     winstate->tex_hbao_blur   = CreateHBAOTexture(Maxu32((u32)drawablew / 2u, 1u), Maxu32((u32)drawableh / 2u, 1u));
     winstate->tex_hbao_normal = CreateHBAONormalTexture(Maxu32((u32)drawablew / 2u, 1u), Maxu32((u32)drawableh / 2u, 1u));
@@ -121,7 +120,6 @@ void GraphicsInit(bool msaa)
     winstate->hiz_width   = drawablew;
     winstate->hiz_height  = drawableh;
     winstate->hiz_valid   = false;
-    winstate->sdsm_valid  = false;
     
     gGFX.SkinnedVertexBuffer = OSAllocAligned(sizeof(ASkinedVertex) * MAX_SKINNED_SOURCE_VERTEX, 4);
     gGFX.SurfaceVertexBuffer = OSAllocAligned(sizeof(AVertex) * MAX_SURFACE_VERTEX, 4);
@@ -141,7 +139,6 @@ void GraphicsDestroy()
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_gbuffer_shadow_roughness);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_post);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_hiz);
-    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_sdsm_bounds);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_hbao);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_hbao_blur);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_hbao_normal);
@@ -402,17 +399,6 @@ SDL_GPUTexture* CreateSceneColorTexture(u32 drawablew, u32 drawableh, SDL_GPUSam
     if (sampleCount == SDL_GPU_SAMPLECOUNT_1) usage |= SDL_GPU_TEXTUREUSAGE_SAMPLER;
     return CreateTexture2D(drawablew, drawableh, SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT,
                             usage, sampleCount, 1, "Scene Color Texture");
-}
-
-SDL_GPUTexture* CreateSDSMDepthBoundsTexture(u32 drawablew, u32 drawableh, u32* mipCount)
-{
-    u32 width = Maxu32((drawablew + 1u) / 2u, 1u);
-    u32 height = Maxu32((drawableh + 1u) / 2u, 1u);
-    u32 levels = GetMipCount(width, height);
-    if (mipCount) *mipCount = levels;
-    return CreateTexture2D(width, height, SDL_GPU_TEXTUREFORMAT_R32G32_FLOAT,
-                           SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_READ | SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_WRITE,
-                           SDL_GPU_SAMPLECOUNT_1, levels, "SDSM Depth Bounds Texture");
 }
 
 SDL_GPUTexture* CreateGBufferTangentTexture(u32 drawablew, u32 drawableh)

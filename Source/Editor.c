@@ -205,6 +205,8 @@ static Clay_ElementDeclaration EditorScrollPanelDeclaration(f32 height)
     return declaration;
 }
 
+extern SDL_Window* g_SDLWindow;
+
 static void GraphicsEditorUI(void)
 {
     RenderSettings* settings = &g_RenderSettings;
@@ -222,13 +224,37 @@ static void GraphicsEditorUI(void)
         .cornerRadius = CLAY_CORNER_RADIUS(UIGetFloat(UIFloat_CornerRadius)),
         .border = { .color = UIGetClayColor(UIColor_Border), .width = CLAY_BORDER_ALL(UIGetFloat(UIFloat_BorderWidth)) }
     };
+
+    int screenWidth, screenHeight;
+    SDL_GetWindowSize(g_SDLWindow, &screenWidth, &screenHeight);
+    u16 borderWidth = (u16)UIGetFloat(UIFloat_BorderWidth);
+
+    CLAY(CLAY_ID("TabBar"), {
+        .layout = {
+            .sizing = { CLAY_SIZING_FIXED(screenWidth), CLAY_SIZING_FIXED(40.0f) },
+            .childAlignment = { .x = CLAY_ALIGN_X_LEFT, .y = CLAY_ALIGN_Y_CENTER },
+            .childGap = 15,
+            .padding = { 20, 0 },
+            .layoutDirection = CLAY_LEFT_TO_RIGHT
+        },
+        .backgroundColor = UIPanelColor(),
+        .border = { .color = UIGetClayColor(UIColor_Border),  .width = { borderWidth, borderWidth, borderWidth, borderWidth, 0} }
+    }) {
+        UIPushFloatAdd(UIFloat_TextScale, -0.15f);
+        UIButton(CLAY_ID("Graphics"), CLAY_STRING("Graphics"), (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
+        UIButton(CLAY_ID("Scene")   , CLAY_STRING("Scene")   , (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
+        UIButton(CLAY_ID("Settings"), CLAY_STRING("Settings"), (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
+        UIButton(CLAY_ID("Files")   , CLAY_STRING("Files")   , (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
+        UIPopFloat(UIFloat_TextScale);
+    }
+
     CLAY(CLAY_ID("GraphicsEditorRoot"), {
         .layout = {
             .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_GROW(0) },
-            .padding = { 18, 18, 18, 18 },
-            .childAlignment = { .x = CLAY_ALIGN_X_LEFT, .y = CLAY_ALIGN_Y_TOP },
+            // .childAlignment = { .x = CLAY_ALIGN_X_LEFT, .y = CLAY_ALIGN_Y_TOP },
         }
     }) {
+
         ShowFps();
         WindowTestUI();
         Clay_ElementId windowID = (Clay_ElementId) { .id = StringToHash("Graphics Editor", 5381u) };
@@ -281,7 +307,6 @@ static void GraphicsEditorUI(void)
                 }
                 CLAY(CLAY_ID("GraphicsEditorShadowBox"), EditorPanelBoxDeclaration) {
                     EditorSectionHeader("Shadows");
-                    UICheckbox(CLAY_ID("EditorEnableSDSM"), CLAY_STRING("Sample distribution shadow maps"), &settings->enableSDSM);
                     EditorSliderFloat(CLAY_ID("EditorShadowMaxDistance")   , "Max distance"   , &settings->shadowMaxDistance      , 25.0f, 1000.0f, 1);
                     EditorSliderFloat(CLAY_ID("EditorShadowCameraDistance"), "Camera distance", &settings->shadowCameraDistance   , 10.0f,  500.0f, 1);
                     EditorSliderFloat(CLAY_ID("EditorShadowCasterMargin")  , "Caster margin"  , &settings->shadowCasterDepthMargin, 10.0f,  500.0f, 1);
@@ -318,7 +343,6 @@ static void GraphicsEditorUI(void)
                         .enableHBAO = true,
                         .enableMLAA = true,
                         .showMLAAEdges = false,
-                        .enableSDSM = false,
                         .enableLocalLights = true,
                         .enableLightFrustumCulling = true,
                         .enableLightOcclusionCulling = true,

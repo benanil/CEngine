@@ -111,7 +111,7 @@ void UIInit(void)
     g_UI.colors[UIColor_SelectedBorder] = 0xFFE8A400u;
     g_UI.floats[UIFloat_BorderWidth]    = 3.0f;
     g_UI.floats[UIFloat_ContentStart]   = 160.0f;
-    g_UI.floats[UIFloat_ButtonSpace]    = 10.0f;
+    g_UI.floats[UIFloat_ButtonSize]     = 100.0f;
     g_UI.floats[UIFloat_TextScale]      = 1.0f;
     g_UI.floats[UIFloat_TextBoxWidth]   = 175.0f;
     g_UI.floats[UIFloat_SliderHeight]   = 16.0f;
@@ -156,7 +156,7 @@ static Clay_Color UIButtonColor(bool hovered, bool selected)
     return UIGetClayColor(UIColor_Quad);
 }
 
-static Clay_Color UIPanelColor(void)
+Clay_Color UIPanelColor(void)
 {
     return UIGetClayColor(UIColor_TextBoxBG);
 }
@@ -203,12 +203,12 @@ static void UIRenderLayoutCustom(const Clay_RenderCommand* command)
     UITextAreaCustomData* custom = (UITextAreaCustomData*)data->customData;
     if (custom && custom->type == UICustomType_TextArea)
     {
-        UITextArea(NULL,
+        UITextAreaFlags(NULL,
                         (float2){ command->boundingBox.x, command->boundingBox.y },
                         custom->buffer,
                         custom->capacity,
-                        (float2){ command->boundingBox.width, command->boundingBox.height }
-                        );
+                        (float2){ command->boundingBox.width, command->boundingBox.height },
+                        custom->flags);
         return;
     }
 

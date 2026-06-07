@@ -9,7 +9,6 @@ typedef struct RenderSettings_
     bool enableHBAO;
     bool enableMLAA;
     bool showMLAAEdges;
-    bool enableSDSM;
     bool enableLocalLights;
     bool enableLightFrustumCulling;
     bool enableLightOcclusionCulling;

@@ -95,8 +95,6 @@ typedef enum wCursor_
 // Mouse
 void GetMousePos(f32* x, f32* y);
 void SetMousePos(f32 x, f32 y);
-void wGetMouseWindowPos(f32* x, f32* y);
-void wGetMonitorSize(s32* width, s32* height);
 void SetMouseWindowPos(f32 x, f32 y);
 f32  GetMouseWheelDelta();
 u8   GetDoubleClicked();
@@ -104,6 +102,9 @@ u8   AnyMouseKeyDown();
 u8   GetMouseDown(s32 button);
 u8   GetMouseReleased(s32 button);
 u8   GetMousePressed(s32 button);
+
+void wGetMouseWindowPos(f32* x, f32* y);
+void wGetMonitorSize(s32* width, s32* height);
 void wSetCursor(wCursor cursor);
 
 
