@@ -119,6 +119,7 @@ f32  UIGetFloat(UIFloat what);
 void UIPushFloat(UIFloat what, f32 value);
 void UIPushFloatAdd(UIFloat what, f32 value);
 void UIPopFloat(UIFloat what);
+bool UIFloatStackZero(UIFloat what);
 
 Clay_Color UIPanelColor(void);
 

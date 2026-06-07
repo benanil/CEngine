@@ -566,6 +566,9 @@
 					<File>
 						<Path>Source/Editor.c</Path>
 					</File>
+					<File>
+						<Path>Source/Scene.cpp</Path>
+					</File>
 				</Children>
 			</Folder>
 			<File>

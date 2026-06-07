@@ -13,19 +13,12 @@ typedef struct ShadowCascadeData_
     float  splitDistances[SHADOW_CASCADE_COUNT];
 } ShadowCascadeData;
 
-typedef struct PointShadowData_
+typedef struct ShadowData_
 {
     mat4x4 lightViewProj[POINT_SHADOW_LAYER_COUNT];
     u32 lightIndices[POINT_SHADOW_MAX_LIGHTS];
     u32 count;
-} PointShadowData;
-
-typedef struct SpotShadowData_
-{
-    mat4x4 lightViewProj[SPOT_SHADOW_MAX_LIGHTS];
-    u32 lightIndices[SPOT_SHADOW_MAX_LIGHTS];
-    u32 count;
-} SpotShadowData;
+} ShadowData;
 
 typedef struct DepthPassContext_
 {
@@ -62,8 +55,8 @@ extern Graphics       gGFX;
 extern RenderSet      skinnedSet;
 extern RenderSet      surfaceSet;
 extern LightGPU       g_RenderLights[MAX_LIGHT_COUNT];
-extern PointShadowData pointShadows;
-extern SpotShadowData spotShadows;
+extern ShadowData pointShadows;
+extern ShadowData spotShadows;
 
 extern SDL_GPUComputePipeline* g_AnimComputePipeline;
 extern SDL_GPUComputePipeline* g_AnimVerticesPipeline;
@@ -101,8 +94,8 @@ void DispatchHiZBuildCompute(SDL_GPUCommandBuffer* cmd);
 void DispatchHBAOCompute(SDL_GPUCommandBuffer* cmd, bool enabled, u32 width, u32 height);
 void DispatchDeferredLightingCompute(SDL_GPUCommandBuffer* cmd, u32 width, u32 height, mat4x4 viewProj);
 void DispatchCullLightsCompute(SDL_GPUCommandBuffer* cmd, FrustumPlanes frustumPlanes, mat4x4 viewProj, bool enableFrustum, bool enableHiZ, u32 width, u32 height);
-void DispatchTonemapCompute(SDL_GPUCommandBuffer* cmd, SDL_GPUTexture* source, SDL_GPUTexture* depth, SDL_GPUTexture* destination, u32 width, u32 height, mat4x4 viewProj);
-void DispatchMLAACompute(SDL_GPUCommandBuffer* cmd, SDL_GPUTexture* source, SDL_GPUTexture* destination, u32 width, u32 height, f32 threshold, bool showEdges);
+void DispatchTonemapCompute(SDL_GPUCommandBuffer* cmd, u32 width, u32 height, mat4x4 viewProj);
+void DispatchMLAACompute(SDL_GPUCommandBuffer* cmd, u32 width, u32 height, f32 threshold, bool showEdges);
 void DispatchAnimationCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet);
 void DispatchAnimateVerticesCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet);
 

@@ -7,8 +7,8 @@ typedef struct ShadowCandidate_
     f32 distanceSq;
 } ShadowCandidate;
 
-PointShadowData pointShadows;
-SpotShadowData spotShadows;
+ShadowData pointShadows;
+ShadowData spotShadows;
 
 static inline v128f VCALL TransformPoint(mat4x4 m, v128f p)
 {
@@ -122,8 +122,8 @@ ShadowCascadeData CascadedShadowmaps(SDL_GPUCommandBuffer* cmd)
         RenderDepth(cmd, &(DepthPassContext){
             .colorTarget       = &shadow_color_target,
             .depthTarget       = &shadow_depth_target,
-            .skinnedPipeline   = g_RenderState.skinnedShadowPipeline,
-            .surfacePipeline   = g_RenderState.surfaceShadowPipeline,
+            .skinnedPipeline   = g_RenderState.skinned.shadowPipeline,
+            .surfacePipeline   = g_RenderState.surface.shadowPipeline,
             .viewProj          = shadowViewProj,
             .cascadeIndex      = cascade,
             .useShadowCascades = true,
@@ -155,8 +155,8 @@ static void PointLightShadowMaps(SDL_GPUCommandBuffer* cmd)
             RenderDepth(cmd, &(DepthPassContext){
                 .colorTarget          = &shadow_color_target,
                 .depthTarget          = &shadow_depth_target,
-                .skinnedPipeline      = g_RenderState.skinnedPointShadowPipeline,
-                .surfacePipeline      = g_RenderState.surfacePointShadowPipeline,
+                .skinnedPipeline      = g_RenderState.skinned.pointShadowPipeline,
+                .surfacePipeline      = g_RenderState.surface.pointShadowPipeline,
                 .viewProj             = shadowViewProj,
                 .cascadeIndex         = layer,
                 .useShadowCascades    = false,
@@ -186,8 +186,8 @@ static void SpotLightShadowMaps(SDL_GPUCommandBuffer* cmd)
         RenderDepth(cmd, &(DepthPassContext){
             .colorTarget          = &shadow_color_target,
             .depthTarget          = &shadow_depth_target,
-            .skinnedPipeline      = g_RenderState.skinnedPointShadowPipeline,
-            .surfacePipeline      = g_RenderState.surfacePointShadowPipeline,
+            .skinnedPipeline      = g_RenderState.skinned.pointShadowPipeline,
+            .surfacePipeline      = g_RenderState.surface.pointShadowPipeline,
             .viewProj             = shadowViewProj,
             .cascadeIndex         = layer,
             .useShadowCascades    = false,
@@ -247,7 +247,7 @@ static void AssignVisibleShadowSlots(void)
     AssignNearestShadowSlots(LightType_Spot, maxSpotShadows);
 }
 
-static void BuildPointShadowData(PointShadowData* data)
+static void BuildPointShadowData(ShadowData* data)
 {
     static const f32 faceDirs[POINT_SHADOW_FACE_COUNT][4] = {
         {  1.0f,  0.0f,  0.0f, 0.0f }, { -1.0f,  0.0f,  0.0f, 0.0f },
@@ -282,7 +282,7 @@ static void BuildPointShadowData(PointShadowData* data)
     }
 }
 
-static void UploadPointShadowMatrixBuffer(const PointShadowData* data)
+static void UploadPointShadowMatrixBuffer(const ShadowData* data)
 {
     if (!g_RenderState.pointShadowMatrixBuffer || data->count == 0u) return;
     u32 layerCount = data->count * POINT_SHADOW_FACE_COUNT;
@@ -292,7 +292,7 @@ static void UploadPointShadowMatrixBuffer(const PointShadowData* data)
     UpdateGPUBuffer(g_RenderState.pointShadowMatrixBuffer, gpuMatrices, sizeof(mat4x4) * layerCount, 0);
 }
 
-static void BuildSpotShadowData(SpotShadowData* data)
+static void BuildSpotShadowData(ShadowData* data)
 {
     SDL_zero(*data);
     for (u32 lightIndex = 0; lightIndex < g_RenderState.numLights; lightIndex++)
@@ -316,7 +316,7 @@ static void BuildSpotShadowData(SpotShadowData* data)
     }
 }
 
-static void UploadSpotShadowMatrixBuffer(const SpotShadowData* data)
+static void UploadSpotShadowMatrixBuffer(const ShadowData* data)
 {
     if (!g_RenderState.spotShadowMatrixBuffer || data->count == 0u) return;
     mat4x4 gpuMatrices[SPOT_SHADOW_MAX_LIGHTS];
@@ -344,7 +344,6 @@ void RenderShadows(SDL_GPUCommandBuffer* cmd)
 
 void UpdateLightShadows()
 {
-
     SDL_zero(pointShadows);
     SDL_zero(spotShadows);
     if (g_RenderSettings.enableLocalLights)

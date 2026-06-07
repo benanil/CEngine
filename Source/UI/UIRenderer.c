@@ -523,13 +523,16 @@ bool UIClicked(void)
 bool UIButton(Clay_ElementId id, Clay_String label, Clay_Dimensions size, bool selected)
 {
     bool clicked = false;
+    float radius = UIFloatStackZero(UIFloat_CornerRadius) ? size.height * 0.5f : UIGetFloat(UIFloat_CornerRadius);
+    Clay_CornerRadius cr = (Clay_CornerRadius) { radius, radius, radius, radius };
+    
     CLAY(id, {
         .layout = {
             .sizing = { CLAY_SIZING_FIXED(size.width), CLAY_SIZING_FIXED(size.height) },
             .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER }
         },
         .backgroundColor = UIButtonColor(Clay_Hovered(), selected),
-        .cornerRadius = CLAY_CORNER_RADIUS(size.height * 0.5f),
+        .cornerRadius = cr,
         .border = { .color = UIGetClayColor(UIColor_Border), .width = CLAY_BORDER_ALL((u16)Maxf32(UIGetFloat(UIFloat_BorderWidth), 1.0f)) } 
     }) {
         if (UIClicked()) clicked = true;
@@ -1080,6 +1083,11 @@ void UIPopFloat(UIFloat what)
     if ((u32)what >= UIFloat_Count) return;
     if (g_UI.floatStackCount[what] < 0) { AX_WARN("UI float stack underflow: %u", (u32)what); return; }
     g_UI.floatStackCount[what]--;
+}
+
+bool UIFloatStackZero(UIFloat what)
+{
+    return g_UI.floatStackCount[what] == 0;
 }
 
 UIImageData UIImageFromTexture(Texture* texture)

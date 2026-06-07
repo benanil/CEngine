@@ -211,18 +211,16 @@ typedef struct RenderSetBuffers_
     SDL_GPUBuffer* visibilityMask;
     SDL_GPUBuffer* visibleCount;
     SDL_GPUBuffer* dispatchArgs;
+    SDL_GPUGraphicsPipeline* pipeline;
+    SDL_GPUGraphicsPipeline* depthPipeline;
+    SDL_GPUGraphicsPipeline* shadowPipeline;
+    SDL_GPUGraphicsPipeline* pointShadowPipeline;
+    SDL_GPUBuffer*           vertexBuffer;
+    SDL_GPUBuffer*           animatedVertices;
 } RenderSetBuffers;
 
 typedef struct RenderState
 {
-    SDL_GPUGraphicsPipeline* skinnedPipeline;
-    SDL_GPUGraphicsPipeline* surfacePipeline;
-    SDL_GPUGraphicsPipeline* skinnedDepthPipeline;
-    SDL_GPUGraphicsPipeline* surfaceDepthPipeline;
-    SDL_GPUGraphicsPipeline* skinnedShadowPipeline;
-    SDL_GPUGraphicsPipeline* surfaceShadowPipeline;
-    SDL_GPUGraphicsPipeline* skinnedPointShadowPipeline;
-    SDL_GPUGraphicsPipeline* surfacePointShadowPipeline;
     SDL_GPUGraphicsPipeline* linePipeline;
     SDL_GPUGraphicsPipeline* deferredLightPipeline;
     SDL_GPUGraphicsPipeline* slugPipeline;
@@ -233,8 +231,6 @@ typedef struct RenderState
     SDL_GPUSampler*          sampler;
     SDL_GPUSampler*          hiZSampler;
     SDL_GPUSampler*          shadowSampler;
-    SDL_GPUBuffer*           skinnedVertexBuffer;
-    SDL_GPUBuffer*           surfaceVertexBuffer;
     SDL_GPUBuffer*           indexBuffer;
     SDL_GPUBuffer*           lineBuffer;
     SDL_GPUBuffer*           lineDrawArgsBuffer;
@@ -245,10 +241,9 @@ typedef struct RenderState
     SDL_GPUBuffer*           lightDrawArgsBuffer;
     SDL_GPUBuffer*           uiShapeBuffer;
     SDL_GPUBuffer*           uiShapeDrawArgsBuffer;
-    SDL_GPUBuffer*           skinnedAnimatedVertices;
     SDL_GPUBuffer*           shadowCascadeBuffer;
-    RenderSetBuffers         skinnedBuffers;
-    RenderSetBuffers         surfaceBuffers;
+    RenderSetBuffers         skinned;
+    RenderSetBuffers         surface;
     
     // anim
     SDL_GPUBuffer*           boneBuffer;

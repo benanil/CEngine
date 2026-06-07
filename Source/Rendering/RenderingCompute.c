@@ -409,8 +409,12 @@ static f32 GetSkyPhaseTime(void)
     return (f32)(startupPhase * 0.01);
 }
 
-void DispatchTonemapCompute(SDL_GPUCommandBuffer* cmd, SDL_GPUTexture* source, SDL_GPUTexture* depth, SDL_GPUTexture* destination, u32 width, u32 height, mat4x4 viewProj)
+void DispatchTonemapCompute(SDL_GPUCommandBuffer* cmd, u32 width, u32 height, mat4x4 viewProj)
 {
+    WindowState* winstate       = &g_WindowState;
+    SDL_GPUTexture* source      = winstate->tex_color; 
+    SDL_GPUTexture* depth       = winstate->tex_hiz_depth; 
+    SDL_GPUTexture* destination = winstate->tex_post;
     CHECK_CREATE(g_TonemapComputePipeline, "Tonemap Compute Pipeline");
     SDL_GPUStorageTextureReadWriteBinding rwTexture = {
         .texture = destination,
@@ -465,9 +469,11 @@ void DispatchTonemapCompute(SDL_GPUCommandBuffer* cmd, SDL_GPUTexture* source, S
     SDL_EndGPUComputePass(pass);
 }
 
-void DispatchMLAACompute(SDL_GPUCommandBuffer* cmd, SDL_GPUTexture* source, SDL_GPUTexture* destination, u32 width, u32 height, f32 threshold, bool showEdges)
+void DispatchMLAACompute(SDL_GPUCommandBuffer* cmd, u32 width, u32 height, f32 threshold, bool showEdges)
 {
     WindowState* winstate = &g_WindowState;
+    SDL_GPUTexture* source = winstate->tex_post;
+    SDL_GPUTexture* destination = winstate->tex_mlaa_output;
     if (!source || !destination || !winstate->tex_mlaa_edge_mask || !winstate->tex_mlaa_edge_count)
     {
         AX_WARN("MLAA resources are not ready");
@@ -546,22 +552,21 @@ void DispatchAnimationCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet)
         { g_RenderState.boneBuffer }
     };
 
-    SDL_GPUBuffer* ro_buffers[7] = {
+    SDL_GPUBuffer* buffers[7] = {
         g_RenderState.animPoseBuffer,
         g_RenderState.animHierarchyBuffer,
         g_RenderState.animDataBuffer,
         g_RenderState.jointsBuffer,
         g_RenderState.invBindBuffer,
         g_RenderState.animInstanceBuffer,
-        g_RenderState.skinnedBuffers.visibleSparseIndices
+        g_RenderState.skinned.visibleSparseIndices
     };
 
     SDL_GPUComputePass* pass = SDL_BeginGPUComputePass(cmd, NULL, 0, rw_bindings, SDL_arraysize(rw_bindings));
     SDL_BindGPUComputePipeline(pass, g_AnimComputePipeline);
-    SDL_BindGPUComputeStorageBuffers(pass, 0, ro_buffers, SDL_arraysize(ro_buffers));
+    SDL_BindGPUComputeStorageBuffers(pass, 0, buffers, SDL_arraysize(buffers));
     SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
-    SDL_DispatchGPUComputeIndirect(pass, g_RenderState.skinnedBuffers.dispatchArgs, 0);
-
+    SDL_DispatchGPUComputeIndirect(pass, g_RenderState.skinned.dispatchArgs, 0);
     SDL_EndGPUComputePass(pass);
 }
 
@@ -584,7 +589,7 @@ void DispatchAnimateVerticesCompute(SDL_GPUCommandBuffer* cmd, RenderSet* render
     if (renderSet->numGroups == 0) return;
     CHECK_CREATE(g_AnimVerticesPipeline, "Animation vertices Pipeline")
 
-    struct {
+        struct {
         u32 numPrimitiveGroups;
         u32 viewportSize[2];
         u32 shadowLOD;
@@ -606,23 +611,23 @@ void DispatchAnimateVerticesCompute(SDL_GPUCommandBuffer* cmd, RenderSet* render
     if (maxGroupEntities == 0 || maxLODVertices == 0) return;
 
     SDL_GPUStorageBufferReadWriteBinding rw_bindings[1] = {
-        { g_RenderState.skinnedAnimatedVertices }
+        { g_RenderState.skinned.animatedVertices }
     };
 
     SDL_GPUBuffer* ro_buffers[7] = {
         g_RenderState.boneBuffer,
-        g_RenderState.skinnedBuffers.entity,
-        g_RenderState.skinnedBuffers.primitiveGroup,
-        g_RenderState.skinnedBuffers.visibleSparseIndices,
-        g_RenderState.skinnedVertexBuffer,
-        g_RenderState.skinnedBuffers.drawArgs,
-        g_RenderState.skinnedBuffers.sparseToDense
+        g_RenderState.skinned.entity,
+        g_RenderState.skinned.primitiveGroup,
+        g_RenderState.skinned.visibleSparseIndices,
+        g_RenderState.skinned.vertexBuffer,
+        g_RenderState.skinned.drawArgs,
+        g_RenderState.skinned.sparseToDense
     };
 
     SDL_GPUComputePass* pass = SDL_BeginGPUComputePass(cmd, NULL, 0, rw_bindings, SDL_arraysize(rw_bindings));
     SDL_BindGPUComputePipeline(pass, g_AnimVerticesPipeline);
     SDL_BindGPUComputeStorageBuffers(pass, 0, ro_buffers, SDL_arraysize(ro_buffers));
     SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
-    SDL_DispatchGPUComputeIndirect(pass, g_RenderState.skinnedBuffers.dispatchArgs, sizeof(u32) * 3);
+    SDL_DispatchGPUComputeIndirect(pass, g_RenderState.skinned.dispatchArgs, sizeof(u32) * 3);
     SDL_EndGPUComputePass(pass);
 }

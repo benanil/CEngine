@@ -14,7 +14,7 @@ float3 GetRenderSunDirection(void)
 
 void RenderDepth(SDL_GPUCommandBuffer* cmd, const DepthPassContext* ctx)
 {
-    SDL_GPUBufferBinding vertex_binding = { g_RenderState.skinnedVertexBuffer, 0 };
+    SDL_GPUBufferBinding vertex_binding = { g_RenderState.skinned.vertexBuffer, 0 };
     SDL_GPUBufferBinding index_binding  = { g_RenderState.indexBuffer, 0 };
     SDL_GPUTextureSamplerBinding albedoSampler = { .texture = g_RenderState.albedoPages.handle, .sampler = g_RenderState.sampler };
     SDL_GPUBuffer* fragmentBuffers[2] = {
@@ -32,10 +32,10 @@ void RenderDepth(SDL_GPUCommandBuffer* cmd, const DepthPassContext* ctx)
         SDL_BindGPUVertexBuffers(pass, 0, &vertex_binding, 1);
         SDL_BindGPUIndexBuffer(pass, &index_binding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
         SDL_GPUBuffer* buffers[5] = {
-            g_RenderState.skinnedBuffers.entity,
-            g_RenderState.skinnedBuffers.primitiveGroup,
-            g_RenderState.skinnedBuffers.drawSparseIndices,
-            g_RenderState.skinnedAnimatedVertices,
+            g_RenderState.skinned.entity,
+            g_RenderState.skinned.primitiveGroup,
+            g_RenderState.skinned.drawSparseIndices,
+            g_RenderState.skinned.animatedVertices,
             ctx->usePointShadowSides ? g_RenderState.pointShadowMatrixBuffer : (ctx->useSpotShadowSides ? g_RenderState.spotShadowMatrixBuffer : g_RenderState.shadowCascadeBuffer)
         };
         SDL_BindGPUVertexStorageBuffers(pass, 0, buffers, (ctx->useShadowCascades || ctx->usePointShadowSides || ctx->useSpotShadowSides) ? SDL_arraysize(buffers) : 4);
@@ -46,20 +46,20 @@ void RenderDepth(SDL_GPUCommandBuffer* cmd, const DepthPassContext* ctx)
         }
         if (ctx->useShadowCascades || ctx->usePointShadowSides || ctx->useSpotShadowSides) SDL_PushGPUVertexUniformData(cmd, 0, &ctx->cascadeIndex, sizeof(u32));
         else SDL_PushGPUVertexUniformData(cmd, 0, &ctx->viewProj, sizeof(mat4x4));
-        SDL_DrawGPUIndexedPrimitivesIndirect(pass, g_RenderState.skinnedBuffers.drawArgs, 0, skinnedSet.numGroups * MESH_LOD_COUNT);
+        SDL_DrawGPUIndexedPrimitivesIndirect(pass, g_RenderState.skinned.drawArgs, 0, skinnedSet.numGroups * MESH_LOD_COUNT);
     }
 
     if (surfaceSet.numGroups > 0)
     {
         SDL_BindGPUGraphicsPipeline(pass, ctx->surfacePipeline);
-        vertex_binding.buffer = g_RenderState.surfaceVertexBuffer;
+        vertex_binding.buffer = g_RenderState.surface.vertexBuffer;
         vertex_binding.offset = 0;
         SDL_BindGPUVertexBuffers(pass, 0, &vertex_binding, 1);
         SDL_BindGPUIndexBuffer(pass, &index_binding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
         SDL_GPUBuffer* surfaceBuffers[4] = {
-            g_RenderState.surfaceBuffers.entity,
-            g_RenderState.surfaceBuffers.primitiveGroup,
-            g_RenderState.surfaceBuffers.drawSparseIndices,
+            g_RenderState.surface.entity,
+            g_RenderState.surface.primitiveGroup,
+            g_RenderState.surface.drawSparseIndices,
             ctx->usePointShadowSides ? g_RenderState.pointShadowMatrixBuffer : (ctx->useSpotShadowSides ? g_RenderState.spotShadowMatrixBuffer : g_RenderState.shadowCascadeBuffer)
         };
         SDL_BindGPUVertexStorageBuffers(pass, 0, surfaceBuffers, (ctx->useShadowCascades || ctx->usePointShadowSides || ctx->useSpotShadowSides) ? SDL_arraysize(surfaceBuffers) : 3);
@@ -70,7 +70,7 @@ void RenderDepth(SDL_GPUCommandBuffer* cmd, const DepthPassContext* ctx)
         }
         if (ctx->useShadowCascades || ctx->usePointShadowSides || ctx->useSpotShadowSides) SDL_PushGPUVertexUniformData(cmd, 0, &ctx->cascadeIndex, sizeof(u32));
         else SDL_PushGPUVertexUniformData(cmd, 0, &ctx->viewProj, sizeof(mat4x4));
-        SDL_DrawGPUIndexedPrimitivesIndirect(pass, g_RenderState.surfaceBuffers.drawArgs, 0, surfaceSet.numGroups * MESH_LOD_COUNT);
+        SDL_DrawGPUIndexedPrimitivesIndirect(pass, g_RenderState.surface.drawArgs, 0, surfaceSet.numGroups * MESH_LOD_COUNT);
     }
 
     SDL_EndGPURenderPass(pass);
@@ -98,7 +98,7 @@ void RenderScene(SDL_GPUCommandBuffer* cmd, const ScenePassContext* ctx)
     vertexParams.cameraForward[2] = g_Camera.Front.z;
     vertexParams.cameraForward[3] = 0.0f;
 
-    SDL_GPUBufferBinding vertex_binding = { g_RenderState.skinnedVertexBuffer, 0 };
+    SDL_GPUBufferBinding vertex_binding = { g_RenderState.skinned.vertexBuffer, 0 };
     SDL_GPUBufferBinding index_binding  = { g_RenderState.indexBuffer, 0 };
     float3 sunDirection = GetRenderSunDirection();
     SDL_GPUTextureSamplerBinding pageSamplers[4] = {
@@ -119,15 +119,15 @@ void RenderScene(SDL_GPUCommandBuffer* cmd, const ScenePassContext* ctx)
     SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmd, ctx->colorTargets, ctx->numColorTargets, ctx->depthTarget);
     if (skinnedSet.numGroups > 0)
     {
-        SDL_BindGPUGraphicsPipeline(pass, g_RenderState.skinnedPipeline);
+        SDL_BindGPUGraphicsPipeline(pass, g_RenderState.skinned.pipeline);
         SDL_BindGPUVertexBuffers(pass, 0, &vertex_binding, 1);
         SDL_BindGPUIndexBuffer(pass, &index_binding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
 
         SDL_GPUBuffer* buffers[5] = {
-            g_RenderState.skinnedBuffers.entity,
-            g_RenderState.skinnedBuffers.primitiveGroup,
-            g_RenderState.skinnedBuffers.drawSparseIndices,
-            g_RenderState.skinnedAnimatedVertices,
+            g_RenderState.skinned.entity,
+            g_RenderState.skinned.primitiveGroup,
+            g_RenderState.skinned.drawSparseIndices,
+            g_RenderState.skinned.animatedVertices,
             g_RenderState.shadowCascadeBuffer
         };
         SDL_BindGPUVertexStorageBuffers(pass, 0, buffers, SDL_arraysize(buffers));
@@ -137,21 +137,21 @@ void RenderScene(SDL_GPUCommandBuffer* cmd, const ScenePassContext* ctx)
 
         SDL_PushGPUVertexUniformData(cmd, 0, &vertexParams, sizeof(vertexParams));
         SDL_PushGPUFragmentUniformData(cmd, 0, &fragmentParams, sizeof(fragmentParams));
-        SDL_DrawGPUIndexedPrimitivesIndirect(pass, g_RenderState.skinnedBuffers.drawArgs, 0, skinnedSet.numGroups * MESH_LOD_COUNT);
+        SDL_DrawGPUIndexedPrimitivesIndirect(pass, g_RenderState.skinned.drawArgs, 0, skinnedSet.numGroups * MESH_LOD_COUNT);
     }
 
     if (surfaceSet.numGroups > 0)
     {
-        SDL_BindGPUGraphicsPipeline(pass, g_RenderState.surfacePipeline);
-        vertex_binding.buffer = g_RenderState.surfaceVertexBuffer;
+        SDL_BindGPUGraphicsPipeline(pass, g_RenderState.surface.pipeline);
+        vertex_binding.buffer = g_RenderState.surface.vertexBuffer;
         vertex_binding.offset = 0;
         SDL_BindGPUVertexBuffers(pass, 0, &vertex_binding, 1);
         SDL_BindGPUIndexBuffer(pass, &index_binding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
 
         SDL_GPUBuffer* surfaceBuffers[4] = {
-            g_RenderState.surfaceBuffers.entity,
-            g_RenderState.surfaceBuffers.primitiveGroup,
-            g_RenderState.surfaceBuffers.drawSparseIndices,
+            g_RenderState.surface.entity,
+            g_RenderState.surface.primitiveGroup,
+            g_RenderState.surface.drawSparseIndices,
             g_RenderState.shadowCascadeBuffer
         };
         SDL_BindGPUVertexStorageBuffers(pass, 0, surfaceBuffers, SDL_arraysize(surfaceBuffers));
@@ -159,7 +159,7 @@ void RenderScene(SDL_GPUCommandBuffer* cmd, const ScenePassContext* ctx)
         SDL_BindGPUFragmentStorageBuffers(pass, 0, fragmentBuffers, SDL_arraysize(fragmentBuffers));
         SDL_PushGPUVertexUniformData(cmd, 0, &vertexParams, sizeof(vertexParams));
         SDL_PushGPUFragmentUniformData(cmd, 0, &fragmentParams, sizeof(fragmentParams));
-        SDL_DrawGPUIndexedPrimitivesIndirect(pass, g_RenderState.surfaceBuffers.drawArgs, 0, surfaceSet.numGroups * MESH_LOD_COUNT);
+        SDL_DrawGPUIndexedPrimitivesIndirect(pass, g_RenderState.surface.drawArgs, 0, surfaceSet.numGroups * MESH_LOD_COUNT);
     }
 
     SDL_EndGPURenderPass(pass);

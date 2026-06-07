@@ -8,6 +8,13 @@
 
 extern WindowState g_WindowState;
 extern RenderState g_RenderState;
+extern SDL_Window* g_SDLWindow;
+
+static bool editorOpen   = true;
+static bool sceneOpen    = false;
+static bool settingsOpen = false;
+static bool filesOpen    = false;
+static bool testOpen     = false;
 
 static void ShowFps(void)
 {
@@ -139,13 +146,12 @@ static void EditorSpacing(Clay_ElementId id, float pixels)
 
 static void WindowTestUI(void)
 {
-    static bool open = true;
     static bool enabled = true;
     static f32 testValue = 0.35f;
     static f32 exposure = 1.0f;
     static u32 customDataIndex;
 
-    if (!UIBeginWindow("Window Test", (float2){ 560.0f, 80.0f }, (float2){ 380.0f, 360.0f }, &open, 0u)) return;
+    if (!UIBeginWindow("Window Test", (float2){ 560.0f, 80.0f }, (float2){ 380.0f, 360.0f }, &testOpen, 0u)) return;
 
     CLAY_TEXT(CLAY_STRING("Example floating window"), CLAY_TEXT_CONFIG({
         .fontSize = 22,
@@ -205,13 +211,10 @@ static Clay_ElementDeclaration EditorScrollPanelDeclaration(f32 height)
     return declaration;
 }
 
-extern SDL_Window* g_SDLWindow;
-
-static void GraphicsEditorUI(void)
-{
+static void DrawGraphicsWindow()
+{ 
     RenderSettings* settings = &g_RenderSettings;
-    static bool editorOpen = true;
-    Clay_BeginLayout();
+
     Clay_ElementDeclaration EditorPanelBoxDeclaration = 
     {
         .layout = {
@@ -224,6 +227,143 @@ static void GraphicsEditorUI(void)
         .cornerRadius = CLAY_CORNER_RADIUS(UIGetFloat(UIFloat_CornerRadius)),
         .border = { .color = UIGetClayColor(UIColor_Border), .width = CLAY_BORDER_ALL(UIGetFloat(UIFloat_BorderWidth)) }
     };
+
+    Clay_ElementId windowID = (Clay_ElementId) { .id = StringToHash("Graphics Editor", 5381u) };
+    if (UIBeginWindowId(windowID,"Graphics Editor", (float2){ 18.0f, 18.0f }, (float2){ 500.0f, 760.0f }, &editorOpen, 0u))
+    {
+        CLAY(CLAY_ID("GraphicsEditorHeader"), {
+            .layout = {
+                .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) },
+                .childGap = 4,
+                .layoutDirection = CLAY_TOP_TO_BOTTOM
+            }
+        }) {
+            CLAY_TEXT(CLAY_STRING("Graphics Editor"), CLAY_TEXT_CONFIG({
+                .fontSize = 24,
+                .textColor = UIGetClayColor(UIColor_Text) 
+            }));
+            CLAY_TEXT(CLAY_STRING("Runtime render controls."), CLAY_TEXT_CONFIG({
+                .fontSize = 14,
+                .textColor = UIGetClayColor(UIColor_SubText)
+            }));
+        }
+        //EditorSpacing(CLAY_ID("GraphicsEditorDivider0"), 6.0f);
+        UIWindow* window = UIGetWindow(windowID);
+        CLAY(CLAY_ID("GraphicsEditorScroll"), EditorScrollPanelDeclaration(window->scale.y - 200.0f)) {
+            CLAY(CLAY_ID("GraphicsEditorFeatureBox"), EditorPanelBoxDeclaration) {
+                EditorSectionHeader("Features");
+                UICheckbox(CLAY_ID("EditorEnableOcclusion"), CLAY_STRING("Hi-Z occlusion culling"), &settings->enableOcclusion);
+                UICheckbox(CLAY_ID("EditorEnableHBAO")     , CLAY_STRING("HBAO ambient occlusion"), &settings->enableHBAO);
+                UICheckbox(CLAY_ID("EditorEnableMLAA")     , CLAY_STRING("Anti-aliasing (MLAA)"), &settings->enableMLAA);
+                UICheckbox(CLAY_ID("EditorShowMLAAEdges")  , CLAY_STRING("Show MLAA edge mask"), &settings->showMLAAEdges);
+                EditorSliderFloat(CLAY_ID("EditorLODDistanceModifier"), "LOD distance", &settings->lodDistanceModifier, 0.05f, 4.0f, 2);
+            }
+            CLAY(CLAY_ID("GraphicsEditorLightBox"), EditorPanelBoxDeclaration) {
+                RenderLightDebugInfo lightInfo = RendererGetLightDebugInfo();
+                EditorSectionHeader("Lights");
+                UICheckbox(CLAY_ID("EditorEnableLocalLights"), CLAY_STRING("Local lights"), &settings->enableLocalLights);
+                UICheckbox(CLAY_ID("EditorLightFrustumCull"), CLAY_STRING("Light frustum culling"), &settings->enableLightFrustumCulling);
+                UICheckbox(CLAY_ID("EditorLightOcclusionCull"), CLAY_STRING("Light occlusion culling"), &settings->enableLightOcclusionCulling);
+                UICheckbox(CLAY_ID("EditorShowLightRects"), CLAY_STRING("Show light rects"), &settings->showLightRects);
+                EditorTextU32("Total lights", lightInfo.totalLights);
+                EditorTextU32("Submitted lights", lightInfo.submittedLights);
+                EditorTextU32("Max lights", lightInfo.maxLights);
+                UIEditInt(CLAY_ID("EditorMaxVisiblePointShadows"), CLAY_STRING("Point shadow maps"), &settings->maxVisiblePointShadows, 0, POINT_SHADOW_MAX_LIGHTS);
+                UIEditInt(CLAY_ID("EditorMaxVisibleSpotShadows"), CLAY_STRING("Spot shadow maps"), &settings->maxVisibleSpotShadows, 0, SPOT_SHADOW_MAX_LIGHTS);
+            }
+            CLAY(CLAY_ID("GraphicsEditorSunBox"), EditorPanelBoxDeclaration) {
+                EditorSectionHeader("Sun");
+                EditorSliderFloat(CLAY_ID("EditorSunYaw")  , "Yaw"  , &settings->sunYaw  , -180.0f, 180.0f, 1);
+                EditorSliderFloat(CLAY_ID("EditorSunPitch"), "Pitch", &settings->sunPitch, -10.0f, 89.0f, 1);
+            }
+            CLAY(CLAY_ID("GraphicsEditorShadowBox"), EditorPanelBoxDeclaration) {
+                EditorSectionHeader("Shadows");
+                EditorSliderFloat(CLAY_ID("EditorShadowMaxDistance")   , "Max distance"   , &settings->shadowMaxDistance      , 25.0f, 1000.0f, 1);
+                EditorSliderFloat(CLAY_ID("EditorShadowCameraDistance"), "Camera distance", &settings->shadowCameraDistance   , 10.0f,  500.0f, 1);
+                EditorSliderFloat(CLAY_ID("EditorShadowCasterMargin")  , "Caster margin"  , &settings->shadowCasterDepthMargin, 10.0f,  500.0f, 1);
+                EditorSliderFloat(CLAY_ID("EditorShadowCascadeOverlap"), "Cascade overlap", &settings->shadowCascadeOverlap   ,  0.0f,   80.0f, 1);
+                EditorSliderFloat(CLAY_ID("EditorShadowSplitNear")     , "Split near"     , &settings->shadowSplitNearDistance,  1.0f,   80.0f, 1);
+                EditorSliderFloat(CLAY_ID("EditorShadowPSSM")          , "PSSM lambda"    , &settings->shadowPSSMLambda       ,  0.0f,    1.0f, 2);
+            }
+            CLAY(CLAY_ID("GraphicsEditorHBAOBox"), EditorPanelBoxDeclaration) {
+                EditorSectionHeader("HBAO");
+                EditorSliderFloat(CLAY_ID("EditorHBAORadius")   , "Radius"   , &settings->hbaoRadius   , 0.05f, 5.0f, 2);
+                EditorSliderFloat(CLAY_ID("EditorHBAOBias")     , "Bias"     , &settings->hbaoBias     ,  0.0f, 1.0f, 2);
+                EditorSliderFloat(CLAY_ID("EditorHBAOIntensity"), "Intensity", &settings->hbaoIntensity,  0.0f, 6.0f, 2);
+                EditorSliderFloat(CLAY_ID("EditorHBAOPower")    , "Power"    , &settings->hbaoPower    , 0.25f, 6.0f, 2);
+            }
+            CLAY(CLAY_ID("GraphicsEditorPostBox"), EditorPanelBoxDeclaration) {
+                EditorSectionHeader("Post / AA");
+                EditorSliderFloat(CLAY_ID("EditorMLAAThreshold"), "MLAA threshold", &settings->mlaaThreshold  , 0.01f, 0.25f, 3);
+                EditorSliderFloat(CLAY_ID("EditorExposure")     , "Exposure"      , &settings->exposure       , 0.10f, 4.00f, 2);
+                EditorSliderFloat(CLAY_ID("EditorGamma")        , "Gamma"         , &settings->gamma          , 1.00f, 3.20f, 2);
+                EditorSliderFloat(CLAY_ID("EditorGodRays")      , "God rays"      , &settings->godRayIntensity, 0.00f, 8.00f, 2);
+            }
+        }
+        CLAY(CLAY_ID("GraphicsEditorButtons"), {
+            .layout = {
+                .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(38.0f) },
+                .childGap = 10,
+                .layoutDirection = CLAY_LEFT_TO_RIGHT
+            }
+        }) {
+            if (UIButton(CLAY_ID("EditorResetGraphics"), CLAY_STRING("Reset"), (Clay_Dimensions){ 100.0f, 34.0f }, false))
+            {
+                *settings = (RenderSettings){
+                    .enableOcclusion = true,
+                    .enableHBAO = true,
+                    .enableMLAA = true,
+                    .showMLAAEdges = false,
+                    .enableLocalLights = true,
+                    .enableLightFrustumCulling = true,
+                    .enableLightOcclusionCulling = true,
+                    .showLightRects = false,
+                    .hbaoRadius = 1.3f,
+                    .hbaoBias = 0.5f,
+                    .hbaoIntensity = 2.0f,
+                    .hbaoPower = 2.0f,
+                    .mlaaThreshold = 0.08f,
+                    .exposure = 1.0f,
+                    .gamma = 2.2f,
+                    .godRayIntensity = 2.5f,
+                    .sunYaw = 116.565f,
+                    .sunPitch = 63.435f,
+                    .shadowMaxDistance = SHADOW_MAX_DISTANCE,
+                    .shadowCameraDistance = SHADOW_CAMERA_DISTANCE,
+                    .shadowCasterDepthMargin = SHADOW_CASTER_DEPTH_MARGIN,
+                    .shadowCascadeOverlap = SHADOW_CASCADE_OVERLAP,
+                    .shadowSplitNearDistance = SHADOW_SPLIT_NEAR_DISTANCE,
+                    .shadowPSSMLambda = SHADOW_PSSM_LAMBDA,
+                    .maxVisiblePointShadows = (f32)POINT_SHADOW_MAX_LIGHTS,
+                    .maxVisibleSpotShadows = (f32)SPOT_SHADOW_MAX_LIGHTS
+                };
+            }
+        }
+        UIEndWindow();
+    }
+}
+
+static void DrawSceneWindow()
+{
+    Clay_ElementId windowID = (Clay_ElementId) { .id = StringToHash("SceneWindow", 5381u) };
+    if (UIBeginWindowId(windowID, "Scene", (float2) { 18.0f, 18.0f }, (float2) { 500.0f, 760.0f }, &sceneOpen, 0u))
+    {
+        UIEndWindow();
+    }
+}
+
+static void DrawSettingsWindow()
+{
+    Clay_ElementId windowID = (Clay_ElementId) { .id = StringToHash("SettingsWindow", 5381u) };
+    if (UIBeginWindowId(windowID, "Settings", (float2) { 18.0f, 18.0f }, (float2) { 500.0f, 760.0f }, &settingsOpen, 0u))
+    {
+        UIEndWindow();
+    }
+}
+
+static void GraphicsEditorUI(void)
+{
+    Clay_BeginLayout();
 
     int screenWidth, screenHeight;
     SDL_GetWindowSize(g_SDLWindow, &screenWidth, &screenHeight);
@@ -241,135 +381,27 @@ static void GraphicsEditorUI(void)
         .border = { .color = UIGetClayColor(UIColor_Border),  .width = { borderWidth, borderWidth, borderWidth, borderWidth, 0} }
     }) {
         UIPushFloatAdd(UIFloat_TextScale, -0.15f);
-        UIButton(CLAY_ID("Graphics"), CLAY_STRING("Graphics"), (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
-        UIButton(CLAY_ID("Scene")   , CLAY_STRING("Scene")   , (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
-        UIButton(CLAY_ID("Settings"), CLAY_STRING("Settings"), (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
-        UIButton(CLAY_ID("Files")   , CLAY_STRING("Files")   , (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
+        UIPushFloat(UIFloat_CornerRadius, 2.5f);
+        editorOpen   ^= UIButton(CLAY_ID("Graphics"), CLAY_STRING("Graphics"), (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
+        sceneOpen    ^= UIButton(CLAY_ID("Scene")   , CLAY_STRING("Scene")   , (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
+        settingsOpen ^= UIButton(CLAY_ID("Settings"), CLAY_STRING("Settings"), (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
+        filesOpen    ^= UIButton(CLAY_ID("Files")   , CLAY_STRING("Files")   , (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
+        testOpen     ^= UIButton(CLAY_ID("Test")    , CLAY_STRING("Test")    , (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
+        UIPopFloat(UIFloat_CornerRadius);
         UIPopFloat(UIFloat_TextScale);
     }
 
     CLAY(CLAY_ID("GraphicsEditorRoot"), {
         .layout = {
             .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_GROW(0) },
-            // .childAlignment = { .x = CLAY_ALIGN_X_LEFT, .y = CLAY_ALIGN_Y_TOP },
         }
     }) {
 
         ShowFps();
         WindowTestUI();
-        Clay_ElementId windowID = (Clay_ElementId) { .id = StringToHash("Graphics Editor", 5381u) };
-        if (UIBeginWindowId(windowID,"Graphics Editor", (float2){ 18.0f, 18.0f }, (float2){ 500.0f, 760.0f }, &editorOpen, 0u))
-        {
-            CLAY(CLAY_ID("GraphicsEditorHeader"), {
-                .layout = {
-                    .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) },
-                    .childGap = 4,
-                    .layoutDirection = CLAY_TOP_TO_BOTTOM
-                }
-            }) {
-                CLAY_TEXT(CLAY_STRING("Graphics Editor"), CLAY_TEXT_CONFIG({
-                    .fontSize = 24,
-                    .textColor = UIGetClayColor(UIColor_Text) 
-                }));
-                CLAY_TEXT(CLAY_STRING("Runtime render controls."), CLAY_TEXT_CONFIG({
-                    .fontSize = 14,
-                    .textColor = UIGetClayColor(UIColor_SubText)
-                }));
-            }
-            //EditorSpacing(CLAY_ID("GraphicsEditorDivider0"), 6.0f);
-            UIWindow* window = UIGetWindow(windowID);
-            CLAY(CLAY_ID("GraphicsEditorScroll"), EditorScrollPanelDeclaration(window->scale.y - 200.0f)) {
-                CLAY(CLAY_ID("GraphicsEditorFeatureBox"), EditorPanelBoxDeclaration) {
-                    EditorSectionHeader("Features");
-                    UICheckbox(CLAY_ID("EditorEnableOcclusion"), CLAY_STRING("Hi-Z occlusion culling"), &settings->enableOcclusion);
-                    UICheckbox(CLAY_ID("EditorEnableHBAO")     , CLAY_STRING("HBAO ambient occlusion"), &settings->enableHBAO);
-                    UICheckbox(CLAY_ID("EditorEnableMLAA")     , CLAY_STRING("Anti-aliasing (MLAA)"), &settings->enableMLAA);
-                    UICheckbox(CLAY_ID("EditorShowMLAAEdges")  , CLAY_STRING("Show MLAA edge mask"), &settings->showMLAAEdges);
-                    EditorSliderFloat(CLAY_ID("EditorLODDistanceModifier"), "LOD distance", &settings->lodDistanceModifier, 0.05f, 4.0f, 2);
-                }
-                CLAY(CLAY_ID("GraphicsEditorLightBox"), EditorPanelBoxDeclaration) {
-                    RenderLightDebugInfo lightInfo = RendererGetLightDebugInfo();
-                    EditorSectionHeader("Lights");
-                    UICheckbox(CLAY_ID("EditorEnableLocalLights"), CLAY_STRING("Local lights"), &settings->enableLocalLights);
-                    UICheckbox(CLAY_ID("EditorLightFrustumCull"), CLAY_STRING("Light frustum culling"), &settings->enableLightFrustumCulling);
-                    UICheckbox(CLAY_ID("EditorLightOcclusionCull"), CLAY_STRING("Light occlusion culling"), &settings->enableLightOcclusionCulling);
-                    UICheckbox(CLAY_ID("EditorShowLightRects"), CLAY_STRING("Show light rects"), &settings->showLightRects);
-                    EditorTextU32("Total lights", lightInfo.totalLights);
-                    EditorTextU32("Submitted lights", lightInfo.submittedLights);
-                    EditorTextU32("Max lights", lightInfo.maxLights);
-                    UIEditInt(CLAY_ID("EditorMaxVisiblePointShadows"), CLAY_STRING("Point shadow maps"), &settings->maxVisiblePointShadows, 0, POINT_SHADOW_MAX_LIGHTS);
-                    UIEditInt(CLAY_ID("EditorMaxVisibleSpotShadows"), CLAY_STRING("Spot shadow maps"), &settings->maxVisibleSpotShadows, 0, SPOT_SHADOW_MAX_LIGHTS);
-                }
-                CLAY(CLAY_ID("GraphicsEditorSunBox"), EditorPanelBoxDeclaration) {
-                    EditorSectionHeader("Sun");
-                    EditorSliderFloat(CLAY_ID("EditorSunYaw")  , "Yaw"  , &settings->sunYaw  , -180.0f, 180.0f, 1);
-                    EditorSliderFloat(CLAY_ID("EditorSunPitch"), "Pitch", &settings->sunPitch, -10.0f, 89.0f, 1);
-                }
-                CLAY(CLAY_ID("GraphicsEditorShadowBox"), EditorPanelBoxDeclaration) {
-                    EditorSectionHeader("Shadows");
-                    EditorSliderFloat(CLAY_ID("EditorShadowMaxDistance")   , "Max distance"   , &settings->shadowMaxDistance      , 25.0f, 1000.0f, 1);
-                    EditorSliderFloat(CLAY_ID("EditorShadowCameraDistance"), "Camera distance", &settings->shadowCameraDistance   , 10.0f,  500.0f, 1);
-                    EditorSliderFloat(CLAY_ID("EditorShadowCasterMargin")  , "Caster margin"  , &settings->shadowCasterDepthMargin, 10.0f,  500.0f, 1);
-                    EditorSliderFloat(CLAY_ID("EditorShadowCascadeOverlap"), "Cascade overlap", &settings->shadowCascadeOverlap   ,  0.0f,   80.0f, 1);
-                    EditorSliderFloat(CLAY_ID("EditorShadowSplitNear")     , "Split near"     , &settings->shadowSplitNearDistance,  1.0f,   80.0f, 1);
-                    EditorSliderFloat(CLAY_ID("EditorShadowPSSM")          , "PSSM lambda"    , &settings->shadowPSSMLambda       ,  0.0f,    1.0f, 2);
-                }
-                CLAY(CLAY_ID("GraphicsEditorHBAOBox"), EditorPanelBoxDeclaration) {
-                    EditorSectionHeader("HBAO");
-                    EditorSliderFloat(CLAY_ID("EditorHBAORadius")   , "Radius"   , &settings->hbaoRadius   , 0.05f, 5.0f, 2);
-                    EditorSliderFloat(CLAY_ID("EditorHBAOBias")     , "Bias"     , &settings->hbaoBias     ,  0.0f, 1.0f, 2);
-                    EditorSliderFloat(CLAY_ID("EditorHBAOIntensity"), "Intensity", &settings->hbaoIntensity,  0.0f, 6.0f, 2);
-                    EditorSliderFloat(CLAY_ID("EditorHBAOPower")    , "Power"    , &settings->hbaoPower    , 0.25f, 6.0f, 2);
-                }
-                CLAY(CLAY_ID("GraphicsEditorPostBox"), EditorPanelBoxDeclaration) {
-                    EditorSectionHeader("Post / AA");
-                    EditorSliderFloat(CLAY_ID("EditorMLAAThreshold"), "MLAA threshold", &settings->mlaaThreshold  , 0.01f, 0.25f, 3);
-                    EditorSliderFloat(CLAY_ID("EditorExposure")     , "Exposure"      , &settings->exposure       , 0.10f, 4.00f, 2);
-                    EditorSliderFloat(CLAY_ID("EditorGamma")        , "Gamma"         , &settings->gamma          , 1.00f, 3.20f, 2);
-                    EditorSliderFloat(CLAY_ID("EditorGodRays")      , "God rays"      , &settings->godRayIntensity, 0.00f, 8.00f, 2);
-                }
-            }
-            CLAY(CLAY_ID("GraphicsEditorButtons"), {
-                .layout = {
-                    .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(38.0f) },
-                    .childGap = 10,
-                    .layoutDirection = CLAY_LEFT_TO_RIGHT
-                }
-            }) {
-                if (UIButton(CLAY_ID("EditorResetGraphics"), CLAY_STRING("Reset"), (Clay_Dimensions){ 100.0f, 34.0f }, false))
-                {
-                    *settings = (RenderSettings){
-                        .enableOcclusion = true,
-                        .enableHBAO = true,
-                        .enableMLAA = true,
-                        .showMLAAEdges = false,
-                        .enableLocalLights = true,
-                        .enableLightFrustumCulling = true,
-                        .enableLightOcclusionCulling = true,
-                        .showLightRects = false,
-                        .hbaoRadius = 1.3f,
-                        .hbaoBias = 0.5f,
-                        .hbaoIntensity = 2.0f,
-                        .hbaoPower = 2.0f,
-                        .mlaaThreshold = 0.08f,
-                        .exposure = 1.0f,
-                        .gamma = 2.2f,
-                        .godRayIntensity = 2.5f,
-                        .sunYaw = 116.565f,
-                        .sunPitch = 63.435f,
-                        .shadowMaxDistance = SHADOW_MAX_DISTANCE,
-                        .shadowCameraDistance = SHADOW_CAMERA_DISTANCE,
-                        .shadowCasterDepthMargin = SHADOW_CASTER_DEPTH_MARGIN,
-                        .shadowCascadeOverlap = SHADOW_CASCADE_OVERLAP,
-                        .shadowSplitNearDistance = SHADOW_SPLIT_NEAR_DISTANCE,
-                        .shadowPSSMLambda = SHADOW_PSSM_LAMBDA,
-                        .maxVisiblePointShadows = (f32)POINT_SHADOW_MAX_LIGHTS,
-                        .maxVisibleSpotShadows = (f32)SPOT_SHADOW_MAX_LIGHTS
-                    };
-                }
-            }
-            UIEndWindow();
-        }
+        DrawSettingsWindow();
+        DrawSceneWindow();
+        DrawGraphicsWindow();
     }
     Clay_RenderCommandArray commands = UIEndLayout();
     UIRenderCommands(&commands);

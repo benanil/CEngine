@@ -28,7 +28,7 @@ typedef struct FrameTextureSet_
 WindowState    g_WindowState;
 RenderState    g_RenderState;
 SDL_GPUDevice* g_GPUDevice = NULL;
-LightGPU g_RenderLights[MAX_LIGHT_COUNT];
+LightGPU       g_RenderLights[MAX_LIGHT_COUNT];
 
 RenderSettings g_RenderSettings = {
     .enableOcclusion             = true,
@@ -59,7 +59,6 @@ RenderSettings g_RenderSettings = {
     .maxVisiblePointShadows      = 8.0f,
     .maxVisibleSpotShadows       = 8.0f
 };
-
 
 static FrameTextureSet g_ResizeReleaseQueue[RESIZE_RELEASE_DELAY];
 static u64 g_RenderFrameIndex;
@@ -118,18 +117,18 @@ static void InitRenderSetBuffers(RenderSetBuffers* buffers, RenderSet* set)
 
 void InitBuffers(void)
 {
-    InitRenderSetBuffers(&g_RenderState.skinnedBuffers, &skinnedSet);
-    InitRenderSetBuffers(&g_RenderState.surfaceBuffers, &surfaceSet);
+    InitRenderSetBuffers(&g_RenderState.skinned, &skinnedSet);
+    InitRenderSetBuffers(&g_RenderState.surface, &surfaceSet);
 
     AnimInitBuffers();
     const size_t animatedVertexSize = sizeof(u32) * 2 * MAX_ANIMATED_VERTEX;
-    g_RenderState.skinnedVertexBuffer = CreateBuffer(NULL, MAX_SKINNED_SOURCE_VERTEX * sizeof(ASkinedVertex), BVertexBit | BReadCompute, "CPSkinnedVertexBuffer");
-    g_RenderState.surfaceVertexBuffer = CreateBuffer(NULL, MAX_VERTEX * sizeof(AVertex), BVertexBit, "CPSurfaceVertexBuffer");
+    g_RenderState.skinned.vertexBuffer = CreateBuffer(NULL, MAX_SKINNED_SOURCE_VERTEX * sizeof(ASkinedVertex), BVertexBit | BReadCompute, "CPSkinnedVertexBuffer");
+    g_RenderState.surface.vertexBuffer = CreateBuffer(NULL, MAX_VERTEX * sizeof(AVertex), BVertexBit, "CPSurfaceVertexBuffer");
     g_RenderState.indexBuffer = CreateBuffer(NULL, MAX_INDEX * sizeof(int), SDL_GPU_BUFFERUSAGE_INDEX, "CPIndexBuffer");
-    if (gGFX.NumSkinnedVertices > 0) UpdateGPUBuffer(g_RenderState.skinnedVertexBuffer, gGFX.SkinnedVertexBuffer, gGFX.NumSkinnedVertices * sizeof(ASkinedVertex), 0);
-    if (gGFX.NumSurfaceVertices > 0) UpdateGPUBuffer(g_RenderState.surfaceVertexBuffer, gGFX.SurfaceVertexBuffer, gGFX.NumSurfaceVertices * sizeof(AVertex), 0);
+    if (gGFX.NumSkinnedVertices > 0) UpdateGPUBuffer(g_RenderState.skinned.vertexBuffer, gGFX.SkinnedVertexBuffer, gGFX.NumSkinnedVertices * sizeof(ASkinedVertex), 0);
+    if (gGFX.NumSurfaceVertices > 0) UpdateGPUBuffer(g_RenderState.surface.vertexBuffer, gGFX.SurfaceVertexBuffer, gGFX.NumSurfaceVertices * sizeof(AVertex), 0);
     if (gGFX.NumIndices > 0) UpdateGPUBuffer(g_RenderState.indexBuffer, gGFX.IndexBuffer, gGFX.NumIndices * sizeof(u32), 0);
-    g_RenderState.skinnedAnimatedVertices = CreateBuffer(NULL, animatedVertexSize, BReadRasterBit | BWriteComputeBit, "CPAnimatedVertices");
+    g_RenderState.skinned.animatedVertices = CreateBuffer(NULL, animatedVertexSize, BReadRasterBit | BWriteComputeBit, "CPAnimatedVertices");
     g_RenderState.lineBuffer = CreateBuffer(NULL, sizeof(ALineVertex) * MAX_LINE_COUNT, BVertexBit | BWriteComputeBit, "CPLineVertexBuffer");
     g_RenderState.lineDrawArgsBuffer = CreateBuffer(NULL, sizeof(u32) * 8, BIndirectBit | BWriteComputeBit, "CPLinedrawArgsBuffer");
     g_RenderState.lightBuffer = CreateBuffer(NULL, sizeof(LightGPU) * MAX_LIGHT_COUNT, BReadRasterBit | BReadCompute, "CPLightBuffer");
@@ -320,14 +319,14 @@ static void UploadRenderSetEntities(RenderSet* set, RenderSetBuffers* buffers)
 
 void CullScene(SDL_GPUCommandBuffer* cmd, FrustumPlanes planes, mat4x4 viewProj, bool enableHiZ, bool enableSurfaceLOD, u32 forcedLOD)
 {
-    DispatchCullDrawArgsCompute(cmd, &skinnedSet, &g_RenderState.skinnedBuffers, planes, viewProj, enableHiZ, false, false, true, forcedLOD);
-    DispatchCullDrawArgsCompute(cmd, &surfaceSet, &g_RenderState.surfaceBuffers, planes, viewProj, enableHiZ, false, false, enableSurfaceLOD, forcedLOD);
+    DispatchCullDrawArgsCompute(cmd, &skinnedSet, &g_RenderState.skinned, planes, viewProj, enableHiZ, false, false, true, forcedLOD);
+    DispatchCullDrawArgsCompute(cmd, &surfaceSet, &g_RenderState.surface, planes, viewProj, enableHiZ, false, false, enableSurfaceLOD, forcedLOD);
 }
 
 static void GatherSkinnedAnimationVisibility(SDL_GPUCommandBuffer* cmd, FrustumPlanes cameraFrustum, mat4x4 cameraViewProj, bool enableHiZ,
-                                             const PointShadowData* pointShadows, const SpotShadowData* spotShadows)
+                                             const ShadowData* pointShadows, const ShadowData* spotShadows)
 {
-    DispatchCullDrawArgsCompute(cmd, &skinnedSet, &g_RenderState.skinnedBuffers, cameraFrustum, cameraViewProj,
+    DispatchCullDrawArgsCompute(cmd, &skinnedSet, &g_RenderState.skinned, cameraFrustum, cameraViewProj,
                                 enableHiZ, true, true, true, ~0u);
 
     ShadowCascadeData cascades = GetShadowCascades();
@@ -335,7 +334,7 @@ static void GatherSkinnedAnimationVisibility(SDL_GPUCommandBuffer* cmd, FrustumP
     {
         mat4x4 shadowViewProj = cascades.lightViewProj[cascade];
         FrustumPlanes shadowFrustum = CreateFrustumPlanes(shadowViewProj);
-        DispatchCullDrawArgsCompute(cmd, &skinnedSet, &g_RenderState.skinnedBuffers, shadowFrustum, shadowViewProj,
+        DispatchCullDrawArgsCompute(cmd, &skinnedSet, &g_RenderState.skinned, shadowFrustum, shadowViewProj,
                                     false, true, false, false, 1u);
     }
 
@@ -346,7 +345,7 @@ static void GatherSkinnedAnimationVisibility(SDL_GPUCommandBuffer* cmd, FrustumP
         {
             u32 layer = light->shadowIndex * POINT_SHADOW_FACE_COUNT + face;
             mat4x4 shadowViewProj = pointShadows->lightViewProj[layer];
-            DispatchCullDrawArgsCompute(cmd, &skinnedSet, &g_RenderState.skinnedBuffers, CreateFrustumPlanes(shadowViewProj), shadowViewProj,
+            DispatchCullDrawArgsCompute(cmd, &skinnedSet, &g_RenderState.skinned, CreateFrustumPlanes(shadowViewProj), shadowViewProj,
                                         false, true, false, false, 1u);
         }
     }
@@ -355,7 +354,7 @@ static void GatherSkinnedAnimationVisibility(SDL_GPUCommandBuffer* cmd, FrustumP
     {
         LightGPU* light = &g_RenderLights[spotShadows->lightIndices[shadow]];
         mat4x4 shadowViewProj = spotShadows->lightViewProj[light->shadowIndex];
-        DispatchCullDrawArgsCompute(cmd, &skinnedSet, &g_RenderState.skinnedBuffers, CreateFrustumPlanes(shadowViewProj), shadowViewProj,
+        DispatchCullDrawArgsCompute(cmd, &skinnedSet, &g_RenderState.skinned, CreateFrustumPlanes(shadowViewProj), shadowViewProj,
                                     false, true, false, false, 1u);
     }
 }
@@ -410,8 +409,8 @@ void Render(void)
     SDL_GPUColorTargetInfo        hiz_depth_target  = MakeHiZDepthTarget(winstate);
     SDL_GPUColorTargetInfo        gbuffer_targets[3];
     MakeGBufferTargets(winstate, gbuffer_targets);
-    UploadRenderSetEntities(&skinnedSet, &g_RenderState.skinnedBuffers);
-    UploadRenderSetEntities(&surfaceSet, &g_RenderState.surfaceBuffers);
+    UploadRenderSetEntities(&skinnedSet, &g_RenderState.skinned);
+    UploadRenderSetEntities(&surfaceSet, &g_RenderState.surface);
     mat4x4 viewProj = M44Multiply(g_Camera.view, g_Camera.projection);
     bool enableHiZ  = g_RenderSettings.enableOcclusion && winstate->hiz_valid;
     mat4x4 hiZViewProj = enableHiZ ? winstate->hiz_view_proj : viewProj;
@@ -434,8 +433,8 @@ void Render(void)
     RenderDepth(cmd, &(DepthPassContext){
         .colorTarget       = &hiz_depth_target,
         .depthTarget       = &depth_target,
-        .skinnedPipeline   = g_RenderState.skinnedDepthPipeline,
-        .surfacePipeline   = g_RenderState.surfaceDepthPipeline,
+        .skinnedPipeline   = g_RenderState.skinned.depthPipeline,
+        .surfacePipeline   = g_RenderState.surface.depthPipeline,
         .viewProj          = viewProj,
         .cascadeIndex      = 0,
         .useShadowCascades = false,
@@ -465,11 +464,11 @@ void Render(void)
     winstate->hiz_view_proj = viewProj;
     winstate->hiz_valid = true;
 
-    DispatchTonemapCompute(cmd, winstate->tex_color, winstate->tex_hiz_depth, winstate->tex_post, screenW, screenH, viewProj);
+    DispatchTonemapCompute(cmd, screenW, screenH, viewProj);
     SDL_GPUTexture* finalTexture = winstate->tex_post;
     if (g_RenderSettings.enableMLAA && winstate->tex_mlaa_output)
     {
-        DispatchMLAACompute(cmd, winstate->tex_post, winstate->tex_mlaa_output, screenW, screenH, g_RenderSettings.mlaaThreshold, g_RenderSettings.showMLAAEdges);
+        DispatchMLAACompute(cmd, screenW, screenH, g_RenderSettings.mlaaThreshold, g_RenderSettings.showMLAAEdges);
         finalTexture = winstate->tex_mlaa_output;
     }
 
@@ -517,9 +516,9 @@ static void DestroyRenderSetBuffers(RenderSetBuffers* buffers)
 void DestroyPipeline(void)
 {
     ReleaseQueuedResizeTextures(true);
-    if (g_RenderState.skinnedVertexBuffer)     SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.skinnedVertexBuffer);
-    if (g_RenderState.skinnedAnimatedVertices) SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.skinnedAnimatedVertices);
-    if (g_RenderState.surfaceVertexBuffer)     SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.surfaceVertexBuffer);
+    if (g_RenderState.skinned.vertexBuffer)     SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.skinned.vertexBuffer);
+    if (g_RenderState.skinned.animatedVertices) SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.skinned.animatedVertices);
+    if (g_RenderState.surface.vertexBuffer)     SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.surface.vertexBuffer);
     if (g_RenderState.indexBuffer)             SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.indexBuffer);
     if (g_RenderState.lineBuffer)              SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lineBuffer);
     if (g_RenderState.lineDrawArgsBuffer)      SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lineDrawArgsBuffer);
@@ -538,8 +537,8 @@ void DestroyPipeline(void)
     if (g_RenderState.albedoPages.handle)      SDL_ReleaseGPUTexture(g_GPUDevice, g_RenderState.albedoPages.handle);
     if (g_RenderState.normalPages.handle)      SDL_ReleaseGPUTexture(g_GPUDevice, g_RenderState.normalPages.handle);
     if (g_RenderState.metallicRoughnessPages.handle) SDL_ReleaseGPUTexture(g_GPUDevice, g_RenderState.metallicRoughnessPages.handle);
-    DestroyRenderSetBuffers(&g_RenderState.skinnedBuffers);
-    DestroyRenderSetBuffers(&g_RenderState.surfaceBuffers);
+    DestroyRenderSetBuffers(&g_RenderState.skinned);
+    DestroyRenderSetBuffers(&g_RenderState.surface);
     UIDestroy();
     SlugDestroyDemo();
     DestroyRenderPipelines();
