@@ -17,31 +17,6 @@
 #include "Include/Animation.h"
 #include "Include/BasisBinding.h"
 
-#ifdef PLATFORM_WINDOWS
-#include <Windows.h>
-
-static LONG WINAPI CrashHandler(EXCEPTION_POINTERS* ep)
-{
-    HMODULE module = NULL;
-    GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                       (LPCSTR)ep->ExceptionRecord->ExceptionAddress, &module);
-    uintptr_t rva = module ? (uintptr_t)ep->ExceptionRecord->ExceptionAddress - (uintptr_t)module : 0u;
-    AX_ERROR("Exception code: 0x%08lX at %p module %p rva 0x%Ix",
-             ep->ExceptionRecord->ExceptionCode,
-             ep->ExceptionRecord->ExceptionAddress,
-             module,
-             rva);
-    if (ep->ExceptionRecord->ExceptionCode == 0xC0000005)
-    {
-        AX_ERROR("Access violation: %s address %p",
-                 ep->ExceptionRecord->ExceptionInformation[0] == 0 ? "reading" : "writing",
-                 (void*)ep->ExceptionRecord->ExceptionInformation[1]);
-    }
-
-    return EXCEPTION_CONTINUE_SEARCH;
-}
-#endif
-
 static Uint32 frames = 0;
 static s32 done = 0;
 static LightGPU g_DemoLights[12];
@@ -60,8 +35,8 @@ static void UpdateDemoLights(void)
 {
     static const f32 colors[8][3] = {
         { 1.00f, 0.35f, 0.20f }, { 0.25f, 0.55f, 1.00f },
-        { 0.35f, 1.00f, 0.45f }, { 1.00f, 0.85f, 0.25f },
-        { 0.95f, 0.25f, 1.00f }, { 0.25f, 1.00f, 0.95f },
+        { 0.25f, 0.80f, 0.35f }, { 1.00f, 0.85f, 0.25f },
+        { 0.95f, 0.25f, 1.00f }, { 0.25f, 0.85f, 0.75f },
         { 1.00f, 0.55f, 0.25f }, { 0.55f, 0.35f, 1.00f }
     };
 
@@ -71,7 +46,7 @@ static void UpdateDemoLights(void)
     {
         u32 seed = WangHash(0x9e3779b9u + i * 0x85ebca6bu);
         f32 x = f32_(i) * 0.7f + RepeatMinMaxF32(WangHash(seed + 1u), -2.0f, 2.0f);
-        f32 y = 5.0f + RepeatMinMaxF32(WangHash(seed + 2u), -0.5f, 0.5f);
+        f32 y = 2.0f + RepeatMinMaxF32(WangHash(seed + 2u), -0.5f, 0.5f);
         f32 z = RepeatMinMaxF32(WangHash(seed + 3u), -2.0f, 2.0f);
         f32 baseYaw = RepeatMinMaxF32(WangHash(seed + 4u), 0.0f, MATH_TwoPI);
         f32 yaw = baseYaw + time * RepeatMinMaxF32(WangHash(seed + 5u), 0.35f, 0.85f);
@@ -93,10 +68,6 @@ static void UpdateDemoLights(void)
         g_DemoLights[i].colorIntensity[1] = colors[i & 7u][1];
         g_DemoLights[i].colorIntensity[2] = colors[i & 7u][2];
         g_DemoLights[i].colorIntensity[3] = RepeatMinMaxF32(WangHash(seed + 8u), 24.0f, 44.0f);
-        g_DemoLights[i].rightSize[0] = 1.0f;
-        g_DemoLights[i].rightSize[1] = 0.0f;
-        g_DemoLights[i].rightSize[2] = 0.0f;
-        g_DemoLights[i].rightSize[3] = 0.0f;
         g_DemoLights[i].type = LightType_Spot;
         g_DemoLights[i].flags = LIGHT_FLAG_SHADOWED;
         g_DemoLights[i].shadowIndex = LIGHT_SHADOW_INDEX_INVALID;
@@ -127,10 +98,6 @@ static void UpdateDemoLights(void)
         g_DemoLights[lightIndex].colorIntensity[1] = colors[i & 7u][1];
         g_DemoLights[lightIndex].colorIntensity[2] = colors[i & 7u][2];
         g_DemoLights[lightIndex].colorIntensity[3] = 16.0f + (f32)(i % 4u) * 5.0f;
-        g_DemoLights[lightIndex].rightSize[0] = 1.0f;
-        g_DemoLights[lightIndex].rightSize[1] = 0.0f;
-        g_DemoLights[lightIndex].rightSize[2] = 0.0f;
-        g_DemoLights[lightIndex].rightSize[3] = 0.0f;
         g_DemoLights[lightIndex].type = LightType_Point;
         g_DemoLights[lightIndex].flags = LIGHT_FLAG_SHADOWED;
         g_DemoLights[lightIndex].shadowIndex = LIGHT_SHADOW_INDEX_INVALID;
@@ -208,7 +175,7 @@ s32 InitScene()
     for (s32 i = 0; i < numSurface; i++)
     {
         u64 hash = MurmurHash((u64)i + 456);
-        v128f pos = VecMulf(VecSetR(0.1f+f32_(i % surfaceGridStride), -0.0f, f32_(i / surfaceGridStride) -0.0f, 0.0f), 150.0f);
+        v128f pos = VecMulf(VecSetR(0.02f+f32_(i % surfaceGridStride), -0.0f, f32_(i / surfaceGridStride) -0.0f, 0.0f), 150.0f);
         v128f rot = QIdentity(); // QFromEuler(0.0f, (float)(NextDouble01(hash) * MATH_PI), 0.0f);
         v128f scale = VecSet1(0.1f);
         if (!RenderSet_AddScene(&surfaceSet, surfaceBundle, pos, rot, scale, false))
@@ -248,10 +215,7 @@ s32 main(s32 argc, char* argv[])
     if (!InitScene()) return 0;
     
     CameraInit(&g_Camera, 1920, 1080);
-    #ifdef PLATFORM_WINDOWS
-    SetUnhandledExceptionFilter(CrashHandler);
-    #endif
-
+   
     // emscripten_set_main_loop(MainLoop, 0, 1);
     while (!done) 
     {

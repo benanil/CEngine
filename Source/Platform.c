@@ -30,6 +30,29 @@ static ALIGNAS(SIMD_NUM_BYTES) u64 ReleasedKeys[8];
 static SDL_Cursor* g_Cursors[wCursor_Count];
 static wCursor g_CurrentCursor = wCursor_Count;
 
+#ifdef PLATFORM_WINDOWS
+static LONG WINAPI CrashHandler(EXCEPTION_POINTERS* ep)
+{
+    HMODULE module = NULL;
+    GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                       (LPCSTR)ep->ExceptionRecord->ExceptionAddress, &module);
+    uintptr_t rva = module ? (uintptr_t)ep->ExceptionRecord->ExceptionAddress - (uintptr_t)module : 0u;
+    AX_ERROR("Exception code: 0x%08lX at %p module %p rva 0x%Ix",
+             ep->ExceptionRecord->ExceptionCode,
+             ep->ExceptionRecord->ExceptionAddress,
+             module,
+             rva);
+    if (ep->ExceptionRecord->ExceptionCode == 0xC0000005)
+    {
+        AX_ERROR("Access violation: %s address %p",
+                 ep->ExceptionRecord->ExceptionInformation[0] == 0 ? "reading" : "writing",
+                 (void*)ep->ExceptionRecord->ExceptionInformation[1]);
+    }
+
+    return EXCEPTION_CONTINUE_SEARCH;
+}
+#endif
+
 inline static s32 GetRealKey(s32 x)
 {
     if (x & 0x40000000u) return SDLK_PLUSMINUS + x - 0x40000039u;
@@ -292,6 +315,9 @@ s64 TimeToMicroseconds(s64 t) { return Int64MulDiv(t, 1000000, PlatformCtx.CPUFr
 
 void PlatformInit()
 {
+    #ifdef PLATFORM_WINDOWS
+    SetUnhandledExceptionFilter(CrashHandler);
+    #endif
     EnableConsoleColors();
     SDL_SetLogPriorities(2); //SDL_LOG_PRIORITY_VERBOSE);
     PlatformCtx.SecondsSinceLastClick = 0.0f;

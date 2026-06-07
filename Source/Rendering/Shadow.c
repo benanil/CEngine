@@ -1,4 +1,5 @@
 #include "RenderingInternal.h"
+#include "Include/Algorithm.h"
 
 typedef struct ShadowCandidate_
 {
@@ -200,17 +201,17 @@ static void SpotLightShadowMaps(SDL_GPUCommandBuffer* cmd)
 
 static f32 LightCameraDistanceSq(const LightGPU* light)
 {
-    f32 dx = light->positionRadius[0] - g_Camera.position.x;
-    f32 dy = light->positionRadius[1] - g_Camera.position.y;
-    f32 dz = light->positionRadius[2] - g_Camera.position.z;
-    return dx * dx + dy * dy + dz * dz;
+    v128f l = VecSub(VecLoad(light->positionRadius), VecLoad(&g_Camera.position.x));
+    return Vec3DotfV(l, l);
 }
 
 static void AssignNearestShadowSlots(LightType type, u32 maxSlots)
 {
-    ShadowCandidate candidates[POINT_SHADOW_MAX_LIGHTS];
+    ShadowCandidate candidates[POINT_SHADOW_MAX_LIGHTS + 1];
     u32 count = 0u;
-    maxSlots = Minu32(maxSlots, (u32)SDL_arraysize(candidates));
+    maxSlots = Minu32(maxSlots, POINT_SHADOW_MAX_LIGHTS);
+    if (maxSlots == 0u)
+        return;
 
     for (u32 lightIndex = 0; lightIndex < g_RenderState.numLights; lightIndex++)
     {
@@ -226,19 +227,13 @@ static void AssignNearestShadowSlots(LightType type, u32 maxSlots)
         if (insert >= maxSlots)
             continue;
 
-        u32 newCount = Minu32(count + 1u, maxSlots);
-        for (u32 i = newCount - 1u; i > insert; i--)
-        {
-            candidates[i] = candidates[i - 1u];
-        }
-        candidates[insert] = (ShadowCandidate){ lightIndex, distanceSq };
-        count = newCount;
+        candidates[count] = (ShadowCandidate){ lightIndex, distanceSq };
+        XSWAP(ShadowCandidate, candidates[insert], candidates[count]);
+        count = Minu32(count + 1u, maxSlots);
     }
 
     for (u32 i = 0; i < count; i++)
-    {
         g_RenderLights[candidates[i].lightIndex].shadowIndex = i;
-    }
 }
 
 static void AssignVisibleShadowSlots(void)
@@ -247,7 +242,7 @@ static void AssignVisibleShadowSlots(void)
         g_RenderLights[i].shadowIndex = LIGHT_SHADOW_INDEX_INVALID;
 
     u32 maxPointShadows = Minu32((u32)(g_RenderSettings.maxVisiblePointShadows + 0.5f), POINT_SHADOW_MAX_LIGHTS);
-    u32 maxSpotShadows = Minu32((u32)(g_RenderSettings.maxVisibleSpotShadows + 0.5f), SPOT_SHADOW_MAX_LIGHTS);
+    u32 maxSpotShadows  = Minu32((u32)(g_RenderSettings.maxVisibleSpotShadows + 0.5f), SPOT_SHADOW_MAX_LIGHTS);
     AssignNearestShadowSlots(LightType_Point, maxPointShadows);
     AssignNearestShadowSlots(LightType_Spot, maxSpotShadows);
 }
@@ -276,13 +271,11 @@ static void BuildPointShadowData(PointShadowData* data)
         data->lightIndices[data->count++] = lightIndex;
         float radius = Maxf32(light->positionRadius[3], POINT_SHADOW_NEAR_PLANE + 0.1f);
         mat4x4 proj = PerspectiveFovRH(90.0f * MATH_DegToRad, 1.0f, 1.0f, POINT_SHADOW_NEAR_PLANE, radius);
-        v128f eye = VecSetR(light->positionRadius[0], light->positionRadius[1], light->positionRadius[2], 1.0f);
+        v128f eye = VecLoad(light->positionRadius);
 
         for (u32 face = 0; face < POINT_SHADOW_FACE_COUNT; face++)
         {
-            v128f dir = VecLoad(faceDirs[face]);
-            v128f up = VecLoad(faceUps[face]);
-            mat4x4 view = M44LookAtRHVec(eye, dir, up);
+            mat4x4 view = M44LookAtRHVec(eye, VecLoad(faceDirs[face]), VecLoad(faceUps[face]));
             u32 layer = shadowIndex * POINT_SHADOW_FACE_COUNT + face;
             data->lightViewProj[layer] = M44Multiply(view, proj);
         }
@@ -314,10 +307,9 @@ static void BuildSpotShadowData(SpotShadowData* data)
         float coneCos = Clampf32(light->directionCone[3], -0.95f, 0.995f);
         float fov = 2.0f * ACos(coneCos);
         mat4x4 proj = PerspectiveFovRH(fov, 1.0f, 1.0f, SPOT_SHADOW_NEAR_PLANE, radius);
-        v128f eye = VecSetR(light->positionRadius[0], light->positionRadius[1], light->positionRadius[2], 1.0f);
-        float3 spotDir = { light->directionCone[0], light->directionCone[1], light->directionCone[2] };
-        spotDir = F3NormSafe(spotDir);
-        v128f dir = VecSetR(spotDir.x, spotDir.y, spotDir.z, 0.0f);
+        v128f eye = VecLoad(light->positionRadius);
+        v128f dir = VecLoad(light->directionCone);
+        dir  = VecNormEst(dir);
         v128f up = VecSetR(0.0f, 1.0f, 0.0f, 0.0f);
         if (Absf32(light->directionCone[1]) > 0.999f) up = VecSetR(0.0f, 0.0f, 1.0f, 0.0f);
         data->lightViewProj[shadowIndex] = M44Multiply(M44LookAtRHVec(eye, dir, up), proj);

@@ -117,7 +117,6 @@ typedef struct LightGPU_
     f32 positionRadius[4];
     f32 directionCone[4];
     f32 colorIntensity[4];
-    f32 rightSize[4];
     u32 type;
     u32 flags;
     u32 shadowIndex;

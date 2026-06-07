@@ -55,6 +55,14 @@ float4 MulShadowCascade(ShadowCascadeBuffer cascades, uint cascadeIndex, float4 
                   dot(p, cascades.lightViewProj[row + 3u]));
 }
 
+float4 MulPointShadowSide(PointShadowMatrix side, float4 p)
+{
+    return float4(dot(p, side.lightViewProj[0u]),
+                  dot(p, side.lightViewProj[1u]),
+                  dot(p, side.lightViewProj[2u]),
+                  dot(p, side.lightViewProj[3u]));
+}
+
 float SampleShadow(Texture2D<float> shadowMap, SamplerState samp,
                    float4 shadowPos, uint cascadeIndex,
                    float3 normal, float3 lightDir)
@@ -86,12 +94,4 @@ float SampleShadow(Texture2D<float> shadowMap, SamplerState samp,
         shadow += float(mapDepth >= (depth - bias));
     }
     return max(shadow / float(kernelSize), 0.2f);
-}
-
-float4 MulPointShadowSide(PointShadowMatrix side, float4 p)
-{
-    return float4(dot(p, side.lightViewProj[0u]),
-                  dot(p, side.lightViewProj[1u]),
-                  dot(p, side.lightViewProj[2u]),
-                  dot(p, side.lightViewProj[3u]));
 }
