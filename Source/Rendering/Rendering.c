@@ -60,14 +60,63 @@ RenderSettings g_RenderSettings = {
     .maxVisibleSpotShadows       = 8.0f
 };
 
-static FrameTextureSet g_ResizeReleaseQueue[RESIZE_RELEASE_DELAY];
 static u64 g_RenderFrameIndex;
 
 static RenderLightDebugInfo g_LightDebugInfo;
+static FrameTextureSet g_ResizeReleaseQueue[RESIZE_RELEASE_DELAY];
 
 extern void UIRenderCallback(void); // Editor.c
 
 extern ShadowCascadeData CascadedShadowmaps(SDL_GPUCommandBuffer* cmd);
+
+static void ReleaseFrameTextureSet(FrameTextureSet* set)
+{
+    if (set->tex_depth)                    SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_depth);
+    if (set->tex_hiz_depth)                SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_hiz_depth);
+    if (set->tex_color)                    SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_color);
+    if (set->tex_gbuffer_tangent)          SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_gbuffer_tangent);
+    if (set->tex_gbuffer_albedo_metallic)  SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_gbuffer_albedo_metallic);
+    if (set->tex_gbuffer_shadow_roughness) SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_gbuffer_shadow_roughness);
+    if (set->tex_post)                     SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_post);
+    if (set->tex_hiz)                      SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_hiz);
+    if (set->tex_hbao)                     SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_hbao);
+    if (set->tex_hbao_blur)                SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_hbao_blur);
+    if (set->tex_hbao_normal)              SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_hbao_normal);
+    if (set->tex_mlaa_edge_mask)           SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_mlaa_edge_mask);
+    if (set->tex_mlaa_edge_count)          SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_mlaa_edge_count);
+    if (set->tex_mlaa_output)              SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_mlaa_output);
+    *set = (FrameTextureSet){0};
+}
+
+static void QueueWindowFrameTexturesForRelease(WindowState* winstate)
+{
+    FrameTextureSet old = {
+        .tex_depth                    = winstate->tex_depth,
+        .tex_hiz_depth                = winstate->tex_hiz_depth,
+        .tex_color                    = winstate->tex_color,
+        .tex_gbuffer_tangent          = winstate->tex_gbuffer_tangent,
+        .tex_gbuffer_albedo_metallic  = winstate->tex_gbuffer_albedo_metallic,
+        .tex_gbuffer_shadow_roughness = winstate->tex_gbuffer_shadow_roughness,
+        .tex_post                     = winstate->tex_post,
+        .tex_hiz                      = winstate->tex_hiz,
+        .tex_hbao                     = winstate->tex_hbao,
+        .tex_hbao_blur                = winstate->tex_hbao_blur,
+        .tex_hbao_normal              = winstate->tex_hbao_normal,
+        .tex_mlaa_edge_mask           = winstate->tex_mlaa_edge_mask,
+        .tex_mlaa_edge_count          = winstate->tex_mlaa_edge_count,
+        .tex_mlaa_output              = winstate->tex_mlaa_output,
+        .releaseFrame                 = g_RenderFrameIndex + RESIZE_RELEASE_DELAY
+    };
+    winstate->tex_depth = winstate->tex_hiz_depth = winstate->tex_color = winstate->tex_gbuffer_tangent 
+                        = winstate->tex_gbuffer_albedo_metallic = winstate->tex_gbuffer_shadow_roughness 
+                        = winstate->tex_post = winstate->tex_hiz = winstate->tex_hbao 
+                        = winstate->tex_hbao_blur = winstate->tex_hbao_normal = winstate->tex_mlaa_edge_mask 
+                        = winstate->tex_mlaa_edge_count = winstate->tex_mlaa_output = NULL;
+    
+    u32 slot = (u32)(g_RenderFrameIndex % RESIZE_RELEASE_DELAY);
+    ReleaseFrameTextureSet(&g_ResizeReleaseQueue[slot]);
+    g_ResizeReleaseQueue[slot] = old;
+}
 
 void RendererSetLights(const LightGPU* lights, u32 count)
 {
@@ -124,16 +173,16 @@ void InitBuffers(void)
     const size_t animatedVertexSize = sizeof(u32) * 2 * MAX_ANIMATED_VERTEX;
     g_RenderState.skinned.vertexBuffer = CreateBuffer(NULL, MAX_SKINNED_SOURCE_VERTEX * sizeof(ASkinedVertex), BVertexBit | BReadCompute, "CPSkinnedVertexBuffer");
     g_RenderState.surface.vertexBuffer = CreateBuffer(NULL, MAX_VERTEX * sizeof(AVertex), BVertexBit, "CPSurfaceVertexBuffer");
-    g_RenderState.indexBuffer = CreateBuffer(NULL, MAX_INDEX * sizeof(int), SDL_GPU_BUFFERUSAGE_INDEX, "CPIndexBuffer");
+    g_RenderState.indexBuffer          = CreateBuffer(NULL, MAX_INDEX  * sizeof(int)    , SDL_GPU_BUFFERUSAGE_INDEX, "CPIndexBuffer");
     if (gGFX.NumSkinnedVertices > 0) UpdateGPUBuffer(g_RenderState.skinned.vertexBuffer, gGFX.SkinnedVertexBuffer, gGFX.NumSkinnedVertices * sizeof(ASkinedVertex), 0);
     if (gGFX.NumSurfaceVertices > 0) UpdateGPUBuffer(g_RenderState.surface.vertexBuffer, gGFX.SurfaceVertexBuffer, gGFX.NumSurfaceVertices * sizeof(AVertex), 0);
-    if (gGFX.NumIndices > 0) UpdateGPUBuffer(g_RenderState.indexBuffer, gGFX.IndexBuffer, gGFX.NumIndices * sizeof(u32), 0);
-    g_RenderState.skinned.animatedVertices = CreateBuffer(NULL, animatedVertexSize, BReadRasterBit | BWriteComputeBit, "CPAnimatedVertices");
-    g_RenderState.lineBuffer = CreateBuffer(NULL, sizeof(ALineVertex) * MAX_LINE_COUNT, BVertexBit | BWriteComputeBit, "CPLineVertexBuffer");
-    g_RenderState.lineDrawArgsBuffer = CreateBuffer(NULL, sizeof(u32) * 8, BIndirectBit | BWriteComputeBit, "CPLinedrawArgsBuffer");
-    g_RenderState.lightBuffer = CreateBuffer(NULL, sizeof(LightGPU) * MAX_LIGHT_COUNT, BReadRasterBit | BReadCompute, "CPLightBuffer");
+    if (gGFX.NumIndices > 0)         UpdateGPUBuffer(g_RenderState.indexBuffer, gGFX.IndexBuffer, gGFX.NumIndices * sizeof(u32), 0);
+    g_RenderState.skinned.animatedVertices = CreateBuffer(NULL, animatedVertexSize                , BReadRasterBit | BWriteComputeBit, "CPAnimatedVertices");
+    g_RenderState.lineBuffer          = CreateBuffer(NULL, sizeof(ALineVertex) * MAX_LINE_COUNT   , BVertexBit     | BWriteComputeBit, "CPLineVertexBuffer");
+    g_RenderState.lineDrawArgsBuffer  = CreateBuffer(NULL, sizeof(u32) * 8                        , BIndirectBit   | BWriteComputeBit, "CPLinedrawArgsBuffer");
+    g_RenderState.lightBuffer         = CreateBuffer(NULL, sizeof(LightGPU) * MAX_LIGHT_COUNT     , BReadRasterBit | BReadCompute    , "CPLightBuffer");
     g_RenderState.lightDrawInfoBuffer = CreateBuffer(NULL, sizeof(LightDrawInfo) * MAX_LIGHT_COUNT, BReadRasterBit | BReadCompute | BWriteComputeBit, "CPLightDrawInfoBuffer");
-    g_RenderState.lightDrawArgsBuffer = CreateBuffer(NULL, sizeof(SDL_GPUIndirectDrawCommand), BIndirectBit | BWriteComputeBit, "CPLightDrawArgsBuffer");
+    g_RenderState.lightDrawArgsBuffer = CreateBuffer(NULL, sizeof(SDL_GPUIndirectDrawCommand)     , BIndirectBit   | BWriteComputeBit, "CPLightDrawArgsBuffer");
 
     g_LightDebugInfo.maxLights = MAX_LIGHT_COUNT;
     UIInit();
@@ -150,24 +199,7 @@ static void UploadLightBuffer(void)
     g_LightDebugInfo.submittedLights = g_RenderState.numLights;
 }
 
-static void ReleaseFrameTextureSet(FrameTextureSet* set)
-{
-    if (set->tex_depth)                    SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_depth);
-    if (set->tex_hiz_depth)                SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_hiz_depth);
-    if (set->tex_color)                    SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_color);
-    if (set->tex_gbuffer_tangent)          SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_gbuffer_tangent);
-    if (set->tex_gbuffer_albedo_metallic)  SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_gbuffer_albedo_metallic);
-    if (set->tex_gbuffer_shadow_roughness) SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_gbuffer_shadow_roughness);
-    if (set->tex_post)                     SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_post);
-    if (set->tex_hiz)                      SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_hiz);
-    if (set->tex_hbao)                     SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_hbao);
-    if (set->tex_hbao_blur)                SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_hbao_blur);
-    if (set->tex_hbao_normal)              SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_hbao_normal);
-    if (set->tex_mlaa_edge_mask)           SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_mlaa_edge_mask);
-    if (set->tex_mlaa_edge_count)          SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_mlaa_edge_count);
-    if (set->tex_mlaa_output)              SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_mlaa_output);
-    *set = (FrameTextureSet){0};
-}
+
 
 static void ReleaseQueuedResizeTextures(bool force)
 {
@@ -179,58 +211,11 @@ static void ReleaseQueuedResizeTextures(bool force)
     }
 }
 
-static void QueueWindowFrameTexturesForRelease(WindowState* winstate)
-{
-    FrameTextureSet old = {
-        .tex_depth                    = winstate->tex_depth,
-        .tex_hiz_depth                = winstate->tex_hiz_depth,
-        .tex_color                    = winstate->tex_color,
-        .tex_gbuffer_tangent          = winstate->tex_gbuffer_tangent,
-        .tex_gbuffer_albedo_metallic  = winstate->tex_gbuffer_albedo_metallic,
-        .tex_gbuffer_shadow_roughness = winstate->tex_gbuffer_shadow_roughness,
-        .tex_post                     = winstate->tex_post,
-        .tex_hiz                      = winstate->tex_hiz,
-        .tex_hbao                     = winstate->tex_hbao,
-        .tex_hbao_blur                = winstate->tex_hbao_blur,
-        .tex_hbao_normal              = winstate->tex_hbao_normal,
-        .tex_mlaa_edge_mask           = winstate->tex_mlaa_edge_mask,
-        .tex_mlaa_edge_count          = winstate->tex_mlaa_edge_count,
-        .tex_mlaa_output              = winstate->tex_mlaa_output,
-        .releaseFrame                 = g_RenderFrameIndex + RESIZE_RELEASE_DELAY
-    };
-    winstate->tex_depth = winstate->tex_hiz_depth = winstate->tex_color = winstate->tex_gbuffer_tangent 
-                        = winstate->tex_gbuffer_albedo_metallic = winstate->tex_gbuffer_shadow_roughness 
-                        = winstate->tex_post = winstate->tex_hiz = winstate->tex_hbao 
-                        = winstate->tex_hbao_blur = winstate->tex_hbao_normal = winstate->tex_mlaa_edge_mask 
-                        = winstate->tex_mlaa_edge_count = winstate->tex_mlaa_output = NULL;
-    
-    u32 slot = (u32)(g_RenderFrameIndex % RESIZE_RELEASE_DELAY);
-    ReleaseFrameTextureSet(&g_ResizeReleaseQueue[slot]);
-    g_ResizeReleaseQueue[slot] = old;
-}
 
 static void ResizeWindowFrameTextures(WindowState* winstate, u32 width, u32 height)
 {
     QueueWindowFrameTexturesForRelease(winstate);
-    winstate->tex_depth           = CreateDepthTexture(width, height);
-    winstate->tex_hiz_depth       = CreateHiZDepthTexture(width, height);
-    winstate->tex_color           = CreateSceneColorTexture(width, height, SDL_GPU_SAMPLECOUNT_1);
-    winstate->tex_post            = CreatePostProcessTexture(width, height);
-    winstate->tex_hiz             = CreateHiZTexture(width, height, &winstate->hiz_mip_count);
-    winstate->tex_gbuffer_tangent = CreateGBufferTangentTexture(width, height);
-    winstate->tex_gbuffer_albedo_metallic = CreateGBufferAlbedoMetallicTexture(width, height);
-    winstate->tex_gbuffer_shadow_roughness = CreateGBufferShadowRoughnessTexture(width, height);
-    u32 hbaoWidth  = Maxu32(width / 2u, 1u);
-    u32 hbaoHeight = Maxu32(height / 2u, 1u);
-    winstate->tex_hbao            = CreateHBAOTexture(hbaoWidth, hbaoHeight);
-    winstate->tex_hbao_blur       = CreateHBAOTexture(hbaoWidth, hbaoHeight);
-    winstate->tex_hbao_normal     = CreateHBAONormalTexture(hbaoWidth, hbaoHeight);
-    winstate->tex_mlaa_edge_mask  = CreateMLAAEdgeMaskTexture(width, height);
-    winstate->tex_mlaa_edge_count = CreateMLAAEdgeCountTexture(width, height);
-    winstate->tex_mlaa_output = CreateMLAAOutputTexture(width, height);
-    winstate->hiz_width     = width;
-    winstate->hiz_height    = height;
-    winstate->hiz_valid     = false;
+    CreateWindowBuffers();
     Camera_RecalculateProjection(&g_Camera, (s32)width, (s32)height);
 }
 

@@ -1,9 +1,9 @@
 #ifndef _GRAPHICS_
 #define _GRAPHICS_
 
+#include "Include/Graphics.h"
 #include "Include/FileSystem.h"
 #include "Include/Platform.h"
-#include "Include/Graphics.h"
 #include "Include/Algorithm.h"
 #include "Include/Memory.h"
 #include "Include/BasisBinding.h"
@@ -26,15 +26,16 @@
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_RESIZE_IMPLEMENTATION
 
-// #define STBI_MALLOC(size)           ( AllocateTLSFGlobal(size) )
-// #define STBI_FREE(ptr)              ( DeAllocateTLSFGlobal(ptr) )
-// #define STBI_REALLOC(ptr, size)     ( ReAllocateTLSFGlobal(ptr, size) )
+#define STBI_MALLOC(size)           ( AllocateTLSFGlobal(size) )
+#define STBI_FREE(ptr)              ( DeAllocateTLSFGlobal(ptr) )
+#define STBI_REALLOC(ptr, size)     ( ReAllocateTLSFGlobal(ptr, size) )
 
 #define STBIR_MALLOC(size, c)       ( AllocateTLSFGlobal(size) )
 #define STBIR_FREE(ptr, c)          ( (void)(c), DeAllocateTLSFGlobal(ptr) )
 
 #define VULKAN_MAKE_API_VERSION(variant, major, minor, patch) \
-((((uint32_t)(variant)) << 29U) | (((uint32_t)(major)) << 22U) | (((uint32_t)(minor)) << 12U) | ((uint32_t)(patch)))
+    ((((uint32_t)(variant)) << 29U) | (((uint32_t)(major)) << 22U) | (((uint32_t)(minor)) << 12U) | ((uint32_t)(patch)))
+
 
 #include "Extern/stb/stb_image.h"
 #include "Extern/stb/stb_image_resize2.h"
@@ -48,11 +49,10 @@ Graphics gGFX = {0};
 
 extern void Quit(int rc);
 
+
 void GraphicsInit(bool msaa)
 {
-    VkPhysicalDeviceFeatures vk10_features = {
-        .shaderInt16 = VK_TRUE,
-    };
+    VkPhysicalDeviceFeatures vk10_features = { .shaderInt16 = VK_TRUE };
 
     VkPhysicalDeviceVulkan12Features vk12_features = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
@@ -86,41 +86,19 @@ void GraphicsInit(bool msaa)
     {
         AX_WARN("Failed to set GPU frames in flight: %s", SDL_GetError());
     }
-    /* Claim the windows */
     SDL_ClaimWindowForGPUDevice(g_GPUDevice, g_SDLWindow);
     
     (void)msaa;
-    
-    int drawablew, drawableh;
-    /* Set up per-window state */
+    CreateWindowBuffers();
     WindowState* winstate = &g_WindowState;
-    /* create a depth texture for the window */
-    SDL_GetWindowSizeInPixels(g_SDLWindow, (int*)&drawablew, (int*)&drawableh);
-    winstate->tex_depth   = CreateDepthTexture(drawablew, drawableh);
-    winstate->tex_hiz_depth = CreateHiZDepthTexture(drawablew, drawableh);
-    winstate->tex_color   = CreateSceneColorTexture(drawablew, drawableh, SDL_GPU_SAMPLECOUNT_1);
-    winstate->tex_gbuffer_tangent = CreateGBufferTangentTexture(drawablew, drawableh);
-    winstate->tex_gbuffer_albedo_metallic = CreateGBufferAlbedoMetallicTexture(drawablew, drawableh);
-    winstate->tex_gbuffer_shadow_roughness = CreateGBufferShadowRoughnessTexture(drawablew, drawableh);
-    winstate->tex_post    = CreatePostProcessTexture(drawablew, drawableh);
-    winstate->tex_hiz     = CreateHiZTexture(drawablew, drawableh, &winstate->hiz_mip_count);
-    winstate->tex_hbao        = CreateHBAOTexture(Maxu32((u32)drawablew / 2u, 1u), Maxu32((u32)drawableh / 2u, 1u));
-    winstate->tex_hbao_blur   = CreateHBAOTexture(Maxu32((u32)drawablew / 2u, 1u), Maxu32((u32)drawableh / 2u, 1u));
-    winstate->tex_hbao_normal = CreateHBAONormalTexture(Maxu32((u32)drawablew / 2u, 1u), Maxu32((u32)drawableh / 2u, 1u));
-    winstate->tex_mlaa_edge_mask = CreateMLAAEdgeMaskTexture(drawablew, drawableh);
-    winstate->tex_mlaa_edge_count = CreateMLAAEdgeCountTexture(drawablew, drawableh);
-    winstate->tex_mlaa_output = CreateMLAAOutputTexture(drawablew, drawableh);
-    winstate->tex_shadow_depth = CreateShadowDepthTexture(SHADOW_MAP_SIZE);
-    winstate->tex_shadow_color = CreateShadowColorTexture(SHADOW_MAP_SIZE, SHADOW_CASCADE_COUNT);
-    winstate->tex_point_shadow_depth = CreatePointShadowDepthTexture();
-    winstate->tex_point_shadow_color = CreatePointShadowColorTexture();
-    winstate->tex_spot_shadow_depth = CreateSpotShadowDepthTexture();
-    winstate->tex_spot_shadow_color = CreateSpotShadowColorTexture();
-    g_RenderState.skyNoise3D = Create3DNoise3DTexture(64u);
-    winstate->hiz_width   = drawablew;
-    winstate->hiz_height  = drawableh;
-    winstate->hiz_valid   = false;
+    winstate->tex_shadow_depth       = CreateTexture2D(SHADOW_MAP_SIZE  , SHADOW_MAP_SIZE  , TEX_FMT_D32_FLT, TEX_DEPTH_STENCIL, TEX_SMP_CNT1, SHADOW_CASCADE_COUNT, "Shadow Depth Texture");
+    winstate->tex_shadow_color       = CreateTexture2D(SHADOW_MAP_SIZE  , SHADOW_MAP_SIZE  , TEX_FMT_R32_FLT, TEX_COLOR_TARGET | TEX_SAMPLER, TEX_SMP_CNT1, SHADOW_CASCADE_COUNT, "Shadow Color Texture");
+    winstate->tex_point_shadow_depth = CreateTexture2D(POINT_SHADOW_SIZE, POINT_SHADOW_SIZE, TEX_FMT_D32_FLT, TEX_DEPTH_STENCIL, TEX_SMP_CNT1, 1, "Point Shadow Depth Texture");
+    winstate->tex_spot_shadow_depth  = CreateTexture2D(SPOT_SHADOW_SIZE , SPOT_SHADOW_SIZE , TEX_FMT_D32_FLT, TEX_DEPTH_STENCIL, TEX_SMP_CNT1, 1, "Spot Shadow Depth Texture");
+    winstate->tex_point_shadow_color = CreateTexture2DArray(POINT_SHADOW_SIZE, POINT_SHADOW_SIZE, POINT_SHADOW_LAYER_COUNT, TEX_FMT_R32_FLT, TEX_COLOR_TARGET | TEX_SAMPLER, "Point Shadow Depth Texture");
+    winstate->tex_spot_shadow_color  = CreateTexture2DArray(SPOT_SHADOW_SIZE , SPOT_SHADOW_SIZE , POINT_SHADOW_LAYER_COUNT, TEX_FMT_R32_FLT, TEX_COLOR_TARGET | TEX_SAMPLER, "Spot Shadow Depth Texture");
     
+    g_RenderState.skyNoise3D = Create3DNoise3DTexture(64u);
     gGFX.SkinnedVertexBuffer = OSAllocAligned(sizeof(ASkinedVertex) * MAX_SKINNED_SOURCE_VERTEX, 4);
     gGFX.SurfaceVertexBuffer = OSAllocAligned(sizeof(AVertex) * MAX_SURFACE_VERTEX, 4);
     gGFX.IndexBuffer         = OSAllocAligned(sizeof(u32) * MAX_INDEX + 16, 4); // 16->give little bit of space for memcpy
@@ -128,39 +106,31 @@ void GraphicsInit(bool msaa)
         AX_ERROR("graphics CPU buffer allocation failed skinned=%p surface=%p index=%p", gGFX.SkinnedVertexBuffer, gGFX.SurfaceVertexBuffer, gGFX.IndexBuffer);
 }
 
-void GraphicsDestroy()
+void CreateWindowBuffers()
 {
     WindowState* winstate = &g_WindowState;
-    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_depth);
-    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_hiz_depth);
-    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_color);
-    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_gbuffer_tangent);
-    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_gbuffer_albedo_metallic);
-    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_gbuffer_shadow_roughness);
-    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_post);
-    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_hiz);
-    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_hbao);
-    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_hbao_blur);
-    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_hbao_normal);
-    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_mlaa_edge_mask);
-    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_mlaa_edge_count);
-    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_mlaa_output);
-    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_shadow_depth);
-    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_shadow_color);
-    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_point_shadow_depth);
-    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_point_shadow_color);
-    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_spot_shadow_depth);
-    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_spot_shadow_color);
-    SDL_ReleaseGPUTexture(g_GPUDevice, g_RenderState.skyNoise3D);
-    SDL_ReleaseWindowFromGPUDevice(g_GPUDevice, g_SDLWindow);
-
-    SDL_DestroyGPUDevice(g_GPUDevice);
-    OSFreeAligned(gGFX.SkinnedVertexBuffer, sizeof(ASkinedVertex) * MAX_SKINNED_SOURCE_VERTEX);
-    OSFreeAligned(gGFX.SurfaceVertexBuffer, sizeof(AVertex) * MAX_SURFACE_VERTEX);
-    OSFreeAligned(gGFX.IndexBuffer        , sizeof(u32) * MAX_INDEX + 16);
-    gGFX.SkinnedVertexBuffer = NULL;
-    gGFX.SurfaceVertexBuffer = NULL;
-    gGFX.IndexBuffer = NULL;
+    int width, height;
+    /* create a depth texture for the window */
+    SDL_GetWindowSizeInPixels(g_SDLWindow, (int*)&width, (int*)&height);
+    u32 hbaoWidth  = Maxu32(width / 2u, 1u);
+    u32 hbaoHeight = Maxu32(height / 2u, 1u);
+    winstate->tex_depth           = CreateTexture2D(width, height, TEX_FMT_D32_FLT, TEX_DEPTH_STENCIL | TEX_SAMPLER, TEX_SMP_CNT1, 1, "Depth Texture");
+    winstate->tex_hiz_depth       = CreateHiZDepthTexture(width, height);
+    winstate->tex_color           = CreateSceneColorTexture(width, height, SDL_GPU_SAMPLECOUNT_1);
+    winstate->tex_post            = CreateTexture2D(width, height, TEX_FMT_8UNORM4, TEX_SAMPLER | TEX_COLOR_TARGET | TEX_COMP_WRITE, TEX_SMP_CNT1, 1, "Post Process Texture");
+    winstate->tex_hiz             = CreateHiZTexture(width, height, &winstate->hiz_mip_count);
+    winstate->tex_gbuffer_tangent = CreateTexture2D(width, height, TEX_FMT_R32_UINT, TEX_COLOR_TARGET | TEX_SAMPLER, TEX_SMP_CNT1, 1, "GBuffer Tangent Texture");
+    winstate->tex_gbuffer_albedo_metallic  = CreateTexture2D(width, height, TEX_FMT_8UNORM4, TEX_COLOR_TARGET | TEX_SAMPLER, TEX_SMP_CNT1, 1, "GBuffer Albedo Metallic Texture");
+    winstate->tex_gbuffer_shadow_roughness = CreateTexture2D(width, height, TEX_FMT_8UNORM2, TEX_COLOR_TARGET | TEX_SAMPLER, TEX_SMP_CNT1, 1, "GBuffer Shadow Roughness Texture");
+    winstate->tex_hbao            = CreateTexture2D(hbaoWidth, hbaoHeight, TEX_FMT_8UNORM1, TEX_SAMPLER | TEX_COMP_WRITE, TEX_SMP_CNT1, 1, "HBAO Texture");
+    winstate->tex_hbao_blur       = CreateTexture2D(hbaoWidth, hbaoHeight, TEX_FMT_8UNORM1, TEX_SAMPLER | TEX_COMP_WRITE, TEX_SMP_CNT1, 1, "HBAO Texture");
+    winstate->tex_hbao_normal     = CreateTexture2D(hbaoWidth, hbaoHeight, TEX_FMT_8UNORM4, TEX_SAMPLER | TEX_COMP_WRITE, TEX_SMP_CNT1, 1, "HBAO Normal Texture");
+    winstate->tex_mlaa_edge_mask  = CreateTexture2D(width, height, TEX_FMT_R32_UINT, TEX_COMP_READ | TEX_COMP_WRITE, TEX_SMP_CNT1, 1, "MLAA Edge Mask Texture");
+    winstate->tex_mlaa_edge_count = CreateTexture2D(width, height, TEX_FMT_D32_FLT2, TEX_COMP_READ | TEX_COMP_WRITE, TEX_SMP_CNT1, 1, "MLAA Edge Count Texture");
+    winstate->tex_mlaa_output = CreateTexture2D(width, height, TEX_FMT_8UNORM4, TEX_SAMPLER | TEX_COLOR_TARGET | TEX_COMP_WRITE, TEX_SMP_CNT1, 1, "MLAA Output Texture");
+    winstate->hiz_width   = width;
+    winstate->hiz_height  = height;
+    winstate->hiz_valid   = false;
 }
 
 SDL_GPUBuffer* CreateBuffer(
@@ -275,12 +245,12 @@ static u32 GetMipCount(u32 width, u32 height)
     return levels;
 }
 
-static SDL_GPUTexture* CreateTexture2D(u32 width, u32 height,
-                                       SDL_GPUTextureFormat format,
-                                       SDL_GPUTextureUsageFlags usage,
-                                       SDL_GPUSampleCount sampleCount,
-                                       u32 mipLevels,
-                                       const char* label)
+SDL_GPUTexture* CreateTexture2D(u32 width, u32 height,
+                                SDL_GPUTextureFormat format,
+                                SDL_GPUTextureUsageFlags usage,
+                                SDL_GPUSampleCount sampleCount,
+                                u32 mipLevels,
+                                const char* label)
 {
     SDL_GPUTextureCreateInfo createinfo = {
         .type = SDL_GPU_TEXTURETYPE_2D,
@@ -299,10 +269,10 @@ static SDL_GPUTexture* CreateTexture2D(u32 width, u32 height,
     return result;
 }
 
-static SDL_GPUTexture* CreateTexture2DArray(u32 width, u32 height, u32 layers,
-                                            SDL_GPUTextureFormat format,
-                                            SDL_GPUTextureUsageFlags usage,
-                                            const char* label)
+SDL_GPUTexture* CreateTexture2DArray(u32 width, u32 height, u32 layers,
+                                     SDL_GPUTextureFormat format,
+                                     SDL_GPUTextureUsageFlags usage,
+                                     const char* label)
 {
     SDL_GPUTextureCreateInfo createinfo = {
         .type = SDL_GPU_TEXTURETYPE_2D_ARRAY,
@@ -312,7 +282,7 @@ static SDL_GPUTexture* CreateTexture2DArray(u32 width, u32 height, u32 layers,
         .height = height,
         .layer_count_or_depth = layers,
         .num_levels = 1,
-        .sample_count = SDL_GPU_SAMPLECOUNT_1,
+        .sample_count = TEX_SMP_CNT1,
         .props = 0
     };
 
@@ -326,12 +296,12 @@ SDL_GPUTexture* Create3DNoise3DTexture(u32 size)
     SDL_GPUTextureCreateInfo createinfo = {
         .type = SDL_GPU_TEXTURETYPE_2D_ARRAY,
         .format = SDL_GPU_TEXTUREFORMAT_R8_UNORM,
-        .usage = SDL_GPU_TEXTUREUSAGE_SAMPLER,
+        .usage = TEX_SAMPLER,
         .width = size,
         .height = size,
         .layer_count_or_depth = size,
         .num_levels = 1,
-        .sample_count = SDL_GPU_SAMPLECOUNT_1,
+        .sample_count = TEX_SMP_CNT1,
         .props = 0
     };
 
@@ -370,18 +340,17 @@ SDL_GPUTexture* Create3DNoise3DTexture(u32 size)
     return texture;
 }
 
-SDL_GPUTexture* CreateDepthTexture(u32 drawablew, u32 drawableh)
+SDL_GPUTexture* CreateSceneColorTexture(u32 drawablew, u32 drawableh, SDL_GPUSampleCount sampleCount)
 {
-    return CreateTexture2D(drawablew, drawableh, SDL_GPU_TEXTUREFORMAT_D32_FLOAT,
-                           SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER,
-                           SDL_GPU_SAMPLECOUNT_1, 1, "Depth Texture");
+    SDL_GPUTextureUsageFlags usage = TEX_COLOR_TARGET | TEX_COMP_READ | TEX_COMP_WRITE;
+    if (sampleCount == TEX_SMP_CNT1) usage |= TEX_SAMPLER;
+    return CreateTexture2D(drawablew, drawableh, TEX_FMT_HALF4, usage, sampleCount, 1, "Scene Color Texture");
 }
+
 
 SDL_GPUTexture* CreateHiZDepthTexture(u32 drawablew, u32 drawableh)
 {
-    return CreateTexture2D(drawablew, drawableh, SDL_GPU_TEXTUREFORMAT_R32_FLOAT,
-                           SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER,
-                           SDL_GPU_SAMPLECOUNT_1, 1, "Hi-Z Resolved Depth Texture");
+    return CreateTexture2D(drawablew, drawableh, TEX_FMT_R32_FLT, TEX_COLOR_TARGET | TEX_SAMPLER, TEX_SMP_CNT1, 1, "Hi-Z Resolved Depth Texture");
 }
 
 SDL_GPUTexture* CreateHiZTexture(u32 drawablew, u32 drawableh, u32* mipCount)
@@ -389,126 +358,8 @@ SDL_GPUTexture* CreateHiZTexture(u32 drawablew, u32 drawableh, u32* mipCount)
     u32 levels = GetMipCount(drawablew, drawableh);
     if (mipCount) *mipCount = levels;
     return CreateTexture2D(drawablew, drawableh, SDL_GPU_TEXTUREFORMAT_R32_FLOAT,
-                           SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_READ | SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_WRITE,
-                           SDL_GPU_SAMPLECOUNT_1, levels, "Hi-Z Texture");
-}
-
-SDL_GPUTexture* CreateSceneColorTexture(u32 drawablew, u32 drawableh, SDL_GPUSampleCount sampleCount)
-{
-    SDL_GPUTextureUsageFlags usage = SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_WRITE;
-    if (sampleCount == SDL_GPU_SAMPLECOUNT_1) usage |= SDL_GPU_TEXTUREUSAGE_SAMPLER;
-    return CreateTexture2D(drawablew, drawableh, SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT,
-                            usage, sampleCount, 1, "Scene Color Texture");
-}
-
-SDL_GPUTexture* CreateGBufferTangentTexture(u32 drawablew, u32 drawableh)
-{
-    return CreateTexture2D(drawablew, drawableh, SDL_GPU_TEXTUREFORMAT_R32_UINT,
-                           SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER,
-                           SDL_GPU_SAMPLECOUNT_1, 1, "GBuffer Tangent Texture");
-}
-
-SDL_GPUTexture* CreateGBufferAlbedoMetallicTexture(u32 drawablew, u32 drawableh)
-{
-    return CreateTexture2D(drawablew, drawableh, SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
-                           SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER,
-                           SDL_GPU_SAMPLECOUNT_1, 1, "GBuffer Albedo Metallic Texture");
-}
-
-SDL_GPUTexture* CreateGBufferShadowRoughnessTexture(u32 drawablew, u32 drawableh)
-{
-    return CreateTexture2D(drawablew, drawableh, SDL_GPU_TEXTUREFORMAT_R8G8_UNORM,
-                           SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER,
-                           SDL_GPU_SAMPLECOUNT_1, 1, "GBuffer Shadow Roughness Texture");
-}
-
-SDL_GPUTexture* CreatePostProcessTexture(u32 drawablew, u32 drawableh)
-{
-    return CreateTexture2D(drawablew, drawableh, SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
-                           SDL_GPU_TEXTUREUSAGE_SAMPLER | SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_WRITE,
-                           SDL_GPU_SAMPLECOUNT_1, 1, "Post Process Texture");
-}
-
-SDL_GPUTexture* CreateHBAOTexture(u32 drawablew, u32 drawableh)
-{
-    return CreateTexture2D(drawablew, drawableh, SDL_GPU_TEXTUREFORMAT_R8_UNORM,
-                           SDL_GPU_TEXTUREUSAGE_SAMPLER | SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_WRITE,
-                           SDL_GPU_SAMPLECOUNT_1, 1, "HBAO Texture");
-}
-
-SDL_GPUTexture* CreateHBAONormalTexture(u32 drawablew, u32 drawableh)
-{
-    return CreateTexture2D(drawablew, drawableh, SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
-                            SDL_GPU_TEXTUREUSAGE_SAMPLER | SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_WRITE,
-                            SDL_GPU_SAMPLECOUNT_1, 1, "HBAO Normal Texture");
-}
-
-SDL_GPUTexture* CreateMLAAEdgeMaskTexture(u32 drawablew, u32 drawableh)
-{
-    return CreateTexture2D(drawablew, drawableh, SDL_GPU_TEXTUREFORMAT_R32_UINT,
-                           SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_READ | SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_WRITE,
-                           SDL_GPU_SAMPLECOUNT_1, 1, "MLAA Edge Mask Texture");
-}
-
-SDL_GPUTexture* CreateMLAAEdgeCountTexture(u32 drawablew, u32 drawableh)
-{
-    return CreateTexture2D(drawablew, drawableh, SDL_GPU_TEXTUREFORMAT_R32G32_UINT,
-                           SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_READ | SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_WRITE,
-                           SDL_GPU_SAMPLECOUNT_1, 1, "MLAA Edge Count Texture");
-}
-
-SDL_GPUTexture* CreateMLAAOutputTexture(u32 drawablew, u32 drawableh)
-{
-    return CreateTexture2D(drawablew, drawableh, SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
-                           SDL_GPU_TEXTUREUSAGE_SAMPLER | SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_WRITE,
-                           SDL_GPU_SAMPLECOUNT_1, 1, "MLAA Output Texture");
-}
-
-SDL_GPUTexture* CreateShadowDepthTexture(u32 size)
-{
-    return CreateTexture2D(size, size, SDL_GPU_TEXTUREFORMAT_D32_FLOAT,
-                           SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET,
-                           SDL_GPU_SAMPLECOUNT_1, SHADOW_CASCADE_COUNT, "Shadow Depth Texture");
-}
-
-SDL_GPUTexture* CreateShadowColorTexture(u32 size, u32 layers)
-{
-    (void)layers;
-    return CreateTexture2D(size, size, SDL_GPU_TEXTUREFORMAT_R32_FLOAT,
-                           SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER,
-                           SDL_GPU_SAMPLECOUNT_1, SHADOW_CASCADE_COUNT, "Shadow Color Texture");
-}
-
-SDL_GPUTexture* CreatePointShadowDepthTexture(void)
-{
-    return CreateTexture2D(POINT_SHADOW_SIZE, POINT_SHADOW_SIZE,
-                           SDL_GPU_TEXTUREFORMAT_D32_FLOAT,
-                           SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET,
-                           SDL_GPU_SAMPLECOUNT_1, 1, "Point Shadow Depth Texture");
-}
-
-SDL_GPUTexture* CreatePointShadowColorTexture(void)
-{
-    return CreateTexture2DArray(POINT_SHADOW_SIZE, POINT_SHADOW_SIZE, POINT_SHADOW_LAYER_COUNT,
-                                SDL_GPU_TEXTUREFORMAT_R32_FLOAT,
-                                SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER,
-                                "Point Shadow Color Texture");
-}
-
-SDL_GPUTexture* CreateSpotShadowDepthTexture(void)
-{
-    return CreateTexture2D(SPOT_SHADOW_SIZE, SPOT_SHADOW_SIZE,
-                           SDL_GPU_TEXTUREFORMAT_D32_FLOAT,
-                           SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET,
-                           SDL_GPU_SAMPLECOUNT_1, 1, "Spot Shadow Depth Texture");
-}
-
-SDL_GPUTexture* CreateSpotShadowColorTexture(void)
-{
-    return CreateTexture2DArray(SPOT_SHADOW_SIZE, SPOT_SHADOW_SIZE, SPOT_SHADOW_MAX_LIGHTS,
-                                SDL_GPU_TEXTUREFORMAT_R32_FLOAT,
-                                SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER,
-                                "Spot Shadow Color Texture");
+        SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_READ | SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_WRITE,
+        SDL_GPU_SAMPLECOUNT_1, levels, "Hi-Z Texture");
 }
 
 Texture rImportTexture(const char* path, TexFlags flags, const char* label)
@@ -544,9 +395,9 @@ Texture rImportTexture(const char* path, TexFlags flags, const char* label)
     }
     
     (void)channels;
-    SDL_GPUTextureUsageFlags usage = SDL_GPU_TEXTUREUSAGE_SAMPLER;
-    if (flags & TexFlags_MipMap) usage |= SDL_GPU_TEXTUREUSAGE_COLOR_TARGET;
-    Texture texture = rCreateTexture(width, height, image, SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM, flags, usage, label); 
+    SDL_GPUTextureUsageFlags usage = TEX_SAMPLER;
+    if (flags & TexFlags_MipMap) usage |= TEX_COLOR_TARGET;
+    Texture texture = rCreateTexture(width, height, image, TEX_FMT_8UNORM4, flags, usage, label); 
     texture.type = 0;
     
     bool delBuff = (flags & TexFlags_DontDeleteCPUBuffer) == 0;
@@ -584,7 +435,7 @@ static Texture rCreateTextureEx(
         .height               = (u32)height,
         .layer_count_or_depth = (u32)layers,
         .num_levels           = mipLevels,
-        .sample_count         = SDL_GPU_SAMPLECOUNT_1,
+        .sample_count         = TEX_SMP_CNT1,
         .usage                = usage,
         .props                = SDL_CreateProperties()
     };
@@ -761,6 +612,43 @@ void rDeleteTexture(Texture texture)
 {
 
 }
+
+
+void GraphicsDestroy()
+{
+    WindowState* winstate = &g_WindowState;
+    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_depth);
+    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_hiz_depth);
+    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_color);
+    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_gbuffer_tangent);
+    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_gbuffer_albedo_metallic);
+    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_gbuffer_shadow_roughness);
+    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_post);
+    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_hiz);
+    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_hbao);
+    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_hbao_blur);
+    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_hbao_normal);
+    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_mlaa_edge_mask);
+    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_mlaa_edge_count);
+    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_mlaa_output);
+    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_shadow_depth);
+    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_shadow_color);
+    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_point_shadow_depth);
+    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_point_shadow_color);
+    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_spot_shadow_depth);
+    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_spot_shadow_color);
+    SDL_ReleaseGPUTexture(g_GPUDevice, g_RenderState.skyNoise3D);
+    SDL_ReleaseWindowFromGPUDevice(g_GPUDevice, g_SDLWindow);
+
+    SDL_DestroyGPUDevice(g_GPUDevice);
+    OSFreeAligned(gGFX.SkinnedVertexBuffer, sizeof(ASkinedVertex) * MAX_SKINNED_SOURCE_VERTEX);
+    OSFreeAligned(gGFX.SurfaceVertexBuffer, sizeof(AVertex) * MAX_SURFACE_VERTEX);
+    OSFreeAligned(gGFX.IndexBuffer        , sizeof(u32) * MAX_INDEX + 16);
+    gGFX.SkinnedVertexBuffer = NULL;
+    gGFX.SurfaceVertexBuffer = NULL;
+    gGFX.IndexBuffer = NULL;
+}
+
 
 
 #endif

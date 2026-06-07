@@ -31,6 +31,24 @@
 #define VFORMAT_UBYTE4 SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4
 #define VFORMAT_NBYTE4 SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4_NORM
 
+#define TEX_DEPTH_STENCIL  SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET
+#define TEX_COMP_READ      SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_READ
+#define TEX_COMP_WRITE     SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_WRITE
+
+#define TEX_COLOR_TARGET   SDL_GPU_TEXTUREUSAGE_COLOR_TARGET
+#define TEX_SAMPLER        SDL_GPU_TEXTUREUSAGE_SAMPLER
+#define TEX_SMP_CNT1       SDL_GPU_SAMPLECOUNT_1
+
+#define TEX_FMT_D32_FLT  SDL_GPU_TEXTUREFORMAT_D32_FLOAT
+#define TEX_FMT_D32_FLT2 SDL_GPU_TEXTUREFORMAT_R32G32_UINT
+#define TEX_FMT_R32_FLT  SDL_GPU_TEXTUREFORMAT_R32_FLOAT
+#define TEX_FMT_HALF4      SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT
+#define TEX_FMT_R32_UINT   SDL_GPU_TEXTUREFORMAT_R32_UINT
+#define TEX_FMT_8UNORM4    SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM
+#define TEX_FMT_8UNORM2    SDL_GPU_TEXTUREFORMAT_R8G8_UNORM
+#define TEX_FMT_8UNORM1    SDL_GPU_TEXTUREFORMAT_R8_UNORM
+
+
 #if defined(__cplusplus)
 extern "C" {
 #endif
@@ -288,6 +306,8 @@ static inline s32 GetRootNodeIdx(SceneBundle* bundle)
 
 void GraphicsInit(bool msaa);
 
+void CreateWindowBuffers();
+
 void GraphicsDestroy();
 
 Texture rImportTexture(const char* path, TexFlags flags, const char* label);
@@ -297,6 +317,20 @@ Texture rCreateTexture(int width, int height, void* data, SDL_GPUTextureFormat f
 
 Texture rCreateTexture2DArray(int width, int height, int layers, void* data, SDL_GPUTextureFormat format, 
                               TexFlags flags, SDL_GPUTextureUsageFlags usage, const char* label);
+
+SDL_GPUTexture* CreateSceneColorTexture(u32 drawablew, u32 drawableh, SDL_GPUSampleCount sampleCount);
+
+SDL_GPUTexture* CreateTexture2D(u32 width, u32 height,
+                                SDL_GPUTextureFormat format,
+                                SDL_GPUTextureUsageFlags usage,
+                                SDL_GPUSampleCount sampleCount,
+                                u32 mipLevels,
+                                const char* label);
+
+SDL_GPUTexture* CreateTexture2DArray(u32 width, u32 height, u32 layers,
+                                     SDL_GPUTextureFormat format,
+                                     SDL_GPUTextureUsageFlags usage,
+                                     const char* label);
 
 void rDeleteTexture(Texture texture);
 
@@ -316,45 +350,13 @@ SDL_GPUBuffer* CreateBuffer(const void* buffer, size_t bufferSize, SDL_GPUBuffer
 
 void UpdateGPUBuffer(SDL_GPUBuffer* buffer, const void* data, size_t bufferSize, size_t offset);
 
-SDL_GPUTexture* CreateDepthTexture(u32 drawablew, u32 drawableh);
-
 SDL_GPUTexture* CreateHiZDepthTexture(u32 drawablew, u32 drawableh);
+
+SDL_GPUTexture* CreateHBAOTexture(u32 hbaoWidth, u32 hbaoHeight);
 
 SDL_GPUTexture* CreateHiZTexture(u32 drawablew, u32 drawableh, u32* mipCount);
 
-SDL_GPUTexture* CreateSceneColorTexture(u32 drawablew, u32 drawableh, SDL_GPUSampleCount sampleCount);
-
-SDL_GPUTexture* CreateGBufferTangentTexture(u32 drawablew, u32 drawableh);
-
-SDL_GPUTexture* CreateGBufferAlbedoMetallicTexture(u32 drawablew, u32 drawableh);
-
-SDL_GPUTexture* CreateGBufferShadowRoughnessTexture(u32 drawablew, u32 drawableh);
-
-SDL_GPUTexture* CreatePostProcessTexture(u32 drawablew, u32 drawableh);
-
-SDL_GPUTexture* CreateHBAOTexture(u32 drawablew, u32 drawableh);
-
-SDL_GPUTexture* CreateHBAONormalTexture(u32 drawablew, u32 drawableh);
-
-SDL_GPUTexture* CreateMLAAEdgeMaskTexture(u32 drawablew, u32 drawableh);
-
-SDL_GPUTexture* CreateMLAAEdgeCountTexture(u32 drawablew, u32 drawableh);
-
-SDL_GPUTexture* CreateMLAAOutputTexture(u32 drawablew, u32 drawableh);
-
 SDL_GPUTexture* Create3DNoise3DTexture(u32 size);
-
-SDL_GPUTexture* CreateShadowDepthTexture(u32 size);
-
-SDL_GPUTexture* CreateShadowColorTexture(u32 size, u32 layers);
-
-SDL_GPUTexture* CreatePointShadowDepthTexture(void);
-
-SDL_GPUTexture* CreatePointShadowColorTexture(void);
-
-SDL_GPUTexture* CreateSpotShadowDepthTexture(void);
-
-SDL_GPUTexture* CreateSpotShadowColorTexture(void);
 
 #if defined(__cplusplus)
 }

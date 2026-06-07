@@ -596,8 +596,8 @@ static void CreatePipelineWithDesc(RenderSetBuffers* buffers, SDL_GPUGraphicsPip
     desc->vertex_shader     = pointShadowVertex; desc->fragment_shader = pointShadowFragment;
     buffers->pointShadowPipeline = SDL_CreateGPUGraphicsPipeline(g_GPUDevice, desc);
     CHECK_CREATE(buffers->depthPipeline, "Depth Pipeline") CHECK_CREATE(buffers->shadowPipeline, "Shadow Pipeline") CHECK_CREATE(buffers->pointShadowPipeline, "Point Shadow Pipeline")
-    SDL_ReleaseGPUShader(g_GPUDevice, vertexDepth); SDL_ReleaseGPUShader(g_GPUDevice, fragmentDepth);
-    SDL_ReleaseGPUShader(g_GPUDevice, vertexShadow); SDL_ReleaseGPUShader(g_GPUDevice, fragmentShadow);
+    SDL_ReleaseGPUShader(g_GPUDevice, vertexDepth);       SDL_ReleaseGPUShader(g_GPUDevice, fragmentDepth);
+    SDL_ReleaseGPUShader(g_GPUDevice, vertexShadow);      SDL_ReleaseGPUShader(g_GPUDevice, fragmentShadow);
     SDL_ReleaseGPUShader(g_GPUDevice, pointShadowVertex); SDL_ReleaseGPUShader(g_GPUDevice, pointShadowFragment);
 }
 
@@ -607,15 +607,15 @@ static void InitDepthOnlyPipelines(void)
     SDL_GPUShader* sur_ver  = PIPELINE_VERT_DEF(Shaders_SurfaceDepthOnlyVert_spv), .num_uniform_buffers = 1, .num_storage_buffers = 3 });
     SDL_GPUShader* ski_ver  = PIPELINE_VERT_DEF(Shaders_SkinnedDepthOnlyVert_spv), .num_uniform_buffers = 1, .num_storage_buffers = 4 });
     SDL_GPUShader* sur_frag = PIPELINE_FRAG_DEF(Shaders_SurfaceDepthOnlyFrag_spv), .num_uniform_buffers = 0, .num_samplers = 1, .num_storage_buffers = 2 });
-    SDL_GPUShader* ski_frag = PIPELINE_FRAG_DEF(Shaders_SkinnedDepthOnlyFrag_spv), .num_samplers        = 1, .num_storage_buffers = 2 });
-    SDL_GPUShader* sur_shadow_ver  = PIPELINE_VERT_DEF(Shaders_SurfaceShadowDepthOnlyVert_spv), .num_uniform_buffers = 1, .num_storage_buffers = 4 });
-    SDL_GPUShader* ski_shadow_ver  = PIPELINE_VERT_DEF(Shaders_SkinnedShadowDepthOnlyVert_spv), .num_uniform_buffers = 1, .num_storage_buffers = 5 });
-    SDL_GPUShader* sur_shadow_frag = PIPELINE_FRAG_DEF(Shaders_SurfaceShadowDepthOnlyFrag_spv) });
-    SDL_GPUShader* ski_shadow_frag = PIPELINE_FRAG_DEF(Shaders_SkinnedShadowDepthOnlyFrag_spv) });
+    SDL_GPUShader* ski_frag = PIPELINE_FRAG_DEF(Shaders_SkinnedDepthOnlyFrag_spv), .num_storage_buffers = 2 ,.num_samplers = 1 });
+    SDL_GPUShader* sur_shadow_ver        = PIPELINE_VERT_DEF(Shaders_SurfaceShadowDepthOnlyVert_spv), .num_uniform_buffers = 1, .num_storage_buffers = 4 });
+    SDL_GPUShader* ski_shadow_ver        = PIPELINE_VERT_DEF(Shaders_SkinnedShadowDepthOnlyVert_spv), .num_uniform_buffers = 1, .num_storage_buffers = 5 });
+    SDL_GPUShader* sur_shadow_frag       = PIPELINE_FRAG_DEF(Shaders_SurfaceShadowDepthOnlyFrag_spv) });
+    SDL_GPUShader* ski_shadow_frag       = PIPELINE_FRAG_DEF(Shaders_SkinnedShadowDepthOnlyFrag_spv) });
     SDL_GPUShader* sur_point_shadow_ver  = PIPELINE_VERT_DEF(Shaders_SurfacePointShadowDepthOnlyVert_spv), .num_uniform_buffers = 1, .num_storage_buffers = 4 });
     SDL_GPUShader* ski_point_shadow_ver  = PIPELINE_VERT_DEF(Shaders_SkinnedPointShadowDepthOnlyVert_spv), .num_uniform_buffers = 1, .num_storage_buffers = 5 });
     SDL_GPUShader* sur_point_shadow_frag = PIPELINE_FRAG_DEF(Shaders_SurfacePointShadowDepthOnlyFrag_spv) });
-    SDL_GPUShader* ski_point_shadow_frag =  PIPELINE_FRAG_DEF(Shaders_SkinnedPointShadowDepthOnlyFrag_spv) });
+    SDL_GPUShader* ski_point_shadow_frag = PIPELINE_FRAG_DEF(Shaders_SkinnedPointShadowDepthOnlyFrag_spv) });
     CHECK_CREATE(sur_ver, "Surface Depth Vertex Shader") CHECK_CREATE(sur_frag, "Surface Depth Fragment Shader") CHECK_CREATE(ski_ver, "Skinned Depth Vertex Shader") CHECK_CREATE(ski_frag, "Skinned Depth Fragment Shader") CHECK_CREATE(sur_shadow_ver, "Surface Shadow Vertex Shader") CHECK_CREATE(sur_shadow_frag, "Surface Shadow Fragment Shader") CHECK_CREATE(ski_shadow_ver, "Skinned Shadow Vertex Shader") CHECK_CREATE(ski_shadow_frag, "Skinned Shadow Fragment Shader") CHECK_CREATE(sur_point_shadow_ver, "Surface Point Shadow Vertex Shader")
     CHECK_CREATE(sur_point_shadow_frag , "Surface Point Shadow Fragment Shader") CHECK_CREATE(ski_point_shadow_ver, "Skinned Point Shadow Vertex Shader") CHECK_CREATE(ski_point_shadow_frag, "Skinned Point Shadow Fragment Shader")
 
