@@ -7,12 +7,25 @@
 #include "Include/Camera.h"
 #include "Include/RenderSet.h"
 
-
 typedef struct ShadowCascadeData_
 {
     mat4x4 lightViewProj[SHADOW_CASCADE_COUNT];
     float  splitDistances[SHADOW_CASCADE_COUNT];
 } ShadowCascadeData;
+
+typedef struct PointShadowData_
+{
+    mat4x4 lightViewProj[POINT_SHADOW_LAYER_COUNT];
+    u32 lightIndices[POINT_SHADOW_MAX_LIGHTS];
+    u32 count;
+} PointShadowData;
+
+typedef struct SpotShadowData_
+{
+    mat4x4 lightViewProj[SPOT_SHADOW_MAX_LIGHTS];
+    u32 lightIndices[SPOT_SHADOW_MAX_LIGHTS];
+    u32 count;
+} SpotShadowData;
 
 typedef struct DepthPassContext_
 {
@@ -48,6 +61,9 @@ extern Camera         g_Camera;
 extern Graphics       gGFX;
 extern RenderSet      skinnedSet;
 extern RenderSet      surfaceSet;
+extern LightGPU       g_RenderLights[MAX_LIGHT_COUNT];
+extern PointShadowData pointShadows;
+extern SpotShadowData spotShadows;
 
 extern SDL_GPUComputePipeline* g_AnimComputePipeline;
 extern SDL_GPUComputePipeline* g_AnimVerticesPipeline;
@@ -95,5 +111,9 @@ void RenderDepth(SDL_GPUCommandBuffer* cmd, const DepthPassContext* ctx);
 void RenderScene(SDL_GPUCommandBuffer* cmd, const ScenePassContext* ctx);
 void RenderDeferredLights(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget, mat4x4 viewProj, u32 width, u32 height);
 void RenderLines(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget, SDL_GPUDepthStencilTargetInfo* depthTarget, mat4x4 viewProj);
+
+SDL_GPUDepthStencilTargetInfo MakeDepthTarget(SDL_GPUTexture* texture, SDL_GPULoadOp loadOp, bool cycle);
+void UploadShadowCascadeBuffer(const ShadowCascadeData* cascades);
+void CullScene(SDL_GPUCommandBuffer* cmd, FrustumPlanes planes, mat4x4 viewProj, bool enableHiZ, bool enableSurfaceLOD, u32 forcedLOD);
 
 #endif

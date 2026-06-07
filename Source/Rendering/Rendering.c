@@ -4,9 +4,31 @@
 #include "Include/Platform.h"
 #include "Include/Animation.h"
 
+#define RESIZE_RELEASE_DELAY 4u
+
+typedef struct FrameTextureSet_
+{
+    SDL_GPUTexture* tex_depth;
+    SDL_GPUTexture* tex_hiz_depth;
+    SDL_GPUTexture* tex_color;
+    SDL_GPUTexture* tex_gbuffer_tangent;
+    SDL_GPUTexture* tex_gbuffer_albedo_metallic;
+    SDL_GPUTexture* tex_gbuffer_shadow_roughness;
+    SDL_GPUTexture* tex_post;
+    SDL_GPUTexture* tex_hiz;
+    SDL_GPUTexture* tex_hbao;
+    SDL_GPUTexture* tex_hbao_blur;
+    SDL_GPUTexture* tex_hbao_normal;
+    SDL_GPUTexture* tex_mlaa_edge_mask;
+    SDL_GPUTexture* tex_mlaa_edge_count;
+    SDL_GPUTexture* tex_mlaa_output;
+    u64 releaseFrame;
+} FrameTextureSet;
+
 WindowState    g_WindowState;
 RenderState    g_RenderState;
 SDL_GPUDevice* g_GPUDevice = NULL;
+LightGPU g_RenderLights[MAX_LIGHT_COUNT];
 
 RenderSettings g_RenderSettings = {
     .enableOcclusion             = true,
@@ -38,53 +60,15 @@ RenderSettings g_RenderSettings = {
     .maxVisibleSpotShadows       = 8.0f
 };
 
-#define RESIZE_RELEASE_DELAY 4u
-
-typedef struct FrameTextureSet_
-{
-    SDL_GPUTexture* tex_depth;
-    SDL_GPUTexture* tex_hiz_depth;
-    SDL_GPUTexture* tex_color;
-    SDL_GPUTexture* tex_gbuffer_tangent;
-    SDL_GPUTexture* tex_gbuffer_albedo_metallic;
-    SDL_GPUTexture* tex_gbuffer_shadow_roughness;
-    SDL_GPUTexture* tex_post;
-    SDL_GPUTexture* tex_hiz;
-    SDL_GPUTexture* tex_hbao;
-    SDL_GPUTexture* tex_hbao_blur;
-    SDL_GPUTexture* tex_hbao_normal;
-    SDL_GPUTexture* tex_mlaa_edge_mask;
-    SDL_GPUTexture* tex_mlaa_edge_count;
-    SDL_GPUTexture* tex_mlaa_output;
-    u64 releaseFrame;
-} FrameTextureSet;
 
 static FrameTextureSet g_ResizeReleaseQueue[RESIZE_RELEASE_DELAY];
 static u64 g_RenderFrameIndex;
-static LightGPU g_RenderLights[MAX_LIGHT_COUNT];
+
 static RenderLightDebugInfo g_LightDebugInfo;
 
-typedef struct PointShadowData_
-{
-    mat4x4 lightViewProj[POINT_SHADOW_LAYER_COUNT];
-    u32 lightIndices[POINT_SHADOW_MAX_LIGHTS];
-    u32 count;
-} PointShadowData;
-
-typedef struct SpotShadowData_
-{
-    mat4x4 lightViewProj[SPOT_SHADOW_MAX_LIGHTS];
-    u32 lightIndices[SPOT_SHADOW_MAX_LIGHTS];
-    u32 count;
-} SpotShadowData;
-
-typedef struct ShadowCandidate_
-{
-    u32 lightIndex;
-    f32 distanceSq;
-} ShadowCandidate;
-
 extern void UIRenderCallback(void); // Editor.c
+
+extern ShadowCascadeData CascadedShadowmaps(SDL_GPUCommandBuffer* cmd);
 
 void RendererSetLights(const LightGPU* lights, u32 count)
 {
@@ -146,12 +130,6 @@ void InitBuffers(void)
     if (gGFX.NumSurfaceVertices > 0) UpdateGPUBuffer(g_RenderState.surfaceVertexBuffer, gGFX.SurfaceVertexBuffer, gGFX.NumSurfaceVertices * sizeof(AVertex), 0);
     if (gGFX.NumIndices > 0) UpdateGPUBuffer(g_RenderState.indexBuffer, gGFX.IndexBuffer, gGFX.NumIndices * sizeof(u32), 0);
     g_RenderState.skinnedAnimatedVertices = CreateBuffer(NULL, animatedVertexSize, BReadRasterBit | BWriteComputeBit, "CPAnimatedVertices");
-    g_RenderState.shadowCascadeBuffer = CreateBuffer(NULL, sizeof(mat4x4) * SHADOW_CASCADE_COUNT + sizeof(float) * 4,
-                                                      BReadRasterBit | BReadCompute | BWriteComputeBit, "CPShadowCascadeBuffer");
-    g_RenderState.pointShadowMatrixBuffer = CreateBuffer(NULL, sizeof(mat4x4) * POINT_SHADOW_LAYER_COUNT,
-                                                         BReadRasterBit | BReadCompute | BWriteComputeBit, "CPPointShadowMatrixBuffer");
-    g_RenderState.spotShadowMatrixBuffer = CreateBuffer(NULL, sizeof(mat4x4) * SPOT_SHADOW_MAX_LIGHTS,
-                                                        BReadRasterBit | BReadCompute | BWriteComputeBit, "CPSpotShadowMatrixBuffer");
     g_RenderState.lineBuffer = CreateBuffer(NULL, sizeof(ALineVertex) * MAX_LINE_COUNT, BVertexBit | BWriteComputeBit, "CPLineVertexBuffer");
     g_RenderState.lineDrawArgsBuffer = CreateBuffer(NULL, sizeof(u32) * 8, BIndirectBit | BWriteComputeBit, "CPLinedrawArgsBuffer");
     g_RenderState.lightBuffer = CreateBuffer(NULL, sizeof(LightGPU) * MAX_LIGHT_COUNT, BReadRasterBit | BReadCompute, "CPLightBuffer");
@@ -308,7 +286,7 @@ static void MakeGBufferTargets(WindowState* winstate, SDL_GPUColorTargetInfo tar
     targets[2].clear_color.g = 1.0f;
 }
 
-static SDL_GPUDepthStencilTargetInfo MakeDepthTarget(SDL_GPUTexture* texture, SDL_GPULoadOp loadOp, bool cycle)
+SDL_GPUDepthStencilTargetInfo MakeDepthTarget(SDL_GPUTexture* texture, SDL_GPULoadOp loadOp, bool cycle)
 {
     SDL_GPUDepthStencilTargetInfo target;
     SDL_zero(target);
@@ -319,19 +297,6 @@ static SDL_GPUDepthStencilTargetInfo MakeDepthTarget(SDL_GPUTexture* texture, SD
     target.stencil_store_op = SDL_GPU_STOREOP_DONT_CARE;
     target.texture          = texture;
     target.cycle            = cycle;
-    return target;
-}
-
-static SDL_GPUDepthStencilTargetInfo MakeShadowDepthTarget(SDL_GPUTexture* texture, u32 layer)
-{
-    SDL_GPUDepthStencilTargetInfo target = MakeDepthTarget(texture, SDL_GPU_LOADOP_CLEAR, false);
-    target.mip_level = layer;
-    return target;
-}
-
-static SDL_GPUDepthStencilTargetInfo MakeLocalShadowDepthTarget(SDL_GPUTexture* texture)
-{
-    SDL_GPUDepthStencilTargetInfo target = MakeDepthTarget(texture, SDL_GPU_LOADOP_CLEAR, false);
     return target;
 }
 
@@ -347,174 +312,13 @@ static SDL_GPUColorTargetInfo MakeHiZDepthTarget(WindowState* winstate)
     return target;
 }
 
-static SDL_GPUColorTargetInfo MakeShadowColorTarget(WindowState* winstate, u32 layer)
-{
-    SDL_GPUColorTargetInfo target;
-    SDL_zero(target);
-    target.load_op  = SDL_GPU_LOADOP_CLEAR;
-    target.store_op = SDL_GPU_STOREOP_STORE;
-    target.clear_color.r = 1.0f;
-    target.texture = winstate->tex_shadow_color;
-    target.mip_level = layer;
-    target.cycle = false;
-    return target;
-}
-
-static SDL_GPUColorTargetInfo MakeLocalShadowColorTarget(SDL_GPUTexture* texture, u32 layer)
-{
-    SDL_GPUColorTargetInfo target;
-    SDL_zero(target);
-    target.load_op  = SDL_GPU_LOADOP_CLEAR;
-    target.store_op = SDL_GPU_STOREOP_STORE;
-    target.clear_color.r = 1.0f;
-    target.texture = texture;
-    target.layer_or_depth_plane = layer;
-    target.cycle = false;
-    return target;
-}
-
-static f32 LightCameraDistanceSq(const LightGPU* light)
-{
-    f32 dx = light->positionRadius[0] - g_Camera.position.x;
-    f32 dy = light->positionRadius[1] - g_Camera.position.y;
-    f32 dz = light->positionRadius[2] - g_Camera.position.z;
-    return dx * dx + dy * dy + dz * dz;
-}
-
-static void AssignNearestShadowSlots(LightType type, u32 maxSlots)
-{
-    ShadowCandidate candidates[SPOT_SHADOW_MAX_LIGHTS > POINT_SHADOW_MAX_LIGHTS ? SPOT_SHADOW_MAX_LIGHTS : POINT_SHADOW_MAX_LIGHTS];
-    u32 count = 0u;
-    maxSlots = Minu32(maxSlots, (u32)SDL_arraysize(candidates));
-
-    for (u32 lightIndex = 0; lightIndex < g_RenderState.numLights; lightIndex++)
-    {
-        LightGPU* light = &g_RenderLights[lightIndex];
-        if (light->type != type || (light->flags & LIGHT_FLAG_SHADOWED) == 0u)
-            continue;
-
-        f32 distanceSq = LightCameraDistanceSq(light);
-        u32 insert = count;
-        while (insert > 0u && distanceSq < candidates[insert - 1u].distanceSq)
-            insert--;
-
-        if (insert >= maxSlots)
-            continue;
-
-        u32 newCount = Minu32(count + 1u, maxSlots);
-        for (u32 i = newCount - 1u; i > insert; i--)
-        {
-            candidates[i] = candidates[i - 1u];
-        }
-        candidates[insert] = (ShadowCandidate){ lightIndex, distanceSq };
-        count = newCount;
-    }
-
-    for (u32 i = 0; i < count; i++)
-    {
-        g_RenderLights[candidates[i].lightIndex].shadowIndex = i;
-    }
-}
-
-static void AssignVisibleShadowSlots(void)
-{
-    for (u32 i = 0; i < g_RenderState.numLights; i++)
-        g_RenderLights[i].shadowIndex = LIGHT_SHADOW_INDEX_INVALID;
-
-    u32 maxPointShadows = Minu32((u32)(g_RenderSettings.maxVisiblePointShadows + 0.5f), POINT_SHADOW_MAX_LIGHTS);
-    u32 maxSpotShadows = Minu32((u32)(g_RenderSettings.maxVisibleSpotShadows + 0.5f), SPOT_SHADOW_MAX_LIGHTS);
-    AssignNearestShadowSlots(LightType_Point, maxPointShadows);
-    AssignNearestShadowSlots(LightType_Spot, maxSpotShadows);
-}
-
-static void BuildPointShadowData(PointShadowData* data)
-{
-    static const f32 faceDirs[POINT_SHADOW_FACE_COUNT][4] = {
-        {  1.0f,  0.0f,  0.0f, 0.0f }, { -1.0f,  0.0f,  0.0f, 0.0f },
-        {  0.0f,  1.0f,  0.0f, 0.0f }, {  0.0f, -1.0f,  0.0f, 0.0f },
-        {  0.0f,  0.0f,  1.0f, 0.0f }, {  0.0f,  0.0f, -1.0f, 0.0f }
-    };
-    static const f32 faceUps[POINT_SHADOW_FACE_COUNT][4] = {
-        { 0.0f, -1.0f,  0.0f, 0.0f }, { 0.0f, -1.0f,  0.0f, 0.0f },
-        { 0.0f,  0.0f,  1.0f, 0.0f }, { 0.0f,  0.0f, -1.0f, 0.0f },
-        { 0.0f, -1.0f,  0.0f, 0.0f }, { 0.0f, -1.0f,  0.0f, 0.0f }
-    };
-
-    SDL_zero(*data);
-    for (u32 lightIndex = 0; lightIndex < g_RenderState.numLights; lightIndex++)
-    {
-        LightGPU* light = &g_RenderLights[lightIndex];
-        if (light->type != LightType_Point || (light->flags & LIGHT_FLAG_SHADOWED) == 0u || light->shadowIndex >= POINT_SHADOW_MAX_LIGHTS)
-            continue;
-
-        u32 shadowIndex = light->shadowIndex;
-        data->lightIndices[data->count++] = lightIndex;
-        float radius = Maxf32(light->positionRadius[3], POINT_SHADOW_NEAR_PLANE + 0.1f);
-        mat4x4 proj = PerspectiveFovRH(90.0f * MATH_DegToRad, 1.0f, 1.0f, POINT_SHADOW_NEAR_PLANE, radius);
-        v128f eye = VecSetR(light->positionRadius[0], light->positionRadius[1], light->positionRadius[2], 1.0f);
-
-        for (u32 face = 0; face < POINT_SHADOW_FACE_COUNT; face++)
-        {
-            v128f dir = VecLoad(faceDirs[face]);
-            v128f up = VecLoad(faceUps[face]);
-            mat4x4 view = M44LookAtRHVec(eye, dir, up);
-            u32 layer = shadowIndex * POINT_SHADOW_FACE_COUNT + face;
-            data->lightViewProj[layer] = M44Multiply(view, proj);
-        }
-    }
-}
-
-static void UploadPointShadowMatrixBuffer(const PointShadowData* data)
-{
-    if (!g_RenderState.pointShadowMatrixBuffer || data->count == 0u) return;
-    u32 layerCount = data->count * POINT_SHADOW_FACE_COUNT;
-    mat4x4 gpuMatrices[POINT_SHADOW_LAYER_COUNT];
-    for (u32 layer = 0; layer < layerCount; layer++)
-        gpuMatrices[layer] = M44Transpose(data->lightViewProj[layer]);
-    UpdateGPUBuffer(g_RenderState.pointShadowMatrixBuffer, gpuMatrices, sizeof(mat4x4) * layerCount, 0);
-}
-
-static void BuildSpotShadowData(SpotShadowData* data)
-{
-    SDL_zero(*data);
-    for (u32 lightIndex = 0; lightIndex < g_RenderState.numLights; lightIndex++)
-    {
-        LightGPU* light = &g_RenderLights[lightIndex];
-        if (light->type != LightType_Spot || (light->flags & LIGHT_FLAG_SHADOWED) == 0u || light->shadowIndex >= SPOT_SHADOW_MAX_LIGHTS)
-            continue;
-
-        u32 shadowIndex = light->shadowIndex;
-        data->lightIndices[data->count++] = lightIndex;
-        float radius = Maxf32(light->positionRadius[3], SPOT_SHADOW_NEAR_PLANE + 0.1f);
-        float coneCos = Clampf32(light->directionCone[3], -0.95f, 0.995f);
-        float fov = 2.0f * ACos(coneCos);
-        mat4x4 proj = PerspectiveFovRH(fov, 1.0f, 1.0f, SPOT_SHADOW_NEAR_PLANE, radius);
-        v128f eye = VecSetR(light->positionRadius[0], light->positionRadius[1], light->positionRadius[2], 1.0f);
-        float3 spotDir = { light->directionCone[0], light->directionCone[1], light->directionCone[2] };
-        spotDir = F3NormSafe(spotDir);
-        v128f dir = VecSetR(spotDir.x, spotDir.y, spotDir.z, 0.0f);
-        v128f up = VecSetR(0.0f, 1.0f, 0.0f, 0.0f);
-        if (Absf32(light->directionCone[1]) > 0.999f) up = VecSetR(0.0f, 0.0f, 1.0f, 0.0f);
-        data->lightViewProj[shadowIndex] = M44Multiply(M44LookAtRHVec(eye, dir, up), proj);
-    }
-}
-
-static void UploadSpotShadowMatrixBuffer(const SpotShadowData* data)
-{
-    if (!g_RenderState.spotShadowMatrixBuffer || data->count == 0u) return;
-    mat4x4 gpuMatrices[SPOT_SHADOW_MAX_LIGHTS];
-    for (u32 i = 0; i < data->count; i++)
-        gpuMatrices[i] = M44Transpose(data->lightViewProj[i]);
-    UpdateGPUBuffer(g_RenderState.spotShadowMatrixBuffer, gpuMatrices, sizeof(mat4x4) * data->count, 0);
-}
-
 static void UploadRenderSetEntities(RenderSet* set, RenderSetBuffers* buffers)
 {
     if (set->numEntities == 0) return;
     UpdateGPUBuffer(buffers->entity, set->entities, set->numEntities * sizeof(Entity), 0ull);
 }
 
-static void CullScene(SDL_GPUCommandBuffer* cmd, FrustumPlanes planes, mat4x4 viewProj, bool enableHiZ, bool enableSurfaceLOD, u32 forcedLOD)
+void CullScene(SDL_GPUCommandBuffer* cmd, FrustumPlanes planes, mat4x4 viewProj, bool enableHiZ, bool enableSurfaceLOD, u32 forcedLOD)
 {
     DispatchCullDrawArgsCompute(cmd, &skinnedSet, &g_RenderState.skinnedBuffers, planes, viewProj, enableHiZ, false, false, true, forcedLOD);
     DispatchCullDrawArgsCompute(cmd, &surfaceSet, &g_RenderState.surfaceBuffers, planes, viewProj, enableHiZ, false, false, enableSurfaceLOD, forcedLOD);
@@ -560,138 +364,6 @@ static void AnimateSkinned(SDL_GPUCommandBuffer* cmd)
 {
     DispatchAnimationCompute(cmd, &skinnedSet);
     DispatchAnimateVerticesCompute(cmd, &skinnedSet);
-}
-
-static void UploadShadowCascadeBuffer(const ShadowCascadeData* cascades)
-{
-    struct {
-        mat4x4 lightViewProj[SHADOW_CASCADE_COUNT];
-        float  splitDistances[4];
-    } gpuCascades;
-
-    for (u32 cascade = 0; cascade < SHADOW_CASCADE_COUNT; cascade++)
-    {
-        gpuCascades.lightViewProj[cascade] = M44Transpose(cascades->lightViewProj[cascade]);
-        gpuCascades.splitDistances[cascade] = cascades->splitDistances[cascade];
-    }
-    gpuCascades.splitDistances[3] = cascades->splitDistances[SHADOW_CASCADE_COUNT - 1u];
-
-    UpdateGPUBuffer(g_RenderState.shadowCascadeBuffer, &gpuCascades, sizeof(gpuCascades), 0);
-}
-
-static ShadowCascadeData CascadedShadowmaps(SDL_GPUCommandBuffer* cmd)
-{
-    static ShadowCascadeData cachedShadowCascades;
-    static u32 shadowFrameIndex = 0;
-    static bool shadowCacheValid = false;
-    static const u8 cascadeCadance[] = { 0x5D, 0x22, 0x44 }; // 01011101, 00100010, 01000100
-    ShadowCascadeData shadowCascades = GetShadowCascades();
-    bool updateCascades[SHADOW_CASCADE_COUNT];
-    u32 shadowFrame = (shadowFrameIndex++) & 7;
-    u8 frameBit = (1u << shadowFrame);
-
-    for (u32 cascade = 0; cascade < SHADOW_CASCADE_COUNT; cascade++)
-    {
-        bool updateCascade = !shadowCacheValid || ((cascadeCadance[cascade] & frameBit) != 0);
-        updateCascades[cascade] = updateCascade;
-        if (!updateCascade) continue;
-
-        cachedShadowCascades.lightViewProj[cascade] = shadowCascades.lightViewProj[cascade];
-        cachedShadowCascades.splitDistances[cascade] = shadowCascades.splitDistances[cascade];
-    }
-
-    UploadShadowCascadeBuffer(&cachedShadowCascades);
-
-    for (u32 cascade = 0; cascade < SHADOW_CASCADE_COUNT; cascade++)
-    {
-        if (!updateCascades[cascade]) continue;
-
-        mat4x4 shadowViewProj = cachedShadowCascades.lightViewProj[cascade];
-        FrustumPlanes shadowFrustum = CreateFrustumPlanes(shadowViewProj);
-        // planes.planes[4] = planes.planes[5] = VecZero(); // disable near, far plane frustum check
-        CullScene(cmd, shadowFrustum, shadowViewProj, false, false, 1u);
-
-        WindowState* winstate = &g_WindowState;
-        SDL_GPUColorTargetInfo shadow_color_target = MakeShadowColorTarget(winstate, cascade);
-        SDL_GPUDepthStencilTargetInfo shadow_depth_target = MakeShadowDepthTarget(winstate->tex_shadow_depth, cascade);
-        RenderDepth(cmd, &(DepthPassContext){
-            .colorTarget       = &shadow_color_target,
-            .depthTarget       = &shadow_depth_target,
-            .skinnedPipeline   = g_RenderState.skinnedShadowPipeline,
-            .surfacePipeline   = g_RenderState.surfaceShadowPipeline,
-            .viewProj          = shadowViewProj,
-            .cascadeIndex      = cascade,
-            .useShadowCascades = true,
-            .alphaClip         = false,
-            .enableLOD         = false
-        });
-    }
-    shadowCacheValid = true;
-    return cachedShadowCascades;
-}
-
-static void PointLightShadowMaps(SDL_GPUCommandBuffer* cmd, const PointShadowData* pointShadows)
-{
-    WindowState* winstate = &g_WindowState;
-    if (pointShadows->count == 0u || !winstate->tex_point_shadow_depth || !winstate->tex_point_shadow_color)
-        return;
-
-    for (u32 shadow = 0; shadow < pointShadows->count; shadow++)
-    {
-        LightGPU* light = &g_RenderLights[pointShadows->lightIndices[shadow]];
-        for (u32 face = 0; face < POINT_SHADOW_FACE_COUNT; face++)
-        {
-            u32 layer = light->shadowIndex * POINT_SHADOW_FACE_COUNT + face;
-            mat4x4 shadowViewProj = pointShadows->lightViewProj[layer];
-            CullScene(cmd, CreateFrustumPlanes(shadowViewProj), shadowViewProj, false, false, 1u);
-
-            SDL_GPUColorTargetInfo shadow_color_target = MakeLocalShadowColorTarget(winstate->tex_point_shadow_color, layer);
-            SDL_GPUDepthStencilTargetInfo shadow_depth_target = MakeLocalShadowDepthTarget(winstate->tex_point_shadow_depth);
-            RenderDepth(cmd, &(DepthPassContext){
-                .colorTarget          = &shadow_color_target,
-                .depthTarget          = &shadow_depth_target,
-                .skinnedPipeline      = g_RenderState.skinnedPointShadowPipeline,
-                .surfacePipeline      = g_RenderState.surfacePointShadowPipeline,
-                .viewProj             = shadowViewProj,
-                .cascadeIndex         = layer,
-                .useShadowCascades    = false,
-                .usePointShadowSides  = true,
-                .alphaClip            = false,
-                .enableLOD            = false
-            });
-        }
-    }
-}
-
-static void SpotLightShadowMaps(SDL_GPUCommandBuffer* cmd, const SpotShadowData* spotShadows)
-{
-    WindowState* winstate = &g_WindowState;
-    if (spotShadows->count == 0u || !winstate->tex_spot_shadow_depth || !winstate->tex_spot_shadow_color)
-        return;
-
-    for (u32 shadow = 0; shadow < spotShadows->count; shadow++)
-    {
-        LightGPU* light = &g_RenderLights[spotShadows->lightIndices[shadow]];
-        u32 layer = light->shadowIndex;
-        mat4x4 shadowViewProj = spotShadows->lightViewProj[layer];
-        CullScene(cmd, CreateFrustumPlanes(shadowViewProj), shadowViewProj, false, false, 1u);
-
-        SDL_GPUColorTargetInfo shadow_color_target = MakeLocalShadowColorTarget(winstate->tex_spot_shadow_color, layer);
-        SDL_GPUDepthStencilTargetInfo shadow_depth_target = MakeLocalShadowDepthTarget(winstate->tex_spot_shadow_depth);
-        RenderDepth(cmd, &(DepthPassContext){
-            .colorTarget          = &shadow_color_target,
-            .depthTarget          = &shadow_depth_target,
-            .skinnedPipeline      = g_RenderState.skinnedPointShadowPipeline,
-            .surfacePipeline      = g_RenderState.surfacePointShadowPipeline,
-            .viewProj             = shadowViewProj,
-            .cascadeIndex         = layer,
-            .useShadowCascades    = false,
-            .usePointShadowSides  = false,
-            .useSpotShadowSides   = true,
-            .alphaClip            = false,
-            .enableLOD            = false
-        });
-    }
 }
 
 void Render(void)
@@ -745,32 +417,14 @@ void Render(void)
     mat4x4 hiZViewProj = enableHiZ ? winstate->hiz_view_proj : viewProj;
 
     FrustumPlanes cameraFrustum = CreateFrustumPlanes(viewProj);
-    PointShadowData pointShadows;
-    SpotShadowData spotShadows;
-    SDL_zero(pointShadows);
-    SDL_zero(spotShadows);
-    if (g_RenderSettings.enableLocalLights)
-    {
-        AssignVisibleShadowSlots();
-        BuildPointShadowData(&pointShadows);
-        BuildSpotShadowData(&spotShadows);
-        UploadPointShadowMatrixBuffer(&pointShadows);
-        UploadSpotShadowMatrixBuffer(&spotShadows);
-    }
-    else
-    {
-        for (u32 i = 0; i < g_RenderState.numLights; i++)
-            g_RenderLights[i].shadowIndex = LIGHT_SHADOW_INDEX_INVALID;
-    }
-
+    UpdateLightShadows();
     UploadLightBuffer();
     GatherSkinnedAnimationVisibility(cmd, cameraFrustum, hiZViewProj, enableHiZ, &pointShadows, &spotShadows);
     AnimateSkinned(cmd);
 
     if (g_RenderSettings.enableLocalLights)
     {
-        PointLightShadowMaps(cmd, &pointShadows);
-        SpotLightShadowMaps(cmd, &spotShadows);
+        RenderShadows(cmd);
     }
 
     ShadowCascadeData shadowCascades = CascadedShadowmaps(cmd);
@@ -863,8 +517,6 @@ static void DestroyRenderSetBuffers(RenderSetBuffers* buffers)
 void DestroyPipeline(void)
 {
     ReleaseQueuedResizeTextures(true);
-    DestroyRenderSetBuffers(&g_RenderState.skinnedBuffers);
-    DestroyRenderSetBuffers(&g_RenderState.surfaceBuffers);
     if (g_RenderState.skinnedVertexBuffer)     SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.skinnedVertexBuffer);
     if (g_RenderState.skinnedAnimatedVertices) SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.skinnedAnimatedVertices);
     if (g_RenderState.surfaceVertexBuffer)     SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.surfaceVertexBuffer);
@@ -878,8 +530,6 @@ void DestroyPipeline(void)
     if (g_RenderState.lightDrawArgsBuffer)     SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lightDrawArgsBuffer);
     if (g_RenderState.uiShapeBuffer)           SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.uiShapeBuffer);
     if (g_RenderState.uiShapeDrawArgsBuffer)   SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.uiShapeDrawArgsBuffer);
-    UIDestroy();
-    SlugDestroyDemo();
     if (g_RenderState.textureDescriptorBuffer) SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.textureDescriptorBuffer);
     if (g_RenderState.materialBuffer)          SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.materialBuffer);
     if (g_RenderState.sampler)                 SDL_ReleaseGPUSampler(g_GPUDevice, g_RenderState.sampler);
@@ -888,8 +538,11 @@ void DestroyPipeline(void)
     if (g_RenderState.albedoPages.handle)      SDL_ReleaseGPUTexture(g_GPUDevice, g_RenderState.albedoPages.handle);
     if (g_RenderState.normalPages.handle)      SDL_ReleaseGPUTexture(g_GPUDevice, g_RenderState.normalPages.handle);
     if (g_RenderState.metallicRoughnessPages.handle) SDL_ReleaseGPUTexture(g_GPUDevice, g_RenderState.metallicRoughnessPages.handle);
+    DestroyRenderSetBuffers(&g_RenderState.skinnedBuffers);
+    DestroyRenderSetBuffers(&g_RenderState.surfaceBuffers);
+    UIDestroy();
+    SlugDestroyDemo();
     DestroyRenderPipelines();
-
     SDL_zero(g_RenderState);
     g_GPUDevice = NULL;
 }

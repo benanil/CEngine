@@ -56,7 +56,9 @@ void InitBuffers();
 void RendererInit();
 
 void RendererSetLights(const LightGPU* lights, u32 count);
+
 u32 RendererGetLightCount(void);
+
 RenderLightDebugInfo RendererGetLightDebugInfo(void);
 
 #endif
