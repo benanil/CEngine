@@ -497,7 +497,7 @@ static void GrowPageLayers(TextureSystem* ts, u32 textureClass)
     if (cls->openPages <= cls->layerCount) return;
 
     u32 newCount = cls->layerCount;
-    while (newCount < cls->openPages) newCount <<= 1;
+    while (newCount < cls->openPages) newCount += 1;
     if (newCount > TEXTURE_PAGE_LAYERS) newCount = TEXTURE_PAGE_LAYERS;
 
     Texture newTexture = CreatePageTexture(ts, textureClass, newCount);
