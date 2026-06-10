@@ -170,6 +170,11 @@ bool UITreeNode(Clay_ElementId id, Clay_String label, u32 depth, u32 flags, bool
 // out: true when clicked, flip your open flag with it
 bool UICollapsingHeader(Clay_ElementId id, Clay_String label, bool open);
 
+// labeled selection box that opens a floating option list under it, only one
+// dropdown is open at a time. options must outlive the frame.
+// out: true when the selection changed
+bool UIDropdown(Clay_ElementId id, Clay_String label, const char** options, u32 numOptions, u32* selectedIndex);
+
 u64 UIAutoID(const void* ptr);
 
 static inline Clay_Color UIColorToClay(u32 color)

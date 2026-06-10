@@ -8,13 +8,13 @@
 
 #define SHADOW_MAP_SIZE            (1024u * 3u)
 #define SHADOW_CASCADE_COUNT       3u
-#define SHADOW_MAX_DISTANCE        200.0f
+#define SHADOW_MAX_DISTANCE        160.0f
 #define SHADOW_NEAR_PLANE          1.0f
 #define SHADOW_CAMERA_DISTANCE     200.0f
 #define SHADOW_CASTER_DEPTH_MARGIN 150.0f
-#define SHADOW_CASCADE_OVERLAP     10.0f
-#define SHADOW_SPLIT_NEAR_DISTANCE 10.0f
-#define SHADOW_PSSM_LAMBDA         0.75f
+#define SHADOW_CASCADE_OVERLAP     1.0f
+#define SHADOW_SPLIT_NEAR_DISTANCE 40.0f
+#define SHADOW_PSSM_LAMBDA         0.5f
 
 #define POINT_SHADOW_SIZE          384u
 #define POINT_SHADOW_FACE_COUNT    6u

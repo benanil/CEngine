@@ -639,7 +639,7 @@ static void UIWindowDrawRightClickMenu(UIWindow* window)
         },
         .backgroundColor = UIColorToClay(UIGetColor(UIColor_Quad) | 0xFF000000u),
         .cornerRadius = CLAY_CORNER_RADIUS(6.0f),
-        .border = { .color = UIGetClayColor(UIColor_Border), .width = CLAY_BORDER_ALL(1) },
+        .border = { .color = UIGetClayColor(UIColor_Border), .width = CLAY_BORDER_OUTSIDE(1) },
         .floating = { .offset = { g_UIRightClickMenuPos.x, g_UIRightClickMenuPos.y }, .zIndex = 126, .attachTo = CLAY_ATTACH_TO_ROOT }
     }) {
         for (u32 i = 0u; i < g_UIRightClickEventCount; i++)

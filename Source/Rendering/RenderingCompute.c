@@ -249,7 +249,7 @@ void DispatchHBAOCompute(SDL_GPUCommandBuffer* cmd, bool enabled, u32 width, u32
         f32 power;
         u32 enabled;
         u32 frameIndex;
-        u32 padding;
+        u32 numDirections;
     } params;
 
     params.invProjection = g_Camera.inverseProjection;
@@ -265,7 +265,7 @@ void DispatchHBAOCompute(SDL_GPUCommandBuffer* cmd, bool enabled, u32 width, u32
     params.power = Maxf32(g_RenderSettings.hbaoPower, 0.001f);
     params.enabled = enabled ? 1u : 0u;
     params.frameIndex = (u32)SDL_GetTicks();
-    params.padding = 0u;
+    params.numDirections = (u32)Clampf32(g_RenderSettings.hbaoDirections, 2.0f, 16.0f);
 
     SDL_GPUComputePass* pass;
     if (enabled)
@@ -441,7 +441,8 @@ void DispatchTonemapCompute(SDL_GPUCommandBuffer* cmd, u32 width, u32 height, ma
         f32 godRayIntensity;
         f32 time;
         f32 cloudTime;
-        f32 padding[3];
+        f32 godRaySamples;
+        f32 padding[2];
         mat4x4 invViewProj;
         f32 cameraPosition[4];
         f32 sunDirection[4];
@@ -454,6 +455,7 @@ void DispatchTonemapCompute(SDL_GPUCommandBuffer* cmd, u32 width, u32 height, ma
     params.sunPos[0] = sunPos.x;
     params.sunPos[1] = sunPos.y;
     params.godRayIntensity = godRayIntensity;
+    params.godRaySamples = Clampf32(g_RenderSettings.godRaySamples, 0.0f, 128.0f);
     params.cloudTime = TimeSinceStartup();
     params.time = GetSkyPhaseTime() + params.cloudTime;
     params.invViewProj = M44Inverse(viewProj);

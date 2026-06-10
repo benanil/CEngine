@@ -11,7 +11,7 @@ cbuffer HBAOParams : register(b0, space2)
     float power;
     uint enabled;
     uint frameIndex;
-    uint padding;
+    uint numDirections;
 };
 
 Texture2D<float> DepthTexture : register(t0, space0);
@@ -19,7 +19,6 @@ Texture2D<float4> NormalTexture : register(t1, space0);
 [[vk::image_format("r8")]] RWTexture2D<float> OutputAO : register(u0, space1);
 
 static const float HBAO_PI = 3.14159265f;
-static const uint NUM_DIRECTIONS = 8u;
 static const uint NUM_STEPS = 4u;
 
 // OPTIMIZATION 1: Combined Hash logic to output both float values simultaneously.
@@ -109,13 +108,14 @@ void main(uint3 tid : SV_DispatchThreadID)
     sincos(jitterAngle, rot.y, rot.x); // Fast hardware sincos assembly intrinsic
     
     float ao = 0.0f;
+    uint directions = clamp(numDirections, 2u, 16u);
 
     // OPTIMIZATION 4: Unrolling loops with 32 texture loads spills registers (VGPRs).
     // We explicitly instruct the compiler to keep this as a tight dynamic execution loop.
     [loop]
-    for (uint dirIndex = 0u; dirIndex < NUM_DIRECTIONS; dirIndex++)
+    for (uint dirIndex = 0u; dirIndex < directions; dirIndex++)
     {
-        float angle = (2.0f * HBAO_PI * float(dirIndex)) / float(NUM_DIRECTIONS);
+        float angle = (2.0f * HBAO_PI * float(dirIndex)) / float(directions);
         float2 dir;
         sincos(angle, dir.y, dir.x);
         
@@ -136,6 +136,6 @@ void main(uint3 tid : SV_DispatchThreadID)
         }
     }
 
-    ao = ao * intensity * (1.0f / float(NUM_DIRECTIONS * NUM_STEPS));
+    ao = ao * intensity * (1.0f / float(directions * NUM_STEPS));
     OutputAO[p] = pow(saturate(1.0f - ao * 2.0f), power);
 }

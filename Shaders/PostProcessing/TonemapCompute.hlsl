@@ -7,7 +7,8 @@ cbuffer TonemapParams : register(b0, space2)
     float godRayIntensity;
     float time;
     float cloudTime;
-    float3 padding;
+    float godRaySamples;
+    float2 padding;
     float4x4 invViewProj;
     float4 cameraPosition;
     float4 sunDirection;

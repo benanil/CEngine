@@ -366,7 +366,7 @@ static void AssetDrawGridItem(u32 entryIdx, u32 itemIdx)
         },
         .backgroundColor = Clay_Hovered() ? UIGetClayColor(UIColor_Hovered) : (Clay_Color){ 30, 30, 30, 160 },
         .cornerRadius = CLAY_CORNER_RADIUS(UIGetFloat(UIFloat_CornerRadius)),
-        .border = { .color = isSelected ? UIGetClayColor(UIColor_SelectedBorder) : UIGetClayColor(UIColor_Border), .width = CLAY_BORDER_ALL(1) }
+        .border = { .color = isSelected ? UIGetClayColor(UIColor_SelectedBorder) : UIGetClayColor(UIColor_Border), .width = CLAY_BORDER_OUTSIDE(1) }
     }) {
         if (UIClicked())
         {

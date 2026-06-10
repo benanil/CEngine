@@ -21,6 +21,8 @@ typedef struct RenderSettings_
     f32 exposure;
     f32 gamma;
     f32 godRayIntensity;
+    f32 godRaySamples;    // ray march steps, 0 disables
+    f32 hbaoDirections;   // horizon sample directions
     f32 lodDistanceModifier;
     f32 sunYaw;
     f32 sunPitch;

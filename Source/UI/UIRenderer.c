@@ -780,6 +780,133 @@ bool UICollapsingHeader(Clay_ElementId id, Clay_String label, bool open)
     return clicked;
 }
 
+static u64 g_UIDropdownOpenId; // only one dropdown list is open at a time
+
+bool UIDropdown(Clay_ElementId id, Clay_String label, const char** options, u32 numOptions, u32* selectedIndex)
+{
+    if (!options || numOptions == 0u || !selectedIndex) return false;
+    if (*selectedIndex >= numOptions) *selectedIndex = 0u;
+
+    bool open = g_UIDropdownOpenId == (u64)id.id;
+    bool changed = false;
+
+    Clay_ElementId boxId  = Clay_GetElementIdWithIndex(CLAY_STRING("UIDropdownBox"), id.id);
+    Clay_ElementId listId = Clay_GetElementIdWithIndex(CLAY_STRING("UIDropdownList"), id.id);
+
+    // close on escape or a click outside the box and the list, last frame's layout
+    if (open && (GetMousePressed(MouseButton_Left) || GetKeyPressed(27)))
+    {
+        Clay_ElementData box  = Clay_GetElementData(boxId);
+        Clay_ElementData list = Clay_GetElementData(listId);
+        bool insideBox  = box.found  && RectPointIntersect((float2){ box.boundingBox.x, box.boundingBox.y },
+                                                           (float2){ box.boundingBox.width, box.boundingBox.height }, g_UI.mouse) != 0u;
+        bool insideList = list.found && RectPointIntersect((float2){ list.boundingBox.x, list.boundingBox.y },
+                                                           (float2){ list.boundingBox.width, list.boundingBox.height }, g_UI.mouse) != 0u;
+        if (GetKeyPressed(27) || (!insideBox && !insideList))
+        {
+            g_UIDropdownOpenId = 0u;
+            open = false;
+        }
+    }
+
+    CLAY(id, {
+        .layout = {
+            .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(34.0f) },
+            .padding = { 0, 4, 0, 0 },
+            .childGap = 10,
+            .layoutDirection = CLAY_LEFT_TO_RIGHT,
+            .childAlignment = { .y = CLAY_ALIGN_Y_CENTER }
+        }
+    }) {
+        CLAY_TEXT(label, CLAY_TEXT_CONFIG({
+            .fontSize = (u16)Maxu32((u32)(15.0f * UIGetFloat(UIFloat_TextScale)), 1u),
+            .textColor = UIGetClayColor(UIColor_Text)
+        }));
+
+        CLAY(CLAY_ID_LOCAL("Spacer"), { .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(1.0f) } } }) {}
+
+        CLAY(boxId, {
+            .layout = {
+                .sizing = { CLAY_SIZING_FIXED(UIGetFloat(UIFloat_TextBoxWidth)), CLAY_SIZING_FIXED(26.0f) },
+                .padding = { 8, 8, 0, 0 },
+                .childGap = 6,
+                .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                .childAlignment = { .y = CLAY_ALIGN_Y_CENTER }
+            },
+            .backgroundColor = Clay_Hovered() ? UIGetClayColor(UIColor_Hovered) : UIGetClayColor(UIColor_TextBoxBG),
+            .cornerRadius = CLAY_CORNER_RADIUS(UIGetFloat(UIFloat_CornerRadius)),
+            // outside only, BORDER_ALL would draw separator lines between the children
+            .border = { .color = open ? UIGetClayColor(UIColor_SelectedBorder) : UIGetClayColor(UIColor_Border), .width = CLAY_BORDER_OUTSIDE(1) }
+        }) {
+            if (UIClicked())
+            {
+                open = !open;
+                g_UIDropdownOpenId = open ? (u64)id.id : 0u;
+            }
+
+            CLAY_TEXT(UIStr(options[*selectedIndex]), CLAY_TEXT_CONFIG({
+                .fontSize = (u16)Maxu32((u32)(14.0f * UIGetFloat(UIFloat_TextScale)), 1u),
+                .textColor = UIGetClayColor(UIColor_Text),
+                .wrapMode = CLAY_TEXT_WRAP_NONE
+            }));
+            CLAY(CLAY_ID_LOCAL("ArrowSpacer"), { .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(1.0f) } } }) {}
+            CLAY_TEXT(open ? CLAY_STRING("-") : CLAY_STRING("+"), CLAY_TEXT_CONFIG({
+                .fontSize = 12,
+                .textColor = UIGetClayColor(UIColor_SubText)
+            }));
+
+            if (open)
+            {
+                CLAY(listId, {
+                    .layout = {
+                        .sizing = { CLAY_SIZING_FIXED(UIGetFloat(UIFloat_TextBoxWidth)), CLAY_SIZING_FIT(0) },
+                        .padding = { 4, 4, 4, 4 },
+                        .childGap = 2,
+                        .layoutDirection = CLAY_TOP_TO_BOTTOM
+                    },
+                    .backgroundColor = UIColorToClay(UIGetColor(UIColor_Quad) | 0xFF000000u),
+                    .cornerRadius = CLAY_CORNER_RADIUS(UIGetFloat(UIFloat_CornerRadius)),
+                    .border = { .color = UIGetClayColor(UIColor_Border), .width = CLAY_BORDER_OUTSIDE(1) },
+                    .floating = {
+                        .zIndex = 125,
+                        .attachPoints = { .element = CLAY_ATTACH_POINT_LEFT_TOP, .parent = CLAY_ATTACH_POINT_LEFT_BOTTOM },
+                        .attachTo = CLAY_ATTACH_TO_PARENT
+                    }
+                }) {
+                    for (u32 i = 0u; i < numOptions; i++)
+                    {
+                        Clay_ElementId rowId = Clay_GetElementIdWithIndex(CLAY_STRING("UIDropdownRow"), id.id + i + 1u);
+                        bool isSelected = i == *selectedIndex;
+                        CLAY(rowId, {
+                            .layout = {
+                                .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(22.0f) },
+                                .padding = { 6, 6, 0, 0 },
+                                .childAlignment = { .y = CLAY_ALIGN_Y_CENTER }
+                            },
+                            .backgroundColor = Clay_Hovered() ? UIGetClayColor(UIColor_Hovered)
+                                             : (isSelected ? UIColorToClay((UIGetColor(UIColor_SelectedBorder) & 0x00FFFFFFu) | 0x48000000u) : (Clay_Color){ 0 }),
+                            .cornerRadius = CLAY_CORNER_RADIUS(3.0f)
+                        }) {
+                            if (UIClicked())
+                            {
+                                changed = i != *selectedIndex;
+                                *selectedIndex = i;
+                                g_UIDropdownOpenId = 0u;
+                            }
+                            CLAY_TEXT(UIStr(options[i]), CLAY_TEXT_CONFIG({
+                                .fontSize = (u16)Maxu32((u32)(14.0f * UIGetFloat(UIFloat_TextScale)), 1u),
+                                .textColor = UIGetClayColor(UIColor_Text),
+                                .wrapMode = CLAY_TEXT_WRAP_NONE
+                            }));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return changed;
+}
+
 bool UISliderFloat(Clay_ElementId id, Clay_String label, f32* value, f32 minValue, f32 maxValue)
 {
     if (!value || !IsFiniteF32(minValue) || !IsFiniteF32(maxValue) || maxValue <= minValue) return false;

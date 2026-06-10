@@ -69,6 +69,10 @@ static void WindowTestUI(void)
     UISliderFloatValue(CLAY_ID("WindowTestSlider"), CLAY_STRING("Window value"), &testValue, 0.0f, 1.0f, 2);
     UISliderFloatValue(CLAY_ID("WindowTestExposure"), CLAY_STRING("Local exposure"), &exposure, 0.1f, 4.0f, 2);
 
+    static const char* dropdownOptions[] = { "Alpha", "Beta", "Gamma", "Delta" };
+    static u32 dropdownIndex = 1u;
+    UIDropdown(CLAY_ID("WindowTestDropdown"), CLAY_STRING("Dropdown test"), dropdownOptions, 4u, &dropdownIndex);
+
     static char textBuffer[512] = "Text area in a dockable window.\nTry selecting, typing, and overlapping windows.\0";
     static UITextAreaCustomData textCustomData;
     textCustomData.type = UICustomType_TextArea;
@@ -96,6 +100,64 @@ static void WindowTestUI(void)
     }
 
     UIEndWindow();
+}
+
+static u32 editorQualityIndex = 2u; // High matches the startup defaults
+
+// performance presets, artistic settings (sun, exposure, gamma) stay untouched.
+// the lod modifier scales the projected screen size, higher keeps detailed lods longer
+static void EditorApplyQualityPreset(RenderSettings* settings, u32 quality)
+{
+    settings->enableOcclusion           = true;
+    settings->enableLightFrustumCulling = true;
+    settings->enableLightOcclusionCulling = true;
+    switch (quality)
+    {
+    case 0: // Low
+        settings->enableHBAO            = false;
+        settings->enableMLAA            = false;
+        settings->enableLocalLights     = false;
+        settings->lodDistanceModifier   = 0.35f;
+        settings->godRaySamples         = 16.0f;
+        settings->hbaoDirections        = 4.0f;
+        settings->shadowMaxDistance     = SHADOW_MAX_DISTANCE * 0.35f;
+        settings->maxVisiblePointShadows = 0.0f;
+        settings->maxVisibleSpotShadows  = 0.0f;
+        break;
+    case 1: // Medium
+        settings->enableHBAO            = true;
+        settings->enableMLAA            = true;
+        settings->enableLocalLights     = true;
+        settings->lodDistanceModifier   = 0.55f;
+        settings->godRaySamples         = 32.0f;
+        settings->hbaoDirections        = 4.0f;
+        settings->shadowMaxDistance     = SHADOW_MAX_DISTANCE * 0.6f;
+        settings->maxVisiblePointShadows = 4.0f;
+        settings->maxVisibleSpotShadows  = 4.0f;
+        break;
+    case 2: // High, matches the startup defaults
+        settings->enableHBAO            = true;
+        settings->enableMLAA            = true;
+        settings->enableLocalLights     = true;
+        settings->lodDistanceModifier   = 0.75f;
+        settings->godRaySamples         = 48.0f;
+        settings->hbaoDirections        = 8.0f;
+        settings->shadowMaxDistance     = SHADOW_MAX_DISTANCE;
+        settings->maxVisiblePointShadows = 8.0f;
+        settings->maxVisibleSpotShadows  = 8.0f;
+        break;
+    case 3: // Ultra
+        settings->enableHBAO            = true;
+        settings->enableMLAA            = true;
+        settings->enableLocalLights     = true;
+        settings->lodDistanceModifier   = 1.5f;
+        settings->godRaySamples         = 64.0f;
+        settings->hbaoDirections        = 12.0f;
+        settings->shadowMaxDistance     = SHADOW_MAX_DISTANCE;
+        settings->maxVisiblePointShadows = (f32)POINT_SHADOW_MAX_LIGHTS;
+        settings->maxVisibleSpotShadows  = (f32)SPOT_SHADOW_MAX_LIGHTS;
+        break;
+    }
 }
 
 static void DrawGraphicsWindow()
@@ -139,6 +201,9 @@ static void DrawGraphicsWindow()
         CLAY(CLAY_ID("GraphicsEditorScroll"), UIScrollPanelDeclaration(UIWindowRemainingHeight(windowID, CLAY_ID("GraphicsEditorScroll"), 50.0f), 12u)) {
             CLAY(CLAY_ID("GraphicsEditorFeatureBox"), EditorPanelBoxDeclaration) {
                 UISectionHeader("Features");
+                static const char* qualityOptions[] = { "Low", "Medium", "High", "Ultra" };
+                if (UIDropdown(CLAY_ID("EditorQualityPreset"), CLAY_STRING("Quality"), qualityOptions, 4u, &editorQualityIndex))
+                    EditorApplyQualityPreset(settings, editorQualityIndex);
                 UICheckbox(CLAY_ID("EditorEnableOcclusion"), CLAY_STRING("Hi-Z occlusion culling"), &settings->enableOcclusion);
                 UICheckbox(CLAY_ID("EditorEnableHBAO")     , CLAY_STRING("HBAO ambient occlusion"), &settings->enableHBAO);
                 UICheckbox(CLAY_ID("EditorEnableMLAA")     , CLAY_STRING("Anti-aliasing (MLAA)"), &settings->enableMLAA);
@@ -178,6 +243,7 @@ static void DrawGraphicsWindow()
                 UISliderFloatValue(CLAY_ID("EditorHBAOBias")     , CLAY_STRING("Bias")     , &settings->hbaoBias     ,  0.0f, 1.0f, 2);
                 UISliderFloatValue(CLAY_ID("EditorHBAOIntensity"), CLAY_STRING("Intensity"), &settings->hbaoIntensity,  0.0f, 6.0f, 2);
                 UISliderFloatValue(CLAY_ID("EditorHBAOPower")    , CLAY_STRING("Power")    , &settings->hbaoPower    , 0.25f, 6.0f, 2);
+                UIEditInt(CLAY_ID("EditorHBAODirections"), CLAY_STRING("Directions"), &settings->hbaoDirections, 2, 16);
             }
             CLAY(CLAY_ID("GraphicsEditorPostBox"), EditorPanelBoxDeclaration) {
                 UISectionHeader("Post / AA");
@@ -185,6 +251,7 @@ static void DrawGraphicsWindow()
                 UISliderFloatValue(CLAY_ID("EditorExposure")     , CLAY_STRING("Exposure")      , &settings->exposure       , 0.10f, 4.00f, 2);
                 UISliderFloatValue(CLAY_ID("EditorGamma")        , CLAY_STRING("Gamma")         , &settings->gamma          , 1.00f, 3.20f, 2);
                 UISliderFloatValue(CLAY_ID("EditorGodRays")      , CLAY_STRING("God rays")      , &settings->godRayIntensity, 0.00f, 8.00f, 2);
+                UIEditInt(CLAY_ID("EditorGodRaySamples"), CLAY_STRING("God ray samples"), &settings->godRaySamples, 0, 128);
             }
         }
         CLAY(CLAY_ID("GraphicsEditorButtons"), {
@@ -196,6 +263,7 @@ static void DrawGraphicsWindow()
         }) {
             if (UIButton(CLAY_ID("EditorResetGraphics"), CLAY_STRING("Reset"), (Clay_Dimensions){ 100.0f, 34.0f }, false))
             {
+                editorQualityIndex = 2u; // defaults are the High preset
                 *settings = (RenderSettings){
                     .enableOcclusion = true,
                     .enableHBAO = true,
@@ -213,6 +281,9 @@ static void DrawGraphicsWindow()
                     .exposure = 1.0f,
                     .gamma = 2.2f,
                     .godRayIntensity = 2.5f,
+                    .godRaySamples = 64.0f,
+                    .hbaoDirections = 8.0f,
+                    .lodDistanceModifier = 0.75f,
                     .sunYaw = 116.565f,
                     .sunPitch = 63.435f,
                     .shadowMaxDistance = SHADOW_MAX_DISTANCE,
