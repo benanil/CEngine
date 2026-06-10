@@ -16,6 +16,7 @@ static bool sceneOpen    = false;
 static bool texturesOpen = false;
 static bool settingsOpen = false;
 static bool assetsOpen   = false;
+static bool consoleOpen  = false;
 static bool testOpen     = false;
 
 static void ShowFps(void)
@@ -336,6 +337,7 @@ static void GraphicsEditorUI(void)
         texturesOpen ^= UIButton(CLAY_ID("Textures"), CLAY_STRING("Textures"), (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
         settingsOpen ^= UIButton(CLAY_ID("Settings"), CLAY_STRING("Settings"), (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
         assetsOpen   ^= UIButton(CLAY_ID("Assets")  , CLAY_STRING("Assets")  , (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
+        consoleOpen  ^= UIButton(CLAY_ID("Console") , CLAY_STRING("Console") , (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
         testOpen     ^= UIButton(CLAY_ID("Test")    , CLAY_STRING("Test")    , (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
         UIPopFloat(UIFloat_CornerRadius);
         UIPopFloat(UIFloat_TextScale);
@@ -353,6 +355,7 @@ static void GraphicsEditorUI(void)
         DrawSceneWindow(&sceneOpen);
         DrawTexturesWindow(&texturesOpen);
         DrawAssetsWindow(&assetsOpen);
+        DrawConsoleWindow(&consoleOpen);
         DrawGraphicsWindow();
     }
     Clay_RenderCommandArray commands = UIEndLayout();

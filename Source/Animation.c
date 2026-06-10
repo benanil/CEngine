@@ -180,6 +180,12 @@ void AnimationSystem_UpdateInstances(AnimationSystem* anims, const GPUAnimationI
     UpdateGPUBuffer(anims->instanceBuffer, instances, count * sizeof(GPUAnimationInstance), 0);
 }
 
+void AnimationSystem_SetInstance(AnimationSystem* anims, u32 sparseIdx, GPUAnimationInstance instance)
+{
+    if (!anims->instanceBuffer || sparseIdx >= MAX_ANIM_INSTANCES) return;
+    UpdateGPUBuffer(anims->instanceBuffer, &instance, sizeof(instance), sparseIdx * sizeof(GPUAnimationInstance));
+}
+
 s32 SceneBundleInitAnimations(const SceneBundle* gltfScene, Pose result[MAX_BONES])
 {
     const ASkin* skin = &gltfScene->skins[0];

@@ -388,7 +388,7 @@ static void ParseBuffersObj(sj_Value sjBufferObj, void* element, GLTFParseContex
 static void ParseImagesObj(sj_Value sjSceneObj, void* element, GLTFParseContext* ctx)
 {
     int pathLen = StringLength(ctx->path);
-    while (ctx->path[pathLen-1] != '/') pathLen--;
+    while (pathLen > 0 && ctx->path[pathLen-1] != '/' && ctx->path[pathLen-1] != '\\') pathLen--;
 
     AImage* image = (AImage*)element;
     image->bufferViewIndex = -1;

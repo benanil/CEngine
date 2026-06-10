@@ -7,6 +7,18 @@
 
 #define MAX_SCENE_BUNDLES 1024u
 #define MAX_ACTIVE_SCENES 2u
+#define MAX_SCENE_LIGHTS  256u
+
+// one bundle registered in a scene
+typedef struct SceneBundleRef_
+{
+    const char*  path;           // bundle cache owned string
+    SceneBundle* bundle;
+    u32          renderIdx;      // bundle index inside its render set
+    u32          materialOffset; // gpu material slot base of the bundle in this scene
+    u32          animOffset;     // first animation of the bundle inside the scene's animation system
+    u32          skinned;
+} SceneBundleRef;
 
 // a scene owns one render set for skinned meshes, one for static geometry, their gpu
 // buffers, its own texture system and animation system. all gpu resources stay resident,
@@ -20,14 +32,16 @@ typedef struct Scene_
     TextureSystem    textureSystem;
     AnimationSystem  animSystem;
 
-    const char*  bundlePaths[MAX_SCENE_BUNDLES];
-    SceneBundle* bundles[MAX_SCENE_BUNDLES];
-    u32          bundleRenderIdx[MAX_SCENE_BUNDLES]; // bundle index inside its render set
-    u8           bundleSkinned[MAX_SCENE_BUNDLES];
+    SceneBundleRef* bundleRefs;     // tlsf, doubles on demand up to MAX_SCENE_BUNDLES
+    u32             numBundles;
+    u32             bundleCapacity;
 
-    u32 numBundles;
+    LightGPU* lights;    // tlsf, MAX_SCENE_LIGHTS, authored lights pushed by Scene_SubmitLights
+    u32       numLights;
+
     u32 numMaterials;    // material slot watermark, slots are stable and leak on removal
     u32 renderDataDirty; // static render set buffers need re-upload, consumed by Render
+    u32 texturesBaked;   // pages came from a baked atlas, packer state is unusable until a repack
 } Scene;
 
 // scenes the renderer draws each frame, in activation order
@@ -45,8 +59,27 @@ s32 Scene_Activate(Scene* scene);
 void Scene_Deactivate(Scene* scene);
 
 // loads a gltf bundle, packs its textures into the scene's texture system and registers
-// its primitives to the matching render set. out: scene bundle index, INVALID_BUNDLE otherwise
+// its primitives to the matching render set. bundles are shared through a global cache
+// keyed by path, repeated adds of the same path reuse the resident mesh data.
+// out: scene bundle index, INVALID_BUNDLE otherwise
 u32 Scene_AddBundle(Scene* scene, const char* path, bool skinned);
+
+// Scene_AddBundle with the skinned flag detected from the bundle's skin data
+u32 Scene_AddBundleAuto(Scene* scene, const char* path);
+
+// loads (or finds) a bundle through the cache and holds a reference so it can be
+// inspected without adding it to a scene. pair with Scene_ReleaseBundlePeek.
+// out: NULL on load failure
+const SceneBundle* Scene_AcquireBundlePeek(const char* path);
+void Scene_ReleaseBundlePeek(const char* path);
+
+// registers an already loaded bundle without touching the texture system, used by the
+// baked scene load path where the pages are restored separately.
+// out: scene bundle index, INVALID_BUNDLE otherwise
+u32 Scene_AddBundleBaked(Scene* scene, const char* path, u32 materialOffset);
+
+// pushes the active scene's authored lights to the renderer, call once per frame
+void Scene_SubmitLights(void);
 
 // removes the bundle's entities and primitive groups from the render set and clears its
 // material slots. page space leaks until Scene_RepackTextures. scene bundle indices after

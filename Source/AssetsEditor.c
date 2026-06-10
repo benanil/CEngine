@@ -186,6 +186,18 @@ static bool AssetExtIs(const char* ext, const char* match)
     return *ext == '\0' && *match == '\0';
 }
 
+static bool AssetIsMeshPath(const char* path)
+{
+    const char* ext = GetFileExtension(path, StringLength(path));
+    return AssetExtIs(ext, "gltf") || AssetExtIs(ext, "glb") || AssetExtIs(ext, "abm");
+}
+
+static bool AssetIsScenePath(const char* path)
+{
+    const char* ext = GetFileExtension(path, StringLength(path));
+    return AssetExtIs(ext, "scene");
+}
+
 //------------------------------------------------------------------------
 // Icons
 
@@ -380,6 +392,7 @@ static void AssetDrawGridItem(u32 entryIdx, u32 itemIdx)
             if (doubleClicked)
             {
                 if (e->isDir) AssetSetCurrentFolder(e->path);
+                else if (AssetIsScenePath(e->path)) EditorOpenScene(e->path);
                 else AssetOpenWithOS(e->path);
             }
         }
@@ -514,6 +527,24 @@ static void AssetEventCreateFile(void* unused)
     assetCreatePopupOpen = true;
     assetCreateIsFile = true;
     assetNameInput[0] = '\0';
+}
+
+static void AssetEventImportToScene(void* unused)
+{
+    (void)unused;
+    if (assetSelectedPath[0]) EditorImportMeshToScene(assetSelectedPath);
+}
+
+static void AssetEventImportWithDetail(void* unused)
+{
+    (void)unused;
+    if (assetSelectedPath[0]) EditorOpenImportDetail(assetSelectedPath);
+}
+
+static void AssetEventOpenScene(void* unused)
+{
+    (void)unused;
+    if (assetSelectedPath[0]) EditorOpenScene(assetSelectedPath);
 }
 
 //------------------------------------------------------------------------
@@ -663,6 +694,12 @@ void DrawAssetsWindow(bool* open)
         UIRightClickAddEvent("Open Folder", AssetEventOpenFolder, NULL);
         if (assetSelectedPath[0])
         {
+            if (AssetIsMeshPath(assetSelectedPath))
+            {
+                UIRightClickAddEvent("Import to Scene", AssetEventImportToScene, NULL);
+                UIRightClickAddEvent("Import with Detail", AssetEventImportWithDetail, NULL);
+            }
+            if (AssetIsScenePath(assetSelectedPath)) UIRightClickAddEvent("Open Scene", AssetEventOpenScene, NULL);
             UIRightClickAddEvent("Copy", AssetEventCopy, NULL);
             UIRightClickAddEvent("Delete", AssetEventDelete, NULL);
         }

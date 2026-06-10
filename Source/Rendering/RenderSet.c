@@ -40,7 +40,7 @@ static u32 AllocateSparseID(RenderSet* set)
     return set->nextSparseID++;
 }
 
-u32 RenderSet_AddSceneBundle(RenderSet* set, const SceneBundle* sceneBundle)
+u32 RenderSet_AddSceneBundle(RenderSet* set, const SceneBundle* sceneBundle, u32 materialOffset)
 {
     if (set->numBundles >= set->maxBundles) return INVALID_BUNDLE;
 
@@ -73,7 +73,7 @@ u32 RenderSet_AddSceneBundle(RenderSet* set, const SceneBundle* sceneBundle)
             group->vertexOffset   = set->skinned ? (u32)primitive->lodVertexOffset[0] : vertexBase + localVertexOffset;
             group->meshIndex      = m;
             group->primitiveIndex = p;
-            group->materialIndex  = (u32)(sceneBundle->materialOffset + primitive->material);
+            group->materialIndex  = materialOffset + (u32)primitive->material;
             group->numVertices    = (u32)primitive->numVertices;
             group->entityOffset   = set->numEntities;
             VecStore(group->aabbMin, VecLoad(primitive->min));

@@ -29,6 +29,7 @@ EXTRA_GRAPHICS_SHADERS = [
 COMPUTE_SHADERS = [
     ("TexturePageCopyRGBA"                 , "main"),
     ("TexturePageCopyRG"                   , "main"),
+    ("UI/ColorPickCompute"                 , "main"),
     ("DeferredLighting"                    , "main"),
     ("ExtractNormalCompute"                , "main"),
     ("Animation/AnimationCompute"          , "main"),

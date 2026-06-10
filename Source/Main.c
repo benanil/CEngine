@@ -15,6 +15,7 @@
 #include "Include/BasisBinding.h"
 #include "Include/Scene.h"
 #include "Include/DemoScene.h"
+#include "Math/Quaternion.h"
 
 static s32 done = 0;
 
@@ -34,6 +35,7 @@ static void MainLoop(void)
     PlatformUpdate();
     CameraUpdate(&g_Camera, PlatformCtx.DeltaTime);
     DemoScene_Update(PlatformCtx.DeltaTime);
+    Scene_SubmitLights();
 
     if (!done) Render();
     // else emscripten_cancel_main_loop();
@@ -61,15 +63,21 @@ s32 main(s32 argc, char* argv[])
 
     InitGlobalArena();
     PlatformInit();
+
+    // hook the sdl log output before the systems init so the console records everything
+    extern void EditorConsoleInit(void);
+    EditorConsoleInit();
+
     BasisuSetup();
 
     GraphicsInit(msaa);
     TextureSystem_InitDevice();
     RendererInit();
 
-    if (!DemoScene_Create()) return 0;
+    // boot into an empty editor scene, the demo scene stays available from code
+    extern Scene* EditorNewScene(void);
+    if (!EditorNewScene()) return 0;
     InitBuffers();
-    if (!Scene_MakeActive(DemoScene_Get())) return 0;
 
     CameraInit(&g_Camera, 1920, 1080);
 

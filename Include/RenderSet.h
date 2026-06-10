@@ -70,8 +70,9 @@ typedef struct RenderSet_
 
 void RenderSet_InitSet(RenderSet* set, u32 maxEntities, u32 maxGroups, u32 maxBundles, bool skinned);
 
+// materialOffset is the scene's gpu material slot base of the bundle.
 // out: groupIdx, ~0u outherwise
-u32 RenderSet_AddSceneBundle(RenderSet* set, const SceneBundle* sceneBundle);
+u32 RenderSet_AddSceneBundle(RenderSet* set, const SceneBundle* sceneBundle, u32 materialOffset);
 // out: entityBegin, entityCount
 u32 RenderSet_AddScene(RenderSet* set, u32 bundleIdx, v128f position, v128f rotation, v128f scale, bool wantSkinned);
 

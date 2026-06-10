@@ -103,15 +103,18 @@ target_sources(${EXECUTABLE_NAME} PRIVATE
 
     Source/Animation.c
     Source/Algorithm.c
+    Source/Async.c
     Source/Memory.c
     Source/FileSystem.c
     Source/Platform.c
     Source/Editor.c
     Source/AnimationBake.c
     Source/Scene.c
+    Source/SceneSerializer.c
     Source/DemoScene.c
     Source/AssetsEditor.c
     Source/SceneEditor.c
+    Source/ConsoleEditor.c
 
     Source/Rendering/Graphics.c
     Source/Rendering/Rendering.c

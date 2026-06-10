@@ -36,7 +36,7 @@ int* BinarySearch(int* begin, int len, int value);
 // String to number functions
 const char* ParseNumber(const char* curr, int* result);
 
-const char* ParseNumberLong(const char* ptr, int64_t* result);
+const char* ParseNumberI64(const char* ptr, int64_t* result);
 
 // if you really want to squeeze performance no negative and such checks
 const char* ParsePositiveNumber(const char* str, int* outValue);

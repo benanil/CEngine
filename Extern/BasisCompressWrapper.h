@@ -54,6 +54,32 @@ int basis_compress_file(const char* input_filename,
                         int quality_level,
                         int effort_level);
 
+/**
+ * Compresses in-memory RGBA32 layers (with caller supplied mip chains) into a
+ * texture-2D-array .basis file. Used to bake texture atlas pages.
+ *
+ * No channel swizzling is applied: the layer data is expected to already be in the
+ * channel layout the engine stores in basis files (e.g. normal maps with y in alpha).
+ * BASIS_FLAG_NORMAL_MAP / BASIS_FLAG_METALLIC_ROUGHNESS only select linear (non sRGB)
+ * encoding metrics.
+ *
+ * @param layer_mips  layer-major array of numLayers*numMips RGBA32 pointers:
+ *                    layer_mips[layer*numMips + mip], mip i is (width>>i, height>>i)
+ *                    texels, minimum 1x1.
+ * @param num_layers  number of array layers (basis images), >= 1.
+ * @param num_mips    mip levels per layer, >= 1. Mips are taken as-is, none generated.
+ * @return 0 on success, non-zero error code on failure.
+ */
+int basis_compress_array_memory(const unsigned char* const* layer_mips,
+                                int num_layers,
+                                int num_mips,
+                                int width,
+                                int height,
+                                unsigned int flags,
+                                int quality_level,
+                                int effort_level,
+                                const char* output_filename);
+
 #ifdef __cplusplus
 }
 #endif

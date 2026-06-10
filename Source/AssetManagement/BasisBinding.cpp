@@ -94,10 +94,11 @@ void BasisuShutdown(void) {
 
 }
 
-bool BasisuTranscodeImage(
+bool BasisuTranscodeImageLayer(
     const void* basisu_data,
     uint64_t size,
     SDL_GPUTextureFormat targetFormat,
+    uint32_t imageIndex,
     BasisuTranscodedImage* outImage)
 {
     if (!basisu_data || !size || !outImage) return false;
@@ -110,7 +111,7 @@ bool BasisuTranscodeImage(
     basist::basisu_transcoder transcoder;
     basist::basisu_image_info img_info;
     if (!transcoder.start_transcoding(basisu_data, (uint32_t)size)) return false;
-    if (!transcoder.get_image_info(basisu_data, (uint32_t)size, img_info, 0)) return false;
+    if (!transcoder.get_image_info(basisu_data, (uint32_t)size, img_info, imageIndex)) return false;
 
     uint32_t mipLevels = basisu::minimum(img_info.m_total_levels, (uint32_t)BASISU_MAX_TRANSCODED_MIPS);
     uint32_t bytesPerBlock = basist::basis_get_bytes_per_block_or_pixel(fmt);
@@ -119,7 +120,7 @@ bool BasisuTranscodeImage(
     for (uint32_t i = 0; i < mipLevels; i++)
     {
         BasisuTranscodedLevel* level = &outImage->levels[i];
-        transcoder.get_image_level_desc(basisu_data, (uint32_t)size, 0, i,
+        transcoder.get_image_level_desc(basisu_data, (uint32_t)size, imageIndex, i,
                                         level->width, level->height, level->blocks);
         level->offset = dataSize;
         level->size = level->blocks * bytesPerBlock;
@@ -133,7 +134,7 @@ bool BasisuTranscodeImage(
     for (uint32_t i = 0; i < mipLevels; i++)
     {
         BasisuTranscodedLevel* level = &outImage->levels[i];
-        bool ok = transcoder.transcode_image_level(basisu_data, (uint32_t)size, 0, i,
+        bool ok = transcoder.transcode_image_level(basisu_data, (uint32_t)size, imageIndex, i,
                                                    ptr + level->offset,
                                                    level->size / bytesPerBlock,
                                                    fmt, 0);
@@ -153,6 +154,24 @@ bool BasisuTranscodeImage(
     outImage->bytesPerBlock = bytesPerBlock;
     outImage->format = targetFormat;
     return true;
+}
+
+bool BasisuTranscodeImage(
+    const void* basisu_data,
+    uint64_t size,
+    SDL_GPUTextureFormat targetFormat,
+    BasisuTranscodedImage* outImage)
+{
+    return BasisuTranscodeImageLayer(basisu_data, size, targetFormat, 0, outImage);
+}
+
+uint32_t BasisuGetImageCount(const void* basisu_data, uint64_t size)
+{
+    if (!basisu_data || !size) return 0;
+    basist::basisu_transcoder transcoder;
+    basist::basisu_file_info file_info;
+    if (!transcoder.get_file_info(basisu_data, (uint32_t)size, file_info)) return 0;
+    return file_info.m_total_images;
 }
 
 void BasisuFreeTranscodedImage(BasisuTranscodedImage* image)
@@ -318,6 +337,42 @@ void* BasisuDecodeImageRGBA(
                                                basist::transcoder_texture_format::cTFRGBA32, 0);
     if (!ok)
         return nullptr;
+
+    *width = (int)levelWidth;
+    *height = (int)levelHeight;
+    return output;
+}
+
+void* BasisuDecodeLevelRGBA(
+    const void* basisu_data,
+    uint64_t size,
+    uint32_t imageIndex,
+    uint32_t level,
+    int* width,
+    int* height)
+{
+    basist::basisu_transcoder transcoder;
+    basist::basisu_image_info img_info;
+    if (!transcoder.start_transcoding(basisu_data, (uint32_t)size)) return nullptr;
+    if (!transcoder.get_image_info(basisu_data, (uint32_t)size, img_info, imageIndex)) return nullptr;
+    if (level >= img_info.m_total_levels) return nullptr;
+
+    uint32_t levelWidth = 0, levelHeight = 0, levelBlocks = 0;
+    transcoder.get_image_level_desc(basisu_data, (uint32_t)size, imageIndex, level, levelWidth, levelHeight, levelBlocks);
+    if (levelWidth == 0 || levelHeight == 0) return nullptr;
+
+    size_t outputSize = (size_t)levelWidth * (size_t)levelHeight * 4u;
+    void* output = AllocateTLSFGlobal(outputSize);
+    if (!output) return nullptr;
+
+    bool ok = transcoder.transcode_image_level(basisu_data, (uint32_t)size, imageIndex, level, output,
+                                               (uint32_t)(outputSize / 4u),
+                                               basist::transcoder_texture_format::cTFRGBA32, 0);
+    if (!ok)
+    {
+        DeAllocateTLSFGlobal(output);
+        return nullptr;
+    }
 
     *width = (int)levelWidth;
     *height = (int)levelHeight;

@@ -145,6 +145,15 @@ bool UISliderFloatValue(Clay_ElementId id, Clay_String label, f32* value, f32 mi
 bool UIEditInt(Clay_ElementId id, Clay_String label, f32* value, s32 minValue, s32 maxValue);
 bool UIEditFloat(Clay_ElementId id, Clay_String label, f32* value, f32 minValue, f32 maxValue, f32 step, int decimals);
 
+// multi component numeric edit rows for vectors, 1..4 text boxes side by side.
+// out: true when any component changed
+bool UIEditFloatN(Clay_ElementId id, Clay_String label, f32* values, u32 numComponents, f32 minValue, f32 maxValue, int decimals);
+bool UIEditIntN(Clay_ElementId id, Clay_String label, s32* values, u32 numComponents, s32 minValue, s32 maxValue);
+
+// color swatch row that opens a floating hsv picker (sv field, hue bar, rgb boxes).
+// rgb is 3 floats 0..1. out: true while the color is being edited
+bool UIColorEdit3(Clay_ElementId id, Clay_String label, f32* rgb);
+
 // wraps a null terminated c string, the string must stay alive until UIEndLayout
 Clay_String UIStr(const char* chars);
 

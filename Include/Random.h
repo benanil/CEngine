@@ -173,6 +173,15 @@ purefn u32 PathToHash(const char* str)
     return StringToHash(str + idx, WangHash(hash));
 }
 
+// fnv1a, for 64 bit hashmap keys
+purefn u64 StringToHash64(const char* str)
+{
+    u64 hash = 14695981039346656037ull;
+    while (*str)
+        hash = (hash ^ (u64)(unsigned char)(*str++)) * 1099511628211ull;
+    return hash;
+}
+
 // too see alternative random number generator look at Aditional.hpp for mersene twister pseudo random number generators
 
 // template<typename T> inline void Suffle(T* begin, u64 len)

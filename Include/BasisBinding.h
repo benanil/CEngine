@@ -53,10 +53,31 @@ void* BasisuDecodeImageRGBA(
     int* width,
     int* height);
 
+// decodes one mip level of one image of a basis file to rgba32, caller frees with
+// DeAllocateTLSFGlobal. out: NULL on failure
+void* BasisuDecodeLevelRGBA(
+    const void* basisu_data,
+    uint64_t size,
+    uint32_t imageIndex,
+    uint32_t level,
+    int* width,
+    int* height);
+
+// number of images (texture array layers) stored in the basis file, 0 on failure
+uint32_t BasisuGetImageCount(const void* basisu_data, uint64_t size);
+
 bool BasisuTranscodeImage(
     const void* basisu_data,
     uint64_t size,
     SDL_GPUTextureFormat targetFormat,
+    BasisuTranscodedImage* outImage);
+
+// same as BasisuTranscodeImage for one image (layer) of a texture array basis file
+bool BasisuTranscodeImageLayer(
+    const void* basisu_data,
+    uint64_t size,
+    SDL_GPUTextureFormat targetFormat,
+    uint32_t imageIndex,
     BasisuTranscodedImage* outImage);
 
 void BasisuFreeTranscodedImage(BasisuTranscodedImage* image);

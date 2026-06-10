@@ -118,6 +118,9 @@ s32 AnimationSystem_AppendBundle(AnimationSystem* anims, const SceneBundle* bund
 // render set's sparse entity id. count is clamped to MAX_ANIM_INSTANCES
 void AnimationSystem_UpdateInstances(AnimationSystem* anims, const GPUAnimationInstance* instances, u32 count);
 
+// assigns one animation instance slot, indexed by the skinned render set's sparse id
+void AnimationSystem_SetInstance(AnimationSystem* anims, u32 sparseIdx, GPUAnimationInstance instance);
+
 // fail return 0
 s32 SceneBundleInitAnimations(const SceneBundle* prefab, Pose pose[MAX_BONES]);
 

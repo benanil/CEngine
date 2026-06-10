@@ -94,7 +94,6 @@ void RenderScene(SDL_GPUCommandBuffer* cmd, const ScenePassContext* ctx)
         totalGroups += g_ActiveScenes[s]->skinnedSet.numGroups + g_ActiveScenes[s]->surfaceSet.numGroups;
     if (totalGroups == 0)
     {
-        AX_WARN("nothing to render");
         return;
     }
     vertexParams.viewProj = ctx->viewProj;

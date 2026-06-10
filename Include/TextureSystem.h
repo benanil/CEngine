@@ -10,6 +10,13 @@ enum { TextureClass_Albedo, TextureClass_Normal, TextureClass_MetallicRoughness,
 // cannot be guaranteed for region uploads at those sizes
 #define TEXTURE_PAGE_TAIL_MIPS 3
 
+// compressed pages: mips 0..TEXTURE_PAGE_DIRECT_MIPS-1 are region uploaded straight to the
+// gpu, TEXTURE_PAGE_ALIGN keeps every region block aligned at those mips. the remaining
+// tail mips live as cpu shadows and re-upload whole after each append
+#define TEXTURE_PAGE_ALIGN       64u
+#define TEXTURE_PAGE_DIRECT_MIPS 5u
+#define TEXTURE_PAGE_MAX_MIPS    (TEXTURE_PAGE_DIRECT_MIPS + TEXTURE_PAGE_TAIL_MIPS)
+
 typedef struct TexturePageClass_
 {
     Texture       pages;                            // 2d array texture with layerCount layers
@@ -45,14 +52,29 @@ void TextureSystem_Init(TextureSystem* ts);
 void TextureSystem_Destroy(TextureSystem* ts);
 
 // packs the bundle's images into the pages, appends descriptors and writes the bundle's
-// materials at [bundle->materialOffset, +numMaterials). stagingTextures is bundle local:
+// materials at [materialOffset, +numMaterials). stagingTextures is bundle local:
 // stagingTextures[i] holds image i (basis buffer for compressed pages, gpu handle otherwise).
 // caller keeps ownership of the staging textures. out: 0 on failure
-s32 TextureSystem_AppendBundle(TextureSystem* ts, const SceneBundle* bundle, const Texture* stagingTextures);
+s32 TextureSystem_AppendBundle(TextureSystem* ts, const SceneBundle* bundle, const Texture* stagingTextures, u32 materialOffset);
 
 // clears the bundle's material slots to defaults. descriptor and page space of the
 // bundle leak until TextureSystem_ResetPacking
-void TextureSystem_RemoveBundle(TextureSystem* ts, const SceneBundle* bundle);
+void TextureSystem_RemoveBundle(TextureSystem* ts, const SceneBundle* bundle, u32 materialOffset);
+
+// downloads the class pages from gpu memory and writes them to path as a raw dump in
+// the platform's block compressed format (file write runs on a worker thread). the dump
+// is editor local, game builds will bake basis instead. out: 0 on failure or empty class
+s32 TextureSystem_SaveBakedClass(TextureSystem* ts, u32 textureClass, const char* path);
+
+// restores a freshly initialized texture system from raw page dumps plus the saved
+// descriptor and material tables (descriptors include the default entries). atlasPaths
+// entries may be NULL for classes that only hold defaults. fails when a dump's format
+// does not match the platform, callers fall back to a repack. packer state is NOT
+// restored, the caller must repack before appending new bundles. out: 0 on failure
+s32 TextureSystem_RestoreBaked(TextureSystem* ts,
+                               const char* atlasPaths[TextureClass_Count],
+                               const TextureDescriptor* descriptors, u32 numDescriptors,
+                               const MaterialGPU* materials, u32 materialWatermark);
 
 // drops all pages and descriptors so the caller can re-append every live bundle.
 // materials and their offsets are preserved, re-appends rewrite them in place

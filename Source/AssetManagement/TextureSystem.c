@@ -5,6 +5,8 @@
 #include "Include/BasisBinding.h"
 #include "Include/Memory.h"
 #include "Include/Platform.h"
+#include "Include/FileSystem.h"
+#include "Include/Async.h"
 #include "Math/Half.h"
 #include "Math/Vector.h"
 
@@ -18,11 +20,8 @@ enum { TextureDesc_Invalid = 0u, TextureDesc_Albedo = 1u, TextureDesc_Normal = 2
 enum { TextureDesc_DefaultAlbedo = 1u, TextureDesc_DefaultNormal = 2u, TextureDesc_DefaultMetallicRoughness = 4u };
 enum { TextureDesc_DefaultCount = 4u };
 
-// compressed pages: mips 0..CompressedDirectMips-1 are region uploaded straight to the gpu,
-// CompressedPageAlign keeps every region block aligned at those mips. the remaining tail
-// mips live as cpu shadows and re-upload whole after each append (TEXTURE_PAGE_TAIL_MIPS)
-enum { CompressedPageAlign = 64u, CompressedDirectMips = 5u };
-enum { CompressedPageMaxMips = CompressedDirectMips + TEXTURE_PAGE_TAIL_MIPS };
+enum { CompressedPageAlign = TEXTURE_PAGE_ALIGN, CompressedDirectMips = TEXTURE_PAGE_DIRECT_MIPS };
+enum { CompressedPageMaxMips = TEXTURE_PAGE_MAX_MIPS };
 enum { TextureDefaultSize = 16u };
 
 typedef struct TextureClassInfo_
@@ -927,12 +926,11 @@ void TextureSystem_ResetPacking(TextureSystem* ts)
     CreateInitialPages(ts);
 }
 
-s32 TextureSystem_AppendBundle(TextureSystem* ts, const SceneBundle* bundle, const Texture* stagingTextures)
+s32 TextureSystem_AppendBundle(TextureSystem* ts, const SceneBundle* bundle, const Texture* stagingTextures, u32 materialOffset)
 {
     double startTime = TimeSinceStartup();
     u32 numImages = bundle->numImages > 0 ? (u32)bundle->numImages : 0u;
     u32 numMaterials = bundle->numMaterials > 0 ? (u32)bundle->numMaterials : 0u;
-    u32 materialOffset = (u32)bundle->materialOffset;
 
     if (materialOffset + numMaterials > MAX_GPU_MATERIALS)
     {
@@ -1037,10 +1035,9 @@ s32 TextureSystem_AppendBundle(TextureSystem* ts, const SceneBundle* bundle, con
     return 1;
 }
 
-void TextureSystem_RemoveBundle(TextureSystem* ts, const SceneBundle* bundle)
+void TextureSystem_RemoveBundle(TextureSystem* ts, const SceneBundle* bundle, u32 materialOffset)
 {
     u32 numMaterials = bundle->numMaterials > 0 ? (u32)bundle->numMaterials : 0u;
-    u32 materialOffset = (u32)bundle->materialOffset;
     if (numMaterials == 0 || materialOffset + numMaterials > MAX_GPU_MATERIALS) return;
 
     // material slots stay reserved so other bundles' baked indices remain valid,
@@ -1058,4 +1055,247 @@ void TextureSystem_RemoveBundle(TextureSystem* ts, const SceneBundle* bundle)
     }
     UpdateGPUBuffer(ts->materialBuffer, ts->materials + materialOffset,
                     numMaterials * sizeof(MaterialGPU), materialOffset * sizeof(MaterialGPU));
+}
+
+/*//////////////////////////////////////////////////////////////////////////*/
+/*                        Baked Page Dump Save / Restore                    */
+/*//////////////////////////////////////////////////////////////////////////*/
+
+// raw page dump: header followed by layer major mip data in the platform's block
+// compressed format. editor local cache, game builds will bake basis instead
+#define BAKED_PAGE_MAGIC   0x50545841u // "AXTP"
+#define BAKED_PAGE_VERSION 1u
+
+typedef struct BakedPageHeader_
+{
+    u32 magic;
+    u32 version;
+    u32 format;   // SDL_GPUTextureFormat the dump was taken in
+    u32 pageSize;
+    u32 layers;
+    u32 mips;
+} BakedPageHeader;
+
+// per layer byte size and per mip offsets of a page dump
+static u32 BakedPageLayout(SDL_GPUTextureFormat format, u32 mipOffsets[TEXTURE_PAGE_MAX_MIPS])
+{
+    u32 perLayer = 0;
+    for (u32 mip = 0; mip < TEXTURE_PAGE_MAX_MIPS; mip++)
+    {
+        u32 mipSize = Maxu32(TEXTURE_PAGE_SIZE >> mip, 1u);
+        mipOffsets[mip] = perLayer;
+        perLayer += CompressedMipBytes(format, mipSize, mipSize);
+    }
+    return perLayer;
+}
+
+static void BakedPagesWriteDone(void* userData, s32 result)
+{
+    if (!result) AX_ERROR("baked page dump write failed");
+    SDL_free(userData);
+}
+
+s32 TextureSystem_SaveBakedClass(TextureSystem* ts, u32 textureClass, const char* path)
+{
+    if (!ts->compressed)
+    {
+        AX_WARN("baked page dump needs block compressed pages");
+        return 0;
+    }
+    TexturePageClass* cls = &ts->classes[textureClass];
+    if (!cls->pages.handle || cls->openPages == 0u) return 0;
+
+    SDL_GPUTextureFormat format = ClassPageFormat(ts, textureClass);
+    u32 layers = cls->openPages;
+    u32 mipOffsets[TEXTURE_PAGE_MAX_MIPS];
+    u32 perLayer = BakedPageLayout(format, mipOffsets);
+    u64 payloadBytes = (u64)perLayer * layers;
+
+    SDL_GPUTransferBuffer* tb = SDL_CreateGPUTransferBuffer(g_GPUDevice, &(SDL_GPUTransferBufferCreateInfo){
+        .usage = SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD, .size = (u32)payloadBytes });
+    if (!tb) return 0;
+
+    SDL_GPUCommandBuffer* cmd = SDL_AcquireGPUCommandBuffer(g_GPUDevice);
+    SDL_GPUCopyPass* copyPass = SDL_BeginGPUCopyPass(cmd);
+    for (u32 layer = 0; layer < layers; layer++)
+    {
+        for (u32 mip = 0; mip < TEXTURE_PAGE_MAX_MIPS; mip++)
+        {
+            u32 mipSize = Maxu32(TEXTURE_PAGE_SIZE >> mip, 1u);
+            SDL_GPUTextureRegion region = {
+                .texture = cls->pages.handle, .mip_level = mip, .layer = layer,
+                .w = mipSize, .h = mipSize, .d = 1
+            };
+            SDL_GPUTextureTransferInfo dst = {
+                .transfer_buffer = tb,
+                .offset = layer * perLayer + mipOffsets[mip]
+            };
+            SDL_DownloadFromGPUTexture(copyPass, &region, &dst);
+        }
+    }
+    SDL_EndGPUCopyPass(copyPass);
+    SDL_GPUFence* fence = SDL_SubmitGPUCommandBufferAndAcquireFence(cmd);
+    SDL_WaitForGPUFences(g_GPUDevice, true, &fence, 1);
+    SDL_ReleaseGPUFence(g_GPUDevice, fence);
+
+    u64 totalBytes = sizeof(BakedPageHeader) + payloadBytes;
+    u8* fileData = (u8*)SDL_malloc(totalBytes);
+    if (!fileData)
+    {
+        SDL_ReleaseGPUTransferBuffer(g_GPUDevice, tb);
+        return 0;
+    }
+
+    BakedPageHeader* header = (BakedPageHeader*)fileData;
+    header->magic    = BAKED_PAGE_MAGIC;
+    header->version  = BAKED_PAGE_VERSION;
+    header->format   = (u32)format;
+    header->pageSize = TEXTURE_PAGE_SIZE;
+    header->layers   = layers;
+    header->mips     = TEXTURE_PAGE_MAX_MIPS;
+
+    void* map = SDL_MapGPUTransferBuffer(g_GPUDevice, tb, false);
+    MemCopy(fileData + sizeof(BakedPageHeader), map, payloadBytes);
+    SDL_UnmapGPUTransferBuffer(g_GPUDevice, tb);
+    SDL_ReleaseGPUTransferBuffer(g_GPUDevice, tb);
+
+    // the file write does not block the editor, the buffer frees in the callback
+    if (!WriteAllBytesAsync(path, fileData, totalBytes, BakedPagesWriteDone, fileData))
+    {
+        SDL_free(fileData);
+        return 0;
+    }
+    AX_LOG("baked page dump queued: %s layers=%d %.1fmb", path, layers, (double)totalBytes / (1024.0 * 1024.0));
+    return 1;
+}
+
+// uploads every layer and mip of a raw page dump into the class pages. tail mips are
+// also copied into the cpu shadows. out: 0 on failure (missing file, format mismatch)
+static s32 RestoreBakedClass(TextureSystem* ts, u32 textureClass, const char* atlasPath)
+{
+    u64 size = FileSize(atlasPath);
+    u8* data = size > sizeof(BakedPageHeader) ? (u8*)SDL_malloc(size) : NULL;
+    if (!data)
+    {
+        AX_ERROR("baked page dump missing or empty: %s", atlasPath);
+        return 0;
+    }
+    ReadAllFile(atlasPath, (char*)data, size);
+
+    SDL_GPUTextureFormat format = ClassPageFormat(ts, textureClass);
+    const BakedPageHeader* header = (const BakedPageHeader*)data;
+    u32 mipOffsets[TEXTURE_PAGE_MAX_MIPS];
+    u32 perLayer = BakedPageLayout(format, mipOffsets);
+
+    if (header->magic != BAKED_PAGE_MAGIC || header->version != BAKED_PAGE_VERSION ||
+        header->pageSize != TEXTURE_PAGE_SIZE || header->mips != TEXTURE_PAGE_MAX_MIPS ||
+        header->layers == 0u || header->layers > TEXTURE_PAGE_LAYERS ||
+        header->format != (u32)format ||
+        size < sizeof(BakedPageHeader) + (u64)perLayer * header->layers)
+    {
+        AX_WARN("baked page dump invalid or wrong platform format, repack needed: %s", atlasPath);
+        SDL_free(data);
+        return 0;
+    }
+
+    u32 numLayers = header->layers;
+    const u8* payload = data + sizeof(BakedPageHeader);
+    TexturePageClass* cls = &ts->classes[textureClass];
+
+    // open the remaining pages so the tail mip shadows exist. the packer state of every
+    // page is meaningless after a baked restore, appends must repack first
+    while (cls->openPages < numLayers)
+        OpenPage(ts, textureClass);
+    if (numLayers > cls->layerCount)
+    {
+        ReleasePageTexture(&cls->pages);
+        cls->pages = CreatePageTexture(ts, textureClass, numLayers);
+        cls->layerCount = numLayers;
+    }
+
+    u64 payloadBytes = (u64)perLayer * numLayers;
+    SDL_GPUTransferBuffer* tb = SDL_CreateGPUTransferBuffer(g_GPUDevice, &(SDL_GPUTransferBufferCreateInfo){
+        .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, .size = (u32)payloadBytes });
+    if (!tb)
+    {
+        SDL_free(data);
+        return 0;
+    }
+    void* map = SDL_MapGPUTransferBuffer(g_GPUDevice, tb, false);
+    MemCopy(map, payload, payloadBytes);
+    SDL_UnmapGPUTransferBuffer(g_GPUDevice, tb);
+
+    SDL_GPUCommandBuffer* cmd = SDL_AcquireGPUCommandBuffer(g_GPUDevice);
+    SDL_GPUCopyPass* copyPass = SDL_BeginGPUCopyPass(cmd);
+    for (u32 layer = 0; layer < numLayers; layer++)
+    {
+        for (u32 mip = 0; mip < TEXTURE_PAGE_MAX_MIPS; mip++)
+        {
+            u32 mipSize = Maxu32(TEXTURE_PAGE_SIZE >> mip, 1u);
+            SDL_GPUTextureRegion region = {
+                .texture = cls->pages.handle, .mip_level = mip, .layer = layer,
+                .w = mipSize, .h = mipSize, .d = 1
+            };
+            SDL_GPUTextureTransferInfo src = {
+                .transfer_buffer = tb,
+                .offset = layer * perLayer + mipOffsets[mip]
+            };
+            SDL_UploadToGPUTexture(copyPass, &src, &region, false);
+
+            if (mip >= CompressedDirectMips)
+            {
+                u32 byteCount = CompressedMipBytes(format, mipSize, mipSize);
+                MemCopy(cls->tailMips[layer][mip - CompressedDirectMips],
+                        payload + layer * perLayer + mipOffsets[mip], byteCount);
+            }
+        }
+    }
+    SDL_EndGPUCopyPass(copyPass);
+    SDL_GPUFence* fence = SDL_SubmitGPUCommandBufferAndAcquireFence(cmd);
+    SDL_WaitForGPUFences(g_GPUDevice, true, &fence, 1);
+    SDL_ReleaseGPUFence(g_GPUDevice, fence);
+    SDL_ReleaseGPUTransferBuffer(g_GPUDevice, tb);
+    SDL_free(data);
+    return 1;
+}
+
+s32 TextureSystem_RestoreBaked(TextureSystem* ts,
+                               const char* atlasPaths[TextureClass_Count],
+                               const TextureDescriptor* descriptors, u32 numDescriptors,
+                               const MaterialGPU* materials, u32 materialWatermark)
+{
+    if (!ts->compressed)
+    {
+        AX_WARN("baked atlas restore needs block compressed pages, falling back");
+        return 0;
+    }
+    if (numDescriptors < TextureDesc_DefaultCount || numDescriptors > MAX_TEXTURE_DESCRIPTORS ||
+        materialWatermark > MAX_GPU_MATERIALS)
+    {
+        AX_ERROR("baked restore tables out of range: descriptors=%d materials=%d", numDescriptors, materialWatermark);
+        return 0;
+    }
+
+    double startTime = TimeSinceStartup();
+    for (u32 c = 0; c < TextureClass_Count; c++)
+    {
+        if (!atlasPaths[c]) continue;
+        if (!RestoreBakedClass(ts, c, atlasPaths[c]))
+            return 0;
+    }
+
+    MemCopy(ts->descriptors, descriptors, numDescriptors * sizeof(TextureDescriptor));
+    ts->numDescriptors = numDescriptors;
+    UpdateGPUBuffer(ts->descriptorBuffer, ts->descriptors, numDescriptors * sizeof(TextureDescriptor), 0);
+
+    if (materialWatermark > 0)
+    {
+        MemCopy(ts->materials, materials, materialWatermark * sizeof(MaterialGPU));
+        ts->materialWatermark = materialWatermark;
+        UpdateGPUBuffer(ts->materialBuffer, ts->materials, materialWatermark * sizeof(MaterialGPU), 0);
+    }
+
+    AX_LOG("texture system restored from baked atlases descriptors=%d watermark=%d %.2fs",
+           ts->numDescriptors, ts->materialWatermark, TimeSinceStartup() - startTime);
+    return 1;
 }

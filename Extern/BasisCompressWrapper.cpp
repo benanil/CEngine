@@ -26,6 +26,67 @@ int basis_encoder_init(void) {
     return 0;
 }
 
+// Determine compression format (ETC1S or UASTC) and quality/effort settings
+static bool setup_format_params(basis_compressor_params& params,
+                                unsigned int flags,
+                                int quality_level,
+                                int effort_level) {
+    bool use_etc1s = (flags & BASIS_FORMAT_ETC1S) != 0;
+    bool use_uastc = (flags & BASIS_FORMAT_UASTC) != 0;
+    if (!use_etc1s && !use_uastc) {
+        // Default to UASTC (same as original command line behaviour for non-metallic)
+        use_uastc = true;
+    }
+
+    if (use_etc1s && use_uastc) {
+        fprintf(stderr, "Error: Cannot specify both ETC1S and UASTC.\n");
+        return false;
+    }
+
+    if (use_etc1s) {
+        params.set_format_mode(basist::basis_tex_format::cETC1S);
+        // ETC1S quality: quality_level [1,255] (or 0? API says 1..255)
+        if (quality_level >= 0) {
+            params.m_quality_level = quality_level;
+        } else {
+            params.m_quality_level = BASISU_DEFAULT_QUALITY; // 128
+        }
+        // ETC1S effort: effort_level maps to compression_level (0..BASISU_MAX_ETC1S_COMPRESSION_LEVEL)
+        if (effort_level >= 0) {
+            // Map effort 0..10 to 0..BASISU_MAX_ETC1S_COMPRESSION_LEVEL (which is 3 as of 2.10)
+            const int max_etc1s_effort = BASISU_MAX_ETC1S_COMPRESSION_LEVEL; // = 3
+            int comp_level = (effort_level * max_etc1s_effort) / 10;
+            params.m_etc1s_compression_level = comp_level;
+        } else {
+            params.m_etc1s_compression_level = 2; // good default
+        }
+    } else { // UASTC (including HDR detection? We assume LDR for now)
+        // For LDR 4x4 UASTC (the most common)
+        params.set_format_mode(basist::basis_tex_format::cUASTC_LDR_4x4);
+        // Quality: UASTC pack level (0..4) map quality_level (0..100) to 0..4
+        if (quality_level >= 0) {
+            int pack_level = (quality_level * 4) / 100;
+            if (pack_level < 0) pack_level = 0;
+            if (pack_level > 4) pack_level = 4;
+            // The pack flags control effort/quality for UASTC encoding
+            // We'll use the standard flags from basisu_comp.h
+            static const uint32_t pack_flags[] = {
+                cPackUASTCLevelFastest,
+                cPackUASTCLevelFaster,
+                cPackUASTCLevelDefault,
+                cPackUASTCLevelSlower,
+                cPackUASTCLevelVerySlow
+            };
+            params.m_pack_uastc_ldr_4x4_flags = pack_flags[pack_level];
+        } else {
+            params.m_pack_uastc_ldr_4x4_flags = cPackUASTCLevelDefault;
+        }
+
+        params.m_rdo_uastc_ldr_4x4 = false;
+    }
+    return true;
+}
+
 // Convert flags and quality/effort to basis_compressor_params
 static bool setup_params(basis_compressor_params& params,
                          const char* input_filename,
@@ -102,60 +163,8 @@ static bool setup_params(basis_compressor_params& params,
         params.m_mip_gen = false;
     }
 
-    // Determine compression format (ETC1S or UASTC)
-    bool use_etc1s = (flags & BASIS_FORMAT_ETC1S) != 0;
-    bool use_uastc = (flags & BASIS_FORMAT_UASTC) != 0;
-    if (!use_etc1s && !use_uastc) {
-        // Default to UASTC (same as original command line behaviour for non-metallic)
-        use_uastc = true;
-    }
-
-    if (use_etc1s && use_uastc) {
-        fprintf(stderr, "Error: Cannot specify both ETC1S and UASTC.\n");
+    if (!setup_format_params(params, flags, quality_level, effort_level))
         return false;
-    }
-
-    if (use_etc1s) {
-        params.set_format_mode(basist::basis_tex_format::cETC1S);
-        // ETC1S quality: quality_level [1,255] (or 0? API says 1..255)
-        if (quality_level >= 0) {
-            params.m_quality_level = quality_level;
-        } else {
-            params.m_quality_level = BASISU_DEFAULT_QUALITY; // 128
-        }
-        // ETC1S effort: effort_level maps to compression_level (0..BASISU_MAX_ETC1S_COMPRESSION_LEVEL)
-        if (effort_level >= 0) {
-            // Map effort 0..10 to 0..BASISU_MAX_ETC1S_COMPRESSION_LEVEL (which is 3 as of 2.10)
-            const int max_etc1s_effort = BASISU_MAX_ETC1S_COMPRESSION_LEVEL; // = 3
-            int comp_level = (effort_level * max_etc1s_effort) / 10;
-            params.m_etc1s_compression_level = comp_level;
-        } else {
-            params.m_etc1s_compression_level = 2; // good default
-        }
-    } else { // UASTC (including HDR detection? We assume LDR for now)
-        // For LDR 4x4 UASTC (the most common)
-        params.set_format_mode(basist::basis_tex_format::cUASTC_LDR_4x4);
-        // Quality: UASTC pack level (0..4) map quality_level (0..100) to 0..4
-        if (quality_level >= 0) {
-            int pack_level = (quality_level * 4) / 100;
-            if (pack_level < 0) pack_level = 0;
-            if (pack_level > 4) pack_level = 4;
-            // The pack flags control effort/quality for UASTC encoding
-            // We'll use the standard flags from basisu_comp.h
-            static const uint32_t pack_flags[] = {
-                cPackUASTCLevelFastest,
-                cPackUASTCLevelFaster,
-                cPackUASTCLevelDefault,
-                cPackUASTCLevelSlower,
-                cPackUASTCLevelVerySlow
-            };
-            params.m_pack_uastc_ldr_4x4_flags = pack_flags[pack_level];
-        } else {
-            params.m_pack_uastc_ldr_4x4_flags = cPackUASTCLevelDefault;
-        }
-
-        params.m_rdo_uastc_ldr_4x4 = false;
-    }
 
     // Multithreading: enable by default if we have a job pool.
     params.m_multithreading = true;
@@ -222,4 +231,95 @@ int basis_compress_file(const char* input_filename,
     }
 
     return 0; // success
+}
+
+int basis_compress_array_memory(const unsigned char* const* layer_mips,
+                                int num_layers,
+                                int num_mips,
+                                int width,
+                                int height,
+                                unsigned int flags,
+                                int quality_level,
+                                int effort_level,
+                                const char* output_filename)
+{
+    if (!g_encoder_initialized) {
+        if (basis_encoder_init() != 0) {
+            return -100;
+        }
+    }
+    if (!layer_mips || num_layers < 1 || num_mips < 1 || width < 1 || height < 1 || !output_filename) {
+        fprintf(stderr, "basis_compress_array_memory: invalid arguments for %s\n",
+                output_filename ? output_filename : "(null)");
+        return -1;
+    }
+
+    basis_compressor_params params;
+    params.clear();
+    params.m_out_filename = output_filename;
+    params.m_write_output_basis_or_ktx2_files = true;
+    params.m_create_ktx2_file = false;
+    params.m_tex_type = basist::cBASISTexType2DArray;
+
+    // mips are caller supplied, never generated, and the data keeps the channel layout
+    // it had inside the source basis files: no swizzling, no renormalization
+    params.m_mip_gen = false;
+    params.m_y_flip = false;
+    params.m_renormalize = false;
+
+    bool linear = (flags & (BASIS_FLAG_NORMAL_MAP | BASIS_FLAG_METALLIC_ROUGHNESS)) != 0;
+    params.m_perceptual = !linear;
+    params.m_ktx2_and_basis_srgb_transfer_function = !linear;
+    params.m_mip_srgb = !linear;
+
+    if (!setup_format_params(params, flags, quality_level, effort_level))
+        return -1;
+
+    for (int layer = 0; layer < num_layers; layer++) {
+        const unsigned char* mip0 = layer_mips[(size_t)layer * num_mips];
+        if (!mip0) {
+            fprintf(stderr, "basis_compress_array_memory: layer %d mip 0 is null\n", layer);
+            return -1;
+        }
+        image img(width, height);
+        memcpy(img.get_ptr(), mip0, (size_t)width * height * 4);
+        params.m_source_images.push_back(img);
+
+        basisu::vector<image> mips;
+        for (int m = 1; m < num_mips; m++) {
+            const unsigned char* data = layer_mips[(size_t)layer * num_mips + m];
+            int mw = width >> m;  if (mw < 1) mw = 1;
+            int mh = height >> m; if (mh < 1) mh = 1;
+            if (!data) {
+                fprintf(stderr, "basis_compress_array_memory: layer %d mip %d is null\n", layer, m);
+                return -1;
+            }
+            image mip(mw, mh);
+            memcpy(mip.get_ptr(), data, (size_t)mw * mh * 4);
+            mips.push_back(mip);
+        }
+        if (num_mips > 1)
+            params.m_source_mipmap_images.push_back(mips);
+    }
+
+    params.m_multithreading = true;
+    params.m_status_output = true;
+    params.m_print_stats = false;
+
+    job_pool jpool(std::thread::hardware_concurrency());
+    params.m_pJob_pool = &jpool;
+
+    basis_compressor compressor;
+    if (!compressor.init(params)) {
+        fprintf(stderr, "Compressor init failed for %s\n", output_filename);
+        return -2;
+    }
+
+    basis_compressor::error_code err = compressor.process();
+    if (err != basis_compressor::cECSuccess) {
+        fprintf(stderr, "Compression failed for %s with error %d\n", output_filename, (int)err);
+        return -3;
+    }
+
+    return 0;
 }

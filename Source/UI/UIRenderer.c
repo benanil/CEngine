@@ -1022,7 +1022,7 @@ typedef struct UIEditSlot_
 
 static UIEditSlot* UIGetEditSlot(Clay_ElementId id)
 {
-    static UIEditSlot slots[32];
+    static UIEditSlot slots[64];
     UIEditSlot* empty = NULL;
     u64 editId = (u64)id.id;
 
@@ -1297,6 +1297,334 @@ bool UIEditFloat(Clay_ElementId id, Clay_String label, f32* value, f32 minValue,
         slot->lastValue = *value;
     }
 
+    return changed;
+}
+
+// one text box of a multi component edit row. out: true when the value changed
+static bool UIEditComponent(Clay_ElementId compId, f32* value, f32 minValue, f32 maxValue,
+                            int decimals, bool isFloat, f32 boxWidth)
+{
+    UIEditSlot* slot = UIGetEditSlot(compId);
+    if (!slot) return false;
+
+    bool changed = false;
+    f32 current = Clampf32(IsFiniteF32(*value) ? *value : minValue, minValue, maxValue);
+    if (!isFloat) current = (f32)(s32)current;
+    if (current != *value)
+    {
+        *value = current;
+        changed = true;
+    }
+
+    if (slot->buffer[0] == '\0' || slot->lastValue != *value)
+    {
+        if (isFloat) UIFormatFloat(slot->buffer, (u32)sizeof(slot->buffer), current, decimals);
+        else         UIFormatInt(slot->buffer, (u32)sizeof(slot->buffer), (s32)current);
+        slot->lastValue = *value;
+    }
+
+    slot->textData.type = UICustomType_TextArea;
+    slot->textData.buffer = slot->buffer;
+    slot->textData.capacity = sizeof(slot->buffer);
+    slot->textData.flags = UITextAreaFlags_CenterX | UITextAreaFlags_CenterY;
+    CLAY(compId, {
+        .layout = { .sizing = { CLAY_SIZING_FIXED(boxWidth), CLAY_SIZING_FIXED(28.0f) } },
+        .custom = { .customData = &slot->textData }
+    }) {}
+
+    UIFilterNumericBuffer(slot->buffer, (u32)sizeof(slot->buffer), isFloat);
+    f32 parsed;
+    bool parsedOk;
+    if (isFloat)
+    {
+        parsedOk = UIParseFloatBuffer(slot->buffer, &parsed);
+    }
+    else
+    {
+        s32 parsedInt;
+        parsedOk = UIParseIntBuffer(slot->buffer, &parsedInt);
+        parsed = (f32)parsedInt;
+    }
+    if (parsedOk)
+    {
+        parsed = Clampf32(parsed, minValue, maxValue);
+        if (!isFloat) parsed = (f32)(s32)parsed;
+        if (parsed != *value)
+        {
+            *value = parsed;
+            changed = true;
+        }
+        slot->lastValue = *value;
+    }
+    return changed;
+}
+
+bool UIEditFloatN(Clay_ElementId id, Clay_String label, f32* values, u32 numComponents,
+                  f32 minValue, f32 maxValue, int decimals)
+{
+    if (!values || numComponents == 0u || numComponents > 4u ||
+        !IsFiniteF32(minValue) || !IsFiniteF32(maxValue) || maxValue < minValue) return false;
+
+    bool changed = false;
+    CLAY(id, {
+        .layout = {
+            .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(34.0f) },
+            .padding = { 0, 4, 0, 0 },
+            .childGap = 6,
+            .layoutDirection = CLAY_LEFT_TO_RIGHT,
+            .childAlignment = { .y = CLAY_ALIGN_Y_CENTER }
+        }
+    }) {
+        CLAY_TEXT(label, CLAY_TEXT_CONFIG({
+            .fontSize = (u16)Maxu32((u32)(15.0f * UIGetFloat(UIFloat_TextScale)), 1u),
+            .textColor = UIGetClayColor(UIColor_Text)
+        }));
+
+        CLAY(CLAY_ID_LOCAL("Spacer"), {
+            .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(1.0f) } }
+        }) {}
+
+        for (u32 i = 0u; i < numComponents; i++)
+        {
+            Clay_ElementId compId = Clay_GetElementIdWithIndex(CLAY_STRING("UIEditFloatNComp"), id.id + i);
+            changed |= UIEditComponent(compId, &values[i], minValue, maxValue, decimals, true, 68.0f);
+        }
+    }
+    return changed;
+}
+
+bool UIEditIntN(Clay_ElementId id, Clay_String label, s32* values, u32 numComponents,
+                s32 minValue, s32 maxValue)
+{
+    if (!values || numComponents == 0u || numComponents > 4u || maxValue < minValue) return false;
+
+    bool changed = false;
+    CLAY(id, {
+        .layout = {
+            .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(34.0f) },
+            .padding = { 0, 4, 0, 0 },
+            .childGap = 6,
+            .layoutDirection = CLAY_LEFT_TO_RIGHT,
+            .childAlignment = { .y = CLAY_ALIGN_Y_CENTER }
+        }
+    }) {
+        CLAY_TEXT(label, CLAY_TEXT_CONFIG({
+            .fontSize = (u16)Maxu32((u32)(15.0f * UIGetFloat(UIFloat_TextScale)), 1u),
+            .textColor = UIGetClayColor(UIColor_Text)
+        }));
+
+        CLAY(CLAY_ID_LOCAL("Spacer"), {
+            .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(1.0f) } }
+        }) {}
+
+        for (u32 i = 0u; i < numComponents; i++)
+        {
+            Clay_ElementId compId = Clay_GetElementIdWithIndex(CLAY_STRING("UIEditIntNComp"), id.id + i);
+            f32 value = (f32)values[i];
+            changed |= UIEditComponent(compId, &value, (f32)minValue, (f32)maxValue, 0, false, 68.0f);
+            values[i] = (s32)value;
+        }
+    }
+    return changed;
+}
+
+/*//////////////////////////////////////////////////////////////////////////*/
+/*                               Color Edit                                 */
+/*//////////////////////////////////////////////////////////////////////////*/
+
+#include "Shaders/spv/UI/ColorPickCompute.spv.h"
+#include "Math/Color.h"
+
+extern SDL_GPUDevice* g_GPUDevice;
+
+// hsv picker state, one picker open at a time like the dropdowns
+static u64    g_UIColorEditOpenId;
+static float3 g_UIColorEditHSV;
+
+// the picker visuals come from the old engine's color pick shader, rendered into a
+// small texture whenever the hsv selection changes
+enum { UIColorPickWidth = 256, UIColorPickHeight = 176 };
+static SDL_GPUComputePipeline* g_UIColorPickPipeline;
+static SDL_GPUTexture* g_UIColorPickTexture;
+static UIImageData g_UIColorPickImage;
+
+static void UIColorPickRender(void)
+{
+    if (!g_UIColorPickPipeline)
+    {
+        g_UIColorPickPipeline = SDL_CreateGPUComputePipeline(g_GPUDevice, &(SDL_GPUComputePipelineCreateInfo){
+            .code = Shaders_UI_ColorPickCompute_spv,
+            .code_size = sizeof(Shaders_UI_ColorPickCompute_spv),
+            .entrypoint = "main",
+            .format = SDL_GetGPUShaderFormats(g_GPUDevice),
+            .num_readwrite_storage_textures = 1,
+            .num_uniform_buffers = 1,
+            .threadcount_x = 8,
+            .threadcount_y = 8,
+            .threadcount_z = 1,
+        });
+        if (!g_UIColorPickPipeline)
+        {
+            AX_ERROR("color pick pipeline creation failed");
+            return;
+        }
+        g_UIColorPickTexture = CreateTexture2D(UIColorPickWidth, UIColorPickHeight, SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
+                                               SDL_GPU_TEXTUREUSAGE_SAMPLER | SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_WRITE,
+                                               SDL_GPU_SAMPLECOUNT_1, 1u, "UIColorPick");
+        g_UIColorPickImage = (UIImageData){ .texture = g_UIColorPickTexture };
+    }
+    if (!g_UIColorPickTexture) return;
+
+    SDL_GPUCommandBuffer* cmd = SDL_AcquireGPUCommandBuffer(g_GPUDevice);
+    SDL_GPUStorageTextureReadWriteBinding rwTexture = { .texture = g_UIColorPickTexture };
+    SDL_GPUComputePass* pass = SDL_BeginGPUComputePass(cmd, &rwTexture, 1, NULL, 0);
+    SDL_BindGPUComputePipeline(pass, g_UIColorPickPipeline);
+    struct { f32 hsv[3]; f32 pad0; f32 size[2]; f32 pad1[2]; } params = {
+        { g_UIColorEditHSV.x, g_UIColorEditHSV.y, g_UIColorEditHSV.z }, 0.0f,
+        { (f32)UIColorPickWidth, (f32)UIColorPickHeight }, { 0.0f, 0.0f }
+    };
+    SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
+    SDL_DispatchGPUCompute(pass, (UIColorPickWidth + 7u) / 8u, (UIColorPickHeight + 7u) / 8u, 1);
+    SDL_EndGPUComputePass(pass);
+    SDL_SubmitGPUCommandBuffer(cmd);
+}
+
+// drag interaction over an element's last frame bounding box.
+// out: true while dragging, outX/outY are 0..1 inside the box
+static bool UIColorDragBox(Clay_ElementId boxId, f32* outX, f32* outY)
+{
+    if (!GetMouseDown(MouseButton_Left)) return false;
+    Clay_ElementData box = Clay_GetElementData(boxId);
+    if (!box.found) return false;
+    if (!RectPointIntersect((float2){ box.boundingBox.x, box.boundingBox.y },
+                            (float2){ box.boundingBox.width, box.boundingBox.height }, g_UI.mouse))
+        return false;
+    *outX = Clampf32((g_UI.mouse.x - box.boundingBox.x) / Maxf32(box.boundingBox.width, 1.0f), 0.0f, 1.0f);
+    *outY = Clampf32((g_UI.mouse.y - box.boundingBox.y) / Maxf32(box.boundingBox.height, 1.0f), 0.0f, 1.0f);
+    return true;
+}
+
+bool UIColorEdit3(Clay_ElementId id, Clay_String label, f32* rgb)
+{
+    if (!rgb) return false;
+
+    bool open = g_UIColorEditOpenId == (u64)id.id;
+    bool changed = false;
+
+    Clay_ElementId swatchId = Clay_GetElementIdWithIndex(CLAY_STRING("UIColorSwatch"), id.id);
+    Clay_ElementId panelId  = Clay_GetElementIdWithIndex(CLAY_STRING("UIColorPanel"), id.id);
+    Clay_ElementId pickId   = Clay_GetElementIdWithIndex(CLAY_STRING("UIColorPick"), id.id);
+
+    // close on escape or a click outside the swatch and the panel, last frame's layout
+    if (open && (GetMousePressed(MouseButton_Left) || GetKeyPressed(27)))
+    {
+        Clay_ElementData swatch = Clay_GetElementData(swatchId);
+        Clay_ElementData panel  = Clay_GetElementData(panelId);
+        bool insideSwatch = swatch.found && RectPointIntersect((float2){ swatch.boundingBox.x, swatch.boundingBox.y },
+                                                               (float2){ swatch.boundingBox.width, swatch.boundingBox.height }, g_UI.mouse) != 0u;
+        bool insidePanel  = panel.found && RectPointIntersect((float2){ panel.boundingBox.x, panel.boundingBox.y },
+                                                              (float2){ panel.boundingBox.width, panel.boundingBox.height }, g_UI.mouse) != 0u;
+        if (GetKeyPressed(27) || (!insideSwatch && !insidePanel))
+        {
+            g_UIColorEditOpenId = 0u;
+            open = false;
+        }
+    }
+
+    if (open)
+    {
+        // the picker edits the hsv cache, the color follows. the regions match the
+        // shader layout: bottom 12% is the hue strip, the left 88% is the sv field
+        f32 dragX, dragY;
+        if (UIColorDragBox(pickId, &dragX, &dragY))
+        {
+            if (dragY > 0.88f)
+            {
+                g_UIColorEditHSV.x = dragX;
+            }
+            else if (dragX < 0.88f)
+            {
+                g_UIColorEditHSV.y = dragX / 0.88f;
+                g_UIColorEditHSV.z = 1.0f - dragY / 0.88f;
+            }
+            HSVToRGB(g_UIColorEditHSV, rgb);
+            UIColorPickRender();
+            changed = true;
+        }
+    }
+
+    CLAY(id, {
+        .layout = {
+            .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(34.0f) },
+            .padding = { 0, 4, 0, 0 },
+            .childGap = 8,
+            .layoutDirection = CLAY_LEFT_TO_RIGHT,
+            .childAlignment = { .y = CLAY_ALIGN_Y_CENTER }
+        }
+    }) {
+        CLAY_TEXT(label, CLAY_TEXT_CONFIG({
+            .fontSize = (u16)Maxu32((u32)(15.0f * UIGetFloat(UIFloat_TextScale)), 1u),
+            .textColor = UIGetClayColor(UIColor_Text)
+        }));
+
+        CLAY(CLAY_ID_LOCAL("Spacer"), { .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(1.0f) } } }) {}
+
+        CLAY(swatchId, {
+            .layout = { .sizing = { CLAY_SIZING_FIXED(64.0f), CLAY_SIZING_FIXED(24.0f) } },
+            .backgroundColor = { Clampf32(rgb[0], 0.0f, 1.0f) * 255.0f,
+                                 Clampf32(rgb[1], 0.0f, 1.0f) * 255.0f,
+                                 Clampf32(rgb[2], 0.0f, 1.0f) * 255.0f, 255.0f },
+            .cornerRadius = CLAY_CORNER_RADIUS(UIGetFloat(UIFloat_CornerRadius)),
+            .border = { .color = open ? UIGetClayColor(UIColor_SelectedBorder) : UIGetClayColor(UIColor_Border), .width = CLAY_BORDER_OUTSIDE(1) }
+        }) {
+            if (UIClicked())
+            {
+                open = !open;
+                g_UIColorEditOpenId = open ? (u64)id.id : 0u;
+                if (open)
+                {
+                    g_UIColorEditHSV = RGBToHSV((float3){ rgb[0], rgb[1], rgb[2] });
+                    UIColorPickRender();
+                }
+            }
+
+            if (open)
+            {
+                CLAY(panelId, {
+                    .layout = {
+                        .sizing = { CLAY_SIZING_FIXED(UIColorPickWidth + 16.0f), CLAY_SIZING_FIT(0) },
+                        .padding = { 8, 8, 8, 8 },
+                        .childGap = 6,
+                        .layoutDirection = CLAY_TOP_TO_BOTTOM
+                    },
+                    .backgroundColor = UIColorToClay(UIGetColor(UIColor_Quad) | 0xFF000000u),
+                    .cornerRadius = CLAY_CORNER_RADIUS(UIGetFloat(UIFloat_CornerRadius)),
+                    .border = { .color = UIGetClayColor(UIColor_Border), .width = CLAY_BORDER_OUTSIDE(1) },
+                    .floating = {
+                        .zIndex = 125,
+                        .attachPoints = { .element = CLAY_ATTACH_POINT_RIGHT_TOP, .parent = CLAY_ATTACH_POINT_RIGHT_BOTTOM },
+                        .attachTo = CLAY_ATTACH_TO_PARENT
+                    }
+                }) {
+                    // sv field, hue strip and selection indicator all live in the shader
+                    // rendered texture (the old engine's color pick shader)
+                    CLAY(pickId, {
+                        .layout = { .sizing = { CLAY_SIZING_FIXED((f32)UIColorPickWidth), CLAY_SIZING_FIXED((f32)UIColorPickHeight) } },
+                        .image = { .imageData = &g_UIColorPickImage },
+                        .border = { .color = UIGetClayColor(UIColor_Border), .width = CLAY_BORDER_OUTSIDE(1) }
+                    }) {}
+
+                    Clay_ElementId rgbRowId = Clay_GetElementIdWithIndex(CLAY_STRING("UIColorRGBRow"), id.id);
+                    if (UIEditFloatN(rgbRowId, CLAY_STRING("RGB"), rgb, 3u, 0.0f, 1.0f, 3))
+                    {
+                        g_UIColorEditHSV = RGBToHSV((float3){ rgb[0], rgb[1], rgb[2] });
+                        UIColorPickRender();
+                        changed = true;
+                    }
+                }
+            }
+        }
+    }
     return changed;
 }
 

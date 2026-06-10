@@ -336,6 +336,12 @@
 					<File>
 						<Path>Include/TextureSystem.h</Path>
 					</File>
+					<File>
+						<Path>Include/SceneSerializer.h</Path>
+					</File>
+					<File>
+						<Path>Include/Async.h</Path>
+					</File>
 				</Children>
 			</Folder>
 			<Folder>
@@ -592,6 +598,15 @@
 					</File>
 					<File>
 						<Path>Source/AssetsEditor.c</Path>
+					</File>
+					<File>
+						<Path>Source/SceneSerializer.c</Path>
+					</File>
+					<File>
+						<Path>Source/Async.c</Path>
+					</File>
+					<File>
+						<Path>Source/ConsoleEditor.c</Path>
 					</File>
 				</Children>
 			</Folder>
