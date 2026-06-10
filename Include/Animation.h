@@ -114,8 +114,9 @@ void AnimationSystem_Destroy(AnimationSystem* anims);
 // creates the gpu buffers on first use. fail return 0
 s32 AnimationSystem_AppendBundle(AnimationSystem* anims, const SceneBundle* bundle);
 
-// assigns a random animation and time offset to every instance slot and uploads them
-void AnimationSystem_RandomizeInstances(AnimationSystem* anims);
+// uploads instance assignments to the gpu, instances are indexed by the skinned
+// render set's sparse entity id. count is clamped to MAX_ANIM_INSTANCES
+void AnimationSystem_UpdateInstances(AnimationSystem* anims, const GPUAnimationInstance* instances, u32 count);
 
 // fail return 0
 s32 SceneBundleInitAnimations(const SceneBundle* prefab, Pose pose[MAX_BONES]);

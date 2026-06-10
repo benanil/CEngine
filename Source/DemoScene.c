@@ -12,6 +12,26 @@ static u32 g_PaladinBundle = INVALID_BUNDLE;
 static u32 g_BistroBundle  = INVALID_BUNDLE;
 static LightGPU g_DemoLights[12];
 
+// assigns a random animation and time offset to every instance slot
+static void RandomizeAnimInstances(void)
+{
+    AnimationSystem* anims = &g_DemoScene.animSystem;
+    if (anims->numAnimations == 0) return;
+
+    GPUAnimationInstance instances[MAX_ANIM_INSTANCES];
+    for (u32 i = 0; i < MAX_ANIM_INSTANCES; i++)
+    {
+        u32 hash = WangHash(i + 645u);
+        u32 animIdx = hash % anims->numAnimations;
+        if (animIdx == 0 && anims->numAnimations > 1) animIdx = 1; // skip the bind pose
+        instances[i] = (GPUAnimationInstance){
+            .animIdx = animIdx,
+            .timeOffset = NextFloat01(hash) * anims->animData[animIdx].duration,
+        };
+    }
+    AnimationSystem_UpdateInstances(anims, instances, MAX_ANIM_INSTANCES);
+}
+
 static void UpdateDemoLights(void)
 {
     static const f32 colors[8][3] = {
@@ -96,6 +116,8 @@ s32 DemoScene_Create(void)
     g_BistroBundle  = Scene_AddBundle(&g_DemoScene, "Assets/Meshes/Bistro/Bistro.glb", false);
     if (g_PaladinBundle == INVALID_BUNDLE || g_BistroBundle == INVALID_BUNDLE)
         return 0;
+
+    RandomizeAnimInstances();
 
     const int numCharacters = 7;
     const int charGridStride = (int)Ceilf(Sqrtf((float)numCharacters));

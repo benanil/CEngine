@@ -10,6 +10,30 @@
 Scene* g_ActiveScenes[MAX_ACTIVE_SCENES];
 u32    g_NumActiveScenes;
 
+extern Graphics gGFX;
+
+// returns the bundle's vertex/index ranges to the geometry heaps. safe to call
+// twice, the pointers are nulled after the free. bundles whose geometry lives
+// outside the mega buffers (fbx path) have NULL heap pointers and are skipped
+static void Scene_FreeBundleGeometry(SceneBundle* bundle, bool skinned)
+{
+    if (bundle->vertexHeapPtr)
+    {
+        GeometryHeapFree(skinned ? GeometryBuffer_SkinnedVertex : GeometryBuffer_SurfaceVertex, bundle->vertexHeapPtr);
+        if (skinned) gGFX.NumSkinnedVertices -= (u32)bundle->totalVertices;
+        else         gGFX.NumSurfaceVertices -= (u32)bundle->totalVertices;
+        bundle->vertexHeapPtr = NULL;
+        bundle->allVertices = NULL;
+    }
+    if (bundle->indexHeapPtr)
+    {
+        GeometryHeapFree(GeometryBuffer_Index, bundle->indexHeapPtr);
+        gGFX.NumIndices -= (u32)bundle->totalIndices;
+        bundle->indexHeapPtr = NULL;
+        bundle->allIndices = NULL;
+    }
+}
+
 void Scene_Init(Scene* scene)
 {
     MemsetZero(scene, sizeof(*scene));
@@ -24,6 +48,8 @@ void Scene_Init(Scene* scene)
 void Scene_Destroy(Scene* scene)
 {
     Scene_Deactivate(scene);
+    for (u32 i = 0; i < scene->numBundles; i++)
+        Scene_FreeBundleGeometry(scene->bundles[i], scene->bundleSkinned[i] != 0);
     DestroyRenderSetBuffers(&scene->skinnedBuffers);
     DestroyRenderSetBuffers(&scene->surfaceBuffers);
     TextureSystem_Destroy(&scene->textureSystem);
@@ -92,6 +118,7 @@ u32 Scene_AddBundle(Scene* scene, const char* path, bool skinned)
     if (!LoadGLTFCached(path, bundle, staging))
     {
         AX_ERROR("gltf scene load failed: %s", path);
+        Scene_FreeBundleGeometry(bundle, skinned);
         ArenaRestore(&GlobalArena, mark);
         DeAllocateTLSFGlobal(bundle);
         return INVALID_BUNDLE;
@@ -101,12 +128,10 @@ u32 Scene_AddBundle(Scene* scene, const char* path, bool skinned)
     {
         AX_ERROR("scene animation creation failed: %s", path);
         TextureSystem_ReleaseTextures(staging, (u32)bundle->numImages);
+        Scene_FreeBundleGeometry(bundle, skinned);
         ArenaRestore(&GlobalArena, mark);
         return INVALID_BUNDLE;
     }
-    if (skinned)
-        AnimationSystem_RandomizeInstances(&scene->animSystem);
-
     // staging is bundle local, material slots are stable for the bundle's lifetime
     bundle->imageOffset    = 0;
     bundle->materialOffset = (int)scene->numMaterials;
@@ -115,13 +140,17 @@ u32 Scene_AddBundle(Scene* scene, const char* path, bool skinned)
     TextureSystem_ReleaseTextures(staging, (u32)bundle->numImages);
     ArenaRestore(&GlobalArena, mark);
     if (!appended)
+    {
+        Scene_FreeBundleGeometry(bundle, skinned);
         return INVALID_BUNDLE;
+    }
 
     RenderSet* set = skinned ? &scene->skinnedSet : &scene->surfaceSet;
     u32 renderIdx = RenderSet_AddSceneBundle(set, bundle);
     if (renderIdx == INVALID_BUNDLE)
     {
         AX_ERROR("render set bundle registration failed: %s", path);
+        Scene_FreeBundleGeometry(bundle, skinned);
         return INVALID_BUNDLE;
     }
 
@@ -145,6 +174,7 @@ u32 Scene_RemoveBundle(Scene* scene, u32 bundleIdx)
 
     u32 removedEntities = RenderSet_RemoveSceneBundle(set, removedRenderIdx);
     TextureSystem_RemoveBundle(&scene->textureSystem, bundle);
+    Scene_FreeBundleGeometry(bundle, skinned);
 
     // the render set compacts its bundle list, later indices of the same set shift down
     for (u32 i = 0; i < scene->numBundles; i++)
@@ -154,8 +184,8 @@ u32 Scene_RemoveBundle(Scene* scene, u32 bundleIdx)
             scene->bundleRenderIdx[i]--;
     }
 
-    // the bundle data itself stays allocated: vertices live in the shared mega buffers
-    // and skinned bundles registered animation data that is not reclaimed yet
+    // geometry is freed above, the rest of the bundle cpu data stays allocated:
+    // skinned bundles registered animation data that is not reclaimed yet
     for (u32 i = bundleIdx + 1; i < scene->numBundles; i++)
     {
         scene->bundlePaths[i - 1]     = scene->bundlePaths[i];

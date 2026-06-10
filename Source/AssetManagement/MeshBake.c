@@ -207,7 +207,7 @@ static void BuildSkinSimplifyAttributes(const ASkinedVertex* vertices, f32* attr
 }
 
 static void GenerateStaticLODsForPrimitive(APrimitive* primitive, const u32* globalIndices, u32 vertexBase,
-                                           u32** lodWrite, u32* lodIndexCursor, f32 lodBudgetScale)
+                                           u32** lodWrite, u32* lodIndexCursor, u32 indexRangeEnd, f32 lodBudgetScale)
 {
     const float3* positions = (const float3*)primitive->vertexAttribs[AAttribIdx_POSITION];
     if (!positions || primitive->numVertices <= 0 || primitive->numIndices < 3)
@@ -238,10 +238,11 @@ static void GenerateStaticLODsForPrimitive(APrimitive* primitive, const u32* glo
             continue;
         }
 
-        if (*lodIndexCursor + (u32)simplifiedCount > MAX_INDEX)
+        // overrunning the bundle's allocation would corrupt a neighboring live bundle
+        if (*lodIndexCursor + (u32)simplifiedCount > indexRangeEnd)
         {
-            AX_WARN("static lod generation skipped: index capacity exceeded lod=%d indices=%d/%llu", lod,
-                    *lodIndexCursor + (u32)simplifiedCount, (unsigned long long)MAX_INDEX);
+            AX_WARN("static lod generation skipped: bundle index range exceeded lod=%d indices=%d/%d", lod,
+                    *lodIndexCursor + (u32)simplifiedCount, indexRangeEnd);
             continue;
         }
 
@@ -259,9 +260,9 @@ static void GenerateStaticLODsForPrimitive(APrimitive* primitive, const u32* glo
 }
 
 static void GenerateSkinnedLODsForPrimitive(APrimitive* primitive, const u32* globalIndices, u32 vertexBase,
-                                            ASkinedVertex** vertexWrite, u32* vertexCursor,
+                                            ASkinedVertex** vertexWrite, u32* vertexCursor, u32 vertexRangeEnd,
                                             u32* animatedVertexCursor, u32** lodWrite, u32* lodIndexCursor,
-                                            f32 lodBudgetScale)
+                                            u32 indexRangeEnd, f32 lodBudgetScale)
 {
     const float3* positions = (const float3*)primitive->vertexAttribs[AAttribIdx_POSITION];
     if (!positions || primitive->numVertices <= 0 || primitive->numIndices < 3)
@@ -300,10 +301,10 @@ static void GenerateSkinnedLODsForPrimitive(APrimitive* primitive, const u32* gl
             continue;
         }
 
-        if (*lodIndexCursor + (u32)simplifiedCount > MAX_INDEX)
+        if (*lodIndexCursor + (u32)simplifiedCount > indexRangeEnd)
         {
-            AX_WARN("skinned lod generation skipped: index capacity exceeded lod=%d indices=%d/%llu", lod,
-                    *lodIndexCursor + (u32)simplifiedCount, (unsigned long long)MAX_INDEX);
+            AX_WARN("skinned lod generation skipped: bundle index range exceeded lod=%d indices=%d/%d", lod,
+                    *lodIndexCursor + (u32)simplifiedCount, indexRangeEnd);
             continue;
         }
 
@@ -329,10 +330,10 @@ static void GenerateSkinnedLODsForPrimitive(APrimitive* primitive, const u32* gl
         if (compactVertexCount == 0)
             continue;
 
-        if (*vertexCursor + compactVertexCount > MAX_SKINNED_SOURCE_VERTEX)
+        if (*vertexCursor + compactVertexCount > vertexRangeEnd)
         {
-            AX_WARN("skinned lod generation skipped: vertex capacity exceeded lod=%d vertices=%d/%llu", lod,
-                    *vertexCursor + compactVertexCount, (unsigned long long)MAX_SKINNED_SOURCE_VERTEX);
+            AX_WARN("skinned lod generation skipped: bundle vertex range exceeded lod=%d vertices=%d/%d", lod,
+                    *vertexCursor + compactVertexCount, vertexRangeEnd);
             continue;
         }
 
@@ -376,9 +377,8 @@ static void GenerateSkinnedLODsForPrimitive(APrimitive* primitive, const u32* gl
     ArenaPopGlobal(numIndices * sizeof(u32));
 }
 
-static void ValidatePrimitiveLODs(const SceneBundle* gltf, bool isSkinned)
+static void ValidatePrimitiveLODs(const SceneBundle* gltf, bool isSkinned, u32 vertexBase, u32 indexEnd)
 {
-    u32 vertexBase = isSkinned ? gGFX.NumSkinnedVertices - (u32)gltf->totalVertices : gGFX.NumSurfaceVertices - (u32)gltf->totalVertices;
     u32 vertexEnd = vertexBase + (u32)gltf->totalVertices;
     for (s32 m = 0; m < gltf->numMeshes; m++)
     {
@@ -390,10 +390,10 @@ static void ValidatePrimitiveLODs(const SceneBundle* gltf, bool isSkinned)
             {
                 u32 indexOffset = (u32)primitive->lodIndexOffset[lod];
                 u32 numIndices = (u32)primitive->lodNumIndices[lod];
-                if (indexOffset + numIndices > gGFX.NumIndices)
+                if (indexOffset + numIndices > indexEnd)
                 {
                     AX_WARN("lod index range invalid mesh=%d primitive=%d lod=%d range=%d..%d total=%d",
-                            m, p, lod, indexOffset, indexOffset + numIndices, gGFX.NumIndices);
+                            m, p, lod, indexOffset, indexOffset + numIndices, indexEnd);
                     continue;
                 }
 
@@ -429,23 +429,53 @@ s32 BakeSceneMeshesAndAnimations(SceneBundle* gltf)
     AX_LOG("mesh bake: meshes=%d vertices=%d indices=%d skins=%d", gltf->numMeshes, gltf->totalVertices, gltf->totalIndices, gltf->numSkins);
     AMesh* meshes    = gltf->meshes;
     bool isSkinned = gltf->numSkins > 0;
-    u32 vertexCursor = isSkinned ? gGFX.NumSkinnedVertices : gGFX.NumSurfaceVertices;
-    u32 firstVertexCursor = vertexCursor;
-    u32 indexCursor  = gGFX.NumIndices;
-    u32 firstIndexCursor = indexCursor;
+    GeometryBufferKind vertexKind = isSkinned ? GeometryBuffer_SkinnedVertex : GeometryBuffer_SurfaceVertex;
 
-    u32 maxVertices = isSkinned ? MAX_SKINNED_SOURCE_VERTEX : MAX_SURFACE_VERTEX;
-    if ((vertexCursor + gltf->totalVertices) > maxVertices ||
-        (gGFX.NumIndices  + gltf->totalIndices) > MAX_INDEX)
+    // lods append indices (and vertices for skinned meshes) of unknown size,
+    // allocate generous headroom and shrink to the final totals after the bake.
+    // meshopt can return more indices than the target, the extra headroom keeps
+    // tail primitives from losing their lods when the budget is exactly desired.
+    // +1 vertex / +4 index padding for wide copies past the range end
+    f32 desiredLODIndices = (f32)gltf->totalIndices * 0.75f;
+
+    u32 vertexCapacity = 0;
+    u32 vertexBase = GEOMETRY_ALLOC_FAIL;
+    void* vertexRaw = NULL;
+    u32 vertexLODCount = isSkinned ? MESH_LOD_COUNT : 1u;
+    for (u32 lods = vertexLODCount; lods >= 1u && vertexBase == GEOMETRY_ALLOC_FAIL; lods--)
     {
-        AX_WARN("mesh bake failed: vertex/index buffer capacity exceeded vertices=%d/%d indices=%d/%llu",
-                vertexCursor + gltf->totalVertices, maxVertices,
-                gGFX.NumIndices + gltf->totalIndices, MAX_INDEX);
+        vertexCapacity = (u32)gltf->totalVertices * lods + 1u;
+        vertexBase = GeometryHeapAlloc(vertexKind, vertexCapacity, &vertexRaw);
+    }
+
+    static const f32 lodHeadroom[] = { 2.0f, 1.5f, 1.25f, 1.1f, 1.0f, 0.5f, 0.25f, 0.0f };
+    u32 indexCapacity = 0;
+    u32 indexBase = GEOMETRY_ALLOC_FAIL;
+    void* indexRaw = NULL;
+    for (u32 h = 0; h < ARRAY_SIZE(lodHeadroom) && indexBase == GEOMETRY_ALLOC_FAIL; h++)
+    {
+        indexCapacity = (u32)gltf->totalIndices + (u32)(desiredLODIndices * lodHeadroom[h]) + 4u;
+        indexBase = GeometryHeapAlloc(GeometryBuffer_Index, indexCapacity, &indexRaw);
+    }
+
+    if (vertexBase == GEOMETRY_ALLOC_FAIL || indexBase == GEOMETRY_ALLOC_FAIL)
+    {
+        AX_WARN("mesh bake failed: vertex/index buffer space exhausted vertices=%d indices=%d",
+                vertexCapacity, indexCapacity);
+        GeometryHeapFree(vertexKind, vertexRaw);
+        GeometryHeapFree(GeometryBuffer_Index, indexRaw);
         return 0;
     }
 
-    if (isSkinned) gGFX.NumSkinnedVertices += gltf->totalVertices;
-    else           gGFX.NumSurfaceVertices += gltf->totalVertices;
+    gltf->vertexHeapPtr = vertexRaw;
+    gltf->indexHeapPtr  = indexRaw;
+
+    u32 vertexCursor = vertexBase;
+    u32 firstVertexCursor = vertexCursor;
+    u32 indexCursor = indexBase;
+    u32 firstIndexCursor = indexCursor;
+    u32 vertexRangeEnd = vertexBase + vertexCapacity - 1u;
+    u32 indexRangeEnd  = indexBase + indexCapacity - 4u;
 
     gltf->allVertices = isSkinned ? (void*)(gGFX.SkinnedVertexBuffer + vertexCursor) : (void*)(gGFX.SurfaceVertexBuffer + vertexCursor);
     gltf->allIndices  = gGFX.IndexBuffer + indexCursor;
@@ -456,8 +486,8 @@ s32 BakeSceneMeshesAndAnimations(SceneBundle* gltf)
     u32 lodIndexCursor = indexCursor + (u32)gltf->totalIndices;
     u32* lodWrite = gGFX.IndexBuffer + lodIndexCursor;
     u32 localAnimatedVertexCursor = 0;
-    u32 lodBudget = (u32)MAX_INDEX - (firstIndexCursor + (u32)gltf->totalIndices);
-    f32 desiredLODIndices = (f32)gltf->totalIndices * 0.75f;
+    // when the allocator was too tight for the desired budget, scale the lod targets down
+    u32 lodBudget = indexCapacity - 4u - (u32)gltf->totalIndices;
     f32 lodBudgetScale = desiredLODIndices > 0.0f ? Minf32((f32)lodBudget / desiredLODIndices, 1.0f) : 1.0f;
 
     for (s32 m = 0; m < gltf->numMeshes; ++m)
@@ -494,12 +524,13 @@ s32 BakeSceneMeshesAndAnimations(SceneBundle* gltf)
             if (isSkinned)
             {
                 GenerateSkinnedLODsForPrimitive(primitive, currIndices, primitiveVertexCursor, &currSkinnedVertex,
-                                                &vertexCursor, &localAnimatedVertexCursor, &lodWrite, &lodIndexCursor,
-                                                lodBudgetScale);
+                                                &vertexCursor, vertexRangeEnd, &localAnimatedVertexCursor, &lodWrite,
+                                                &lodIndexCursor, indexRangeEnd, lodBudgetScale);
             }
             else
             {
-                GenerateStaticLODsForPrimitive(primitive, currIndices, primitiveVertexCursor, &lodWrite, &lodIndexCursor, lodBudgetScale);
+                GenerateStaticLODsForPrimitive(primitive, currIndices, primitiveVertexCursor, &lodWrite, &lodIndexCursor,
+                                               indexRangeEnd, lodBudgetScale);
                 vertexCursor += primitive->numVertices;
             }
 
@@ -509,19 +540,21 @@ s32 BakeSceneMeshesAndAnimations(SceneBundle* gltf)
     }
 
     gltf->totalVertices = (s32)(vertexCursor - firstVertexCursor);
-    if (isSkinned)
-    {
-        gGFX.NumSkinnedVertices = vertexCursor;
-        gltf->totalIndices = (s32)(lodIndexCursor - firstIndexCursor);
-        gGFX.NumIndices = firstIndexCursor + (u32)gltf->totalIndices;
-    }
-    else
-    {
-        gGFX.NumSurfaceVertices = vertexCursor;
-        gltf->totalIndices = (s32)(lodIndexCursor - firstIndexCursor);
-        gGFX.NumIndices = firstIndexCursor + (u32)gltf->totalIndices;
-    }
-    ValidatePrimitiveLODs(gltf, isSkinned);
+    gltf->totalIndices  = (s32)(lodIndexCursor - firstIndexCursor);
+
+    // return the unused worst case tail, the offsets never move on shrink
+    GeometryHeapShrink(vertexKind, vertexRaw, vertexBase, (u32)gltf->totalVertices + 1u);
+    GeometryHeapShrink(GeometryBuffer_Index, indexRaw, indexBase, (u32)gltf->totalIndices + 4u);
+
+    if (isSkinned) gGFX.NumSkinnedVertices += (u32)gltf->totalVertices;
+    else           gGFX.NumSurfaceVertices += (u32)gltf->totalVertices;
+    gGFX.NumIndices += (u32)gltf->totalIndices;
+
+    Rendering_QueueGeometryUpload(isSkinned ? GeometryBuffer_SkinnedVertex : GeometryBuffer_SurfaceVertex,
+                                  vertexBase, vertexBase + (u32)gltf->totalVertices);
+    Rendering_QueueGeometryUpload(GeometryBuffer_Index, indexBase, indexBase + (u32)gltf->totalIndices);
+
+    ValidatePrimitiveLODs(gltf, isSkinned, firstVertexCursor, firstIndexCursor + (u32)gltf->totalIndices);
 
     BakeGLTFAnimations(gltf);
     FreeGLTFBuffers(gltf);

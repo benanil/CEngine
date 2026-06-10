@@ -323,6 +323,10 @@ typedef struct SceneBundle_
 
     void* allVertices;
     void* allIndices;
+    // raw geometry heap pointers, needed to free the mega buffer ranges.
+    // NULL when the geometry doesn't live in the mega buffers (fbx path)
+    void* vertexHeapPtr;
+    void* indexHeapPtr;
 
     int totalVertices;
     int totalIndices;

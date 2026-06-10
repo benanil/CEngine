@@ -173,28 +173,11 @@ static bool StoreBundleSkinGPUData(AnimationSystem* anims, const SceneBundle* bu
     return true;
 }
 
-void AnimationSystem_RandomizeInstances(AnimationSystem* anims)
+void AnimationSystem_UpdateInstances(AnimationSystem* anims, const GPUAnimationInstance* instances, u32 count)
 {
-    if (anims->numAnimations == 0 || !anims->instanceBuffer) return;
-
-    ArenaMark mark = ArenaSave(&GlobalArena);
-    GPUAnimationInstance* instances = (GPUAnimationInstance*)
-        ArenaAllocZero(&GlobalArena, MAX_ANIM_INSTANCES * sizeof(GPUAnimationInstance));
-
-    for (u32 i = 0; i < MAX_ANIM_INSTANCES; i++)
-    {
-        u32 hash = WangHash(i + 645u);
-        u32 animIdx = anims->numAnimations > 1 ? Maxu32(hash % anims->numAnimations, 1u) : 0u;
-        f32 duration = anims->animData[animIdx].duration;
-
-        instances[i] = (GPUAnimationInstance){
-            .animIdx = animIdx,
-            .timeOffset = NextFloat01(hash) * duration,
-        };
-    }
-
-    UpdateGPUBuffer(anims->instanceBuffer, instances, MAX_ANIM_INSTANCES * sizeof(GPUAnimationInstance), 0);
-    ArenaRestore(&GlobalArena, mark);
+    if (!anims->instanceBuffer || !instances || count == 0) return;
+    count = Minu32(count, MAX_ANIM_INSTANCES);
+    UpdateGPUBuffer(anims->instanceBuffer, instances, count * sizeof(GPUAnimationInstance), 0);
 }
 
 s32 SceneBundleInitAnimations(const SceneBundle* gltfScene, Pose result[MAX_BONES])

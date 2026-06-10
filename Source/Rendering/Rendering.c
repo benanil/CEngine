@@ -173,42 +173,53 @@ static void UploadRenderSetStatics(const RenderSet* set, RenderSetBuffers* buffe
     UpdateGPUBuffer(buffers->denseToPrimitive, set->denseToPrimitiveIndex, set->maxEntities * sizeof(u32), 0);
 }
 
-// cpu mega buffer ranges already uploaded to the gpu. the cpu buffers are append
-// only, so anything past these watermarks is new geometry from a bundle load
-static u32 g_UploadedSkinnedVertices;
-static u32 g_UploadedSurfaceVertices;
-static u32 g_UploadedIndices;
+// geometry ranges loaders queued for upload, flushed once the gpu buffers exist.
+// element units, bundles can land anywhere in the mega buffers now
+#define GEOMETRY_DIRTY_MAX 32u
 
-// uploads geometry appended since the last flush, called every frame and on init
+typedef struct GeometryDirtyRange_ { u32 begin, end; } GeometryDirtyRange;
+static GeometryDirtyRange g_GeometryDirty[GeometryBuffer_Count][GEOMETRY_DIRTY_MAX];
+static u32 g_NumGeometryDirty[GeometryBuffer_Count];
+
+void Rendering_QueueGeometryUpload(GeometryBufferKind kind, u32 begin, u32 end)
+{
+    if (end <= begin || kind < 0 || kind >= GeometryBuffer_Count) return;
+    u32* num = &g_NumGeometryDirty[kind];
+    if (*num == GEOMETRY_DIRTY_MAX)
+    {
+        // full, widen the last range instead of dropping the upload
+        GeometryDirtyRange* last = &g_GeometryDirty[kind][GEOMETRY_DIRTY_MAX - 1u];
+        last->begin = Minu32(last->begin, begin);
+        last->end   = Maxu32(last->end, end);
+        return;
+    }
+    g_GeometryDirty[kind][(*num)++] = (GeometryDirtyRange){ begin, end };
+}
+
+// uploads the queued geometry ranges, called every frame and on init
 static void UploadDirtyGeometry(void)
 {
     if (!g_RenderState.indexBuffer) return;
 
-    if (gGFX.NumSkinnedVertices > g_UploadedSkinnedVertices)
-    {
-        UpdateGPUBuffer(g_RenderState.skinned.vertexBuffer,
-                        gGFX.SkinnedVertexBuffer + g_UploadedSkinnedVertices,
-                        (gGFX.NumSkinnedVertices - g_UploadedSkinnedVertices) * sizeof(ASkinedVertex),
-                        (size_t)g_UploadedSkinnedVertices * sizeof(ASkinedVertex));
-        g_UploadedSkinnedVertices = gGFX.NumSkinnedVertices;
-    }
+    SDL_GPUBuffer* gpuBuffers[GeometryBuffer_Count] = {
+        g_RenderState.skinned.vertexBuffer, g_RenderState.surface.vertexBuffer, g_RenderState.indexBuffer
+    };
+    const u8* sources[GeometryBuffer_Count] = {
+        (const u8*)gGFX.SkinnedVertexBuffer, (const u8*)gGFX.SurfaceVertexBuffer, (const u8*)gGFX.IndexBuffer
+    };
+    const size_t strides[GeometryBuffer_Count] = { sizeof(ASkinedVertex), sizeof(AVertex), sizeof(u32) };
 
-    if (gGFX.NumSurfaceVertices > g_UploadedSurfaceVertices)
+    for (u32 kind = 0; kind < GeometryBuffer_Count; kind++)
     {
-        UpdateGPUBuffer(g_RenderState.surface.vertexBuffer,
-                        gGFX.SurfaceVertexBuffer + g_UploadedSurfaceVertices,
-                        (gGFX.NumSurfaceVertices - g_UploadedSurfaceVertices) * sizeof(AVertex),
-                        (size_t)g_UploadedSurfaceVertices * sizeof(AVertex));
-        g_UploadedSurfaceVertices = gGFX.NumSurfaceVertices;
-    }
-
-    if (gGFX.NumIndices > g_UploadedIndices)
-    {
-        UpdateGPUBuffer(g_RenderState.indexBuffer,
-                        gGFX.IndexBuffer + g_UploadedIndices,
-                        (gGFX.NumIndices - g_UploadedIndices) * sizeof(u32),
-                        (size_t)g_UploadedIndices * sizeof(u32));
-        g_UploadedIndices = gGFX.NumIndices;
+        for (u32 i = 0; i < g_NumGeometryDirty[kind]; i++)
+        {
+            GeometryDirtyRange range = g_GeometryDirty[kind][i];
+            UpdateGPUBuffer(gpuBuffers[kind],
+                            sources[kind] + (size_t)range.begin * strides[kind],
+                            (size_t)(range.end - range.begin) * strides[kind],
+                            (size_t)range.begin * strides[kind]);
+        }
+        g_NumGeometryDirty[kind] = 0;
     }
 }
 
@@ -593,7 +604,8 @@ void DestroyPipeline(void)
     SlugDestroyDemo();
     DestroyRenderPipelines();
     SDL_zero(g_RenderState);
-    g_UploadedSkinnedVertices = g_UploadedSurfaceVertices = g_UploadedIndices = 0;
+    for (u32 kind = 0; kind < GeometryBuffer_Count; kind++)
+        g_NumGeometryDirty[kind] = 0;
     g_GPUDevice = NULL;
 }
 

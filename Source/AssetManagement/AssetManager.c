@@ -716,7 +716,9 @@ s32 LoadGLTFCached(const char* path, SceneBundle* scene, Texture* textures)
 /*//////////////////////////////////////////////////////////////////////////*/
 
 // ZSTD_CCtx* zstdCompressorCTX = NULL;
-const s32 ABMMeshVersion = 78;
+// 79: geometry offsets and index values are stored bundle relative, the
+// runtime placement comes from the mega buffer range allocators
+const s32 ABMMeshVersion = 79;
 
 u8 IsABMLastVersion(const char* path)
 {
@@ -803,6 +805,12 @@ s32 SaveGLTFBinary(const SceneBundle* gltf, const char* path)
     u64 allVertexSize = vertexSize * (u64)gltf->totalVertices;
     u64 allIndexSize  = (u64)gltf->totalIndices * sizeof(u32);
 
+    // offsets and index values are saved relative to the bundle's placement so
+    // the cache can be loaded into any allocated range
+    u32 bakedVertexBase = isSkined ? (u32)((const ASkinedVertex*)gltf->allVertices - gGFX.SkinnedVertexBuffer)
+                                   : (u32)((const AVertex*)gltf->allVertices - gGFX.SurfaceVertexBuffer);
+    u32 bakedIndexBase  = (u32)((const u32*)gltf->allIndices - gGFX.IndexBuffer);
+
     // layout: [deflate output | delta indices]
     // deflate output must fit in max(allVertexSize, allIndexSize) bytes
     // delta indices need allIndexSize bytes
@@ -818,7 +826,7 @@ s32 SaveGLTFBinary(const SceneBundle* gltf, const char* path)
     AFileWrite(&afterCompSize, sizeof(u64), file, 1);
     AFileWrite(deflateOutput, afterCompSize, file, 1);
 
-    DeltaEncodingU32(gltf->allIndices, gltf->totalIndices, deltaPtr, 0);
+    DeltaEncodingU32(gltf->allIndices, gltf->totalIndices, deltaPtr, bakedVertexBase);
     afterCompSize = zsdeflate(&sdfl, deflateOutput, deltaPtr, allIndexSize, 5);
     AFileWrite(&afterCompSize, sizeof(u64), file, 1);
     AFileWrite(deflateOutput, afterCompSize, file, 1);
@@ -836,16 +844,25 @@ s32 SaveGLTFBinary(const SceneBundle* gltf, const char* path)
         for (s32 j = 0; j < mesh.numPrimitives; j++)
         {
             APrimitive* primitive = &mesh.primitives[j];
+            // all 4 lod slots rebase uniformly, slot 3 holds fallback values
+            s32 relIndexOffset = primitive->indexOffset - (s32)bakedIndexBase;
+            s32 relLodIndexOffset[4], relLodVertexOffset[4];
+            for (s32 lod = 0; lod < 4; lod++)
+            {
+                relLodIndexOffset[lod]  = primitive->lodIndexOffset[lod] - (s32)bakedIndexBase;
+                relLodVertexOffset[lod] = primitive->lodVertexOffset[lod] - (s32)bakedVertexBase;
+            }
+
             AFileWrite(&primitive->attributes , sizeof(s32), file, 1);
             AFileWrite(&primitive->indexType  , sizeof(s32), file, 1);
             AFileWrite(&primitive->numIndices , sizeof(s32), file, 1);
             AFileWrite(&primitive->numVertices, sizeof(s32), file, 1);
-            AFileWrite(&primitive->indexOffset, sizeof(s32), file, 1);
-            AFileWrite(primitive->lodIndexOffset, sizeof(s32) * 4, file, 1);
+            AFileWrite(&relIndexOffset, sizeof(s32), file, 1);
+            AFileWrite(relLodIndexOffset, sizeof(s32) * 4, file, 1);
             AFileWrite(primitive->lodNumIndices, sizeof(s32) * 4, file, 1);
-            AFileWrite(primitive->lodVertexOffset, sizeof(s32) * 4, file, 1);
+            AFileWrite(relLodVertexOffset, sizeof(s32) * 4, file, 1);
             AFileWrite(primitive->lodNumVertices, sizeof(s32) * 4, file, 1);
-            AFileWrite(primitive->lodAnimatedVertexOffset, sizeof(s32) * 4, file, 1);
+            AFileWrite(primitive->lodAnimatedVertexOffset, sizeof(s32) * 4, file, 1); // already bundle local
             AFileWrite(&primitive->jointType  , sizeof(u16), file, 1);
             AFileWrite(&primitive->jointCount , sizeof(u16), file, 1);
             AFileWrite(&primitive->jointStride, sizeof(u16), file, 1);
@@ -1064,25 +1081,33 @@ s32 LoadSceneBundleBinary(const char* path, SceneBundle* gltf)
     size_t vertexSize = isSkined ? sizeof(ASkinedVertex) : sizeof(AVertex);
     size_t vertexAlignment = 4;
 
-    {
-        u32 vertexCursor = isSkined ? gGFX.NumSkinnedVertices : gGFX.NumSurfaceVertices;
-        u32 indexCursor  = gGFX.NumIndices;
+    GeometryBufferKind vertexKind = isSkined ? GeometryBuffer_SkinnedVertex : GeometryBuffer_SurfaceVertex;
+    u32 vertexBase = GEOMETRY_ALLOC_FAIL;
+    u32 indexBase  = GEOMETRY_ALLOC_FAIL;
 
-        u32 maxVertices = isSkined ? MAX_SKINNED_SOURCE_VERTEX : MAX_SURFACE_VERTEX;
-        if ((vertexCursor + gltf->totalVertices) > maxVertices ||
-            (gGFX.NumIndices + gltf->totalIndices) > MAX_INDEX)
+    {
+        // +1 vertex / +4 index padding, zsinflate may write a few bytes past the
+        // exact size and the next range can belong to another live bundle
+        void* vertexRaw = NULL;
+        void* indexRaw  = NULL;
+        vertexBase = GeometryHeapAlloc(vertexKind, (u32)gltf->totalVertices + 1u, &vertexRaw);
+        indexBase  = GeometryHeapAlloc(GeometryBuffer_Index, (u32)gltf->totalIndices + 4u, &indexRaw);
+        if (vertexBase == GEOMETRY_ALLOC_FAIL || indexBase == GEOMETRY_ALLOC_FAIL)
         {
-            AX_ERROR("VERTEX buffer size is not enough for %s", path);
+            AX_ERROR("VERTEX buffer space is not enough for %s", path);
+            GeometryHeapFree(vertexKind, vertexRaw);
+            GeometryHeapFree(GeometryBuffer_Index, indexRaw);
             return 0;
         }
-
+        gltf->vertexHeapPtr = vertexRaw;
+        gltf->indexHeapPtr  = indexRaw;
 
         if (isSkined) gGFX.NumSkinnedVertices += gltf->totalVertices;
         else          gGFX.NumSurfaceVertices += gltf->totalVertices;
         gGFX.NumIndices += gltf->totalIndices;
 
-        gltf->allVertices = isSkined ? (void*)(gGFX.SkinnedVertexBuffer + vertexCursor) : (void*)(gGFX.SurfaceVertexBuffer + vertexCursor);
-        gltf->allIndices  = gGFX.IndexBuffer + indexCursor;
+        gltf->allVertices = isSkined ? (void*)(gGFX.SkinnedVertexBuffer + vertexBase) : (void*)(gGFX.SurfaceVertexBuffer + vertexBase);
+        gltf->allIndices  = gGFX.IndexBuffer + indexBase;
 
         u64 allVertexSize = gltf->totalVertices * vertexSize;
         u64 allIndexSize  = gltf->totalIndices * sizeof(u32);
@@ -1100,9 +1125,15 @@ s32 LoadSceneBundleBinary(const char* path, SceneBundle* gltf)
         AFileRead(&compressedSize, sizeof(u64), file, 1);
         AFileRead(compressedBuffer, compressedSize, file, 1);
         zsinflate(gltf->allIndices, allIndexSize, compressedBuffer, compressedSize);
-        PrefixSumU32fInplace(gltf->allIndices, gltf->totalIndices, 0);
+        // index values were saved relative to the bundle's vertex base, the
+        // prefix sum seed rebases the whole stream to the allocated range
+        PrefixSumU32fInplace(gltf->allIndices, gltf->totalIndices, vertexBase);
 
         ArenaPopGlobal(tempSize);
+
+        Rendering_QueueGeometryUpload(isSkined ? GeometryBuffer_SkinnedVertex : GeometryBuffer_SurfaceVertex,
+                                      vertexBase, vertexBase + (u32)gltf->totalVertices);
+        Rendering_QueueGeometryUpload(GeometryBuffer_Index, indexBase, indexBase + (u32)gltf->totalIndices);
     }
     
     char* currVertices = (char*)gltf->allVertices;
@@ -1131,6 +1162,14 @@ s32 LoadSceneBundleBinary(const char* path, SceneBundle* gltf)
             AFileRead(primitive->lodVertexOffset, sizeof(s32) * 4, file, 1);
             AFileRead(primitive->lodNumVertices, sizeof(s32) * 4, file, 1);
             AFileRead(primitive->lodAnimatedVertexOffset, sizeof(s32) * 4, file, 1);
+
+            // stored bundle relative, rebase onto the allocated ranges
+            primitive->indexOffset += (s32)indexBase;
+            for (s32 lod = 0; lod < 4; lod++)
+            {
+                primitive->lodIndexOffset[lod]  += (s32)indexBase;
+                primitive->lodVertexOffset[lod] += (s32)vertexBase;
+            }
             AFileRead(&primitive->jointType  , sizeof(u16), file, 1);
             AFileRead(&primitive->jointCount , sizeof(u16), file, 1);
             AFileRead(&primitive->jointStride, sizeof(u16), file, 1);

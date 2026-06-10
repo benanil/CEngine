@@ -278,7 +278,7 @@ typedef struct Graphics_
     ASkinedVertex* SkinnedVertexBuffer;
     AVertex*       SurfaceVertexBuffer;
     u32*           IndexBuffer;
-    u32            NumIndices;
+    u32            NumIndices;          // in use stats, not cursors
     u32            NumSkinnedVertices;
     u32            NumSurfaceVertices;
 } Graphics;
@@ -296,6 +296,31 @@ static inline s32 GetRootNodeIdx(SceneBundle* bundle)
 // per scene render set gpu buffers, implemented in Rendering.c
 void CreateRenderSetBuffers(RenderSetBuffers* buffers, u32 maxEntities, u32 maxGroups);
 void DestroyRenderSetBuffers(RenderSetBuffers* buffers);
+
+enum GeometryBufferKind_
+{
+    GeometryBuffer_SkinnedVertex,
+    GeometryBuffer_SurfaceVertex,
+    GeometryBuffer_Index,
+    GeometryBuffer_Count
+};
+typedef s32 GeometryBufferKind;
+
+// per bundle sub allocation of the cpu/gpu mega buffers. tlsf runs directly
+// over the cpu mirrors, allocations are over sized and rounded up to the
+// element stride. raw is the heap pointer, keep it to shrink or free
+#define GEOMETRY_ALLOC_FAIL 0xFFFFFFFFu
+
+// out: element offset of count free elements, GEOMETRY_ALLOC_FAIL when full
+u32  GeometryHeapAlloc(GeometryBufferKind kind, u32 count, void** raw);
+// shrinks an allocation in place down to newCount elements past offset
+void GeometryHeapShrink(GeometryBufferKind kind, void* raw, u32 offset, u32 newCount);
+void GeometryHeapFree(GeometryBufferKind kind, void* raw);
+
+// queues an element range of a cpu mega buffer for upload to its gpu mirror,
+// flushed by the renderer once per frame (and on init, ranges queued before the
+// gpu buffers exist are kept). implemented in Rendering.c
+void Rendering_QueueGeometryUpload(GeometryBufferKind kind, u32 begin, u32 end);
 
 void GraphicsInit(bool msaa);
 

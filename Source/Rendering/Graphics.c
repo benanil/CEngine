@@ -13,6 +13,7 @@
 
 #include "Extern/sinfl.h"
 #include "Extern/ufbx.h"
+#include "Extern/tlsf.h"
 #include <SDL3/SDL_hints.h>
 
 #define STBI_NO_BMP
@@ -48,6 +49,101 @@ extern SDL_Window*    g_SDLWindow;
 Graphics gGFX = {0};
 
 extern void Quit(int rc);
+
+/*//////////////////////////////////////////////////////////////////////////*/
+/*                              Geometry Heaps                               */
+/*//////////////////////////////////////////////////////////////////////////*/
+
+// tlsf instances managing the cpu mega buffers directly, the headers live
+// inside the buffers between bundle ranges
+static tlsf_t g_GeometryTLSF[GeometryBuffer_Count];
+
+static char* GeometryHeapBase(GeometryBufferKind kind)
+{
+    switch (kind)
+    {
+        case GeometryBuffer_SkinnedVertex: return (char*)gGFX.SkinnedVertexBuffer;
+        case GeometryBuffer_SurfaceVertex: return (char*)gGFX.SurfaceVertexBuffer;
+        default:                           return (char*)gGFX.IndexBuffer;
+    }
+}
+
+static u32 GeometryHeapStride(GeometryBufferKind kind)
+{
+    switch (kind)
+    {
+        case GeometryBuffer_SkinnedVertex: return sizeof(ASkinedVertex);
+        case GeometryBuffer_SurfaceVertex: return sizeof(AVertex);
+        default:                           return sizeof(u32);
+    }
+}
+
+static void InitGeometryHeaps(void)
+{
+    const size_t poolBytes[GeometryBuffer_Count] = {
+        sizeof(ASkinedVertex) * MAX_SKINNED_SOURCE_VERTEX,
+        sizeof(AVertex) * MAX_SURFACE_VERTEX,
+        sizeof(u32) * MAX_INDEX
+    };
+
+    for (u32 kind = 0; kind < GeometryBuffer_Count; kind++)
+    {
+        void* control = AllocateTLSFGlobal(tlsf_size());
+        tlsf_t tlsf = control ? tlsf_create(control) : NULL;
+        if (!tlsf || !tlsf_add_pool(tlsf, GeometryHeapBase((GeometryBufferKind)kind), poolBytes[kind]))
+        {
+            AX_ERROR("geometry heap init failed kind=%d", kind);
+            if (!tlsf) DeAllocateTLSFGlobal(control);
+            continue;
+        }
+        g_GeometryTLSF[kind] = tlsf;
+    }
+}
+
+static void DestroyGeometryHeaps(void)
+{
+    for (u32 kind = 0; kind < GeometryBuffer_Count; kind++)
+    {
+        if (g_GeometryTLSF[kind]) DeAllocateTLSFGlobal(g_GeometryTLSF[kind]);
+        g_GeometryTLSF[kind] = NULL;
+    }
+}
+
+u32 GeometryHeapAlloc(GeometryBufferKind kind, u32 count, void** raw)
+{
+    *raw = NULL;
+    if (count == 0 || !g_GeometryTLSF[kind]) return GEOMETRY_ALLOC_FAIL;
+
+    // over allocate by stride-1 so the data start can be rounded up to the
+    // element stride, the strides are not power of two so tlsf can't align it.
+    // memalign with the minimum tlsf alignment, this fork's tlsf_malloc is
+    // 16 aligned which takes a gap path that wastes 48 bytes per allocation
+    size_t stride = GeometryHeapStride(kind);
+    size_t bytes = (size_t)count * stride + (stride - 1u);
+    void* ptr = tlsf_memalign(g_GeometryTLSF[kind], tlsf_align_size(), bytes);
+    if (!ptr) return GEOMETRY_ALLOC_FAIL;
+
+    size_t rawOffset = (size_t)((char*)ptr - GeometryHeapBase(kind));
+    *raw = ptr;
+    return (u32)((rawOffset + stride - 1u) / stride);
+}
+
+void GeometryHeapShrink(GeometryBufferKind kind, void* raw, u32 offset, u32 newCount)
+{
+    if (!raw || newCount == 0 || !g_GeometryTLSF[kind]) return;
+    size_t stride = GeometryHeapStride(kind);
+    size_t dataEnd = ((size_t)offset + newCount) * stride;
+    size_t newBytes = dataEnd - (size_t)((char*)raw - GeometryHeapBase(kind));
+    void* ptr = tlsf_realloc(g_GeometryTLSF[kind], raw, newBytes);
+    ASSERT(ptr == raw); // shrink trims in place, never moves
+    (void)ptr;
+}
+
+void GeometryHeapFree(GeometryBufferKind kind, void* raw)
+{
+    if (!raw || !g_GeometryTLSF[kind]) return;
+    tlsf_free(g_GeometryTLSF[kind], raw);
+}
 
 
 void GraphicsInit(bool msaa)
@@ -104,6 +200,8 @@ void GraphicsInit(bool msaa)
     gGFX.IndexBuffer         = OSAllocAligned(sizeof(u32) * MAX_INDEX + 16, 4); // 16->give little bit of space for memcpy
     if (!gGFX.SkinnedVertexBuffer || !gGFX.SurfaceVertexBuffer || !gGFX.IndexBuffer)
         AX_ERROR("graphics CPU buffer allocation failed skinned=%p surface=%p index=%p", gGFX.SkinnedVertexBuffer, gGFX.SurfaceVertexBuffer, gGFX.IndexBuffer);
+
+    InitGeometryHeaps();
 }
 
 void CreateWindowBuffers()
@@ -635,6 +733,7 @@ void GraphicsDestroy()
     SDL_ReleaseWindowFromGPUDevice(g_GPUDevice, g_SDLWindow);
 
     SDL_DestroyGPUDevice(g_GPUDevice);
+    DestroyGeometryHeaps();
     OSFreeAligned(gGFX.SkinnedVertexBuffer, sizeof(ASkinedVertex) * MAX_SKINNED_SOURCE_VERTEX);
     OSFreeAligned(gGFX.SurfaceVertexBuffer, sizeof(AVertex) * MAX_SURFACE_VERTEX);
     OSFreeAligned(gGFX.IndexBuffer        , sizeof(u32) * MAX_INDEX + 16);
