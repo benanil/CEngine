@@ -57,6 +57,11 @@ void RendererInit();
 
 void RendererSetLights(const LightGPU* lights, u32 count);
 
+// editor selection outline around one render set entity of the active scene
+void RendererSetOutlineTarget(u32 skinned, u32 groupIdx, u32 entityIdx);
+
+void RendererClearOutlineTarget(void);
+
 u32 RendererGetLightCount(void);
 
 RenderLightDebugInfo RendererGetLightDebugInfo(void);

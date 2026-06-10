@@ -1,5 +1,6 @@
 #include "RenderingInternal.h"
 #include "Include/TextureSystem.h"
+#include "Math/Bitpack.h"
 
 float3 GetRenderSunDirection(void)
 {
@@ -247,5 +248,55 @@ void RenderLines(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget,
     SDL_BindGPUVertexBuffers(pass, 0, &vertex_binding, 1);
     SDL_PushGPUVertexUniformData(cmd, 0, &viewProj, sizeof(viewProj));
     SDL_DrawGPUPrimitivesIndirect(pass, g_RenderState.lineDrawArgsBuffer, sizeof(int) * 4, 1);
+    SDL_EndGPURenderPass(pass);
+}
+
+// re-draws the selected primitive as a grown inverted hull on top of the lit scene
+void RenderOutline(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget, SDL_GPUDepthStencilTargetInfo* depthTarget, mat4x4 viewProj)
+{
+    if (!g_OutlineTarget.valid || !g_OutlinePipeline) return;
+    Scene* scene = Scene_GetActive();
+    if (!scene) return;
+    if (g_OutlineTarget.skinned) return; // skinned hull needs the animated vertices, not supported yet
+
+    const RenderSet* set = &scene->surfaceSet;
+    if (g_OutlineTarget.groupIdx >= set->numGroups)
+    {
+        RendererClearOutlineTarget();
+        return;
+    }
+    const PrimitiveGroup* group = &set->primitiveGroups[g_OutlineTarget.groupIdx];
+    if (!group->valid || g_OutlineTarget.entityIdx >= group->numEntities || group->lodNumIndices[0] == 0)
+    {
+        RendererClearOutlineTarget();
+        return;
+    }
+
+    const Entity* entity = &set->entities[group->entityOffset + g_OutlineTarget.entityIdx];
+    v128f rotation = VecNorm(UnpackQuaternionS16Norm1(entity->rotation));
+
+    // same scale unpack as the surface vertex shader
+    f32 sx = (f32)(entity->scale & 0x7FFu) / 2047.0f * 10.0f;
+    f32 sy = (f32)((entity->scale >> 11u) & 0x7FFu) / 2047.0f * 10.0f;
+    f32 sz = (f32)((entity->scale >> 22u) & 0x3FFu) / 1023.0f * 10.0f;
+
+    struct { mat4x4 viewProj; float position[4]; float rotationQ[4]; float scaleBias[4]; } params;
+    params.viewProj = viewProj;
+    VecStore(params.position, entity->position);
+    VecStore(params.rotationQ, rotation);
+    params.scaleBias[0] = sx;
+    params.scaleBias[1] = sy;
+    params.scaleBias[2] = sz;
+    // constant world thickness like the old engine's 0.04 normal bias
+    params.scaleBias[3] = 0.04f / Maxf32(sx, 1.0e-4f);
+
+    SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmd, colorTarget, 1, depthTarget);
+    SDL_GPUBufferBinding vertex_binding = { g_RenderState.surface.vertexBuffer, 0 };
+    SDL_GPUBufferBinding index_binding = { g_RenderState.indexBuffer, 0 };
+    SDL_BindGPUGraphicsPipeline(pass, g_OutlinePipeline);
+    SDL_BindGPUVertexBuffers(pass, 0, &vertex_binding, 1);
+    SDL_BindGPUIndexBuffer(pass, &index_binding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
+    SDL_PushGPUVertexUniformData(cmd, 0, &params, sizeof(params));
+    SDL_DrawGPUIndexedPrimitives(pass, group->lodNumIndices[0], 1, group->lodIndexOffset[0], 0, 0);
     SDL_EndGPURenderPass(pass);
 }

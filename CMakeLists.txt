@@ -109,6 +109,7 @@ target_sources(${EXECUTABLE_NAME} PRIVATE
     Source/Platform.c
     Source/Editor.c
     Source/AnimationBake.c
+    Source/BVH.c
     Source/Scene.c
     Source/SceneSerializer.c
     Source/DemoScene.c

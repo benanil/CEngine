@@ -7,6 +7,8 @@
 #include "Include/SceneSerializer.h"
 #include "Include/FileSystem.h"
 #include "Include/Rendering.h"
+#include "Include/Camera.h"
+#include "Include/BVH.h"
 #include "Math/Quaternion.h"
 #include "Math/Bitpack.h"
 
@@ -41,6 +43,7 @@ Scene* EditorNewScene(void)
     g_EditorSceneInit = true;
     Scene_MakeActive(&g_EditorScene);
     RendererSetLights(NULL, 0u);
+    RendererClearOutlineTarget();
     sceneSelectedBundle = INVALID_BUNDLE;
     sceneSelectedNode = -1;
     sceneSelectedLight = -1;
@@ -241,6 +244,47 @@ void EditorOpenScene(const char* path)
         AX_ERROR("scene load failed: %s", normalized);
 }
 
+// click picking: ray casts the scene through the bundle blas data, logs the hit and
+// outlines it. runs once per left click outside the ui
+void EditorPickingUpdate(Camera* camera)
+{
+    if (!GetMousePressed(MouseButton_Left) || UIAnyWindowHovered()) return;
+
+    f32 mx, my;
+    GetMousePos(&mx, &my);
+    if (my < 42.0f) return; // editor tab bar
+
+    Scene* scene = Scene_GetActive();
+    if (!scene) return;
+
+    RayV ray = ScreenPointToRay(camera, (float2){ mx, my });
+    BVHHit hit;
+    if (!BVH_RaycastScene(scene, ray.origin, ray.dir, &hit))
+    {
+        RendererClearOutlineTarget();
+        return;
+    }
+
+    const RenderSet* set = hit.skinnedSet ? &scene->skinnedSet : &scene->surfaceSet;
+    const PrimitiveGroup* group = &set->primitiveGroups[hit.groupIdx];
+    const SceneBundleRef* ref = hit.bundleIdx < scene->numBundles ? &scene->bundleRefs[hit.bundleIdx] : NULL;
+    const char* meshName = NULL;
+    if (ref && group->meshIndex < (u32)ref->bundle->numMeshes)
+        meshName = ref->bundle->meshes[group->meshIndex].name;
+
+    AX_LOG("picked %s mesh '%s' group=%d entity=%d tri=%d t=%.2f pos=(%.2f %.2f %.2f)",
+           ref ? GetFileName(ref->path) : "?", meshName && meshName[0] ? meshName : "?",
+           hit.groupIdx, hit.entityIdx, hit.triIndex, hit.t,
+           hit.position[0], hit.position[1], hit.position[2]);
+
+    if (ref)
+    {
+        sceneSelectedBundle = hit.bundleIdx;
+        sceneSelectedNode = -1;
+    }
+    RendererSetOutlineTarget(hit.skinnedSet, hit.groupIdx, hit.entityIdx);
+}
+
 static void EditorSaveSceneAs(const char* name)
 {
     Scene* scene = Scene_GetActive();
@@ -428,6 +472,7 @@ static void SceneEventDeleteBundle(void* unused)
     Scene_RemoveBundle(scene, sceneSelectedBundle);
     sceneSelectedBundle = INVALID_BUNDLE;
     sceneSelectedNode = -1;
+    RendererClearOutlineTarget(); // group indices shifted
 }
 
 // removes the selected node's mesh entities from the render set, every spawned
@@ -461,6 +506,7 @@ static void SceneEventDeleteNode(void* unused)
         removed += RenderSet_RemoveEntities(set, g, 0, group->numEntities);
     }
     scene->renderDataDirty = 1;
+    RendererClearOutlineTarget(); // entity indices shifted
     AX_LOG("removed %d entities of node %d", removed, sceneSelectedNode);
 }
 

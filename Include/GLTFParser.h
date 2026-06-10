@@ -328,6 +328,13 @@ typedef struct SceneBundle_
     void* vertexHeapPtr;
     void* indexHeapPtr;
 
+    // blas arrays of every primitive, built after load (BVH.c). gpu shareable layout,
+    // primitives point into them through APrimitive.bvhNodeIndex
+    void* bvhNodes;
+    void* bvhTris;
+    int   numBvhNodes;
+    int   numBvhTris;
+
     int totalVertices;
     int totalIndices;
     float scale;

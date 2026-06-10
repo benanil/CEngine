@@ -15,6 +15,7 @@ GRAPHICS_SHADERS = [
     ("Skinned"                , "vert", "frag"),
     ("SkinnedDepthOnly"       , "vert", "frag"),
     ("LineDebug"              , "vert", "frag"),
+    ("Outline"                , "vert", "frag"),
     ("UI/Slug"                , "vert", "frag"),
     ("UI/UIShape"             , "vert", "frag"),
     ("UI/UIImage"             , "vert", "frag"),

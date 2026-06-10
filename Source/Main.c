@@ -37,6 +37,9 @@ static void MainLoop(void)
     DemoScene_Update(PlatformCtx.DeltaTime);
     Scene_SubmitLights();
 
+    extern void EditorPickingUpdate(Camera* camera);
+    EditorPickingUpdate(&g_Camera);
+
     if (!done) Render();
     // else emscripten_cancel_main_loop();
 

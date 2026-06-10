@@ -72,6 +72,19 @@ extern SDL_GPUComputePipeline* g_MLAAEdgeMaskComputePipeline;
 extern SDL_GPUComputePipeline* g_MLAALineLengthComputePipeline;
 extern SDL_GPUComputePipeline* g_MLAABlendComputePipeline;
 
+extern SDL_GPUGraphicsPipeline* g_OutlinePipeline;
+
+// editor selection outline, references an entity of the active scene's render sets
+typedef struct OutlineTarget_
+{
+    u32 valid;
+    u32 skinned;
+    u32 groupIdx;
+    u32 entityIdx;
+} OutlineTarget;
+
+extern OutlineTarget g_OutlineTarget;
+
 void InitRenderPipelines(void);
 void DestroyRenderPipelines(void);
 
@@ -103,6 +116,7 @@ void RenderDepth(SDL_GPUCommandBuffer* cmd, const DepthPassContext* ctx);
 void RenderScene(SDL_GPUCommandBuffer* cmd, const ScenePassContext* ctx);
 void RenderDeferredLights(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget, mat4x4 viewProj, u32 width, u32 height);
 void RenderLines(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget, SDL_GPUDepthStencilTargetInfo* depthTarget, mat4x4 viewProj);
+void RenderOutline(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget, SDL_GPUDepthStencilTargetInfo* depthTarget, mat4x4 viewProj);
 
 SDL_GPUDepthStencilTargetInfo MakeDepthTarget(SDL_GPUTexture* texture, SDL_GPULoadOp loadOp, bool cycle);
 void UploadShadowCascadeBuffer(const ShadowCascadeData* cascades);

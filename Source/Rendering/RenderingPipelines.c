@@ -28,6 +28,8 @@
 #include "Shaders/spv/Animation/AnimateVertices.spv.h"
 #include "Shaders/spv/LineDebugVert.spv.h"
 #include "Shaders/spv/LineDebugFrag.spv.h"
+#include "Shaders/spv/OutlineVert.spv.h"
+#include "Shaders/spv/OutlineFrag.spv.h"
 #include "Shaders/spv/UI/SlugVert.spv.h"
 #include "Shaders/spv/Slug2DVert.spv.h"
 #include "Shaders/spv/UI/SlugFrag.spv.h"
@@ -297,6 +299,58 @@ static void InitLinePipeline(void)
 
     g_RenderState.linePipeline = SDL_CreateGPUGraphicsPipeline(g_GPUDevice, &pipelinedesc);
     CHECK_CREATE(g_RenderState.linePipeline, "Render Pipeline")
+    SDL_ReleaseGPUShader(g_GPUDevice, vertex_shader);
+    SDL_ReleaseGPUShader(g_GPUDevice, fragment_shader);
+}
+
+SDL_GPUGraphicsPipeline* g_OutlinePipeline;
+
+// editor selection outline: the selected primitive re-draws as an inverted hull, the
+// vertex shader grows it along the normals (ported from the old engine's outline)
+static void InitOutlinePipeline(void)
+{
+    SDL_GPUShaderFormat shaderformat = SDL_GetGPUShaderFormats(g_GPUDevice);
+    SDL_GPUShader* vertex_shader   = PIPELINE_VERT_DEF(Shaders_OutlineVert_spv), .num_uniform_buffers = 1 }); CHECK_CREATE(vertex_shader, "Outline Vertex Shader")
+    SDL_GPUShader* fragment_shader = PIPELINE_FRAG_DEF(Shaders_OutlineFrag_spv)});                            CHECK_CREATE(fragment_shader, "Outline Fragment Shader")
+
+    const SDL_GPUVertexAttribute vertex_attributes[3] = {
+        { .location = 0, .buffer_slot = 0, .format = VFORMAT_FLOAT3, .offset = offsetof(AVertex, position) },
+        { .location = 1, .buffer_slot = 0, .format = VFORMAT_UINT,   .offset = offsetof(AVertex, octTbn)   },
+        { .location = 2, .buffer_slot = 0, .format = VFORMAT_HALF2,  .offset = offsetof(AVertex, texCoord) }
+    };
+
+    g_OutlinePipeline = SDL_CreateGPUGraphicsPipeline(g_GPUDevice, &(SDL_GPUGraphicsPipelineCreateInfo){
+        .vertex_shader   = vertex_shader,
+        .fragment_shader = fragment_shader,
+        .primitive_type  = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
+        .target_info     = (SDL_GPUGraphicsPipelineTargetInfo){
+            .num_color_targets         = 1,
+            .color_target_descriptions = &(SDL_GPUColorTargetDescription){ .format = SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT },
+            .depth_stencil_format      = SDL_GPU_TEXTUREFORMAT_D32_FLOAT,
+            .has_depth_stencil_target  = true
+        },
+        .multisample_state = (SDL_GPUMultisampleState){ .sample_count = SDL_GPU_SAMPLECOUNT_1 },
+        // front face culling keeps only the back of the grown hull, the scene depth hides
+        // the interior so a silhouette ring remains (replaces the old stencil masking)
+        .rasterizer_state = (SDL_GPURasterizerState){
+            .cull_mode  = SDL_GPU_CULLMODE_FRONT,
+            .front_face = SDL_GPU_FRONTFACE_COUNTER_CLOCKWISE
+        },
+        .depth_stencil_state = (SDL_GPUDepthStencilState){
+            .enable_depth_test  = true,
+            .enable_depth_write = false,
+            .compare_op         = SDL_GPU_COMPAREOP_LESS_OR_EQUAL
+        },
+        .vertex_input_state = (SDL_GPUVertexInputState){
+            .vertex_buffer_descriptions = &(SDL_GPUVertexBufferDescription){
+                0, sizeof(AVertex), SDL_GPU_VERTEXINPUTRATE_VERTEX, 0
+            },
+            .num_vertex_buffers    = 1,
+            .vertex_attributes     = vertex_attributes,
+            .num_vertex_attributes = ARRAY_SIZE(vertex_attributes)
+        }
+    });
+    CHECK_CREATE(g_OutlinePipeline, "Outline Pipeline")
     SDL_ReleaseGPUShader(g_GPUDevice, vertex_shader);
     SDL_ReleaseGPUShader(g_GPUDevice, fragment_shader);
 }
@@ -674,6 +728,7 @@ void InitRenderPipelines(void)
     InitDepthOnlyPipelines();
     InitShadows();
     InitLinePipeline();
+    InitOutlinePipeline();
     InitDeferredLightPipeline();
     InitSlugPipeline();
     InitUIShapePipeline();
@@ -698,6 +753,7 @@ void DestroyRenderPipelines(void)
     DestroyRenderSetBufferPipelines(g_RenderState.skinned);
     
     if (g_RenderState.linePipeline)          SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.linePipeline);
+    if (g_OutlinePipeline)                   SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_OutlinePipeline);
     if (g_RenderState.deferredLightPipeline) SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.deferredLightPipeline);
     if (g_RenderState.slugPipeline)          SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.slugPipeline);
     if (g_RenderState.slugDepthPipeline)     SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.slugDepthPipeline);

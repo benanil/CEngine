@@ -10,6 +10,7 @@
 #include "Include/Random.h"
 #include "Include/Algorithm.h"
 #include "Include/GLTFParser.h"
+#include "Include/BVH.h"
 #include "Include/DataStructures/HashMap.h"
 
 Scene* g_ActiveScenes[MAX_ACTIVE_SCENES];
@@ -108,6 +109,7 @@ static BundleCacheEntry* BundleCacheAcquire(const char* path)
         DeAllocateTLSFGlobal(bundle);
         return NULL;
     }
+    BVH_BuildBundle(bundle, bundle->numSkins > 0); // editor picking, failure only disables it
 
     int pathLen = StringLength(path);
     char* pathCopy = (char*)AllocateTLSFGlobal(pathLen + 1);
@@ -128,6 +130,7 @@ static void BundleCacheRelease(const char* path)
     // allocated, consistent with the engine teardown (skinned bundles registered
     // animation data that is not reclaimed yet)
     char* pathCopy = entry->path;
+    BVH_FreeBundle(entry->bundle);
     Scene_FreeBundleGeometry(entry->bundle, entry->bundle->numSkins > 0);
     HMErase(&gBundleCache, key);
     DeAllocateTLSFGlobal(pathCopy);

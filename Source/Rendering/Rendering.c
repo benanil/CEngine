@@ -121,6 +121,21 @@ static void QueueWindowFrameTexturesForRelease(WindowState* winstate)
     g_ResizeReleaseQueue[slot] = old;
 }
 
+OutlineTarget g_OutlineTarget;
+
+void RendererSetOutlineTarget(u32 skinned, u32 groupIdx, u32 entityIdx)
+{
+    g_OutlineTarget.valid = 1;
+    g_OutlineTarget.skinned = skinned;
+    g_OutlineTarget.groupIdx = groupIdx;
+    g_OutlineTarget.entityIdx = entityIdx;
+}
+
+void RendererClearOutlineTarget(void)
+{
+    MemsetZero(&g_OutlineTarget, sizeof(g_OutlineTarget));
+}
+
 void RendererSetLights(const LightGPU* lights, u32 count)
 {
     if (!lights && count > 0u)
@@ -527,6 +542,7 @@ void Render(void)
         RenderDeferredLights(cmd, &color_load_target, viewProj, screenW, screenH);
     }
     RenderLines(cmd, &color_load_target, &main_depth_target, viewProj);
+    RenderOutline(cmd, &color_load_target, &main_depth_target, viewProj);
 
     winstate->hiz_view_proj = viewProj;
     winstate->hiz_valid = true;

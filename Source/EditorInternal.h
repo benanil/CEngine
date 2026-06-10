@@ -15,6 +15,8 @@ void EditorImportMeshToScene(const char* path);
 void EditorOpenImportDetail(const char* path);
 void EditorOpenScene(const char* path);
 struct Scene_* EditorNewScene(void);
+struct Camera_;
+void EditorPickingUpdate(struct Camera_* camera);
 
 // implemented in AssetsEditor.c
 void DrawAssetsWindow(bool* open);
