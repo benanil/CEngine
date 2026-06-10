@@ -305,7 +305,7 @@ void DrawTexturesWindow(bool* open)
         for (u32 i = 0u; i < cls->layerCount && i < TEXTURE_PAGE_LAYERS; i++)
         {
             Clay_ElementId id = Clay_GetElementIdWithIndex(CLAY_STRING("TexLayerButton"), i);
-            char buffer[16] = {0}
+            char buffer[16] = { 0 };
             IntToString(buffer, (s64)i, 0);
             if (UIButton(id, UIStr(buffer), (Clay_Dimensions){ 30.0f, 26.0f }, i == texInspectLayer)) texInspectLayer = i;
         }
