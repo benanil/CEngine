@@ -217,6 +217,7 @@ typedef struct WindowState
     bool hiz_valid;
 } WindowState;
 
+// per scene gpu mirrors of one render set, owned by Scene
 typedef struct RenderSetBuffers_
 {
     SDL_GPUBuffer* primitiveGroup;
@@ -229,13 +230,18 @@ typedef struct RenderSetBuffers_
     SDL_GPUBuffer* visibilityMask;
     SDL_GPUBuffer* visibleCount;
     SDL_GPUBuffer* dispatchArgs;
+} RenderSetBuffers;
+
+// shared per set type: pipelines and the vertex pools every scene draws from
+typedef struct RenderSetShared_
+{
     SDL_GPUGraphicsPipeline* pipeline;
     SDL_GPUGraphicsPipeline* depthPipeline;
     SDL_GPUGraphicsPipeline* shadowPipeline;
     SDL_GPUGraphicsPipeline* pointShadowPipeline;
     SDL_GPUBuffer*           vertexBuffer;
-    SDL_GPUBuffer*           animatedVertices;
-} RenderSetBuffers;
+    SDL_GPUBuffer*           animatedVertices; // skinned only
+} RenderSetShared;
 
 typedef struct RenderState
 {
@@ -260,8 +266,8 @@ typedef struct RenderState
     SDL_GPUBuffer*           uiShapeBuffer;
     SDL_GPUBuffer*           uiShapeDrawArgsBuffer;
     SDL_GPUBuffer*           shadowCascadeBuffer;
-    RenderSetBuffers         skinned;
-    RenderSetBuffers         surface;
+    RenderSetShared          skinned;
+    RenderSetShared          surface;
     
     // anim
     SDL_GPUBuffer*           boneBuffer;
@@ -271,16 +277,8 @@ typedef struct RenderState
     SDL_GPUBuffer*           jointsBuffer;
     SDL_GPUBuffer*           invBindBuffer;
     SDL_GPUBuffer*           animInstanceBuffer;
-    SDL_GPUBuffer*           textureDescriptorBuffer;
-    SDL_GPUBuffer*           materialBuffer;
-    u32                      numTextureDescriptors;
-    u32                      numMaterials;
-    Texture                  albedoPages;
-    Texture                  normalPages;
-    Texture                  metallicRoughnessPages;
     SDL_GPUTexture*          skyNoise3D;
     u32                      numLights;
-    Texture                  textures[MAX_SCENE_TEXTURES];
 } RenderState;
 
 
@@ -303,6 +301,10 @@ static inline s32 GetRootNodeIdx(SceneBundle* bundle)
     }
     return node;
 }
+
+// per scene render set gpu buffers, implemented in Rendering.c
+void CreateRenderSetBuffers(RenderSetBuffers* buffers, u32 maxEntities, u32 maxGroups);
+void DestroyRenderSetBuffers(RenderSetBuffers* buffers);
 
 void GraphicsInit(bool msaa);
 
@@ -333,10 +335,6 @@ SDL_GPUTexture* CreateTexture2DArray(u32 width, u32 height, u32 layers,
                                      const char* label);
 
 void rDeleteTexture(Texture texture);
-
-void InitTextureSystem(void);
-
-void TextureSystem_BuildPages(SceneBundle** bundles, const u32* imageOffsets, u32 numBundles, Texture* textures);
 
 void UploadTextureRegion(Texture texture, u32 layer, u32 x, u32 y, u32 width, u32 height, u32 srcWidth, u32 srcHeight, const void* data);
 

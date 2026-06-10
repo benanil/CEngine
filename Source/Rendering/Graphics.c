@@ -114,23 +114,23 @@ void CreateWindowBuffers()
     SDL_GetWindowSizeInPixels(g_SDLWindow, (int*)&width, (int*)&height);
     u32 hbaoWidth  = Maxu32(width / 2u, 1u);
     u32 hbaoHeight = Maxu32(height / 2u, 1u);
-    winstate->tex_depth           = CreateTexture2D(width, height, TEX_FMT_D32_FLT, TEX_DEPTH_STENCIL | TEX_SAMPLER, TEX_SMP_CNT1, 1, "Depth Texture");
-    winstate->tex_hiz_depth       = CreateHiZDepthTexture(width, height);
     winstate->tex_color           = CreateSceneColorTexture(width, height, SDL_GPU_SAMPLECOUNT_1);
+    winstate->tex_depth           = CreateTexture2D(width, height, TEX_FMT_D32_FLT, TEX_DEPTH_STENCIL | TEX_SAMPLER, TEX_SMP_CNT1, 1, "Depth Texture");
     winstate->tex_post            = CreateTexture2D(width, height, TEX_FMT_8UNORM4, TEX_SAMPLER | TEX_COLOR_TARGET | TEX_COMP_WRITE, TEX_SMP_CNT1, 1, "Post Process Texture");
-    winstate->tex_hiz             = CreateHiZTexture(width, height, &winstate->hiz_mip_count);
-    winstate->tex_gbuffer_tangent = CreateTexture2D(width, height, TEX_FMT_R32_UINT, TEX_COLOR_TARGET | TEX_SAMPLER, TEX_SMP_CNT1, 1, "GBuffer Tangent Texture");
-    winstate->tex_gbuffer_albedo_metallic  = CreateTexture2D(width, height, TEX_FMT_8UNORM4, TEX_COLOR_TARGET | TEX_SAMPLER, TEX_SMP_CNT1, 1, "GBuffer Albedo Metallic Texture");
-    winstate->tex_gbuffer_shadow_roughness = CreateTexture2D(width, height, TEX_FMT_8UNORM2, TEX_COLOR_TARGET | TEX_SAMPLER, TEX_SMP_CNT1, 1, "GBuffer Shadow Roughness Texture");
     winstate->tex_hbao            = CreateTexture2D(hbaoWidth, hbaoHeight, TEX_FMT_8UNORM1, TEX_SAMPLER | TEX_COMP_WRITE, TEX_SMP_CNT1, 1, "HBAO Texture");
     winstate->tex_hbao_blur       = CreateTexture2D(hbaoWidth, hbaoHeight, TEX_FMT_8UNORM1, TEX_SAMPLER | TEX_COMP_WRITE, TEX_SMP_CNT1, 1, "HBAO Texture");
     winstate->tex_hbao_normal     = CreateTexture2D(hbaoWidth, hbaoHeight, TEX_FMT_8UNORM4, TEX_SAMPLER | TEX_COMP_WRITE, TEX_SMP_CNT1, 1, "HBAO Normal Texture");
     winstate->tex_mlaa_edge_mask  = CreateTexture2D(width, height, TEX_FMT_R32_UINT, TEX_COMP_READ | TEX_COMP_WRITE, TEX_SMP_CNT1, 1, "MLAA Edge Mask Texture");
     winstate->tex_mlaa_edge_count = CreateTexture2D(width, height, TEX_FMT_D32_FLT2, TEX_COMP_READ | TEX_COMP_WRITE, TEX_SMP_CNT1, 1, "MLAA Edge Count Texture");
-    winstate->tex_mlaa_output = CreateTexture2D(width, height, TEX_FMT_8UNORM4, TEX_SAMPLER | TEX_COLOR_TARGET | TEX_COMP_WRITE, TEX_SMP_CNT1, 1, "MLAA Output Texture");
-    winstate->hiz_width   = width;
-    winstate->hiz_height  = height;
-    winstate->hiz_valid   = false;
+    winstate->tex_mlaa_output     = CreateTexture2D(width, height, TEX_FMT_8UNORM4 , TEX_SAMPLER | TEX_COLOR_TARGET | TEX_COMP_WRITE, TEX_SMP_CNT1, 1, "MLAA Output Texture");
+    winstate->tex_gbuffer_tangent = CreateTexture2D(width, height, TEX_FMT_R32_UINT, TEX_COLOR_TARGET | TEX_SAMPLER, TEX_SMP_CNT1, 1, "GBuffer Tangent Texture");
+    winstate->tex_gbuffer_albedo_metallic  = CreateTexture2D(width, height, TEX_FMT_8UNORM4, TEX_COLOR_TARGET | TEX_SAMPLER, TEX_SMP_CNT1, 1, "GBuffer Albedo Metallic Texture");
+    winstate->tex_gbuffer_shadow_roughness = CreateTexture2D(width, height, TEX_FMT_8UNORM2, TEX_COLOR_TARGET | TEX_SAMPLER, TEX_SMP_CNT1, 1, "GBuffer Shadow Roughness Texture");
+    winstate->tex_hiz_depth = CreateHiZDepthTexture(width, height);
+    winstate->tex_hiz       = CreateHiZTexture(width, height, &winstate->hiz_mip_count);
+    winstate->hiz_width     = width;
+    winstate->hiz_height    = height;
+    winstate->hiz_valid     = false;
 }
 
 SDL_GPUBuffer* CreateBuffer(
@@ -245,12 +245,8 @@ static u32 GetMipCount(u32 width, u32 height)
     return levels;
 }
 
-SDL_GPUTexture* CreateTexture2D(u32 width, u32 height,
-                                SDL_GPUTextureFormat format,
-                                SDL_GPUTextureUsageFlags usage,
-                                SDL_GPUSampleCount sampleCount,
-                                u32 mipLevels,
-                                const char* label)
+SDL_GPUTexture* CreateTexture2D(u32 width, u32 height, SDL_GPUTextureFormat format, SDL_GPUTextureUsageFlags usage,
+                                SDL_GPUSampleCount sampleCount, u32 mipLevels, const char* label)
 {
     SDL_GPUTextureCreateInfo createinfo = {
         .type = SDL_GPU_TEXTURETYPE_2D,
@@ -269,10 +265,8 @@ SDL_GPUTexture* CreateTexture2D(u32 width, u32 height,
     return result;
 }
 
-SDL_GPUTexture* CreateTexture2DArray(u32 width, u32 height, u32 layers,
-                                     SDL_GPUTextureFormat format,
-                                     SDL_GPUTextureUsageFlags usage,
-                                     const char* label)
+SDL_GPUTexture* CreateTexture2DArray(u32 width, u32 height, u32 layers, SDL_GPUTextureFormat format,
+                                     SDL_GPUTextureUsageFlags usage, const char* label)
 {
     SDL_GPUTextureCreateInfo createinfo = {
         .type = SDL_GPU_TEXTURETYPE_2D_ARRAY,
@@ -342,7 +336,7 @@ SDL_GPUTexture* Create3DNoise3DTexture(u32 size)
 
 SDL_GPUTexture* CreateSceneColorTexture(u32 drawablew, u32 drawableh, SDL_GPUSampleCount sampleCount)
 {
-    SDL_GPUTextureUsageFlags usage = TEX_COLOR_TARGET | TEX_COMP_READ | TEX_COMP_WRITE;
+    SDL_GPUTextureUsageFlags usage = TEX_COLOR_TARGET | TEX_COMP_WRITE;
     if (sampleCount == TEX_SMP_CNT1) usage |= TEX_SAMPLER;
     return CreateTexture2D(drawablew, drawableh, TEX_FMT_HALF4, usage, sampleCount, 1, "Scene Color Texture");
 }

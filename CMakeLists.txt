@@ -108,6 +108,8 @@ target_sources(${EXECUTABLE_NAME} PRIVATE
     Source/Platform.c
     Source/Editor.c
     Source/AnimationBake.c
+    Source/Scene.c
+    Source/DemoScene.c
 
     Source/Rendering/Graphics.c
     Source/Rendering/Rendering.c
@@ -176,7 +178,12 @@ set_target_properties(CPlayground PROPERTIES
 )
 
 # Link SDL to our executable. This also makes its include directory available to us. 
-target_link_libraries(${EXECUTABLE_NAME} PUBLIC SDL3::SDL3) # If using satelite libraries, SDL must be the last item in the list. 
+if(WIN32)
+    target_link_libraries(${EXECUTABLE_NAME} PUBLIC Dbghelp) # crash handler stack walk
+    target_link_options(${EXECUTABLE_NAME} PRIVATE /MAP)     # rva -> symbol mapping for release crashes
+endif()
+
+target_link_libraries(${EXECUTABLE_NAME} PUBLIC SDL3::SDL3) # If using satelite libraries, SDL must be the last item in the list.
 
 set_property(TARGET CPlayground PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
 # on Visual Studio, set our app as the default project

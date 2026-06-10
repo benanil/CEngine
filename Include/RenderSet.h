@@ -65,13 +65,10 @@ typedef struct RenderSet_
     u32 numGroups;
     u32 numBundles;
     u32 nextSparseID;
+    u32 skinned;
 } RenderSet;
 
-extern RenderSet skinnedSet;
-extern RenderSet surfaceSet;
-
-void RenderSet_Init();
-void RenderSet_InitSet(RenderSet* set, u32 maxEntities, u32 maxGroups, u32 maxBundles);
+void RenderSet_InitSet(RenderSet* set, u32 maxEntities, u32 maxGroups, u32 maxBundles, bool skinned);
 
 // out: groupIdx, ~0u outherwise
 u32 RenderSet_AddSceneBundle(RenderSet* set, const SceneBundle* sceneBundle);
@@ -83,6 +80,9 @@ u32 RenderSet_AddEntity(RenderSet* set, u32 primitiveIdx, const Entity* data);
 u32 RenderSet_AddEntities(RenderSet* set, u32 primitiveIdx, u32 numAdded, const Entity* data);
 
 void RenderSet_Clear(RenderSet* set);
+
+// removes all entities, keeps registered bundles and primitive groups
+void RenderSet_ClearEntities(RenderSet* set);
 
 u32 RenderSet_RemoveEntity(RenderSet* set, u32 groupIdx, u32 localEntityIdx);
 

@@ -1099,7 +1099,7 @@ UIImageData UIImageFromTexture(Texture* texture)
     if (!texture || !texture->handle )
     {
         if (warnCount++ < 8) AX_WARN("UIImageFromTexture got null texture");
-        image.texture = g_RenderState.textures[0].handle;
+        image.texture = NULL;
     }
     else image.texture = texture->handle;
     return image;

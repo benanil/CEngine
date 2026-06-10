@@ -536,7 +536,7 @@ void DispatchMLAACompute(SDL_GPUCommandBuffer* cmd, u32 width, u32 height, f32 t
     SDL_EndGPUComputePass(pass);
 }
 
-void DispatchAnimationCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet)
+void DispatchAnimationCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet, RenderSetBuffers* setBuffers)
 {
     if (renderSet->numEntities == 0) return;
     CHECK_CREATE(g_AnimComputePipeline, "Animation Compute Pipeline")
@@ -559,14 +559,14 @@ void DispatchAnimationCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet)
         g_RenderState.jointsBuffer,
         g_RenderState.invBindBuffer,
         g_RenderState.animInstanceBuffer,
-        g_RenderState.skinned.visibleSparseIndices
+        setBuffers->visibleSparseIndices
     };
 
     SDL_GPUComputePass* pass = SDL_BeginGPUComputePass(cmd, NULL, 0, rw_bindings, SDL_arraysize(rw_bindings));
     SDL_BindGPUComputePipeline(pass, g_AnimComputePipeline);
     SDL_BindGPUComputeStorageBuffers(pass, 0, buffers, SDL_arraysize(buffers));
     SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
-    SDL_DispatchGPUComputeIndirect(pass, g_RenderState.skinned.dispatchArgs, 0);
+    SDL_DispatchGPUComputeIndirect(pass, setBuffers->dispatchArgs, 0);
     SDL_EndGPUComputePass(pass);
 }
 
@@ -584,7 +584,7 @@ static void GetSkinnedAnimationDispatchSize(RenderSet* renderSet, u32* maxGroupE
     }
 }
 
-void DispatchAnimateVerticesCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet)
+void DispatchAnimateVerticesCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet, RenderSetBuffers* setBuffers)
 {
     if (renderSet->numGroups == 0) return;
     CHECK_CREATE(g_AnimVerticesPipeline, "Animation vertices Pipeline")
@@ -616,18 +616,18 @@ void DispatchAnimateVerticesCompute(SDL_GPUCommandBuffer* cmd, RenderSet* render
 
     SDL_GPUBuffer* ro_buffers[7] = {
         g_RenderState.boneBuffer,
-        g_RenderState.skinned.entity,
-        g_RenderState.skinned.primitiveGroup,
-        g_RenderState.skinned.visibleSparseIndices,
+        setBuffers->entity,
+        setBuffers->primitiveGroup,
+        setBuffers->visibleSparseIndices,
         g_RenderState.skinned.vertexBuffer,
-        g_RenderState.skinned.drawArgs,
-        g_RenderState.skinned.sparseToDense
+        setBuffers->drawArgs,
+        setBuffers->sparseToDense
     };
 
     SDL_GPUComputePass* pass = SDL_BeginGPUComputePass(cmd, NULL, 0, rw_bindings, SDL_arraysize(rw_bindings));
     SDL_BindGPUComputePipeline(pass, g_AnimVerticesPipeline);
     SDL_BindGPUComputeStorageBuffers(pass, 0, ro_buffers, SDL_arraysize(ro_buffers));
     SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
-    SDL_DispatchGPUComputeIndirect(pass, g_RenderState.skinned.dispatchArgs, sizeof(u32) * 3);
+    SDL_DispatchGPUComputeIndirect(pass, setBuffers->dispatchArgs, sizeof(u32) * 3);
     SDL_EndGPUComputePass(pass);
 }

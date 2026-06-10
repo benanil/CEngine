@@ -146,6 +146,8 @@ static bool StoreBundleSkinGPUData(const SceneBundle* bundle, u32* jointOffset, 
 
 void InitAnimationInstances(void)
 {
+    if (NumGPUAnimations == 0) return;
+
     for (u32 i = 0; i < MAX_ANIM_INSTANCES; i++)
     {
         u32 hash = WangHash(i + 645u);

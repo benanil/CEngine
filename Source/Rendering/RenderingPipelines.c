@@ -584,7 +584,7 @@ static void InitSurfacePipeline(void)
     SDL_ReleaseGPUShader(g_GPUDevice, fragment_shader);
 }
 
-static void CreatePipelineWithDesc(RenderSetBuffers* buffers, SDL_GPUGraphicsPipelineCreateInfo* desc,
+static void CreatePipelineWithDesc(RenderSetShared* buffers, SDL_GPUGraphicsPipelineCreateInfo* desc,
                                    SDL_GPUShader* vertexDepth, SDL_GPUShader* fragmentDepth,
                                    SDL_GPUShader* vertexShadow, SDL_GPUShader* fragmentShadow,
                                    SDL_GPUShader* pointShadowVertex, SDL_GPUShader* pointShadowFragment)
@@ -683,7 +683,7 @@ void InitRenderPipelines(void)
 
 extern void DestroyShadows();
 
-static void DestroyRenderSetBufferPipelines(RenderSetBuffers buffer)
+static void DestroyRenderSetBufferPipelines(RenderSetShared buffer)
 {
     if (buffer.pipeline)            SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, buffer.pipeline);
     if (buffer.shadowPipeline)      SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, buffer.shadowPipeline);

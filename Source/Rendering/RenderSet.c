@@ -9,17 +9,15 @@
 #include "Math/Matrix.h"
 #include "Math/Bitpack.h"
 
-RenderSet skinnedSet;
-RenderSet surfaceSet;
-
 extern Graphics gGFX;
 
-void RenderSet_InitSet(RenderSet* set, u32 maxEntities, u32 maxGroups, u32 maxBundles)
+void RenderSet_InitSet(RenderSet* set, u32 maxEntities, u32 maxGroups, u32 maxBundles, bool skinned)
 {
     MemsetZero(set, sizeof(*set));
     set->maxEntities = maxEntities;
     set->maxGroups   = maxGroups;
     set->maxBundles  = maxBundles;
+    set->skinned     = skinned ? 1u : 0u;
 
     set->entities                = (Entity*)AllocZeroTLSFGlobal(maxEntities, sizeof(Entity));
     set->sparseID                = (u32*)AllocateTLSFGlobal(maxEntities * sizeof(u32));
@@ -30,12 +28,6 @@ void RenderSet_InitSet(RenderSet* set, u32 maxEntities, u32 maxGroups, u32 maxBu
 
     for (u32 i = 0; i < maxEntities; i++)
         set->sparseID[i] = INVALID_ENTITY;
-}
-
-void RenderSet_Init()
-{
-    RenderSet_InitSet(&skinnedSet, MAX_ANIM_INSTANCES, MAX_GROUP, MAX_BUNDLES);
-    RenderSet_InitSet(&surfaceSet, MAX_ENTITY, MAX_GROUP, MAX_BUNDLES);
 }
 
 static u32 AllocateSparseID(RenderSet* set)
@@ -57,7 +49,7 @@ u32 RenderSet_AddSceneBundle(RenderSet* set, const SceneBundle* sceneBundle)
     u32 primitiveStart = set->numGroups;
     u32 vertexBase = 0;
     u32 localVertexOffset = 0;
-    if (set == &skinnedSet)
+    if (set->skinned)
         vertexBase = (u32)((const ASkinedVertex*)sceneBundle->allVertices - gGFX.SkinnedVertexBuffer);
     else
         vertexBase = (u32)((const AVertex*)sceneBundle->allVertices - gGFX.SurfaceVertexBuffer);
@@ -75,10 +67,10 @@ u32 RenderSet_AddSceneBundle(RenderSet* set, const SceneBundle* sceneBundle)
             group->valid          = 1;
             group->numEntities    = 0;
             group->capacity       = 0;
-            group->animatedVertexOffset = (set == &skinnedSet) ? (u32)primitive->lodAnimatedVertexOffset[0] : localVertexOffset;
+            group->animatedVertexOffset = set->skinned ? (u32)primitive->lodAnimatedVertexOffset[0] : localVertexOffset;
             group->numIndices     = (u32)primitive->numIndices;
             group->indexOffset    = (u32)primitive->indexOffset;
-            group->vertexOffset   = (set == &skinnedSet) ? (u32)primitive->lodVertexOffset[0] : vertexBase + localVertexOffset;
+            group->vertexOffset   = set->skinned ? (u32)primitive->lodVertexOffset[0] : vertexBase + localVertexOffset;
             group->meshIndex      = m;
             group->primitiveIndex = p;
             group->materialIndex  = (u32)(sceneBundle->materialOffset + primitive->material);
@@ -317,6 +309,25 @@ void RenderSet_CompactEntities(RenderSet* set)
 
     set->numEntities = writeEntity;
     RebuildSparseToDense(set);
+}
+
+void RenderSet_ClearEntities(RenderSet* set)
+{
+    MemsetZero(set->entities, set->maxEntities * sizeof(Entity));
+    MemsetZero(set->denseToPrimitiveIndex, set->maxEntities * sizeof(u32));
+    for (u32 i = 0; i < set->maxEntities; i++)
+        set->sparseID[i] = INVALID_ENTITY;
+
+    for (u32 g = 0; g < set->numGroups; g++)
+    {
+        PrimitiveGroup* group = set->primitiveGroups + g;
+        group->entityOffset = 0;
+        group->numEntities = 0;
+        group->capacity = 0;
+    }
+
+    set->numEntities = 0;
+    set->nextSparseID = 0;
 }
 
 void RenderSet_Clear(RenderSet* set)

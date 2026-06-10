@@ -6,6 +6,7 @@
 #include "Include/Platform.h"
 #include "Include/Camera.h"
 #include "Include/RenderSet.h"
+#include "Include/Scene.h"
 
 typedef struct ShadowCascadeData_
 {
@@ -52,8 +53,6 @@ extern SDL_GPUDevice* g_GPUDevice;
 extern SDL_Window*    g_SDLWindow;
 extern Camera         g_Camera;
 extern Graphics       gGFX;
-extern RenderSet      skinnedSet;
-extern RenderSet      surfaceSet;
 extern LightGPU       g_RenderLights[MAX_LIGHT_COUNT];
 extern ShadowData pointShadows;
 extern ShadowData spotShadows;
@@ -96,8 +95,8 @@ void DispatchDeferredLightingCompute(SDL_GPUCommandBuffer* cmd, u32 width, u32 h
 void DispatchCullLightsCompute(SDL_GPUCommandBuffer* cmd, FrustumPlanes frustumPlanes, mat4x4 viewProj, bool enableFrustum, bool enableHiZ, u32 width, u32 height);
 void DispatchTonemapCompute(SDL_GPUCommandBuffer* cmd, u32 width, u32 height, mat4x4 viewProj);
 void DispatchMLAACompute(SDL_GPUCommandBuffer* cmd, u32 width, u32 height, f32 threshold, bool showEdges);
-void DispatchAnimationCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet);
-void DispatchAnimateVerticesCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet);
+void DispatchAnimationCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet, RenderSetBuffers* buffers);
+void DispatchAnimateVerticesCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet, RenderSetBuffers* buffers);
 
 void RenderDepth(SDL_GPUCommandBuffer* cmd, const DepthPassContext* ctx);
 

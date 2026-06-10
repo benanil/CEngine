@@ -3,6 +3,7 @@
 #include "Include/UIRenderer.h"
 #include "Include/Platform.h"
 #include "Include/Animation.h"
+#include "Include/Scene.h"
 
 #define RESIZE_RELEASE_DELAY 4u
 
@@ -146,44 +147,49 @@ RenderLightDebugInfo RendererGetLightDebugInfo(void)
     return g_LightDebugInfo;
 }
 
-static void InitRenderSetBuffers(RenderSetBuffers* buffers, RenderSet* set)
+void CreateRenderSetBuffers(RenderSetBuffers* buffers, u32 maxEntities, u32 maxGroups)
 {
-    size_t groupBytes  = set->maxGroups * sizeof(PrimitiveGroup);
-    size_t entityBytes = set->maxEntities * sizeof(Entity);
+    size_t groupBytes  = maxGroups * sizeof(PrimitiveGroup);
+    size_t entityBytes = maxEntities * sizeof(Entity);
     size_t lodMultiplier = MESH_LOD_COUNT;
 
-    buffers->primitiveGroup    = CreateBuffer(set->primitiveGroups, groupBytes, BReadCompute, "CPPrimitiveGroups");
-    buffers->drawSparseIndices = CreateBuffer(NULL, set->maxEntities * lodMultiplier * sizeof(u32), BReadRasterBit | BReadCompute | BWriteComputeBit, "CPDrawSparseIndices");
-    buffers->sparseToDense     = CreateBuffer(set->sparseID, set->maxEntities * sizeof(u32), BReadCompute, "CPSparseToDense");
-    buffers->drawArgs          = CreateBuffer(NULL, set->maxGroups * lodMultiplier * sizeof(SDL_GPUIndexedIndirectDrawCommand), BIndirectBit | BReadCompute | BWriteComputeBit, "CPDrawArgs");
-    buffers->denseToPrimitive  = CreateBuffer(set->denseToPrimitiveIndex, set->maxEntities * sizeof(u32), BReadCompute, "CPDenseToPrimitive");
-    buffers->entity            = CreateBuffer(set->entities, entityBytes, BReadRasterBit | BReadCompute, "CPEntities");
-    buffers->visibilityMask    = CreateBuffer(NULL, set->maxEntities * sizeof(u32), BReadCompute | BWriteComputeBit, "CPVisibilityMask");
-    buffers->visibleCount      = CreateBuffer(NULL, sizeof(u32), BReadCompute | BWriteComputeBit, "CPVisibleCount");
+    buffers->primitiveGroup    = CreateBuffer(NULL, groupBytes, BReadCompute, "CPPrimitiveGroups");
+    buffers->drawSparseIndices = CreateBuffer(NULL, maxEntities * lodMultiplier * sizeof(u32), BReadRasterBit |  BWriteComputeBit, "CPDrawSparseIndices");
+    buffers->sparseToDense     = CreateBuffer(NULL, maxEntities * sizeof(u32), BReadCompute, "CPSparseToDense");
+    buffers->drawArgs          = CreateBuffer(NULL, maxGroups * lodMultiplier * sizeof(SDL_GPUIndexedIndirectDrawCommand), BIndirectBit | BWriteComputeBit, "CPDrawArgs");
+    buffers->denseToPrimitive  = CreateBuffer(NULL, maxEntities * sizeof(u32), BReadCompute, "CPDenseToPrimitive");
+    buffers->entity            = CreateBuffer(NULL, entityBytes, BReadRasterBit | BReadCompute, "CPEntities");
+    buffers->visibilityMask    = CreateBuffer(NULL, maxEntities * sizeof(u32), BWriteComputeBit, "CPVisibilityMask");
+    buffers->visibleCount      = CreateBuffer(NULL, sizeof(u32), BWriteComputeBit, "CPVisibleCount");
     buffers->dispatchArgs      = CreateBuffer(NULL, sizeof(u32) * 6, BIndirectBit | BWriteComputeBit, "CPDispatchArgs");
-    buffers->visibleSparseIndices = CreateBuffer(NULL, set->maxEntities * sizeof(u32), BReadCompute | BWriteComputeBit, "CPVisibleSparseIndices");
+    buffers->visibleSparseIndices = CreateBuffer(NULL, maxEntities * sizeof(u32), BWriteComputeBit, "CPVisibleSparseIndices");
+}
+
+// re-uploads the render set data that only changes when entities or bundles are added/removed
+static void UploadRenderSetStatics(const RenderSet* set, RenderSetBuffers* buffers)
+{
+    UpdateGPUBuffer(buffers->primitiveGroup, set->primitiveGroups, set->maxGroups * sizeof(PrimitiveGroup), 0);
+    UpdateGPUBuffer(buffers->sparseToDense, set->sparseID, set->maxEntities * sizeof(u32), 0);
+    UpdateGPUBuffer(buffers->denseToPrimitive, set->denseToPrimitiveIndex, set->maxEntities * sizeof(u32), 0);
 }
 
 void InitBuffers(void)
 {
-    InitRenderSetBuffers(&g_RenderState.skinned, &skinnedSet);
-    InitRenderSetBuffers(&g_RenderState.surface, &surfaceSet);
-
     AnimInitBuffers();
     const size_t animatedVertexSize = sizeof(u32) * 2 * MAX_ANIMATED_VERTEX;
     g_RenderState.skinned.vertexBuffer = CreateBuffer(NULL, MAX_SKINNED_SOURCE_VERTEX * sizeof(ASkinedVertex), BVertexBit | BReadCompute, "CPSkinnedVertexBuffer");
     g_RenderState.surface.vertexBuffer = CreateBuffer(NULL, MAX_VERTEX * sizeof(AVertex), BVertexBit, "CPSurfaceVertexBuffer");
     g_RenderState.indexBuffer          = CreateBuffer(NULL, MAX_INDEX  * sizeof(int)    , SDL_GPU_BUFFERUSAGE_INDEX, "CPIndexBuffer");
+    g_RenderState.lineBuffer           = CreateBuffer(NULL, sizeof(ALineVertex) * MAX_LINE_COUNT   , BVertexBit     | BWriteComputeBit, "CPLineVertexBuffer");
+    g_RenderState.lineDrawArgsBuffer   = CreateBuffer(NULL, sizeof(u32) * 8                        , BIndirectBit   | BWriteComputeBit, "CPLinedrawArgsBuffer");
+    g_RenderState.lightBuffer          = CreateBuffer(NULL, sizeof(LightGPU) * MAX_LIGHT_COUNT     , BReadRasterBit | BReadCompute    , "CPLightBuffer");
+    g_RenderState.lightDrawInfoBuffer  = CreateBuffer(NULL, sizeof(LightDrawInfo) * MAX_LIGHT_COUNT, BReadRasterBit | BWriteComputeBit, "CPLightDrawInfoBuffer");
+    g_RenderState.lightDrawArgsBuffer  = CreateBuffer(NULL, sizeof(SDL_GPUIndirectDrawCommand)     , BIndirectBit   | BWriteComputeBit, "CPLightDrawArgsBuffer");
+    g_RenderState.skinned.animatedVertices = CreateBuffer(NULL, animatedVertexSize, BReadRasterBit | BWriteComputeBit, "CPAnimatedVertices");
+
     if (gGFX.NumSkinnedVertices > 0) UpdateGPUBuffer(g_RenderState.skinned.vertexBuffer, gGFX.SkinnedVertexBuffer, gGFX.NumSkinnedVertices * sizeof(ASkinedVertex), 0);
     if (gGFX.NumSurfaceVertices > 0) UpdateGPUBuffer(g_RenderState.surface.vertexBuffer, gGFX.SurfaceVertexBuffer, gGFX.NumSurfaceVertices * sizeof(AVertex), 0);
     if (gGFX.NumIndices > 0)         UpdateGPUBuffer(g_RenderState.indexBuffer, gGFX.IndexBuffer, gGFX.NumIndices * sizeof(u32), 0);
-    g_RenderState.skinned.animatedVertices = CreateBuffer(NULL, animatedVertexSize                , BReadRasterBit | BWriteComputeBit, "CPAnimatedVertices");
-    g_RenderState.lineBuffer          = CreateBuffer(NULL, sizeof(ALineVertex) * MAX_LINE_COUNT   , BVertexBit     | BWriteComputeBit, "CPLineVertexBuffer");
-    g_RenderState.lineDrawArgsBuffer  = CreateBuffer(NULL, sizeof(u32) * 8                        , BIndirectBit   | BWriteComputeBit, "CPLinedrawArgsBuffer");
-    g_RenderState.lightBuffer         = CreateBuffer(NULL, sizeof(LightGPU) * MAX_LIGHT_COUNT     , BReadRasterBit | BReadCompute    , "CPLightBuffer");
-    g_RenderState.lightDrawInfoBuffer = CreateBuffer(NULL, sizeof(LightDrawInfo) * MAX_LIGHT_COUNT, BReadRasterBit | BReadCompute | BWriteComputeBit, "CPLightDrawInfoBuffer");
-    g_RenderState.lightDrawArgsBuffer = CreateBuffer(NULL, sizeof(SDL_GPUIndirectDrawCommand)     , BIndirectBit   | BWriteComputeBit, "CPLightDrawArgsBuffer");
-
     g_LightDebugInfo.maxLights = MAX_LIGHT_COUNT;
     UIInit();
 }
@@ -304,14 +310,19 @@ static void UploadRenderSetEntities(RenderSet* set, RenderSetBuffers* buffers)
 
 void CullScene(SDL_GPUCommandBuffer* cmd, FrustumPlanes planes, mat4x4 viewProj, bool enableHiZ, bool enableSurfaceLOD, u32 forcedLOD)
 {
-    DispatchCullDrawArgsCompute(cmd, &skinnedSet, &g_RenderState.skinned, planes, viewProj, enableHiZ, false, false, true, forcedLOD);
-    DispatchCullDrawArgsCompute(cmd, &surfaceSet, &g_RenderState.surface, planes, viewProj, enableHiZ, false, false, enableSurfaceLOD, forcedLOD);
+    for (u32 s = 0; s < g_NumActiveScenes; s++)
+    {
+        Scene* scene = g_ActiveScenes[s];
+        DispatchCullDrawArgsCompute(cmd, &scene->skinnedSet, &scene->skinnedBuffers, planes, viewProj, enableHiZ, false, false, true, forcedLOD);
+        DispatchCullDrawArgsCompute(cmd, &scene->surfaceSet, &scene->surfaceBuffers, planes, viewProj, enableHiZ, false, false, enableSurfaceLOD, forcedLOD);
+    }
 }
 
-static void GatherSkinnedAnimationVisibility(SDL_GPUCommandBuffer* cmd, FrustumPlanes cameraFrustum, mat4x4 cameraViewProj, bool enableHiZ,
+static void GatherSkinnedAnimationVisibility(SDL_GPUCommandBuffer* cmd, RenderSet* skinnedSet, RenderSetBuffers* skinnedBuffers,
+                                             FrustumPlanes cameraFrustum, mat4x4 cameraViewProj, bool enableHiZ,
                                              const ShadowData* pointShadows, const ShadowData* spotShadows)
 {
-    DispatchCullDrawArgsCompute(cmd, &skinnedSet, &g_RenderState.skinned, cameraFrustum, cameraViewProj,
+    DispatchCullDrawArgsCompute(cmd, skinnedSet, skinnedBuffers, cameraFrustum, cameraViewProj,
                                 enableHiZ, true, true, true, ~0u);
 
     ShadowCascadeData cascades = GetShadowCascades();
@@ -319,7 +330,7 @@ static void GatherSkinnedAnimationVisibility(SDL_GPUCommandBuffer* cmd, FrustumP
     {
         mat4x4 shadowViewProj = cascades.lightViewProj[cascade];
         FrustumPlanes shadowFrustum = CreateFrustumPlanes(shadowViewProj);
-        DispatchCullDrawArgsCompute(cmd, &skinnedSet, &g_RenderState.skinned, shadowFrustum, shadowViewProj,
+        DispatchCullDrawArgsCompute(cmd, skinnedSet, skinnedBuffers, shadowFrustum, shadowViewProj,
                                     false, true, false, false, 1u);
     }
 
@@ -330,7 +341,7 @@ static void GatherSkinnedAnimationVisibility(SDL_GPUCommandBuffer* cmd, FrustumP
         {
             u32 layer = light->shadowIndex * POINT_SHADOW_FACE_COUNT + face;
             mat4x4 shadowViewProj = pointShadows->lightViewProj[layer];
-            DispatchCullDrawArgsCompute(cmd, &skinnedSet, &g_RenderState.skinned, CreateFrustumPlanes(shadowViewProj), shadowViewProj,
+            DispatchCullDrawArgsCompute(cmd, skinnedSet, skinnedBuffers, CreateFrustumPlanes(shadowViewProj), shadowViewProj,
                                         false, true, false, false, 1u);
         }
     }
@@ -339,19 +350,25 @@ static void GatherSkinnedAnimationVisibility(SDL_GPUCommandBuffer* cmd, FrustumP
     {
         LightGPU* light = &g_RenderLights[spotShadows->lightIndices[shadow]];
         mat4x4 shadowViewProj = spotShadows->lightViewProj[light->shadowIndex];
-        DispatchCullDrawArgsCompute(cmd, &skinnedSet, &g_RenderState.skinned, CreateFrustumPlanes(shadowViewProj), shadowViewProj,
+        DispatchCullDrawArgsCompute(cmd, skinnedSet, skinnedBuffers, CreateFrustumPlanes(shadowViewProj), shadowViewProj,
                                     false, true, false, false, 1u);
     }
 }
 
 static void AnimateSkinned(SDL_GPUCommandBuffer* cmd)
 {
-    DispatchAnimationCompute(cmd, &skinnedSet);
-    DispatchAnimateVerticesCompute(cmd, &skinnedSet);
+    for (u32 s = 0; s < g_NumActiveScenes; s++)
+    {
+        Scene* scene = g_ActiveScenes[s];
+        DispatchAnimationCompute(cmd, &scene->skinnedSet, &scene->skinnedBuffers);
+        DispatchAnimateVerticesCompute(cmd, &scene->skinnedSet, &scene->skinnedBuffers);
+    }
 }
 
 void Render(void)
 {
+    if (g_NumActiveScenes == 0) return;
+
     g_RenderFrameIndex++;
     ReleaseQueuedResizeTextures(false);
 
@@ -394,8 +411,18 @@ void Render(void)
     SDL_GPUColorTargetInfo        hiz_depth_target  = MakeHiZDepthTarget(winstate);
     SDL_GPUColorTargetInfo        gbuffer_targets[3];
     MakeGBufferTargets(winstate, gbuffer_targets);
-    UploadRenderSetEntities(&skinnedSet, &g_RenderState.skinned);
-    UploadRenderSetEntities(&surfaceSet, &g_RenderState.surface);
+    for (u32 s = 0; s < g_NumActiveScenes; s++)
+    {
+        Scene* scene = g_ActiveScenes[s];
+        if (scene->renderDataDirty)
+        {
+            UploadRenderSetStatics(&scene->skinnedSet, &scene->skinnedBuffers);
+            UploadRenderSetStatics(&scene->surfaceSet, &scene->surfaceBuffers);
+            scene->renderDataDirty = 0;
+        }
+        UploadRenderSetEntities(&scene->skinnedSet, &scene->skinnedBuffers);
+        UploadRenderSetEntities(&scene->surfaceSet, &scene->surfaceBuffers);
+    }
     mat4x4 viewProj = M44Multiply(g_Camera.view, g_Camera.projection);
     bool enableHiZ  = g_RenderSettings.enableOcclusion && winstate->hiz_valid;
     mat4x4 hiZViewProj = enableHiZ ? winstate->hiz_view_proj : viewProj;
@@ -403,7 +430,12 @@ void Render(void)
     FrustumPlanes cameraFrustum = CreateFrustumPlanes(viewProj);
     UpdateLightShadows();
     UploadLightBuffer();
-    GatherSkinnedAnimationVisibility(cmd, cameraFrustum, hiZViewProj, enableHiZ, &pointShadows, &spotShadows);
+    for (u32 s = 0; s < g_NumActiveScenes; s++)
+    {
+        Scene* scene = g_ActiveScenes[s];
+        GatherSkinnedAnimationVisibility(cmd, &scene->skinnedSet, &scene->skinnedBuffers,
+                                         cameraFrustum, hiZViewProj, enableHiZ, &pointShadows, &spotShadows);
+    }
     AnimateSkinned(cmd);
 
     if (g_RenderSettings.enableLocalLights)
@@ -484,7 +516,7 @@ void RendererInit(void)
     SlugInitDemo();
 }
 
-static void DestroyRenderSetBuffers(RenderSetBuffers* buffers)
+void DestroyRenderSetBuffers(RenderSetBuffers* buffers)
 {
     if (buffers->entity)               SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->entity);
     if (buffers->primitiveGroup)       SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->primitiveGroup);
@@ -504,26 +536,22 @@ void DestroyPipeline(void)
     if (g_RenderState.skinned.vertexBuffer)     SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.skinned.vertexBuffer);
     if (g_RenderState.skinned.animatedVertices) SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.skinned.animatedVertices);
     if (g_RenderState.surface.vertexBuffer)     SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.surface.vertexBuffer);
-    if (g_RenderState.indexBuffer)             SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.indexBuffer);
-    if (g_RenderState.lineBuffer)              SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lineBuffer);
-    if (g_RenderState.lineDrawArgsBuffer)      SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lineDrawArgsBuffer);
-    if (g_RenderState.lightBuffer)             SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lightBuffer);
-    if (g_RenderState.pointShadowMatrixBuffer) SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.pointShadowMatrixBuffer);
-    if (g_RenderState.spotShadowMatrixBuffer)  SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.spotShadowMatrixBuffer);
-    if (g_RenderState.lightDrawInfoBuffer)     SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lightDrawInfoBuffer);
-    if (g_RenderState.lightDrawArgsBuffer)     SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lightDrawArgsBuffer);
-    if (g_RenderState.uiShapeBuffer)           SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.uiShapeBuffer);
-    if (g_RenderState.uiShapeDrawArgsBuffer)   SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.uiShapeDrawArgsBuffer);
-    if (g_RenderState.textureDescriptorBuffer) SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.textureDescriptorBuffer);
-    if (g_RenderState.materialBuffer)          SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.materialBuffer);
-    if (g_RenderState.sampler)                 SDL_ReleaseGPUSampler(g_GPUDevice, g_RenderState.sampler);
-    if (g_RenderState.hiZSampler)              SDL_ReleaseGPUSampler(g_GPUDevice, g_RenderState.hiZSampler);
-    if (g_RenderState.shadowSampler)           SDL_ReleaseGPUSampler(g_GPUDevice, g_RenderState.shadowSampler);
-    if (g_RenderState.albedoPages.handle)      SDL_ReleaseGPUTexture(g_GPUDevice, g_RenderState.albedoPages.handle);
-    if (g_RenderState.normalPages.handle)      SDL_ReleaseGPUTexture(g_GPUDevice, g_RenderState.normalPages.handle);
-    if (g_RenderState.metallicRoughnessPages.handle) SDL_ReleaseGPUTexture(g_GPUDevice, g_RenderState.metallicRoughnessPages.handle);
-    DestroyRenderSetBuffers(&g_RenderState.skinned);
-    DestroyRenderSetBuffers(&g_RenderState.surface);
+    if (g_RenderState.indexBuffer)              SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.indexBuffer);
+    if (g_RenderState.lineBuffer)               SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lineBuffer);
+    if (g_RenderState.lineDrawArgsBuffer)       SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lineDrawArgsBuffer);
+    if (g_RenderState.lightBuffer)              SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lightBuffer);
+    if (g_RenderState.pointShadowMatrixBuffer)  SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.pointShadowMatrixBuffer);
+    if (g_RenderState.spotShadowMatrixBuffer)   SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.spotShadowMatrixBuffer);
+    if (g_RenderState.lightDrawInfoBuffer)      SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lightDrawInfoBuffer);
+    if (g_RenderState.lightDrawArgsBuffer)      SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lightDrawArgsBuffer);
+    if (g_RenderState.uiShapeBuffer)            SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.uiShapeBuffer);
+    if (g_RenderState.uiShapeDrawArgsBuffer)    SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.uiShapeDrawArgsBuffer);
+    if (g_RenderState.sampler)                  SDL_ReleaseGPUSampler(g_GPUDevice, g_RenderState.sampler);
+    if (g_RenderState.hiZSampler)               SDL_ReleaseGPUSampler(g_GPUDevice, g_RenderState.hiZSampler);
+    if (g_RenderState.shadowSampler)            SDL_ReleaseGPUSampler(g_GPUDevice, g_RenderState.shadowSampler);
+    while (g_NumActiveScenes > 0)
+        Scene_Destroy(g_ActiveScenes[g_NumActiveScenes - 1]);
+    TextureSystem_DestroyDevice();
     UIDestroy();
     SlugDestroyDemo();
     DestroyRenderPipelines();

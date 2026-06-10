@@ -5,6 +5,16 @@
 
 #include "Extern/tlsf.h"
 
+// quick A/B switch for hunting allocator related corruption,
+// 0 routes the global allocations through SDL's allocator instead of tlsf
+#ifndef USE_TLSF_ALLOCATOR
+    #define USE_TLSF_ALLOCATOR 1
+#endif
+
+#if !USE_TLSF_ALLOCATOR
+    #include <SDL3/SDL_stdinc.h>
+#endif
+
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -143,6 +153,7 @@ int OSFree(void* ptr, size_t size)
     #endif
 }
 
+#if USE_TLSF_ALLOCATOR
 static bool InitTLSF(size_t requestedSize)
 {
     /* Original TLSF has a maximum representable block size. Also avoid exactly
@@ -230,6 +241,7 @@ static bool InitTLSF(size_t requestedSize)
             pool, (u64)poolSize / 1024ull / 1024ull);
     return true;
 }
+#endif // USE_TLSF_ALLOCATOR
 
 void InitGlobalArena(void)
 {
@@ -241,11 +253,13 @@ void InitGlobalArena(void)
     TLSFMemory = NULL;
     TLSFMemorySize = 0;
 
+    #if USE_TLSF_ALLOCATOR
     if (!InitTLSF((size_t)TLSF_MEMORY_SIZE))
     {
         AX_ERROR("InitGlobalArena failed");
         return;
     }
+    #endif
 
     g_MemoryInitialized = true;
 }
@@ -269,7 +283,11 @@ void* AlignPointer(void* ptr, uint64_t align)
 
 static void CheckMemorySystem(const char* op)
 {
-    if (!g_MemoryInitialized || !GlobalTLSF || !TLSFMemory || TLSFMemorySize == 0)
+    bool valid = g_MemoryInitialized;
+    #if USE_TLSF_ALLOCATOR
+    valid = valid && GlobalTLSF && TLSFMemory && TLSFMemorySize != 0;
+    #endif
+    if (!valid)
     {
         AX_ERROR("Memory system invalid during %s initialized=%d tlsf=%p memory=%p size=%llu",
                  op, g_MemoryInitialized ? 1 : 0, GlobalTLSF, TLSFMemory, (u64)TLSFMemorySize);
@@ -328,12 +346,16 @@ void* AllocAligned(uint64_t bytes, uint64_t align)
 {
     if (bytes == 0) return NULL;
 
-    if (align < tlsf_align_size())
-        align = tlsf_align_size();
-
     ASSERT((align & (align - 1u)) == 0);
     CheckMemorySystem("AllocAligned");
+    #if USE_TLSF_ALLOCATOR
+    if (align < tlsf_align_size())
+        align = tlsf_align_size();
     void* ptr = tlsf_memalign(GlobalTLSF, (size_t)align, (size_t)bytes);
+    #else
+    ASSERT(align <= 16u); // SDL_malloc natural alignment
+    void* ptr = SDL_malloc((size_t)bytes);
+    #endif
 
     if (!CheckTLSFFail(ptr, (size_t)bytes))
         return NULL;
@@ -344,7 +366,11 @@ void FreeAligned(void* pMem)
 {
     if (!pMem) return;
     CheckMemorySystem("FreeAligned");
+    #if USE_TLSF_ALLOCATOR
     tlsf_free(GlobalTLSF, pMem);
+    #else
+    SDL_free(pMem);
+    #endif
 }
 
 void* AllocZeroTLSFGlobal(size_t count, size_t size)
@@ -371,7 +397,11 @@ void* AllocateTLSFGlobal(size_t size)
 {
     if (size == 0) return NULL;
     CheckMemorySystem("malloc");
+    #if USE_TLSF_ALLOCATOR
     void* ptr = tlsf_malloc(GlobalTLSF, size);
+    #else
+    void* ptr = SDL_malloc(size);
+    #endif
 
     if (!CheckTLSFFail(ptr, size))
         return NULL;
@@ -389,7 +419,11 @@ void* ReAllocateTLSFGlobal(void* ptr, size_t size)
     if (size == 0)
         return NULL;
 
+    #if USE_TLSF_ALLOCATOR
     void* res = tlsf_realloc(GlobalTLSF, ptr, size);
+    #else
+    void* res = SDL_realloc(ptr, size);
+    #endif
     if (!CheckTLSFFail(res, size))
         return NULL;
     return res;
@@ -399,7 +433,11 @@ void DeAllocateTLSFGlobal(void* buff)
 {
     if (!buff) return;
     CheckMemorySystem("free");
+    #if USE_TLSF_ALLOCATOR
     tlsf_free(GlobalTLSF, buff);
+    #else
+    SDL_free(buff);
+    #endif
 }
 
 /*//////////////////////////////////////////////////////////////////////////*/

@@ -49,8 +49,6 @@ void Quit(int rc);
 
 void Render();
 
-int InitScene();
-
 void InitBuffers();
 
 void RendererInit();

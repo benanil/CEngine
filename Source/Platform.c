@@ -31,23 +31,64 @@ static SDL_Cursor* g_Cursors[wCursor_Count];
 static wCursor g_CurrentCursor = wCursor_Count;
 
 #ifdef PLATFORM_WINDOWS
+#include <DbgHelp.h>
+
+static void PrintCrashFrame(u32 idx, void* addr)
+{
+    HMODULE module = NULL;
+    char moduleName[MAX_PATH];
+    moduleName[0] = '?'; moduleName[1] = 0;
+    GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                       (LPCSTR)addr, &module);
+    if (module) GetModuleFileNameA(module, moduleName, sizeof(moduleName));
+    uintptr_t rva = module ? (uintptr_t)addr - (uintptr_t)module : 0u;
+
+    char symbolBuffer[sizeof(SYMBOL_INFO) + 256];
+    SYMBOL_INFO* symbol = (SYMBOL_INFO*)symbolBuffer;
+    symbol->SizeOfStruct = sizeof(SYMBOL_INFO);
+    symbol->MaxNameLen = 255;
+    DWORD64 displacement = 0;
+    const char* name = SymFromAddr(GetCurrentProcess(), (DWORD64)(uintptr_t)addr, &displacement, symbol) ? symbol->Name : "?";
+    AX_WARN("  #%02u %p %s+0x%llx rva 0x%llx %s", idx, addr, name, (unsigned long long)displacement, (unsigned long long)rva, moduleName);
+}
+
 static LONG WINAPI CrashHandler(EXCEPTION_POINTERS* ep)
 {
     HMODULE module = NULL;
     GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
                        (LPCSTR)ep->ExceptionRecord->ExceptionAddress, &module);
     uintptr_t rva = module ? (uintptr_t)ep->ExceptionRecord->ExceptionAddress - (uintptr_t)module : 0u;
-    AX_ERROR("Exception code: 0x%08lX at %p module %p rva 0x%Ix",
+    AX_WARN("Exception code: 0x%08lX at %p module %p rva 0x%Ix",
              ep->ExceptionRecord->ExceptionCode,
              ep->ExceptionRecord->ExceptionAddress,
              module,
              rva);
     if (ep->ExceptionRecord->ExceptionCode == 0xC0000005)
     {
-        AX_ERROR("Access violation: %s address %p",
+        AX_WARN("Access violation: %s address %p",
                  ep->ExceptionRecord->ExceptionInformation[0] == 0 ? "reading" : "writing",
                  (void*)ep->ExceptionRecord->ExceptionInformation[1]);
     }
+
+    #if defined(_M_X64)
+    SymSetOptions(SYMOPT_DEFERRED_LOADS | SYMOPT_UNDNAME);
+    SymInitialize(GetCurrentProcess(), NULL, TRUE);
+
+    CONTEXT ctx = *ep->ContextRecord;
+    STACKFRAME64 frame = {0};
+    frame.AddrPC.Offset    = ctx.Rip; frame.AddrPC.Mode    = AddrModeFlat;
+    frame.AddrFrame.Offset = ctx.Rbp; frame.AddrFrame.Mode = AddrModeFlat;
+    frame.AddrStack.Offset = ctx.Rsp; frame.AddrStack.Mode = AddrModeFlat;
+
+    for (u32 i = 0; i < 24u; i++)
+    {
+        if (!StackWalk64(IMAGE_FILE_MACHINE_AMD64, GetCurrentProcess(), GetCurrentThread(),
+                         &frame, &ctx, NULL, SymFunctionTableAccess64, SymGetModuleBase64, NULL))
+            break;
+        if (frame.AddrPC.Offset == 0) break;
+        PrintCrashFrame(i, (void*)(uintptr_t)frame.AddrPC.Offset);
+    }
+    #endif
 
     return EXCEPTION_CONTINUE_SEARCH;
 }
