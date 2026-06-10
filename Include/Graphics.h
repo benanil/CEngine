@@ -268,15 +268,6 @@ typedef struct RenderState
     SDL_GPUBuffer*           shadowCascadeBuffer;
     RenderSetShared          skinned;
     RenderSetShared          surface;
-    
-    // anim
-    SDL_GPUBuffer*           boneBuffer;
-    SDL_GPUBuffer*           animPoseBuffer;
-    SDL_GPUBuffer*           animHierarchyBuffer;
-    SDL_GPUBuffer*           animDataBuffer;
-    SDL_GPUBuffer*           jointsBuffer;
-    SDL_GPUBuffer*           invBindBuffer;
-    SDL_GPUBuffer*           animInstanceBuffer;
     SDL_GPUTexture*          skyNoise3D;
     u32                      numLights;
 } RenderState;

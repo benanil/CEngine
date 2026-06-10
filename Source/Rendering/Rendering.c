@@ -173,9 +173,47 @@ static void UploadRenderSetStatics(const RenderSet* set, RenderSetBuffers* buffe
     UpdateGPUBuffer(buffers->denseToPrimitive, set->denseToPrimitiveIndex, set->maxEntities * sizeof(u32), 0);
 }
 
+// cpu mega buffer ranges already uploaded to the gpu. the cpu buffers are append
+// only, so anything past these watermarks is new geometry from a bundle load
+static u32 g_UploadedSkinnedVertices;
+static u32 g_UploadedSurfaceVertices;
+static u32 g_UploadedIndices;
+
+// uploads geometry appended since the last flush, called every frame and on init
+static void UploadDirtyGeometry(void)
+{
+    if (!g_RenderState.indexBuffer) return;
+
+    if (gGFX.NumSkinnedVertices > g_UploadedSkinnedVertices)
+    {
+        UpdateGPUBuffer(g_RenderState.skinned.vertexBuffer,
+                        gGFX.SkinnedVertexBuffer + g_UploadedSkinnedVertices,
+                        (gGFX.NumSkinnedVertices - g_UploadedSkinnedVertices) * sizeof(ASkinedVertex),
+                        (size_t)g_UploadedSkinnedVertices * sizeof(ASkinedVertex));
+        g_UploadedSkinnedVertices = gGFX.NumSkinnedVertices;
+    }
+
+    if (gGFX.NumSurfaceVertices > g_UploadedSurfaceVertices)
+    {
+        UpdateGPUBuffer(g_RenderState.surface.vertexBuffer,
+                        gGFX.SurfaceVertexBuffer + g_UploadedSurfaceVertices,
+                        (gGFX.NumSurfaceVertices - g_UploadedSurfaceVertices) * sizeof(AVertex),
+                        (size_t)g_UploadedSurfaceVertices * sizeof(AVertex));
+        g_UploadedSurfaceVertices = gGFX.NumSurfaceVertices;
+    }
+
+    if (gGFX.NumIndices > g_UploadedIndices)
+    {
+        UpdateGPUBuffer(g_RenderState.indexBuffer,
+                        gGFX.IndexBuffer + g_UploadedIndices,
+                        (gGFX.NumIndices - g_UploadedIndices) * sizeof(u32),
+                        (size_t)g_UploadedIndices * sizeof(u32));
+        g_UploadedIndices = gGFX.NumIndices;
+    }
+}
+
 void InitBuffers(void)
 {
-    AnimInitBuffers();
     const size_t animatedVertexSize = sizeof(u32) * 2 * MAX_ANIMATED_VERTEX;
     g_RenderState.skinned.vertexBuffer = CreateBuffer(NULL, MAX_SKINNED_SOURCE_VERTEX * sizeof(ASkinedVertex), BVertexBit | BReadCompute, "CPSkinnedVertexBuffer");
     g_RenderState.surface.vertexBuffer = CreateBuffer(NULL, MAX_VERTEX * sizeof(AVertex), BVertexBit, "CPSurfaceVertexBuffer");
@@ -187,9 +225,7 @@ void InitBuffers(void)
     g_RenderState.lightDrawArgsBuffer  = CreateBuffer(NULL, sizeof(SDL_GPUIndirectDrawCommand)     , BIndirectBit   | BWriteComputeBit, "CPLightDrawArgsBuffer");
     g_RenderState.skinned.animatedVertices = CreateBuffer(NULL, animatedVertexSize, BReadRasterBit | BWriteComputeBit, "CPAnimatedVertices");
 
-    if (gGFX.NumSkinnedVertices > 0) UpdateGPUBuffer(g_RenderState.skinned.vertexBuffer, gGFX.SkinnedVertexBuffer, gGFX.NumSkinnedVertices * sizeof(ASkinedVertex), 0);
-    if (gGFX.NumSurfaceVertices > 0) UpdateGPUBuffer(g_RenderState.surface.vertexBuffer, gGFX.SurfaceVertexBuffer, gGFX.NumSurfaceVertices * sizeof(AVertex), 0);
-    if (gGFX.NumIndices > 0)         UpdateGPUBuffer(g_RenderState.indexBuffer, gGFX.IndexBuffer, gGFX.NumIndices * sizeof(u32), 0);
+    UploadDirtyGeometry();
     g_LightDebugInfo.maxLights = MAX_LIGHT_COUNT;
     UIInit();
 }
@@ -360,8 +396,8 @@ static void AnimateSkinned(SDL_GPUCommandBuffer* cmd)
     for (u32 s = 0; s < g_NumActiveScenes; s++)
     {
         Scene* scene = g_ActiveScenes[s];
-        DispatchAnimationCompute(cmd, &scene->skinnedSet, &scene->skinnedBuffers);
-        DispatchAnimateVerticesCompute(cmd, &scene->skinnedSet, &scene->skinnedBuffers);
+        DispatchAnimationCompute(cmd, &scene->skinnedSet, &scene->skinnedBuffers, &scene->animSystem);
+        DispatchAnimateVerticesCompute(cmd, &scene->skinnedSet, &scene->skinnedBuffers, &scene->animSystem);
     }
 }
 
@@ -411,6 +447,7 @@ void Render(void)
     SDL_GPUColorTargetInfo        hiz_depth_target  = MakeHiZDepthTarget(winstate);
     SDL_GPUColorTargetInfo        gbuffer_targets[3];
     MakeGBufferTargets(winstate, gbuffer_targets);
+    UploadDirtyGeometry();
     for (u32 s = 0; s < g_NumActiveScenes; s++)
     {
         Scene* scene = g_ActiveScenes[s];
@@ -556,6 +593,7 @@ void DestroyPipeline(void)
     SlugDestroyDemo();
     DestroyRenderPipelines();
     SDL_zero(g_RenderState);
+    g_UploadedSkinnedVertices = g_UploadedSurfaceVertices = g_UploadedIndices = 0;
     g_GPUDevice = NULL;
 }
 

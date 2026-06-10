@@ -68,7 +68,6 @@ s32 main(s32 argc, char* argv[])
     RendererInit();
 
     if (!DemoScene_Create()) return 0;
-    InitAnimationInstances();
     InitBuffers();
     if (!Scene_MakeActive(DemoScene_Get())) return 0;
 

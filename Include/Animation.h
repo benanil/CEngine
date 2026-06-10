@@ -87,23 +87,41 @@ typedef struct GPUAnimationData_
     u32 padding;
 } GPUAnimationData;
 
+// per scene animation state, owned by Scene. gpu buffers are created lazily on the
+// first skinned bundle append so surface only scenes don't pay for them
+typedef struct AnimationSystem_
+{
+    GPUAnimationData animData[MAX_ANIM_COUNT];
+    u32 numAnimations;
+    u32 frameOffset;     // baked pose frame cursor
+    u32 jointOffset;
+    u32 invBindOffset;
+    u32 hierarchyOffset;
 
+    SDL_GPUBuffer* boneBuffer;      // per instance bone matrices, written by compute
+    SDL_GPUBuffer* poseBuffer;      // baked animation poses, per bone * frame
+    SDL_GPUBuffer* hierarchyBuffer;
+    SDL_GPUBuffer* dataBuffer;
+    SDL_GPUBuffer* jointsBuffer;
+    SDL_GPUBuffer* invBindBuffer;
+    SDL_GPUBuffer* instanceBuffer;
+} AnimationSystem;
 
-// this is the only function :D, fail return 0
-s32 SceneBundleCreateAnimations(const SceneBundle* bundle);
+void AnimationSystem_Init(AnimationSystem* anims);
+void AnimationSystem_Destroy(AnimationSystem* anims);
 
-// below all private feel free
-void AnimInitBuffers();
+// bakes the bundle's animations and skin data and uploads only the appended ranges.
+// creates the gpu buffers on first use. fail return 0
+s32 AnimationSystem_AppendBundle(AnimationSystem* anims, const SceneBundle* bundle);
 
-void InitAnimationInstances();
+// assigns a random animation and time offset to every instance slot and uploads them
+void AnimationSystem_RandomizeInstances(AnimationSystem* anims);
 
 // fail return 0
 s32 SceneBundleInitAnimations(const SceneBundle* prefab, Pose pose[MAX_BONES]);
 
 // use negative normTime to sample animation reversely
 void SampleSkinnedAnimationPose(const SceneBundle* bundle, Pose pose[MAX_BONES], s32 animIdx, f32 normTime);
-
-s32 SceneBundleCreateAnimations(const SceneBundle* bundle);
 
 // this is here for reference not used now
 typedef struct AnimatedCharacter_

@@ -18,6 +18,7 @@ void Scene_Init(Scene* scene)
     CreateRenderSetBuffers(&scene->skinnedBuffers, MAX_ANIM_INSTANCES, MAX_GROUP);
     CreateRenderSetBuffers(&scene->surfaceBuffers, MAX_ENTITY, MAX_GROUP);
     TextureSystem_Init(&scene->textureSystem);
+    AnimationSystem_Init(&scene->animSystem);
 }
 
 void Scene_Destroy(Scene* scene)
@@ -26,6 +27,7 @@ void Scene_Destroy(Scene* scene)
     DestroyRenderSetBuffers(&scene->skinnedBuffers);
     DestroyRenderSetBuffers(&scene->surfaceBuffers);
     TextureSystem_Destroy(&scene->textureSystem);
+    AnimationSystem_Destroy(&scene->animSystem);
     // render set cpu allocations stay, consistent with the rest of the engine teardown
 }
 
@@ -95,13 +97,15 @@ u32 Scene_AddBundle(Scene* scene, const char* path, bool skinned)
         return INVALID_BUNDLE;
     }
 
-    if (skinned && !SceneBundleCreateAnimations(bundle))
+    if (skinned && !AnimationSystem_AppendBundle(&scene->animSystem, bundle))
     {
         AX_ERROR("scene animation creation failed: %s", path);
         TextureSystem_ReleaseTextures(staging, (u32)bundle->numImages);
         ArenaRestore(&GlobalArena, mark);
         return INVALID_BUNDLE;
     }
+    if (skinned)
+        AnimationSystem_RandomizeInstances(&scene->animSystem);
 
     // staging is bundle local, material slots are stable for the bundle's lifetime
     bundle->imageOffset    = 0;

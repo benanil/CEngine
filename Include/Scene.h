@@ -3,13 +3,14 @@
 
 #include "RenderSet.h"
 #include "TextureSystem.h"
+#include "Animation.h"
 
 #define MAX_SCENE_BUNDLES 8u
 #define MAX_ACTIVE_SCENES 2u
 
 // a scene owns one render set for skinned meshes, one for static geometry, their gpu
-// buffers and its own texture system. all gpu resources stay resident, activating and
-// deactivating scenes only changes the active list
+// buffers, its own texture system and animation system. all gpu resources stay resident,
+// activating and deactivating scenes only changes the active list
 typedef struct Scene_
 {
     RenderSet        skinnedSet;
@@ -17,6 +18,7 @@ typedef struct Scene_
     RenderSetBuffers skinnedBuffers;
     RenderSetBuffers surfaceBuffers;
     TextureSystem    textureSystem;
+    AnimationSystem  animSystem;
 
     const char*  bundlePaths[MAX_SCENE_BUNDLES];
     SceneBundle* bundles[MAX_SCENE_BUNDLES];
@@ -36,8 +38,8 @@ void Scene_Init(Scene* scene);
 void Scene_Destroy(Scene* scene);
 
 // adds the scene to the rendered scenes. out: 0 when the active list is full.
-// note: skinned animation instance slots are shared, only one active scene
-// should contain skinned entities at a time
+// note: the animated vertex pool is shared and indexed by sparse id, only one
+// active scene should contain skinned entities at a time
 s32 Scene_Activate(Scene* scene);
 
 void Scene_Deactivate(Scene* scene);

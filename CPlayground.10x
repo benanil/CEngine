@@ -327,6 +327,15 @@
 					<File>
 						<Path>Include/UIWindow.h</Path>
 					</File>
+					<File>
+						<Path>Include/Scene.h</Path>
+					</File>
+					<File>
+						<Path>Include/DemoScene.h</Path>
+					</File>
+					<File>
+						<Path>Include/TextureSystem.h</Path>
+					</File>
 				</Children>
 			</Folder>
 			<Folder>
@@ -568,6 +577,12 @@
 					</File>
 					<File>
 						<Path>Source/Scene.cpp</Path>
+					</File>
+					<File>
+						<Path>Source/Scene.c</Path>
+					</File>
+					<File>
+						<Path>Source/DemoScene.c</Path>
 					</File>
 				</Children>
 			</Folder>

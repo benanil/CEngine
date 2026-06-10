@@ -536,9 +536,9 @@ void DispatchMLAACompute(SDL_GPUCommandBuffer* cmd, u32 width, u32 height, f32 t
     SDL_EndGPUComputePass(pass);
 }
 
-void DispatchAnimationCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet, RenderSetBuffers* setBuffers)
+void DispatchAnimationCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet, RenderSetBuffers* setBuffers, AnimationSystem* anims)
 {
-    if (renderSet->numEntities == 0) return;
+    if (renderSet->numEntities == 0 || !anims->poseBuffer) return;
     CHECK_CREATE(g_AnimComputePipeline, "Animation Compute Pipeline")
 
     struct {
@@ -549,16 +549,16 @@ void DispatchAnimationCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet, R
     params.numInstances     = (int)renderSet->numEntities;
 
     SDL_GPUStorageBufferReadWriteBinding rw_bindings[1] = {
-        { g_RenderState.boneBuffer }
+        { anims->boneBuffer }
     };
 
     SDL_GPUBuffer* buffers[7] = {
-        g_RenderState.animPoseBuffer,
-        g_RenderState.animHierarchyBuffer,
-        g_RenderState.animDataBuffer,
-        g_RenderState.jointsBuffer,
-        g_RenderState.invBindBuffer,
-        g_RenderState.animInstanceBuffer,
+        anims->poseBuffer,
+        anims->hierarchyBuffer,
+        anims->dataBuffer,
+        anims->jointsBuffer,
+        anims->invBindBuffer,
+        anims->instanceBuffer,
         setBuffers->visibleSparseIndices
     };
 
@@ -584,9 +584,9 @@ static void GetSkinnedAnimationDispatchSize(RenderSet* renderSet, u32* maxGroupE
     }
 }
 
-void DispatchAnimateVerticesCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet, RenderSetBuffers* setBuffers)
+void DispatchAnimateVerticesCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet, RenderSetBuffers* setBuffers, AnimationSystem* anims)
 {
-    if (renderSet->numGroups == 0) return;
+    if (renderSet->numGroups == 0 || !anims->boneBuffer) return;
     CHECK_CREATE(g_AnimVerticesPipeline, "Animation vertices Pipeline")
 
         struct {
@@ -615,7 +615,7 @@ void DispatchAnimateVerticesCompute(SDL_GPUCommandBuffer* cmd, RenderSet* render
     };
 
     SDL_GPUBuffer* ro_buffers[7] = {
-        g_RenderState.boneBuffer,
+        anims->boneBuffer,
         setBuffers->entity,
         setBuffers->primitiveGroup,
         setBuffers->visibleSparseIndices,
