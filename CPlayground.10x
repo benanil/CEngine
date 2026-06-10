@@ -584,6 +584,15 @@
 					<File>
 						<Path>Source/DemoScene.c</Path>
 					</File>
+					<File>
+						<Path>Source/EditorInternal.h</Path>
+					</File>
+					<File>
+						<Path>Source/SceneEditor.c</Path>
+					</File>
+					<File>
+						<Path>Source/AssetsEditor.c</Path>
+					</File>
 				</Children>
 			</Folder>
 			<File>

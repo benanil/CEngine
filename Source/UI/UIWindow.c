@@ -28,6 +28,23 @@ static bool g_UIWindowContentOpen;
 static bool g_UIWindowCursorRequested;
 static bool g_UIWindowCursorOwned;
 
+#define UI_MAX_RIGHT_CLICK_EVENTS 16u
+
+typedef struct UIRightClickEvent_
+{
+    const char* label;
+    UIRightClickEventFn fn;
+    void* data;
+    u32 windowHash;
+} UIRightClickEvent;
+
+// events are re-registered every frame while their window is built
+static UIRightClickEvent g_UIRightClickEvents[UI_MAX_RIGHT_CLICK_EVENTS];
+static u32    g_UIRightClickEventCount;
+static u32    g_UIRightClickMenuHash; // open menu's window, 0 when closed
+static float2 g_UIRightClickMenuPos;
+static bool   g_UIRightClickMenuDrawn;
+
 enum
 {
     UIWindowSnap_Left   = 1u << 0,
@@ -579,11 +596,88 @@ static u32 UIWindowHandleResize(UIWindow* window, s32 windowIndex, float2 mouse,
     return (g_UIWindowState & UIWindowState_Resize_EdgeMask) ? g_UIWindowState : hoverMask;
 }
 
+void UIRightClickAddEvent(const char* label, UIRightClickEventFn fn, void* data)
+{
+    if (g_UIWindowCurrent < 0)
+    {
+        AX_WARN("UIRightClickAddEvent must be called between UIBeginWindow and UIEndWindow");
+        return;
+    }
+    if (g_UIRightClickEventCount >= UI_MAX_RIGHT_CLICK_EVENTS)
+    {
+        AX_WARN("right click event limit reached: %u", UI_MAX_RIGHT_CLICK_EVENTS);
+        return;
+    }
+    UIRightClickEvent* event = &g_UIRightClickEvents[g_UIRightClickEventCount++];
+    event->label = label;
+    event->fn = fn;
+    event->data = data;
+    event->windowHash = g_UIWindows[g_UIWindowCurrent].hash;
+}
+
+static void UIWindowDrawRightClickMenu(UIWindow* window)
+{
+    if (g_UIRightClickMenuHash == 0u || window->hash != g_UIRightClickMenuHash) return;
+    g_UIRightClickMenuDrawn = true;
+
+    Clay_ElementId menuId = CLAY_ID("UIRightClickMenu");
+    Clay_ElementData menuData = Clay_GetElementData(menuId);
+    bool insideMenu = menuData.found && UIHitRect((float2){ menuData.boundingBox.x, menuData.boundingBox.y },
+                                                  (float2){ menuData.boundingBox.width, menuData.boundingBox.height }, g_UI.mouse);
+    if ((GetMousePressed(MouseButton_Left) && !insideMenu) || GetKeyPressed(27))
+    {
+        g_UIRightClickMenuHash = 0u;
+        return;
+    }
+
+    CLAY(menuId, {
+        .layout = {
+            .sizing = { CLAY_SIZING_FIT(150.0f), CLAY_SIZING_FIT(0) },
+            .padding = { 4, 4, 4, 4 },
+            .childGap = 2,
+            .layoutDirection = CLAY_TOP_TO_BOTTOM
+        },
+        .backgroundColor = UIColorToClay(UIGetColor(UIColor_Quad) | 0xFF000000u),
+        .cornerRadius = CLAY_CORNER_RADIUS(6.0f),
+        .border = { .color = UIGetClayColor(UIColor_Border), .width = CLAY_BORDER_ALL(1) },
+        .floating = { .offset = { g_UIRightClickMenuPos.x, g_UIRightClickMenuPos.y }, .zIndex = 126, .attachTo = CLAY_ATTACH_TO_ROOT }
+    }) {
+        for (u32 i = 0u; i < g_UIRightClickEventCount; i++)
+        {
+            UIRightClickEvent* event = &g_UIRightClickEvents[i];
+            if (event->windowHash != window->hash) continue;
+
+            Clay_ElementId rowId = Clay_GetElementIdWithIndex(CLAY_STRING("UIRightClickRow"), i);
+            CLAY(rowId, {
+                .layout = {
+                    .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(24.0f) },
+                    .padding = { 8, 8, 0, 0 },
+                    .childAlignment = { .y = CLAY_ALIGN_Y_CENTER }
+                },
+                .backgroundColor = Clay_Hovered() ? UIGetClayColor(UIColor_Hovered) : (Clay_Color){ 0 },
+                .cornerRadius = CLAY_CORNER_RADIUS(3.0f)
+            }) {
+                if (UIClicked())
+                {
+                    if (event->fn) event->fn(event->data);
+                    g_UIRightClickMenuHash = 0u;
+                }
+                CLAY_TEXT(UIStr(event->label), CLAY_TEXT_CONFIG({
+                    .fontSize = 14,
+                    .textColor = UIGetClayColor(UIColor_Text),
+                    .wrapMode = CLAY_TEXT_WRAP_NONE
+                }));
+            }
+        }
+    }
+}
+
 void UIWindowBeginFrame(void)
 {
     g_UIWindowCurrent = -1;
     g_UIWindowContentOpen = false;
     g_UIWindowCursorRequested = false;
+    g_UIRightClickEventCount = 0u;
     if (!GetMouseDown(MouseButton_Left))
     {
         if (g_UIWindowState == UIWindowState_Move_TabBar)
@@ -607,6 +701,10 @@ void UIWindowEndFrame(void)
         wSetCursor(wCursor_Default);
         g_UIWindowCursorOwned = false;
     }
+
+    // the menu's window was closed or skipped this frame, drop the menu with it
+    if (g_UIRightClickMenuHash != 0u && !g_UIRightClickMenuDrawn) g_UIRightClickMenuHash = 0u;
+    g_UIRightClickMenuDrawn = false;
 }
 
 UIWindow* UIGetWindow(Clay_ElementId id)
@@ -690,6 +788,12 @@ bool UIBeginWindowId(Clay_ElementId id, const char* title, float2 position, floa
     window->isFocused = !anyOnTop && g_UIWindowActive == windowIndex;
 
     if (hovered && !anyOnTop && mousePressed) UIWindowBringToFront(windowIndex);
+
+    if ((flags & UIWindowFlags_RightClickable) != 0u && hovered && !anyOnTop && GetMousePressed(MouseButton_Right))
+    {
+        g_UIRightClickMenuHash = id.id;
+        g_UIRightClickMenuPos = g_UI.mouse;
+    }
 
     f32 titlePad = 10.0f;
     f32 buttonSize = 18.0f;
@@ -794,6 +898,7 @@ void UIEndWindow(void)
         AX_WARN("UIEndWindow called without an open window content");
         return;
     }
+    if (g_UIWindowCurrent >= 0) UIWindowDrawRightClickMenu(&g_UIWindows[g_UIWindowCurrent]);
     Clay__CloseElement();
     Clay__CloseElement();
     g_UIWindowContentOpen = false;

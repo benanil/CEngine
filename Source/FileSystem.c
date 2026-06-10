@@ -572,7 +572,7 @@ void ACopyFile(const char* source, const char* dst, char* buffer)
     AFileWrite(sourceFile, sourceSize, dstFile, 1);
     AFileClose(dstFile);
 
-    if (!bufferProvided) DeAllocateTLSFGlobal(buffer);
+    if (!bufferProvided) DeAllocateTLSFGlobal(sourceFile);
 }
 
 #ifndef _WIN32
@@ -581,34 +581,158 @@ int GetCurrentDirectory(int size, char* outPath) {
 }
 #endif
 
-// input: ../Textures/Tree.png
-// output: C:/Source/Repos/Textures/Tree.png
+static bool IsPathSeparator(char c)
+{
+    return c == '/' || c == '\\';
+}
+
+static bool IsAbsolutePath(const char* path)
+{
+    if (!path || !path[0])
+        return false;
+
+    // Unix: /home/test
+    if (IsPathSeparator(path[0]))
+        return true;
+
+    // Windows-style path, but not using Windows API: C:/Test
+    if (path[0] && path[1] == ':' && IsPathSeparator(path[2]))
+        return true;
+
+    return false;
+}
+
+static int StrLenSafe(const char* s)
+{
+    int len = 0;
+    while (s && s[len])
+        ++len;
+    return len;
+}
+
+static void RemoveTrailingSeparator(char* buffer, int* length)
+{
+    while (*length > 0 && IsPathSeparator(buffer[*length - 1]))
+        --(*length);
+
+    buffer[*length] = '\0';
+}
+
+static void PathGoBackOneFolder(char* buffer, int* length)
+{
+    RemoveTrailingSeparator(buffer, length);
+
+    while (*length > 0 && !IsPathSeparator(buffer[*length - 1]))
+        --(*length);
+
+    RemoveTrailingSeparator(buffer, length);
+}
+
+static bool PushChar(char* buffer, int bufferSize, int* length, char c)
+{
+    if (*length + 1 >= bufferSize)
+        return false;
+
+    buffer[(*length)++] = c;
+    buffer[*length] = '\0';
+    return true;
+}
+
+static bool PushSeparator(char* buffer, int bufferSize, int* length)
+{
+    if (*length <= 0)
+        return PushChar(buffer, bufferSize, length, ASTL_FILE_SEPERATOR);
+
+    if (!IsPathSeparator(buffer[*length - 1]))
+        return PushChar(buffer, bufferSize, length, ASTL_FILE_SEPERATOR);
+
+    buffer[*length - 1] = ASTL_FILE_SEPERATOR;
+    return true;
+}
+
 void AbsolutePath(const char* path, char* outBuffer, int bufferSize)
 {
-    GetCurrentDirectory(bufferSize, outBuffer);
+    if (!path || !outBuffer || bufferSize <= 0)
+        return;
+
+    outBuffer[0] = '\0';
+
     int currLength = 0;
 
-    const char* curr = outBuffer;
-    while (*curr++) currLength++; // strlen
+    if (IsAbsolutePath(path))
+    {
+        // copy root / drive first
+        while (*path && currLength + 1 < bufferSize)
+        {
+            char c = *path;
+
+            if (IsPathSeparator(c))
+                c = ASTL_FILE_SEPERATOR;
+
+            outBuffer[currLength++] = c;
+            outBuffer[currLength] = '\0';
+
+            ++path;
+
+            // stop after root separator:
+            // "/" or "C:/"
+            if (currLength == 1 && outBuffer[0] == ASTL_FILE_SEPERATOR)
+                break;
+
+            if (currLength == 3 && outBuffer[1] == ':' && outBuffer[2] == ASTL_FILE_SEPERATOR)
+                break;
+        }
+    }
+    else
+    {
+        currLength = GetCurrentDirectory(bufferSize, outBuffer);
+        if (currLength <= 0 || currLength >= bufferSize)
+        {
+            outBuffer[0] = '\0';
+            return;
+        }
+
+        for (int i = 0; i < currLength; ++i)
+        {
+            if (IsPathSeparator(outBuffer[i]))
+                outBuffer[i] = ASTL_FILE_SEPERATOR;
+        }
+    }
 
     while (*path)
     {
-        if (path[0] == '.' && path[1] == '.')
+        while (IsPathSeparator(*path))
+            ++path;
+
+        if (!*path)
+            break;
+
+        if (path[0] == '.' && (path[1] == '\0' || IsPathSeparator(path[1])))
         {
-            const char* before = outBuffer + currLength;
-            const char* newEnd = PathGoBackwards(outBuffer, currLength, true);
-            currLength -= (int)(before - newEnd);
-            path += 3; // skip two dot and seperator
-            outBuffer[currLength++] = ASTL_FILE_SEPERATOR;
+            ++path;
+            continue;
         }
-        else 
+
+        if (path[0] == '.' && path[1] == '.' && (path[2] == '\0' || IsPathSeparator(path[2])))
         {
-            while (*path && *path != '\\' && *path != '/')
-                outBuffer[currLength++] = *path++;
-            outBuffer[currLength++] = *path++;
+            PathGoBackOneFolder(outBuffer, &currLength);
+            path += 2;
+            continue;
+        }
+
+        if (!PushSeparator(outBuffer, bufferSize, &currLength))
+            return;
+
+        while (*path && !IsPathSeparator(*path))
+        {
+            if (!PushChar(outBuffer, bufferSize, &currLength, *path))
+                return;
+
+            ++path;
         }
     }
-    outBuffer[currLength] = '\n';
+
+    outBuffer[currLength] = '\0';
 }
 
 bool CombinePaths(char* dst, uint64_t dstSize, const char* a, const char* b)

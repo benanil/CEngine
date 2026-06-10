@@ -110,6 +110,8 @@ target_sources(${EXECUTABLE_NAME} PRIVATE
     Source/AnimationBake.c
     Source/Scene.c
     Source/DemoScene.c
+    Source/AssetsEditor.c
+    Source/SceneEditor.c
 
     Source/Rendering/Graphics.c
     Source/Rendering/Rendering.c

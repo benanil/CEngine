@@ -57,6 +57,13 @@ UIWindow* UIGetWindow(Clay_ElementId id);
 // out: small fallback before the element's first layout
 f32 UIWindowRemainingHeight(Clay_ElementId windowId, Clay_ElementId elementId, f32 reserveBelow);
 
+typedef void (*UIRightClickEventFn)(void* data);
+
+// registers a context menu entry for the window currently being built. call every
+// frame between UIBeginWindow and UIEndWindow, the menu opens on right click when
+// the window was created with UIWindowFlags_RightClickable. label must outlive the frame
+void UIRightClickAddEvent(const char* label, UIRightClickEventFn fn, void* data);
+
 #if defined(__cplusplus)
 }
 #endif

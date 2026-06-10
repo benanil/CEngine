@@ -75,10 +75,10 @@ typedef struct PlatformContext_
 // Mouse button flags
 typedef enum MouseButton_ {
     MouseButton_Left     = 1 << 0,
-    MouseButton_Right    = 1 << 1, 
-    MouseButton_Middle   = 1 << 2,
-    MouseButton_Forward  = 1 << 3,
-    MouseButton_Backward = 1 << 4
+    MouseButton_Middle   = 1 << 1, 
+    MouseButton_Right    = 1 << 2,
+    MouseButton_Backward = 1 << 3,
+    MouseButton_Forward  = 1 << 4
 } MouseButton;
 
 typedef enum wCursor_
