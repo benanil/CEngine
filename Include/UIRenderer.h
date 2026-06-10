@@ -25,6 +25,12 @@ typedef enum UITextAreaFlagBits_
     UITextAreaFlags_CenterY = 1u << 1
 } UITextAreaFlagBits;
 
+typedef enum UITreeNodeFlags_
+{
+    UITreeNodeFlags_Leaf     = 1u << 0, // no expand arrow, never reports a toggle
+    UITreeNodeFlags_Selected = 1u << 1
+} UITreeNodeFlags;
+
 typedef enum UIColor_
 {
     UIColor_Text = 0,
@@ -138,6 +144,31 @@ bool UISliderFloat(Clay_ElementId id, Clay_String label, f32* value, f32 minValu
 bool UISliderFloatValue(Clay_ElementId id, Clay_String label, f32* value, f32 minValue, f32 maxValue, int decimals);
 bool UIEditInt(Clay_ElementId id, Clay_String label, f32* value, s32 minValue, s32 maxValue);
 bool UIEditFloat(Clay_ElementId id, Clay_String label, f32* value, f32 minValue, f32 maxValue, f32 step, int decimals);
+
+// wraps a null terminated c string, the string must stay alive until UIEndLayout
+Clay_String UIStr(const char* chars);
+
+void UISectionHeader(const char* title);
+void UITextU32(const char* label, u32 value);
+void UIDivider(Clay_ElementId id);
+void UISpacing(Clay_ElementId id, f32 pixels);
+
+// vertical scrollable panel, height <= 0 grows to fill the remaining space.
+// must be evaluated inside the CLAY() macro of the panel element, the scroll
+// offset binds to the element that is open at call time.
+// warning: inside a window content (itself a clip element) grow inflates to the
+// panel's own content and scrolling breaks, use UIWindowRemainingHeight instead
+Clay_ElementDeclaration UIScrollPanelDeclaration(f32 height, u16 childGap);
+
+// one tree row at the given indent depth, the open state is owned by the caller:
+//   open[i] ^= UITreeNode(id, label, depth, flags, open[i], &selected);
+// out: true when the expand arrow was clicked. outSelected (optional) reports a
+// click on the row body for selection
+bool UITreeNode(Clay_ElementId id, Clay_String label, u32 depth, u32 flags, bool open, bool* outSelected);
+
+// full width section header, the open state is owned by the caller.
+// out: true when clicked, flip your open flag with it
+bool UICollapsingHeader(Clay_ElementId id, Clay_String label, bool open);
 
 u64 UIAutoID(const void* ptr);
 

@@ -52,6 +52,11 @@ void UIEndWindow(void);
 bool UIAnyWindowHovered(void);
 UIWindow* UIGetWindow(Clay_ElementId id);
 
+// pixel height left for elementId inside the window content, measured from last
+// frame's layout. reserveBelow keeps space for elements drawn after it.
+// out: small fallback before the element's first layout
+f32 UIWindowRemainingHeight(Clay_ElementId windowId, Clay_ElementId elementId, f32 reserveBelow);
+
 #if defined(__cplusplus)
 }
 #endif

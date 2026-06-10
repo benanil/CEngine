@@ -615,6 +615,19 @@ UIWindow* UIGetWindow(Clay_ElementId id)
     return ((u32)index < g_UIWindowCount) ? &g_UIWindows[index] : NULL;
 }
 
+f32 UIWindowRemainingHeight(Clay_ElementId windowId, Clay_ElementId elementId, f32 reserveBelow)
+{
+    Clay_ElementId contentId = Clay_GetElementIdWithIndex(CLAY_STRING("UIWindowContent"), windowId.id);
+    Clay_ElementData content = Clay_GetElementData(contentId);
+    Clay_ElementData element = Clay_GetElementData(elementId);
+    if (!content.found || !element.found) return 64.0f;
+
+    // content bottom padding is 12, the extra pixel keeps the content sum strictly
+    // inside the window so the content never competes for mouse wheel scrolling
+    f32 contentBottom = content.boundingBox.y + content.boundingBox.height - 12.0f;
+    return Maxf32(contentBottom - element.boundingBox.y - reserveBelow - 1.0f, 32.0f);
+}
+
 bool UIAnyWindowHovered(void)
 {
     for (u32 i = 0u; i < g_UIWindowCount; i++)
@@ -767,7 +780,8 @@ bool UIBeginWindowId(Clay_ElementId id, const char* title, float2 position, floa
             .childGap = 12,
             .layoutDirection = CLAY_TOP_TO_BOTTOM
         },
-        .clip = { .vertical = true, .childOffset = Clay_GetScrollOffset() }
+        // horizontal clip keeps wide children from inflating the content box and its scissor past the window edge
+        .clip = { .horizontal = true, .vertical = true, .childOffset = Clay_GetScrollOffset() }
     });
     g_UIWindowContentOpen = true;
     return true;

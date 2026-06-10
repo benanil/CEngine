@@ -234,18 +234,25 @@ static void UIRenderLayoutScrollBar(const Clay_RenderCommand* command)
 
     if (!GetMouseDown(MouseButton_Left) && drag.id == command->id) drag.id = 0u;
 
+    // clamp the bar to the active clip so containers laid out wider or taller than
+    // their parent window still show it at the visible edge
+    f32 clip[4];
+    UIGetClipRect(clip);
     f32 trackW = Maxf32(UIGetFloat(UIFloat_ScrollWidth) * 0.45f, 5.0f);
-    f32 trackX = command->boundingBox.x + command->boundingBox.width - trackW - 2.0f;
-    f32 trackY = command->boundingBox.y;
-    f32 thumbH = Minf32(Maxf32(containerH * (containerH / contentH), 28.0f), containerH);
+    f32 trackX = Minf32(command->boundingBox.x + command->boundingBox.width, clip[2]) - trackW - 2.0f;
+    f32 trackY = Maxf32(command->boundingBox.y, clip[1]);
+    f32 trackH = Minf32(command->boundingBox.y + containerH, clip[3]) - trackY;
+    if (trackH <= 8.0f) return;
+
+    f32 thumbH = Minf32(Maxf32(trackH * (containerH / contentH), 28.0f), trackH);
     f32 t = Saturatef32(-scroll.scrollPosition->y / maxScroll);
-    f32 thumbY = trackY + t * (containerH - thumbH);
+    f32 thumbY = trackY + t * (trackH - thumbH);
 
     float2 mouse = g_UI.mouse;
     float2 thumbPos  = { trackX - 4.0f, thumbY };
     float2 thumbSize = { trackW + 8.0f, thumbH };
     float2 trackPos  = { trackX - 4.0f, trackY };
-    float2 trackSize = { trackW + 8.0f, containerH };
+    float2 trackSize = { trackW + 8.0f, trackH };
     bool thumbHovered = RectPointIntersect(thumbPos, thumbSize, mouse) != 0u;
     bool trackHovered = RectPointIntersect(trackPos, trackSize, mouse) != 0u;
 
@@ -258,14 +265,14 @@ static void UIRenderLayoutScrollBar(const Clay_RenderCommand* command)
     if (!g_UI.windowResizeActive && drag.id == command->id && GetMouseDown(MouseButton_Left))
     {
         g_UI.scrollBarActive = true;
-        f32 scrollRange = Maxf32(containerH - thumbH, 1.0f);
+        f32 scrollRange = Maxf32(trackH - thumbH, 1.0f);
         f32 newT = Saturatef32((mouse.y - trackY - drag.dragOffsetY) / scrollRange);
         scroll.scrollPosition->y = -newT * maxScroll;
         thumbY = trackY + newT * scrollRange;
         thumbHovered = true;
     }
 
-    UIPushRoundedRect((float2){ trackX, trackY }, (float2){ trackW, containerH }, trackW * 0.5f, 0x33404040u);
+    UIPushRoundedRect((float2){ trackX, trackY }, (float2){ trackW, trackH }, trackW * 0.5f, 0x33404040u);
     u32 thumbColor = (drag.id == command->id || thumbHovered) ? UIGetColor(UIColor_SelectedBorder) : 0xAA808080u;
     UIPushRoundedRect((float2){ trackX, thumbY }, (float2){ trackW, thumbH }, trackW * 0.5f, thumbColor);
 }
@@ -624,6 +631,153 @@ void UIProgressBar(Clay_ElementId id, Clay_String label, f32 value01)
             }) {}
         }
     }
+}
+
+Clay_String UIStr(const char* chars)
+{
+    Clay_String result = { .isStaticallyAllocated = false, .length = (s32)StringLength(chars), .chars = chars };
+    return result;
+}
+
+void UISectionHeader(const char* title)
+{
+    CLAY_TEXT(UIStr(title), CLAY_TEXT_CONFIG({
+        .fontSize = 16,
+        .textColor = { 232, 164, 0, 255 }
+    }));
+}
+
+void UITextU32(const char* label, u32 value)
+{
+    u32 len = (u32)StringLength(label);
+    char* text = UIFrameStringAlloc(len + 16u);
+    if (!text) return;
+    MemCopy(text, label, len);
+    text[len++] = ':';
+    text[len++] = ' ';
+    len += (u32)IntToString(text + len, (int64_t)value, 0);
+    text[len] = '\0';
+
+    Clay_String string = { .isStaticallyAllocated = false, .length = (s32)len, .chars = text };
+    CLAY_TEXT(string, CLAY_TEXT_CONFIG({
+        .fontSize = 14,
+        .textColor = UIGetClayColor(UIColor_Text)
+    }));
+}
+
+void UIDivider(Clay_ElementId id)
+{
+    CLAY(id, {
+        .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(1.0f) } },
+        .backgroundColor = { 55, 55, 55, 160 }
+    }) {}
+}
+
+void UISpacing(Clay_ElementId id, f32 pixels)
+{
+    CLAY(id, {
+        .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(pixels) } }
+    }) {}
+}
+
+Clay_ElementDeclaration UIScrollPanelDeclaration(f32 height, u16 childGap)
+{
+    // horizontal clip keeps wide children from inflating the panel and its scissor rect
+    Clay_ElementDeclaration declaration = {
+        .layout = {
+            .sizing = { CLAY_SIZING_GROW(0), height > 0.0f ? CLAY_SIZING_FIXED(height) : CLAY_SIZING_GROW(0) },
+            .padding = { 0, 20, 0, 0 },
+            .childGap = childGap,
+            .layoutDirection = CLAY_TOP_TO_BOTTOM
+        },
+        .clip = { .horizontal = true, .vertical = true, .childOffset = Clay_GetScrollOffset() }
+    };
+    return declaration;
+}
+
+bool UITreeNode(Clay_ElementId id, Clay_String label, u32 depth, u32 flags, bool open, bool* outSelected)
+{
+    bool leaf     = (flags & UITreeNodeFlags_Leaf) != 0u;
+    bool selected = (flags & UITreeNodeFlags_Selected) != 0u;
+    bool toggled  = false;
+    if (outSelected) *outSelected = false;
+
+    CLAY(id, {
+        .layout = {
+            .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(24.0f) },
+            .padding = { (u16)(4u + depth * 18u), 4, 0, 0 },
+            .childGap = 6,
+            .layoutDirection = CLAY_LEFT_TO_RIGHT,
+            .childAlignment = { .y = CLAY_ALIGN_Y_CENTER }
+        },
+        .backgroundColor = selected ? UIColorToClay((UIGetColor(UIColor_SelectedBorder) & 0x00FFFFFFu) | 0x48000000u)
+                                    : (Clay_Hovered() ? UIGetClayColor(UIColor_Hovered) : (Clay_Color){ 0 }),
+        .cornerRadius = CLAY_CORNER_RADIUS(UIGetFloat(UIFloat_CornerRadius))
+    }) {
+        bool rowClicked = UIClicked();
+        bool arrowClicked = false;
+
+        CLAY(CLAY_ID_LOCAL("Arrow"), {
+            .layout = {
+                .sizing = { CLAY_SIZING_FIXED(16.0f), CLAY_SIZING_FIXED(16.0f) },
+                .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER }
+            }
+        }) {
+            arrowClicked = UIClicked();
+            if (!leaf)
+            {
+                CLAY_TEXT(open ? CLAY_STRING("-") : CLAY_STRING("+"), CLAY_TEXT_CONFIG({
+                    .fontSize = 14,
+                    .textColor = UIGetClayColor(UIColor_SubText)
+                }));
+            }
+        }
+
+        CLAY_TEXT(label, CLAY_TEXT_CONFIG({
+            .fontSize = (u16)Maxu32((u32)(15.0f * UIGetFloat(UIFloat_TextScale)), 1u),
+            .textColor = UIGetClayColor(UIColor_Text),
+            .wrapMode = CLAY_TEXT_WRAP_NONE
+        }));
+
+        if (!leaf && arrowClicked)
+        {
+            toggled = true;
+        }
+        else if (rowClicked && outSelected)
+        {
+            *outSelected = true;
+        }
+    }
+    return toggled;
+}
+
+bool UICollapsingHeader(Clay_ElementId id, Clay_String label, bool open)
+{
+    bool clicked = false;
+
+    CLAY(id, {
+        .layout = {
+            .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(26.0f) },
+            .padding = { 6, 6, 0, 0 },
+            .childGap = 6,
+            .layoutDirection = CLAY_LEFT_TO_RIGHT,
+            .childAlignment = { .y = CLAY_ALIGN_Y_CENTER }
+        },
+        .backgroundColor = Clay_Hovered() ? UIGetClayColor(UIColor_Hovered) : UIPanelColor(),
+        .cornerRadius = CLAY_CORNER_RADIUS(UIGetFloat(UIFloat_CornerRadius))
+    }) {
+        clicked = UIClicked();
+        CLAY_TEXT(open ? CLAY_STRING("-") : CLAY_STRING("+"), CLAY_TEXT_CONFIG({
+            .fontSize = 14,
+            .textColor = UIGetClayColor(UIColor_SubText)
+        }));
+        CLAY_TEXT(label, CLAY_TEXT_CONFIG({
+            .fontSize = 16,
+            .textColor = { 232, 164, 0, 255 },
+            .wrapMode = CLAY_TEXT_WRAP_NONE
+        }));
+    }
+    return clicked;
 }
 
 bool UISliderFloat(Clay_ElementId id, Clay_String label, f32* value, f32 minValue, f32 maxValue)

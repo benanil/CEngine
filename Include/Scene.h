@@ -5,7 +5,7 @@
 #include "TextureSystem.h"
 #include "Animation.h"
 
-#define MAX_SCENE_BUNDLES 8u
+#define MAX_SCENE_BUNDLES 1024u
 #define MAX_ACTIVE_SCENES 2u
 
 // a scene owns one render set for skinned meshes, one for static geometry, their gpu

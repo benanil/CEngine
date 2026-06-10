@@ -5,6 +5,7 @@
 #include "Include/Random.h"
 #include "Include/Rendering.h"
 #include "Include/Algorithm.h"
+#include "Include/Scene.h"
 
 extern WindowState g_WindowState;
 extern RenderState g_RenderState;
@@ -43,107 +44,6 @@ static void ShowFps(void)
     SlugAppendText2DN(NULL, msText, msLen + 3, (float2){w - msSize.x, 68.0f }, 32.0f, 0xFFCCCCFF);
 }
 
-static void EditorSliderFloat(Clay_ElementId id, const char* label, f32* value, f32 minValue, f32 maxValue, int decimals)
-{
-    Clay_String labelString = { .isStaticallyAllocated = true, .length = (s32)StringLength(label), .chars = label };
-    UISliderFloatValue(id, labelString, value, minValue, maxValue, decimals);
-}
-
-static void EditorDrawScrollBar(Clay_ElementId id)
-{
-    static struct { u64 id; f32 dragOffsetY; } drag;
-
-    Clay_ElementData element = Clay_GetElementData(id);
-    Clay_ScrollContainerData scroll = Clay_GetScrollContainerData(id);
-    u64 scrollId = (u64)id.id;
-
-    if (!GetMouseDown(MouseButton_Left) && drag.id == scrollId) drag.id = 0u;
-    if (!element.found || !scroll.found || !scroll.scrollPosition) return;
-
-    f32 containerH = Maxf32(scroll.scrollContainerDimensions.height, 1.0f);
-    f32 contentH   = Maxf32(scroll.contentDimensions.height, containerH);
-    f32 maxScroll  = contentH - containerH;
-    if (maxScroll <= 1.0f) return;
-
-    f32 trackW = 6.0f;
-    f32 trackX = element.boundingBox.x + element.boundingBox.width - trackW;
-    f32 trackY = element.boundingBox.y;
-    f32 thumbH = Minf32(Maxf32(containerH * (containerH / contentH), 28.0f), containerH);
-    f32 t      = Saturatef32(-scroll.scrollPosition->y / maxScroll);
-    f32 thumbY = trackY + t * (containerH - thumbH);
-
-    Clay_PointerData pointer = Clay_GetPointerState();
-    float2 mouse     = { pointer.position.x, pointer.position.y };
-    float2 thumbPos  = { trackX - 4.0f, thumbY };
-    float2 thumbSize = { trackW + 8.0f, thumbH };
-    float2 trackPos  = { trackX - 4.0f, trackY };
-    float2 trackSize = { trackW + 8.0f, containerH };
-
-    bool thumbHovered = RectPointIntersect(thumbPos, thumbSize, mouse) != 0u;
-    bool trackHovered = RectPointIntersect(trackPos, trackSize, mouse) != 0u;
-
-    if (GetMouseDown(MouseButton_Left) && (thumbHovered || trackHovered))
-    {
-        drag.id          = scrollId;
-        drag.dragOffsetY = thumbHovered ? mouse.y - thumbY : thumbH * 0.5f;
-    }
-    if (drag.id == scrollId && GetMouseDown(MouseButton_Left))
-    {
-        f32 scrollRange          = Maxf32(containerH - thumbH, 1.0f);
-        f32 newT                 = Saturatef32((mouse.y - trackY - drag.dragOffsetY) / scrollRange);
-        scroll.scrollPosition->y = -newT * maxScroll;
-        t                        = newT;
-        thumbY                   = trackY + t * (containerH - thumbH);
-    }
-
-    UIPushRoundedRect((float2){ trackX, trackY }, (float2){ trackW, containerH }, 3.0f, 0x33404040u);
-    u32 thumbColor = (drag.id == scrollId || thumbHovered) ? 0xFFE8A400u : 0xAA808080u;
-    UIPushRoundedRect((float2){ trackX, thumbY }, (float2){ trackW, thumbH }, 3.0f, thumbColor);
-}
-
-static void EditorSectionHeader(const char* title)
-{
-    Clay_String titleString = { .isStaticallyAllocated = true, .length = (s32)StringLength(title), .chars = title };
-    CLAY_TEXT(titleString, CLAY_TEXT_CONFIG({
-        .fontSize = 16,
-        .textColor = { 232, 164, 0, 255 }
-    }));
-}
-
-static void EditorTextU32(const char* label, u32 value)
-{
-    u32 len = (u32)StringLength(label);
-    char* text = UIFrameStringAlloc(len + 16u);
-    if (!text) return;
-    MemCopy(text, label, len);
-    text[len++] = ':';
-    text[len++] = ' ';
-    len += (u32)IntToString(text + len, (int64_t)value, 0);
-    text[len] = '\0';
-
-    Clay_String string = { .isStaticallyAllocated = false, .length = (s32)len, .chars = text };
-    CLAY_TEXT(string, CLAY_TEXT_CONFIG({
-        .fontSize = 14,
-        .textColor = UIGetClayColor(UIColor_Text)
-    }));
-}
-
-static void EditorDivider(Clay_ElementId id)
-{
-    CLAY(id, {
-        .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(1.0f) } },
-        .backgroundColor = { 55, 55, 55, 160 }
-    }) {}
-}
-
-static void EditorSpacing(Clay_ElementId id, float pixels)
-{
-    CLAY(id, {
-        .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(pixels) } },
-        .backgroundColor = { 55, 55, 55, 160 }
-    }) {}
-}
-
 static void WindowTestUI(void)
 {
     static bool enabled = true;
@@ -163,7 +63,7 @@ static void WindowTestUI(void)
     }));
 
     Clay_ElementData windowElement = Clay_GetElementData(CLAY_ID("Window Test"));
-    EditorDivider(CLAY_ID("WindowTestDivider0"));
+    UIDivider(CLAY_ID("WindowTestDivider0"));
     UICheckbox(CLAY_ID("WindowTestEnabled"), CLAY_STRING("Enable test option"), &enabled);
     UISliderFloatValue(CLAY_ID("WindowTestSlider"), CLAY_STRING("Window value"), &testValue, 0.0f, 1.0f, 2);
     UISliderFloatValue(CLAY_ID("WindowTestExposure"), CLAY_STRING("Local exposure"), &exposure, 0.1f, 4.0f, 2);
@@ -195,20 +95,6 @@ static void WindowTestUI(void)
     }
 
     UIEndWindow();
-}
-
-static Clay_ElementDeclaration EditorScrollPanelDeclaration(f32 height)
-{
-    Clay_ElementDeclaration declaration = {
-        .layout = {
-            .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(height) },
-            .padding = { 0, 20, 0, 0 },
-            .childGap = 12,
-            .layoutDirection = CLAY_TOP_TO_BOTTOM
-        },
-        .clip = { .vertical = true, .childOffset = Clay_GetScrollOffset() }
-    };
-    return declaration;
 }
 
 static void DrawGraphicsWindow()
@@ -247,57 +133,57 @@ static void DrawGraphicsWindow()
                 .textColor = UIGetClayColor(UIColor_SubText)
             }));
         }
-        //EditorSpacing(CLAY_ID("GraphicsEditorDivider0"), 6.0f);
-        UIWindow* window = UIGetWindow(windowID);
-        CLAY(CLAY_ID("GraphicsEditorScroll"), EditorScrollPanelDeclaration(window->scale.y - 200.0f)) {
+        //UISpacing(CLAY_ID("GraphicsEditorDivider0"), 6.0f);
+        // reserve the buttons row (38) plus the content child gap (12)
+        CLAY(CLAY_ID("GraphicsEditorScroll"), UIScrollPanelDeclaration(UIWindowRemainingHeight(windowID, CLAY_ID("GraphicsEditorScroll"), 50.0f), 12u)) {
             CLAY(CLAY_ID("GraphicsEditorFeatureBox"), EditorPanelBoxDeclaration) {
-                EditorSectionHeader("Features");
+                UISectionHeader("Features");
                 UICheckbox(CLAY_ID("EditorEnableOcclusion"), CLAY_STRING("Hi-Z occlusion culling"), &settings->enableOcclusion);
                 UICheckbox(CLAY_ID("EditorEnableHBAO")     , CLAY_STRING("HBAO ambient occlusion"), &settings->enableHBAO);
                 UICheckbox(CLAY_ID("EditorEnableMLAA")     , CLAY_STRING("Anti-aliasing (MLAA)"), &settings->enableMLAA);
                 UICheckbox(CLAY_ID("EditorShowMLAAEdges")  , CLAY_STRING("Show MLAA edge mask"), &settings->showMLAAEdges);
-                EditorSliderFloat(CLAY_ID("EditorLODDistanceModifier"), "LOD distance", &settings->lodDistanceModifier, 0.05f, 4.0f, 2);
+                UISliderFloatValue(CLAY_ID("EditorLODDistanceModifier"), CLAY_STRING("LOD distance"), &settings->lodDistanceModifier, 0.05f, 4.0f, 2);
             }
             CLAY(CLAY_ID("GraphicsEditorLightBox"), EditorPanelBoxDeclaration) {
                 RenderLightDebugInfo lightInfo = RendererGetLightDebugInfo();
-                EditorSectionHeader("Lights");
+                UISectionHeader("Lights");
                 UICheckbox(CLAY_ID("EditorEnableLocalLights"), CLAY_STRING("Local lights"), &settings->enableLocalLights);
                 UICheckbox(CLAY_ID("EditorLightFrustumCull"), CLAY_STRING("Light frustum culling"), &settings->enableLightFrustumCulling);
                 UICheckbox(CLAY_ID("EditorLightOcclusionCull"), CLAY_STRING("Light occlusion culling"), &settings->enableLightOcclusionCulling);
                 UICheckbox(CLAY_ID("EditorShowLightRects"), CLAY_STRING("Show light rects"), &settings->showLightRects);
-                EditorTextU32("Total lights", lightInfo.totalLights);
-                EditorTextU32("Submitted lights", lightInfo.submittedLights);
-                EditorTextU32("Max lights", lightInfo.maxLights);
+                UITextU32("Total lights", lightInfo.totalLights);
+                UITextU32("Submitted lights", lightInfo.submittedLights);
+                UITextU32("Max lights", lightInfo.maxLights);
                 UIEditInt(CLAY_ID("EditorMaxVisiblePointShadows"), CLAY_STRING("Point shadow maps"), &settings->maxVisiblePointShadows, 0, POINT_SHADOW_MAX_LIGHTS);
                 UIEditInt(CLAY_ID("EditorMaxVisibleSpotShadows"), CLAY_STRING("Spot shadow maps"), &settings->maxVisibleSpotShadows, 0, SPOT_SHADOW_MAX_LIGHTS);
             }
             CLAY(CLAY_ID("GraphicsEditorSunBox"), EditorPanelBoxDeclaration) {
-                EditorSectionHeader("Sun");
-                EditorSliderFloat(CLAY_ID("EditorSunYaw")  , "Yaw"  , &settings->sunYaw  , -180.0f, 180.0f, 1);
-                EditorSliderFloat(CLAY_ID("EditorSunPitch"), "Pitch", &settings->sunPitch, -10.0f, 89.0f, 1);
+                UISectionHeader("Sun");
+                UISliderFloatValue(CLAY_ID("EditorSunYaw")  , CLAY_STRING("Yaw")  , &settings->sunYaw  , -180.0f, 180.0f, 1);
+                UISliderFloatValue(CLAY_ID("EditorSunPitch"), CLAY_STRING("Pitch"), &settings->sunPitch, -10.0f, 89.0f, 1);
             }
             CLAY(CLAY_ID("GraphicsEditorShadowBox"), EditorPanelBoxDeclaration) {
-                EditorSectionHeader("Shadows");
-                EditorSliderFloat(CLAY_ID("EditorShadowMaxDistance")   , "Max distance"   , &settings->shadowMaxDistance      , 25.0f, 1000.0f, 1);
-                EditorSliderFloat(CLAY_ID("EditorShadowCameraDistance"), "Camera distance", &settings->shadowCameraDistance   , 10.0f,  500.0f, 1);
-                EditorSliderFloat(CLAY_ID("EditorShadowCasterMargin")  , "Caster margin"  , &settings->shadowCasterDepthMargin, 10.0f,  500.0f, 1);
-                EditorSliderFloat(CLAY_ID("EditorShadowCascadeOverlap"), "Cascade overlap", &settings->shadowCascadeOverlap   ,  0.0f,   80.0f, 1);
-                EditorSliderFloat(CLAY_ID("EditorShadowSplitNear")     , "Split near"     , &settings->shadowSplitNearDistance,  1.0f,   80.0f, 1);
-                EditorSliderFloat(CLAY_ID("EditorShadowPSSM")          , "PSSM lambda"    , &settings->shadowPSSMLambda       ,  0.0f,    1.0f, 2);
+                UISectionHeader("Shadows");
+                UISliderFloatValue(CLAY_ID("EditorShadowMaxDistance")   , CLAY_STRING("Max distance")   , &settings->shadowMaxDistance      , 25.0f, 1000.0f, 1);
+                UISliderFloatValue(CLAY_ID("EditorShadowCameraDistance"), CLAY_STRING("Camera distance"), &settings->shadowCameraDistance   , 10.0f,  500.0f, 1);
+                UISliderFloatValue(CLAY_ID("EditorShadowCasterMargin")  , CLAY_STRING("Caster margin")  , &settings->shadowCasterDepthMargin, 10.0f,  500.0f, 1);
+                UISliderFloatValue(CLAY_ID("EditorShadowCascadeOverlap"), CLAY_STRING("Cascade overlap"), &settings->shadowCascadeOverlap   ,  0.0f,   80.0f, 1);
+                UISliderFloatValue(CLAY_ID("EditorShadowSplitNear")     , CLAY_STRING("Split near")     , &settings->shadowSplitNearDistance,  1.0f,   80.0f, 1);
+                UISliderFloatValue(CLAY_ID("EditorShadowPSSM")          , CLAY_STRING("PSSM lambda")    , &settings->shadowPSSMLambda       ,  0.0f,    1.0f, 2);
             }
             CLAY(CLAY_ID("GraphicsEditorHBAOBox"), EditorPanelBoxDeclaration) {
-                EditorSectionHeader("HBAO");
-                EditorSliderFloat(CLAY_ID("EditorHBAORadius")   , "Radius"   , &settings->hbaoRadius   , 0.05f, 5.0f, 2);
-                EditorSliderFloat(CLAY_ID("EditorHBAOBias")     , "Bias"     , &settings->hbaoBias     ,  0.0f, 1.0f, 2);
-                EditorSliderFloat(CLAY_ID("EditorHBAOIntensity"), "Intensity", &settings->hbaoIntensity,  0.0f, 6.0f, 2);
-                EditorSliderFloat(CLAY_ID("EditorHBAOPower")    , "Power"    , &settings->hbaoPower    , 0.25f, 6.0f, 2);
+                UISectionHeader("HBAO");
+                UISliderFloatValue(CLAY_ID("EditorHBAORadius")   , CLAY_STRING("Radius")   , &settings->hbaoRadius   , 0.05f, 5.0f, 2);
+                UISliderFloatValue(CLAY_ID("EditorHBAOBias")     , CLAY_STRING("Bias")     , &settings->hbaoBias     ,  0.0f, 1.0f, 2);
+                UISliderFloatValue(CLAY_ID("EditorHBAOIntensity"), CLAY_STRING("Intensity"), &settings->hbaoIntensity,  0.0f, 6.0f, 2);
+                UISliderFloatValue(CLAY_ID("EditorHBAOPower")    , CLAY_STRING("Power")    , &settings->hbaoPower    , 0.25f, 6.0f, 2);
             }
             CLAY(CLAY_ID("GraphicsEditorPostBox"), EditorPanelBoxDeclaration) {
-                EditorSectionHeader("Post / AA");
-                EditorSliderFloat(CLAY_ID("EditorMLAAThreshold"), "MLAA threshold", &settings->mlaaThreshold  , 0.01f, 0.25f, 3);
-                EditorSliderFloat(CLAY_ID("EditorExposure")     , "Exposure"      , &settings->exposure       , 0.10f, 4.00f, 2);
-                EditorSliderFloat(CLAY_ID("EditorGamma")        , "Gamma"         , &settings->gamma          , 1.00f, 3.20f, 2);
-                EditorSliderFloat(CLAY_ID("EditorGodRays")      , "God rays"      , &settings->godRayIntensity, 0.00f, 8.00f, 2);
+                UISectionHeader("Post / AA");
+                UISliderFloatValue(CLAY_ID("EditorMLAAThreshold"), CLAY_STRING("MLAA threshold"), &settings->mlaaThreshold  , 0.01f, 0.25f, 3);
+                UISliderFloatValue(CLAY_ID("EditorExposure")     , CLAY_STRING("Exposure")      , &settings->exposure       , 0.10f, 4.00f, 2);
+                UISliderFloatValue(CLAY_ID("EditorGamma")        , CLAY_STRING("Gamma")         , &settings->gamma          , 1.00f, 3.20f, 2);
+                UISliderFloatValue(CLAY_ID("EditorGodRays")      , CLAY_STRING("God rays")      , &settings->godRayIntensity, 0.00f, 8.00f, 2);
             }
         }
         CLAY(CLAY_ID("GraphicsEditorButtons"), {
@@ -343,13 +229,170 @@ static void DrawGraphicsWindow()
     }
 }
 
+// hierarchy selection, bundle row when node is -1, nothing when bundle is INVALID_BUNDLE
+static u32 sceneSelectedBundle = INVALID_BUNDLE;
+static s32 sceneSelectedNode   = -1;
+static u32 sceneTreeRowBudget;
+static bool sceneInfoOpen = true;
+
+// caller owned tree expansion state, node bits start closed,
+// bundle flags are stored inverted so bundle rows start open
+#define SCENE_TREE_MAX_NODES 16000
+static u32 sceneNodeOpenBits[MAX_SCENE_BUNDLES][SCENE_TREE_MAX_NODES / 32];
+static u8  sceneBundleClosed[MAX_SCENE_BUNDLES];
+
+static bool SceneNodeIsOpen(u32 bundleIdx, u32 nodeIdx)
+{
+    if (nodeIdx >= SCENE_TREE_MAX_NODES) return false;
+    return (sceneNodeOpenBits[bundleIdx][nodeIdx >> 5u] >> (nodeIdx & 31u)) & 1u;
+}
+
+static void SceneNodeFlipOpen(u32 bundleIdx, u32 nodeIdx)
+{
+    if (nodeIdx >= SCENE_TREE_MAX_NODES) return;
+    sceneNodeOpenBits[bundleIdx][nodeIdx >> 5u] ^= 1u << (nodeIdx & 31u);
+}
+
+static Clay_String SceneNodeLabel(const ANode* node, s32 nodeIdx)
+{
+    if (node->name && node->name[0]) return UIStr(node->name);
+
+    char* text = UIFrameStringAlloc(20u);
+    if (!text) return CLAY_STRING("Node");
+    u32 len = 5u;
+    MemCopy(text, "Node ", len);
+    len += (u32)IntToString(text + len, (int64_t)nodeIdx, 0);
+    text[len] = '\0';
+    return (Clay_String) { .isStaticallyAllocated = false, .length = (s32)len, .chars = text };
+}
+
+static void SceneNodeTree(const SceneBundle* bundle, u32 bundleIdx, s32 nodeIdx, u32 depth)
+{
+    if (sceneTreeRowBudget == 0u) return;
+    sceneTreeRowBudget--;
+
+    const ANode* node = &bundle->nodes[nodeIdx];
+    Clay_ElementId id = Clay_GetElementIdWithIndex(CLAY_STRING("SceneTreeNode"), bundleIdx * 0x10000u + (u32)nodeIdx);
+
+    u32 flags = 0u;
+    if (node->numChildren <= 0) flags |= UITreeNodeFlags_Leaf;
+    if (bundleIdx == sceneSelectedBundle && nodeIdx == sceneSelectedNode) flags |= UITreeNodeFlags_Selected;
+
+    bool open = SceneNodeIsOpen(bundleIdx, (u32)nodeIdx);
+    bool selected = false;
+    if (UITreeNode(id, SceneNodeLabel(node, nodeIdx), depth, flags, open, &selected))
+    {
+        SceneNodeFlipOpen(bundleIdx, (u32)nodeIdx);
+        open = !open;
+    }
+    if (selected)
+    {
+        sceneSelectedBundle = bundleIdx;
+        sceneSelectedNode = nodeIdx;
+    }
+    if (!open) return;
+
+    for (s32 c = 0; c < node->numChildren; c++)
+    {
+        s32 child = node->children[c];
+        if (child >= 0 && child < bundle->numNodes)
+            SceneNodeTree(bundle, bundleIdx, child, depth + 1u);
+    }
+}
+
+static void SceneBundleTree(const Scene* scene, u32 bundleIdx)
+{
+    const SceneBundle* bundle = scene->bundles[bundleIdx];
+    Clay_ElementId id = Clay_GetElementIdWithIndex(CLAY_STRING("SceneTreeBundle"), bundleIdx);
+
+    u32 flags = 0u;
+    if (!bundle || bundle->numNodes <= 0) flags |= UITreeNodeFlags_Leaf;
+    if (bundleIdx == sceneSelectedBundle && sceneSelectedNode < 0) flags |= UITreeNodeFlags_Selected;
+
+    bool open = !sceneBundleClosed[bundleIdx];
+    bool selected = false;
+    if (UITreeNode(id, UIStr(GetFileName(scene->bundlePaths[bundleIdx])), 0u, flags, open, &selected))
+    {
+        sceneBundleClosed[bundleIdx] ^= 1u;
+        open = !open;
+    }
+    if (selected)
+    {
+        sceneSelectedBundle = bundleIdx;
+        sceneSelectedNode = -1;
+    }
+    if (!open || !bundle) return;
+
+    // normalized bundles have parent indices built, roots are the unparented nodes
+    for (s32 i = 0; i < bundle->numNodes; i++)
+        if (bundle->nodes[i].parent < 0)
+            SceneNodeTree(bundle, bundleIdx, i, 1u);
+}
+
+// instanced triangle count at lod 0
+static u32 SceneCountTriangles(const RenderSet* set)
+{
+    u64 triangles = 0u;
+    for (u32 i = 0u; i < set->numGroups; i++)
+    {
+        const PrimitiveGroup* group = &set->primitiveGroups[i];
+        if (!group->valid) continue;
+        triangles += (u64)(group->numIndices / 3u) * group->numEntities;
+    }
+    return (u32)Minu64(triangles, 0xFFFFFFFFull);
+}
+
 static void DrawSceneWindow()
 {
     Clay_ElementId windowID = (Clay_ElementId) { .id = StringToHash("SceneWindow", 5381u) };
-    if (UIBeginWindowId(windowID, "Scene", (float2) { 18.0f, 18.0f }, (float2) { 500.0f, 760.0f }, &sceneOpen, 0u))
+    if (!UIBeginWindowId(windowID, "Scene", (float2) { 18.0f, 18.0f }, (float2) { 500.0f, 760.0f }, &sceneOpen, 0u)) return;
+
+    Scene* scene = Scene_GetActive();
+    if (!scene)
     {
+        CLAY_TEXT(CLAY_STRING("No active scene."), CLAY_TEXT_CONFIG({
+            .fontSize = 14,
+            .textColor = UIGetClayColor(UIColor_SubText)
+        }));
         UIEndWindow();
+        return;
     }
+
+    sceneInfoOpen ^= UICollapsingHeader(CLAY_ID("SceneInfoHeader"), CLAY_STRING("Active Scene"), sceneInfoOpen);
+    if (sceneInfoOpen)
+    {
+        CLAY(CLAY_ID("SceneWindowInfo"), {
+            .layout = {
+                .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) },
+                .padding = { 6, 0, 0, 0 },
+                .childGap = 4,
+                .layoutDirection = CLAY_TOP_TO_BOTTOM
+            }
+        }) {
+            UITextU32("Active scenes", g_NumActiveScenes);
+            UITextU32("Bundles", scene->numBundles);
+            UITextU32("Materials", scene->numMaterials);
+            UITextU32("Static entities", scene->surfaceSet.numEntities);
+            UITextU32("Skinned entities", scene->skinnedSet.numEntities);
+            UITextU32("Primitive groups", scene->surfaceSet.numGroups + scene->skinnedSet.numGroups);
+            UITextU32("Triangles", SceneCountTriangles(&scene->surfaceSet) + SceneCountTriangles(&scene->skinnedSet));
+        }
+    }
+    UIDivider(CLAY_ID("SceneWindowDivider"));
+
+    sceneTreeRowBudget = SCENE_TREE_MAX_NODES;
+    CLAY(CLAY_ID("SceneWindowTree"), UIScrollPanelDeclaration(UIWindowRemainingHeight(windowID, CLAY_ID("SceneWindowTree"), 0.0f), 2u)) {
+        for (u32 b = 0u; b < scene->numBundles; b++)
+            SceneBundleTree(scene, b);
+        if (sceneTreeRowBudget == 0u)
+        {
+            CLAY_TEXT(CLAY_STRING("... node limit reached, collapse some rows"), CLAY_TEXT_CONFIG({
+                .fontSize = 13,
+                .textColor = UIGetClayColor(UIColor_SubText)
+            }));
+        }
+    }
+    UIEndWindow();
 }
 
 static void DrawSettingsWindow()
