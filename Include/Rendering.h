@@ -24,6 +24,7 @@ typedef struct RenderSettings_
     f32 godRaySamples;    // ray march steps, 0 disables
     f32 hbaoDirections;   // horizon sample directions
     f32 lodDistanceModifier;
+    f32 renderScale;      // scene resolution multiplier, ui stays native. < 1 cuts gpu memory and shading cost
     f32 sunYaw;
     f32 sunPitch;
     f32 shadowMaxDistance;

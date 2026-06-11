@@ -2,6 +2,7 @@
 #define _GRAPHICS_
 
 #include "Include/Graphics.h"
+#include "Include/Rendering.h"
 #include "Include/FileSystem.h"
 #include "Include/Platform.h"
 #include "Include/Algorithm.h"
@@ -204,12 +205,25 @@ void GraphicsInit(bool msaa)
     InitGeometryHeaps();
 }
 
+void GetRenderResolution(u32 windowW, u32 windowH, u32* outW, u32* outH)
+{
+    f32 scale = g_RenderSettings.renderScale;
+    if (scale <= 0.0f) scale = 1.0f; // unset settings render at native resolution
+    scale = Clampf32(scale, 0.25f, 2.0f);
+    *outW = Maxu32((u32)((f32)windowW * scale + 0.5f), 1u);
+    *outH = Maxu32((u32)((f32)windowH * scale + 0.5f), 1u);
+}
+
 void CreateWindowBuffers()
 {
     WindowState* winstate = &g_WindowState;
-    int width, height;
+    int windowW, windowH;
     /* create a depth texture for the window */
-    SDL_GetWindowSizeInPixels(g_SDLWindow, (int*)&width, (int*)&height);
+    SDL_GetWindowSizeInPixels(g_SDLWindow, (int*)&windowW, (int*)&windowH);
+    u32 width, height;
+    GetRenderResolution((u32)windowW, (u32)windowH, &width, &height);
+    winstate->render_width  = width;
+    winstate->render_height = height;
     u32 hbaoWidth  = Maxu32(width / 2u, 1u);
     u32 hbaoHeight = Maxu32(height / 2u, 1u);
     winstate->tex_color           = CreateSceneColorTexture(width, height, SDL_GPU_SAMPLECOUNT_1);

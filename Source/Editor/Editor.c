@@ -308,6 +308,8 @@ static void DrawGraphicsWindow()
                 UICheckbox(CLAY_ID("EditorEnableMLAA")     , CLAY_STRING("Anti-aliasing (MLAA)"), &settings->enableMLAA);
                 UICheckbox(CLAY_ID("EditorShowMLAAEdges")  , CLAY_STRING("Show MLAA edge mask"), &settings->showMLAAEdges);
                 UISliderFloatValue(CLAY_ID("EditorLODDistanceModifier"), CLAY_STRING("LOD distance"), &settings->lodDistanceModifier, 0.05f, 4.0f, 2);
+                // scene resolution multiplier, the ui stays at native resolution
+                UIEditFloat(CLAY_ID("EditorRenderScale"), CLAY_STRING("Render scale"), &settings->renderScale, 0.25f, 2.0f, 0.25, 3);
             }
             CLAY(CLAY_ID("GraphicsEditorLightBox"), EditorPanelBoxDeclaration) {
                 RenderLightDebugInfo lightInfo = RendererGetLightDebugInfo();
@@ -383,6 +385,7 @@ static void DrawGraphicsWindow()
                     .godRaySamples = 64.0f,
                     .hbaoDirections = 8.0f,
                     .lodDistanceModifier = 0.75f,
+                    .renderScale = 1.0f,
                     .sunYaw = 116.565f,
                     .sunPitch = 63.435f,
                     .shadowMaxDistance = SHADOW_MAX_DISTANCE,

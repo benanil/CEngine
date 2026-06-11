@@ -485,8 +485,11 @@ static void InitSlugPipeline(void)
     };
 
     g_RenderState.slugPipeline   = SDL_CreateGPUGraphicsPipeline(g_GPUDevice, &pipelinedesc); CHECK_CREATE(g_RenderState.slugPipeline, "Slug Render Pipeline")
+    // 2d text draws over the swapchain after the scene upscale blit
+    colorTarget.format           = SDL_GetGPUSwapchainTextureFormat(g_GPUDevice, g_SDLWindow);
     pipelinedesc.vertex_shader   = vertex_2d_shader;
     g_RenderState.slug2DPipeline = SDL_CreateGPUGraphicsPipeline(g_GPUDevice, &pipelinedesc); CHECK_CREATE(g_RenderState.slug2DPipeline, "Slug 2D Render Pipeline")
+    colorTarget.format           = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
     pipelinedesc.vertex_shader   = vertex_shader;
 
     pipelinedesc.target_info.depth_stencil_format = SDL_GPU_TEXTUREFORMAT_D32_FLOAT;
@@ -510,7 +513,7 @@ static void InitUIShapePipeline(void)
     SDL_GPUShader* fragment_shader = PIPELINE_FRAG_DEF(Shaders_UIShapeFrag_spv), .num_uniform_buffers = 1 });                           CHECK_CREATE(fragment_shader, "UI Shape Fragment Shader")
 
     SDL_GPUColorTargetDescription colorTarget = {
-        .format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
+        .format = SDL_GetGPUSwapchainTextureFormat(g_GPUDevice, g_SDLWindow), // ui renders to the swapchain at native resolution
         .blend_state = {
             .enable_blend = true,
             .color_write_mask = 0xF,
@@ -547,7 +550,7 @@ static void InitUIImagePipeline(void)
     SDL_GPUShader* fragment_shader = PIPELINE_FRAG_DEF(Shaders_UIImageFrag_spv), .num_uniform_buffers = 1, .num_samplers = 1 }); CHECK_CREATE(fragment_shader, "UI Image Fragment Shader")
 
     SDL_GPUColorTargetDescription colorTarget = {
-        .format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
+        .format = SDL_GetGPUSwapchainTextureFormat(g_GPUDevice, g_SDLWindow), // ui renders to the swapchain at native resolution
         .blend_state = {
             .enable_blend = true,
             .color_write_mask = 0xF,

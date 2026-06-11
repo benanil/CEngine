@@ -51,6 +51,7 @@ RenderSettings g_RenderSettings = {
     .godRaySamples               = 64.0f,
     .hbaoDirections              = 8.0f,
     .lodDistanceModifier         = 0.75f,
+    .renderScale                 = 1.0f,
     .sunYaw                      = 116.565f,
     .sunPitch                    = 63.435f,
     .shadowMaxDistance           = SHADOW_MAX_DISTANCE,
@@ -472,9 +473,14 @@ void Render(void)
     }
 
     WindowState* winstate = &g_WindowState;
-    if (winstate->prev_width != screenW || winstate->prev_height != screenH)
+    u32 renderW, renderH;
+    GetRenderResolution(screenW, screenH, &renderW, &renderH);
+    if (winstate->prev_width != screenW || winstate->prev_height != screenH ||
+        winstate->render_width != renderW || winstate->render_height != renderH)
     {
         ResizeWindowFrameTextures(winstate, screenW, screenH);
+        renderW = winstate->render_width;
+        renderH = winstate->render_height;
         swapchainLogged = 0;
     }
     winstate->prev_width = screenW;
@@ -541,16 +547,16 @@ void Render(void)
         .shadowCascades  = shadowCascades,
         .viewProj        = viewProj
     });
-    DispatchHBAOCompute(cmd, g_RenderSettings.enableHBAO, screenW, screenH);
-    DispatchDeferredLightingCompute(cmd, screenW, screenH, viewProj);
+    DispatchHBAOCompute(cmd, g_RenderSettings.enableHBAO, renderW, renderH);
+    DispatchDeferredLightingCompute(cmd, renderW, renderH, viewProj);
     DispatchHiZBuildCompute(cmd);
     if (g_RenderSettings.enableLocalLights)
     {
         DispatchCullLightsCompute(cmd, cameraFrustum, viewProj,
                                   g_RenderSettings.enableLightFrustumCulling,
                                   g_RenderSettings.enableOcclusion && g_RenderSettings.enableLightOcclusionCulling,
-                                  screenW, screenH);
-        RenderDeferredLights(cmd, &color_load_target, viewProj, screenW, screenH);
+                                  renderW, renderH);
+        RenderDeferredLights(cmd, &color_load_target, viewProj, renderW, renderH);
     }
     RenderLines(cmd, &color_load_target, &main_depth_target, viewProj);
     RenderOutline(cmd, &color_load_target, &main_depth_target, viewProj);
@@ -559,32 +565,34 @@ void Render(void)
     winstate->hiz_view_proj = viewProj;
     winstate->hiz_valid = true;
 
-    DispatchTonemapCompute(cmd, screenW, screenH, viewProj);
+    DispatchTonemapCompute(cmd, renderW, renderH, viewProj);
     SDL_GPUTexture* finalTexture = winstate->tex_post;
     if (g_RenderSettings.enableMLAA && winstate->tex_mlaa_output)
     {
-        DispatchMLAACompute(cmd, screenW, screenH, g_RenderSettings.mlaaThreshold, g_RenderSettings.showMLAAEdges);
+        DispatchMLAACompute(cmd, renderW, renderH, g_RenderSettings.mlaaThreshold, g_RenderSettings.showMLAAEdges);
         finalTexture = winstate->tex_mlaa_output;
     }
 
     SDL_GPUColorTargetInfo final_load_target = MakeLoadedTextureTarget(finalTexture);
     RenderSlugDemo(cmd, &final_load_target, &main_depth_target, viewProj);
-    
-    UIBeginFrame();
-    UIRenderCallback();
-    UIEndFrame(cmd, &final_load_target);
 
+    // the scene upscales to the swapchain, the ui draws on top at native resolution
     SDL_GPUBlitInfo blit_info;
     SDL_zero(blit_info);
     blit_info.source.texture = finalTexture;
-    blit_info.source.w = screenW;
-    blit_info.source.h = screenH;
+    blit_info.source.w = renderW;
+    blit_info.source.h = renderH;
     blit_info.destination.texture = swapchainTexture;
     blit_info.destination.w = screenW;
     blit_info.destination.h = screenH;
     blit_info.load_op = SDL_GPU_LOADOP_DONT_CARE;
     blit_info.filter = SDL_GPU_FILTER_LINEAR;
     SDL_BlitGPUTexture(cmd, &blit_info);
+
+    SDL_GPUColorTargetInfo ui_target = MakeLoadedTextureTarget(swapchainTexture);
+    UIBeginFrame();
+    UIRenderCallback();
+    UIEndFrame(cmd, &ui_target);
     SDL_SubmitGPUCommandBuffer(cmd);
 }
 

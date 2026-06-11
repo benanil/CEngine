@@ -211,7 +211,8 @@ typedef struct WindowState
     SDL_GPUTexture* tex_shadow_depth, *tex_shadow_color;
     SDL_GPUTexture* tex_point_shadow_depth, *tex_point_shadow_color;
     SDL_GPUTexture* tex_spot_shadow_depth, *tex_spot_shadow_color;
-    u32 prev_width, prev_height;
+    u32 prev_width, prev_height;     // swapchain size, the ui renders at this resolution
+    u32 render_width, render_height; // scene texture size, prev_* scaled by renderScale
     u32 hiz_width, hiz_height, hiz_mip_count;
     mat4x4 hiz_view_proj;
     bool hiz_valid;
@@ -326,6 +327,9 @@ void Rendering_QueueGeometryUpload(GeometryBufferKind kind, u32 begin, u32 end);
 void GraphicsInit(bool msaa);
 
 void CreateWindowBuffers();
+
+// scene texture resolution: the window size scaled by g_RenderSettings.renderScale (clamped)
+void GetRenderResolution(u32 windowW, u32 windowH, u32* outW, u32* outH);
 
 void GraphicsDestroy();
 

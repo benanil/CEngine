@@ -1066,10 +1066,15 @@ void SlugRender(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget, 
     }
     UpdateGPUBuffer(font->vertexBuffer, font->vertices, (size_t)font->numVertices * sizeof(SlugVertex), 0);
 
+    // the depth variant draws into the scene textures which run at render scale,
+    // the 2d variant draws over the swapchain at the window resolution
+    f32 targetW = (f32)Maxu32(depthTarget ? g_WindowState.render_width : g_WindowState.prev_width, 1u);
+    f32 targetH = (f32)Maxu32(depthTarget ? g_WindowState.render_height : g_WindowState.prev_height, 1u);
+
     SlugVertexParams params = {0};
     params.matrix = viewProj;
-    params.viewport[0] = (f32)Maxu32(g_WindowState.prev_width, 1u);
-    params.viewport[1] = (f32)Maxu32(g_WindowState.prev_height, 1u);
+    params.viewport[0] = targetW;
+    params.viewport[1] = targetH;
 
     SDL_GPUBuffer* storageBuffers[2] = { font->curveBuffer, font->bandBuffer };
     SDL_GPUBufferBinding vertexBinding = { font->vertexBuffer, 0 };
@@ -1080,7 +1085,7 @@ void SlugRender(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget, 
     SDL_PushGPUVertexUniformData(cmd, 0, &params, sizeof(params));
     if (font->numBatches == 0u)
     {
-        SDL_SetGPUScissor(pass, &(SDL_Rect){ 0, 0, (int)Maxu32(g_WindowState.prev_width, 1u), (int)Maxu32(g_WindowState.prev_height, 1u) });
+        SDL_SetGPUScissor(pass, &(SDL_Rect){ 0, 0, (int)targetW, (int)targetH });
         SDL_DrawGPUPrimitives(pass, font->numVertices, 1, 0, 0);
     }
     for (u32 i = 0u; i < font->numBatches; i++)
@@ -1089,8 +1094,8 @@ void SlugRender(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget, 
         if (batch->vertexCount == 0u) continue;
         int x = (int)Maxf32(batch->clip[0], 0.0f);
         int y = (int)Maxf32(batch->clip[1], 0.0f);
-        int x1 = (int)Minf32(Ceilf(batch->clip[2]), (f32)Maxu32(g_WindowState.prev_width, 1u));
-        int y1 = (int)Minf32(Ceilf(batch->clip[3]), (f32)Maxu32(g_WindowState.prev_height, 1u));
+        int x1 = (int)Minf32(Ceilf(batch->clip[2]), targetW);
+        int y1 = (int)Minf32(Ceilf(batch->clip[3]), targetH);
         if (x1 <= x || y1 <= y) continue;
         SDL_SetGPUScissor(pass, &(SDL_Rect){ x, y, x1 - x, y1 - y });
         SDL_DrawGPUPrimitives(pass, batch->vertexCount, 1, batch->firstVertex, 0);
