@@ -37,10 +37,14 @@ static void MainLoop(void)
     DemoScene_Update(PlatformCtx.DeltaTime);
     Scene_SubmitLights();
 
+    extern void EditorSceneHotkeys(void);
+    EditorSceneHotkeys();
+
     // the gizmo owns the mouse while hovered or dragging, picking only runs otherwise
     extern bool EditorGizmoUpdate(Camera* camera);
+    extern bool EditorLightGizmoUpdate(Camera* camera);
     extern void EditorPickingUpdate(Camera* camera);
-    if (!EditorGizmoUpdate(&g_Camera))
+    if (!EditorGizmoUpdate(&g_Camera) && !EditorLightGizmoUpdate(&g_Camera))
         EditorPickingUpdate(&g_Camera);
 
     if (!done) Render();
@@ -83,6 +87,8 @@ s32 main(s32 argc, char* argv[])
     // boot into an empty editor scene, the demo scene stays available from code
     extern Scene* EditorNewScene(void);
     if (!EditorNewScene()) return 0;
+    extern void EditorSceneStartup(void);
+    EditorSceneStartup();
     InitBuffers();
 
     CameraInit(&g_Camera, 1920, 1080);

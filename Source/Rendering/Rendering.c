@@ -69,8 +69,12 @@ static RenderLightDebugInfo g_LightDebugInfo;
 static FrameTextureSet g_ResizeReleaseQueue[RESIZE_RELEASE_DELAY];
 
 extern void UIRenderCallback(void); // Editor.c
-
 extern ShadowCascadeData CascadedShadowmaps(SDL_GPUCommandBuffer* cmd);
+
+OutlineTarget g_OutlineTargets[MAX_OUTLINE_TARGETS];
+u32           g_NumOutlineTargets;
+ALineVertex   g_GizmoVertices[MAX_GIZMO_VERTICES];
+u32           g_NumGizmoVertices;
 
 static void ReleaseFrameTextureSet(FrameTextureSet* set)
 {
@@ -120,11 +124,6 @@ static void QueueWindowFrameTexturesForRelease(WindowState* winstate)
     ReleaseFrameTextureSet(&g_ResizeReleaseQueue[slot]);
     g_ResizeReleaseQueue[slot] = old;
 }
-
-OutlineTarget g_OutlineTargets[MAX_OUTLINE_TARGETS];
-u32           g_NumOutlineTargets;
-ALineVertex   g_GizmoVertices[MAX_GIZMO_VERTICES];
-u32           g_NumGizmoVertices;
 
 void RendererSetGizmoLines(const ALineVertex* vertices, u32 count)
 {

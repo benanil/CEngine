@@ -18,6 +18,10 @@ typedef struct Entity_
     u32   sparseIdx;
 } Entity;
 
+v128f RenderSet_UnpackEntityScale01(u32 packed);
+v128f RenderSet_UnpackEntityWorldScale(u32 packed);
+u32   RenderSet_PackEntityWorldScale(const f32 scale[3]);
+
 typedef struct PrimitiveGroup_
 {
     u32 entityOffset;
@@ -40,6 +44,9 @@ typedef struct PrimitiveGroup_
     u32 lodNumVertices[4];
     u32 lodAnimatedVertexOffset[4];
 } PrimitiveGroup;
+
+v128f RenderSet_GroupLocalCenter(const PrimitiveGroup* group);
+v128f RenderSet_EntityBoundsCenter(const PrimitiveGroup* group, const Entity* entity, v128f rotation, v128f worldScale);
 
 typedef struct Range_
 {
@@ -67,6 +74,15 @@ typedef struct RenderSet_
     u32 nextSparseID;
     u32 skinned;
 } RenderSet;
+
+bool RenderSet_ResolveEntity(RenderSet* set, u32 groupIdx, u32 entityIdx,
+                             PrimitiveGroup** outGroup, Entity** outEntity);
+
+// spawn order ordinal of a mesh node: static sparse ids are allocated sequentially per mesh node.
+s32  RenderSet_NodeSpawnOrdinal(const SceneBundle* bundle, s32 nodeIdx);
+bool RenderSet_FindNodeEntity(const RenderSet* set, Range range, u32 meshIndex, u32 sparseIdx,
+                              u32* outGroup, u32* outEntity);
+u32  RenderSet_CountTriangles(const RenderSet* set);
 
 void RenderSet_InitSet(RenderSet* set, u32 maxEntities, u32 maxGroups, u32 maxBundles, bool skinned);
 

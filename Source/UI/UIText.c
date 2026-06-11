@@ -627,10 +627,14 @@ bool UITextAreaFlags(const char* label, float2 pos, char* buffer, u32 capacity, 
     if (flags & UITextAreaFlags_CenterY)
         textPos.y = boxPos.y + (size.y * 0.5f - (textSize.y * 0.5f));
 
-    UIPushFloat(UIFloat_TextWrapWidth, Maxf32(size.x - 20.0f, 1.0f));
+    bool multiline = (flags & UITextAreaFlags_NoWrap) == 0u;
+    if (flags & UITextAreaFlags_Clip)
+        UIPushClipRect(boxPos, size);
+
+    UIPushFloat(UIFloat_TextWrapWidth, multiline ? Maxf32(size.x - 20.0f, 1.0f) : 0.0f);
     u32 len = UIStringLength(buffer, capacity);
     static UITextLayout layout;
-    UITextBuildLayout(buffer ? buffer : "?", len, textPos, UIGetFloat(UIFloat_TextScale), true, &layout);
+    UITextBuildLayout(buffer ? buffer : "?", len, textPos, UIGetFloat(UIFloat_TextScale), multiline, &layout);
     if (GetMousePressed(MouseButton_Left))
     {
         if (hovered)
@@ -648,9 +652,9 @@ bool UITextAreaFlags(const char* label, float2 pos, char* buffer, u32 capacity, 
     }
     focused = g_UI.keyboardFocus == id;
 
-    bool edited = UITextEditBehavior(id, buffer, capacity, true, &layout);
+    bool edited = UITextEditBehavior(id, buffer, capacity, multiline, &layout);
     len = UIStringLength(buffer, capacity);
-    UITextBuildLayout(buffer ? buffer : "?", len, textPos, UIGetFloat(UIFloat_TextScale), true, &layout);
+    UITextBuildLayout(buffer ? buffer : "?", len, textPos, UIGetFloat(UIFloat_TextScale), multiline, &layout);
     g_UI.wasHovered = hovered;
 
     if (focused) UITextDrawSelection(&layout);
@@ -667,6 +671,8 @@ bool UITextAreaFlags(const char* label, float2 pos, char* buffer, u32 capacity, 
         UIPushRect((float2){ cursorX, caretPos.y }, (float2){ 1.5f, layout.lineHeight }, UIGetColor(UIColor_TextBoxCursor));
     }
     UIPopFloat(UIFloat_TextWrapWidth);
+    if (flags & UITextAreaFlags_Clip)
+        UIPopClipRect();
     UIPopFloat(UIFloat_TextScale);
     return edited;
 }

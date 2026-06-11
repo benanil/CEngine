@@ -203,12 +203,13 @@ static void UIRenderLayoutCustom(const Clay_RenderCommand* command)
     UITextAreaCustomData* custom = (UITextAreaCustomData*)data->customData;
     if (custom && custom->type == UICustomType_TextArea)
     {
-        UITextAreaFlags(NULL,
-                        (float2){ command->boundingBox.x, command->boundingBox.y },
-                        custom->buffer,
-                        custom->capacity,
-                        (float2){ command->boundingBox.width, command->boundingBox.height },
-                        custom->flags);
+        if (UITextAreaFlags(NULL,
+                            (float2){ command->boundingBox.x, command->boundingBox.y },
+                            custom->buffer,
+                            custom->capacity,
+                            (float2){ command->boundingBox.width, command->boundingBox.height },
+                            custom->flags))
+            custom->edited = 1u;
         return;
     }
 
@@ -1044,6 +1045,11 @@ static UIEditSlot* UIGetEditSlot(Clay_ElementId id)
     return empty;
 }
 
+static bool UIEditSlotFocused(const UIEditSlot* slot)
+{
+    return slot && g_UI.keyboardFocus == UIAutoID(slot->buffer);
+}
+
 static void UIFormatInt(char* buffer, u32 capacity, s32 value)
 {
     if (!buffer || capacity == 0u) return;
@@ -1148,6 +1154,8 @@ bool UIEditInt(Clay_ElementId id, Clay_String label, f32* value, s32 minValue, s
     if (!slot) return false;
 
     bool changed = false;
+    bool textEdited = slot->textData.edited != 0u;
+    slot->textData.edited = 0u;
     s32 current = Clamps32((s32)(*value), minValue, maxValue);
     if ((f32)current != *value)
     {
@@ -1155,10 +1163,13 @@ bool UIEditInt(Clay_ElementId id, Clay_String label, f32* value, s32 minValue, s
         changed = true;
     }
 
+    bool focused = UIEditSlotFocused(slot);
+    bool refreshed = false;
     if (slot->buffer[0] == '\0' || slot->lastValue != *value)
     {
         UIFormatInt(slot->buffer, (u32)sizeof(slot->buffer), current);
         slot->lastValue = *value;
+        refreshed = true;
     }
 
     CLAY(id, {
@@ -1190,7 +1201,7 @@ bool UIEditInt(Clay_ElementId id, Clay_String label, f32* value, s32 minValue, s
         slot->textData.type = UICustomType_TextArea;
         slot->textData.buffer = slot->buffer;
         slot->textData.capacity = sizeof(slot->buffer);
-        slot->textData.flags = UITextAreaFlags_CenterX | UITextAreaFlags_CenterY;
+        slot->textData.flags = UITextAreaFlags_CenterX | UITextAreaFlags_CenterY | UITextAreaFlags_NoWrap | UITextAreaFlags_Clip;
         CLAY(CLAY_ID_LOCAL("Text"), {
             .layout = { .sizing = { CLAY_SIZING_FIXED(72.0f), CLAY_SIZING_FIXED(28.0f) } },
             .custom = { .customData = &slot->textData }
@@ -1207,7 +1218,7 @@ bool UIEditInt(Clay_ElementId id, Clay_String label, f32* value, s32 minValue, s
 
     UIFilterNumericBuffer(slot->buffer, (u32)sizeof(slot->buffer), false);
     s32 parsed;
-    if (UIParseIntBuffer(slot->buffer, &parsed))
+    if ((focused || textEdited) && !refreshed && UIParseIntBuffer(slot->buffer, &parsed))
     {
         parsed = Clamps32(parsed, minValue, maxValue);
         if ((f32)parsed != *value)
@@ -1229,6 +1240,8 @@ bool UIEditFloat(Clay_ElementId id, Clay_String label, f32* value, f32 minValue,
     if (!slot) return false;
 
     bool changed = false;
+    bool textEdited = slot->textData.edited != 0u;
+    slot->textData.edited = 0u;
     f32 current = Clampf32(IsFiniteF32(*value) ? *value : minValue, minValue, maxValue);
     if (current != *value)
     {
@@ -1236,10 +1249,13 @@ bool UIEditFloat(Clay_ElementId id, Clay_String label, f32* value, f32 minValue,
         changed = true;
     }
 
+    bool focused = UIEditSlotFocused(slot);
+    bool refreshed = false;
     if (slot->buffer[0] == '\0' || slot->lastValue != *value)
     {
         UIFormatFloat(slot->buffer, (u32)sizeof(slot->buffer), current, decimals);
         slot->lastValue = *value;
+        refreshed = true;
     }
 
     CLAY(id, {
@@ -1270,7 +1286,7 @@ bool UIEditFloat(Clay_ElementId id, Clay_String label, f32* value, f32 minValue,
         slot->textData.type = UICustomType_TextArea;
         slot->textData.buffer = slot->buffer;
         slot->textData.capacity = sizeof(slot->buffer);
-        slot->textData.flags = UITextAreaFlags_CenterX | UITextAreaFlags_CenterY;
+        slot->textData.flags = UITextAreaFlags_CenterX | UITextAreaFlags_CenterY | UITextAreaFlags_NoWrap | UITextAreaFlags_Clip;
         CLAY(CLAY_ID_LOCAL("Text"), {
             .layout = { .sizing = { CLAY_SIZING_FIXED(82.0f), CLAY_SIZING_FIXED(28.0f) } },
             .custom = { .customData = &slot->textData }
@@ -1286,7 +1302,7 @@ bool UIEditFloat(Clay_ElementId id, Clay_String label, f32* value, f32 minValue,
 
     UIFilterNumericBuffer(slot->buffer, (u32)sizeof(slot->buffer), true);
     f32 parsed;
-    if (UIParseFloatBuffer(slot->buffer, &parsed))
+    if ((focused || textEdited) && !refreshed && UIParseFloatBuffer(slot->buffer, &parsed))
     {
         parsed = Clampf32(parsed, minValue, maxValue);
         if (parsed != *value)
@@ -1308,6 +1324,8 @@ static bool UIEditComponent(Clay_ElementId compId, f32* value, f32 minValue, f32
     if (!slot) return false;
 
     bool changed = false;
+    bool textEdited = slot->textData.edited != 0u;
+    slot->textData.edited = 0u;
     f32 current = Clampf32(IsFiniteF32(*value) ? *value : minValue, minValue, maxValue);
     if (!isFloat) current = (f32)(s32)current;
     if (current != *value)
@@ -1316,17 +1334,20 @@ static bool UIEditComponent(Clay_ElementId compId, f32* value, f32 minValue, f32
         changed = true;
     }
 
+    bool focused = UIEditSlotFocused(slot);
+    bool refreshed = false;
     if (slot->buffer[0] == '\0' || slot->lastValue != *value)
     {
         if (isFloat) UIFormatFloat(slot->buffer, (u32)sizeof(slot->buffer), current, decimals);
         else         UIFormatInt(slot->buffer, (u32)sizeof(slot->buffer), (s32)current);
         slot->lastValue = *value;
+        refreshed = true;
     }
 
     slot->textData.type = UICustomType_TextArea;
     slot->textData.buffer = slot->buffer;
     slot->textData.capacity = sizeof(slot->buffer);
-    slot->textData.flags = UITextAreaFlags_CenterX | UITextAreaFlags_CenterY;
+    slot->textData.flags = UITextAreaFlags_CenterX | UITextAreaFlags_CenterY | UITextAreaFlags_NoWrap | UITextAreaFlags_Clip;
     CLAY(compId, {
         .layout = { .sizing = { CLAY_SIZING_FIXED(boxWidth), CLAY_SIZING_FIXED(28.0f) } },
         .custom = { .customData = &slot->textData }
@@ -1345,7 +1366,7 @@ static bool UIEditComponent(Clay_ElementId compId, f32* value, f32 minValue, f32
         parsedOk = UIParseIntBuffer(slot->buffer, &parsedInt);
         parsed = (f32)parsedInt;
     }
-    if (parsedOk)
+    if ((focused || textEdited) && !refreshed && parsedOk)
     {
         parsed = Clampf32(parsed, minValue, maxValue);
         if (!isFloat) parsed = (f32)(s32)parsed;
@@ -1387,7 +1408,7 @@ bool UIEditFloatN(Clay_ElementId id, Clay_String label, f32* values, u32 numComp
         for (u32 i = 0u; i < numComponents; i++)
         {
             Clay_ElementId compId = Clay_GetElementIdWithIndex(CLAY_STRING("UIEditFloatNComp"), id.id + i);
-            changed |= UIEditComponent(compId, &values[i], minValue, maxValue, decimals, true, 68.0f);
+            changed |= UIEditComponent(compId, &values[i], minValue, maxValue, decimals, true, 75.0f);
         }
     }
     return changed;
@@ -1421,7 +1442,7 @@ bool UIEditIntN(Clay_ElementId id, Clay_String label, s32* values, u32 numCompon
         {
             Clay_ElementId compId = Clay_GetElementIdWithIndex(CLAY_STRING("UIEditIntNComp"), id.id + i);
             f32 value = (f32)values[i];
-            changed |= UIEditComponent(compId, &value, (f32)minValue, (f32)maxValue, 0, false, 68.0f);
+            changed |= UIEditComponent(compId, &value, (f32)minValue, (f32)maxValue, 0, false, 75.0f);
             values[i] = (s32)value;
         }
     }

@@ -288,21 +288,17 @@ void RenderOutline(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarge
 
         const Entity* entity = &set->entities[group->entityOffset + target->entityIdx];
         v128f rotation = VecNorm(UnpackQuaternionS16Norm1(entity->rotation));
-
-        // same scale unpack as the surface vertex shader
-        f32 sx = (f32)(entity->scale & 0x7FFu) / 2047.0f * 10.0f;
-        f32 sy = (f32)((entity->scale >> 11u) & 0x7FFu) / 2047.0f * 10.0f;
-        f32 sz = (f32)((entity->scale >> 22u) & 0x3FFu) / 1023.0f * 10.0f;
+        v128f scale = RenderSet_UnpackEntityWorldScale(entity->scale);
 
         struct { mat4x4 viewProj; float position[4]; float rotationQ[4]; float scaleBias[4]; } params;
         params.viewProj = viewProj;
         VecStore(params.position, entity->position);
         VecStore(params.rotationQ, rotation);
-        params.scaleBias[0] = sx;
-        params.scaleBias[1] = sy;
-        params.scaleBias[2] = sz;
+        params.scaleBias[0] = VecGetX(scale);
+        params.scaleBias[1] = VecGetY(scale);
+        params.scaleBias[2] = VecGetZ(scale);
         // constant world thickness like the old engine's 0.04 normal bias
-        params.scaleBias[3] = 0.04f / Maxf32(sx, 1.0e-4f);
+        params.scaleBias[3] = 0.04f / Maxf32(VecGetX(scale), 1.0e-4f);
 
         if (!pass)
         {

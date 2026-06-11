@@ -30,6 +30,93 @@ void RenderSet_InitSet(RenderSet* set, u32 maxEntities, u32 maxGroups, u32 maxBu
         set->sparseID[i] = INVALID_ENTITY;
 }
 
+v128f RenderSet_UnpackEntityScale01(u32 packed)
+{
+    return VecSetR((f32)(packed & 0x7FFu) / 2047.0f,
+                   (f32)((packed >> 11u) & 0x7FFu) / 2047.0f,
+                   (f32)((packed >> 22u) & 0x3FFu) / 1023.0f,
+                   0.0f);
+}
+
+v128f RenderSet_UnpackEntityWorldScale(u32 packed)
+{
+    v128f scale = VecMulf(RenderSet_UnpackEntityScale01(packed), 10.0f);
+    VecSetW(scale, 1.0f);
+    return scale;
+}
+
+u32 RenderSet_PackEntityWorldScale(const f32 scale[3])
+{
+    return PackXY11Z10UnormToU32(VecSetR(Clampf32(scale[0] * 0.1f, 0.0001f, 1.0f),
+                                         Clampf32(scale[1] * 0.1f, 0.0001f, 1.0f),
+                                         Clampf32(scale[2] * 0.1f, 0.0001f, 1.0f), 0.0f));
+}
+
+v128f RenderSet_GroupLocalCenter(const PrimitiveGroup* group)
+{
+    return VecMulf(VecAdd(VecLoad(group->aabbMin), VecLoad(group->aabbMax)), 0.5f);
+}
+
+v128f RenderSet_EntityBoundsCenter(const PrimitiveGroup* group, const Entity* entity, v128f rotation, v128f worldScale)
+{
+    return VecAdd(QMulVec3V(VecMul(RenderSet_GroupLocalCenter(group), worldScale), rotation), entity->position);
+}
+
+bool RenderSet_ResolveEntity(RenderSet* set, u32 groupIdx, u32 entityIdx, PrimitiveGroup** outGroup, Entity** outEntity)
+{
+    if (!set || groupIdx >= set->numGroups) return false;
+    PrimitiveGroup* group = &set->primitiveGroups[groupIdx];
+    if (!group->valid || entityIdx >= group->numEntities) return false;
+    if (outGroup) *outGroup = group;
+    if (outEntity) *outEntity = &set->entities[group->entityOffset + entityIdx];
+    return true;
+}
+
+s32 RenderSet_NodeSpawnOrdinal(const SceneBundle* bundle, s32 nodeIdx)
+{
+    s32 ordinal = 0;
+    for (s32 i = 0; i < bundle->numNodes; i++)
+    {
+        const ANode* node = &bundle->nodes[i];
+        if (node->type != 0 || node->index < 0) continue;
+        if (i == nodeIdx) return ordinal;
+        ordinal++;
+    }
+    return -1;
+}
+
+bool RenderSet_FindNodeEntity(const RenderSet* set, Range range, u32 meshIndex, u32 sparseIdx,
+                              u32* outGroup, u32* outEntity)
+{
+    for (u32 g = range.start; g < range.start + range.count; g++)
+    {
+        const PrimitiveGroup* group = &set->primitiveGroups[g];
+        if (!group->valid || group->meshIndex != meshIndex) continue;
+        for (u32 e = 0; e < group->numEntities; e++)
+        {
+            if (set->entities[group->entityOffset + e].sparseIdx == sparseIdx)
+            {
+                *outGroup = g;
+                *outEntity = e;
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+u32 RenderSet_CountTriangles(const RenderSet* set)
+{
+    u64 triangles = 0u;
+    for (u32 i = 0u; i < set->numGroups; i++)
+    {
+        const PrimitiveGroup* group = &set->primitiveGroups[i];
+        if (!group->valid) continue;
+        triangles += (u64)(group->numIndices / 3u) * group->numEntities;
+    }
+    return (u32)Minu64(triangles, 0xFFFFFFFFull);
+}
+
 static u32 AllocateSparseID(RenderSet* set)
 {
     if (set->nextSparseID >= set->maxEntities)

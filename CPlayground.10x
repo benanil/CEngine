@@ -715,6 +715,9 @@
 				<IncludeFilesWithoutExt>false</IncludeFilesWithoutExt>
 				<Children></Children>
 			</Folder>
+			<File>
+				<Path>EditorSettings.txt</Path>
+			</File>
 		</Children>
 	</Workspace>
 </N10X>

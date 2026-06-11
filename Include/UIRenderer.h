@@ -22,7 +22,9 @@ typedef enum UICustomType_
 typedef enum UITextAreaFlagBits_
 {
     UITextAreaFlags_CenterX = 1u << 0,
-    UITextAreaFlags_CenterY = 1u << 1
+    UITextAreaFlags_CenterY = 1u << 1,
+    UITextAreaFlags_NoWrap  = 1u << 2,
+    UITextAreaFlags_Clip    = 1u << 3
 } UITextAreaFlagBits;
 
 typedef enum UITreeNodeFlags_
@@ -95,6 +97,7 @@ typedef struct UITextAreaCustomData_
     char* buffer;
     u32 capacity;
     u32 flags;
+    u32 edited;
 } UITextAreaCustomData;
 
 void UIInit(void);
@@ -112,6 +115,7 @@ bool UIPushCircle(float2 center, f32 radius, u32 color);
 bool UIPushCapsule(float2 pos, float2 size, u32 color);
 void UIPushBorder(f32 thickness, u32 color);
 
+void UIPushClipRect(float2 pos, float2 size);
 void UIPopClipRect(void);
 void UIGetClipRect(f32 outClip[4]);
 

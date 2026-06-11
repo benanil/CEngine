@@ -1,0 +1,2 @@
+open_last_scene 1
+last_scene Assets/Scenes/BistroGood.scene

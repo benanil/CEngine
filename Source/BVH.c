@@ -398,15 +398,6 @@ static bool BVH_Intersect(const SceneBundle* bundle, bool skinned, u32 rootNode,
 /*                              Scene Raycast                               */
 /*//////////////////////////////////////////////////////////////////////////*/
 
-// world scale of an entity, matches the unpack in the surface vertex shader
-static v128f BVH_EntityScale(u32 packed)
-{
-    f32 x = (f32)(packed & 0x7FFu) / 2047.0f;
-    f32 y = (f32)((packed >> 11u) & 0x7FFu) / 2047.0f;
-    f32 z = (f32)((packed >> 22u) & 0x3FFu) / 1023.0f;
-    return VecSetR(Maxf32(x * 10.0f, 1.0e-6f), Maxf32(y * 10.0f, 1.0e-6f), Maxf32(z * 10.0f, 1.0e-6f), 1.0f);
-}
-
 static s32 BVH_RaycastSet(const RenderSet* set, bool skinned, v128f origin, v128f dir, BVHHit* hit)
 {
     s32 anyHit = 0;
@@ -432,7 +423,8 @@ static s32 BVH_RaycastSet(const RenderSet* set, bool skinned, v128f origin, v128
                 // world space, the unnormalized direction keeps t in world units
                 v128f rotation = VecNorm(UnpackQuaternionS16Norm1(entity->rotation));
                 v128f invRot   = QConjugate(rotation);
-                v128f scale    = BVH_EntityScale(entity->scale);
+                v128f scale    = VecMax(RenderSet_UnpackEntityWorldScale(entity->scale), VecSet1(1.0e-6f));
+                VecSetW(scale, 1.0f);
                 v128f localOrigin = VecDiv(QMulVec3V(VecSub(origin, entity->position), invRot), scale);
                 v128f localDir    = VecDiv(QMulVec3V(dir, invRot), scale);
 
