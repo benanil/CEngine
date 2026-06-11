@@ -291,7 +291,7 @@ void SetPressedAndReleasedKeys()
 {
     AndNot512(ReleasedKeys, LastKeys, DownKeys);
     AndNot512(PressedKeys , DownKeys, LastKeys);
-    
+
     // Mouse
     PlatformCtx.MouseReleased = PlatformCtx.MouseLast & ~PlatformCtx.MouseDown;
     PlatformCtx.MousePressed  = ~PlatformCtx.MouseLast & PlatformCtx.MouseDown;

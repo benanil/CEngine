@@ -367,16 +367,12 @@ void EditorOpenScene(const char* path)
 // outlines it. runs once per left click outside the ui
 void EditorPickingUpdate(Camera* camera)
 {
-    if (!GetMousePressed(MouseButton_Left) || UIAnyWindowHovered()) return;
-
-    f32 mx, my;
-    GetMousePos(&mx, &my);
-    if (my < 42.0f) return; // editor tab bar
+    if (!GetMousePressed(MouseButton_Left) || !EditorSceneInteractAllowed()) return;
 
     Scene* scene = Scene_GetActive();
     if (!scene) return;
 
-    RayV ray = ScreenPointToRay(camera, (float2){ mx, my });
+    RayV ray = ScreenPointToRay(camera, EditorSceneMouse());
     BVHHit hit;
     if (!BVH_RaycastScene(scene, ray.origin, ray.dir, &hit))
     {
@@ -422,7 +418,7 @@ void EditorSceneHotkeys(void)
             sceneObjectSelection.valid = false;
     }
 
-    if (GetKeyPressed(SDLK_DELETE) && !UIAnyWindowHovered())
+    if (GetKeyPressed(SDLK_DELETE) && (!UIAnyWindowHovered() || EditorSceneInteractAllowed()))
     {
         if (EditorGizmoDeleteSelected())
         {
@@ -1116,9 +1112,8 @@ bool EditorLightGizmoUpdate(Camera* camera)
     Scene* scene = Scene_GetActive();
     if (!scene || scene->numLights == 0u) return false;
 
-    f32 mx, my;
-    GetMousePos(&mx, &my);
-    float2 mouse = { mx, my };
+    float2 mouse = EditorSceneMouse();
+    f32 mx = mouse.x, my = mouse.y;
 
     if (sceneLightGizmoDragging)
     {
@@ -1141,7 +1136,7 @@ bool EditorLightGizmoUpdate(Camera* camera)
         return true;
     }
 
-    if (!GetMousePressed(MouseButton_Left) || UIAnyWindowHovered()) return false;
+    if (!GetMousePressed(MouseButton_Left) || !EditorSceneInteractAllowed()) return false;
 
     for (s32 i = (s32)scene->numLights - 1; i >= 0; i--)
     {
@@ -1167,10 +1162,16 @@ void DrawSceneLightGizmos(Camera* camera)
     Scene* scene = Scene_GetActive();
     if (!scene) return;
 
+    float2 origin = EditorSceneViewOrigin();
+    bool sceneView = EditorSceneViewActive();
     for (u32 i = 0u; i < scene->numLights; i++)
     {
         float2 screen;
         if (!SceneLightWorldToScreen(camera, &scene->lights[i], &screen, NULL)) continue;
+        screen = F2Add(screen, origin);
+        // in scene view mode the icons draw after the window quads, skip the spots
+        // where another window covers the view so they don't bleed over it
+        if (sceneView && !EditorSceneViewPointVisible(screen)) continue;
         f32 radius = (s32)i == sceneSelectedLight ? SCENE_LIGHT_GIZMO_RADIUS + 3.0f : SCENE_LIGHT_GIZMO_RADIUS;
         UIPushCircle(screen, radius, (s32)i == sceneSelectedLight ? 0xFFFFFFFFu : 0xAA000000u);
         UIPushCircle(screen, SCENE_LIGHT_GIZMO_RADIUS - 2.0f, SceneLightGizmoColor(&scene->lights[i]));
@@ -1389,7 +1390,7 @@ void DrawSceneWindow(bool* open)
     {
         Scene* scene = Scene_GetActive();
 
-        if (scene && GetKeyPressed(SDLK_DELETE) && !UIAnyWindowHovered())
+        if (scene && GetKeyPressed(SDLK_DELETE) && (!UIAnyWindowHovered() || EditorSceneInteractAllowed()))
         {
             if (EditorGizmoDeleteSelected())
             {

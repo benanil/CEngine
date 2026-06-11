@@ -65,6 +65,12 @@ RenderSettings g_RenderSettings = {
 };
 
 static u64 g_RenderFrameIndex;
+static SDL_GPUTexture* g_RenderFinalTexture;
+
+SDL_GPUTexture* RenderGetFinalTexture(void)
+{
+    return g_RenderFinalTexture;
+}
 
 static RenderLightDebugInfo g_LightDebugInfo;
 static FrameTextureSet g_ResizeReleaseQueue[RESIZE_RELEASE_DELAY];
@@ -473,12 +479,15 @@ void Render(void)
     }
 
     WindowState* winstate = &g_WindowState;
+    // the camera projection and picking work in scene view coordinates while one is open
+    u32 viewW = screenW, viewH = screenH;
+    bool sceneViewActive = GetSceneViewSize(&viewW, &viewH);
     u32 renderW, renderH;
     GetRenderResolution(screenW, screenH, &renderW, &renderH);
     if (winstate->prev_width != screenW || winstate->prev_height != screenH ||
         winstate->render_width != renderW || winstate->render_height != renderH)
     {
-        ResizeWindowFrameTextures(winstate, screenW, screenH);
+        ResizeWindowFrameTextures(winstate, viewW, viewH);
         renderW = winstate->render_width;
         renderH = winstate->render_height;
         swapchainLogged = 0;
@@ -575,19 +584,35 @@ void Render(void)
 
     SDL_GPUColorTargetInfo final_load_target = MakeLoadedTextureTarget(finalTexture);
     RenderSlugDemo(cmd, &final_load_target, &main_depth_target, viewProj);
+    g_RenderFinalTexture = finalTexture;
 
-    // the scene upscales to the swapchain, the ui draws on top at native resolution
-    SDL_GPUBlitInfo blit_info;
-    SDL_zero(blit_info);
-    blit_info.source.texture = finalTexture;
-    blit_info.source.w = renderW;
-    blit_info.source.h = renderH;
-    blit_info.destination.texture = swapchainTexture;
-    blit_info.destination.w = screenW;
-    blit_info.destination.h = screenH;
-    blit_info.load_op = SDL_GPU_LOADOP_DONT_CARE;
-    blit_info.filter = SDL_GPU_FILTER_LINEAR;
-    SDL_BlitGPUTexture(cmd, &blit_info);
+    if (sceneViewActive)
+    {
+        // the scene view window shows the texture, only clear the swapchain for the ui
+        SDL_GPUColorTargetInfo clear_target;
+        SDL_zero(clear_target);
+        clear_target.load_op = SDL_GPU_LOADOP_CLEAR;
+        clear_target.store_op = SDL_GPU_STOREOP_STORE;
+        clear_target.clear_color = (SDL_FColor){ 0.07f, 0.07f, 0.08f, 1.0f };
+        clear_target.texture = swapchainTexture;
+        SDL_GPURenderPass* clearPass = SDL_BeginGPURenderPass(cmd, &clear_target, 1, NULL);
+        SDL_EndGPURenderPass(clearPass);
+    }
+    else
+    {
+        // the scene upscales to the swapchain, the ui draws on top at native resolution
+        SDL_GPUBlitInfo blit_info;
+        SDL_zero(blit_info);
+        blit_info.source.texture = finalTexture;
+        blit_info.source.w = renderW;
+        blit_info.source.h = renderH;
+        blit_info.destination.texture = swapchainTexture;
+        blit_info.destination.w = screenW;
+        blit_info.destination.h = screenH;
+        blit_info.load_op = SDL_GPU_LOADOP_DONT_CARE;
+        blit_info.filter = SDL_GPU_FILTER_LINEAR;
+        SDL_BlitGPUTexture(cmd, &blit_info);
+    }
 
     SDL_GPUColorTargetInfo ui_target = MakeLoadedTextureTarget(swapchainTexture);
     UIBeginFrame();

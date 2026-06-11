@@ -645,9 +645,9 @@ bool EditorGizmoUpdate(Camera* camera)
     v128f axes[3];
     GizmoHandleAxes(pickedRotation, axes);
 
-    f32 mx, my;
-    GetMousePos(&mx, &my);
-    RayV ray = ScreenPointToRay(camera, (float2){ mx, my });
+    float2 sceneMouse = EditorSceneMouse();
+    f32 mx = sceneMouse.x, my = sceneMouse.y;
+    RayV ray = ScreenPointToRay(camera, sceneMouse);
 
     bool consumed = false;
     if (gizmo.dragging)
@@ -765,7 +765,7 @@ bool EditorGizmoUpdate(Camera* camera)
                 gizmo.hotAxis = GizmoAxis_Uniform;
         }
 
-        if (gizmo.hotAxis != GizmoAxis_None && GetMousePressed(MouseButton_Left) && !UIAnyWindowHovered())
+        if (gizmo.hotAxis != GizmoAxis_None && GetMousePressed(MouseButton_Left) && EditorSceneInteractAllowed())
         {
             // members and pivot were captured by the collect above this frame
             gizmo.dragging = true;

@@ -14,13 +14,21 @@ extern RenderState g_RenderState;
 extern SDL_Window* g_SDLWindow;
 extern Camera g_Camera;
 
-static bool editorOpen   = true;
-static bool sceneOpen    = false;
-static bool texturesOpen = false;
-static bool settingsOpen = false;
-static bool assetsOpen   = false;
-static bool consoleOpen  = false;
-static bool testOpen     = false;
+static bool editorOpen    = true;
+static bool sceneOpen     = false;
+static bool texturesOpen  = false;
+static bool settingsOpen  = false;
+static bool assetsOpen    = false;
+static bool consoleOpen   = false;
+static bool testOpen      = false;
+static bool sceneViewOpen = false; // closed = the scene fills the whole window like before
+
+// scene view content rect from last frame's layout, the renderer sizes the scene to it
+static bool   sceneViewVisible;
+static float2 sceneViewContentPos;
+static float2 sceneViewContentSize;
+static UIImageData sceneViewImage;
+#define SCENE_VIEW_TITLE "Scene View"
 
 #define EDITOR_SETTINGS_PATH "EditorSettings.txt"
 #define EDITOR_UI_LAYOUT_PATH "EditorUI.txt"
@@ -456,7 +464,71 @@ static void DrawSettingsWindow()
 static u32 EditorOpenWindowMask(void)
 {
     return ((u32)editorOpen << 0) | ((u32)sceneOpen << 1) | ((u32)texturesOpen << 2) | ((u32)settingsOpen << 3) |
-           ((u32)assetsOpen << 4) | ((u32)consoleOpen << 5) | ((u32)testOpen << 6);
+           ((u32)assetsOpen << 4) | ((u32)consoleOpen << 5) | ((u32)testOpen << 6) | ((u32)sceneViewOpen << 7);
+}
+
+bool EditorSceneViewActive(void)
+{
+    return sceneViewVisible;
+}
+
+float2 EditorSceneViewOrigin(void)
+{
+    return sceneViewVisible ? sceneViewContentPos : (float2){ 0.0f, 0.0f };
+}
+
+float2 EditorSceneMouse(void)
+{
+    f32 mx, my;
+    GetMousePos(&mx, &my);
+    float2 origin = EditorSceneViewOrigin();
+    return (float2){ mx - origin.x, my - origin.y };
+}
+
+bool EditorSceneViewPointVisible(float2 point)
+{
+    if (!sceneViewVisible) return true;
+    if (point.x < sceneViewContentPos.x || point.y < sceneViewContentPos.y ||
+        point.x > sceneViewContentPos.x + sceneViewContentSize.x ||
+        point.y > sceneViewContentPos.y + sceneViewContentSize.y) return false;
+    Clay_ElementId windowID = { .id = StringToHash(SCENE_VIEW_TITLE, 5381u) };
+    return UIWindowPointVisible(windowID, point);
+}
+
+bool EditorSceneInteractAllowed(void)
+{
+    f32 mx, my;
+    GetMousePos(&mx, &my);
+    if (sceneViewVisible) return EditorSceneViewPointVisible((float2){ mx, my });
+    if (my < 42.0f) return false; // editor tab bar
+    return !UIAnyWindowHovered();
+}
+
+static void DrawSceneViewWindow(void)
+{
+    sceneViewVisible = false;
+    Clay_ElementId windowID = { .id = StringToHash(SCENE_VIEW_TITLE, 5381u) };
+    if (!UIBeginWindowId(windowID, SCENE_VIEW_TITLE, (float2){ 420.0f, 80.0f }, (float2){ 960.0f, 620.0f }, &sceneViewOpen, 0u)) return;
+
+    sceneViewImage = (UIImageData){ .texture = RenderGetFinalTexture() };
+    Clay_ElementId imageId = CLAY_ID("SceneViewImage");
+    if (sceneViewImage.texture)
+    {
+        CLAY(imageId, {
+            .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_GROW(0) } },
+            .image = { .imageData = &sceneViewImage }
+        }) {}
+    }
+
+    // last frame's content rect, next frame's scene renders at this size
+    Clay_ElementData imageData = Clay_GetElementData(imageId);
+    if (imageData.found && imageData.boundingBox.width >= 1.0f && imageData.boundingBox.height >= 1.0f)
+    {
+        sceneViewContentPos = (float2){ imageData.boundingBox.x, imageData.boundingBox.y };
+        sceneViewContentSize = (float2){ imageData.boundingBox.width, imageData.boundingBox.height };
+        sceneViewVisible = true;
+    }
+    UIEndWindow();
 }
 
 static void GraphicsEditorUI(void)
@@ -500,6 +572,7 @@ static void GraphicsEditorUI(void)
         assetsOpen   ^= UIButton(CLAY_ID("Assets")  , CLAY_STRING("Assets")  , (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
         consoleOpen  ^= UIButton(CLAY_ID("Console") , CLAY_STRING("Console") , (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
         testOpen     ^= UIButton(CLAY_ID("Test")    , CLAY_STRING("Test")    , (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
+        sceneViewOpen ^= UIButton(CLAY_ID("View")   , CLAY_STRING("View")    , (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
         UIPopFloat(UIFloat_CornerRadius);
         UIPopFloat(UIFloat_TextScale);
     }
@@ -511,7 +584,9 @@ static void GraphicsEditorUI(void)
     }) {
 
         ShowFps();
-        DrawSceneLightGizmos(&g_Camera);
+        bool sceneViewWasVisible = sceneViewVisible;
+        if (!sceneViewWasVisible) DrawSceneLightGizmos(&g_Camera);
+        DrawSceneViewWindow();
         WindowTestUI();
         DrawSettingsWindow();
         DrawSceneWindow(&sceneOpen);
@@ -524,8 +599,16 @@ static void GraphicsEditorUI(void)
     if (EditorOpenWindowMask() != openMaskBefore) UIWindowMarkLayoutChanged();
     if (UIWindowConsumeLayoutChanged() && editorContinueLastUI) UIWindowSaveLayout(EDITOR_UI_LAYOUT_PATH);
 
+    // the renderer sizes the scene to the view content (0 0 = fullscreen like before)
+    if (sceneViewVisible) SetSceneViewSize((u32)(sceneViewContentSize.x + 0.5f), (u32)(sceneViewContentSize.y + 0.5f));
+    else SetSceneViewSize(0u, 0u);
+
     Clay_RenderCommandArray commands = UIEndLayout();
     UIRenderCommands(&commands);
+
+    // with the scene in a window the light icons draw after the window quads so they
+    // appear on top of the scene image, filtered to spots where the view is unobstructed
+    if (sceneViewVisible) DrawSceneLightGizmos(&g_Camera);
 }
 
 void UIRenderCallback(void)

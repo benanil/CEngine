@@ -328,8 +328,15 @@ void GraphicsInit(bool msaa);
 
 void CreateWindowBuffers();
 
-// scene texture resolution: the window size scaled by g_RenderSettings.renderScale (clamped)
+// scene texture resolution: the scene view size (window size when no scene view is
+// active) scaled by g_RenderSettings.renderScale (clamped)
 void GetRenderResolution(u32 windowW, u32 windowH, u32* outW, u32* outH);
+
+// while a scene view window is open the 3d scene renders at its content size and the
+// editor shows the texture inside the window instead of the fullscreen blit. 0 0 disables
+void SetSceneViewSize(u32 width, u32 height);
+// overrides w/h with the scene view size, returns true while one is active
+bool GetSceneViewSize(u32* w, u32* h);
 
 void GraphicsDestroy();
 

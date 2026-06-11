@@ -801,8 +801,10 @@ typedef __m256  v256f;
 typedef __m256i v256i;
 typedef __m256i v256u;
 
-#define VecLoadI256(ptr)     _mm256_stream_load_si256((__m256i const *)ptr)
-#define VecStoreI256(ptr, x) _mm256_stream_si256((__m256i *)ptr, x)
+// parens around ptr matter: the cast must apply after pointer arithmetic like (u64*)res + 4,
+// casting first would scale the offset by sizeof(__m256i) and read/write 128 bytes off
+#define VecLoadI256(ptr)     _mm256_stream_load_si256((__m256i const *)(ptr))
+#define VecStoreI256(ptr, x) _mm256_stream_si256((__m256i *)(ptr), x)
 
 #define VeciAndNot256(x, y)  _mm256_andnot_si256(x, y)
 #define VeciAnd256(x, y)     _mm256_and_si256(x, y)

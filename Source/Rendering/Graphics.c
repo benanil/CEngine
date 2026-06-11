@@ -205,8 +205,25 @@ void GraphicsInit(bool msaa)
     InitGeometryHeaps();
 }
 
+static u32 g_SceneViewWidth, g_SceneViewHeight; // 0 = scene renders fullscreen
+
+void SetSceneViewSize(u32 width, u32 height)
+{
+    g_SceneViewWidth = width;
+    g_SceneViewHeight = height;
+}
+
+bool GetSceneViewSize(u32* w, u32* h)
+{
+    if (g_SceneViewWidth == 0u || g_SceneViewHeight == 0u) return false;
+    *w = g_SceneViewWidth;
+    *h = g_SceneViewHeight;
+    return true;
+}
+
 void GetRenderResolution(u32 windowW, u32 windowH, u32* outW, u32* outH)
 {
+    GetSceneViewSize(&windowW, &windowH);
     f32 scale = g_RenderSettings.renderScale;
     if (scale <= 0.0f) scale = 1.0f; // unset settings render at native resolution
     scale = Clampf32(scale, 0.25f, 2.0f);

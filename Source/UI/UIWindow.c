@@ -1173,6 +1173,16 @@ f32 UIWindowRemainingHeight(Clay_ElementId windowId, Clay_ElementId elementId, f
     return Maxf32(contentBottom - element.boundingBox.y - reserveBelow - 1.0f, 32.0f);
 }
 
+bool UIWindowPointVisible(Clay_ElementId id, float2 point)
+{
+    s32 index = UIWindowFind(id.id);
+    if ((u32)index >= g_UIWindowCount) return false;
+    UIWindow* window = &g_UIWindows[index];
+    if (!UIWindowIsVisible(window) || window->isCollapsed) return false;
+    if (!UIHitRect(window->position, UIWindowScale(window), point)) return false;
+    return !UIWindowOnTopOf(index, point);
+}
+
 bool UIAnyWindowHovered(void)
 {
     for (u32 i = 0u; i < g_UIWindowCount; i++)

@@ -1,36 +1,23 @@
 work 0 40 2560 1371
-window 3405813591
-	rect 2042 59 493 1349
-	depth 1
-	collapsed 0
-	open 0
-	tabgroup 3405813591
-	tabactive 1
-window 150627629
-	rect 2042 59 493 1349
+window 449608830
+	rect 997 268 1416 504
 	depth 2
 	collapsed 0
 	open 0
-	tabgroup 3405813591
-	tabactive 1
-window 884998328
-	rect 576 1037 1537 371
+window 3405813591
+	rect 2006 40 554 1371
 	depth 1
 	collapsed 0
 	open 0
-	tabgroup 884998328
-	tabactive 1
-window 483261186
-	rect 576 1037 1537 371
+window 884998328
+	rect 382 856 1416 504
 	depth 3
 	collapsed 0
 	open 0
-	tabgroup 884998328
-	tabactive 1
 window 3336308477
-	rect 0 40 576 1369
-	depth 4
+	rect 0 40 588 1371
+	depth 1
 	collapsed 0
-	open 1
+	open 0
 	tabgroup 3336308477
 	tabactive 1

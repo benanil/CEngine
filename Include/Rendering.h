@@ -46,6 +46,9 @@ typedef struct RenderLightDebugInfo_
 
 extern RenderSettings g_RenderSettings;
 
+// post processed scene texture of the current frame, displayed by the editor scene view
+SDL_GPUTexture* RenderGetFinalTexture(void);
+
 void DestroyPipeline();
 
 void Quit(int rc);

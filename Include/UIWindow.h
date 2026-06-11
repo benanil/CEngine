@@ -71,6 +71,9 @@ void UIEndWindow(void);
 bool UIAnyWindowHovered(void);
 UIWindow* UIGetWindow(Clay_ElementId id);
 
+// true when point hits this window and no other window covers it there
+bool UIWindowPointVisible(Clay_ElementId id, float2 point);
+
 // pixel height left for elementId inside the window content, measured from last
 // frame's layout. reserveBelow keeps space for elements drawn after it.
 // out: small fallback before the element's first layout
