@@ -34,6 +34,7 @@ typedef struct UIWindow_
 
     u32 flags;
     u32 hash;
+    u32 tabGroup; // windows sharing a group id occupy the same rect as switchable tabs, 0 = ungrouped
     s32 currElement;
     s32 selectedElement;
     s32 numElements;
@@ -42,10 +43,28 @@ typedef struct UIWindow_
     bool started;
     bool isCollapsed;
     bool isFocused;
+    bool tabActive; // the group member currently shown
+    char tabTitle[24];
 } UIWindow;
 
 void UIWindowBeginFrame(void);
 void UIWindowEndFrame(void);
+
+// reserves screen space at the top (e.g. the editor tab bar). snapping, docking,
+// dragging and the resize remap all keep windows inside the remaining work area.
+// persists across frames, call once or whenever the reserved height changes
+void UIWindowSetTopInset(f32 inset);
+
+// window layout persistence. the file is line separated text, one "window <hash>" line
+// per window followed by tab indented properties (rect, depth, collapsed, open, tabgroup,
+// tabactive). loaded placements are applied when their window is next built, including its open state
+bool UIWindowSaveLayout(const char* path);
+bool UIWindowLoadLayout(const char* path);
+
+// the changed flag is set when a window is moved, resized, docked, snapped, collapsed,
+// closed or remapped after an application window resize. consume it to know when to save
+void UIWindowMarkLayoutChanged(void);
+bool UIWindowConsumeLayoutChanged(void);
 bool UIBeginWindowId(Clay_ElementId id, const char* title, float2 position, float2 scale, bool* open, u32 flags);
 bool UIBeginWindow(const char* title, float2 position, float2 scale, bool* open, u32 flags);
 void UIEndWindow(void);

@@ -23,9 +23,11 @@ static bool consoleOpen  = false;
 static bool testOpen     = false;
 
 #define EDITOR_SETTINGS_PATH "EditorSettings.txt"
+#define EDITOR_UI_LAYOUT_PATH "EditorUI.txt"
 
 static bool editorSettingsLoaded;
 static bool editorOpenLastScene;
+static bool editorContinueLastUI = true;
 static char editorLastScene[512];
 
 static bool EditorLineStartsWith(const char* line, const char* prefix)
@@ -45,6 +47,10 @@ static void EditorSettingsSave(void)
     const char* openLine = editorOpenLastScene ? "open_last_scene 1\n" : "open_last_scene 0\n";
     u32 openLen = (u32)StringLength(openLine);
     MemCopy(p, openLine, openLen); p += openLen;
+
+    const char* uiLine = editorContinueLastUI ? "continue_last_ui 1\n" : "continue_last_ui 0\n";
+    u32 uiLen = (u32)StringLength(uiLine);
+    MemCopy(p, uiLine, uiLen); p += uiLen;
 
     const char* lastPrefix = "last_scene ";
     u32 prefixLen = (u32)StringLength(lastPrefix);
@@ -73,6 +79,8 @@ static void EditorSettingsLoad(void)
 
         if (EditorLineStartsWith(line, "open_last_scene "))
             editorOpenLastScene = line[16] == '1';
+        else if (EditorLineStartsWith(line, "continue_last_ui "))
+            editorContinueLastUI = line[17] == '1';
         else if (EditorLineStartsWith(line, "last_scene "))
         {
             const char* value = line + 11;
@@ -409,6 +417,13 @@ static void DrawSettingsWindow()
             editorOpenLastScene = openLast;
             EditorSettingsSave();
         }
+        bool continueUI = editorContinueLastUI;
+        if (UICheckbox(CLAY_ID("SettingsContinueLastUI"), CLAY_STRING("Continue from last UI"), &continueUI))
+        {
+            editorContinueLastUI = continueUI;
+            EditorSettingsSave();
+            if (continueUI) UIWindowSaveLayout(EDITOR_UI_LAYOUT_PATH);
+        }
         CLAY_TEXT(CLAY_STRING("Last active scene:"), CLAY_TEXT_CONFIG({
             .fontSize = 13,
             .textColor = UIGetClayColor(UIColor_SubText)
@@ -435,17 +450,36 @@ static void DrawSettingsWindow()
     }
 }
 
+static u32 EditorOpenWindowMask(void)
+{
+    return ((u32)editorOpen << 0) | ((u32)sceneOpen << 1) | ((u32)texturesOpen << 2) | ((u32)settingsOpen << 3) |
+           ((u32)assetsOpen << 4) | ((u32)consoleOpen << 5) | ((u32)testOpen << 6);
+}
+
 static void GraphicsEditorUI(void)
 {
+    const f32 tabBarHeight = 40.0f;
     Clay_BeginLayout();
 
     int screenWidth, screenHeight;
     SDL_GetWindowSize(g_SDLWindow, &screenWidth, &screenHeight);
     u16 borderWidth = (u16)UIGetFloat(UIFloat_BorderWidth);
 
+    UIWindowSetTopInset(tabBarHeight);
+
+    static bool uiLayoutLoadAttempted;
+    if (!uiLayoutLoadAttempted)
+    {
+        uiLayoutLoadAttempted = true;
+        EditorSettingsLoad();
+        if (editorContinueLastUI) UIWindowLoadLayout(EDITOR_UI_LAYOUT_PATH);
+    }
+
+    u32 openMaskBefore = EditorOpenWindowMask();
+
     CLAY(CLAY_ID("TabBar"), {
         .layout = {
-            .sizing = { CLAY_SIZING_FIXED(screenWidth), CLAY_SIZING_FIXED(40.0f) },
+            .sizing = { CLAY_SIZING_FIXED(screenWidth), CLAY_SIZING_FIXED(tabBarHeight) },
             .childAlignment = { .x = CLAY_ALIGN_X_LEFT, .y = CLAY_ALIGN_Y_CENTER },
             .childGap = 15,
             .padding = { 20, 0 },
@@ -483,6 +517,10 @@ static void GraphicsEditorUI(void)
         DrawConsoleWindow(&consoleOpen);
         DrawGraphicsWindow();
     }
+
+    if (EditorOpenWindowMask() != openMaskBefore) UIWindowMarkLayoutChanged();
+    if (UIWindowConsumeLayoutChanged() && editorContinueLastUI) UIWindowSaveLayout(EDITOR_UI_LAYOUT_PATH);
+
     Clay_RenderCommandArray commands = UIEndLayout();
     UIRenderCommands(&commands);
 }

@@ -585,25 +585,10 @@
 						<Path>Source/AnimationBake.c</Path>
 					</File>
 					<File>
-						<Path>Source/Editor.c</Path>
-					</File>
-					<File>
-						<Path>Source/Scene.cpp</Path>
-					</File>
-					<File>
 						<Path>Source/Scene.c</Path>
 					</File>
 					<File>
 						<Path>Source/DemoScene.c</Path>
-					</File>
-					<File>
-						<Path>Source/EditorInternal.h</Path>
-					</File>
-					<File>
-						<Path>Source/SceneEditor.c</Path>
-					</File>
-					<File>
-						<Path>Source/AssetsEditor.c</Path>
 					</File>
 					<File>
 						<Path>Source/SceneSerializer.c</Path>
@@ -612,14 +597,18 @@
 						<Path>Source/Async.c</Path>
 					</File>
 					<File>
-						<Path>Source/ConsoleEditor.c</Path>
-					</File>
-					<File>
 						<Path>Source/BVH.c</Path>
 					</File>
-					<File>
-						<Path>Source/EditorGizmo.c</Path>
-					</File>
+					<Folder>
+						<Path>Source/Editor</Path>
+						<IncludeFilter>*.c,*.cc,*.cpp,*.c++,*.cp,*.cxx,*.h,*.hh,*.hpp,*.h++,*.hp,*.hxx,*.inl,*.cs,*.rs,*.java,*.jav,*.js,*.jsc,*.jsx,*.json,*.cls,*.py,*.rpy,*.php,*.php3,*.phl,*.phtml,*.rhtml,*.tpl,*.phps,*.lua,*.html,*.html5,*.htm,*.xml,*.xaml,*.css,*.ssi,*.haml,*.yaml,*.bat,*.wbf,*.wbt,*.txt,*.cmake,*.make,*.makefile,*.mak,*.mk,*.sh,*.bash,*.csv,*.asp,*.pl,*.mac,*.ws,*.vbs,*.perl,*.src,*.rss,*.inc,*.f,*.go,*.prl,*.plx,*.rb,*.lsp,*.lpx,*.ps1,*.command,*.cbl,*.cob,*.qs,*.wxs,*.ph,*.msc,*.glsl,*.hlsl,*.fx,*.vert,*.tesc,*.tese,*.geom,*.frag,*.comp,*.pssl,*.scons,*.cu,*.jai,</IncludeFilter>
+						<ExcludeFilter>Extern/SDL3/examples,Extern/SDL3/test,</ExcludeFilter>
+						<SyncFiles>true</SyncFiles>
+						<Recursive>true</Recursive>
+						<ShowEmptyFolders>true</ShowEmptyFolders>
+						<IncludeFilesWithoutExt>false</IncludeFilesWithoutExt>
+						<Children></Children>
+					</Folder>
 				</Children>
 			</Folder>
 			<File>
@@ -686,26 +675,6 @@
 				<Children></Children>
 			</Folder>
 			<Folder>
-				<Path>BuildRelInfo</Path>
-				<IncludeFilter>*.c,*.cc,*.cpp,*.c++,*.cp,*.cxx,*.h,*.hh,*.hpp,*.h++,*.hp,*.hxx,*.inl,*.cs,*.rs,*.java,*.jav,*.js,*.jsc,*.jsx,*.json,*.cls,*.py,*.rpy,*.php,*.php3,*.phl,*.phtml,*.rhtml,*.tpl,*.phps,*.lua,*.html,*.html5,*.htm,*.xml,*.xaml,*.css,*.ssi,*.haml,*.yaml,*.bat,*.wbf,*.wbt,*.txt,*.cmake,*.make,*.makefile,*.mak,*.mk,*.sh,*.bash,*.csv,*.asp,*.pl,*.mac,*.ws,*.vbs,*.perl,*.src,*.rss,*.inc,*.f,*.go,*.prl,*.plx,*.rb,*.lsp,*.lpx,*.ps1,*.command,*.cbl,*.cob,*.qs,*.wxs,*.ph,*.msc,*.glsl,*.hlsl,*.fx,*.vert,*.tesc,*.tese,*.geom,*.frag,*.comp,*.pssl,*.scons,*.cu,*.jai,</IncludeFilter>
-				<ExcludeFilter>Extern/SDL3/examples,Extern/SDL3/test,</ExcludeFilter>
-				<SyncFiles>true</SyncFiles>
-				<Recursive>true</Recursive>
-				<ShowEmptyFolders>true</ShowEmptyFolders>
-				<IncludeFilesWithoutExt>false</IncludeFilesWithoutExt>
-				<Children></Children>
-			</Folder>
-			<Folder>
-				<Path>BuildRelInfoClang</Path>
-				<IncludeFilter>*.c,*.cc,*.cpp,*.c++,*.cp,*.cxx,*.h,*.hh,*.hpp,*.h++,*.hp,*.hxx,*.inl,*.cs,*.rs,*.java,*.jav,*.js,*.jsc,*.jsx,*.json,*.cls,*.py,*.rpy,*.php,*.php3,*.phl,*.phtml,*.rhtml,*.tpl,*.phps,*.lua,*.html,*.html5,*.htm,*.xml,*.xaml,*.css,*.ssi,*.haml,*.yaml,*.bat,*.wbf,*.wbt,*.txt,*.cmake,*.make,*.makefile,*.mak,*.mk,*.sh,*.bash,*.csv,*.asp,*.pl,*.mac,*.ws,*.vbs,*.perl,*.src,*.rss,*.inc,*.f,*.go,*.prl,*.plx,*.rb,*.lsp,*.lpx,*.ps1,*.command,*.cbl,*.cob,*.qs,*.wxs,*.ph,*.msc,*.glsl,*.hlsl,*.fx,*.vert,*.tesc,*.tese,*.geom,*.frag,*.comp,*.pssl,*.scons,*.cu,*.jai,</IncludeFilter>
-				<ExcludeFilter>Extern/SDL3/examples,Extern/SDL3/test,</ExcludeFilter>
-				<SyncFiles>true</SyncFiles>
-				<Recursive>true</Recursive>
-				<ShowEmptyFolders>true</ShowEmptyFolders>
-				<IncludeFilesWithoutExt>false</IncludeFilesWithoutExt>
-				<Children></Children>
-			</Folder>
-			<Folder>
 				<Path>.claude</Path>
 				<IncludeFilter>*.c,*.cc,*.cpp,*.c++,*.cp,*.cxx,*.h,*.hh,*.hpp,*.h++,*.hp,*.hxx,*.inl,*.cs,*.rs,*.java,*.jav,*.js,*.jsc,*.jsx,*.json,*.cls,*.py,*.rpy,*.php,*.php3,*.phl,*.phtml,*.rhtml,*.tpl,*.phps,*.lua,*.html,*.html5,*.htm,*.xml,*.xaml,*.css,*.ssi,*.haml,*.yaml,*.bat,*.wbf,*.wbt,*.txt,*.cmake,*.make,*.makefile,*.mak,*.mk,*.sh,*.bash,*.csv,*.asp,*.pl,*.mac,*.ws,*.vbs,*.perl,*.src,*.rss,*.inc,*.f,*.go,*.prl,*.plx,*.rb,*.lsp,*.lpx,*.ps1,*.command,*.cbl,*.cob,*.qs,*.wxs,*.ph,*.msc,*.glsl,*.hlsl,*.fx,*.vert,*.tesc,*.tese,*.geom,*.frag,*.comp,*.pssl,*.scons,*.cu,*.jai,</IncludeFilter>
 				<ExcludeFilter>Extern/SDL3/examples,Extern/SDL3/test,</ExcludeFilter>
@@ -717,6 +686,9 @@
 			</Folder>
 			<File>
 				<Path>EditorSettings.txt</Path>
+			</File>
+			<File>
+				<Path>EditorUI.txt</Path>
 			</File>
 		</Children>
 	</Workspace>

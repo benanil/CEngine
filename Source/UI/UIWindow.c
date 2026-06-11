@@ -2,6 +2,8 @@
 #include "Include/UIWindow.h"
 #include "Include/Platform.h"
 #include "Include/Random.h"
+#include "Include/FileSystem.h"
+#include "Include/Algorithm.h"
 
 typedef enum UIWindowState_
 {
@@ -22,9 +24,35 @@ static u32 g_UIWindowState;
 static u32 g_UIWindowSnapMask;
 static s32 g_UIWindowDockTarget = -1;
 static u32 g_UIWindowDockMask;
+static s32 g_UIWindowTabTarget = -1;   // window whose center zone is hovered while dragging
+static u32 g_UIWindowTabDragHash;      // tab pressed last frame, candidate for detach
+static u32 g_UIWindowTabSwitchHash;    // tab clicked last frame, becomes the visible member
+static float2 g_UIWindowTabDragStart;
 static s32 g_UIWindowResizeHorizontalNeighbor = -1;
 static s32 g_UIWindowResizeVerticalNeighbor = -1;
+static f32 g_UIWindowTopInset;
+static float2 g_UIWindowWorkPosOld;
+static float2 g_UIWindowWorkSizeOld;
+static bool g_UIWindowLayoutChanged;
 static bool g_UIWindowContentOpen;
+
+// placement loaded from a layout file, applied when its window is next built
+typedef struct UIWindowPlacement_
+{
+    u32 hash;
+    u32 tabGroup;
+    float2 position;
+    float2 scale;
+    u8 depth;
+    bool collapsed;
+    bool open;
+    bool tabActive;
+    bool openApplied;
+    bool rectApplied;
+} UIWindowPlacement;
+
+static UIWindowPlacement g_UIWindowPlacements[UI_MAX_WINDOWS];
+static u32 g_UIWindowPlacementCount;
 static bool g_UIWindowCursorRequested;
 static bool g_UIWindowCursorOwned;
 
@@ -53,6 +81,23 @@ enum
     UIWindowSnap_Bottom = 1u << 3
 };
 
+// screen area windows may occupy, the top inset keeps them below overlays like the editor tab bar
+static float2 UIWindowWorkPos(void)
+{
+    return (float2){ 0.0f, Minf32(g_UIWindowTopInset, g_UI.screenSize.y - 1.0f) };
+}
+
+static float2 UIWindowWorkSize(void)
+{
+    float2 pos = UIWindowWorkPos();
+    return (float2){ Maxf32(g_UI.screenSize.x, 1.0f), Maxf32(g_UI.screenSize.y - pos.y, 1.0f) };
+}
+
+void UIWindowSetTopInset(f32 inset)
+{
+    g_UIWindowTopInset = Maxf32(inset, 0.0f);
+}
+
 static float2 UIWindowClampScale(UIWindow* window, float2 scale)
 {
     scale.x = Maxf32(scale.x, window->minScale.x);
@@ -78,6 +123,12 @@ static bool UIWindowIsOpen(const UIWindow* window)
     return !window->isOpenPtr || *window->isOpenPtr;
 }
 
+// hidden members of a tab group must not draw, dock or hit-test
+static bool UIWindowIsVisible(const UIWindow* window)
+{
+    return UIWindowIsOpen(window) && (window->tabGroup == 0u || window->tabActive);
+}
+
 static s32 UIWindowFind(u32 hash)
 {
     for (u32 i = 0u; i < g_UIWindowCount; i++)
@@ -92,7 +143,7 @@ static bool UIWindowOnTopOf(s32 targetIdx, float2 pos)
     for (u32 i = 0u; i < g_UIWindowCount; i++)
     {
         UIWindow* window = &g_UIWindows[i];
-        if ((s32)i == targetIdx || !UIWindowIsOpen(window)) continue;
+        if ((s32)i == targetIdx || !UIWindowIsVisible(window)) continue;
         if (window->depth > target->depth && RectPointIntersect(window->position, UIWindowScale(window), pos)) return true;
     }
     return false;
@@ -136,7 +187,7 @@ static s32 UIWindowFindSharedEdgeWindow(s32 windowIndex, u32 edgeMask)
     for (u32 i = 0u; i < g_UIWindowCount; i++)
     {
         UIWindow* other = &g_UIWindows[i];
-        if ((s32)i == windowIndex || !UIWindowIsOpen(other) || other->isCollapsed) continue;
+        if ((s32)i == windowIndex || !UIWindowIsVisible(other) || other->isCollapsed) continue;
 
         float2 otherScale = other->scale;
         f32 ox0 = other->position.x;
@@ -205,7 +256,7 @@ static s32 UIWindowFindDockTarget(s32 draggedIndex, float2 mouse, u32* outMask)
     for (u32 i = 0u; i < g_UIWindowCount; i++)
     {
         UIWindow* target = &g_UIWindows[i];
-        if ((s32)i == draggedIndex || !UIWindowIsOpen(target) || target->isCollapsed) continue;
+        if ((s32)i == draggedIndex || !UIWindowIsVisible(target) || target->isCollapsed) continue;
 
         u32 mask = UIWindowDockMaskFromTarget(target, mouse);
         if (mask == 0u) continue;
@@ -223,21 +274,88 @@ static s32 UIWindowFindDockTarget(s32 draggedIndex, float2 mouse, u32* outMask)
 
 static float2 UIWindowSnapPosition(u32 mask)
 {
-    float2 screen = g_UI.screenSize;
-    if ((mask & UIWindowSnap_Left) != 0u) return (float2){ 0.0f, 0.0f };
-    if ((mask & UIWindowSnap_Right) != 0u) return (float2){ screen.x * 0.5f, 0.0f };
-    if ((mask & UIWindowSnap_Top) != 0u) return (float2){ 0.0f, 0.0f };
-    if ((mask & UIWindowSnap_Bottom) != 0u) return (float2){ 0.0f, screen.y * 0.5f };
-    return (float2){ 0.0f, 0.0f };
+    float2 workPos = UIWindowWorkPos();
+    float2 work = UIWindowWorkSize();
+    if ((mask & UIWindowSnap_Left) != 0u) return workPos;
+    if ((mask & UIWindowSnap_Right) != 0u) return (float2){ workPos.x + work.x * 0.5f, workPos.y };
+    if ((mask & UIWindowSnap_Top) != 0u) return workPos;
+    if ((mask & UIWindowSnap_Bottom) != 0u) return (float2){ workPos.x, workPos.y + work.y * 0.5f };
+    return workPos;
 }
 
 static float2 UIWindowSnapScale(u32 mask)
 {
-    float2 screen = g_UI.screenSize;
-    if ((mask & (UIWindowSnap_Left | UIWindowSnap_Right)) != 0u) return (float2){ screen.x * 0.5f, screen.y };
-    if ((mask & UIWindowSnap_Top) != 0u) return screen;
-    if ((mask & UIWindowSnap_Bottom) != 0u) return (float2){ screen.x, screen.y * 0.5f };
+    float2 work = UIWindowWorkSize();
+    if ((mask & (UIWindowSnap_Left | UIWindowSnap_Right)) != 0u) return (float2){ work.x * 0.5f, work.y };
+    if ((mask & UIWindowSnap_Top) != 0u) return work;
+    if ((mask & UIWindowSnap_Bottom) != 0u) return (float2){ work.x, work.y * 0.5f };
     return (float2){ 0.0f, 0.0f };
+}
+
+// shrinks an edge snap rect so it doesn't cover windows already anchored to a work area
+// edge, e.g. snapping bottom between docked left and right windows fills only the middle
+static void UIWindowShrinkSnapRectToFreeSpace(u32 mask, s32 draggedIndex, float2* pos, float2* scale)
+{
+    const f32 eps = 2.0f;
+    float2 workPos = UIWindowWorkPos();
+    float2 work = UIWindowWorkSize();
+
+    for (u32 pass = 0u; pass < 4u; pass++)
+    {
+        bool shrunk = false;
+        for (u32 i = 0u; i < g_UIWindowCount; i++)
+        {
+            UIWindow* other = &g_UIWindows[i];
+            if ((s32)i == draggedIndex || !UIWindowIsVisible(other) || other->isCollapsed) continue;
+
+            float2 oPos = other->position;
+            float2 oScale = UIWindowScale(other);
+            f32 overlapX = UIWindowOverlap1D(pos->x, pos->x + scale->x, oPos.x, oPos.x + oScale.x);
+            f32 overlapY = UIWindowOverlap1D(pos->y, pos->y + scale->y, oPos.y, oPos.y + oScale.y);
+            if (overlapX <= eps || overlapY <= eps) continue;
+
+            bool anchored = oPos.x <= workPos.x + eps || oPos.x + oScale.x >= workPos.x + work.x - eps ||
+                            oPos.y <= workPos.y + eps || oPos.y + oScale.y >= workPos.y + work.y - eps;
+            if (!anchored) continue;
+
+            if ((mask & (UIWindowSnap_Top | UIWindowSnap_Bottom)) != 0u)
+            {
+                f32 right = pos->x + scale->x;
+                if (oPos.x + oScale.x * 0.5f < pos->x + scale->x * 0.5f) pos->x = Maxf32(pos->x, oPos.x + oScale.x);
+                else right = Minf32(right, oPos.x);
+                scale->x = right - pos->x;
+            }
+            else
+            {
+                f32 bottom = pos->y + scale->y;
+                if (oPos.y + oScale.y * 0.5f < pos->y + scale->y * 0.5f) pos->y = Maxf32(pos->y, oPos.y + oScale.y);
+                else bottom = Minf32(bottom, oPos.y);
+                scale->y = bottom - pos->y;
+            }
+            shrunk = true;
+            if (scale->x <= eps || scale->y <= eps) return;
+        }
+        if (!shrunk) break;
+    }
+}
+
+// edge snap rect for windowIndex, shrunk into free space when that still fits the window,
+// otherwise the plain half/full work area rect
+static void UIWindowSnapRectForWindow(u32 mask, s32 windowIndex, float2* outPos, float2* outScale)
+{
+    *outPos = UIWindowSnapPosition(mask);
+    *outScale = UIWindowSnapScale(mask);
+    if ((u32)windowIndex >= g_UIWindowCount) return;
+
+    float2 pos = *outPos;
+    float2 scale = *outScale;
+    UIWindowShrinkSnapRectToFreeSpace(mask, windowIndex, &pos, &scale);
+    UIWindow* window = &g_UIWindows[windowIndex];
+    if (scale.x >= window->minScale.x && scale.y >= window->minScale.y)
+    {
+        *outPos = pos;
+        *outScale = scale;
+    }
 }
 
 static float2 UIWindowDockPosition(UIWindow* target, u32 mask)
@@ -294,15 +412,16 @@ static u32 UIWindowSnapMaskFromMouse(float2 mouse)
 {
     const f32 edgeZone = 56.0f;
     const f32 centerZone = 220.0f;
-    float2 screen = g_UI.screenSize;
-    f32 centerX = screen.x * 0.5f;
-    f32 centerY = screen.y * 0.5f;
+    float2 workPos = UIWindowWorkPos();
+    float2 work = UIWindowWorkSize();
+    f32 centerX = workPos.x + work.x * 0.5f;
+    f32 centerY = workPos.y + work.y * 0.5f;
     bool nearCenterX = Absf32(mouse.x - centerX) <= centerZone * 0.5f;
     bool nearCenterY = Absf32(mouse.y - centerY) <= centerZone * 0.5f;
-    if (mouse.x <= edgeZone && nearCenterY) return UIWindowSnap_Left;
-    if (mouse.x >= screen.x - edgeZone && nearCenterY) return UIWindowSnap_Right;
-    if (mouse.y <= edgeZone && nearCenterX) return UIWindowSnap_Top;
-    if (mouse.y >= screen.y - edgeZone && nearCenterX) return UIWindowSnap_Bottom;
+    if (mouse.x <= workPos.x + edgeZone && nearCenterY) return UIWindowSnap_Left;
+    if (mouse.x >= workPos.x + work.x - edgeZone && nearCenterY) return UIWindowSnap_Right;
+    if (mouse.y <= workPos.y + edgeZone && nearCenterX) return UIWindowSnap_Top;
+    if (mouse.y >= workPos.y + work.y - edgeZone && nearCenterX) return UIWindowSnap_Bottom;
     return 0u;
 }
 
@@ -321,16 +440,44 @@ static void UIWindowDrawSnapPreview(UIWindow* window)
 {
     if (g_UIWindowState != UIWindowState_Move_TabBar || g_UIWindowActive != g_UIWindowCurrent) return;
 
-    float2 screen = g_UI.screenSize;
+    float2 workPos = UIWindowWorkPos();
+    float2 work = UIWindowWorkSize();
     const f32 edgeZone = 56.0f;
     const f32 centerZone = 220.0f;
     const u32 zoneColor = 0x22E8A400u;
     s16 zIndex = (s16)(window->depth + 96u);
+    f32 centerX = workPos.x + work.x * 0.5f;
+    f32 centerY = workPos.y + work.y * 0.5f;
 
-    UIWindowDrawSnapRect(CLAY_ID("UIWindowSnapLeft"), (float2){ 0.0f, screen.y * 0.5f - centerZone * 0.5f }, (float2){ edgeZone, centerZone }, zoneColor, zIndex);
-    UIWindowDrawSnapRect(CLAY_ID("UIWindowSnapRight"), (float2){ screen.x - edgeZone, screen.y * 0.5f - centerZone * 0.5f }, (float2){ edgeZone, centerZone }, zoneColor, zIndex);
-    UIWindowDrawSnapRect(CLAY_ID("UIWindowSnapTop"), (float2){ screen.x * 0.5f - centerZone * 0.5f, 0.0f }, (float2){ centerZone, edgeZone }, zoneColor, zIndex);
-    UIWindowDrawSnapRect(CLAY_ID("UIWindowSnapBottom"), (float2){ screen.x * 0.5f - centerZone * 0.5f, screen.y - edgeZone }, (float2){ centerZone, edgeZone }, zoneColor, zIndex);
+    UIWindowDrawSnapRect(CLAY_ID("UIWindowSnapLeft"), (float2){ workPos.x, centerY - centerZone * 0.5f }, (float2){ edgeZone, centerZone }, zoneColor, zIndex);
+    UIWindowDrawSnapRect(CLAY_ID("UIWindowSnapRight"), (float2){ workPos.x + work.x - edgeZone, centerY - centerZone * 0.5f }, (float2){ edgeZone, centerZone }, zoneColor, zIndex);
+    UIWindowDrawSnapRect(CLAY_ID("UIWindowSnapTop"), (float2){ centerX - centerZone * 0.5f, workPos.y }, (float2){ centerZone, edgeZone }, zoneColor, zIndex);
+    UIWindowDrawSnapRect(CLAY_ID("UIWindowSnapBottom"), (float2){ centerX - centerZone * 0.5f, workPos.y + work.y - edgeZone }, (float2){ centerZone, edgeZone }, zoneColor, zIndex);
+
+    // orange center zones: dropping there merges the dragged window into the target as a tab
+    g_UIWindowTabTarget = -1;
+    const f32 tabZone = 64.0f;
+    for (u32 i = 0u; i < g_UIWindowCount; i++)
+    {
+        UIWindow* target = &g_UIWindows[i];
+        if ((s32)i == g_UIWindowCurrent || !UIWindowIsVisible(target) || target->isCollapsed || target->topHeight <= 0.0f) continue;
+
+        float2 targetScale = UIWindowScale(target);
+        float2 zonePos = { target->position.x + (targetScale.x - tabZone) * 0.5f, target->position.y + (targetScale.y - tabZone) * 0.5f };
+        bool zoneHovered = UIHitRect(zonePos, F2Set1(tabZone), g_UI.mouse);
+        if (zoneHovered) g_UIWindowTabTarget = (s32)i;
+        UIWindowDrawSnapRect(Clay_GetElementIdWithIndex(CLAY_STRING("UIWindowTabZone"), target->hash),
+                             zonePos, F2Set1(tabZone), zoneHovered ? 0x88008CFFu : 0x44008CFFu, (s16)(zIndex + 3));
+    }
+    if (g_UIWindowTabTarget >= 0)
+    {
+        UIWindow* target = &g_UIWindows[g_UIWindowTabTarget];
+        UIWindowDrawSnapRect(CLAY_ID("UIWindowTabTarget"), target->position, UIWindowScale(target), 0x44008CFFu, (s16)(zIndex + 2));
+        g_UIWindowDockTarget = -1;
+        g_UIWindowDockMask = 0u;
+        g_UIWindowSnapMask = 0u;
+        return;
+    }
 
     g_UIWindowDockTarget = UIWindowFindDockTarget(g_UIWindowCurrent, g_UI.mouse, &g_UIWindowDockMask);
     if (g_UIWindowDockTarget >= 0)
@@ -348,7 +495,9 @@ static void UIWindowDrawSnapPreview(UIWindow* window)
     g_UIWindowSnapMask = UIWindowSnapMaskFromMouse(g_UI.mouse);
     if (g_UIWindowSnapMask != 0u)
     {
-        UIWindowDrawSnapRect(CLAY_ID("UIWindowSnapTarget"), UIWindowSnapPosition(g_UIWindowSnapMask), UIWindowSnapScale(g_UIWindowSnapMask), 0x44E8A400u, (s16)(zIndex + 1));
+        float2 snapPos, snapScale;
+        UIWindowSnapRectForWindow(g_UIWindowSnapMask, g_UIWindowCurrent, &snapPos, &snapScale);
+        UIWindowDrawSnapRect(CLAY_ID("UIWindowSnapTarget"), snapPos, snapScale, 0x44E8A400u, (s16)(zIndex + 1));
     }
 }
 
@@ -358,8 +507,42 @@ static void UIWindowApplyPendingSnap(void)
 
     UIWindow* window = &g_UIWindows[g_UIWindowActive];
     if (!UIWindowIsOpen(window)) return;
-    UIWindowSetRect(window, UIWindowSnapPosition(g_UIWindowSnapMask), UIWindowSnapScale(g_UIWindowSnapMask));
+    float2 snapPos, snapScale;
+    UIWindowSnapRectForWindow(g_UIWindowSnapMask, g_UIWindowActive, &snapPos, &snapScale);
+    UIWindowSetRect(window, snapPos, snapScale);
     g_UIWindowSnapMask = 0u;
+}
+
+// merges the dragged window (and its whole tab group) into the target window's tab
+// group, the dragged window becomes the visible tab like dropping a tab in unity
+static void UIWindowApplyPendingTabDock(void)
+{
+    if (g_UIWindowActive < 0 || (u32)g_UIWindowActive >= g_UIWindowCount || g_UIWindowTabTarget < 0 || (u32)g_UIWindowTabTarget >= g_UIWindowCount) return;
+    if (g_UIWindowActive == g_UIWindowTabTarget) return;
+
+    UIWindow* dragged = &g_UIWindows[g_UIWindowActive];
+    UIWindow* target = &g_UIWindows[g_UIWindowTabTarget];
+    if (!UIWindowIsOpen(dragged) || !UIWindowIsVisible(target)) return;
+
+    u32 group = (target->tabGroup != 0u) ? target->tabGroup : target->hash;
+    u32 draggedGroup = dragged->tabGroup;
+    target->tabGroup = group;
+    for (u32 i = 0u; i < g_UIWindowCount; i++)
+    {
+        UIWindow* window = &g_UIWindows[i];
+        bool joins = (s32)i == g_UIWindowActive || (draggedGroup != 0u && window->tabGroup == draggedGroup);
+        if (joins) window->tabGroup = group;
+        if (window->tabGroup == group)
+        {
+            window->tabActive = false;
+            window->position = target->position;
+            window->scale = target->scale;
+            window->isCollapsed = target->isCollapsed;
+        }
+    }
+    dragged->tabActive = true;
+    g_UIWindowTabTarget = -1;
+    g_UIWindowLayoutChanged = true;
 }
 
 static void UIWindowApplyPendingDock(void)
@@ -407,25 +590,25 @@ static u32 UIWindowResizeHitMask(UIWindow* window, float2 mouse)
     bool nearBottom = mouse.y <= pos.y + size.y && mouse.y >= pos.y + size.y - cornerDist;
 
     u32 mask = 0u;
-    if ((left && nearTop) || (top && nearLeft)) mask = UIWindowState_Resize_LeftEdge | UIWindowState_Resize_TopEdge;
-    else if ((right && nearTop) || (top && nearRight)) mask = UIWindowState_Resize_RightEdge | UIWindowState_Resize_TopEdge;
-    else if ((left && nearBottom) || (bottom && nearLeft)) mask = UIWindowState_Resize_LeftEdge | UIWindowState_Resize_BottomEdge;
+    if      ((left  && nearTop)    || (top && nearLeft))     mask = UIWindowState_Resize_LeftEdge  | UIWindowState_Resize_TopEdge;
+    else if ((right && nearTop)    || (top && nearRight))    mask = UIWindowState_Resize_RightEdge | UIWindowState_Resize_TopEdge;
+    else if ((left  && nearBottom) || (bottom && nearLeft))  mask = UIWindowState_Resize_LeftEdge  | UIWindowState_Resize_BottomEdge;
     else if ((right && nearBottom) || (bottom && nearRight)) mask = UIWindowState_Resize_RightEdge | UIWindowState_Resize_BottomEdge;
     else
     {
-        if (left)   mask |= UIWindowState_Resize_LeftEdge;
-        if (right)  mask |= UIWindowState_Resize_RightEdge;
-        if (top)    mask |= UIWindowState_Resize_TopEdge;
-        if (bottom) mask |= UIWindowState_Resize_BottomEdge;
+        mask |= left   * UIWindowState_Resize_LeftEdge;
+        mask |= right  * UIWindowState_Resize_RightEdge;
+        mask |= top    * UIWindowState_Resize_TopEdge;
+        mask |= bottom * UIWindowState_Resize_BottomEdge;
     }
     return mask;
 }
 
 static wCursor UIWindowCursorFromResizeMask(u32 mask)
 {
-    bool left = (mask & UIWindowState_Resize_LeftEdge) != 0u;
-    bool right = (mask & UIWindowState_Resize_RightEdge) != 0u;
-    bool top = (mask & UIWindowState_Resize_TopEdge) != 0u;
+    bool left   = (mask & UIWindowState_Resize_LeftEdge)   != 0u;
+    bool right  = (mask & UIWindowState_Resize_RightEdge)  != 0u;
+    bool top    = (mask & UIWindowState_Resize_TopEdge)    != 0u;
     bool bottom = (mask & UIWindowState_Resize_BottomEdge) != 0u;
     if ((left && top) || (right && bottom)) return wCursor_ResizeNWSE;
     if ((right && top) || (left && bottom)) return wCursor_ResizeNESW;
@@ -437,17 +620,16 @@ static wCursor UIWindowCursorFromResizeMask(u32 mask)
 static void UIWindowDrawResizeHighlight(UIWindow* window, u32 mask)
 {
     if (mask == 0u) return;
-
-    const f32 thickness = 4.0f;
+    const f32 thickness  = 4.0f;
     const f32 cornerSize = 18.0f;
     const u32 color = UIGetColor(UIColor_SelectedBorder);
     float2 pos = window->position;
     float2 size = window->scale;
     float2 highlightPos = pos;
     float2 highlightSize = { thickness, thickness };
-    bool left = (mask & UIWindowState_Resize_LeftEdge) != 0u;
-    bool right = (mask & UIWindowState_Resize_RightEdge) != 0u;
-    bool top = (mask & UIWindowState_Resize_TopEdge) != 0u;
+    bool left   = (mask & UIWindowState_Resize_LeftEdge)   != 0u;
+    bool right  = (mask & UIWindowState_Resize_RightEdge)  != 0u;
+    bool top    = (mask & UIWindowState_Resize_TopEdge)    != 0u;
     bool bottom = (mask & UIWindowState_Resize_BottomEdge) != 0u;
 
     if ((left || right) && (top || bottom))
@@ -485,9 +667,10 @@ static void UIWindowHandleMove(UIWindow* window, s32 windowIndex, float2 titlePo
     bool titleHovered = UIHitRect(titlePos, titleSize, mouse);
     if ((titleHovered || g_UIWindowState == UIWindowState_Move_TabBar) && mouseDown)
     {
+        float2 workPos = UIWindowWorkPos();
         window->position = F2Add(window->position, F2Sub(g_UI.mouse, g_UI.mouseOld));
-        window->position.x = Maxf32(window->position.x, 0.0f);
-        window->position.y = Maxf32(window->position.y, 0.0f);
+        window->position.x = Maxf32(window->position.x, workPos.x);
+        window->position.y = Maxf32(window->position.y, workPos.y);
         g_UIWindowState = UIWindowState_Move_TabBar;
     }
 }
@@ -518,10 +701,10 @@ static u32 UIWindowHandleResize(UIWindow* window, s32 windowIndex, float2 mouse,
             u32 resizeMask = g_UIWindowState & UIWindowState_Resize_EdgeMask;
             g_UIWindowResizeHorizontalNeighbor = -1;
             g_UIWindowResizeVerticalNeighbor = -1;
-            if ((resizeMask & UIWindowState_Resize_RightEdge) != 0u) g_UIWindowResizeHorizontalNeighbor = UIWindowFindSharedEdgeWindow(windowIndex, UIWindowState_Resize_RightEdge);
-            else if ((resizeMask & UIWindowState_Resize_LeftEdge) != 0u) g_UIWindowResizeHorizontalNeighbor = UIWindowFindSharedEdgeWindow(windowIndex, UIWindowState_Resize_LeftEdge);
-            if ((resizeMask & UIWindowState_Resize_BottomEdge) != 0u) g_UIWindowResizeVerticalNeighbor = UIWindowFindSharedEdgeWindow(windowIndex, UIWindowState_Resize_BottomEdge);
-            else if ((resizeMask & UIWindowState_Resize_TopEdge) != 0u) g_UIWindowResizeVerticalNeighbor = UIWindowFindSharedEdgeWindow(windowIndex, UIWindowState_Resize_TopEdge);
+            if ((resizeMask & UIWindowState_Resize_RightEdge) != 0u)       g_UIWindowResizeHorizontalNeighbor = UIWindowFindSharedEdgeWindow(windowIndex, UIWindowState_Resize_RightEdge);
+            else if ((resizeMask & UIWindowState_Resize_LeftEdge) != 0u)   g_UIWindowResizeHorizontalNeighbor = UIWindowFindSharedEdgeWindow(windowIndex, UIWindowState_Resize_LeftEdge);
+            if      ((resizeMask & UIWindowState_Resize_BottomEdge) != 0u) g_UIWindowResizeVerticalNeighbor = UIWindowFindSharedEdgeWindow(windowIndex, UIWindowState_Resize_BottomEdge);
+            else if ((resizeMask & UIWindowState_Resize_TopEdge) != 0u)    g_UIWindowResizeVerticalNeighbor = UIWindowFindSharedEdgeWindow(windowIndex, UIWindowState_Resize_TopEdge);
         }
 
         if ((g_UIWindowState & UIWindowState_Resize_EdgeMask) != 0u) g_UI.windowResizeActive = true;
@@ -561,6 +744,7 @@ static u32 UIWindowHandleResize(UIWindow* window, s32 windowIndex, float2 mouse,
         if ((g_UIWindowState & UIWindowState_Resize_TopEdge) != 0u)
         {
             f32 bottom = pos.y + size.y;
+            f32 workTop = UIWindowWorkPos().y;
             if (g_UIWindowResizeVerticalNeighbor >= 0)
             {
                 UIWindow* other = &g_UIWindows[g_UIWindowResizeVerticalNeighbor];
@@ -572,7 +756,7 @@ static u32 UIWindowHandleResize(UIWindow* window, s32 windowIndex, float2 mouse,
             }
             else
             {
-                f32 newY = Minf32(mouse.y, bottom - window->minScale.y);
+                f32 newY = Maxf32(Minf32(mouse.y, bottom - window->minScale.y), workTop);
                 size.y += pos.y - newY;
                 pos.y = newY;
             }
@@ -672,8 +856,34 @@ static void UIWindowDrawRightClickMenu(UIWindow* window)
     }
 }
 
+// keeps docked and snapped layouts fitting the application window by remapping every
+// ui window from the previous work area to the current one whenever it changes
+static void UIWindowRemapToWorkArea(void)
+{
+    float2 workPos = UIWindowWorkPos();
+    float2 workSize = UIWindowWorkSize();
+    if (g_UIWindowWorkSizeOld.x <= 0.0f || g_UIWindowWorkSizeOld.y <= 0.0f) return;
+    bool changed = workPos.x != g_UIWindowWorkPosOld.x || workPos.y != g_UIWindowWorkPosOld.y ||
+                   workSize.x != g_UIWindowWorkSizeOld.x || workSize.y != g_UIWindowWorkSizeOld.y;
+    if (!changed) return;
+
+    f32 sx = workSize.x / g_UIWindowWorkSizeOld.x;
+    f32 sy = workSize.y / g_UIWindowWorkSizeOld.y;
+    for (u32 i = 0u; i < g_UIWindowCount; i++)
+    {
+        UIWindow* window = &g_UIWindows[i];
+        float2 pos = {
+            workPos.x + (window->position.x - g_UIWindowWorkPosOld.x) * sx,
+            workPos.y + (window->position.y - g_UIWindowWorkPosOld.y) * sy
+        };
+        UIWindowSetRect(window, pos, (float2){ window->scale.x * sx, window->scale.y * sy });
+    }
+    g_UIWindowLayoutChanged = true;
+}
+
 void UIWindowBeginFrame(void)
 {
+    UIWindowRemapToWorkArea();
     g_UIWindowCurrent = -1;
     g_UIWindowContentOpen = false;
     g_UIWindowCursorRequested = false;
@@ -682,15 +892,67 @@ void UIWindowBeginFrame(void)
     {
         if (g_UIWindowState == UIWindowState_Move_TabBar)
         {
-            if (g_UIWindowDockTarget >= 0) UIWindowApplyPendingDock();
+            if (g_UIWindowTabTarget >= 0) UIWindowApplyPendingTabDock();
+            else if (g_UIWindowDockTarget >= 0) UIWindowApplyPendingDock();
             else UIWindowApplyPendingSnap();
         }
+        if (g_UIWindowState != UIWindowState_None) g_UIWindowLayoutChanged = true;
         g_UIWindowState = UIWindowState_None;
         g_UIWindowSnapMask = 0u;
         g_UIWindowDockTarget = -1;
         g_UIWindowDockMask = 0u;
+        g_UIWindowTabTarget = -1;
         g_UIWindowResizeHorizontalNeighbor = -1;
         g_UIWindowResizeVerticalNeighbor = -1;
+    }
+
+    // a tab was clicked last frame, make it the visible member of its group
+    if (g_UIWindowTabSwitchHash != 0u)
+    {
+        s32 switchIndex = UIWindowFind(g_UIWindowTabSwitchHash);
+        g_UIWindowTabSwitchHash = 0u;
+        if ((u32)switchIndex < g_UIWindowCount && g_UIWindows[switchIndex].tabGroup != 0u)
+        {
+            UIWindow* window = &g_UIWindows[switchIndex];
+            for (u32 i = 0u; i < g_UIWindowCount; i++)
+                if (g_UIWindows[i].tabGroup == window->tabGroup) g_UIWindows[i].tabActive = false;
+            window->tabActive = true;
+            UIWindowBringToFront(switchIndex);
+            g_UIWindowLayoutChanged = true;
+        }
+    }
+
+    // dragging a pressed tab beyond the threshold tears the window out of its group
+    if (g_UIWindowTabDragHash != 0u)
+    {
+        if (!GetMouseDown(MouseButton_Left)) g_UIWindowTabDragHash = 0u;
+        else if (Absf32(g_UI.mouse.x - g_UIWindowTabDragStart.x) > 8.0f || Absf32(g_UI.mouse.y - g_UIWindowTabDragStart.y) > 8.0f)
+        {
+            s32 dragIndex = UIWindowFind(g_UIWindowTabDragHash);
+            g_UIWindowTabDragHash = 0u;
+            if ((u32)dragIndex < g_UIWindowCount && g_UIWindows[dragIndex].tabGroup != 0u)
+            {
+                UIWindow* window = &g_UIWindows[dragIndex];
+                if (window->tabActive)
+                {
+                    for (u32 i = 0u; i < g_UIWindowCount; i++)
+                    {
+                        UIWindow* member = &g_UIWindows[i];
+                        if ((s32)i == dragIndex || member->tabGroup != window->tabGroup || !UIWindowIsOpen(member)) continue;
+                        member->tabActive = true;
+                        break;
+                    }
+                }
+                float2 workPos = UIWindowWorkPos();
+                window->tabGroup = 0u;
+                window->tabActive = false;
+                window->position.x = Maxf32(g_UI.mouse.x - 60.0f, workPos.x);
+                window->position.y = Maxf32(g_UI.mouse.y - window->topHeight * 0.5f, workPos.y);
+                UIWindowBringToFront(dragIndex);
+                g_UIWindowState = UIWindowState_Move_TabBar;
+                g_UIWindowLayoutChanged = true;
+            }
+        }
     }
 }
 
@@ -705,6 +967,191 @@ void UIWindowEndFrame(void)
     // the menu's window was closed or skipped this frame, drop the menu with it
     if (g_UIRightClickMenuHash != 0u && !g_UIRightClickMenuDrawn) g_UIRightClickMenuHash = 0u;
     g_UIRightClickMenuDrawn = false;
+
+    // captured at frame end so the top inset set while building this frame is included,
+    // UIWindowBeginFrame compares against it to remap windows after a resize
+    g_UIWindowWorkPosOld = UIWindowWorkPos();
+    g_UIWindowWorkSizeOld = UIWindowWorkSize();
+}
+
+void UIWindowMarkLayoutChanged(void)
+{
+    g_UIWindowLayoutChanged = true;
+}
+
+bool UIWindowConsumeLayoutChanged(void)
+{
+    bool changed = g_UIWindowLayoutChanged;
+    g_UIWindowLayoutChanged = false;
+    return changed;
+}
+
+static char* UIWindowLayoutWriteText(char* p, const char* text)
+{
+    u32 len = (u32)StringLength(text);
+    MemCopy(p, text, len);
+    return p + len;
+}
+
+static char* UIWindowLayoutWriteNumber(char* p, s64 value)
+{
+    *p++ = ' ';
+    return p + IntToString(p, value, 0);
+}
+
+bool UIWindowSaveLayout(const char* path)
+{
+    char text[UI_MAX_WINDOWS * 144u + 64u];
+    char* p = text;
+    float2 workPos = UIWindowWorkPos();
+    float2 workSize = UIWindowWorkSize();
+
+    p = UIWindowLayoutWriteText(p, "work");
+    p = UIWindowLayoutWriteNumber(p, (s64)workPos.x);
+    p = UIWindowLayoutWriteNumber(p, (s64)workPos.y);
+    p = UIWindowLayoutWriteNumber(p, (s64)workSize.x);
+    p = UIWindowLayoutWriteNumber(p, (s64)workSize.y);
+    *p++ = '\n';
+
+    for (u32 i = 0u; i < g_UIWindowCount; i++)
+    {
+        UIWindow* window = &g_UIWindows[i];
+        p = UIWindowLayoutWriteText(p, "window");
+        p = UIWindowLayoutWriteNumber(p, (s64)window->hash);
+        *p++ = '\n';
+        p = UIWindowLayoutWriteText(p, "\trect");
+        p = UIWindowLayoutWriteNumber(p, (s64)window->position.x);
+        p = UIWindowLayoutWriteNumber(p, (s64)window->position.y);
+        p = UIWindowLayoutWriteNumber(p, (s64)window->scale.x);
+        p = UIWindowLayoutWriteNumber(p, (s64)window->scale.y);
+        *p++ = '\n';
+        p = UIWindowLayoutWriteText(p, "\tdepth");
+        p = UIWindowLayoutWriteNumber(p, (s64)window->depth);
+        *p++ = '\n';
+        p = UIWindowLayoutWriteText(p, "\tcollapsed");
+        p = UIWindowLayoutWriteNumber(p, window->isCollapsed ? 1 : 0);
+        *p++ = '\n';
+        p = UIWindowLayoutWriteText(p, "\topen");
+        p = UIWindowLayoutWriteNumber(p, UIWindowIsOpen(window) ? 1 : 0);
+        *p++ = '\n';
+        if (window->tabGroup != 0u)
+        {
+            p = UIWindowLayoutWriteText(p, "\ttabgroup");
+            p = UIWindowLayoutWriteNumber(p, (s64)window->tabGroup);
+            *p++ = '\n';
+            p = UIWindowLayoutWriteText(p, "\ttabactive");
+            p = UIWindowLayoutWriteNumber(p, window->tabActive ? 1 : 0);
+            *p++ = '\n';
+        }
+    }
+
+    WriteAllBytes(path, text, (unsigned long)(p - text));
+    return true;
+}
+
+static bool UIWindowLayoutLineIs(const char* line, const char* prefix)
+{
+    while (*prefix)
+    {
+        if (*line++ != *prefix++) return false;
+    }
+    return true;
+}
+
+bool UIWindowLoadLayout(const char* path)
+{
+    u64 size = 0u;
+    char* text = ReadAllTextAlloc(path, &size, NULL);
+    if (!text) return false;
+
+    g_UIWindowPlacementCount = 0u;
+    float2 savedWorkPos = { 0.0f, 0.0f };
+    float2 savedWorkSize = { 0.0f, 0.0f };
+    UIWindowPlacement* placement = NULL;
+    s64 v[4];
+
+    const char* line = text;
+    while (*line)
+    {
+        const char* end = line;
+        while (*end && *end != '\n' && *end != '\r') end++;
+
+        if (UIWindowLayoutLineIs(line, "window "))
+        {
+            placement = NULL;
+            if (g_UIWindowPlacementCount < UI_MAX_WINDOWS)
+            {
+                ParseNumberI64(line + 7, &v[0]);
+                placement = &g_UIWindowPlacements[g_UIWindowPlacementCount++];
+                MemsetZero(placement, sizeof(*placement));
+                placement->hash = (u32)v[0];
+                placement->open = true;
+                placement->depth = (u8)UI_MAX_WINDOWS; // unset, keep creation order depth
+            }
+        }
+        else if (UIWindowLayoutLineIs(line, "work "))
+        {
+            const char* cursor = line + 5;
+            for (u32 i = 0u; i < 4u; i++) cursor = ParseNumberI64(cursor, &v[i]);
+            savedWorkPos = (float2){ (f32)v[0], (f32)v[1] };
+            savedWorkSize = (float2){ (f32)v[2], (f32)v[3] };
+        }
+        else if (placement && UIWindowLayoutLineIs(line, "\trect "))
+        {
+            const char* cursor = line + 6;
+            for (u32 i = 0u; i < 4u; i++) cursor = ParseNumberI64(cursor, &v[i]);
+            placement->position = (float2){ (f32)v[0], (f32)v[1] };
+            placement->scale = (float2){ (f32)v[2], (f32)v[3] };
+        }
+        else if (placement && UIWindowLayoutLineIs(line, "\tdepth "))
+        {
+            ParseNumberI64(line + 7, &v[0]);
+            placement->depth = (u8)Clampf32((f32)v[0], 0.0f, (f32)(UI_MAX_WINDOWS - 1u));
+        }
+        else if (placement && UIWindowLayoutLineIs(line, "\tcollapsed "))
+        {
+            ParseNumberI64(line + 11, &v[0]);
+            placement->collapsed = v[0] != 0;
+        }
+        else if (placement && UIWindowLayoutLineIs(line, "\topen "))
+        {
+            ParseNumberI64(line + 6, &v[0]);
+            placement->open = v[0] != 0;
+        }
+        else if (placement && UIWindowLayoutLineIs(line, "\ttabgroup "))
+        {
+            ParseNumberI64(line + 10, &v[0]);
+            placement->tabGroup = (u32)v[0];
+        }
+        else if (placement && UIWindowLayoutLineIs(line, "\ttabactive "))
+        {
+            ParseNumberI64(line + 11, &v[0]);
+            placement->tabActive = v[0] != 0;
+        }
+
+        line = end;
+        while (*line == '\n' || *line == '\r') line++;
+    }
+    FreeAllText(text);
+
+    // the layout may come from a different application window size, remap the saved
+    // rects from the work area they were stored in to the current one
+    if (savedWorkSize.x > 0.0f && savedWorkSize.y > 0.0f)
+    {
+        float2 workPos = UIWindowWorkPos();
+        float2 workSize = UIWindowWorkSize();
+        f32 sx = workSize.x / savedWorkSize.x;
+        f32 sy = workSize.y / savedWorkSize.y;
+        for (u32 i = 0u; i < g_UIWindowPlacementCount; i++)
+        {
+            UIWindowPlacement* it = &g_UIWindowPlacements[i];
+            it->position.x = workPos.x + (it->position.x - savedWorkPos.x) * sx;
+            it->position.y = workPos.y + (it->position.y - savedWorkPos.y) * sy;
+            it->scale.x *= sx;
+            it->scale.y *= sy;
+        }
+    }
+    return g_UIWindowPlacementCount > 0u;
 }
 
 UIWindow* UIGetWindow(Clay_ElementId id)
@@ -731,7 +1178,7 @@ bool UIAnyWindowHovered(void)
     for (u32 i = 0u; i < g_UIWindowCount; i++)
     {
         UIWindow* window = &g_UIWindows[i];
-        if (UIWindowIsOpen(window) && UIHitRect(window->position, UIWindowScale(window), g_UI.mouse)) return true;
+        if (UIWindowIsVisible(window) && UIHitRect(window->position, UIWindowScale(window), g_UI.mouse)) return true;
     }
     return false;
 }
@@ -742,8 +1189,23 @@ bool UIBeginWindow(const char* title, float2 position, float2 scale, bool* open,
     return UIBeginWindowId((Clay_ElementId){ .id = hash }, title, position, scale, open, flags);
 }
 
+static UIWindowPlacement* UIWindowPlacementFind(u32 hash)
+{
+    for (u32 i = 0u; i < g_UIWindowPlacementCount; i++)
+        if (g_UIWindowPlacements[i].hash == hash)
+            return &g_UIWindowPlacements[i];
+    return NULL;
+}
+
 bool UIBeginWindowId(Clay_ElementId id, const char* title, float2 position, float2 scale, bool* open, u32 flags)
 {
+    UIWindowPlacement* placement = UIWindowPlacementFind(id.id);
+    if (placement && !placement->openApplied)
+    {
+        placement->openApplied = true;
+        if (open) *open = placement->open;
+    }
+
     if (open && !*open) return false;
     if (!title) title = "Window";
 
@@ -758,12 +1220,23 @@ bool UIBeginWindowId(Clay_ElementId id, const char* title, float2 position, floa
     {
         UIWindow* newWindow = &g_UIWindows[g_UIWindowCount++];
         MemsetZero(newWindow, sizeof(*newWindow));
-        newWindow->position = position;
+        float2 workPos = UIWindowWorkPos();
+        newWindow->position = (float2){ Maxf32(position.x, workPos.x), Maxf32(position.y, workPos.y) };
         newWindow->scale = scale;
         newWindow->hash = id.id;
         newWindow->depth = (u8)(g_UIWindowCount - 1u);
         newWindow->selectedElement = -1;
         newWindow->started = true;
+        if (placement && !placement->rectApplied)
+        {
+            placement->rectApplied = true;
+            newWindow->position = placement->position;
+            newWindow->scale = placement->scale;
+            newWindow->isCollapsed = placement->collapsed;
+            newWindow->tabGroup = placement->tabGroup;
+            newWindow->tabActive = placement->tabActive;
+            if (placement->depth < (u8)UI_MAX_WINDOWS) newWindow->depth = placement->depth;
+        }
         if (g_UIWindowActive < 0) g_UIWindowActive = windowIndex;
     }
 
@@ -779,6 +1252,38 @@ bool UIBeginWindowId(Clay_ElementId id, const char* title, float2 position, floa
     window->minScale.x = Maxf32(360.0f, titleSize.x + 96.0f);
     window->minScale.y = Maxf32(140.0f, window->topHeight + 72.0f);
     window->scale = UIWindowClampScale(window, window->scale);
+
+    u32 titleLen = Minu32((u32)StringLength(title), (u32)sizeof(window->tabTitle) - 1u);
+    MemCopy(window->tabTitle, title, titleLen);
+    window->tabTitle[titleLen] = '\0';
+
+    if (window->tabGroup != 0u)
+    {
+        s32 activeMember = -1;
+        for (u32 i = 0u; i < g_UIWindowCount; i++)
+        {
+            UIWindow* member = &g_UIWindows[i];
+            if ((s32)i == windowIndex || member->tabGroup != window->tabGroup || !UIWindowIsOpen(member) || !member->tabActive) continue;
+            activeMember = (s32)i;
+            break;
+        }
+        if (window->tabActive)
+        {
+            // a freshly reopened member wins over the one that replaced it
+            if (activeMember >= 0) g_UIWindows[activeMember].tabActive = false;
+        }
+        else if (activeMember >= 0)
+        {
+            // hidden tab, mirror the visible member's rect and skip drawing
+            UIWindow* active = &g_UIWindows[activeMember];
+            window->position = active->position;
+            window->scale = active->scale;
+            window->isCollapsed = active->isCollapsed;
+            window->isFocused = false;
+            return false;
+        }
+        else window->tabActive = true; // group lost its visible member, take over
+    }
 
     float2 visibleScale = UIWindowScale(window);
     bool mousePressed = GetMousePressed(MouseButton_Left) != 0u;
@@ -802,8 +1307,32 @@ bool UIBeginWindowId(Clay_ElementId id, const char* title, float2 position, floa
     bool closeHovered = window->topHeight > 0.0f && UIHitRect(closePos, F2Set1(buttonSize), g_UI.mouse);
     bool collapseHovered = window->topHeight > 0.0f && UIHitRect(collapsePos, F2Set1(buttonSize), g_UI.mouse);
 
-    if (!anyOnTop && mousePressed && closeHovered && open) *open = false;
-    if (!anyOnTop && mousePressed && collapseHovered) window->isCollapsed = !window->isCollapsed;
+    if (!anyOnTop && mousePressed && closeHovered && open) { *open = false; g_UIWindowLayoutChanged = true; }
+    if (!anyOnTop && mousePressed && collapseHovered) { window->isCollapsed = !window->isCollapsed; g_UIWindowLayoutChanged = true; }
+
+    // tabs are hit-tested against last frame's layout, pressing one selects it and
+    // arms a possible tear-off, both applied in UIWindowBeginFrame
+    bool tabHovered = false;
+    if (window->tabGroup != 0u && window->topHeight > 0.0f)
+    {
+        for (u32 i = 0u; i < g_UIWindowCount; i++)
+        {
+            UIWindow* member = &g_UIWindows[i];
+            if (member->tabGroup != window->tabGroup || !UIWindowIsOpen(member)) continue;
+            Clay_ElementData tabData = Clay_GetElementData(Clay_GetElementIdWithIndex(CLAY_STRING("UIWindowTab"), member->hash));
+            if (!tabData.found) continue;
+            if (!UIHitRect((float2){ tabData.boundingBox.x, tabData.boundingBox.y },
+                           (float2){ tabData.boundingBox.width, tabData.boundingBox.height }, g_UI.mouse)) continue;
+            tabHovered = true;
+            if (!anyOnTop && mousePressed)
+            {
+                g_UIWindowTabDragHash = member->hash;
+                g_UIWindowTabDragStart = g_UI.mouse;
+                if (!member->tabActive) g_UIWindowTabSwitchHash = member->hash;
+            }
+            break;
+        }
+    }
 
     u32 resizeHighlightMask = 0u;
     if (!anyOnTop)
@@ -811,7 +1340,7 @@ bool UIBeginWindowId(Clay_ElementId id, const char* title, float2 position, floa
         float2 titlePos = window->position;
         float2 titleSize = { Maxf32(window->scale.x - buttonSize * 2.0f - titlePad * 3.0f, 1.0f), window->topHeight };
         resizeHighlightMask = UIWindowHandleResize(window, windowIndex, g_UI.mouse, mouseDown);
-        if (!closeHovered && !collapseHovered) UIWindowHandleMove(window, windowIndex, titlePos, titleSize, g_UI.mouse, mouseDown);
+        if (!closeHovered && !collapseHovered && !tabHovered) UIWindowHandleMove(window, windowIndex, titlePos, titleSize, g_UI.mouse, mouseDown);
     }
 
     if (open && !*open) return false;
@@ -846,8 +1375,32 @@ bool UIBeginWindowId(Clay_ElementId id, const char* title, float2 position, floa
             },
             .backgroundColor = UIColorToClay(UIGetColor(UIColor_TextBoxBG) & 0xF0FFFFFFu)
         }) {
-            Clay_String titleString = { .isStaticallyAllocated = false, .length = (s32)StringLength(title), .chars = title };
-            CLAY_TEXT(titleString, CLAY_TEXT_CONFIG({ .fontSize = 16, .textColor = UIGetClayColor(UIColor_Text) }));
+            u32 openMembers = 0u;
+            if (window->tabGroup != 0u)
+            {
+                for (u32 i = 0u; i < g_UIWindowCount; i++)
+                    openMembers += (g_UIWindows[i].tabGroup == window->tabGroup && UIWindowIsOpen(&g_UIWindows[i])) ? 1u : 0u;
+            }
+            if (openMembers >= 2u)
+            {
+                for (u32 i = 0u; i < g_UIWindowCount; i++)
+                {
+                    UIWindow* member = &g_UIWindows[i];
+                    if (member->tabGroup != window->tabGroup || !UIWindowIsOpen(member)) continue;
+                    CLAY(Clay_GetElementIdWithIndex(CLAY_STRING("UIWindowTab"), member->hash), {
+                        .layout = { .sizing = { CLAY_SIZING_FIT(0), CLAY_SIZING_FIXED(24.0f) }, .padding = { 8, 8, 0, 0 }, .childAlignment = { .y = CLAY_ALIGN_Y_CENTER } },
+                        .backgroundColor = UIColorToClay(member->tabActive ? UIGetColor(UIColor_Hovered) : (Clay_Hovered() ? UIGetColor(UIColor_Hovered) & 0x80FFFFFFu : UIGetColor(UIColor_CheckboxBG))),
+                        .cornerRadius = CLAY_CORNER_RADIUS(3.0f)
+                    }) {
+                        CLAY_TEXT(UIStr(member->tabTitle), CLAY_TEXT_CONFIG({ .fontSize = 14, .textColor = UIGetClayColor(UIColor_Text), .wrapMode = CLAY_TEXT_WRAP_NONE }));
+                    }
+                }
+            }
+            else
+            {
+                Clay_String titleString = { .isStaticallyAllocated = false, .length = (s32)StringLength(title), .chars = title };
+                CLAY_TEXT(titleString, CLAY_TEXT_CONFIG({ .fontSize = 16, .textColor = UIGetClayColor(UIColor_Text) }));
+            }
             CLAY(CLAY_ID_LOCAL("TitleSpacer"), { .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(1.0f) } } }) {}
             CLAY(CLAY_ID_LOCAL("Collapse"), {
                 .layout = { .sizing = { CLAY_SIZING_FIXED(buttonSize), CLAY_SIZING_FIXED(buttonSize) }, .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER } },
