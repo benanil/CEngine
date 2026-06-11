@@ -116,6 +116,7 @@ target_sources(${EXECUTABLE_NAME} PRIVATE
     Source/AssetsEditor.c
     Source/SceneEditor.c
     Source/ConsoleEditor.c
+    Source/EditorGizmo.c
 
     Source/Rendering/Graphics.c
     Source/Rendering/Rendering.c

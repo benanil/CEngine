@@ -160,6 +160,17 @@ static inline void Half4ToFloat4(f32* result, const f16 half4[4])
     #endif
 }
 
+static inline v128f Half4ToFloat4Vec(const void* half4)
+{
+    #ifdef AX_SUPPORT_AVX2
+    return _mm_cvtph_ps(_mm_loadu_si64(half4));
+    #elif defined(AX_SUPPORT_NEON)
+    return vcvt_f32_f16(vld1_dup_f16(half4));
+    #else
+    STATIC_ASSERT(0, "undefined Half4ToFloat4Vec");
+    #endif
+}
+
 static inline void Float4ToHalf4V(u64* result, v128f f4)
 {
     #ifdef AX_SUPPORT_AVX2

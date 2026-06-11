@@ -57,10 +57,26 @@ void RendererInit();
 
 void RendererSetLights(const LightGPU* lights, u32 count);
 
-// editor selection outline around one render set entity of the active scene
-void RendererSetOutlineTarget(u32 skinned, u32 groupIdx, u32 entityIdx);
+#define MAX_OUTLINE_TARGETS 256u
+
+// one outlined render set entity of the active scene
+typedef struct OutlineTarget_
+{
+    u32 skinned;
+    u32 groupIdx;
+    u32 entityIdx;
+} OutlineTarget;
+
+// editor selection outlines, the gizmo submits every entity of the selection each frame
+void RendererSetOutlineTargets(const OutlineTarget* targets, u32 count);
 
 void RendererClearOutlineTarget(void);
+
+#define MAX_GIZMO_VERTICES 1024u
+
+// world space line overlay drawn on top of everything (no depth), the editor gizmo
+// submits its lines every frame, count 0 hides it
+void RendererSetGizmoLines(const ALineVertex* vertices, u32 count);
 
 u32 RendererGetLightCount(void);
 

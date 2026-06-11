@@ -258,6 +258,7 @@ typedef struct RenderState
     SDL_GPUBuffer*           indexBuffer;
     SDL_GPUBuffer*           lineBuffer;
     SDL_GPUBuffer*           lineDrawArgsBuffer;
+    SDL_GPUBuffer*           gizmoLineBuffer;
     SDL_GPUBuffer*           lightBuffer;
     SDL_GPUBuffer*           pointShadowMatrixBuffer;
     SDL_GPUBuffer*           spotShadowMatrixBuffer;

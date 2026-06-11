@@ -39,9 +39,7 @@ static v128f BVH_Position(bool skinned, u32 index)
         return VecSetR(v->position.x, v->position.y, v->position.z, 0.0f);
     }
     const ASkinedVertex* v = gGFX.SkinnedVertexBuffer + index;
-    return VecSetR(HalfToFloat((f16)(v->positionXY & 0xFFFFu)),
-                   HalfToFloat((f16)(v->positionXY >> 16u)),
-                   HalfToFloat((f16)(v->positionZW & 0xFFFFu)), 0.0f);
+    return Half4ToFloat4Vec(&v->positionXY);
 }
 
 static void BVH_UpdateNodeBounds(BVHBuild* build, BVHNode* node)

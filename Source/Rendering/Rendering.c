@@ -121,19 +121,30 @@ static void QueueWindowFrameTexturesForRelease(WindowState* winstate)
     g_ResizeReleaseQueue[slot] = old;
 }
 
-OutlineTarget g_OutlineTarget;
+OutlineTarget g_OutlineTargets[MAX_OUTLINE_TARGETS];
+u32           g_NumOutlineTargets;
+ALineVertex   g_GizmoVertices[MAX_GIZMO_VERTICES];
+u32           g_NumGizmoVertices;
 
-void RendererSetOutlineTarget(u32 skinned, u32 groupIdx, u32 entityIdx)
+void RendererSetGizmoLines(const ALineVertex* vertices, u32 count)
 {
-    g_OutlineTarget.valid = 1;
-    g_OutlineTarget.skinned = skinned;
-    g_OutlineTarget.groupIdx = groupIdx;
-    g_OutlineTarget.entityIdx = entityIdx;
+    count = Minu32(count, MAX_GIZMO_VERTICES);
+    if (count > 0 && vertices)
+        MemCopy(g_GizmoVertices, vertices, count * sizeof(ALineVertex));
+    g_NumGizmoVertices = vertices ? count : 0;
+}
+
+void RendererSetOutlineTargets(const OutlineTarget* targets, u32 count)
+{
+    count = Minu32(count, MAX_OUTLINE_TARGETS);
+    if (count > 0 && targets)
+        MemCopy(g_OutlineTargets, targets, count * sizeof(OutlineTarget));
+    g_NumOutlineTargets = targets ? count : 0;
 }
 
 void RendererClearOutlineTarget(void)
 {
-    MemsetZero(&g_OutlineTarget, sizeof(g_OutlineTarget));
+    g_NumOutlineTargets = 0;
 }
 
 void RendererSetLights(const LightGPU* lights, u32 count)
@@ -248,6 +259,7 @@ void InitBuffers(void)
     g_RenderState.indexBuffer          = CreateBuffer(NULL, MAX_INDEX  * sizeof(int)    , SDL_GPU_BUFFERUSAGE_INDEX, "CPIndexBuffer");
     g_RenderState.lineBuffer           = CreateBuffer(NULL, sizeof(ALineVertex) * MAX_LINE_COUNT   , BVertexBit     | BWriteComputeBit, "CPLineVertexBuffer");
     g_RenderState.lineDrawArgsBuffer   = CreateBuffer(NULL, sizeof(u32) * 8                        , BIndirectBit   | BWriteComputeBit, "CPLinedrawArgsBuffer");
+    g_RenderState.gizmoLineBuffer      = CreateBuffer(NULL, sizeof(ALineVertex) * MAX_GIZMO_VERTICES, BVertexBit                      , "CPGizmoLineBuffer");
     g_RenderState.lightBuffer          = CreateBuffer(NULL, sizeof(LightGPU) * MAX_LIGHT_COUNT     , BReadRasterBit | BReadCompute    , "CPLightBuffer");
     g_RenderState.lightDrawInfoBuffer  = CreateBuffer(NULL, sizeof(LightDrawInfo) * MAX_LIGHT_COUNT, BReadRasterBit | BWriteComputeBit, "CPLightDrawInfoBuffer");
     g_RenderState.lightDrawArgsBuffer  = CreateBuffer(NULL, sizeof(SDL_GPUIndirectDrawCommand)     , BIndirectBit   | BWriteComputeBit, "CPLightDrawArgsBuffer");
@@ -543,6 +555,7 @@ void Render(void)
     }
     RenderLines(cmd, &color_load_target, &main_depth_target, viewProj);
     RenderOutline(cmd, &color_load_target, &main_depth_target, viewProj);
+    RenderGizmo(cmd, &color_load_target, viewProj);
 
     winstate->hiz_view_proj = viewProj;
     winstate->hiz_valid = true;

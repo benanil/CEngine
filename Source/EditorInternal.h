@@ -18,6 +18,13 @@ struct Scene_* EditorNewScene(void);
 struct Camera_;
 void EditorPickingUpdate(struct Camera_* camera);
 
+// implemented in EditorGizmo.c, update returns true while the gizmo owns the mouse.
+// AddTarget toggles the object in the multi selection (ctrl click)
+void EditorGizmoSetTarget(u32 skinned, u32 groupIdx, u32 entityIdx);
+void EditorGizmoAddTarget(u32 skinned, u32 groupIdx, u32 entityIdx);
+void EditorGizmoClear(void);
+bool EditorGizmoUpdate(struct Camera_* camera);
+
 // implemented in AssetsEditor.c
 void DrawAssetsWindow(bool* open);
 

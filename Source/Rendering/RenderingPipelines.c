@@ -303,7 +303,45 @@ static void InitLinePipeline(void)
     SDL_ReleaseGPUShader(g_GPUDevice, fragment_shader);
 }
 
+// gizmo overlay: same shaders and vertex format as the debug lines, but triangles
+// (the gizmo builds camera facing quads for thick lines) and no depth target so it
+// always draws on top
+static void InitGizmoLinePipeline(void)
+{
+    SDL_GPUShaderFormat shaderformat = SDL_GetGPUShaderFormats(g_GPUDevice);
+    SDL_GPUShader* vertex_shader   = PIPELINE_VERT_DEF(Shaders_LineDebugVert_spv), .num_uniform_buffers = 1 }); CHECK_CREATE(vertex_shader, "Gizmo Vertex Shader")
+    SDL_GPUShader* fragment_shader = PIPELINE_FRAG_DEF(Shaders_LineDebugFrag_spv)});                            CHECK_CREATE(fragment_shader, "Gizmo Fragment Shader")
+
+    const SDL_GPUVertexAttribute vertex_attributes[2] = {
+        { .location = 0, .buffer_slot = 0, .format = VFORMAT_FLOAT3, .offset = 0 },
+        { .location = 1, .buffer_slot = 0, .format = VFORMAT_UINT, .offset = sizeof(f32) * 3 }
+    };
+
+    g_GizmoLinePipeline = SDL_CreateGPUGraphicsPipeline(g_GPUDevice, &(SDL_GPUGraphicsPipelineCreateInfo){
+        .vertex_shader   = vertex_shader,
+        .fragment_shader = fragment_shader,
+        .primitive_type  = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
+        .target_info     = (SDL_GPUGraphicsPipelineTargetInfo){
+            .num_color_targets         = 1,
+            .color_target_descriptions = &(SDL_GPUColorTargetDescription){ .format = SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT }
+        },
+        .multisample_state  = (SDL_GPUMultisampleState){ .sample_count = SDL_GPU_SAMPLECOUNT_1 },
+        .vertex_input_state = (SDL_GPUVertexInputState){
+            .vertex_buffer_descriptions = &(SDL_GPUVertexBufferDescription){
+                0, sizeof(ALineVertex), SDL_GPU_VERTEXINPUTRATE_VERTEX, 0
+            },
+            .num_vertex_buffers    = 1,
+            .vertex_attributes     = vertex_attributes,
+            .num_vertex_attributes = ARRAY_SIZE(vertex_attributes)
+        }
+    });
+    CHECK_CREATE(g_GizmoLinePipeline, "Gizmo Line Pipeline")
+    SDL_ReleaseGPUShader(g_GPUDevice, vertex_shader);
+    SDL_ReleaseGPUShader(g_GPUDevice, fragment_shader);
+}
+
 SDL_GPUGraphicsPipeline* g_OutlinePipeline;
+SDL_GPUGraphicsPipeline* g_GizmoLinePipeline;
 
 // editor selection outline: the selected primitive re-draws as an inverted hull, the
 // vertex shader grows it along the normals (ported from the old engine's outline)
@@ -728,6 +766,7 @@ void InitRenderPipelines(void)
     InitDepthOnlyPipelines();
     InitShadows();
     InitLinePipeline();
+    InitGizmoLinePipeline();
     InitOutlinePipeline();
     InitDeferredLightPipeline();
     InitSlugPipeline();
@@ -754,6 +793,7 @@ void DestroyRenderPipelines(void)
     
     if (g_RenderState.linePipeline)          SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.linePipeline);
     if (g_OutlinePipeline)                   SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_OutlinePipeline);
+    if (g_GizmoLinePipeline)                 SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_GizmoLinePipeline);
     if (g_RenderState.deferredLightPipeline) SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.deferredLightPipeline);
     if (g_RenderState.slugPipeline)          SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.slugPipeline);
     if (g_RenderState.slugDepthPipeline)     SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.slugDepthPipeline);

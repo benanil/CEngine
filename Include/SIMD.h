@@ -361,6 +361,11 @@ typedef __m128i v128u;
 #define VecUnpackHi32(x)            _mm_unpackhi_epi16(x, _mm_setzero_si128()) /* zero-extend high 4 i16 -> i32 | NEON: vmovl_s16(vget_high_s16) */
                                     
 #define VecPack16(x)                _mm_packus_epi32((x), _mm_setzero_si128()) /* narrow u32 -> u16 (sat) | NEON: vqmovn_u32 */
+#define VecPack16S(x)               _mm_packs_epi32((x), _mm_setzero_si128())  /* narrow i32 -> i16 (signed sat) | NEON: vqmovn_s32 */
+
+/* sign-extend variants, VecUnpackLo32/Hi32 zero-extend and destroy negative i16 values */
+#define VecUnpackLo32S(x)           _mm_srai_epi32(_mm_unpacklo_epi16(_mm_setzero_si128(), x), 16)
+#define VecUnpackHi32S(x)           _mm_srai_epi32(_mm_unpackhi_epi16(_mm_setzero_si128(), x), 16)
                                     
 #define VecStoreLo64(p, v)          _mm_storel_pi((__m64*)(p), _mm_castsi128_ps(v)) /* store lower 64 bits | NEON: vst1 */
 #define VecStoreHi64(p, v)          _mm_storeh_pi((__m64*)(p), _mm_castsi128_ps(v)) /* store lower 64 bits | NEON: vst1 */
@@ -413,6 +418,11 @@ typedef uint32x4_t v128u;
 #define VecUnpackHi32(x)            vmovl_s16(vget_high_s16(x))  /* zero-extend high 4 i16 -> i32 */
 
 #define VecPack16(x)                vqmovn_u32(x)                /* narrow u32 -> u16 with saturation */
+#define VecPack16S(x)               vqmovn_s32(x)                /* narrow i32 -> i16 with signed saturation */
+
+/* neon vmovl_s16 already sign-extends, the S variants exist for sse parity */
+#define VecUnpackLo32S(x)           vmovl_s16(vget_low_s16(x))
+#define VecUnpackHi32S(x)           vmovl_s16(vget_high_s16(x))
 #define VecStoreLo64(p, v)          vst1_s16((int16_t*)(p), vget_low_s16(v)) /* store lower 64 bits */
 #define VecStoreHi64(p, v)          vst2_s16((int16_t*)(p), vget_high_s16(v)) /* store higher 64 bits */
 #define VecLoadLo64(p, v)           vcombine_f32(vld1_f32((float*)(p)), vget_high_f32(v)) /* load lower 64 bits */

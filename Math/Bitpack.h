@@ -36,23 +36,25 @@ purefn u32 VCALL PackXY11Z10UnormToU32(v128f v)
     return VeciGetX(i);
 }
 
+// signed pack/unpack: quaternion components are negative half the time, the unsigned
+// VecPack16/VecUnpackLo32 variants clamp or zero-extend them and break rotations
 static inline void VCALL PackQuaternionS16Norm(v128f quat, u64* result)
 {
     v128u u32 = VecF32ToI32(VecMulf(quat, INT16_MAX-1));
-    VecStoreLo64(result, VecPack16(u32));
+    VecStoreLo64(result, VecPack16S(u32));
 }
 
 static inline v128f VCALL UnpackQuaternionS16Norm1(u64 i16)
 {
     const v128f inv = VecSet1(1.0f / (INT16_MAX - 1));
-    return VecMul(VecI32ToF32(VecUnpackLo32(VeciDup64(i16))), inv);
+    return VecMul(VecI32ToF32(VecUnpackLo32S(VeciDup64(i16))), inv);
 }
 
 static inline void VCALL UnpackQuaternionS16Norm2(v128u i16, v128f* q0, v128f* q1)
 {
     const v128f inv = VecSet1(1.0f / (INT16_MAX - 1));
-    *q0 = VecMul(VecI32ToF32(VecUnpackLo32(i16)), inv);
-    *q1 = VecMul(VecI32ToF32(VecUnpackHi32(i16)), inv);
+    *q0 = VecMul(VecI32ToF32(VecUnpackLo32S(i16)), inv);
+    *q1 = VecMul(VecI32ToF32(VecUnpackHi32S(i16)), inv);
 }
 
 static inline void PackTBNIntoQuaternion64(v128f normal, v128f tangent, u32* out)

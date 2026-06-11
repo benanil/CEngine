@@ -43,7 +43,7 @@ Scene* EditorNewScene(void)
     g_EditorSceneInit = true;
     Scene_MakeActive(&g_EditorScene);
     RendererSetLights(NULL, 0u);
-    RendererClearOutlineTarget();
+    EditorGizmoClear();
     sceneSelectedBundle = INVALID_BUNDLE;
     sceneSelectedNode = -1;
     sceneSelectedLight = -1;
@@ -261,7 +261,8 @@ void EditorPickingUpdate(Camera* camera)
     BVHHit hit;
     if (!BVH_RaycastScene(scene, ray.origin, ray.dir, &hit))
     {
-        RendererClearOutlineTarget();
+        // clicking empty space clears the selection unless adding with ctrl
+        if (!GetKeyDown(SDLK_LCTRL)) EditorGizmoClear();
         return;
     }
 
@@ -282,7 +283,11 @@ void EditorPickingUpdate(Camera* camera)
         sceneSelectedBundle = hit.bundleIdx;
         sceneSelectedNode = -1;
     }
-    RendererSetOutlineTarget(hit.skinnedSet, hit.groupIdx, hit.entityIdx);
+    // the gizmo submits the outlines of the whole selection every frame
+    if (GetKeyDown(SDLK_LCTRL)) // ctrl click toggles the object in the multi selection
+        EditorGizmoAddTarget(hit.skinnedSet, hit.groupIdx, hit.entityIdx);
+    else
+        EditorGizmoSetTarget(hit.skinnedSet, hit.groupIdx, hit.entityIdx);
 }
 
 static void EditorSaveSceneAs(const char* name)
@@ -334,6 +339,27 @@ static Clay_String SceneNodeLabel(const ANode* node, s32 nodeIdx)
     return (Clay_String) { .isStaticallyAllocated = false, .length = (s32)len, .chars = text };
 }
 
+// selecting a mesh node in the tree also selects its first instance in the viewport
+static void SceneSelectNodeInViewport(const Scene* scene, u32 bundleIdx, s32 nodeIdx)
+{
+    if (bundleIdx >= scene->numBundles) return;
+    const SceneBundleRef* ref = &scene->bundleRefs[bundleIdx];
+    if (nodeIdx < 0 || nodeIdx >= ref->bundle->numNodes) return;
+    const ANode* node = &ref->bundle->nodes[nodeIdx];
+    if (node->type != 0 || node->index < 0) return;
+
+    const RenderSet* set = ref->skinned ? &scene->skinnedSet : &scene->surfaceSet;
+    if (ref->renderIdx >= set->numBundles) return;
+    Range range = set->bundleRange[ref->renderIdx];
+    for (u32 g = range.start; g < range.start + range.count; g++)
+    {
+        const PrimitiveGroup* group = &set->primitiveGroups[g];
+        if (!group->valid || group->meshIndex != (u32)node->index || group->numEntities == 0) continue;
+        EditorGizmoSetTarget(ref->skinned, g, 0);
+        return;
+    }
+}
+
 // right click selects the hovered row so the context menu targets it, last frame's layout
 static bool SceneRowRightClicked(Clay_ElementId id)
 {
@@ -368,6 +394,7 @@ static void SceneNodeTree(const SceneBundle* bundle, u32 bundleIdx, s32 nodeIdx,
     {
         sceneSelectedBundle = bundleIdx;
         sceneSelectedNode = nodeIdx;
+        if (selected) SceneSelectNodeInViewport(Scene_GetActive(), bundleIdx, nodeIdx);
     }
     if (!open) return;
 
@@ -472,7 +499,7 @@ static void SceneEventDeleteBundle(void* unused)
     Scene_RemoveBundle(scene, sceneSelectedBundle);
     sceneSelectedBundle = INVALID_BUNDLE;
     sceneSelectedNode = -1;
-    RendererClearOutlineTarget(); // group indices shifted
+    EditorGizmoClear(); // group indices shifted
 }
 
 // removes the selected node's mesh entities from the render set, every spawned
@@ -506,7 +533,7 @@ static void SceneEventDeleteNode(void* unused)
         removed += RenderSet_RemoveEntities(set, g, 0, group->numEntities);
     }
     scene->renderDataDirty = 1;
-    RendererClearOutlineTarget(); // entity indices shifted
+    EditorGizmoClear(); // entity indices shifted
     AX_LOG("removed %d entities of node %d", removed, sceneSelectedNode);
 }
 

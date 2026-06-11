@@ -342,6 +342,9 @@
 					<File>
 						<Path>Include/Async.h</Path>
 					</File>
+					<File>
+						<Path>Include/BVH.h</Path>
+					</File>
 				</Children>
 			</Folder>
 			<Folder>
@@ -513,6 +516,9 @@
 					<File>
 						<Path>Shaders/DeferredLightVolume.hlsl</Path>
 					</File>
+					<File>
+						<Path>Shaders/Outline.hlsl</Path>
+					</File>
 				</Children>
 			</Folder>
 			<Folder>
@@ -607,6 +613,12 @@
 					</File>
 					<File>
 						<Path>Source/ConsoleEditor.c</Path>
+					</File>
+					<File>
+						<Path>Source/BVH.c</Path>
+					</File>
+					<File>
+						<Path>Source/EditorGizmo.c</Path>
 					</File>
 				</Children>
 			</Folder>
