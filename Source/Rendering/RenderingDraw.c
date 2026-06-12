@@ -1,5 +1,6 @@
 #include "RenderingInternal.h"
 #include "Include/TextureSystem.h"
+#include "Include/Terrain.h"
 #include "Math/Bitpack.h"
 
 float3 GetRenderSunDirection(void)
@@ -80,6 +81,10 @@ void RenderDepth(SDL_GPUCommandBuffer* cmd, const DepthPassContext* ctx)
         }
     }
 
+    // terrain draws into the main depth prepass only, it does not cast shadows yet
+    if (!ctx->useShadowCascades && !ctx->usePointShadowSides && !ctx->useSpotShadowSides)
+        Terrain_RenderDepth(cmd, pass, ctx->viewProj);
+
     SDL_EndGPURenderPass(pass);
 }
 
@@ -93,7 +98,7 @@ void RenderScene(SDL_GPUCommandBuffer* cmd, const ScenePassContext* ctx)
     u32 totalGroups = 0;
     for (u32 s = 0; s < g_NumActiveScenes; s++)
         totalGroups += g_ActiveScenes[s]->skinnedSet.numGroups + g_ActiveScenes[s]->surfaceSet.numGroups;
-    if (totalGroups == 0)
+    if (totalGroups == 0 && !Terrain_HasDraws())
     {
         return;
     }
@@ -176,6 +181,8 @@ void RenderScene(SDL_GPUCommandBuffer* cmd, const ScenePassContext* ctx)
             SDL_DrawGPUIndexedPrimitivesIndirect(pass, scene->surfaceBuffers.drawArgs, 0, scene->surfaceSet.numGroups * MESH_LOD_COUNT);
         }
     }
+
+    Terrain_RenderGBuffer(cmd, pass, ctx->viewProj);
 
     SDL_EndGPURenderPass(pass);
 }

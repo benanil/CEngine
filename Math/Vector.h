@@ -104,8 +104,8 @@ purefn u64 RectPointIntersect(float2 min, float2 scale, float2 point) {
 
 purefn s32 GreaterThan2(float2 a, float2 b) { return (s32)(a.x > b.x) | ((s32)(a.y > b.y) << 1); }
 purefn s32 LessThan2(float2 a, float2 b)    { return (s32)(a.x < b.x) | ((s32)(a.y < b.y) << 1); }
-purefn s32 GreaterThan3(float3 a, float3 b) { return (s32)(a.x > b.x) | ((s32)(a.y > b.y) << 1) | ((s32)(a.y > b.y) << 2); }
-purefn s32 LessThan3(float3 a, float3 b)    { return (s32)(a.x < b.x) | ((s32)(a.y < b.y) << 1) | ((s32)(a.y < b.y) << 2); }
+purefn s32 GreaterThan3(float3 a, float3 b) { return (s32)(a.x > b.x) | ((s32)(a.y > b.y) << 1) | ((s32)(a.z > b.z) << 2); }
+purefn s32 LessThan3(float3 a, float3 b)    { return (s32)(a.x < b.x) | ((s32)(a.y < b.y) << 1) | ((s32)(a.z < b.z) << 2); }
 
 purefn s32 All2(s32 msk) { return msk == 0b11u; }
 purefn s32 All3(s32 msk) { return msk == 0b111u; }
@@ -133,15 +133,15 @@ static inline f16_2 UnpackHalf2(u32 h)
 
 static inline f16_2 VecXY(v128f v)
 {
-    f16_2 res={};
-    VecLoadLo64(&res.x, v);
+    f16_2 res;
+    VecStoreLo64(&res.x, VecBitcastU32(v));
     return res;
 }
 
 static inline f16_2 VecZW(v128f v)
 {
-    f16_2 res={};
-    VecLoadHi64(&res.x, v);
+    f16_2 res;
+    VecStoreHi64(&res.x, VecBitcastU32(v));
     return res;
 }
 

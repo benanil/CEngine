@@ -52,7 +52,7 @@ purefn v128f VCALL Vec3Cross(v128f vec0, v128f vec1)
     v128f vResult = vmulq_f32(vcombine_f32(v1yx, v1xy), vcombine_f32(v2zz, v2yx));
     vResult = vmlsq_f32(vResult, vcombine_f32(v1zz, v1yx), vcombine_f32(v2yx, v2xy));
     vResult = vreinterpretq_f32_u32(veorq_u32(vreinterpretq_u32_f32(vResult), FlipY));
-    return vreinterpretq_f32_u32(vandq_u32(vreinterpretq_u32_f32(vResult), VecMask3));
+    return VecAnd(vResult, VecMask3);
 #else
     v128f tmp0 = VecShuffleR(vec0, vec0, 3,0,2,1);
     v128f tmp1 = VecShuffleR(vec1, vec1, 3,1,0,2);
@@ -119,7 +119,8 @@ purefn v128f ACosV(v128f x)
     v128f y = VecFabs(x);
     v128f p = VecFmadd(VecSet1(-0.1565827f), y, VecSet1(1.570796f));
     p = VecMul(p, VecSqrt(VecSub(VecOne(), y)));
-    return VecSelect(p, VecSub(VecSet1(MATH_PI), p),VecCmpGe(x, VecZero()));
+    // x >= 0 ? p : pi - p, like the scalar ACos
+    return VecSelect(VecSub(VecSet1(MATH_PI), p), p, VecCmpGe(x, VecZero()));
 }
 
 purefn f32 Vec3Angle(v128f a, v128f b) {
@@ -266,7 +267,7 @@ purefn v128f VCALL VecAtan(v128f x)
 purefn v128f VCALL VecAtan2(v128f y, v128f x)
 {
     v128f ay = VecFabs(y), ax = VecFabs(x);
-    v128i swapMask = VecCmpGt(ay, ax);
+    v128f swapMask = VecCmpGt(ay, ax);
     v128f z  = VecDiv(VecBlend(ay, ax, swapMask), VecBlend(ax, ay, swapMask));
     v128f th = VecAtan(z);
     th = VecSelect(th, VecSub(VecSet1(MATH_HalfPI), th), swapMask);
@@ -288,13 +289,9 @@ purefn f32 VCALL Max3v(v128f ab)
 
 purefn u8 IsPointInsideAABB(v128f point, v128f aabbMin, v128f aabbMax)
 {
-    v128i cmpMin = VecCmpGe(point, aabbMin);
-    v128i cmpMax = VecCmpLe(point, aabbMax);
-    #if defined(AX_ARM)
-    u32 movemask = VecMovemask(VeciAnd(cmpMin, cmpMax));
-    #else
+    v128f cmpMin = VecCmpGe(point, aabbMin);
+    v128f cmpMax = VecCmpLe(point, aabbMax);
     u32 movemask = VecMovemask(VecAnd(cmpMin, cmpMax));
-    #endif
     return (movemask & 0b111) == 0b111;
 }
 
@@ -415,29 +412,22 @@ purefn f32 Expf(f32 f) {
 
 // https://martin.ankerl.com/2012/01/25/optimized-approximative-pow-in-c-and-cpp/
 // https://github.com/ekmett/approximate/blob/master/cbits/fast.c#L81
-// should be much more precise with large b
+// exact for integer exponents, approximate for the fractional part. a must be > 0
 purefn f32 Powf(f32 a, f32 b) {
-    // calculate approximation with fraction of the exponent
-    s32 e = (s32) b;
-    union {
-        f32 d;
-        s32 x[2];
-    } u = { (f32)a };
-    u.x[1] = (s32)((b - e) * (u.x[1] - 1072632447) + 1072632447.0f);
-    u.x[0] = 0;
-    
+    // approximate a^fract(b) by scaling the float exponent bits (0x3F800000 = 1.0f)
+    s32 e = (s32)b;
+    union { f32 f; s32 i; } u = { a };
+    u.i = (s32)((b - (f32)e) * (f32)(u.i - 1065353216) + 1065353216.0f);
+
     // exponentiation by squaring with the exponent's integer part
-    // d1 r = u.d makes everything much slower, not sure why
-    f32 r = 1.0;
-    while (e) {
-        if (e & 1) {
-            r *= a;
-        }
+    u32 n = (u32)(e < 0 ? -e : e);
+    f32 r = 1.0f;
+    while (n) {
+        if (n & 1u) r *= a;
         a *= a;
-        e >>= 1;
+        n >>= 1;
     }
-    
-    return (f32)(u.d * r);
+    return e < 0 ? u.f / r : u.f * r;
 }
 
 // https://github.com/ekmett/approximate/blob/master/cbits/fast.c#L81 <--you can find d1 versions
@@ -532,8 +522,7 @@ purefn f32 ATan(f32 x)
 
 // Warning! if y and x is zero this will return HalfPI instead of 0.0f unlike cstdlib
 purefn f32 ATan2(f32 y, f32 x) {
-    
-    return VecGetX(VecAtan2(VecSet1(x), VecSet1(y)));
+    return VecGetX(VecAtan2(VecSet1(y), VecSet1(x)));
 }
 
 // Valid input range -1..1 output is -pi..pi
@@ -590,7 +579,7 @@ purefn f32 RSqrtf(f32 x) {
 // cbrt
 purefn f32 CubeRootf(f32 val)
 {
-    const f32 fPower = 0.25f;
+    const f32 fPower = 1.0f / 3.0f;
     const f32 fScale = 1.0f;
     const f32 oneRepresentationAsf1 = (f32)(0x3f800000);
     f32 magicValue = (f32)((*((const u32*)&fScale))) - (oneRepresentationAsf1 * fPower);
@@ -671,11 +660,11 @@ purefn f32 SinPI(f32 x)  { return Sin(x) / MATH_PI; }
 
 // packs -1,1 range f1 to short
 purefn u16 PackSnorm16(f32 x) {
-    return (u16)Clampf32(x * (f32)INT16_MAX, (f32)INT16_MIN, (f32)INT16_MAX);
+    return (u16)(s16)Clampf32(x * (f32)INT16_MAX, (f32)INT16_MIN, (f32)INT16_MAX);
 }
 
 purefn f32 UnpackSnorm16(u16 x) {
-    return (f32)x / (f32)INT16_MAX;
+    return (f32)(s16)x / (f32)INT16_MAX;
 }
 
 // packs 0,1 range f1 to short

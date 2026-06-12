@@ -127,7 +127,7 @@ static inline Quaternion VCALL QSlerp(Quaternion q0, Quaternion q1, float t)
 // faster but less precise, more error prone version of slerp
 purefn Quaternion VCALL QNLerp(Quaternion a, Quaternion b, float t)
 {
-    v128i lz = VecCmpLt(VecDot(a, b), VecZero());
+    v128f lz = VecCmpLt(VecDot(a, b), VecZero());
     a = VecSelect(a, VecNeg(a), lz);
     a = VecLerp(a, b, t);
     return VecNormEst(a);
@@ -286,7 +286,8 @@ inline v128f VCALL QuaternionFromM33Vec(v128f r0, v128f r1, v128f r2)
     t0 = VecLen(t2);
     return VecDiv(t2, t0);
     #elif defined(AX_SUPPORT_SSE)
-
+    // DirectXMath XMQuaternionRotationMatrix: build the four tensor product rows
+    // explicitly, then select the one with the largest diagonal magnitude
     v128f r00 = VecSplatX(r0);
     v128f r11 = VecSplatY(r1);
     v128f r22 = VecSplatZ(r2);
@@ -296,16 +297,19 @@ inline v128f VCALL QuaternionFromM33Vec(v128f r0, v128f r1, v128f r2)
     v128f z2gew2  = _mm_cmple_ps(r11pr00, VecZero());
     v128f x2py2gez2pw2 = _mm_cmple_ps(r22, VecZero());
 
+    // (4*x^2, 4*y^2, 4*z^2, 4*w^2)
     v128f t0 = VecFmadd(XMPMMP, r00, VecOne());
     v128f t1 = _mm_mul_ps(XMMPMP, r11);
     v128f t2 = VecFmadd(XMMMPP, r22, t0);
     v128f x2y2z2w2 = _mm_add_ps(t1, t2);
-    
+
+    // (4*x*y, 4*x*z, 4*y*z, unused)
     t0 = _mm_shuffle_ps(r0, r1, _MM_SHUFFLE(1, 2, 2, 1));
     t1 = _mm_shuffle_ps(r1, r2, _MM_SHUFFLE(1, 0, 0, 0));
     t1 = _mm_permute_ps(t1    , _MM_SHUFFLE(1, 3, 2, 0));
     v128f xyxzyz = _mm_add_ps(t0, t1);
-    
+
+    // (4*x*w, 4*y*w, 4*z*w, unused)
     t0 = _mm_shuffle_ps(r2, r1, _MM_SHUFFLE(0, 0, 0, 1));
     t1 = _mm_shuffle_ps(r1, r0, _MM_SHUFFLE(1, 2, 2, 2));
     t1 = _mm_permute_ps(t1, _MM_SHUFFLE(1, 3, 2, 0));
@@ -314,12 +318,17 @@ inline v128f VCALL QuaternionFromM33Vec(v128f r0, v128f r1, v128f r2)
     t0 = _mm_shuffle_ps(x2y2z2w2, xyxzyz, _MM_SHUFFLE(0, 0, 1, 0));
     t1 = _mm_shuffle_ps(x2y2z2w2, xwywzw, _MM_SHUFFLE(0, 2, 3, 2));
     t2 = _mm_shuffle_ps(xyxzyz  , xwywzw, _MM_SHUFFLE(1, 0, 2, 1));
-    
-    t0 = _mm_and_ps(x2gey2, _mm_shuffle_ps(t0, t2, _MM_SHUFFLE(2, 0, 2, 0)));
-    t1 = _mm_andnot_ps(x2gey2, _mm_shuffle_ps(t0, t2, _MM_SHUFFLE(3, 1, 1, 2)));
+
+    v128f tensor0 = _mm_shuffle_ps(t0, t2, _MM_SHUFFLE(2, 0, 2, 0)); // (4*x^2, 4*x*y, 4*x*z, 4*x*w)
+    v128f tensor1 = _mm_shuffle_ps(t0, t2, _MM_SHUFFLE(3, 1, 1, 2)); // (4*x*y, 4*y^2, 4*y*z, 4*y*w)
+    v128f tensor2 = _mm_shuffle_ps(t2, t1, _MM_SHUFFLE(2, 0, 1, 0)); // (4*x*z, 4*y*z, 4*z^2, 4*z*w)
+    v128f tensor3 = _mm_shuffle_ps(t2, t1, _MM_SHUFFLE(1, 2, 3, 2)); // (4*x*w, 4*y*w, 4*z*w, 4*w^2)
+
+    t0 = _mm_and_ps(x2gey2, tensor0);
+    t1 = _mm_andnot_ps(x2gey2, tensor1);
     t0 = _mm_or_ps(t0, t1);
-    t1 = _mm_and_ps(z2gew2, _mm_shuffle_ps(t2, t1, _MM_SHUFFLE(2, 0, 1, 0)));
-    t2 = _mm_andnot_ps(z2gew2, _mm_shuffle_ps(t2, t1, _MM_SHUFFLE(1, 2, 3, 2)));
+    t1 = _mm_and_ps(z2gew2, tensor2);
+    t2 = _mm_andnot_ps(z2gew2, tensor3);
     t1 = _mm_or_ps(t1, t2);
     t0 = _mm_and_ps(x2py2gez2pw2, t0);
     t1 = _mm_andnot_ps(x2py2gez2pw2, t1);
@@ -475,7 +484,7 @@ static inline DualQuaternion DQBlend(DualQuaternion x, DualQuaternion y, float a
 {
     // Check dot product to handle antipodality
     v128f k = VecDot(x.real, y.real);
-    v128i le = VecCmpLe(k, VecZero());
+    v128f le = VecCmpLe(k, VecZero());
     
     // If dot < 0, negate dq1 to take shorter path
     v128f neg_one = VecSet1(-1.0f);
@@ -485,10 +494,10 @@ static inline DualQuaternion DQBlend(DualQuaternion x, DualQuaternion y, float a
     // Linear blend
     v128f a_vec = VecSet1(a);
     v128f one_minus_a = VecSub(VecOne(), a_vec);
-    
+
     DualQuaternion result;
-    result.real = VecFmadd(x.real, one_minus_a, VecMul(y.real, k));
-    result.dual = VecFmadd(x.dual, one_minus_a, VecMul(y.dual, k));
+    result.real = VecFmadd(x.real, one_minus_a, VecMul(y.real, a_vec));
+    result.dual = VecFmadd(x.dual, one_minus_a, VecMul(y.dual, a_vec));
     return result;
 }
 

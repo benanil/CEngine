@@ -1,3 +1,5 @@
+#ifndef SOA_MATH_H
+#define SOA_MATH_H
 
 #include "../Math/Quaternion.h"
 
@@ -24,8 +26,8 @@
 #define Vec4SubSoaf(V1, V2, res) Do4(res[i] = VecSub(V1[i], V2))
 #define Vec4DivSoaf(V1, V2, res) Do4(res[i] = VecDiv(V1[i], V2))
 
-#define Vec3DotSoa(q0, q1) VecFmadd(q0[0], q1[0], VecFmadd(q0[1], q1[1], VecAdd(q0[2], q1[2]))) 
-#define Vec4DotSoa(q0, q1) VecFmadd(q0[0], q1[0], VecFmadd(q0[1], q1[1], VecFmadd(q0[2], q1[2], VecAdd(q0[3], q1[3])))) 
+#define Vec3DotSoa(q0, q1) VecFmadd(q0[0], q1[0], VecFmadd(q0[1], q1[1], VecMul(q0[2], q1[2])))
+#define Vec4DotSoa(q0, q1) VecFmadd(q0[0], q1[0], VecFmadd(q0[1], q1[1], VecFmadd(q0[2], q1[2], VecMul(q0[3], q1[3]))))
 
 #define Vec3LenSoa(xyz) VecSqrt(Vec3DotSoa(xyz, xyz))
 #define Vec4LenSoa(vec) VecSqrt(Vec4DotSoa(vec, vec))
@@ -78,13 +80,12 @@ static inline void VCALL QMulSoa(const v128f Q1[4], const v128f Q2[4], v128f res
 
 static inline void VCALL QMulVec3Soa(const v128f vec[3], const v128f quat[4], v128f res[3])
 {
-    v128f temp0[3];
-    Vec3CrossSoa(quat, vec, temp0);
-    Vec3MulSoaf(vec, quat[2], res);
-    Vec3AddSoa(temp0, res, res);
-    Vec3CrossSoa(quat, temp0, res);
-    Vec3MulSoaf(res, VecSet1(2.0f), temp0);
-    Vec3AddSoa(vec, temp0, res);
+    // t = cross(q.xyz, v) + v * q.w;  res = v + 2 * cross(q.xyz, t)
+    v128f t[3], t2[3];
+    Vec3CrossSoa(quat, vec, t);
+    Do3(t[i] = VecFmadd(vec[i], quat[3], t[i]));
+    Vec3CrossSoa(quat, t, t2);
+    Do3(res[i] = VecFmadd(t2[i], VecSet1(2.0f), vec[i]));
 }
 
 static inline void VCALL QSlerpSoa(const v128f q0[4], const v128f q1[4], v128f t, v128f res[4])
@@ -109,14 +110,12 @@ static inline void VCALL QSlerpSoa(const v128f q0[4], const v128f q1[4], v128f t
 
 static inline void VCALL QNlerpSoa(const v128f a[4], const v128f b[4], v128f t, v128f res[4])
 {
-    v128f dot = Vec4DotSoa(a, b);
-    v128i lz = VecCmpLt(dot, VecZero());
-    VecSelect(a[0], VecNeg(a[0]), VecSplatX(lz));
-    VecSelect(a[1], VecNeg(a[1]), VecSplatY(lz));
-    VecSelect(a[2], VecNeg(a[2]), VecSplatZ(lz));
-    VecSelect(a[3], VecNeg(a[4]), VecSplatW(lz));
-    
-    Vec4LerpSoa(a, b, t, res);
+    // each lane is an independent quaternion, the mask applies lane wise
+    v128f lz = VecCmpLt(Vec4DotSoa(a, b), VecZero());
+    v128f at[4];
+    Do4(at[i] = VecSelect(a[i], VecNeg(a[i]), lz));
+
+    Vec4LerpSoa(at, b, t, res);
     Vec4NormEstSoa(res, res);
 }
 
@@ -146,3 +145,5 @@ static inline void QFromAxisAngleSoa(v128f angle, int axis, v128f res[4])
     res[2] = (axis == 2) ? s : VecZero();
     res[3] = c;
 }
+
+#endif // SOA_MATH_H

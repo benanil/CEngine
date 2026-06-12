@@ -315,6 +315,8 @@ static void DrawGraphicsWindow()
                 UICheckbox(CLAY_ID("EditorEnableHBAO")     , CLAY_STRING("HBAO ambient occlusion"), &settings->enableHBAO);
                 UICheckbox(CLAY_ID("EditorEnableMLAA")     , CLAY_STRING("Anti-aliasing (MLAA)"), &settings->enableMLAA);
                 UICheckbox(CLAY_ID("EditorShowMLAAEdges")  , CLAY_STRING("Show MLAA edge mask"), &settings->showMLAAEdges);
+                UICheckbox(CLAY_ID("EditorTerrainWireframe"), CLAY_STRING("Terrain wireframe"), &settings->terrainWireframe);
+                UISliderFloatValue(CLAY_ID("EditorTerrainLodFactor"), CLAY_STRING("Terrain LOD factor"), &settings->terrainLodFactor, 0.5f, 2.0f, 2);
                 UISliderFloatValue(CLAY_ID("EditorLODDistanceModifier"), CLAY_STRING("LOD distance"), &settings->lodDistanceModifier, 0.05f, 4.0f, 2);
                 // scene resolution multiplier, the ui stays at native resolution
                 UIEditFloat(CLAY_ID("EditorRenderScale"), CLAY_STRING("Render scale"), &settings->renderScale, 0.25f, 2.0f, 0.25, 3);

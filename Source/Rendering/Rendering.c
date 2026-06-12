@@ -4,6 +4,7 @@
 #include "Include/Platform.h"
 #include "Include/Animation.h"
 #include "Include/Scene.h"
+#include "Include/Terrain.h"
 
 #define RESIZE_RELEASE_DELAY 4u
 
@@ -40,6 +41,8 @@ RenderSettings g_RenderSettings = {
     .enableLightFrustumCulling   = true,
     .enableLightOcclusionCulling = true,
     .showLightRects              = false,
+    .terrainWireframe            = false,
+    .terrainLodFactor            = 1.0f,
     .hbaoRadius                  = 1.3f,
     .hbaoBias                    = 0.5f,
     .hbaoIntensity               = 2.0f,
@@ -502,6 +505,7 @@ void Render(void)
     SDL_GPUColorTargetInfo        gbuffer_targets[3];
     MakeGBufferTargets(winstate, gbuffer_targets);
     UploadDirtyGeometry();
+    Terrain_GPUFlush(cmd);
     for (u32 s = 0; s < g_NumActiveScenes; s++)
     {
         Scene* scene = g_ActiveScenes[s];
@@ -568,6 +572,7 @@ void Render(void)
         RenderDeferredLights(cmd, &color_load_target, viewProj, renderW, renderH);
     }
     RenderLines(cmd, &color_load_target, &main_depth_target, viewProj);
+    Terrain_RenderWireframe(cmd, &color_load_target, &main_depth_target, viewProj);
     RenderOutline(cmd, &color_load_target, &main_depth_target, viewProj);
     RenderGizmo(cmd, &color_load_target, viewProj);
 
@@ -674,6 +679,7 @@ void DestroyPipeline(void)
 
 void Quit(s32 rc)
 {
+    Terrain_Destroy();
     DestroyPipeline();
     GraphicsDestroy();
     exit(rc);

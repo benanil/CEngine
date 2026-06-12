@@ -336,7 +336,8 @@ static inline mat4x4 VCALL M44Inverse(mat4x4 mat)
                       vget_low_f32(vzipq_f32(v2, v3).val[0]));
 
     mat4x4 dest;
-    x0 = VecRcp(VecHSum(vmulq_f32(x0, mat.r[0]))); // dot?
+    // newton-raphson refined divide, the bare vrecpeq estimate is only ~8 bits
+    x0 = ARMVectorDevide(VecOne(), VecHSum(vmulq_f32(x0, mat.r[0])));
     dest.r[0] = vmulq_f32(v0, x0);
     dest.r[1] = vmulq_f32(v1, x0);
     dest.r[2] = vmulq_f32(v2, x0);
@@ -447,7 +448,7 @@ purefn mat4x4 VCALL M44LookAtRHVec(v128f EyePosition, v128f Center, v128f UpDire
     v128f D2 = Vec3DotV(EyeDirection, NegEyePosition);
     
     mat4x4 M;
-    v128i test = VecSelect1110;
+    v128f test = VecSelect1110;
     M.r[0] = VecSelect(D0, R0, test); // no need select ?
     M.r[1] = VecSelect(D1, R1, test);
     M.r[2] = VecSelect(D2, EyeDirection, test);
@@ -475,7 +476,7 @@ purefn mat4x4 M44OrthoRH(f32 left, f32 right, f32 bottom, f32 top, f32 zNear, f3
 
 purefn mat4x4 M44PositionRotationScaleVec(v128f position, Quaternion rotation, v128f scale)
 {
-    mat4x4 res;
+    mat4x4 res = {0}; // M44FromQuaternion only writes the 3x3 part, w lanes must be 0
     // Export rotation to matrix
     M44FromQuaternion(&res.m[0][0], rotation);
     // Scale 3x3 matrix by given scale
@@ -490,7 +491,7 @@ purefn mat4x4 M44PositionRotationScaleVec(v128f position, Quaternion rotation, v
 
 purefn mat4x4 M44PositionRotationVec(v128f position, Quaternion rotation)
 {
-    mat4x4 res;
+    mat4x4 res = {0}; // M44FromQuaternion only writes the 3x3 part, w lanes must be 0
     M44FromQuaternion(&res.m[0][0], rotation);
     res.r[3] = position;
     VecSetW(res.r[3], 1.0f);
@@ -532,14 +533,14 @@ purefn Quaternion VCALL M44ExtractRotation(mat4x4 M, u8 rowNormalize)
     return res;
 }
     
-purefn float3 VCALL M44ExtractScale(mat4x4 matrix) 
+purefn float3 VCALL M44ExtractScale(mat4x4 matrix)
 {
-    return (float3){ Vec3LenfV(matrix.r[0]), Vec3LenfV(matrix.r[2]), Vec3LenfV(matrix.r[1]) };
+    return (float3){ Vec3LenfV(matrix.r[0]), Vec3LenfV(matrix.r[1]), Vec3LenfV(matrix.r[2]) };
 }
 
-purefn v128f VCALL M44ExtractScaleV(mat4x4 matrix) 
+purefn v128f VCALL M44ExtractScaleV(mat4x4 matrix)
 {
-    return VecSetR(Vec3LenfV(matrix.r[0]), Vec3LenfV(matrix.r[2]), Vec3LenfV(matrix.r[1]), 0.0f);
+    return VecSetR(Vec3LenfV(matrix.r[0]), Vec3LenfV(matrix.r[1]), Vec3LenfV(matrix.r[2]), 0.0f);
 }
 
 inline mat4x4 VCALL M44FromQuaternionV(Quaternion q)
@@ -597,10 +598,9 @@ static inline mat4x4 VCALL M44FromQuaternionF(const f32* quaternion)
 }
 
 purefn mat4x4 M44RotationX(f32 angleRadians) {
-    mat4x4 out_matrix;
+    mat4x4 out_matrix = M44Identity();
     f32 s, c;
     SinCos(angleRadians, &s, &c);
-    out_matrix.r[0] = VecIdentityR0;
     out_matrix.m[1][1] = c;
     out_matrix.m[1][2] = s;
     out_matrix.m[2][1] = -s;
@@ -639,8 +639,9 @@ purefn FrustumPlanes VCALL CreateFrustumPlanes(mat4x4 viewProjection)
     result.planes[2] = VecAdd(C.r[3], C.r[1]); // m_bottom_plane
     result.planes[3] = VecSub(C.r[3], C.r[1]); // m_top_plane
     result.planes[4] = VecSub(C.r[3], C.r[2]); // m_far_plane
-    // result.planes[5] = VecAdd(C.r[3], C.r[2]); // m_near_plane
-    result.planes[5] = C.r[2];                 // m_near_plane  
+    // the projection is gl style (-w..w clip z), so the near plane is r3 + r2.
+    // bare C.r[2] is the d3d 0..1 convention and over-culls between near and ~2x near
+    result.planes[5] = VecAdd(C.r[3], C.r[2]); // m_near_plane
     return result;
 }
 

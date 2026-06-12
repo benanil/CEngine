@@ -113,6 +113,9 @@ target_sources(${EXECUTABLE_NAME} PRIVATE
     Source/Scene.c
     Source/SceneSerializer.c
     Source/DemoScene.c
+    Source/Terrain/Terrain.c
+    Source/Terrain/TerrainDensity.c
+    Source/Terrain/TransvoxelMesher.c
     Source/Editor/AssetsEditor.c
     Source/Editor/SceneEditor.c
     Source/Editor/ConsoleEditor.c

@@ -62,7 +62,7 @@ extern "C" {
 #elif defined(__INTEL_COMPILER) /* Intel C Compiler */
 #  define AX_ALIGN(N) __attribute__((aligned(N)))
 #else                       /* Unknown compiler, no alignment */
-#  define ALIGN(N)
+#  define AX_ALIGN(N)
 #endif
 
 #define ALIGNOF(type) offsetof(struct { char c; type t; }, t)
@@ -178,7 +178,7 @@ extern "C" {
 #ifndef AX_NO_UNROLL
     #if defined(__clang__)
         #define AX_NO_UNROLL _Pragma("clang loop unroll(disable)") _Pragma("clang loop vectorize(disable)")
-    #elif defined(__GNUC__) >= 8
+    #elif defined(__GNUC__) && __GNUC__ >= 8
         #define AX_NO_UNROLL _Pragma("GCC unroll 0")
     #elif defined(_MSC_VER)
         #define AX_NO_UNROLL __pragma(loop(no_vector))
@@ -190,13 +190,14 @@ extern "C" {
 //------------------------------------------------------------------------
 // Memory Operations:  memcpy, memset, unaligned load
 
-#ifdef AX_SUPPORT_SSE
+// __movsb/__stosb are MSVC/clang-cl intrinsics, plain gcc/clang on x86 lacks them
+#if defined(AX_SUPPORT_SSE) && defined(_MSC_VER)
     #define SmallMemCpy(dst, src, size) __movsb((unsigned char*)(dst), (unsigned char*)(src), size)
 #else
-    #define SmallMemCpy(dst, src, size) __builtin_memcpy(dst, src, size);
+    #define SmallMemCpy(dst, src, size) __builtin_memcpy(dst, src, size)
 #endif
 
-#ifdef AX_SUPPORT_SSE
+#if defined(AX_SUPPORT_SSE) && defined(_MSC_VER)
     #define SmallMemSet(dst, val, size) __stosb((unsigned char*)(dst), val, size)
 #else
     #define SmallMemSet(dst, val, size) __builtin_memset(dst, val, size)
@@ -224,7 +225,7 @@ extern "C" {
         #define UnalignedLoad32(ptr) *((__unaligned uint32_t*)(ptr))
     #endif
 #else
-    purefn uint64_t UnalignedLoad32(void const* ptr) {
+    purefn uint32_t UnalignedLoad32(void const* ptr) {
         __attribute__((aligned(1))) uint32_t const *result = (uint32_t const *)ptr;
         return *result;
     }
@@ -242,21 +243,24 @@ extern "C" {
 || (defined(__clang__) && __has_builtin(__builtin_bswap32))
     #define AX_BSWAP32(x) __builtin_bswap32(x)
 #else
-inline uint32_t AX_BSWAP32(uint32_t x) {
-    return ((in << 24) & 0xff000000 ) |
-           ((in <<  8) & 0x00ff0000 ) |
-           ((in >>  8) & 0x0000ff00 ) |
-           ((in >> 24) & 0x000000ff );
+purefn uint32_t AX_BSWAP32(uint32_t x) {
+    return ((x << 24) & 0xff000000 ) |
+           ((x <<  8) & 0x00ff0000 ) |
+           ((x >>  8) & 0x0000ff00 ) |
+           ((x >> 24) & 0x000000ff );
 }
 #endif
 
-#if defined(_MSC_VER) 
-    #define ByteSwap32(x) _byteswap_uint64(x)
+#if defined(_MSC_VER)
+    #define ByteSwap32(x) _byteswap_ulong(x)
+    #define ByteSwap64(x) _byteswap_uint64(x)
 #elif (defined (__GNUC__) && (__GNUC__ * 100 + __GNUC_MINOR__ >= 403)) \
 || (defined(__clang__) && __has_builtin(__builtin_bswap32))
+    #define ByteSwap32(x) __builtin_bswap32(x)
     #define ByteSwap64(x) __builtin_bswap64(x)
 #else
-purefn uint64_t ByteSwap(uint64_t x) {
+#define ByteSwap32(x) AX_BSWAP32(x)
+purefn uint64_t ByteSwap64(uint64_t x) {
     return ((x << 56) & 0xff00000000000000ULL) |
            ((x << 40) & 0x00ff000000000000ULL) |
            ((x << 24) & 0x0000ff0000000000ULL) |
@@ -274,15 +278,13 @@ purefn uint64_t ByteSwap(uint64_t x) {
 // throughput is even double of mulps and addps which is 1.0 (%100)
 // https://www.intel.com/content/www/us/en/docs/intrinsics-guide/index.html
 
-#if defined(__ARM_NEON__)
-    #define PopCount32(x) vcnt_u8((int8x8_t)x)
-    #define PopCount64(x) vcnt_u8((int8x8_t)x)
+#if defined(__GNUC__) || defined(__clang__)
+    // covers arm/neon too, the compiler picks cnt/popcnt by target
+    #define PopCount32(x) ((uint32_t)__builtin_popcount(x))
+    #define PopCount64(x) ((uint64_t)__builtin_popcountll(x))
 #elif defined(AX_SUPPORT_SSE)
     #define PopCount32(x) _mm_popcnt_u32(x)
     #define PopCount64(x) _mm_popcnt_u64(x)
-#elif defined(__GNUC__) || !defined(__MINGW32__)
-    #define PopCount32(x) __builtin_popcount(x)
-    #define PopCount64(x) __builtin_popcountl(x)
 #else
 
     purefn uint32_t PopCount32(uint32_t x) {
@@ -300,27 +302,17 @@ purefn uint64_t ByteSwap(uint64_t x) {
     }
 #endif
 
-#ifdef _MSC_VER
-    #define TrailingZeroCount32(x) _tzcnt_u32(x)
-    #define TrailingZeroCount64(x) _tzcnt_u64(x)
-#elif defined(__GNUC__) || !defined(__MINGW32__)
-    #define TrailingZeroCount32(x) __builtin_ctz(x)
-    #define TrailingZeroCount64(x) __builtin_ctzll(x)
-#else
-    #define TrailingZeroCount32(x) PopCount64((x & -x) - 1u)
-    #define TrailingZeroCount64(x) PopCount64((x & -x) - 1ull)
-#endif
-
+// TrailingZeroCount32/64 are defined by SIMD.h (included above)
 #define TrailingZeroCountWord(x) (sizeof(unsigned long long) == 8 ? TrailingZeroCount64(x) : TrailingZeroCount32(x))
 
-#ifdef _MSC_VER
-    #define LeadingZeroCount32(x) _lzcnt_u32(x)
-    #define LeadingZeroCount64(x) _lzcnt_u64(x)
-#elif AX_COMPILER_HAS_BUILTIN(__builtin_clz) || defined(__GNUC__) || !defined(__MINGW32__)
+#if defined(__GNUC__) || defined(__clang__)
     #define LeadingZeroCount32(x) __builtin_clz(x)
     #define LeadingZeroCount64(x) __builtin_clzll(x)
+#elif defined(_MSC_VER) && !defined(AX_ARM)
+    #define LeadingZeroCount32(x) _lzcnt_u32(x)
+    #define LeadingZeroCount64(x) _lzcnt_u64(x)
 #else
-    #error "LeadingZeroCount64 is not exist!"
+    #error "LeadingZeroCount is not defined for this compiler"
 #endif
 
 
@@ -379,8 +371,8 @@ purefn f64 Clampf64(f64 x, f64 min, f64 max) { return MMIN(max, MMAX(x, min)); }
 purefn s32 Clamps32(s32 x, s32 min, s32 max) { return MMIN(max, MMAX(x, min)); }
 purefn f32 Minf32(f32 a, f32 b) { return a < b ? a : b; }
 purefn f32 Maxf32(f32 a, f32 b) { return a > b ? a : b; }
-purefn s32 Mins32(u32 a, u32 b) { return a < b ? a : b; }
-purefn s32 Maxs32(u32 a, u32 b) { return a > b ? a : b; }
+purefn s32 Mins32(s32 a, s32 b) { return a < b ? a : b; }
+purefn s32 Maxs32(s32 a, s32 b) { return a > b ? a : b; }
 purefn u32 Minu32(u32 a, u32 b) { return a < b ? a : b; }
 purefn u32 Maxu32(u32 a, u32 b) { return a > b ? a : b; }
 purefn u64 Minu64(u64 a, u64 b) { return a < b ? a : b; }
@@ -414,13 +406,13 @@ purefn double Absf64(double x)
 }
 
 purefn f32 Floorf32(f32 x) {
-    f32 whole = (f32)(s32)x;  // truncate quotient to integer
-    return x - (x-whole);
+    f32 whole = (f32)(s32)x;        // truncates toward zero
+    return whole - (f32)(whole > x); // step down for negative non integers
 }
 
 purefn f64 Floor(f64 x) {
-    f64 whole = (f64)(s64)x;  // truncate quotient to integer
-    return x - (x - whole);
+    f64 whole = (f64)(s64)x;        // truncates toward zero
+    return whole - (f64)(whole > x); // step down for negative non integers
 }
 
 purefn f32 Ceilf(f32 x) {
@@ -447,7 +439,7 @@ purefn bool InRange(float x, float start, float length)
 
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
 
-#define PointerDistance(begin, end) ((uint)((char*)(end) - (char*)(begin)) / sizeof(T))
+#define PointerDistance(begin, end) ((u32)((char*)(end) - (char*)(begin)))
 
 purefn bool IsAndroid()
 {
@@ -580,7 +572,7 @@ static inline void MemSet(void* dst, uint8_t value, size_t size)
     }
  #endif
 
-// Returns -1 if s is NULL or not null-terminated within maxLen
+// Returns 0 if s is NULL or not null-terminated within maxLen
 static inline int StringLengthSafe(const char* s, size_t maxLen)
 {
     if (!s || maxLen == 0) return 0;
@@ -624,7 +616,7 @@ static inline int StringLengthSafe(const char* s, size_t maxLen)
 purefn const char* GetFileName(const char* path)
 {
     int length = StringLength(path);
-    while (path[length-1] != '\\' && path[length-1] != '/' && length > 0) 
+    while (length > 0 && path[length-1] != '\\' && path[length-1] != '/')
         length--;
     return path + length;
 }

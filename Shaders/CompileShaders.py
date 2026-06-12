@@ -21,10 +21,13 @@ GRAPHICS_SHADERS = [
     ("UI/UIImage"             , "vert", "frag"),
     ("Shadow/SurfaceShadowDepthOnly" , "vert", "frag"),
     ("Shadow/SkinnedShadowDepthOnly" , "vert", "frag"),
+    ("Terrain"                , "vert", "frag"),
+    ("TerrainDepthOnly"       , "vert", "frag"),
 ]
 
 EXTRA_GRAPHICS_SHADERS = [
     ("UI/Slug", "Slug2DVert", "vert2d", "vs_6_6"),
+    ("TerrainDepthOnly", "TerrainWireFrag", "wireFrag", "ps_6_6"),
 ]
 
 COMPUTE_SHADERS = [

@@ -19,7 +19,7 @@
 #elif defined(__INTEL_COMPILER) /* Intel C Compiler */
 #  define AX_ALIGN(N) __attribute__((aligned(N)))
 #else                       /* Unknown compiler, no alignment */
-#  define ALIGN(N)
+#  define AX_ALIGN(N)
 #endif
 
 #if defined(__cplusplus)
@@ -36,7 +36,9 @@ extern "C" {
 
 #if defined( _M_ARM64 ) || defined( __aarch64__ ) || defined( __arm64__ ) || defined(__ARM_NEON__)
     #define AX_SUPPORT_NEON
-    #include <arm_fp16.h>
+    #if defined(__ARM_FEATURE_FP16_SCALAR_ARITHMETIC)
+        #include <arm_fp16.h> // float16_t scalar ops, armv7 neon does not have this header
+    #endif
 #endif
 
 #if defined(AX_ARM)
@@ -96,10 +98,8 @@ extern "C" {
 
 #ifdef _MSC_VER
     #define VCALL __vectorcall
-#elif __CLANG__
-    #define VCALL [[clang::vectorcall]] 
-#elif __GNUC__
-    #define VCALL  
+#else
+    #define VCALL
 #endif
 
 #if defined(_MSC_VER)
@@ -118,12 +118,12 @@ extern "C" {
     #define purefn static inline __attribute__((always_inline))
 #endif
 
-#ifdef _MSC_VER
-    #define TrailingZeroCount32(x) _tzcnt_u32(x)
-    #define TrailingZeroCount64(x) _tzcnt_u64(x)
-#elif defined(__GNUC__) || !defined(__MINGW32__)
+#if defined(__GNUC__) || defined(__clang__)
     #define TrailingZeroCount32(x) __builtin_ctz(x)
     #define TrailingZeroCount64(x) __builtin_ctzll(x)
+#elif defined(_MSC_VER) && !defined(AX_ARM)
+    #define TrailingZeroCount32(x) _tzcnt_u32(x)
+    #define TrailingZeroCount64(x) _tzcnt_u64(x)
 #else
     // fallback implementation
     static inline uint32_t PopCount32_fallback(uint32_t x) {
@@ -165,6 +165,7 @@ typedef __m128i v128u;
 #define VecLoadI(x)              _mm_load_si128(x)
 #define VecLoadIU(x)             _mm_loadu_si128(x)
 #define VecStoreU(ptr, x)        _mm_storeu_si128((v128u*)ptr, x)
+#define VecStoreI(ptr, x)        _mm_store_si128((v128u*)ptr, x)
                                 
 #define VecStore(ptr, x)         _mm_storeu_ps(ptr, x)
 #define VecStoreA(ptr, x)        _mm_store_ps(ptr, x)
@@ -299,8 +300,9 @@ typedef __m128i v128u;
 #define VeciSet(x, y, z, w)         _mm_set_epi32(x, y, z, w)
 #define VeciSetR(x, y, z, w)        _mm_setr_epi32(x, y, z, w)
 #define VeciDup64(x)                _mm_set1_epi64x(x)
-#define VeciLoadA(x)                _mm_load_epi32(x)
-#define VeciLoad(x)                 _mm_loadu_epi32(x)
+// _mm_load_epi32/_mm_loadu_epi32 are avx512 instructions, do not use them here
+#define VeciLoadA(x)                _mm_load_si128((const v128u*)(x))
+#define VeciLoad(x)                 _mm_loadu_si128((const v128u*)(x))
 #define VeciLoad64(qword)           _mm_loadu_si64(qword)     /* loads 64bit integer to first 8 bytes of register */
                                     
 // SSE4.1                           
@@ -332,10 +334,11 @@ typedef __m128i v128u;
 #define VeciSll32(a, b)             _mm_slli_epi32(a, b)    /*  a << b */
 #define VeciToVecf(a)               _mm_castsi128_ps(a)     /*  a << b */
                                     
+// signed compares. le/ge have no sse instruction, they are not(gt)/not(lt)
 #define VeciCmpLt(a, b)             _mm_cmplt_epi32(a, b)
-#define VeciCmpLe(a, b)             _mm_cmple_epi32(a, b)
+#define VeciCmpLe(a, b)             VeciNot(_mm_cmpgt_epi32(a, b))
 #define VeciCmpGt(a, b)             _mm_cmpgt_epi32(a, b)
-#define VeciCmpGe(a, b)             _mm_cmpge_epi32(a, b)
+#define VeciCmpGe(a, b)             VeciNot(_mm_cmplt_epi32(a, b))
 #define VeciCmpEq(a, b)             _mm_cmpeq_epi32(a, b)
                                     
 #define VeciBlend(a, b, c)          _mm_blendv_epi8(a, b, c)
@@ -348,10 +351,16 @@ typedef __m128i v128u;
 #define VecBitcastU32(x)            _mm_castps_si128(x)
 #define VeciBitcastF32(x)           _mm_castsi128_ps(x)
                                     
-#define VecF32ToI32(x)              _mm_cvtps_epi32(x)                         /* f32[4] -> i32[4] (round) | NEON: vcvtq_s32_f32 | scalar: (int)roundf */
-#define VecF32ToU32(x)              _mm_cvttps_epi32(x)                         /* f32[4] -> u32[4] (round) | NEON: vcvtq_u32_f32 */
-#define VecI32ToF32(x)              _mm_cvtepi32_ps(x)                         /* i32[4] -> f32[4]         | NEON: vcvtq_f32_s32 */
-#define VecU32ToF32(x)              _mm_cvtepu32_ps(x)                         /* i32[4] -> f32[4]         | NEON: vcvtq_f32_s32 */
+#define VecF32ToI32(x)              _mm_cvtps_epi32(x)                         /* f32[4] -> i32[4] round to nearest */
+#define VecF32ToU32(x)              _mm_cvttps_epi32(x)                         /* f32[4] -> i32[4] truncate toward zero */
+#define VecI32ToF32(x)              _mm_cvtepi32_ps(x)                         /* i32[4] -> f32[4] */
+
+/* u32[4] -> f32[4]. _mm_cvtepu32_ps is avx512, split halves to stay on sse/avx2 */
+purefn __m128 VCALL VecU32ToF32(__m128i v) {
+    __m128i lo = _mm_and_si128(v, _mm_set1_epi32(0xFFFF));
+    __m128i hi = _mm_srli_epi32(v, 16);
+    return _mm_add_ps(_mm_mul_ps(_mm_cvtepi32_ps(hi), _mm_set1_ps(65536.0f)), _mm_cvtepi32_ps(lo));
+}
                                                                                
 #define VecZipLo32(a, b)            _mm_unpacklo_epi32(a, b)                   /* interleave low i32: [a0 b0 a1 b1] | NEON: vzip1q_s32 */
 #define VecZipLo16(a, b)            _mm_unpacklo_epi16(a, b)                   /* interleave low i16  | NEON: vzip1q_s16 */
@@ -391,40 +400,44 @@ typedef uint32x4_t v128u;
 #define VecOne()                    vdupq_n_f32( 1.0f)
 #define VecNegativeOne()            vdupq_n_f32(-1.0f)
 #define VecSet1(x)                  vdupq_n_f32(x)
-#define VecSet (x, y, z, w)         ARMCreateVec(w, z, y, x) /* -> {w, z, y, x} */
+#define VecSet(x, y, z, w)          ARMCreateVec(w, z, y, x) /* -> {w, z, y, x} */
 #define VecSetR(x, y, z, w)         ARMCreateVec(x, y, z, w) /* -> {x, y, z, w} */
 #define VecLoad(x)                  vld1q_f32(x)
 #define VecLoadA(x)                 vld1q_f32(x)
-#define VecLoadI(x)                 vld1q_s32((const s32*)x)
+#define VecLoadI(x)                 vld1q_u32((const u32*)x)
 #define VecLoadIU(x)                vld1q_u32((const u32*)x)
 #define VecStore(ptr, x)            vst1q_f32(ptr, x)
 #define VecStoreA(ptr, x)           vst1q_f32(ptr, x)
-#define VecStoreI(ptr, x)           vst1q_s32((s32*)ptr, x)
+#define VecStoreI(ptr, x)           vst1q_u32((u32*)ptr, x)
 #define VecStoreU(ptr, x)           vst1q_u32((u32*)ptr, x)
 #define VecSetBytes(x)              vdupq_n_u8(x)
                                     
 #define Vec3Load(x)                 ARMVector3Load(x)
                                     
-#define VecF32ToI32(x)              vcvtq_s32_f32(x)             /* f32[4] -> i32[4] round */
-#define VecF32ToU32(x)              vcvtq_u32_f32(x)             /* f32[4] -> u32[4] round */
-#define VecI32ToF32(x)              vcvtq_f32_s32(x)             /* i32[4] -> f32[4] */
-#define VecU32ToF32(x)              vcvtq_f32_u32(x)             /* i32[4] -> f32[4] */
-                                    
-#define VecZipLo32(a, b)            vzip1q_s32(a, b)             /* interleave low i32: [a0 b0 a1 b1] */
-#define VecZipLo16(a, b)            vzip1q_s16(a, b)             /* interleave low i16 lanes */
-#define VecZipHi16(a, b)            vzip2q_s16(a, b)             /* interleave high i16 lanes */
-                                    
-#define VecUnpackLo32(x)            vmovl_s16(vget_low_s16(x))   /* zero-extend low 4 i16 -> i32 */
-#define VecUnpackHi32(x)            vmovl_s16(vget_high_s16(x))  /* zero-extend high 4 i16 -> i32 */
+/* conversions match the documented SSE behavior exactly:
+   VecF32ToI32 rounds to nearest (cvtps), VecF32ToU32 truncates as SIGNED (cvttps) */
+#define VecF32ToI32(x)              vreinterpretq_u32_s32(vcvtnq_s32_f32(x)) /* f32[4] -> i32[4] round to nearest */
+#define VecF32ToU32(x)              vreinterpretq_u32_s32(vcvtq_s32_f32(x))  /* f32[4] -> i32[4] truncate toward zero */
+#define VecI32ToF32(x)              vcvtq_f32_s32(vreinterpretq_s32_u32(x))  /* i32[4] -> f32[4] */
+#define VecU32ToF32(x)              vcvtq_f32_u32(x)                         /* u32[4] -> f32[4] */
 
-#define VecPack16(x)                vqmovn_u32(x)                /* narrow u32 -> u16 with saturation */
-#define VecPack16S(x)               vqmovn_s32(x)                /* narrow i32 -> i16 with signed saturation */
+#define VecZipLo32(a, b)            vzip1q_u32(a, b)             /* interleave low i32: [a0 b0 a1 b1] */
+#define VecZipLo16(a, b)            vreinterpretq_u32_u16(vzip1q_u16(vreinterpretq_u16_u32(a), vreinterpretq_u16_u32(b)))
+#define VecZipHi16(a, b)            vreinterpretq_u32_u16(vzip2q_u16(vreinterpretq_u16_u32(a), vreinterpretq_u16_u32(b)))
 
-/* neon vmovl_s16 already sign-extends, the S variants exist for sse parity */
-#define VecUnpackLo32S(x)           vmovl_s16(vget_low_s16(x))
-#define VecUnpackHi32S(x)           vmovl_s16(vget_high_s16(x))
-#define VecStoreLo64(p, v)          vst1_s16((int16_t*)(p), vget_low_s16(v)) /* store lower 64 bits */
-#define VecStoreHi64(p, v)          vst2_s16((int16_t*)(p), vget_high_s16(v)) /* store higher 64 bits */
+/* zero-extend like the sse unpack with zero */
+#define VecUnpackLo32(x)            vmovl_u16(vget_low_u16(vreinterpretq_u16_u32(x)))   /* zero-extend low 4 u16 -> u32 */
+#define VecUnpackHi32(x)            vmovl_u16(vget_high_u16(vreinterpretq_u16_u32(x)))  /* zero-extend high 4 u16 -> u32 */
+
+/* sse packus: input treated signed, saturated to [0, 65535], high half zeroed */
+#define VecPack16(x)                vreinterpretq_u32_u16(vcombine_u16(vqmovun_s32(vreinterpretq_s32_u32(x)), vdup_n_u16(0)))
+#define VecPack16S(x)               vreinterpretq_u32_s16(vcombine_s16(vqmovn_s32(vreinterpretq_s32_u32(x)), vdup_n_s16(0)))
+
+/* sign-extend variants */
+#define VecUnpackLo32S(x)           vreinterpretq_u32_s32(vmovl_s16(vget_low_s16(vreinterpretq_s16_u32(x))))
+#define VecUnpackHi32S(x)           vreinterpretq_u32_s32(vmovl_s16(vget_high_s16(vreinterpretq_s16_u32(x))))
+#define VecStoreLo64(p, v)          vst1_u32((u32*)(p), vget_low_u32(v))  /* store lower 64 bits */
+#define VecStoreHi64(p, v)          vst1_u32((u32*)(p), vget_high_u32(v)) /* store higher 64 bits */
 #define VecLoadLo64(p, v)           vcombine_f32(vld1_f32((float*)(p)), vget_high_f32(v)) /* load lower 64 bits */
 #define VecLoadHi64(p, v)           vcombine_f32(vget_low_f32(v), vld1_f32((float*)(p))) /* load higher 64 bits */
 
@@ -513,11 +526,11 @@ VecSetR( \
 )
 
 #define ARMVectorU32Shuffle(E0, E1, E2, E3, v0, v1) \
-    VecSetR( \
-        vgetq_lane_f32((v0), (E0)), \
-        vgetq_lane_f32((v0), (E1)), \
-        vgetq_lane_f32((v1), (E2)), \
-        vgetq_lane_f32((v1), (E3))  \
+    ARMCreateVecI( \
+        vgetq_lane_u32((v0), (E0)), \
+        vgetq_lane_u32((v0), (E1)), \
+        vgetq_lane_u32((v1), (E2)), \
+        vgetq_lane_u32((v1), (E3))  \
     )
 
 
@@ -551,15 +564,19 @@ VecSetR( \
 #define VecFloor(a)                 vrndmq_f32(a)
 #define VecCeil(v)                  vrndpq_f32(v)         
                                     
-#define VecCmpGt(a, b)              vcgtq_f32(a, b) // greater or equal
-#define VecCmpGe(a, b)              vcgeq_f32(a, b) // greater or equal
-#define VecCmpLt(a, b)              vcltq_f32(a, b) // less than
-#define VecCmpLe(a, b)              vcleq_f32(a, b) // less or equal
-#define VecCmpEq(a, b)              vceqq_f32(a, b) // less or equal
-#define VecMovemask(a)              ARMVecMovemask(a) /* not done */
+/* comparisons return v128f like sse so the results compose with VecAnd/VecOr/
+   VecSelect and variable declarations identically on both platforms */
+#define VecCmpGt(a, b)              vreinterpretq_f32_u32(vcgtq_f32(a, b)) // greater than
+#define VecCmpGe(a, b)              vreinterpretq_f32_u32(vcgeq_f32(a, b)) // greater or equal
+#define VecCmpLt(a, b)              vreinterpretq_f32_u32(vcltq_f32(a, b)) // less than
+#define VecCmpLe(a, b)              vreinterpretq_f32_u32(vcleq_f32(a, b)) // less or equal
+#define VecCmpEq(a, b)              vreinterpretq_f32_u32(vceqq_f32(a, b)) // equal
+#define VecMovemask(a)              ARMVecMovemask(a)
 
-#define VecSelect(V1, V2, Control)  vbslq_f32(Control, V2, V1)
-#define VecBlend(a, b, Control)     vbslq_f32(Control, b, a)
+/* note: sse blendv selects by the sign bit only, neon bsl selects per bit.
+   identical for full lane masks (comparison results), do not pass arbitrary floats */
+#define VecSelect(V1, V2, Control)  vbslq_f32(vreinterpretq_u32_f32(Control), V2, V1)
+#define VecBlend(a, b, Control)     vbslq_f32(vreinterpretq_u32_f32(Control), b, a)
 
 //------------------------------------------------------------------------
 // Veci
@@ -583,16 +600,16 @@ VecSetR( \
 #define VeciMul(a, b)               vmulq_u32(a, b)
 
 #define VecBitcastU32(x)            vreinterpretq_u32_f32(x)
-#define VeciBitcastF32(x)           vreinterpretq_u32_f32(x)
+#define VeciBitcastF32(x)           vreinterpretq_f32_u32(x)
 #define VecFromInt(x, y, z, w)      VeciBitcastF32(ARMCreateVecI(x, y, z, w))
 #define VecFromInt1(x)              VeciBitcastF32(vdupq_n_u32(x))
 
-// Swizzling Masking
-#define VecSelect1000  ARMCreateVecI(0xFFFFFFFFu, 0x00000000u, 0x00000000u, 0x00000000u)
-#define VecSelect1100  ARMCreateVecI(0xFFFFFFFFu, 0xFFFFFFFFu, 0x00000000u, 0x00000000u)
-#define VecSelect1110  ARMCreateVecI(0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu, 0x00000000u)
-#define VecSelect1011  ARMCreateVecI(0xFFFFFFFFu, 0x00000000u, 0xFFFFFFFFu, 0xFFFFFFFFu)
-#define VecSelect1111  ARMCreateVecI(0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu)
+// Swizzling Masking: float typed like the sse _mm_castsi128_ps versions
+#define VecSelect1000  VecFromInt(0xFFFFFFFFu, 0x00000000u, 0x00000000u, 0x00000000u)
+#define VecSelect1100  VecFromInt(0xFFFFFFFFu, 0xFFFFFFFFu, 0x00000000u, 0x00000000u)
+#define VecSelect1110  VecFromInt(0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu, 0x00000000u)
+#define VecSelect1011  VecFromInt(0xFFFFFFFFu, 0x00000000u, 0xFFFFFFFFu, 0xFFFFFFFFu)
+#define VecSelect1111  VecFromInt(0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu)
 
 #define VeciSelect1111 ARMCreateVecI(0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu)
 
@@ -601,12 +618,12 @@ VecSetR( \
 #define VecIdentityR2  ARMCreateVec(0.0f, 0.0f, 1.0f, 0.0f)
 #define VecIdentityR3  ARMCreateVec(0.0f, 0.0f, 0.0f, 1.0f)
 
-#define VecMaskXY      ARMCreateVecI(0xFFFFFFFFu, 0xFFFFFFFFu, 0x00000000u, 0x00000000u)
-#define VecMask3       ARMCreateVecI(0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu, 0x00000000u)
-#define VecMaskX       ARMCreateVecI(0xFFFFFFFFu, 0x00000000u, 0x00000000u, 0x00000000u)
-#define VecMaskY       ARMCreateVecI(0x00000000u, 0xFFFFFFFFu, 0x00000000u, 0x00000000u)
-#define VecMaskZ       ARMCreateVecI(0x00000000u, 0x00000000u, 0xFFFFFFFFu, 0x00000000u)
-#define VecMaskW       ARMCreateVecI(0x00000000u, 0x00000000u, 0x00000000u, 0xFFFFFFFFu)
+#define VecMaskXY      VecFromInt(0xFFFFFFFFu, 0xFFFFFFFFu, 0x00000000u, 0x00000000u)
+#define VecMask3       VecFromInt(0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu, 0x00000000u)
+#define VecMaskX       VecFromInt(0xFFFFFFFFu, 0x00000000u, 0x00000000u, 0x00000000u)
+#define VecMaskY       VecFromInt(0x00000000u, 0xFFFFFFFFu, 0x00000000u, 0x00000000u)
+#define VecMaskZ       VecFromInt(0x00000000u, 0x00000000u, 0xFFFFFFFFu, 0x00000000u)
+#define VecMaskW       VecFromInt(0x00000000u, 0x00000000u, 0x00000000u, 0xFFFFFFFFu)
 
 // Logical
 #define VeciNot(a)                  vmvnq_u32(a)
@@ -615,19 +632,21 @@ VecSetR( \
 #define VeciXor(a, b)               veorq_u32(a, b)
                                     
 #define VeciAndNot(a, b)            vandq_u32(vmvnq_u32(a), b)  /* ~a & b */
-#define VeciSrl(a, b)               vshlq_u32(a, vnegq_s32(b))  /* a >> b */
-#define VeciSll(a, b)               vshlq_u32(a, b)             /* a << b */
+#define VeciSrl(a, b)               vshlq_u32(a, vnegq_s32(vreinterpretq_s32_u32(b)))  /* a >> b */
+#define VeciSll(a, b)               vshlq_u32(a, vreinterpretq_s32_u32(b))             /* a << b */
 #define VeciSrl32(a, b)             vshrq_n_u32(a, b)           /* a >> b */
 #define VeciSll32(a, b)             vshlq_n_u32(a, b)           /* a << b */
-#define VeciToVecf(a)               vreinterpretq_f32_s32(a)    /* Reinterpret int as float */
-                                    
-#define VeciCmpLt(a, b)             vcltq_u32(a, b)
-#define VeciCmpLe(a, b)             vclte_u32(a, b)
-#define VeciCmpGt(a, b)             vcgtq_u32(a, b)
-#define VeciCmpGe(a, b)             vcgeq_u32(a, b)
-#define VeciCmpEq(a, b)             vceq_u32(a, b)
+#define VeciToVecf(a)               vreinterpretq_f32_u32(a)    /* Reinterpret int as float */
+#define VeciNeg(a)                  vreinterpretq_u32_s32(vnegq_s32(vreinterpretq_s32_u32(a))) /* -a */
 
-#define VeciBlend(a, b, c)          vbslq_u8(c, b, a)  /* Blend a and b based on mask c */
+/* signed compares like the sse versions */
+#define VeciCmpLt(a, b)             vcltq_s32(vreinterpretq_s32_u32(a), vreinterpretq_s32_u32(b))
+#define VeciCmpLe(a, b)             vcleq_s32(vreinterpretq_s32_u32(a), vreinterpretq_s32_u32(b))
+#define VeciCmpGt(a, b)             vcgtq_s32(vreinterpretq_s32_u32(a), vreinterpretq_s32_u32(b))
+#define VeciCmpGe(a, b)             vcgeq_s32(vreinterpretq_s32_u32(a), vreinterpretq_s32_u32(b))
+#define VeciCmpEq(a, b)             vceqq_u32(a, b)
+
+#define VeciBlend(a, b, c)          vbslq_u32(c, b, a)  /* Blend a and b based on mask c */
 #define VecFabs(x)                  vabsq_f32(x)
 
 purefn v128f ARMVectorRev(v128f v)
@@ -788,10 +807,10 @@ purefn v128f ARMVectorNorm(v128f v)
     return ARMVectorDevide(v, ARMVectorLength(v));
 }
 
-purefn int ARMVecMovemask(v128i v) {
+purefn int ARMVecMovemask(v128f v) {
     const int shiftArr[4] = { 0, 1, 2, 3 };
     int32x4_t shift = vld1q_s32(shiftArr);
-    return vaddvq_u32(vshlq_u32(vshrq_n_u32(v, 31), shift));
+    return (int)vaddvq_u32(vshlq_u32(vshrq_n_u32(vreinterpretq_u32_f32(v), 31), shift));
 }
 
 #endif

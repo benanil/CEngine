@@ -19,12 +19,12 @@
 /*                             Half                                         */
 /*//////////////////////////////////////////////////////////////////////////*/
 
-#define OneFP16       (15360ui16)
-#define MinusOneFP16  (48128ui16)
-#define ZeroFP16      (0ui16)
-#define HalfFP16      (14336ui16) // fp16 0.5
-#define Sqrt2FP16     (15784ui16) // fp16 sqrt(2)
-#define FP16PI        (0x4248ui16)
+#define OneFP16       ((u16)15360)
+#define MinusOneFP16  ((u16)48128)
+#define ZeroFP16      ((u16)0)
+#define HalfFP16      ((u16)14336) // fp16 0.5
+#define Sqrt2FP16     ((u16)15784) // fp16 sqrt(2)
+#define FP16PI        ((u16)0x4248)
 #define Half2Up       (OneFP16 << 16u)
 #define Half2Down     (MinusOneFP16 << 16u)
 #define Half2Left     (MinusOneFP16)
@@ -93,12 +93,13 @@ purefn f16 FloatToHalf(float Value)
 static inline void Half2ToFloat2(f32* result, u32 h) 
 {
     #if defined(AX_SUPPORT_AVX2)
-    _mm_storel_pi((__m64 *)result, _mm_cvtph_ps(_mm_set1_epi16(h)));
+    // set1_epi16 would truncate h to its low 16 bits and duplicate x into y
+    _mm_storel_pi((__m64 *)result, _mm_cvtph_ps(_mm_cvtsi32_si128((int)h)));
     #elif defined(AX_SUPPORT_NEON)
     float16x4_t halfVec = vreinterpret_f16_u32(vdup_n_u32(h));
     vst1_f32(result, vget_low_f32(vcvt_f32_f16(halfVec)));
     #else
-    u64 x2 = (u64)(h & 0x0000FFFFull) | (u64(h & 0xFFFF0000ull) << 16ull);
+    u64 x2 = (u64)(h & 0x0000FFFFull) | ((u64)(h & 0xFFFF0000ull) << 16ull);
     u64 h_e = x2 & 0x00007c0000007c00ull;
     u64 h_m = x2 & 0x000003ff000003ffull;
     u64 h_s = x2 & 0x0000800000008000ull;
@@ -116,10 +117,10 @@ static inline void Half2ToFloat2(f32* result, u32 h)
 static inline u32 Float2ToHalf2(const f32* float2)
 {
     #if defined(AX_SUPPORT_NEON)
-    float32x2_t x = vld1_dup_f32(float2);
+    float32x2_t x = vld1_f32(float2); // both floats, vld1_dup would duplicate only the first
     float32x4_t x4 = vcombine_f32(x, x);
     return vget_lane_u32(vreinterpret_u32_f16(vcvt_f16_f32(x4)), 0);
-    #elif defined(AX_SUPPORT_AVX)
+    #elif defined(AX_SUPPORT_AVX2)
     return _mm_extract_epi32(_mm_cvtps_ph(_mm_setr_ps(float2[0], float2[1], 0.0f, 0.0f), 0), 0);
     #endif
     u32 result = 0;
@@ -135,11 +136,11 @@ static inline void Half4ToFloat4(f32* result, const f16 half4[4])
     _mm_storeu_ps(result, _mm_cvtph_ps(_mm_loadu_si64(half4)));
 
     #elif defined(AX_SUPPORT_NEON)
-    vst1q_f32(result, vcvt_f32_f16(vld1_dup_f16(half4)));
+    vst1q_f32(result, vcvt_f32_f16(vld1_f16((const float16_t*)half4))); // all 4 halves
 
     #elif defined(AX_SUPPORT_SSE)
     v128u x4 = VeciLoad64((const u64*)half4);
-    x4 = VeciUnpackLo16(x4, VeciZero());   // [half4.xy, half4.xy, half4.zw, half4.zw] 
+    x4 = VecZipLo16(x4, VeciZero());   // zero-extend each u16 -> u32
     
     v128u h_e = VeciAnd(x4, VeciSet1(0x00007c00));
     v128u h_m = VeciAnd(x4, VeciSet1(0x000003ff));
@@ -165,7 +166,7 @@ static inline v128f Half4ToFloat4Vec(const void* half4)
     #ifdef AX_SUPPORT_AVX2
     return _mm_cvtph_ps(_mm_loadu_si64(half4));
     #elif defined(AX_SUPPORT_NEON)
-    return vcvt_f32_f16(vld1_dup_f16(half4));
+    return vcvt_f32_f16(vld1_f16((const float16_t*)half4));
     #else
     STATIC_ASSERT(0, "undefined Half4ToFloat4Vec");
     #endif
@@ -176,7 +177,7 @@ static inline void Float4ToHalf4V(u64* result, v128f f4)
     #ifdef AX_SUPPORT_AVX2
     _mm_storel_pi((__m64*)result, _mm_castsi128_ps(_mm_cvtps_ph(f4, _MM_FROUND_TO_NEAREST_INT)));
     #elif defined(AX_SUPPORT_NEON)
-    vst1_f16(result, vcvt_f16_f32(f4));
+    vst1_f16((float16_t*)result, vcvt_f16_f32(f4));
     #else
     STATIC_ASSERT(0, "undefined Float4ToHalf4V");
     #endif
@@ -237,13 +238,13 @@ static inline void Float4ToHalf4(void* result, const f32* f4)
 
 #else
 
-void Half8ToFloat8(f32* float8, const f16* half8)
+static inline void Half8ToFloat8(f32* float8, const f16* half8)
 {
     Half4ToFloat4(float8    , half8);
     Half4ToFloat4(float8 + 4, half8 + 4);
 }
 
-void Float8ToHalf8(f16* result, const f32* float8)
+static inline void Float8ToHalf8(f16* result, const f32* float8)
 {
     Float4ToHalf4(result    , float8);
     Float4ToHalf4(result + 4, float8 + 4);

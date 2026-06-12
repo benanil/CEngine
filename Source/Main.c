@@ -15,6 +15,7 @@
 #include "Include/BasisBinding.h"
 #include "Include/Scene.h"
 #include "Include/DemoScene.h"
+#include "Include/Terrain.h"
 #include "Math/Quaternion.h"
 
 static s32 done = 0;
@@ -34,6 +35,7 @@ static void MainLoop(void)
     SetPressedAndReleasedKeys();
     PlatformUpdate();
     CameraUpdate(&g_Camera, PlatformCtx.DeltaTime);
+    Terrain_Update(&g_Camera);
     DemoScene_Update(PlatformCtx.DeltaTime);
     Scene_SubmitLights();
 
@@ -90,6 +92,7 @@ s32 main(s32 argc, char* argv[])
     extern void EditorSceneStartup(void);
     EditorSceneStartup();
     InitBuffers();
+    Terrain_Init();
 
     CameraInit(&g_Camera, 1920, 1080);
 
