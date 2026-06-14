@@ -40,8 +40,8 @@ purefn u32 VCALL PackXY11Z10UnormToU32(v128f v)
 // VecPack16/VecUnpackLo32 variants clamp or zero-extend them and break rotations
 static inline void VCALL PackQuaternionS16Norm(v128f quat, u64* result)
 {
-    v128u u32 = VecF32ToI32(VecMulf(quat, INT16_MAX-1));
-    VecStoreLo64(result, VecPack16S(u32));
+    v128u packed32 = VecF32ToI32(VecMulf(quat, INT16_MAX-1));
+    VecStoreLo64(result, VecPack16S(packed32));
 }
 
 static inline v128f VCALL UnpackQuaternionS16Norm1(u64 i16)

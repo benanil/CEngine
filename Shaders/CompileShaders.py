@@ -1,28 +1,33 @@
+import argparse
+import os
+import platform
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 
-DXC   = Path("Shaders/Build/dxc.exe")
-BIN2C = Path("Shaders/Build/bin2c.exe")
-
 SHADER_DIR = Path("Shaders")
-SPV_DIR    = SHADER_DIR / "spv"
+SPV_DIR = SHADER_DIR / "spv"
+MSL_DIR = SHADER_DIR / "msl"
+BUILD_DIR = SHADER_DIR / "Build"
 
 GRAPHICS_SHADERS = [
-    ("Surface"                , "vert", "frag"),
-    ("DeferredLightVolume"    , "vert", "frag"),
-    ("SurfaceDepthOnly"       , "vert", "frag"),
-    ("Skinned"                , "vert", "frag"),
-    ("SkinnedDepthOnly"       , "vert", "frag"),
-    ("LineDebug"              , "vert", "frag"),
-    ("Outline"                , "vert", "frag"),
-    ("UI/Slug"                , "vert", "frag"),
-    ("UI/UIShape"             , "vert", "frag"),
-    ("UI/UIImage"             , "vert", "frag"),
-    ("Shadow/SurfaceShadowDepthOnly" , "vert", "frag"),
-    ("Shadow/SkinnedShadowDepthOnly" , "vert", "frag"),
-    ("Terrain"                , "vert", "frag"),
-    ("TerrainDepthOnly"       , "vert", "frag"),
+    ("Surface", "vert", "frag"),
+    ("DeferredLightVolume", "vert", "frag"),
+    ("SurfaceDepthOnly", "vert", "frag"),
+    ("Skinned", "vert", "frag"),
+    ("SkinnedDepthOnly", "vert", "frag"),
+    ("LineDebug", "vert", "frag"),
+    ("Outline", "vert", "frag"),
+    ("UI/Slug", "vert", "frag"),
+    ("UI/UIShape", "vert", "frag"),
+    ("UI/UIImage", "vert", "frag"),
+    ("Shadow/SurfaceShadowDepthOnly", "vert", "frag"),
+    ("Shadow/SkinnedShadowDepthOnly", "vert", "frag"),
+    ("Shadow/SurfacePointShadowDepthOnly", "vert", "frag"),
+    ("Shadow/SkinnedPointShadowDepthOnly", "vert", "frag"),
+    ("Terrain", "vert", "frag"),
+    ("TerrainDepthOnly", "vert", "frag"),
 ]
 
 EXTRA_GRAPHICS_SHADERS = [
@@ -31,83 +36,238 @@ EXTRA_GRAPHICS_SHADERS = [
 ]
 
 COMPUTE_SHADERS = [
-    ("TexturePageCopyRGBA"                 , "main"),
-    ("TexturePageCopyRG"                   , "main"),
-    ("UI/ColorPickCompute"                 , "main"),
-    ("DeferredLighting"                    , "main"),
-    ("ExtractNormalCompute"                , "main"),
-    ("Animation/AnimationCompute"          , "main"),
-    ("Animation/AnimateVertices"           , "main"),
-    ("PreProcessing/CullDrawArgsCompute"   , "main"),
-    ("PreProcessing/CullLightsCompute"      , "main"),
-    ("PreProcessing/HiZBuildCompute"       , "main"),
-    ("PreProcessing/HiZDownscaleCompute"   , "main"),
-    ("PostProcessing/TonemapCompute"       , "main"),
-    ("PostProcessing/HBAOCompute"          , "main"),
-    ("PostProcessing/HBAOBlurCompute"      , "main"),
-    ("PostProcessing/MLAAEdgeMaskCompute"  , "main"),
+    ("TexturePageCopyRGBA", "main"),
+    ("TexturePageCopyRG", "main"),
+    ("UI/ColorPickCompute", "main"),
+    ("DeferredLighting", "main"),
+    ("ExtractNormalCompute", "main"),
+    ("Animation/AnimationCompute", "main"),
+    ("Animation/AnimateVertices", "main"),
+    ("PreProcessing/CullDrawArgsCompute", "main"),
+    ("PreProcessing/CullLightsCompute", "main"),
+    ("PreProcessing/HiZBuildCompute", "main"),
+    ("PreProcessing/HiZDownscaleCompute", "main"),
+    ("PostProcessing/TonemapCompute", "main"),
+    ("PostProcessing/HBAOCompute", "main"),
+    ("PostProcessing/HBAOBlurCompute", "main"),
+    ("PostProcessing/MLAAEdgeMaskCompute", "main"),
     ("PostProcessing/MLAALineLengthCompute", "main"),
-    ("PostProcessing/MLAABlendCompute"     , "main")
+    ("PostProcessing/MLAABlendCompute", "main"),
 ]
+
+MSL_FIXUPS = {
+    "SurfaceFrag": [
+        ("NormalPages [[texture(0)]]", "NormalPages [[texture(1)]]"),
+    ],
+    "TerrainFrag": [
+        ("NormalLayers [[texture(0)]]", "NormalLayers [[texture(1)]]"),
+    ],
+    "DeferredLightVolumeFrag": [
+        ("AlbedoMetallicTexture [[texture(0)]]", "AlbedoMetallicTexture [[texture(1)]]"),
+        ("ShadowRoughnessTexture [[texture(1)]]", "ShadowRoughnessTexture [[texture(2)]]"),
+    ],
+    "Animation/AnimateVertices": [
+        ("sSparseToDense [[buffer(7)]]", "sSparseToDense [[buffer(6)]]"),
+    ],
+}
+
+
+def host_default_format() -> str:
+    if platform.system() == "Darwin":
+        return "msl"
+    return "spv"
+
+
+def find_tool(names: list[str]) -> str | None:
+    for name in names:
+        if os.sep in name or (os.altsep and os.altsep in name):
+            path = Path(name)
+            if path.exists():
+                return str(path)
+            continue
+
+        found = shutil.which(name)
+        if found:
+            return found
+
+    return None
+
+
+def find_dxc() -> str | None:
+    return find_tool([
+        str(BUILD_DIR / "dxc.exe"),
+        str(BUILD_DIR / "dxc"),
+        "dxc",
+    ])
+
+
+def find_shadercross() -> str | None:
+    env_path = os.environ.get("SHADERCROSS")
+    names = []
+    if env_path:
+        names.append(env_path)
+
+    names += [
+        str(BUILD_DIR / "shadercross.exe"),
+        str(BUILD_DIR / "shadercross"),
+        "shadercross",
+    ]
+    return find_tool(names)
+
+
 def run_cmd(args: list[str], error_msg: str):
+    print(" ".join(str(a) for a in args), flush=True)
     result = subprocess.run(args)
     if result.returncode != 0:
         print(error_msg)
         sys.exit(result.returncode)
 
 
-def compile_shader(src_name: str, out_name: str, entry: str, target: str) -> bool:
-    hlsl   = SHADER_DIR / f"{src_name}.hlsl"
-    spv    = SHADER_DIR / f"{out_name}.spv"
-    header = SPV_DIR    / f"{out_name}.spv.h"
-    require_file(hlsl)
+def require_file(path: Path):
+    if not path.exists():
+        print(f"[ERROR] Missing file: {path}")
+        sys.exit(1)
 
-    if header.exists() and header.stat().st_mtime > hlsl.stat().st_mtime:
-        return False
 
-    print(f"Compiling {src_name}.hlsl entry {entry} -> {out_name}.spv...")
+def output_var_name(out_name: str, fmt: str) -> str:
+    safe = "".join(ch if ch.isalnum() else "_" for ch in out_name)
+    return f"Shaders_{safe}_{fmt}"
 
-    # --- FIX: Ensure target subdirectories exist for both .spv and .spv.h ---
-    spv.parent.mkdir(parents=True, exist_ok=True)
-    header.parent.mkdir(parents=True, exist_ok=True)
 
+def write_c_header(input_path: Path, header_path: Path, out_name: str, fmt: str):
+    data = input_path.read_bytes()
+    name = output_var_name(out_name, fmt)
+
+    header_path.parent.mkdir(parents=True, exist_ok=True)
+    with header_path.open("w", newline="\n") as f:
+        f.write("/* Generated by Shaders/CompileShaders.py, do not edit manually */\n\n")
+        f.write(f"const unsigned int {name}_size = {len(data)};\n")
+        f.write(f"const unsigned char {name}[{len(data)}] = {{\n")
+        for offset in range(0, len(data), 16):
+            chunk = data[offset:offset + 16]
+            values = ", ".join(f"0x{byte:02X}" for byte in chunk)
+            f.write(f"    {values},\n")
+        f.write("};\n")
+
+
+def patch_msl_bindings(shader_path: Path, out_name: str):
+    fixups = MSL_FIXUPS.get(out_name)
+    if not fixups:
+        return
+
+    source = shader_path.read_text()
+    for old, new in fixups:
+        if old not in source:
+            print(f"[ERROR] Missing MSL fixup target in {shader_path}: {old}")
+            sys.exit(1)
+        source = source.replace(old, new)
+    shader_path.write_text(source, newline="\n")
+
+
+def shader_stage(target: str) -> str:
+    if target.startswith("vs_"):
+        return "vertex"
+    if target.startswith("ps_"):
+        return "fragment"
+    return "compute"
+
+
+def compile_spv_with_dxc(dxc: str, hlsl: Path, output: Path, entry: str, target: str):
     run_cmd(
         [
-            str(DXC),
+            dxc,
             "-spirv",
             "-fspv-target-env=vulkan1.1",
             "-T", target,
             "-E", entry,
             "-enable-16bit-types",
+            "-I", str(SHADER_DIR),
+            "-I", str(hlsl.parent),
             str(hlsl),
-            "-Fo", str(spv),
+            "-Fo", str(output),
         ],
-        f"[ERROR] Failed to compile {src_name}.hlsl entry {entry}",
+        f"[ERROR] Failed to compile {hlsl} entry {entry}",
     )
 
+
+def compile_with_shadercross(shadercross: str, hlsl: Path, output: Path, entry: str, target: str, fmt: str):
     run_cmd(
-        [str(BIN2C), "-o", str(header), str(spv)],
-        f"[ERROR] bin2c failed to process {out_name}.spv"
+        [
+            shadercross,
+            "-s", "HLSL",
+            "-d", "MSL" if fmt == "msl" else "SPIRV",
+            "-t", shader_stage(target),
+            "-e", entry,
+            "-I", str(hlsl.parent),
+            "-o", str(output),
+            str(hlsl),
+        ],
+        f"[ERROR] Failed to compile {hlsl} entry {entry}",
     )
-    spv.unlink()
+
+
+def compile_shader(src_name: str, out_name: str, entry: str, target: str, fmt: str, dxc: str | None, shadercross: str | None) -> bool:
+    hlsl = SHADER_DIR / f"{src_name}.hlsl"
+    out_dir = MSL_DIR if fmt == "msl" else SPV_DIR
+    shader = SHADER_DIR / f"{out_name}.{fmt}"
+    header = out_dir / f"{out_name}.{fmt}.h"
+    require_file(hlsl)
+
+    script = Path(__file__)
+    if header.exists() and header.stat().st_mtime > max(hlsl.stat().st_mtime, script.stat().st_mtime):
+        return False
+
+    print(f"Compiling {src_name}.hlsl entry {entry} -> {out_name}.{fmt}...")
+    shader.parent.mkdir(parents=True, exist_ok=True)
+    header.parent.mkdir(parents=True, exist_ok=True)
+
+    if fmt == "msl":
+        if not shadercross:
+            print("[ERROR] shadercross is required for macOS MSL shader compilation.")
+            print("Install SDL_shadercross and ensure `shadercross` is on PATH, or set SHADERCROSS=/path/to/shadercross.")
+            sys.exit(1)
+        compile_with_shadercross(shadercross, hlsl, shader, entry, target, fmt)
+        patch_msl_bindings(shader, out_name)
+    elif shadercross:
+        compile_with_shadercross(shadercross, hlsl, shader, entry, target, fmt)
+    elif dxc:
+        compile_spv_with_dxc(dxc, hlsl, shader, entry, target)
+    else:
+        print("[ERROR] Missing shader compiler.")
+        print("Install `dxc` or SDL_shadercross, or place dxc/dxc.exe in Shaders/Build.")
+        sys.exit(1)
+
+    write_c_header(shader, header, out_name, fmt)
+    shader.unlink()
     return True
 
 
-def compile_all_shaders():
+def compile_all_shaders(fmt: str):
+    dxc = find_dxc()
+    shadercross = find_shadercross()
+
+    if dxc:
+        print(f"Using dxc: {dxc}")
+    if shadercross:
+        print(f"Using shadercross: {shadercross}")
+
+    out_dir = MSL_DIR if fmt == "msl" else SPV_DIR
+    out_dir.mkdir(parents=True, exist_ok=True)
+
     print("Processing Graphics Shaders...")
     graphics_compiled = 0
     graphics_skipped = 0
     for name, vs_entry, ps_entry in GRAPHICS_SHADERS:
-        if compile_shader(name, f"{name}Vert", vs_entry, "vs_6_6"):
+        if compile_shader(name, f"{name}Vert", vs_entry, "vs_6_6", fmt, dxc, shadercross):
             graphics_compiled += 1
         else:
             graphics_skipped += 1
-        if compile_shader(name, f"{name}Frag", ps_entry, "ps_6_6"):
+        if compile_shader(name, f"{name}Frag", ps_entry, "ps_6_6", fmt, dxc, shadercross):
             graphics_compiled += 1
         else:
             graphics_skipped += 1
     for name, out_name, entry, target in EXTRA_GRAPHICS_SHADERS:
-        if compile_shader(name, out_name, entry, target):
+        if compile_shader(name, out_name, entry, target, fmt, dxc, shadercross):
             graphics_compiled += 1
         else:
             graphics_skipped += 1
@@ -117,7 +277,7 @@ def compile_all_shaders():
     compute_compiled = 0
     compute_skipped = 0
     for name, entry in COMPUTE_SHADERS:
-        if compile_shader(name, name, entry, "cs_6_6"):
+        if compile_shader(name, name, entry, "cs_6_6", fmt, dxc, shadercross):
             compute_compiled += 1
         else:
             compute_skipped += 1
@@ -132,18 +292,17 @@ def print_shader_summary(label: str, compiled: int, skipped: int):
         print(f"{label}: compiled {compiled}, skipped {skipped}.")
 
 
-def require_file(path: Path):
-    if not path.exists():
-        print(f"[ERROR] Missing file: {path}")
-        sys.exit(1)
-
-
 def main() -> int:
-    SPV_DIR.mkdir(parents=True, exist_ok=True)
-    require_file(DXC)
-    require_file(BIN2C)
-    compile_all_shaders()
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--format",
+        choices=["spv", "msl"],
+        default=host_default_format(),
+        help="Output shader header format. Defaults to msl on macOS, spv elsewhere.",
+    )
+    args = parser.parse_args()
 
+    compile_all_shaders(args.format)
     print("\nSUCCESS: All shaders processed.")
     return 0
 

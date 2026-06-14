@@ -42,10 +42,8 @@ void main(uint3 tid : SV_DispatchThreadID, uint3 gtid : SV_GroupThreadID)
     int2 p = int2(tid.xy);
     uint pixel = EdgeMaskTexture.Load(int3(p, 0));
     
-    // OPTIMIZATION 1: Global Wave Early Out
-    // If no pixels in the current wave have an edge, the entire wave skips memory lookups
     bool anyEdge = (pixel & (MLAA_UPPER_MASK | MLAA_RIGHT_MASK)) != 0u;
-    if (!WaveActiveAnyTrue(anyEdge))
+    if (!anyEdge)
     {
         EdgeCountTexture[tid.xy] = uint2(0u, 0u);
         return;

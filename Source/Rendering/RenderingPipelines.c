@@ -1,19 +1,94 @@
 #include "RenderingInternal.h"
 #include "Include/Slug.h"
 
-#if defined(PLATFORM_APPLE)
+#if defined(PLATFORM_MACOSX)
 #include "Shaders/msl/SkinnedFrag.msl.h"
 #include "Shaders/msl/SkinnedVert.msl.h"
-#include "Shaders/msl/AnimationCompute.msl.h"
-#include "Shaders/msl/CullDrawArgsCompute.msl.h"
-#include "Shaders/msl/LineDebugFrag.msl.h"
+#include "Shaders/msl/SurfaceFrag.msl.h"
+#include "Shaders/msl/SurfaceVert.msl.h"
+#include "Shaders/msl/DeferredLightVolumeFrag.msl.h"
+#include "Shaders/msl/DeferredLightVolumeVert.msl.h"
+#include "Shaders/msl/DeferredLighting.msl.h"
+#include "Shaders/msl/PreProcessing/CullDrawArgsCompute.msl.h"
+#include "Shaders/msl/PreProcessing/CullLightsCompute.msl.h"
+#include "Shaders/msl/Animation/AnimationCompute.msl.h"
+#include "Shaders/msl/Animation/AnimateVertices.msl.h"
 #include "Shaders/msl/LineDebugVert.msl.h"
-#define Shaders_SkinnedFrag_spv      Shaders_SkinnedFrag_msl
-#define Shaders_SkinnedFrag_spv_size Shaders_SkinnedFrag_msl_size
-#define Shaders_SkinnedVert_spv      Shaders_SkinnedVert_msl
-#define Shaders_SkinnedVert_spv_size Shaders_SkinnedVert_msl_size
-#define Shaders_AnimationCompute_spv      Shaders_AnimationCompute_msl
-#define Shaders_AnimationCompute_spv_size Shaders_AnimationCompute_msl_size
+#include "Shaders/msl/LineDebugFrag.msl.h"
+#include "Shaders/msl/OutlineVert.msl.h"
+#include "Shaders/msl/OutlineFrag.msl.h"
+#include "Shaders/msl/UI/SlugVert.msl.h"
+#include "Shaders/msl/Slug2DVert.msl.h"
+#include "Shaders/msl/UI/SlugFrag.msl.h"
+#include "Shaders/msl/UI/UIShapeVert.msl.h"
+#include "Shaders/msl/UI/UIShapeFrag.msl.h"
+#include "Shaders/msl/UI/UIImageVert.msl.h"
+#include "Shaders/msl/UI/UIImageFrag.msl.h"
+#include "Shaders/msl/PostProcessing/TonemapCompute.msl.h"
+#include "Shaders/msl/PreProcessing/HiZBuildCompute.msl.h"
+#include "Shaders/msl/PreProcessing/HiZDownscaleCompute.msl.h"
+#include "Shaders/msl/PostProcessing/HBAOCompute.msl.h"
+#include "Shaders/msl/PostProcessing/HBAOBlurCompute.msl.h"
+#include "Shaders/msl/ExtractNormalCompute.msl.h"
+#include "Shaders/msl/PostProcessing/MLAAEdgeMaskCompute.msl.h"
+#include "Shaders/msl/PostProcessing/MLAALineLengthCompute.msl.h"
+#include "Shaders/msl/PostProcessing/MLAABlendCompute.msl.h"
+#include "Shaders/msl/SurfaceDepthOnlyVert.msl.h"
+#include "Shaders/msl/SurfaceDepthOnlyFrag.msl.h"
+#include "Shaders/msl/SkinnedDepthOnlyVert.msl.h"
+#include "Shaders/msl/SkinnedDepthOnlyFrag.msl.h"
+#include "Shaders/msl/Shadow/SurfaceShadowDepthOnlyVert.msl.h"
+#include "Shaders/msl/Shadow/SurfaceShadowDepthOnlyFrag.msl.h"
+#include "Shaders/msl/Shadow/SkinnedShadowDepthOnlyVert.msl.h"
+#include "Shaders/msl/Shadow/SkinnedShadowDepthOnlyFrag.msl.h"
+#include "Shaders/msl/Shadow/SurfacePointShadowDepthOnlyVert.msl.h"
+#include "Shaders/msl/Shadow/SurfacePointShadowDepthOnlyFrag.msl.h"
+#include "Shaders/msl/Shadow/SkinnedPointShadowDepthOnlyVert.msl.h"
+#include "Shaders/msl/Shadow/SkinnedPointShadowDepthOnlyFrag.msl.h"
+
+#define Shaders_SkinnedFrag_spv Shaders_SkinnedFrag_msl
+#define Shaders_SkinnedVert_spv Shaders_SkinnedVert_msl
+#define Shaders_SurfaceFrag_spv Shaders_SurfaceFrag_msl
+#define Shaders_SurfaceVert_spv Shaders_SurfaceVert_msl
+#define Shaders_DeferredLightVolumeFrag_spv Shaders_DeferredLightVolumeFrag_msl
+#define Shaders_DeferredLightVolumeVert_spv Shaders_DeferredLightVolumeVert_msl
+#define Shaders_DeferredLighting_spv Shaders_DeferredLighting_msl
+#define Shaders_AnimationCompute_spv Shaders_Animation_AnimationCompute_msl
+#define Shaders_AnimateVertices_spv Shaders_Animation_AnimateVertices_msl
+#define Shaders_CullDrawArgsCompute_spv Shaders_PreProcessing_CullDrawArgsCompute_msl
+#define Shaders_CullLightsCompute_spv Shaders_PreProcessing_CullLightsCompute_msl
+#define Shaders_TonemapCompute_spv Shaders_PostProcessing_TonemapCompute_msl
+#define Shaders_HiZBuildCompute_spv Shaders_PreProcessing_HiZBuildCompute_msl
+#define Shaders_HiZDownscaleCompute_spv Shaders_PreProcessing_HiZDownscaleCompute_msl
+#define Shaders_HBAOCompute_spv Shaders_PostProcessing_HBAOCompute_msl
+#define Shaders_HBAOBlurCompute_spv Shaders_PostProcessing_HBAOBlurCompute_msl
+#define Shaders_ExtractNormalCompute_spv Shaders_ExtractNormalCompute_msl
+#define Shaders_MLAAEdgeMaskCompute_spv Shaders_PostProcessing_MLAAEdgeMaskCompute_msl
+#define Shaders_MLAALineLengthCompute_spv Shaders_PostProcessing_MLAALineLengthCompute_msl
+#define Shaders_MLAABlendCompute_spv Shaders_PostProcessing_MLAABlendCompute_msl
+#define Shaders_LineDebugVert_spv Shaders_LineDebugVert_msl
+#define Shaders_LineDebugFrag_spv Shaders_LineDebugFrag_msl
+#define Shaders_OutlineVert_spv Shaders_OutlineVert_msl
+#define Shaders_OutlineFrag_spv Shaders_OutlineFrag_msl
+#define Shaders_SlugVert_spv Shaders_UI_SlugVert_msl
+#define Shaders_Slug2DVert_spv Shaders_Slug2DVert_msl
+#define Shaders_SlugFrag_spv Shaders_UI_SlugFrag_msl
+#define Shaders_UIShapeVert_spv Shaders_UI_UIShapeVert_msl
+#define Shaders_UIShapeFrag_spv Shaders_UI_UIShapeFrag_msl
+#define Shaders_UIImageVert_spv Shaders_UI_UIImageVert_msl
+#define Shaders_UIImageFrag_spv Shaders_UI_UIImageFrag_msl
+#define Shaders_SurfaceDepthOnlyVert_spv Shaders_SurfaceDepthOnlyVert_msl
+#define Shaders_SurfaceDepthOnlyFrag_spv Shaders_SurfaceDepthOnlyFrag_msl
+#define Shaders_SkinnedDepthOnlyVert_spv Shaders_SkinnedDepthOnlyVert_msl
+#define Shaders_SkinnedDepthOnlyFrag_spv Shaders_SkinnedDepthOnlyFrag_msl
+#define Shaders_SurfaceShadowDepthOnlyVert_spv Shaders_Shadow_SurfaceShadowDepthOnlyVert_msl
+#define Shaders_SurfaceShadowDepthOnlyFrag_spv Shaders_Shadow_SurfaceShadowDepthOnlyFrag_msl
+#define Shaders_SkinnedShadowDepthOnlyVert_spv Shaders_Shadow_SkinnedShadowDepthOnlyVert_msl
+#define Shaders_SkinnedShadowDepthOnlyFrag_spv Shaders_Shadow_SkinnedShadowDepthOnlyFrag_msl
+#define Shaders_SurfacePointShadowDepthOnlyVert_spv Shaders_Shadow_SurfacePointShadowDepthOnlyVert_msl
+#define Shaders_SurfacePointShadowDepthOnlyFrag_spv Shaders_Shadow_SurfacePointShadowDepthOnlyFrag_msl
+#define Shaders_SkinnedPointShadowDepthOnlyVert_spv Shaders_Shadow_SkinnedPointShadowDepthOnlyVert_msl
+#define Shaders_SkinnedPointShadowDepthOnlyFrag_spv Shaders_Shadow_SkinnedPointShadowDepthOnlyFrag_msl
 #elif defined(PLATFORM_WINDOWS)
 #include "Shaders/spv/SkinnedFrag.spv.h"
 #include "Shaders/spv/SkinnedVert.spv.h"
@@ -127,7 +202,7 @@ SDL_CreateGPUShader(g_GPUDevice, &(SDL_GPUShaderCreateInfo){\
 .entrypoint          = "frag"
 
 #define COMPUTE_DEF(xbuffer) SDL_CreateGPUComputePipeline(g_GPUDevice, &(SDL_GPUComputePipelineCreateInfo){ \
-.code = xbuffer, .code_size = sizeof(xbuffer), .entrypoint = "main", .format = shaderformat
+.code = xbuffer, .code_size = sizeof(xbuffer), .entrypoint = AX_GPU_COMPUTE_ENTRYPOINT, .format = shaderformat
 
 #define THREAD_COUNT_XYZ(_X, _Y, _Z)\
 .threadcount_x                 = _X,\
@@ -151,7 +226,7 @@ SDL_GPUComputePipeline* g_MLAABlendComputePipeline       = NULL;
 
 static void InitComputePipelines(void)
 {
-    SDL_GPUShaderFormat shaderformat = SDL_GetGPUShaderFormats(g_GPUDevice);
+    SDL_GPUShaderFormat shaderformat = AX_GPU_SHADER_FORMAT;
     g_AnimComputePipeline = COMPUTE_DEF(Shaders_AnimationCompute_spv),
         .num_uniform_buffers           = 1, .num_readonly_storage_buffers  = 7, .num_readwrite_storage_buffers = 1,
         THREAD_COUNT_XYZ(32, 1, 1)
@@ -261,7 +336,7 @@ static void InitSamplers(void)
 
 static void InitLinePipeline(void)
 {
-    SDL_GPUShaderFormat shaderformat = SDL_GetGPUShaderFormats(g_GPUDevice);
+    SDL_GPUShaderFormat shaderformat = AX_GPU_SHADER_FORMAT;
     SDL_GPUShader* vertex_shader   = PIPELINE_VERT_DEF(Shaders_LineDebugVert_spv), .num_uniform_buffers = 1 }); CHECK_CREATE(vertex_shader, "Vertex Shader")
     SDL_GPUShader* fragment_shader = PIPELINE_FRAG_DEF(Shaders_LineDebugFrag_spv)});                            CHECK_CREATE(fragment_shader, "Fragment Shader")
 
@@ -308,7 +383,7 @@ static void InitLinePipeline(void)
 // always draws on top
 static void InitGizmoLinePipeline(void)
 {
-    SDL_GPUShaderFormat shaderformat = SDL_GetGPUShaderFormats(g_GPUDevice);
+    SDL_GPUShaderFormat shaderformat = AX_GPU_SHADER_FORMAT;
     SDL_GPUShader* vertex_shader   = PIPELINE_VERT_DEF(Shaders_LineDebugVert_spv), .num_uniform_buffers = 1 }); CHECK_CREATE(vertex_shader, "Gizmo Vertex Shader")
     SDL_GPUShader* fragment_shader = PIPELINE_FRAG_DEF(Shaders_LineDebugFrag_spv)});                            CHECK_CREATE(fragment_shader, "Gizmo Fragment Shader")
 
@@ -347,7 +422,7 @@ SDL_GPUGraphicsPipeline* g_GizmoLinePipeline;
 // vertex shader grows it along the normals (ported from the old engine's outline)
 static void InitOutlinePipeline(void)
 {
-    SDL_GPUShaderFormat shaderformat = SDL_GetGPUShaderFormats(g_GPUDevice);
+    SDL_GPUShaderFormat shaderformat = AX_GPU_SHADER_FORMAT;
     SDL_GPUShader* vertex_shader   = PIPELINE_VERT_DEF(Shaders_OutlineVert_spv), .num_uniform_buffers = 1 }); CHECK_CREATE(vertex_shader, "Outline Vertex Shader")
     SDL_GPUShader* fragment_shader = PIPELINE_FRAG_DEF(Shaders_OutlineFrag_spv)});                            CHECK_CREATE(fragment_shader, "Outline Fragment Shader")
 
@@ -395,7 +470,7 @@ static void InitOutlinePipeline(void)
 
 static void InitDeferredLightPipeline(void)
 {
-    SDL_GPUShaderFormat shaderformat = SDL_GetGPUShaderFormats(g_GPUDevice);
+    SDL_GPUShaderFormat shaderformat = AX_GPU_SHADER_FORMAT;
     SDL_GPUShader* vertex_shader   = PIPELINE_VERT_DEF(Shaders_DeferredLightVolumeVert_spv), .num_storage_buffers = 1 });                                              CHECK_CREATE(vertex_shader, "Deferred Light Vertex Shader")
     SDL_GPUShader* fragment_shader = PIPELINE_FRAG_DEF(Shaders_DeferredLightVolumeFrag_spv), .num_uniform_buffers = 1, .num_samplers = 7, .num_storage_buffers = 4 }); CHECK_CREATE(fragment_shader, "Deferred Light Fragment Shader")
 
@@ -430,13 +505,13 @@ static void InitDeferredLightPipeline(void)
 
 static void InitSlugPipeline(void)
 {
-    SDL_GPUShaderFormat shaderformat = SDL_GetGPUShaderFormats(g_GPUDevice);
+    SDL_GPUShaderFormat shaderformat = AX_GPU_SHADER_FORMAT;
     SDL_GPUShader* vertex_shader     = PIPELINE_VERT_DEF(Shaders_SlugVert_spv), .num_uniform_buffers = 1 }); CHECK_CREATE(vertex_shader, "Slug Vertex Shader");
     SDL_GPUShader* fragment_shader   = PIPELINE_FRAG_DEF(Shaders_SlugFrag_spv), .num_storage_buffers = 2 }); CHECK_CREATE(fragment_shader, "Slug Fragment Shader");
     
     SDL_GPUShader* vertex_2d_shader = SDL_CreateGPUShader(g_GPUDevice, &(SDL_GPUShaderCreateInfo){
         .num_uniform_buffers = 1,
-        .format              = SDL_GetGPUShaderFormats(g_GPUDevice),
+        .format              = AX_GPU_SHADER_FORMAT,
         .code                = Shaders_Slug2DVert_spv,
         .code_size           = sizeof(Shaders_Slug2DVert_spv),
         .num_samplers        = 0,
@@ -508,7 +583,7 @@ static void InitSlugPipeline(void)
 
 static void InitUIShapePipeline(void)
 {
-    SDL_GPUShaderFormat shaderformat = SDL_GetGPUShaderFormats(g_GPUDevice);
+    SDL_GPUShaderFormat shaderformat = AX_GPU_SHADER_FORMAT;
     SDL_GPUShader* vertex_shader   = PIPELINE_VERT_DEF(Shaders_UIShapeVert_spv), .num_uniform_buffers = 1, .num_storage_buffers = 1 }); CHECK_CREATE(vertex_shader, "UI Shape Vertex Shader")
     SDL_GPUShader* fragment_shader = PIPELINE_FRAG_DEF(Shaders_UIShapeFrag_spv), .num_uniform_buffers = 1 });                           CHECK_CREATE(fragment_shader, "UI Shape Fragment Shader")
 
@@ -545,7 +620,7 @@ static void InitUIShapePipeline(void)
 
 static void InitUIImagePipeline(void)
 {
-    SDL_GPUShaderFormat shaderformat = SDL_GetGPUShaderFormats(g_GPUDevice);
+    SDL_GPUShaderFormat shaderformat = AX_GPU_SHADER_FORMAT;
     SDL_GPUShader* vertex_shader   = PIPELINE_VERT_DEF(Shaders_UIImageVert_spv), .num_uniform_buffers = 1 });                    CHECK_CREATE(vertex_shader, "UI Image Vertex Shader")
     SDL_GPUShader* fragment_shader = PIPELINE_FRAG_DEF(Shaders_UIImageFrag_spv), .num_uniform_buffers = 1, .num_samplers = 1 }); CHECK_CREATE(fragment_shader, "UI Image Fragment Shader")
 
@@ -580,7 +655,7 @@ static void InitUIImagePipeline(void)
 
 static void InitSkinedPipeline(void)
 {
-    SDL_GPUShaderFormat shaderformat = SDL_GetGPUShaderFormats(g_GPUDevice);
+    SDL_GPUShaderFormat shaderformat = AX_GPU_SHADER_FORMAT;
     SDL_GPUShader* vertex_shader   = PIPELINE_VERT_DEF(Shaders_SkinnedVert_spv), .num_uniform_buffers = 1, .num_storage_buffers = 5 });                           CHECK_CREATE(vertex_shader, "Vertex Shader")
     SDL_GPUShader* fragment_shader = PIPELINE_FRAG_DEF(Shaders_SkinnedFrag_spv), .num_uniform_buffers = 1, .num_samplers        = 4, .num_storage_buffers = 2 }); CHECK_CREATE(fragment_shader, "Fragment Shader")
 
@@ -631,7 +706,7 @@ static void InitSkinedPipeline(void)
 
 static void InitSurfacePipeline(void)
 {
-    SDL_GPUShaderFormat shaderformat = SDL_GetGPUShaderFormats(g_GPUDevice);
+    SDL_GPUShaderFormat shaderformat = AX_GPU_SHADER_FORMAT;
     SDL_GPUShader* vertex_shader   = PIPELINE_VERT_DEF(Shaders_SurfaceVert_spv), .num_uniform_buffers = 1, .num_storage_buffers = 4 }); CHECK_CREATE(vertex_shader  , "Surface Vertex Shader")
     SDL_GPUShader* fragment_shader = PIPELINE_FRAG_DEF(Shaders_SurfaceFrag_spv), .num_uniform_buffers = 1, .num_samplers        = 4, .num_storage_buffers = 2 }); CHECK_CREATE(fragment_shader, "Surface Fragment Shader")
 
@@ -698,7 +773,7 @@ static void CreatePipelineWithDesc(RenderSetShared* buffers, SDL_GPUGraphicsPipe
 
 static void InitDepthOnlyPipelines(void)
 {
-    SDL_GPUShaderFormat shaderformat = SDL_GetGPUShaderFormats(g_GPUDevice);
+    SDL_GPUShaderFormat shaderformat = AX_GPU_SHADER_FORMAT;
     SDL_GPUShader* sur_ver  = PIPELINE_VERT_DEF(Shaders_SurfaceDepthOnlyVert_spv), .num_uniform_buffers = 1, .num_storage_buffers = 3 });
     SDL_GPUShader* ski_ver  = PIPELINE_VERT_DEF(Shaders_SkinnedDepthOnlyVert_spv), .num_uniform_buffers = 1, .num_storage_buffers = 4 });
     SDL_GPUShader* sur_frag = PIPELINE_FRAG_DEF(Shaders_SurfaceDepthOnlyFrag_spv), .num_uniform_buffers = 0, .num_samplers = 1, .num_storage_buffers = 2 });

@@ -10,6 +10,14 @@
 
 #define CHECK_CREATE(var, thing) { if (!(var)) { AX_ERROR("Failed to create %s: %s", thing, SDL_GetError()); /*Quit(2);*/ } }
 
+#if defined(PLATFORM_MACOSX)
+#define AX_GPU_SHADER_FORMAT SDL_GPU_SHADERFORMAT_MSL
+#define AX_GPU_COMPUTE_ENTRYPOINT "main0"
+#else
+#define AX_GPU_SHADER_FORMAT SDL_GetGPUShaderFormats(g_GPUDevice)
+#define AX_GPU_COMPUTE_ENTRYPOINT "main"
+#endif
+
 #define TEXTURE_PAGE_SIZE       4096
 #define TEXTURE_PAGE_LAYERS     8
 #define MAX_SCENE_TEXTURES      1024

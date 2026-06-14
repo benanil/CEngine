@@ -12,7 +12,6 @@
 #include "Include/FileSystem.h"
 #include "Include/String.h"
 #include "Include/Platform.h"
-#include <windows.h>
 
 #define STBTT_malloc(size, user) ((void)(user), SDL_malloc(size))
 #define STBTT_free(ptr, user)    ((void)(user), SDL_free(ptr))

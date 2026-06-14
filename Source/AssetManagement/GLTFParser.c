@@ -133,7 +133,7 @@ static void DecodeBase64(char *dst, const char *src, size_t src_length)
     }
 }
 
-inline char OGLWrapToWrap(int wrap)
+static inline char OGLWrapToWrap(int wrap)
 {
     switch (wrap)
     {
@@ -153,7 +153,7 @@ const char* ParseFloat16(const char* curr, short* flt)
     return curr;
 }
 
-inline const char* SkipAfter(const char* curr, char character)
+static inline const char* SkipAfter(const char* curr, char character)
 {
     AX_NO_UNROLL while (*curr++ != character);
     return curr;

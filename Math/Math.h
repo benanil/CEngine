@@ -213,7 +213,7 @@ purefn v128f VCALL VecCos(const v128f V)
     return VecMul(R, sign);
 }
 
-inline void VCALL VecSinCos(v128f V, v128f* pSin, v128f* pCos)
+static inline void VCALL VecSinCos(v128f V, v128f* pSin, v128f* pCos)
 {
     v128f SC0 = VecSetR( -0.16666667f   , +0.0083333310f, -0.00019840874f, +2.7525562e-06f );
     v128f SC1 = VecSetR( -2.3889859e-08f, -0.16665852f /*Est1*/, +0.0083139502f /*Est2*/, -0.00018524670f /*Est3*/ );

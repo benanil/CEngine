@@ -10,7 +10,13 @@
 #include "Math/Half.h"
 #include "Math/Vector.h"
 
-#if defined(PLATFORM_WINDOWS)
+#if defined(PLATFORM_MACOSX)
+#include "Shaders/msl/TexturePageCopyRGBA.msl.h"
+#include "Shaders/msl/TexturePageCopyRG.msl.h"
+
+#define Shaders_TexturePageCopyRGBA_spv Shaders_TexturePageCopyRGBA_msl
+#define Shaders_TexturePageCopyRG_spv Shaders_TexturePageCopyRG_msl
+#elif defined(PLATFORM_WINDOWS)
 #include "Shaders/spv/TexturePageCopyRGBA.spv.h"
 #include "Shaders/spv/TexturePageCopyRG.spv.h"
 #endif
@@ -154,8 +160,8 @@ static void InitCopyPipelines(void)
     gCopyRGBAPipeline = SDL_CreateGPUComputePipeline(g_GPUDevice, &(SDL_GPUComputePipelineCreateInfo){
         .code = Shaders_TexturePageCopyRGBA_spv,
         .code_size = sizeof(Shaders_TexturePageCopyRGBA_spv),
-        .entrypoint = "main",
-        .format = SDL_GetGPUShaderFormats(g_GPUDevice),
+        .entrypoint = AX_GPU_COMPUTE_ENTRYPOINT,
+        .format = AX_GPU_SHADER_FORMAT,
         .num_samplers = 1,
         .num_readwrite_storage_textures = 1,
         .num_uniform_buffers = 1,
@@ -168,8 +174,8 @@ static void InitCopyPipelines(void)
     gCopyRGPipeline = SDL_CreateGPUComputePipeline(g_GPUDevice, &(SDL_GPUComputePipelineCreateInfo){
         .code = Shaders_TexturePageCopyRG_spv,
         .code_size = sizeof(Shaders_TexturePageCopyRG_spv),
-        .entrypoint = "main",
-        .format = SDL_GetGPUShaderFormats(g_GPUDevice),
+        .entrypoint = AX_GPU_COMPUTE_ENTRYPOINT,
+        .format = AX_GPU_SHADER_FORMAT,
         .num_samplers = 1,
         .num_readwrite_storage_textures = 1,
         .num_uniform_buffers = 1,

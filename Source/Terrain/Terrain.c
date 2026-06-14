@@ -14,11 +14,29 @@
 
 #include "Extern/stb/stb_image.h"
 #include "Extern/stb/stb_image_resize2.h"
+
+#if defined(PLATFORM_MACOSX)
+#include "Shaders/msl/TerrainVert.msl.h"
+#include "Shaders/msl/TerrainFrag.msl.h"
+#include "Shaders/msl/TerrainDepthOnlyVert.msl.h"
+#include "Shaders/msl/TerrainDepthOnlyFrag.msl.h"
+#include "Shaders/msl/TerrainWireFrag.msl.h"
+
+#define Shaders_TerrainVert_spv Shaders_TerrainVert_msl
+#define Shaders_TerrainFrag_spv Shaders_TerrainFrag_msl
+#define Shaders_TerrainDepthOnlyVert_spv Shaders_TerrainDepthOnlyVert_msl
+#define Shaders_TerrainDepthOnlyFrag_spv Shaders_TerrainDepthOnlyFrag_msl
+#define Shaders_TerrainWireFrag_spv Shaders_TerrainWireFrag_msl
+#elif defined(PLATFORM_WINDOWS)
 #include "Shaders/spv/TerrainVert.spv.h"
 #include "Shaders/spv/TerrainFrag.spv.h"
 #include "Shaders/spv/TerrainDepthOnlyVert.spv.h"
 #include "Shaders/spv/TerrainDepthOnlyFrag.spv.h"
 #include "Shaders/spv/TerrainWireFrag.spv.h"
+#endif
+
+#include <SDL3/SDL_cpuinfo.h>
+#include <SDL3/SDL_timer.h>
 
 #define TERRAIN_MAX_CHUNKS      2048u
 #define TERRAIN_MAX_JOBS        16u
@@ -997,7 +1015,7 @@ static SDL_GPUShader* TerrainCreateShader(const u8* code, size_t codeSize, SDL_G
 {
     SDL_GPUShader* shader = SDL_CreateGPUShader(g_GPUDevice, &(SDL_GPUShaderCreateInfo){
         .code = code, .code_size = codeSize,
-        .format = SDL_GetGPUShaderFormats(g_GPUDevice),
+        .format = AX_GPU_SHADER_FORMAT,
         .stage = stage,
         .entrypoint = entry,
         .num_uniform_buffers = numUniforms,

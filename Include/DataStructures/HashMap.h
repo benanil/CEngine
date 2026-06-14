@@ -149,7 +149,7 @@ static int8_t HMCalcShiftsForSize(uint32_t s) {
     return shifts;
 }
 
-inline void* HMValueAt(const HashMap* hm, uint32_t idx) {
+static inline void* HMValueAt(const HashMap* hm, uint32_t idx) {
     return (int8_t*)hm->values + (size_t)idx * hm->valueSize;
 }
 

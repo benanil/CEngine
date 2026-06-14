@@ -91,7 +91,6 @@ float2 SolveVertPoly(float4 p12, float2 p3)
 
 float CalcCoverage(float xcov, float ycov, float xwgt, float ywgt, int flags)
 {
-    (void)flags;
     float coverage = max(abs(xcov * xwgt + ycov * ywgt) / max(xwgt + ywgt, 1.0 / 65536.0), min(abs(xcov), abs(ycov)));
     coverage = saturate(coverage);
     #if SLUG_WEIGHT

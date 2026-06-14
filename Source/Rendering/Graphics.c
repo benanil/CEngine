@@ -10,7 +10,9 @@
 #include "Include/BasisBinding.h"
 #include "Include/Random.h"
 
+#if !defined(PLATFORM_MACOSX)
 #include "Extern/SDL3/src/video/khronos/vulkan/vulkan.h"
+#endif
 
 #include "Extern/sinfl.h"
 #include "Extern/ufbx.h"
@@ -35,8 +37,10 @@
 #define STBIR_MALLOC(size, c)       ( AllocateTLSFGlobal(size) )
 #define STBIR_FREE(ptr, c)          ( (void)(c), DeAllocateTLSFGlobal(ptr) )
 
+#if !defined(PLATFORM_MACOSX)
 #define VULKAN_MAKE_API_VERSION(variant, major, minor, patch) \
     ((((uint32_t)(variant)) << 29U) | (((uint32_t)(major)) << 22U) | (((uint32_t)(minor)) << 12U) | ((uint32_t)(patch)))
+#endif
 
 
 #include "Extern/stb/stb_image.h"
@@ -149,6 +153,13 @@ void GeometryHeapFree(GeometryBufferKind kind, void* raw)
 
 void GraphicsInit(bool msaa)
 {
+#if defined(PLATFORM_MACOSX)
+    SDL_PropertiesID props = SDL_CreateProperties();
+    SDL_SetHint(SDL_HINT_GPU_DRIVER, "metal");
+    SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_SHADERS_MSL_BOOLEAN, true);
+    SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_DEBUGMODE_BOOLEAN, true);
+    SDL_SetStringProperty(props, SDL_PROP_GPU_DEVICE_CREATE_NAME_STRING, "metal");
+#else
     VkPhysicalDeviceFeatures vk10_features = { .shaderInt16 = VK_TRUE };
 
     VkPhysicalDeviceVulkan12Features vk12_features = {
@@ -175,6 +186,7 @@ void GraphicsInit(bool msaa)
     SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_SHADERS_SPIRV_BOOLEAN, true);
     SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_DEBUGMODE_BOOLEAN, true);
     SDL_SetStringProperty(props, SDL_PROP_GPU_DEVICE_CREATE_NAME_STRING, "vulkan");
+#endif
     g_GPUDevice = SDL_CreateGPUDeviceWithProperties(props);
     SDL_DestroyProperties(props);
 

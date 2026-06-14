@@ -1488,8 +1488,8 @@ static void UIColorPickRender(void)
         g_UIColorPickPipeline = SDL_CreateGPUComputePipeline(g_GPUDevice, &(SDL_GPUComputePipelineCreateInfo){
             .code = Shaders_UI_ColorPickCompute_spv,
             .code_size = sizeof(Shaders_UI_ColorPickCompute_spv),
-            .entrypoint = "main",
-            .format = SDL_GetGPUShaderFormats(g_GPUDevice),
+            .entrypoint = AX_GPU_COMPUTE_ENTRYPOINT,
+            .format = AX_GPU_SHADER_FORMAT,
             .num_readwrite_storage_textures = 1,
             .num_uniform_buffers = 1,
             .threadcount_x = 8,

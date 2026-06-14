@@ -182,12 +182,14 @@ target_compile_definitions(${EXECUTABLE_NAME} PRIVATE
     BASISU_NO_ITERATOR_DEBUG_LEVEL
 )
 
-set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -nostdlib")
-list(REMOVE_ITEM CMAKE_CXX_IMPLICIT_LINK_LIBRARIES stdc++)
-# Prevent CMake from implicitly adding standard library link arguments
-set_target_properties(CPlayground PROPERTIES 
-    LINK_DEPENDS_NO_SHARED TRUE
-)
+if(MSVC)
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -nostdlib")
+    list(REMOVE_ITEM CMAKE_CXX_IMPLICIT_LINK_LIBRARIES stdc++)
+    # Prevent CMake from implicitly adding standard library link arguments
+    set_target_properties(CPlayground PROPERTIES 
+        LINK_DEPENDS_NO_SHARED TRUE
+    )
+endif()
 
 # Link SDL to our executable. This also makes its include directory available to us. 
 if(WIN32)

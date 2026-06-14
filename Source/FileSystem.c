@@ -23,10 +23,14 @@
     #include <sys/types.h>
     #include <fcntl.h>
     #include <dirent.h>
+    #include <limits.h>
     #define _rmdir rmdir
     #define _mkdir mkdir
     #define _fileno fileno
     #define _filelengthi64 filelength
+    #ifndef MAX_PATH
+    #define MAX_PATH PATH_MAX
+    #endif
 #endif
 
 #ifdef __ANDROID__
@@ -176,7 +180,7 @@ bool FileExist(const char* file)
 {
 #ifdef __ANDROID__
     AAsset* asset = AAssetManager_open(g_android_app->activity->assetManager, file, 0);
-    if (asset == nullptr) {
+    if (asset == NULL) {
         return false;
     } else {
         AAsset_close(asset);
@@ -286,7 +290,7 @@ void AFileClose(AFile file) {
 }
 
 bool AFileExist(AFile file) {
-    return file.asset != nullptr;
+    return file.asset != NULL;
 }
 
 uint64_t AFileSize(AFile file) {
@@ -452,8 +456,11 @@ uint64_t AFileSize(AFile file)
     if (file.asset == NULL) return 0;
     return AAsset_getLength(file.asset);
     #else
+    if (!file.file)
+        return 0;
+
     struct stat sb;
-    if (stat(file.file, &sb) != 0)
+    if (fstat(fileno(file.file), &sb) != 0)
         return 0;
     return (uint64_t)sb.st_size;
     #endif  
@@ -577,7 +584,7 @@ void ACopyFile(const char* source, const char* dst, char* buffer)
 
 #ifndef _WIN32
 int GetCurrentDirectory(int size, char* outPath) {
-    return getcwd(outPath, size);
+    return getcwd(outPath, size) != NULL;
 }
 #endif
 
@@ -836,7 +843,7 @@ int VisitFolder(const char* root, FolderVisitFn visitFn, void* data, bool recurs
 bool HasAnySubdir(const char* path)
 {
     DIR* dir;
-    dirent* ent;
+    struct dirent* ent;
     if ((dir = opendir(path)) != NULL) 
     {
         char combined[1024];

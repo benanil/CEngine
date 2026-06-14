@@ -52,17 +52,17 @@ purefn u32 Seed32() {
     #if !defined(__ANDROID__) && (defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86))
     _rdseed32_step(&result); // or faster __rdtsc
     #else
-    result = WangHash(time(nullptr));
+    result = WangHash((u32)time(NULL));
     #endif
     return result;
 }
 
 purefn u64 Seed64() {
     u64 result;
-    #if !defined(__ANDROID__)
+    #if !defined(__ANDROID__) && (defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86))
     _rdseed64_step(&result);// or faster __rdtsc
     #else
-    result = MurmurHash(time(nullptr));
+    result = MurmurHash((u64)time(NULL));
     #endif
     return result;
 }
