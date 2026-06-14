@@ -22,6 +22,7 @@ static bool assetsOpen    = false;
 static bool consoleOpen   = false;
 static bool testOpen      = false;
 static bool sceneViewOpen = false; // closed = the scene fills the whole window like before
+static bool terrainOpen   = false;
 
 // scene view content rect from last frame's layout, the renderer sizes the scene to it
 static bool   sceneViewVisible;
@@ -466,7 +467,8 @@ static void DrawSettingsWindow()
 static u32 EditorOpenWindowMask(void)
 {
     return ((u32)editorOpen << 0) | ((u32)sceneOpen << 1) | ((u32)texturesOpen << 2) | ((u32)settingsOpen << 3) |
-           ((u32)assetsOpen << 4) | ((u32)consoleOpen << 5) | ((u32)testOpen << 6) | ((u32)sceneViewOpen << 7);
+           ((u32)assetsOpen << 4) | ((u32)consoleOpen << 5) | ((u32)testOpen << 6) | ((u32)sceneViewOpen << 7) |
+           ((u32)terrainOpen << 8);
 }
 
 bool EditorSceneViewActive(void)
@@ -572,6 +574,7 @@ static void GraphicsEditorUI(void)
         texturesOpen ^= UIButton(CLAY_ID("Textures"), CLAY_STRING("Textures"), (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
         settingsOpen ^= UIButton(CLAY_ID("Settings"), CLAY_STRING("Settings"), (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
         assetsOpen   ^= UIButton(CLAY_ID("Assets")  , CLAY_STRING("Assets")  , (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
+        terrainOpen  ^= UIButton(CLAY_ID("Terrain") , CLAY_STRING("Terrain") , (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
         consoleOpen  ^= UIButton(CLAY_ID("Console") , CLAY_STRING("Console") , (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
         testOpen     ^= UIButton(CLAY_ID("Test")    , CLAY_STRING("Test")    , (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
         sceneViewOpen ^= UIButton(CLAY_ID("View")   , CLAY_STRING("View")    , (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
@@ -594,6 +597,7 @@ static void GraphicsEditorUI(void)
         DrawSceneWindow(&sceneOpen);
         DrawTexturesWindow(&texturesOpen);
         DrawAssetsWindow(&assetsOpen);
+        DrawTerrainWindow(&terrainOpen);
         DrawConsoleWindow(&consoleOpen);
         DrawGraphicsWindow();
     }

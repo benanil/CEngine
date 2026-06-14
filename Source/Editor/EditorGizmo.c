@@ -304,8 +304,8 @@ static u32 GizmoCollectMembers(Scene* scene, v128f* outCenter)
         {
             const PrimitiveGroup* group = &set->primitiveGroups[g];
             if (!group->valid) continue;
-            v128f mn = VecLoad(group->aabbMin);
-            v128f mx = VecLoad(group->aabbMax);
+            v128f mn = group->aabbMin;
+            v128f mx = group->aabbMax;
             v128f localCenter = VecMulf(VecAdd(mn, mx), 0.5f);
             v128f localExtent = VecMulf(VecSub(mx, mn), 0.5f);
             for (u32 e = 0; e < group->numEntities && gizmoNumMembers < GIZMO_MAX_MEMBERS; e++)

@@ -275,18 +275,6 @@ purefn v128f VCALL VecAtan2(v128f y, v128f x)
     return VecCopySign(th, y);
 }
 
-purefn f32 VCALL Min3v(v128f ab)
-{
-    v128f xy = VecMin(VecSplatX(ab), VecSplatY(ab));
-    return VecGetX(VecMin(xy, VecSplatZ(ab)));
-}
-
-purefn f32 VCALL Max3v(v128f ab)
-{
-    v128f xy = VecMax(VecSplatX(ab), VecSplatY(ab));
-    return VecGetX(VecMax(xy, VecSplatZ(ab)));
-}
-
 purefn u8 IsPointInsideAABB(v128f point, v128f aabbMin, v128f aabbMax)
 {
     v128f cmpMin = VecCmpGe(point, aabbMin);
@@ -300,11 +288,45 @@ purefn f32 VCALL IntersectAABB(v128f origin, v128f invDir, v128f aabbMin, v128f 
     if (IsPointInsideAABB(origin, aabbMin, aabbMax)) return 0.1f;
     v128f tmin = VecMul(VecSub(aabbMin, origin), invDir);
     v128f tmax = VecMul(VecSub(aabbMax, origin), invDir);
-    f32 tnear = Max3v(VecMin(tmin, tmax));
-    f32 tfar  = Min3v(VecMax(tmin, tmax));
+    f32 tnear = Max3(VecMin(tmin, tmax));
+    f32 tfar  = Min3(VecMax(tmin, tmax));
     // return tnear < tfar && tnear > 0.0f && tnear < minSoFar;
     if (tnear < tfar && tnear > 0.0f && tnear < minSoFar)
         return tnear; else return 1e30f;
+}
+
+typedef struct RayHit_
+{
+    f32 t;            // ray distance
+    f32 u, v;         // barycentric coordinates
+} RayHit;
+
+// moller trumbore, ported from the old engine. dir may be unnormalized so t stays
+// comparable across differently scaled instances
+static inline bool IntersectTriangle(v128f origin, v128f dir, v128f v0, v128f v1, v128f v2, RayHit* hit)
+{
+    v128f edge1 = VecSub(v1, v0);
+    v128f edge2 = VecSub(v2, v0);
+    v128f h = Vec3Cross(dir, edge2);
+    f32 a = Vec3DotfV(edge1, h);
+    if (a > -1.0e-9f && a < 1.0e-9f) return false;
+
+    f32 f = 1.0f / a;
+    v128f s = VecSub(origin, v0);
+    f32 u = f * Vec3DotfV(s, h);
+    bool fail = (u < 0.0f) | (u > 1.0f);
+
+    v128f q = Vec3Cross(s, edge1);
+    f32 v = f * Vec3DotfV(dir, q);
+    f32 t = f * Vec3DotfV(edge2, q);
+    fail |= (v < 0.0f) | (u + v > 1.0f);
+
+    if (!fail & (t > 0.0001f) & (t < hit->t))
+    {
+        hit->u = u; hit->v = v; hit->t = t;
+        return true;
+    }
+    return false;
 }
 
 purefn f32 Sqrf(f32 x) {

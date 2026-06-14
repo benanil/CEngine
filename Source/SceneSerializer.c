@@ -530,9 +530,8 @@ s32 SceneSerializer_Load(Scene* scene, const char* path)
                 AX_WARN("scene entity group out of range: %d >= %d", record->groupIdx, set->numGroups);
                 continue;
             }
-            AX_ALIGN(16) float position[4] = { record->position[0], record->position[1], record->position[2], 0.0f };
             Entity entity;
-            entity.position  = VecLoad(position);
+            entity.position  = Vec3Load(record->position);
             entity.rotation  = record->rotation;
             entity.scale     = record->scale;
             entity.sparseIdx = record->sparseIdx;

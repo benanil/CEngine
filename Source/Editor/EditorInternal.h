@@ -48,6 +48,11 @@ bool EditorGizmoUpdate(struct Camera_* camera);
 // implemented in AssetsEditor.c
 void DrawAssetsWindow(bool* open);
 
+// implemented in TerrainEditor.c. update runs the brush (cursor raycast + sculpt/
+// paint on drag) and returns true while it owns the mouse
+void DrawTerrainWindow(bool* open);
+bool TerrainEditorUpdate(struct Camera_* camera);
+
 // implemented in ConsoleEditor.c, init installs the sdl log hook so logs are
 // recorded from startup even while the window is closed
 void EditorConsoleInit(void);

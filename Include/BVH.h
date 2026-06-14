@@ -2,6 +2,7 @@
 #define BVH_H
 
 #include "GLTFParser.h"
+#include "Math/Vector.h"
 #include "SIMD.h"
 
 #if defined(__cplusplus)
@@ -12,10 +13,10 @@ extern "C" {
 // upload to the gpu as is (float4 pairs: aabbMin+leftFirst, aabbMax+triCount)
 typedef struct BVHNode_
 {
-    float aabbMin[3];
-    u32   leftFirst; // first child pair index, or first triangle when triCount > 0
-    float aabbMax[3];
-    u32   triCount;  // leaf when > 0
+    float3 aabbMin;
+    u32    leftFirst; // first child pair index, or first triangle when triCount > 0
+    float3 aabbMax;
+    u32    triCount;  // leaf when > 0
 } BVHNode;
 
 // one triangle record, 16 bytes, vertex indices are mega buffer absolute
@@ -26,15 +27,23 @@ typedef struct BVHTri_
 
 typedef struct BVHHit_
 {
-    f32 t;            // ray distance
-    f32 u, v;         // barycentric coordinates
+    RayHit hit;
     u32 triIndex;     // bundle local triangle record
     u32 skinnedSet;   // which render set the entity lives in
     u32 groupIdx;     // primitive group inside the set
     u32 entityIdx;    // group local entity
     u32 bundleIdx;    // scene bundle
-    AX_ALIGN(16) float position[4]; // world space hit point
 } BVHHit;
+
+static inline v128f BVH_HitPositionV(v128f origin, v128f dir, const BVHHit* hit)
+{
+    return VecAdd(origin, VecMulf(dir, hit->hit.t));
+}
+
+static inline float3 BVH_HitPositionF(float3 origin, float3 dir, const BVHHit* hit)
+{
+    return F3Add(origin, F3MulF(dir, hit->hit.t));
+}
 
 // builds the blas of every primitive of the bundle from the lod0 triangles, fills
 // APrimitive.bvhNodeIndex and the bundle's bvhNodes/bvhTris arrays (heap allocated,

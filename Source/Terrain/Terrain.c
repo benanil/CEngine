@@ -14,7 +14,6 @@
 
 #include "Extern/stb/stb_image.h"
 #include "Extern/stb/stb_image_resize2.h"
-
 #include "Shaders/spv/TerrainVert.spv.h"
 #include "Shaders/spv/TerrainFrag.spv.h"
 #include "Shaders/spv/TerrainDepthOnlyVert.spv.h"
@@ -30,6 +29,12 @@
 #define TERRAIN_TRANSFER_BYTES  (8u * 1024u * 1024u)
 #define TERRAIN_PENDING_CAP     4096u
 #define TERRAIN_DEBUG_HOLES     0    // 1: log a streaming audit + raycast hole probe every 240 frames
+
+// chunks up to this lod keep a cpu copy of their mesh for Terrain_Raycast. the coarse
+// rings are most of the resident geometry but gameplay rays rarely need exact hits
+// out there, so by default only the near lod 0/1 rings are raycastable. the debug
+// hole probe compares the whole drawn set against the density field, it needs all lods
+#define TERRAIN_RAYCAST_KEEP_LOD 1u
 #define TERRAIN_ALBEDO_SIZE     2048
 #define TERRAIN_DETAIL_SIZE     1024                   // normal + arm layers
 
@@ -65,7 +70,7 @@ typedef struct TerrainChunk_
     s32 jobSlot;        // -1 when no worker owns this chunk
     u32 vertexOffset, numVertices;
     u32 indexOffset, numIndices;
-    f32 aabbMin[3], aabbMax[3]; // world space, tight bounds from the mesher
+    float3 aabbMin, aabbMax; // world space, tight bounds from the mesher
     // cpu copy of the resident mesh for Terrain_Raycast, same lifetime as the gpu ranges
     TerrainVertex* cpuVertices;
     u32*           cpuIndices;
@@ -86,13 +91,17 @@ typedef struct TerrainJob_
     TerrainMeshOut mesh;         // capacity persists across jobs
 } TerrainJob;
 
-// first fit free list allocator over the gpu mega buffers, offsets in elements
-typedef struct TerrainRange_ { u32 offset, count; } TerrainRange;
+typedef struct TerrainHeapBlock_
+{
+    u32 offset;
+    u32 count;
+} TerrainHeapBlock;
 
 typedef struct TerrainHeap_
 {
-    TerrainRange* freeList; // sorted by offset
-    u32 numFree, freeCapacity;
+    TerrainHeapBlock* freeBlocks; // sorted by offset
+    u32 numFreeBlocks;
+    u32 freeBlockCapacity;
     u32 used;
 } TerrainHeap;
 
@@ -123,6 +132,14 @@ typedef struct TerrainState_
     FrustumPlanes cameraFrustum; // updated every frame for load prioritization
     bool frustumValid;
     f32 lodFactor;               // snapshot of g_RenderSettings.terrainLodFactor
+
+    TerrainGenParams genParams;
+    bool fixedCenterValid;       // fixedArea captures the camera once, then never moves
+    f32  fixedCenter[2];         // world x/z the rings stay centered on
+
+    // editor brush cursor, pushed to the fragment shader for the surface highlight
+    float3 brushPos;
+    f32   brushRadius;            // 0 while inactive
 
     SDL_Thread*    workers[TERRAIN_MAX_WORKERS];
     u32            numWorkers;
@@ -177,36 +194,38 @@ static u64 TerrainChunkKey(s32 x, s32 y, s32 z, u32 lod)
 // gpu heap
 // ---------------------------------------------------------------------------------
 
-static void TerrainHeapInit(TerrainHeap* heap, u32 capacity)
+static void TerrainHeapInit(TerrainHeap* heap, u32 capacity, u32 stride)
 {
-    heap->freeCapacity = TERRAIN_MAX_CHUNKS + 1u;
-    heap->freeList = (TerrainRange*)AllocateTLSFGlobal(heap->freeCapacity * sizeof(TerrainRange));
-    heap->freeList[0] = (TerrainRange){ 0u, capacity };
-    heap->numFree = 1u;
+    (void)stride;
+    heap->freeBlockCapacity = TERRAIN_MAX_CHUNKS + 1u;
+    heap->freeBlocks = (TerrainHeapBlock*)AllocateTLSFGlobal(heap->freeBlockCapacity * sizeof(TerrainHeapBlock));
+    heap->freeBlocks[0] = (TerrainHeapBlock){ 0u, capacity };
+    heap->numFreeBlocks = 1u;
     heap->used = 0u;
 }
 
 static void TerrainHeapDestroy(TerrainHeap* heap)
 {
-    if (heap->freeList) DeAllocateTLSFGlobal(heap->freeList);
+    if (heap->freeBlocks) DeAllocateTLSFGlobal(heap->freeBlocks);
     SDL_memset(heap, 0, sizeof(*heap));
 }
 
 #define TERRAIN_HEAP_FAIL 0xFFFFFFFFu
 
-static u32 TerrainHeapAllocRange(TerrainHeap* heap, u32 count)
+static u32 TerrainHeapAlloc(TerrainHeap* heap, u32 count)
 {
-    for (u32 i = 0; i < heap->numFree; i++)
+    if (count == 0u) return TERRAIN_HEAP_FAIL;
+    for (u32 i = 0; i < heap->numFreeBlocks; i++)
     {
-        TerrainRange* range = &heap->freeList[i];
-        if (range->count < count) continue;
-        u32 offset = range->offset;
-        range->offset += count;
-        range->count  -= count;
-        if (range->count == 0u)
+        TerrainHeapBlock* block = &heap->freeBlocks[i];
+        if (block->count < count) continue;
+        u32 offset = block->offset;
+        block->offset += count;
+        block->count -= count;
+        if (block->count == 0u)
         {
-            for (u32 j = i; j + 1u < heap->numFree; j++) heap->freeList[j] = heap->freeList[j + 1u];
-            heap->numFree--;
+            for (u32 j = i; j + 1u < heap->numFreeBlocks; j++) heap->freeBlocks[j] = heap->freeBlocks[j + 1u];
+            heap->numFreeBlocks--;
         }
         heap->used += count;
         return offset;
@@ -214,29 +233,34 @@ static u32 TerrainHeapAllocRange(TerrainHeap* heap, u32 count)
     return TERRAIN_HEAP_FAIL;
 }
 
-static void TerrainHeapFreeRange(TerrainHeap* heap, u32 offset, u32 count)
+static void TerrainHeapFree(TerrainHeap* heap, u32 offset, u32 count)
 {
     if (count == 0u) return;
     heap->used -= count;
-    u32 i = 0;
-    while (i < heap->numFree && heap->freeList[i].offset < offset) i++;
 
-    bool mergePrev = i > 0u && heap->freeList[i - 1u].offset + heap->freeList[i - 1u].count == offset;
-    bool mergeNext = i < heap->numFree && offset + count == heap->freeList[i].offset;
+    u32 i = 0;
+    while (i < heap->numFreeBlocks && heap->freeBlocks[i].offset < offset) i++;
+
+    bool mergePrev = i > 0u && heap->freeBlocks[i - 1u].offset + heap->freeBlocks[i - 1u].count == offset;
+    bool mergeNext = i < heap->numFreeBlocks && offset + count == heap->freeBlocks[i].offset;
     if (mergePrev && mergeNext)
     {
-        heap->freeList[i - 1u].count += count + heap->freeList[i].count;
-        for (u32 j = i; j + 1u < heap->numFree; j++) heap->freeList[j] = heap->freeList[j + 1u];
-        heap->numFree--;
+        heap->freeBlocks[i - 1u].count += count + heap->freeBlocks[i].count;
+        for (u32 j = i; j + 1u < heap->numFreeBlocks; j++) heap->freeBlocks[j] = heap->freeBlocks[j + 1u];
+        heap->numFreeBlocks--;
     }
-    else if (mergePrev) heap->freeList[i - 1u].count += count;
-    else if (mergeNext) { heap->freeList[i].offset = offset; heap->freeList[i].count += count; }
+    else if (mergePrev) heap->freeBlocks[i - 1u].count += count;
+    else if (mergeNext)
+    {
+        heap->freeBlocks[i].offset = offset;
+        heap->freeBlocks[i].count += count;
+    }
     else
     {
-        ASSERT(heap->numFree < heap->freeCapacity);
-        for (u32 j = heap->numFree; j > i; j--) heap->freeList[j] = heap->freeList[j - 1u];
-        heap->freeList[i] = (TerrainRange){ offset, count };
-        heap->numFree++;
+        ASSERT(heap->numFreeBlocks < heap->freeBlockCapacity);
+        for (u32 j = heap->numFreeBlocks; j > i; j--) heap->freeBlocks[j] = heap->freeBlocks[j - 1u];
+        heap->freeBlocks[i] = (TerrainHeapBlock){ offset, count };
+        heap->numFreeBlocks++;
     }
 }
 
@@ -258,8 +282,8 @@ static void TerrainChunkRelease(u32 slot)
 
 static void TerrainChunkFreeMesh(TerrainChunk* chunk)
 {
-    if (chunk->numVertices) TerrainHeapFreeRange(&g_Terrain.vertexHeap, chunk->vertexOffset, chunk->numVertices);
-    if (chunk->numIndices)  TerrainHeapFreeRange(&g_Terrain.indexHeap, chunk->indexOffset, chunk->numIndices);
+    if (chunk->numVertices) TerrainHeapFree(&g_Terrain.vertexHeap, chunk->vertexOffset, chunk->numVertices);
+    if (chunk->numIndices)  TerrainHeapFree(&g_Terrain.indexHeap, chunk->indexOffset, chunk->numIndices);
     if (chunk->numIndices && g_Terrain.numDrawable) g_Terrain.numDrawable--;
     chunk->numVertices = chunk->numIndices = 0u;
     SDL_free(chunk->cpuVertices); chunk->cpuVertices = NULL;
@@ -451,14 +475,23 @@ static void TerrainComputeDesired(const Camera* camera)
     f32 bandMin, bandMax;
     TerrainDensity_GetYRange(&bandMin, &bandMax);
 
+    // fixed area worlds keep their rings where they were created instead of
+    // following the camera
+    f32 centerX = camera->position.x, centerZ = camera->position.z;
+    if (g_Terrain.genParams.fixedArea && g_Terrain.fixedCenterValid)
+    {
+        centerX = g_Terrain.fixedCenter[0];
+        centerZ = g_Terrain.fixedCenter[1];
+    }
+
     // the editor lod factor scales how far every detail ring reaches, the pool warns
     // and degrades gracefully if a huge factor exhausts the chunk budget
     s32 radius = Clamps32((s32)((f32)TERRAIN_RING_RADIUS * g_Terrain.lodFactor + 0.5f), 1, 4);
     for (u32 level = 0; level < TERRAIN_LOD_COUNT; level++)
     {
         f32 size = TerrainChunkWorldSize(level);
-        s32 camX = (s32)Floorf32(camera->position.x / size);
-        s32 camZ = (s32)Floorf32(camera->position.z / size);
+        s32 camX = (s32)Floorf32(centerX / size);
+        s32 camZ = (s32)Floorf32(centerZ / size);
         TerrainBox* box = &g_Terrain.levelBox[level];
         box->min[0] = (camX - radius) & ~1;
         box->max[0] = (camX + radius) | 1;
@@ -545,6 +578,7 @@ static void TerrainJobRun(TerrainJob* job)
             job->empty = 1;
         else
             job->result = Transvoxel_MeshChunk(job->density, job->lod, job->transitionMask,
+                                               job->x, job->y, job->z,
                                                &job->mesh, &job->scratch);
     }
 
@@ -700,13 +734,13 @@ void Terrain_GPUFlush(SDL_GPUCommandBuffer* cmd)
         if (cursor + vertexBytes + indexBytes > TERRAIN_TRANSFER_BYTES)
             break; // out of staging space, the job stays done and retries next frame
 
-        u32 vertexOffset = TerrainHeapAllocRange(&g_Terrain.vertexHeap, job->mesh.numVertices);
+        u32 vertexOffset = TerrainHeapAlloc(&g_Terrain.vertexHeap, job->mesh.numVertices);
         u32 indexOffset  = vertexOffset == TERRAIN_HEAP_FAIL ? TERRAIN_HEAP_FAIL
-                         : TerrainHeapAllocRange(&g_Terrain.indexHeap, job->mesh.numIndices);
+                         : TerrainHeapAlloc(&g_Terrain.indexHeap, job->mesh.numIndices);
         if (indexOffset == TERRAIN_HEAP_FAIL)
         {
             if (vertexOffset != TERRAIN_HEAP_FAIL)
-                TerrainHeapFreeRange(&g_Terrain.vertexHeap, vertexOffset, job->mesh.numVertices);
+                TerrainHeapFree(&g_Terrain.vertexHeap, vertexOffset, job->mesh.numVertices);
             AX_WARN("terrain geometry heap full, chunk dropped to retry");
             chunk->jobSlot = -1;
             chunk->state = ChunkState_Queued;
@@ -739,10 +773,13 @@ void Terrain_GPUFlush(SDL_GPUCommandBuffer* cmd)
         chunk->numVertices  = job->mesh.numVertices;
         chunk->indexOffset  = indexOffset;
         chunk->numIndices   = job->mesh.numIndices;
-        chunk->cpuVertices  = (TerrainVertex*)SDL_malloc(vertexBytes);
-        chunk->cpuIndices   = (u32*)SDL_malloc(indexBytes);
-        if (chunk->cpuVertices) SDL_memcpy(chunk->cpuVertices, job->mesh.vertices, vertexBytes);
-        if (chunk->cpuIndices)  SDL_memcpy(chunk->cpuIndices, job->mesh.indices, indexBytes);
+        if (chunk->lod <= TERRAIN_RAYCAST_KEEP_LOD)
+        {
+            chunk->cpuVertices = (TerrainVertex*)SDL_malloc(vertexBytes);
+            chunk->cpuIndices  = (u32*)SDL_malloc(indexBytes);
+            if (chunk->cpuVertices) SDL_memcpy(chunk->cpuVertices, job->mesh.vertices, vertexBytes);
+            if (chunk->cpuIndices)  SDL_memcpy(chunk->cpuIndices, job->mesh.indices, indexBytes);
+        }
         chunk->empty = 0;
         chunk->appliedMask = job->transitionMask;
         chunk->state = ChunkState_Live;
@@ -753,15 +790,13 @@ void Terrain_GPUFlush(SDL_GPUCommandBuffer* cmd)
         g_Terrain.numDrawable++;
 
         f32 size = TerrainChunkWorldSize(chunk->lod);
-        for (s32 a = 0; a < 3; a++)
-        {
-            f32 origin = (a == 0 ? (f32)chunk->x : (a == 1 ? (f32)chunk->y : (f32)chunk->z)) * size;
-            chunk->aabbMin[a] = origin + job->mesh.aabbMin[a];
-            chunk->aabbMax[a] = origin + job->mesh.aabbMax[a];
-        }
+        float3 origin = { (f32)chunk->x * size, (f32)chunk->y * size, (f32)chunk->z * size };
+        chunk->aabbMin = F3Add(origin, job->mesh.aabbMin);
+        chunk->aabbMax = F3Add(origin, job->mesh.aabbMax);
 
-        // the desired mask moved on while the worker was running: remesh
-        if (chunk->transitionMask != chunk->appliedMask)
+        // the desired mask moved on or a brush edit landed while the worker was
+        // running: remesh with fresh data
+        if (chunk->transitionMask != chunk->appliedMask || chunk->needRemesh)
         {
             chunk->needRemesh = 1;
             TerrainPendingPush(job->chunkSlot);
@@ -796,55 +831,15 @@ static v128f TerrainDecodePosition(const TerrainVertex* v, v128f chunkOrigin, f3
     return VecAdd(chunkOrigin, VecMulf(local, metersPerStep));
 }
 
-// moller trumbore, mirrors BVH_IntersectTriangle so terrain and scene hits compare 1:1
-static bool TerrainIntersectTriangle(v128f origin, v128f dir, v128f v0, v128f v1, v128f v2,
-                                     BVHHit* hit, u32 triIndex)
-{
-    v128f edge1 = VecSub(v1, v0);
-    v128f edge2 = VecSub(v2, v0);
-    v128f h = Vec3Cross(dir, edge2);
-    f32 a = Vec3DotfV(edge1, h);
-    if (a > -1.0e-9f && a < 1.0e-9f) return false;
-
-    f32 f = 1.0f / a;
-    v128f s = VecSub(origin, v0);
-    f32 u = f * Vec3DotfV(s, h);
-    bool fail = (u < 0.0f) | (u > 1.0f);
-
-    v128f q = Vec3Cross(s, edge1);
-    f32 v = f * Vec3DotfV(dir, q);
-    f32 t = f * Vec3DotfV(edge2, q);
-    fail |= (v < 0.0f) | (u + v > 1.0f);
-
-    if (!fail & (t > 0.0001f) & (t < hit->t))
-    {
-        hit->u = u; hit->v = v; hit->t = t;
-        hit->triIndex = triIndex;
-        return true;
-    }
-    return false;
-}
-
-static bool TerrainRayHitsAABB(v128f origin, v128f invDir, v128f bmin, v128f bmax, f32 maxT)
-{
-    v128f t0 = VecMul(VecSub(bmin, origin), invDir);
-    v128f t1 = VecMul(VecSub(bmax, origin), invDir);
-    v128f tsmall = VecMin(t0, t1);
-    v128f tbig   = VecMax(t0, t1);
-    f32 tnear = Maxf32(Maxf32(VecGetX(tsmall), VecGetY(tsmall)), VecGetZ(tsmall));
-    f32 tfar  = Minf32(Minf32(VecGetX(tbig), VecGetY(tbig)), VecGetZ(tbig));
-    return tnear <= tfar && tfar > 0.0f && tnear < maxT;
-}
-
-s32 Terrain_Raycast(float3 origin, float3 dir, f32 maxDist, BVHHit* hit)
+s32 Terrain_Raycast(float3 origin, float3 dir, f32 maxDist, u32 maxLod, BVHHit* hit)
 {
     if (!g_Terrain.initialized || !g_Terrain.enabled) return 0;
 
     v128f rayOrigin = VecSetR(origin.x, origin.y, origin.z, 0.0f);
     v128f rayDir    = VecSetR(dir.x, dir.y, dir.z, 0.0f);
-    v128f invDir    = VecSetR(1.0f / dir.x, 1.0f / dir.y, 1.0f / dir.z, 1.0f);
+    v128f invDir    = VecDiv(VecOne(), rayDir);
 
-    hit->t = maxDist;
+    hit->hit.t = maxDist;
     bool anyHit = false;
 
     for (u32 i = 0; i < TERRAIN_MAX_CHUNKS; i++)
@@ -852,11 +847,12 @@ s32 Terrain_Raycast(float3 origin, float3 dir, f32 maxDist, BVHHit* hit)
         TerrainChunk* chunk = &g_Terrain.chunks[i];
         // exactly the drawn set: live with geometry, hidden swaps excluded
         if (!chunk->used || chunk->state != ChunkState_Live || chunk->numIndices == 0u || chunk->hidden) continue;
+        if (chunk->lod > maxLod) continue;
         if (!chunk->cpuVertices || !chunk->cpuIndices) continue;
 
-        v128f bmin = VecSetR(chunk->aabbMin[0], chunk->aabbMin[1], chunk->aabbMin[2], 0.0f);
-        v128f bmax = VecSetR(chunk->aabbMax[0], chunk->aabbMax[1], chunk->aabbMax[2], 0.0f);
-        if (!TerrainRayHitsAABB(rayOrigin, invDir, bmin, bmax, hit->t)) continue;
+        v128f bmin = Vec3Load(&chunk->aabbMin.x);
+        v128f bmax = Vec3Load(&chunk->aabbMax.x);
+        if (!IntersectAABB(rayOrigin, invDir, bmin, bmax, hit->hit.t)) continue;
 
         f32 size = TerrainChunkWorldSize(chunk->lod);
         v128f chunkOrigin = VecSetR((f32)chunk->x * size, (f32)chunk->y * size, (f32)chunk->z * size, 0.0f);
@@ -867,21 +863,19 @@ s32 Terrain_Raycast(float3 origin, float3 dir, f32 maxDist, BVHHit* hit)
             v128f v0 = TerrainDecodePosition(&chunk->cpuVertices[chunk->cpuIndices[t + 0]], chunkOrigin, metersPerStep);
             v128f v1 = TerrainDecodePosition(&chunk->cpuVertices[chunk->cpuIndices[t + 1]], chunkOrigin, metersPerStep);
             v128f v2 = TerrainDecodePosition(&chunk->cpuVertices[chunk->cpuIndices[t + 2]], chunkOrigin, metersPerStep);
-            if (TerrainIntersectTriangle(rayOrigin, rayDir, v0, v1, v2, hit, t / 3u))
+            if (IntersectTriangle(rayOrigin, rayDir, v0, v1, v2, &hit->hit))
             {
                 anyHit = true;
+                hit->triIndex = t / 3u;
                 hit->entityIdx = i;            // terrain chunk slot
                 hit->groupIdx = chunk->lod;
+                hit->skinnedSet = 0xFFFFFFFFu;
+                hit->bundleIdx = 0xFFFFFFFFu;
             }
         }
     }
 
     if (!anyHit) return 0;
-    hit->skinnedSet = 0xFFFFFFFFu; // marks a terrain hit, not a render set entity
-    hit->bundleIdx  = 0xFFFFFFFFu;
-    v128f p = VecAdd(VecSetR(origin.x, origin.y, origin.z, 0.0f), VecMulf(rayDir, hit->t));
-    Vec3Store(hit->position, p);
-    hit->position[3] = 1.0f;
     return 1;
 }
 
@@ -921,8 +915,8 @@ static u32 TerrainDrawChunks(SDL_GPUCommandBuffer* cmd, SDL_GPURenderPass* pass,
         TerrainChunk* chunk = &g_Terrain.chunks[i];
         if (!chunk->used || chunk->state != ChunkState_Live || chunk->numIndices == 0u || chunk->hidden) continue;
 
-        v128f aabbMin = VecSetR(chunk->aabbMin[0], chunk->aabbMin[1], chunk->aabbMin[2], 0.0f);
-        v128f aabbMax = VecSetR(chunk->aabbMax[0], chunk->aabbMax[1], chunk->aabbMax[2], 0.0f);
+        v128f aabbMin = Vec3Load(&chunk->aabbMin.x);
+        v128f aabbMax = Vec3Load(&chunk->aabbMax.x);
         if (!CheckAABBCulled(aabbMin, aabbMax, frustum.planes)) continue;
 
         TerrainVSParams params;
@@ -969,7 +963,10 @@ void Terrain_RenderGBuffer(SDL_GPUCommandBuffer* cmd, SDL_GPURenderPass* pass, m
     SDL_BindGPUFragmentSamplers(pass, 0, samplers, SDL_arraysize(samplers));
 
     float3 sunDirection = GetRenderSunDirection();
-    f32 fragmentParams[4] = { sunDirection.x, sunDirection.y, sunDirection.z, 0.0f };
+    f32 fragmentParams[8] = {
+        sunDirection.x, sunDirection.y, sunDirection.z, 0.0f,
+        g_Terrain.brushPos.x, g_Terrain.brushPos.y, g_Terrain.brushPos.z, g_Terrain.brushRadius
+    };
     SDL_PushGPUFragmentUniformData(cmd, 0, fragmentParams, sizeof(fragmentParams));
 
     g_Terrain.drawnLastFrame = TerrainDrawChunks(cmd, pass, viewProj);
@@ -1188,6 +1185,10 @@ void Terrain_Init(void)
     if (g_Terrain.initialized) return;
     SDL_memset(&g_Terrain, 0, sizeof(g_Terrain));
 
+    g_Terrain.genParams = Terrain_DefaultGenParams();
+    TerrainDensity_SetParams(&g_Terrain.genParams);
+    TerrainEdit_Init();
+
     Transvoxel_SelfTest();
 
     g_Terrain.chunks    = (TerrainChunk*)AllocZeroTLSFGlobal(TERRAIN_MAX_CHUNKS, sizeof(TerrainChunk));
@@ -1198,8 +1199,8 @@ void Terrain_Init(void)
     g_Terrain.numFreeSlots = TERRAIN_MAX_CHUNKS;
     g_Terrain.chunkMap = HMCreate(TERRAIN_MAX_CHUNKS, sizeof(u32));
 
-    TerrainHeapInit(&g_Terrain.vertexHeap, TERRAIN_MAX_VERTICES);
-    TerrainHeapInit(&g_Terrain.indexHeap, TERRAIN_MAX_INDICES);
+    TerrainHeapInit(&g_Terrain.vertexHeap, TERRAIN_MAX_VERTICES, (u32)sizeof(TerrainVertex));
+    TerrainHeapInit(&g_Terrain.indexHeap, TERRAIN_MAX_INDICES, (u32)sizeof(u32));
 
     for (u32 i = 0; i < TERRAIN_MAX_JOBS; i++)
     {
@@ -1281,6 +1282,7 @@ void Terrain_Destroy(void)
     DeAllocateTLSFGlobal(g_Terrain.chunks);
     DeAllocateTLSFGlobal(g_Terrain.freeSlots);
     DeAllocateTLSFGlobal(g_Terrain.pending);
+    TerrainEdit_Destroy();
     SDL_memset(&g_Terrain, 0, sizeof(g_Terrain));
 }
 
@@ -1295,13 +1297,22 @@ void Terrain_Update(const Camera* camera)
     g_Terrain.cameraFrustum = CreateFrustumPlanes(M44Multiply(camera->view, camera->projection));
     g_Terrain.frustumValid = true;
 
+    if (g_Terrain.genParams.fixedArea && !g_Terrain.fixedCenterValid)
+    {
+        g_Terrain.fixedCenter[0] = camera->position.x;
+        g_Terrain.fixedCenter[1] = camera->position.z;
+        g_Terrain.fixedCenterValid = true;
+    }
+
     f32 size0 = TerrainChunkWorldSize(0);
     s32 cam[3] = {
         (s32)Floorf32(camera->position.x / size0),
         (s32)Floorf32(camera->position.y / size0),
         (s32)Floorf32(camera->position.z / size0)
     };
-    if (!g_Terrain.desiredValid || cam[0] != g_Terrain.lastCamChunk[0] || cam[2] != g_Terrain.lastCamChunk[2]
+    bool camMoved = cam[0] != g_Terrain.lastCamChunk[0] || cam[2] != g_Terrain.lastCamChunk[2];
+    if (g_Terrain.genParams.fixedArea) camMoved = false; // rings stay put
+    if (!g_Terrain.desiredValid || camMoved
         || g_RenderSettings.terrainLodFactor != g_Terrain.lodFactor)
     {
         g_Terrain.lastCamChunk[0] = cam[0];
@@ -1314,132 +1325,141 @@ void Terrain_Update(const Camera* camera)
 
     TerrainResolveRetiring();
     TerrainDispatchJobs(camera);
-
-#if TERRAIN_DEBUG_HOLES // periodic audit: desired set vs resident chunks, plus a raycast
-    {                    // probe that compares the drawn surface against the density field
-        static u32 dbgFrame = 0;
-        if ((++dbgFrame % 240u) == 0u)
-        {
-            u32 live = 0, hid = 0, retir = 0, queued = 0, working = 0, emptyN = 0;
-            for (u32 i = 0; i < TERRAIN_MAX_CHUNKS; i++)
-            {
-                TerrainChunk* c = &g_Terrain.chunks[i];
-                if (!c->used) continue;
-                if (c->state == ChunkState_Live)
-                {
-                    live++;
-                    if (c->hidden) { hid++; AX_LOG("  hidden lod%u (%d,%d,%d)\n", c->lod, c->x, c->y, c->z); }
-                    if (c->retiring) retir++;
-                    if (c->empty) emptyN++;
-                }
-                else if (c->state == ChunkState_Queued) queued++;
-                else working++;
-            }
-            // chunks the player can currently see that still have no mesh: the user
-            // facing metric, stays near zero when dispatch prioritization works
-            u32 visWaiting = 0;
-            for (u32 i = 0; i < TERRAIN_MAX_CHUNKS; i++)
-            {
-                TerrainChunk* c = &g_Terrain.chunks[i];
-                if (!c->used || c->state == ChunkState_Live) continue;
-                f32 size = TerrainChunkWorldSize(c->lod);
-                f32 ox = (f32)c->x * size, oy = (f32)c->y * size, oz = (f32)c->z * size;
-                v128f bmin = VecSetR(ox, oy, oz, 0.0f);
-                v128f bmax = VecSetR(ox + size, oy + size, oz + size, 0.0f);
-                if (CheckAABBCulled(bmin, bmax, g_Terrain.cameraFrustum.planes)) visWaiting++;
-            }
-            u32 missing = 0;
-            for (u32 level = 0; level < TERRAIN_LOD_COUNT; level++)
-            {
-                const TerrainBox* box = &g_Terrain.levelBox[level];
-                TerrainBox child = { 0 };
-                if (level > 0) child = TerrainChildBox(level);
-                for (s32 z = box->min[2]; z <= box->max[2]; z++)
-                for (s32 y = box->min[1]; y <= box->max[1]; y++)
-                for (s32 x = box->min[0]; x <= box->max[0]; x++)
-                {
-                    if (level > 0 && TerrainBoxContains(&child, x, y, z)) continue;
-                    if (!HMFind(&g_Terrain.chunkMap, TerrainChunkKey(x, y, z, level)))
-                    {
-                        missing++;
-                        AX_LOG("  missing lod%u (%d,%d,%d)\n", level, x, y, z);
-                    }
-                }
-            }
-            // raycast probe: downward rays across the lod0..lod2 rings. anywhere the
-            // density field has a top surface, the rendered chunk set must hit too
-            u32 probeMiss = 0, probeDev = 0, probeHits = 0;
-            const f32 probeTop = 100.0f;
-            for (s32 gz = -10; gz <= 10; gz++)
-            for (s32 gx = -10; gx <= 10; gx++)
-            {
-                f32 wx = camera->position.x + (f32)gx * 15.0f;
-                f32 wz = camera->position.z + (f32)gz * 15.0f;
-
-                // top surface of the density field: coarse march down, then bisect
-                f32 expectedY = 0.0f;
-                bool hasSurface = false;
-                f32 prev = TerrainDensity_SDF(wx, probeTop, wz);
-                for (f32 y = probeTop - 2.0f; y >= -60.0f; y -= 2.0f)
-                {
-                    f32 d = TerrainDensity_SDF(wx, y, wz);
-                    if (prev > 0.0f && d <= 0.0f)
-                    {
-                        f32 lo = y, hi = y + 2.0f;
-                        for (s32 it = 0; it < 24; it++)
-                        {
-                            f32 mid = (lo + hi) * 0.5f;
-                            if (TerrainDensity_SDF(wx, mid, wz) <= 0.0f) lo = mid; else hi = mid;
-                        }
-                        expectedY = lo;
-                        hasSurface = true;
-                        break;
-                    }
-                    prev = d;
-                }
-                if (!hasSurface) continue;
-
-                BVHHit hit;
-                if (!Terrain_Raycast((float3){ wx, probeTop, wz }, (float3){ 0.0f, -1.0f, 0.0f }, 200.0f, &hit))
-                {
-                    probeMiss++;
-                    AX_WARN("terrain probe MISS at (%.0f, %.0f) expected y=%.1f", wx, wz, expectedY);
-                    for (u32 level = 0; level < TERRAIN_LOD_COUNT; level++)
-                    {
-                        f32 size = TerrainChunkWorldSize(level);
-                        s32 chx = (s32)Floorf32(wx / size), chy = (s32)Floorf32(expectedY / size), chz = (s32)Floorf32(wz / size);
-                        u32* slot = (u32*)HMFind(&g_Terrain.chunkMap, TerrainChunkKey(chx, chy, chz, level));
-                        if (!slot) { AX_WARN("  lod%u (%d,%d,%d): not resident", level, chx, chy, chz); continue; }
-                        TerrainChunk* c = &g_Terrain.chunks[*slot];
-                        AX_WARN("  lod%u (%d,%d,%d): state=%u empty=%u hidden=%u retiring=%u indices=%u",
-                                level, chx, chy, chz, c->state, c->empty, c->hidden, c->retiring, c->numIndices);
-                    }
-                }
-                else
-                {
-                    probeHits++;
-                    f32 hitY = probeTop - hit.t;
-                    // coarse lods legitimately smooth the surface, tolerance scales with cell size
-                    f32 tolerance = 2.0f + 1.5f * TERRAIN_VOXEL_SIZE * (f32)(1 << hit.groupIdx);
-                    if (Absf32(hitY - expectedY) > tolerance)
-                    {
-                        probeDev++;
-                        AX_WARN("terrain probe DEVIATION at (%.0f, %.0f): hit y=%.1f lod%u expected y=%.1f",
-                                wx, wz, hitY, hit.groupIdx, expectedY);
-                    }
-                }
-            }
-            AX_LOG("terrain dbg: live=%u empty=%u hidden=%u retiring=%u queued=%u working=%u visWaiting=%u missing=%u pending=%u vheap=%u/%u iheap=%u/%u probe hit/miss/dev=%u/%u/%u\n",
-                   live, emptyN, hid, retir, queued, working, visWaiting, missing, g_Terrain.numPending,
-                   g_Terrain.vertexHeap.used, TERRAIN_MAX_VERTICES,
-                   g_Terrain.indexHeap.used, TERRAIN_MAX_INDICES, probeHits, probeMiss, probeDev);
-        }
-    }
-#endif
 }
 
 void Terrain_SetEnabled(bool enabled) { g_Terrain.enabled = enabled; }
 bool Terrain_GetEnabled(void)         { return g_Terrain.enabled; }
+
+// frees every resident chunk. in flight worker jobs are marked dying and release
+// when their result is consumed, nothing of theirs uploads
+static void TerrainEvictAll(void)
+{
+    for (u32 i = 0; i < TERRAIN_MAX_CHUNKS; i++)
+        if (g_Terrain.chunks[i].used && !g_Terrain.chunks[i].dying)
+            TerrainChunkEvict(i);
+    g_Terrain.numPending = 0;
+    g_Terrain.desiredValid = false;
+}
+
+void Terrain_ApplyGenParams(const TerrainGenParams* params)
+{
+    g_Terrain.genParams = *params;
+    g_Terrain.fixedCenterValid = false; // recapture at the next update
+    // jobs sampling while the params swap produce torn results, but every live and
+    // generating chunk is evicted right after, so nothing stale survives
+    TerrainDensity_SetParams(params);
+    TerrainEvictAll();
+}
+
+const TerrainGenParams* Terrain_GetGenParams(void)
+{
+    return &g_Terrain.genParams;
+}
+
+void Terrain_CreateWorld(const TerrainGenParams* params)
+{
+    Terrain_ApplyGenParams(params);
+    g_Terrain.enabled = true;
+}
+
+void Terrain_DeleteWorld(void)
+{
+    g_Terrain.enabled = false;
+    g_Terrain.brushRadius = 0.0f;
+    TerrainEvictAll();
+    TerrainEdit_Clear();
+}
+
+// ---------------------------------------------------------------------------------
+// editor brush
+// ---------------------------------------------------------------------------------
+
+void Terrain_SetBrushCursor(float3 position, f32 radius, bool active)
+{
+    g_Terrain.brushPos = position;
+    g_Terrain.brushRadius = active ? radius : 0.0f;
+}
+
+// queues a remesh for every chunk whose sample grid can see the edited region.
+// the pad ring feeds gradients, so the box grows by two voxels of each chunk's lod
+static void TerrainRemeshRegion(float3 mn, float3 mx)
+{
+    for (u32 i = 0; i < TERRAIN_MAX_CHUNKS; i++)
+    {
+        TerrainChunk* chunk = &g_Terrain.chunks[i];
+        if (!chunk->used || chunk->dying || chunk->retiring) continue;
+        f32 size = TerrainChunkWorldSize(chunk->lod);
+        f32 pad = 2.0f * TERRAIN_VOXEL_SIZE * (f32)(1u << chunk->lod);
+        f32 ox = (f32)chunk->x * size, oy = (f32)chunk->y * size, oz = (f32)chunk->z * size;
+        if (mx.x < ox - pad || mn.x > ox + size + pad ||
+            mx.y < oy - pad || mn.y > oy + size + pad ||
+            mx.z < oz - pad || mn.z > oz + size + pad) continue;
+        if (chunk->needRemesh) continue;
+        chunk->needRemesh = 1;
+        // queued chunks are already pending, generating ones requeue at consume
+        if (chunk->jobSlot < 0 && chunk->state == ChunkState_Live)
+            TerrainPendingPush(i);
+    }
+}
+
+void Terrain_SculptSphere(float3 center, f32 radius, f32 strength, f32 softness)
+{
+    float3 mn, mx;
+    TerrainEdit_SculptSphere(center, radius, strength, softness, &mn, &mx);
+    TerrainRemeshRegion(mn, mx);
+}
+
+void Terrain_PaintSphere(float3 center, f32 radius, u32 layer, f32 strength, f32 softness)
+{
+    float3 mn, mx;
+    TerrainEdit_PaintSphere(center, radius, (u8)Clamps32((s32)layer + 1, 1, 15), strength, softness, &mn, &mx);
+    TerrainRemeshRegion(mn, mx);
+}
+
+// sphere-traces the density field (noise + sculpt edits) instead of the meshes, so
+// it works at any distance regardless of which lods keep cpu copies. the hit is the
+// analytic surface, within ~half a coarse cell of the rendered mesh
+s32 Terrain_RaycastField(float3 origin, float3 dir, f32 maxDist, BVHHit* hit)
+{
+    if (!g_Terrain.initialized || !g_Terrain.enabled) return 0;
+
+    f32 t = 0.0f, lastT = 0.0f;
+    for (u32 step = 0; step < 256u && t < maxDist; step++)
+    {
+        f32 px = origin.x + dir.x * t, py = origin.y + dir.y * t, pz = origin.z + dir.z * t;
+        f32 sdf = TerrainDensity_SDF(px, py, pz) +
+                  TerrainEdit_DeltaAt((s32)Floorf32(px), (s32)Floorf32(py), (s32)Floorf32(pz));
+        if (sdf < 0.0f)
+        {
+            // bisect between the last outside sample and this inside one
+            f32 lo = lastT, hi = t;
+            for (u32 i = 0; i < 16u; i++)
+            {
+                f32 mid = (lo + hi) * 0.5f;
+                f32 mx = origin.x + dir.x * mid, my = origin.y + dir.y * mid, mz = origin.z + dir.z * mid;
+                f32 d = TerrainDensity_SDF(mx, my, mz) +
+                        TerrainEdit_DeltaAt((s32)Floorf32(mx), (s32)Floorf32(my), (s32)Floorf32(mz));
+                if (d < 0.0f) hi = mid; else lo = mid;
+            }
+            hit->hit.t = lo;
+            hit->hit.u = hit->hit.v = 0.0f;
+            hit->triIndex = 0u;
+            hit->entityIdx = 0xFFFFFFFFu;
+            hit->groupIdx = 0u;
+            hit->skinnedSet = 0xFFFFFFFFu;
+            hit->bundleIdx = 0xFFFFFFFFu;
+            return 1;
+        }
+        lastT = t;
+        // the field is not a true distance (heightfield slopes exceed 1), step conservatively
+        t += Maxf32(sdf * 0.5f, 0.3f);
+    }
+    return 0;
+}
+
+u32 Terrain_NumEditedRegions(void)                  { return TerrainEdit_NumChunks(); }
+bool Terrain_SaveEditChunks(const char* path)       { return TerrainEdit_SaveChunks(path); }
+bool Terrain_LoadEditChunks(const char* path)       { return TerrainEdit_LoadChunks(path); }
 
 TerrainStats Terrain_GetStats(void)
 {

@@ -528,9 +528,16 @@ bool UIClicked(void)
     return Clay_Hovered() && pointer.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME;
 }
 
-bool UIButton(Clay_ElementId id, Clay_String label, Clay_Dimensions size, bool selected)
+bool UIButtonFlags(Clay_ElementId id, Clay_String label, Clay_Dimensions size, bool selected, u32 flags)
 {
     bool clicked = false;
+    u32 fontSize = Maxu32((u32)(17.0f * UIGetFloat(UIFloat_TextScale)), 1u);
+    if (flags & UIButtonFlag_FitText)
+    {
+        float2 textSize = SlugCalcTextSizeN(SlugGetDemoFont(), label.chars, (u32)Maxs32(label.length, 0), (f32)fontSize);
+        size.width = Maxf32(size.width, textSize.x + 22.0f);
+        size.height = Maxf32(size.height, textSize.y + 8.0f);
+    }
     float radius = UIFloatStackZero(UIFloat_CornerRadius) ? size.height * 0.5f : UIGetFloat(UIFloat_CornerRadius);
     Clay_CornerRadius cr = (Clay_CornerRadius) { radius, radius, radius, radius };
     
@@ -545,11 +552,16 @@ bool UIButton(Clay_ElementId id, Clay_String label, Clay_Dimensions size, bool s
     }) {
         if (UIClicked()) clicked = true;
         CLAY_TEXT(label, CLAY_TEXT_CONFIG({
-            .fontSize = (u16)Maxu32((u32)(17.0f * UIGetFloat(UIFloat_TextScale)), 1u),
+            .fontSize = (u16)fontSize,
             .textColor = UIGetClayColor(UIColor_Text)
         }));
     }
     return clicked;
+}
+
+bool UIButton(Clay_ElementId id, Clay_String label, Clay_Dimensions size, bool selected)
+{
+    return UIButtonFlags(id, label, size, selected, UIButtonFlag_None);
 }
 
 bool UICheckbox(Clay_ElementId id, Clay_String label, bool* value)

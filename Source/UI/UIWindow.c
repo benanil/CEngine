@@ -665,7 +665,13 @@ static void UIWindowHandleMove(UIWindow* window, s32 windowIndex, float2 titlePo
     if (g_UIWindowActive != windowIndex) return;
 
     bool titleHovered = UIHitRect(titlePos, titleSize, mouse);
-    if ((titleHovered || g_UIWindowState == UIWindowState_Move_TabBar) && mouseDown)
+    
+    if (GetMousePressed(MouseButton_Left) && titleHovered)
+        g_UI.canMoveWindow = true;
+    if (!mouseDown)
+        g_UI.canMoveWindow = false;
+
+    if ((titleHovered || g_UIWindowState == UIWindowState_Move_TabBar) && mouseDown && g_UI.canMoveWindow)
     {
         float2 workPos = UIWindowWorkPos();
         window->position = F2Add(window->position, F2Sub(g_UI.mouse, g_UI.mouseOld));
@@ -693,9 +699,18 @@ static u32 UIWindowHandleResize(UIWindow* window, s32 windowIndex, float2 mouse,
         g_UIWindowCursorOwned = true;
     }
 
+
+    if (GetMousePressed(MouseButton_Left) && hoverMask != 0)
+        g_UI.canResizeWindow = true;
+    
+    if (!mouseDown)
+    {
+        g_UI.canResizeWindow = false;
+    }
+
     if (mouseDown)
     {
-        if (g_UIWindowState == UIWindowState_None)
+        if (g_UI.canResizeWindow && g_UIWindowState == UIWindowState_None)
         {
             g_UIWindowState = hoverMask;
             u32 resizeMask = g_UIWindowState & UIWindowState_Resize_EdgeMask;

@@ -256,7 +256,7 @@ u32 Scene_AddBundle(Scene* scene, const char* path, bool skinned)
 
     if (!Scene_EnsureBundleCapacity(scene, scene->numBundles + 1))
         return INVALID_BUNDLE;
-
+    
     // baked pages have no live packer state, rebuild it before the first append
     if (scene->texturesBaked && !Scene_RepackTextures(scene))
         return INVALID_BUNDLE;
@@ -435,6 +435,7 @@ u32 Scene_RemoveBundle(Scene* scene, u32 bundleIdx)
 
 s32 Scene_RepackTextures(Scene* scene)
 {
+    AX_LOG("Scene_RepackTextures");
     TextureSystem_ResetPacking(&scene->textureSystem);
     scene->texturesBaked = 0;
 

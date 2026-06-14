@@ -115,9 +115,11 @@ target_sources(${EXECUTABLE_NAME} PRIVATE
     Source/DemoScene.c
     Source/Terrain/Terrain.c
     Source/Terrain/TerrainDensity.c
+    Source/Terrain/TerrainEdit.c
     Source/Terrain/TransvoxelMesher.c
     Source/Editor/AssetsEditor.c
     Source/Editor/SceneEditor.c
+    Source/Editor/TerrainEditor.c
     Source/Editor/ConsoleEditor.c
     Source/Editor/EditorGizmo.c
 

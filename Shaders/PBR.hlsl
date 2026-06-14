@@ -114,6 +114,7 @@ float3 ApplyPBR(float3 albedo, float3 normal, float3 viewDir, float metallic, fl
 
 float3 ApplyPBRLight(float3 albedo, float3 normal, float3 viewDir, float metallic, float perceptualRoughness, float3 radiance, float3 lightDir)
 {
+    metallic = 0.0f;
     normal    = normalize(normal);
     viewDir   = normalize(viewDir);
     lightDir  = normalize(lightDir);

@@ -55,8 +55,8 @@ static void BVH_UpdateNodeBounds(BVHBuild* build, BVHNode* node)
         bmin = VecMin(bmin, VecMin(v0, VecMin(v1, v2)));
         bmax = VecMax(bmax, VecMax(v0, VecMax(v1, v2)));
     }
-    Vec3Store(node->aabbMin, bmin);
-    Vec3Store(node->aabbMax, bmax);
+    Vec3Store(&node->aabbMin.x, bmin);
+    Vec3Store(&node->aabbMax.x, bmax);
 }
 
 static f32 BVH_AreaOf(v128f bmin, v128f bmax)
@@ -158,8 +158,8 @@ static void BVH_Subdivide(BVHBuild* build, u32 nodeIdx)
     f32 splitPos = 0.0f;
     f32 splitCost = BVH_FindBestSplit(build, node, &axis, &splitPos);
 
-    v128f bmin = VecSetR(node->aabbMin[0], node->aabbMin[1], node->aabbMin[2], 0.0f);
-    v128f bmax = VecSetR(node->aabbMax[0], node->aabbMax[1], node->aabbMax[2], 0.0f);
+    v128f bmin = Vec3Load(&node->aabbMin.x);
+    v128f bmax = Vec3Load(&node->aabbMax.x);
     f32 noSplitCost = (f32)node->triCount * BVH_AreaOf(bmin, bmax);
     if (splitCost >= noSplitCost) return;
 
@@ -287,51 +287,6 @@ void BVH_FreeBundle(SceneBundle* bundle)
 /*                                Traversal                                 */
 /*//////////////////////////////////////////////////////////////////////////*/
 
-static f32 BVH_IntersectAABB(v128f origin, v128f invDir, v128f bmin, v128f bmax, f32 minSoFar)
-{
-    v128f t0 = VecMul(VecSub(bmin, origin), invDir);
-    v128f t1 = VecMul(VecSub(bmax, origin), invDir);
-    v128f tsmall = VecMin(t0, t1);
-    v128f tbig   = VecMax(t0, t1);
-    f32 tnear = Maxf32(Maxf32(VecGetX(tsmall), VecGetY(tsmall)), VecGetZ(tsmall));
-    f32 tfar  = Minf32(Minf32(VecGetX(tbig), VecGetY(tbig)), VecGetZ(tbig));
-    if (tnear < tfar && tfar > 0.0f && tnear < minSoFar)
-        return tnear > 0.0f ? tnear : 0.0f;
-    return BVH_MISS;
-}
-
-// moller trumbore, ported from the old engine. dir may be unnormalized so t stays
-// comparable across differently scaled instances
-static bool BVH_IntersectTriangle(v128f origin, v128f dir, v128f v0, v128f v1, v128f v2, BVHHit* hit, u32 triIndex)
-{
-    v128f edge1 = VecSub(v1, v0);
-    v128f edge2 = VecSub(v2, v0);
-
-    v128f h = Vec3Cross(dir, edge2);
-    f32 a = Vec3DotfV(edge1, h);
-    if (a > -1.0e-9f && a < 1.0e-9f) return false; // ray parallel to triangle
-
-    f32 f = 1.0f / a;
-    v128f s = VecSub(origin, v0);
-    f32 u = f * Vec3DotfV(s, h);
-    bool fail = (u < 0.0f) | (u > 1.0f);
-
-    v128f q = Vec3Cross(s, edge1);
-    f32 v = f * Vec3DotfV(dir, q);
-    f32 t = f * Vec3DotfV(edge2, q);
-    fail |= (v < 0.0f) | (u + v > 1.0f);
-
-    if (!fail & (t > 0.0001f) & (t < hit->t))
-    {
-        hit->u = u;
-        hit->v = v;
-        hit->t = t;
-        hit->triIndex = triIndex;
-        return true;
-    }
-    return false;
-}
-
 // stack based traversal of one primitive blas, the ray is already in local space
 static bool BVH_Intersect(const SceneBundle* bundle, bool skinned, u32 rootNode,
                           v128f origin, v128f dir, BVHHit* hit)
@@ -361,7 +316,11 @@ static bool BVH_Intersect(const SceneBundle* bundle, bool skinned, u32 rootNode,
                 v128f v0 = BVH_Position(skinned, tri->v0);
                 v128f v1 = BVH_Position(skinned, tri->v1);
                 v128f v2 = BVH_Position(skinned, tri->v2);
-                intersection |= BVH_IntersectTriangle(origin, dir, v0, v1, v2, hit, i);
+                if (IntersectTriangle(origin, dir, v0, v1, v2, &hit->hit))
+                {
+                    hit->triIndex = i;
+                    intersection = true;
+                }
             }
             continue;
         }
@@ -371,13 +330,13 @@ static bool BVH_Intersect(const SceneBundle* bundle, bool skinned, u32 rootNode,
         const BVHNode* leftNode  = nodes + leftIndex;
         const BVHNode* rightNode = nodes + rightIndex;
 
-        v128f lmin = VecSetR(leftNode->aabbMin[0], leftNode->aabbMin[1], leftNode->aabbMin[2], 0.0f);
-        v128f lmax = VecSetR(leftNode->aabbMax[0], leftNode->aabbMax[1], leftNode->aabbMax[2], 0.0f);
-        v128f rmin = VecSetR(rightNode->aabbMin[0], rightNode->aabbMin[1], rightNode->aabbMin[2], 0.0f);
-        v128f rmax = VecSetR(rightNode->aabbMax[0], rightNode->aabbMax[1], rightNode->aabbMax[2], 0.0f);
+        v128f lmin = Vec3Load(&leftNode->aabbMin.x);
+        v128f lmax = Vec3Load(&leftNode->aabbMax.x);
+        v128f rmin = Vec3Load(&rightNode->aabbMin.x);
+        v128f rmax = Vec3Load(&rightNode->aabbMax.x);
 
-        f32 dist1 = BVH_IntersectAABB(origin, invDir, lmin, lmax, hit->t);
-        f32 dist2 = BVH_IntersectAABB(origin, invDir, rmin, rmax, hit->t);
+        f32 dist1 = IntersectAABB(origin, invDir, lmin, lmax, hit->hit.t);
+        f32 dist2 = IntersectAABB(origin, invDir, rmin, rmax, hit->hit.t);
 
         if (dist1 > dist2)
         {
@@ -428,8 +387,8 @@ static s32 BVH_RaycastSet(const RenderSet* set, bool skinned, v128f origin, v128
                 v128f localOrigin = VecDiv(QMulVec3V(VecSub(origin, entity->position), invRot), scale);
                 v128f localDir    = VecDiv(QMulVec3V(dir, invRot), scale);
 
-                f32 before = hit->t;
-                if (BVH_Intersect(bundle, skinned, prim->bvhNodeIndex, localOrigin, localDir, hit) && hit->t < before)
+                f32 before = hit->hit.t;
+                if (BVH_Intersect(bundle, skinned, prim->bvhNodeIndex, localOrigin, localDir, hit) && hit->hit.t < before)
                 {
                     hit->skinnedSet = skinned;
                     hit->groupIdx = g;
@@ -445,7 +404,7 @@ static s32 BVH_RaycastSet(const RenderSet* set, bool skinned, v128f origin, v128
 s32 BVH_RaycastScene(const Scene* scene, v128f origin, v128f dir, BVHHit* hit)
 {
     MemsetZero(hit, sizeof(*hit));
-    hit->t = BVH_MISS;
+    hit->hit.t = BVH_MISS;
 
     s32 anyHit = 0;
     anyHit |= BVH_RaycastSet(&scene->surfaceSet, false, origin, dir, hit);
@@ -470,7 +429,5 @@ s32 BVH_RaycastScene(const Scene* scene, v128f origin, v128f dir, BVHHit* hit)
         }
     }
 
-    v128f hitPos = VecAdd(origin, VecMulf(dir, hit->t));
-    VecStore(hit->position, hitPos);
     return 1;
 }

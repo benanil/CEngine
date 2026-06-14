@@ -42,11 +42,12 @@ static void MainLoop(void)
     extern void EditorSceneHotkeys(void);
     EditorSceneHotkeys();
 
-    // the gizmo owns the mouse while hovered or dragging, picking only runs otherwise
+    // terrain brush, then the gizmo own the mouse while active, picking runs otherwise
+    extern bool TerrainEditorUpdate(Camera* camera);
     extern bool EditorGizmoUpdate(Camera* camera);
     extern bool EditorLightGizmoUpdate(Camera* camera);
     extern void EditorPickingUpdate(Camera* camera);
-    if (!EditorGizmoUpdate(&g_Camera) && !EditorLightGizmoUpdate(&g_Camera))
+    if (!TerrainEditorUpdate(&g_Camera) && !EditorGizmoUpdate(&g_Camera) && !EditorLightGizmoUpdate(&g_Camera))
         EditorPickingUpdate(&g_Camera);
 
     if (!done) Render();

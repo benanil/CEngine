@@ -388,11 +388,6 @@ void EditorPickingUpdate(Camera* camera)
     if (ref && group->meshIndex < (u32)ref->bundle->numMeshes)
         meshName = ref->bundle->meshes[group->meshIndex].name;
 
-    AX_LOG("picked %s mesh '%s' group=%d entity=%d tri=%d t=%.2f pos=(%.2f %.2f %.2f)",
-           ref ? GetFileName(ref->path) : "?", meshName && meshName[0] ? meshName : "?",
-           hit.groupIdx, hit.entityIdx, hit.triIndex, hit.t,
-           hit.position[0], hit.position[1], hit.position[2]);
-
     if (ref)
     {
         sceneSelectedBundle = hit.bundleIdx;
@@ -997,7 +992,7 @@ static void SceneInspectorUI(Scene* scene)
         v128f rotation = VecNorm(UnpackQuaternionS16Norm1(entity->rotation));
         v128f oldScale = SceneEntityWorldScale(entity);
         v128f center   = RenderSet_EntityBoundsCenter(group, entity, rotation, oldScale);
-        entity->scale  = RenderSet_PackEntityWorldScale(sceneInspectorCache.scaleUi);
+        entity->scale  = RenderSet_PackEntityWorldScale(Vec3Load(sceneInspectorCache.scaleUi));
         v128f newScale = SceneEntityWorldScale(entity);
         entity->position = VecSub(center, QMulVec3V(VecMul(RenderSet_GroupLocalCenter(group), newScale), rotation));
         sceneInspectorCache.position = entity->position;

@@ -86,21 +86,66 @@ static u32 TVEmitVertex(TerrainMeshOut* out, const u32 q[3], v128f normal, f32 v
     v->posA      = q[0] | (q[1] << 21);            // y bits above 11 fall off intentionally
     v->posB      = (q[1] >> 11) | (q[2] << 10);
     v->octNormal = TVOctEncode16(normal);
-    v->spare     = 0;
+
+    // material selection happens here once, the shader only blends what the vertex
+    // says: spare = layerA | layerB<<8 | weightA<<16 | weightB<<24 with actual
+    // texture array layers. unpainted ground resolves the procedural slope/height
+    // choice (formerly per pixel in Terrain.hlsl) from the vertex normal and height
+    f32 metersPerStep = (f32)(1 << out->lod) * (1.0f / (f32)TERRAIN_POS_PER_CELL);
+    float3 wpos = {
+        (f32)out->worldOrigin[0] + (f32)q[0] * metersPerStep,
+        (f32)out->worldOrigin[1] + (f32)q[1] * metersPerStep,
+        (f32)out->worldOrigin[2] + (f32)q[2] * metersPerStep
+    };
+
+    // procedural pick: grass(0) on flat, rocky slope(1) on steep, high rock(2) up top.
+    // fold the three influences into the two strongest layers
+    f32 slope = VecGetY(normal);
+    f32 rockBlend = 1.0f - Saturatef32((slope - 0.55f) * 4.0f);
+    f32 highBlend = Saturatef32((wpos.y - 34.0f) * 0.08f);
+    float3 layerWeight = {
+        (1.0f - rockBlend) * (1.0f - highBlend),
+        rockBlend * (1.0f - highBlend),
+        highBlend
+    };
+    u32 procA = layerWeight.y > layerWeight.x ? 1u : 0u;
+    u32 procB = procA == 1u ? (layerWeight.z > layerWeight.x ? 2u : 0u)
+                            : (layerWeight.z > layerWeight.y ? 2u : 1u);
+    f32 procWeightAF = procA == 0u ? layerWeight.x : procA == 1u ? layerWeight.y : layerWeight.z;
+    f32 procWeightBF = procB == 0u ? layerWeight.x : procB == 1u ? layerWeight.y : layerWeight.z;
+    f32 procTotal = procWeightAF + procWeightBF;
+    u32 procWeightA = (u32)Clampf32(procWeightAF / Maxf32(procTotal, 1e-4f) * 255.0f + 0.5f, 0.0f, 255.0f);
+
+    u8 matIndex[2], matWeight[2];
+    TerrainEdit_MaterialWeights(wpos, matIndex, matWeight);
+
+    // paint slots: index 0 means "procedural here", resolve it to the dominant
+    // procedural layer. painted indices are layer + 1, clamp to the loaded array
+    u32 procDominant = procWeightA >= 128u ? procA : procB;
+    u32 idxA, idxB, wA;
+    if (matIndex[0] == 0 && matIndex[1] == 0)
+    {
+        idxA = procA; idxB = procB; wA = procWeightA;
+    }
+    else
+    {
+        idxA = matIndex[0] == 0 ? procDominant : Minu32((u32)matIndex[0] - 1u, 2u);
+        idxB = matIndex[1] == 0 ? procDominant : Minu32((u32)matIndex[1] - 1u, 2u);
+        wA = matWeight[0];
+    }
+    v->spare = idxA | (idxB << 8) | (wA << 16) | ((255u - wA) << 24);
 
     const f32 toMeters = voxelSize / (f32)TERRAIN_POS_PER_CELL;
     f32 mx = (f32)q[0] * toMeters, my = (f32)q[1] * toMeters, mz = (f32)q[2] * toMeters;
     if (out->numVertices == 0)
     {
-        out->aabbMin[0] = out->aabbMax[0] = mx;
-        out->aabbMin[1] = out->aabbMax[1] = my;
-        out->aabbMin[2] = out->aabbMax[2] = mz;
+        out->aabbMin = out->aabbMax = (float3){ mx, my, mz };
     }
     else
     {
-        out->aabbMin[0] = Minf32(out->aabbMin[0], mx); out->aabbMax[0] = Maxf32(out->aabbMax[0], mx);
-        out->aabbMin[1] = Minf32(out->aabbMin[1], my); out->aabbMax[1] = Maxf32(out->aabbMax[1], my);
-        out->aabbMin[2] = Minf32(out->aabbMin[2], mz); out->aabbMax[2] = Maxf32(out->aabbMax[2], mz);
+        out->aabbMin.x = Minf32(out->aabbMin.x, mx); out->aabbMax.x = Maxf32(out->aabbMax.x, mx);
+        out->aabbMin.y = Minf32(out->aabbMin.y, my); out->aabbMax.y = Maxf32(out->aabbMax.y, my);
+        out->aabbMin.z = Minf32(out->aabbMin.z, mz); out->aabbMax.z = Maxf32(out->aabbMax.z, mz);
     }
     return out->numVertices++;
 }
@@ -443,6 +488,7 @@ void Transvoxel_MeshOutDestroy(TerrainMeshOut* out)
 }
 
 s32 Transvoxel_MeshChunk(const s8* density, u32 lod, u8 transitionMask,
+                         s32 cx, s32 cy, s32 cz,
                          TerrainMeshOut* out, TerrainMeshScratch* scratch)
 {
     if (!scratch->edgeVertex || !scratch->cornerVertex || !scratch->faceHash) return 0;
@@ -450,8 +496,12 @@ s32 Transvoxel_MeshChunk(const s8* density, u32 lod, u8 transitionMask,
     const f32 voxelSize = TERRAIN_VOXEL_SIZE * (f32)(1u << lod);
     out->numVertices = 0;
     out->numIndices  = 0;
-    out->aabbMin[0] = out->aabbMin[1] = out->aabbMin[2] = 0.0f;
-    out->aabbMax[0] = out->aabbMax[1] = out->aabbMax[2] = 0.0f;
+    out->aabbMin = F3Zero();
+    out->aabbMax = F3Zero();
+    out->worldOrigin[0] = cx * (TERRAIN_CHUNK_CELLS << lod);
+    out->worldOrigin[1] = cy * (TERRAIN_CHUNK_CELLS << lod);
+    out->worldOrigin[2] = cz * (TERRAIN_CHUNK_CELLS << lod);
+    out->lod = lod;
 
     SDL_memset(scratch->edgeVertex,   0xFF, TV_EDGE_COUNT * sizeof(u32));
     SDL_memset(scratch->cornerVertex, 0xFF, TV_CORNER_COUNT * sizeof(u32));
@@ -505,7 +555,7 @@ void Transvoxel_SelfTest(void)
             TVQuantizeSDF(F3Len(F3Sub(p, center)) - radius);
     }
 
-    if (!Transvoxel_MeshChunk(density, 0, 0, &mesh, &scratch))
+    if (!Transvoxel_MeshChunk(density, 0, 0, 0, 0, 0, &mesh, &scratch))
     {
         AX_ERROR("terrain selftest: mesher failed");
         goto cleanup;
@@ -578,9 +628,9 @@ void Transvoxel_SelfTest(void)
             TVQuantizeSDF((f32)(y - 1) - 8.3f);
     }
     u32 regularOnly;
-    Transvoxel_MeshChunk(density, 0, 0, &mesh, &scratch);
+    Transvoxel_MeshChunk(density, 0, 0, 0, 0, 0, &mesh, &scratch);
     regularOnly = mesh.numIndices;
-    Transvoxel_MeshChunk(density, 0, 0x33, &mesh, &scratch); // transitions on +-x +-z
+    Transvoxel_MeshChunk(density, 0, 0x33, 0, 0, 0, &mesh, &scratch); // transitions on +-x +-z
     u32 outOfRange = 0;
     for (u32 i = 0; i < mesh.numIndices; i++)
         if (mesh.indices[i] >= mesh.numVertices) outOfRange++;

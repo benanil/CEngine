@@ -33,6 +33,12 @@ typedef enum UITreeNodeFlags_
     UITreeNodeFlags_Selected = 1u << 1
 } UITreeNodeFlags;
 
+typedef enum UIButtonFlagBits_
+{
+    UIButtonFlag_None    = 0,
+    UIButtonFlag_FitText = 1u << 0
+} UIButtonFlagBits;
+
 typedef enum UIColor_
 {
     UIColor_Text = 0,
@@ -142,6 +148,7 @@ Clay_RenderCommandArray UIEndLayout(void);
 void UIRenderCommands(Clay_RenderCommandArray* commands);
 bool UIClicked(void);
 bool UIButton(Clay_ElementId id, Clay_String label, Clay_Dimensions size, bool selected);
+bool UIButtonFlags(Clay_ElementId id, Clay_String label, Clay_Dimensions size, bool selected, u32 flags);
 bool UICheckbox(Clay_ElementId id, Clay_String label, bool* value);
 void UIProgressBar(Clay_ElementId id, Clay_String label, f32 value01);
 bool UISliderFloat(Clay_ElementId id, Clay_String label, f32* value, f32 minValue, f32 maxValue);

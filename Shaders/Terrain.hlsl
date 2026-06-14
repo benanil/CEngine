@@ -21,6 +21,7 @@ cbuffer vs_params : register(b0, space1)
 cbuffer ps_params : register(b0, space3)
 {
     float4 uSunDirection;
+    float4 uBrushPosRadius; // xyz editor brush hit point, w radius (0 = inactive)
 };
 
 StructuredBuffer<ShadowCascadeBuffer> sShadowCascades : register(t0);
@@ -47,6 +48,10 @@ struct VSOutput
     float4 shadowPos2 : TEXCOORD3;
     float  viewDepth  : TEXCOORD4;
     nointerpolation float3 cascadeSplits : TEXCOORD5;
+    // painted materials: two layer indices (flat) with interpolating blend weights,
+    // index 0 is the procedural slope/height result
+    nointerpolation uint2 matIndices : TEXCOORD6;
+    float2 matWeights : TEXCOORD7;
 };
 
 struct GBufferOutput
@@ -89,6 +94,8 @@ VSOutput vert(VSInput input)
     o.shadowPos2 = MulShadowCascade(cascades, 2u, float4(worldPos, 1.0));
     o.viewDepth  = dot(worldPos - uCameraPosition.xyz, uCameraForward.xyz);
     o.cascadeSplits = cascades.splitDistances.xyz;
+    o.matIndices = uint2(input.data.w & 0xFFu, (input.data.w >> 8) & 0xFFu);
+    o.matWeights = float2(float((input.data.w >> 16) & 0xFFu), float(input.data.w >> 24)) * (1.0 / 255.0);
     return o;
 }
 
@@ -124,33 +131,31 @@ GBufferOutput frag(VSOutput input)
     float3 blend = pow(abs(N), 4.0);
     blend /= (blend.x + blend.y + blend.z);
 
-    // layer selection: grass on flat ground, rocky slope on steep, high rock above the snowline-ish altitude
-    float slope     = N.y;
-    float rockBlend = 1.0 - saturate((slope - 0.55) * 4.0);      // 0 flat .. 1 steep
-    float highBlend = saturate((input.worldPos.y - 34.0) * 0.08);
+    // layer selection happened at mesh creation: the vertex carries two texture
+    // array layers and interpolating blend weights (procedural slope/height pick
+    // baked by the mesher, paint gradients baked by the brush). no branches
+    float2 w = input.matWeights / max(input.matWeights.x + input.matWeights.y, 1e-4);
+    float layerA = float(input.matIndices.x);
+    float layerB = float(input.matIndices.y);
 
-    float baseLayer  = rockBlend > 0.5 ? 1.0 : 0.0;
-    float otherLayer = rockBlend > 0.5 ? 0.0 : 1.0;
-    float baseT      = rockBlend > 0.5 ? (1.0 - rockBlend) * 2.0 : rockBlend * 2.0;
+    float4 albedoSample = SampleTriplanarLayer(AlbedoLayers, layerA, input.worldPos, blend) * w.x
+                        + SampleTriplanarLayer(AlbedoLayers, layerB, input.worldPos, blend) * w.y;
+    float4 arm          = SampleTriplanarLayer(ArmLayers, layerA, input.worldPos, blend) * w.x
+                        + SampleTriplanarLayer(ArmLayers, layerB, input.worldPos, blend) * w.y;
 
-    float4 albedoA = SampleTriplanarLayer(AlbedoLayers, baseLayer, input.worldPos, blend);
-    float4 albedoB = SampleTriplanarLayer(AlbedoLayers, otherLayer, input.worldPos, blend);
-    float4 armA    = SampleTriplanarLayer(ArmLayers, baseLayer, input.worldPos, blend);
-    float4 armB    = SampleTriplanarLayer(ArmLayers, otherLayer, input.worldPos, blend);
-    float4 albedoSample = lerp(albedoA, albedoB, baseT);
-    float4 arm          = lerp(armA, armB, baseT);
-
-    if (highBlend > 0.01)
-    {
-        float4 albedoC = SampleTriplanarLayer(AlbedoLayers, 2.0, input.worldPos, blend);
-        float4 armC    = SampleTriplanarLayer(ArmLayers, 2.0, input.worldPos, blend);
-        albedoSample = lerp(albedoSample, albedoC, highBlend);
-        arm          = lerp(arm, armC, highBlend);
-    }
-
-    float3 shadingN = SampleTriplanarNormal(baseT > 0.5 ? otherLayer : baseLayer, input.worldPos, blend, N);
+    float normalLayer = w.x >= w.y ? layerA : layerB;
+    float3 shadingN = SampleTriplanarNormal(normalLayer, input.worldPos, blend, N);
 
     f16_3 baseColor = SRGBToLinear(f16_3(albedoSample.rgb)) * f16(arm.r); // bake ao into albedo
+
+    // editor brush cursor: whiten the surface inside the radius, strongest at the center
+    if (uBrushPosRadius.w > 0.0)
+    {
+        float brushDist = distance(input.worldPos, uBrushPosRadius.xyz);
+        float glow = 1.0 - smoothstep(uBrushPosRadius.w * 0.7, uBrushPosRadius.w, brushDist);
+        baseColor = lerp(baseColor, f16_3(1.0, 1.0, 1.0), f16(glow * 0.55));
+    }
+
     float metallic  = saturate(arm.b);
     float roughness = saturate(arm.g);
 

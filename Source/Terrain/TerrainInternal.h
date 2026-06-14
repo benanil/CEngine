@@ -2,6 +2,7 @@
 #define TERRAIN_INTERNAL_H
 
 #include "Include/Common.h"
+#include "Math/Vector.h"
 
 // chunk grid: 16^3 cells, 17^3 cell corners, one extra sample on every side for
 // central difference gradients -> 19^3 samples. sample (x,y,z) maps to corner (x-1,y-1,z-1)
@@ -46,7 +47,11 @@ typedef struct TerrainMeshOut_
     u32*           indices;    // chunk local, rebased by the draw's vertex_offset
     u32 numVertices, vertexCapacity;
     u32 numIndices, indexCapacity;
-    f32 aabbMin[3], aabbMax[3]; // chunk local meters, tight bounds of emitted vertices
+    float3 aabbMin, aabbMax; // chunk local meters, tight bounds of emitted vertices
+    // inputs the mesher fills from MeshChunk's arguments: world chunk origin in lod0
+    // meters and the lod, used to look up painted materials per vertex
+    s32 worldOrigin[3];
+    u32 lod;
 } TerrainMeshOut;
 
 // per worker scratch for the vertex reuse maps, allocated once per job slot
@@ -62,9 +67,11 @@ void Transvoxel_ScratchDestroy(TerrainMeshScratch* scratch);
 void Transvoxel_MeshOutDestroy(TerrainMeshOut* out);
 
 // meshes one chunk from a 19^3 s8 density grid. transitionMask bit per face
-// (-x,+x,-y,+y,-z,+z) marks a coarser neighbor on that face. thread safe, allocates the
+// (-x,+x,-y,+y,-z,+z) marks a coarser neighbor on that face. cx/cy/cz are the chunk
+// coords at this lod, used for painted material lookups. thread safe, allocates the
 // output with SDL_malloc. out: 1 on success, 0 when out of memory
 s32 Transvoxel_MeshChunk(const s8* density, u32 lod, u8 transitionMask,
+                         s32 cx, s32 cy, s32 cz,
                          TerrainMeshOut* out, TerrainMeshScratch* scratch);
 
 // logs mesher validation results against an analytic sphere, called once from Terrain_Init
@@ -75,5 +82,50 @@ f32  TerrainDensity_SDF(f32 x, f32 y, f32 z);
 void TerrainDensity_SampleChunk(s32 cx, s32 cy, s32 cz, u32 lod, s8* out /*19^3*/);
 // world vertical band that can contain surface, chunks outside it are never created
 void TerrainDensity_GetYRange(f32* outMin, f32* outMax);
+
+struct TerrainGenParams_;
+void TerrainDensity_SetParams(const struct TerrainGenParams_* params);
+const struct TerrainGenParams_* TerrainDensity_GetParams(void);
+
+// ---------------------------------------------------------------------------------
+// sparse sculpt/paint edits (TerrainEdit.c): 16^3 grids of s8 density deltas and u8
+// material indices on the world fixed lod0 voxel lattice, keyed by lod0 chunk coords.
+// thread safe: workers overlay while the main thread sculpts, a mutex guards the map
+// ---------------------------------------------------------------------------------
+
+#define TERRAIN_EDIT_CELLS 16  // grid axis, == TERRAIN_CHUNK_CELLS at lod 0
+
+void TerrainEdit_Init(void);
+void TerrainEdit_Destroy(void);
+void TerrainEdit_Clear(void);
+u32  TerrainEdit_NumChunks(void);
+
+// adds the quantized density deltas of every edited region intersecting the chunk's
+// 19^3 sample grid, and clamps. called from worker jobs inside SampleChunk
+void TerrainEdit_OverlayChunk(s32 cx, s32 cy, s32 cz, u32 lod, s8* samples);
+
+// packed paint value of a lod0 voxel: layerA | layerB<<4 | blendWeight<<8.
+// 0 = untouched procedural default
+u16 TerrainEdit_MaterialAt(s32 wx, s32 wy, s32 wz);
+
+// sculpted sdf offset in meters at a lod0 voxel, 0 when untouched
+f32 TerrainEdit_DeltaAt(s32 wx, s32 wy, s32 wz);
+
+// splits the containing voxel's paint into the two TerrainVertex.spare slots:
+// indices A/B plus weights with wA + wB == 255 (index 0 = procedural)
+void TerrainEdit_MaterialWeights(float3 pos, u8 outIndex[2], u8 outWeight[2]);
+
+// brush writes from the main thread, both return the touched world AABB so the
+// caller can remesh intersecting chunks. strength in sdf meters per apply
+void TerrainEdit_SculptSphere(float3 center, f32 radius, f32 strength, f32 softness,
+                              float3* outMin, float3* outMax);
+// strength is blend weight units (0..255) pushed into the voxels per apply
+void TerrainEdit_PaintSphere(float3 center, f32 radius, u8 material, f32 strength, f32 softness,
+                             float3* outMin, float3* outMax);
+
+// persistence: binary .chunks files store one record per edited region, each with
+// 16^3 s8 density deltas and 16^3 u16 packed material values.
+bool TerrainEdit_SaveChunks(const char* path);
+bool TerrainEdit_LoadChunks(const char* path);
 
 #endif // TERRAIN_INTERNAL_H

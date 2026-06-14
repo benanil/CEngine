@@ -45,16 +45,22 @@ v128f RenderSet_UnpackEntityWorldScale(u32 packed)
     return scale;
 }
 
-u32 RenderSet_PackEntityWorldScale(const f32 scale[3])
+u32 RenderSet_PackEntityWorldScale(v128f scale)
 {
-    return PackXY11Z10UnormToU32(VecSetR(Clampf32(scale[0] * 0.1f, 0.0001f, 1.0f),
-                                         Clampf32(scale[1] * 0.1f, 0.0001f, 1.0f),
-                                         Clampf32(scale[2] * 0.1f, 0.0001f, 1.0f), 0.0f));
+    return PackXY11Z10UnormToU32(VecSetR(Clampf32(VecGetX(scale) * 0.1f, 0.0001f, 1.0f),
+                                          Clampf32(VecGetY(scale) * 0.1f, 0.0001f, 1.0f),
+                                          Clampf32(VecGetZ(scale) * 0.1f, 0.0001f, 1.0f), 0.0f));
+}
+
+u32 RenderSet_PackEntityUniformWorldScale(f32 scale)
+{
+    f32 packedScale = Clampf32(scale * 0.1f, 0.0001f, 1.0f);
+    return PackXY11Z10UnormToU32(VecSet1(packedScale));
 }
 
 v128f RenderSet_GroupLocalCenter(const PrimitiveGroup* group)
 {
-    return VecMulf(VecAdd(VecLoad(group->aabbMin), VecLoad(group->aabbMax)), 0.5f);
+    return VecMulf(VecAdd(group->aabbMin, group->aabbMax), 0.5f);
 }
 
 v128f RenderSet_EntityBoundsCenter(const PrimitiveGroup* group, const Entity* entity, v128f rotation, v128f worldScale)
@@ -163,8 +169,8 @@ u32 RenderSet_AddSceneBundle(RenderSet* set, const SceneBundle* sceneBundle, u32
             group->materialIndex  = materialOffset + (u32)primitive->material;
             group->numVertices    = (u32)primitive->numVertices;
             group->entityOffset   = set->numEntities;
-            VecStore(group->aabbMin, VecLoad(primitive->min));
-            VecStore(group->aabbMax, VecLoad(primitive->max));
+            group->aabbMin = VecLoad(primitive->min);
+            group->aabbMax = VecLoad(primitive->max);
             for (u32 lod = 0; lod < MESH_LOD_COUNT; lod++)
             {
                 group->lodIndexOffset[lod] = (u32)primitive->lodIndexOffset[lod];

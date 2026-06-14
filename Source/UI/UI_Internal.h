@@ -79,6 +79,9 @@ typedef struct UIContext_
     bool anyElementClicked;
     bool scrollBarActive;
     bool windowResizeActive;
+    bool resizingWindow;
+    bool canResizeWindow;
+    bool canMoveWindow;
     u64 active;
     u64 keyboardFocus;
     u64 textDragFocus;
