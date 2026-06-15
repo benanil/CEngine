@@ -32,25 +32,25 @@
 
 ## External Libraries
 
-| Library | Location | Purpose | Used by |
+| Library | Purpose | Used by |
 | --- | --- | --- | --- |
-| SDL3 | `Extern/SDL3/` | Platform + GPU backend | `CMakeLists.txt` |
-| basis_universal | `Extern/basis_universal/` | Texture compression | `CMakeLists.txt` |
-| ufbx | `Extern/ufbx.c`, `Extern/ufbx.h` | FBX import | `Source/AssetManagement/AssetManager.c` |
-| meshoptimizer | `Extern/meshoptimizer/` | Mesh optimization | `Extern/ExternAll.cpp`, `Source/AssetManagement/MeshBake.c` |
-| clay | `Extern/clay/` | Editor UI layout | `Include/UIRenderer.h` |
-| kb_text_shape | `Extern/kb/kb_text_shape.h` | Text shaping | `Source/UI/KBTextShape.c` |
-| stb_rect_pack | `Extern/stb/stb_rect_pack.h` | Atlas packing | `Include/TextureSystem.h` |
-| stb_sprintf | `Extern/stb/stb_sprintf.h` | Formatting | `Source/Platform.c` |
-| stb_image | `Extern/stb/stb_image.h` | Image loading | tools/scripts |
-| stb_image_resize2 | `Extern/stb/stb_image_resize2.h` | Image resizing | tools/scripts |
-| stb_truetype | `Extern/stb/stb_truetype.h` | Font parsing | `Source/UI/Slug.c` |
-| stb_image_write | `Extern/stb/stb_image_write.h` | Image writing | tools/scripts |
-| stb_perlin | `Extern/stb/stb_perlin.h` | Terrain noise | graphics|
-| tlsf | `Extern/tlsf.c`, `Extern/tlsf.h` | Allocator | `Source/Memory.c`, `Source/Rendering/Graphics.c` |
-| dynarray | `Extern/dynarray.c`, `Extern/dynarray.h` | Dynamic arrays | `Source/AssetManagement/AssetManager.c` |
-| sj | `Extern/sj.h` | glTF JSON parsing | `Source/AssetManagement/GLTFParser.c` |
-| sdefl / sinfl | `Extern/sdefl.h`, `Extern/sinfl.h` | Compression | `Source/AssetManagement/AssetManager.c`, `Source/Terrain/TerrainEdit.c` |
+| SDL3 | Platform + GPU backend | `CMakeLists.txt` |
+| basis_universal | Texture compression | `CMakeLists.txt` |
+| ufbx | FBX import | `AssetManager.c` |
+| meshoptimizer  | Mesh optimization | `MeshBake.c` |
+| clay  | Editor UI layout | `Include/UIRenderer.h` |
+| kb_text_shape | Text shaping | `KBTextShape.c` |
+| stb_rect_pack  | Atlas packing | `TextureSystem.c` |
+| stb_sprintf | Formatting | `Platform.c` |
+| stb_image | Image loading | tools/scripts |
+| stb_image_resize2 | Image resizing | tools/scripts |
+| stb_truetype  | Font parsing | `Slug.c` |
+| stb_image_write | Image writing | tools/scripts |
+| stb_perlin | Terrain noise | graphics|
+| tlsf | Allocator | `Source/Memory.c`, `Graphics.c` |
+| dynarray  | Dynamic arrays | `AssetManager.c` |
+| sj | glTF JSON parsing | `GLTFParser.c` |
+| sdefl / sinfl  | Compression | `AssetManager.c`, `TerrainEdit.c` |
 
 ## Prerequisites
 Install a C/C++ toolchain and CMake 3.16+.
