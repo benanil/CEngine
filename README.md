@@ -33,7 +33,7 @@
 ## External Libraries
 
 | Library | Purpose | Used by |
-| --- | --- | --- | --- |
+| --- | --- | --- |
 | SDL3 | Platform + GPU backend | `CMakeLists.txt` |
 | basis_universal | Texture compression | `CMakeLists.txt` |
 | ufbx | FBX import | `AssetManager.c` |
