@@ -1,46 +1,24 @@
 ## Overview
-`CPlayground` is a data-oriented C99 engine/editor project with a small amount of C++ used for bundled dependency integration. It builds an SDL3 GPU-based executable and now contains much more than a playground: a scene system, deferred renderer, asset pipeline, editor UI, animation, and streamed voxel terrain.
+`CPlayground` is a data-oriented C99 engine/editor project with a small amount of C++ used for basis texture compression. It builds an SDL3 GPU-based executable and now contains much more than a playground: a scene system, deferred renderer, asset pipeline, editor UI, animation, and streamed voxel terrain.
 
 ## Features
-- SDL3 GPU renderer with a deferred lighting path, compute-driven passes, and platform abstraction through SDL.
-- Scene system with resident bundle caching, active scene switching, static and skinned render sets, per-scene texture atlases, and per-scene animation state.
-- glTF runtime/import pipeline plus FBX import, binary bundle caching, mesh baking, texture baking, and scene serialization.
-- GPU skinned animation pipeline with baked animation data, compute-updated bone buffers, and animated vertex generation.
-- Compute-assisted visibility and post-processing, including Hi-Z generation, occlusion culling, local light culling, HBAO, MLAA, deferred lighting, and tonemapping.
-- Shadowing support for cascaded directional shadows plus point and spot shadow maps.
-- Streamed voxel terrain using the Transvoxel algorithm, worker-thread chunk generation, procedural terrain parameters, sculpt/paint editing, and persisted edit chunks.
-- Scene and terrain raycasting for editor picking and interaction.
-- Editor UI with dockable/persistent windows, scene view, settings panels, asset browser, scene editor, terrain editor, and console logging.
-- Texture system with paged array atlases, descriptor/material tables, compressed texture handling, and baked atlas restore/save paths.
-- Custom memory/runtime systems including TLSF-backed persistent allocation, arena usage, async worker jobs, SIMD-oriented math, and custom containers.
+- Scene and asset pipeline with glTF/FBX import
+- Compute shader Hi-Z oclussion culling + frustum culling for draws and lights.
+- Texture system with 4k texture2d atlass array's instead of bindless textures
+- All objects in a world can be rendered with single draw call
+- Clay layout with SDF UI shapes such as rounded rectangle circle
+- Slug text rendering high quality with all alphabets/languages supported without texture atlasses. Thanks Eric Lengyel
+- Editor tooling with dockable UI, scene editing, asset browsing, and console output.
+- Streamed voxel terrain with procedural generation, sculpt/paint editing, and persisted terrain edits.
+- Custom runtime systems for animation, texture paging, memory allocation, async jobs, and SIMD-oriented math.
 
-## External Libraries
-
-### Integrated Into The Engine Build
-| Library | Location | Used For | Notes |
-| --- | --- | --- | --- |
-| SDL3 | `Extern/SDL3/` | Windowing, input, audio init, threads, file/platform services, and `SDL_gpu` rendering backend | Added through `add_subdirectory()` in `CMakeLists.txt`. |
-| basis_universal | `Extern/basis_universal/` | Texture compression/transcoding for baked texture pages and texture pipeline work | Multiple encoder/transcoder sources are compiled directly into the main target. |
-| BasisCompressWrapper | `Extern/BasisCompressWrapper.*` | Local wrapper around Basis Universal | Bridges engine code to basis compression/transcoding entry points. |
-| ufbx | `Extern/ufbx.c`, `Extern/ufbx.h` | FBX import | Compiled directly into the executable. |
-| meshoptimizer | `Extern/meshoptimizer/` | Mesh optimization and simplification during asset baking | Pulled in through `Extern/ExternAll.cpp` and `Source/AssetManagement/MeshBake.c`. |
-| clay | `Extern/clay/` | Immediate-mode layout/UI foundation for the editor | Included by `Include/UIRenderer.h`. |
-| kb_text_shape | `Extern/kb/kb_text_shape.h` | Text shaping for the custom UI/text rendering path | Built via `Source/UI/KBTextShape.c`. |
-| stb_rect_pack | `Extern/stb/stb_rect_pack.h` | Texture atlas packing | Used by `TextureSystem`. |
-| stb_sprintf | `Extern/stb/stb_sprintf.h` | Lightweight formatting helpers | Used by `Platform.c`. |
-| tlsf | `Extern/tlsf.c`, `Extern/tlsf.h` | Two-level segregated fit allocator for persistent/large engine allocations | Used by the global memory system and geometry heaps. |
-| dynarray | `Extern/dynarray.c`, `Extern/dynarray.h` | Dynamic arrays in the asset pipeline | Used mainly by FBX/import code. |
-| sj | `Extern/sj.h` | JSON reader for glTF parsing | Used by `GLTFParser.c`. |
-| sdefl / sinfl | `Extern/sdefl.h`, `Extern/sinfl.h` | Compression/decompression for cached asset data and terrain edit chunks | Used by asset cache serialization and terrain edit persistence. |
-
-### Vendored In `Extern/` But Not Obviously Wired Into The Main Target
-| Library/File | Location | Notes |
-| --- | --- | --- |
-| xxHash | `Extern/xxhash.h` | Present in the repo, but not referenced by the current main target sources. |
-| c89atomic | `Extern/c89atomic.h` | Vendored header, not obviously used by the current build. |
-| miniperf | `Extern/miniperf.h` | Vendored header, not obviously used by the current build. |
-| adler32 | `Extern/adler32.h` | Vendored helper header, not directly referenced by current engine sources. |
-| stb repository | `Extern/stb/` | The repo contains the broader stb collection, while the engine currently uses `stb_rect_pack` and `stb_sprintf` directly. |
+## Graphics Features
+- Deferred lighting.
+- Static surface, skinned mesh, and terrain pipelines.
+- Directional, point, and spot shadows.
+- Animation compute and animated-vertex generation.
+- HBAO, MLAA, tonemapping and god rays.
+- Precompiled shader outputs for SPIR-V and Metal (`spv/`, `msl/`).
 
 ## Project Layout
 - `Source/Rendering/`: renderer, pipelines, compute passes, shadows, draw submission.
@@ -51,6 +29,28 @@
 - `Include/`: public engine headers.
 - `Math/`: math types, matrices, vectors, colors, quaternions, SIMD helpers.
 - `Extern/`: bundled third-party dependencies.
+
+## External Libraries
+
+| Library | Location | Purpose | Used by |
+| --- | --- | --- | --- |
+| SDL3 | `Extern/SDL3/` | Platform + GPU backend | `CMakeLists.txt` |
+| basis_universal | `Extern/basis_universal/` | Texture compression | `CMakeLists.txt` |
+| ufbx | `Extern/ufbx.c`, `Extern/ufbx.h` | FBX import | `Source/AssetManagement/AssetManager.c` |
+| meshoptimizer | `Extern/meshoptimizer/` | Mesh optimization | `Extern/ExternAll.cpp`, `Source/AssetManagement/MeshBake.c` |
+| clay | `Extern/clay/` | Editor UI layout | `Include/UIRenderer.h` |
+| kb_text_shape | `Extern/kb/kb_text_shape.h` | Text shaping | `Source/UI/KBTextShape.c` |
+| stb_rect_pack | `Extern/stb/stb_rect_pack.h` | Atlas packing | `Include/TextureSystem.h` |
+| stb_sprintf | `Extern/stb/stb_sprintf.h` | Formatting | `Source/Platform.c` |
+| stb_image | `Extern/stb/stb_image.h` | Image loading | tools/scripts |
+| stb_image_resize2 | `Extern/stb/stb_image_resize2.h` | Image resizing | tools/scripts |
+| stb_truetype | `Extern/stb/stb_truetype.h` | Font parsing | `Source/UI/Slug.c` |
+| stb_image_write | `Extern/stb/stb_image_write.h` | Image writing | tools/scripts |
+| stb_perlin | `Extern/stb/stb_perlin.h` | Terrain noise | graphics|
+| tlsf | `Extern/tlsf.c`, `Extern/tlsf.h` | Allocator | `Source/Memory.c`, `Source/Rendering/Graphics.c` |
+| dynarray | `Extern/dynarray.c`, `Extern/dynarray.h` | Dynamic arrays | `Source/AssetManagement/AssetManager.c` |
+| sj | `Extern/sj.h` | glTF JSON parsing | `Source/AssetManagement/GLTFParser.c` |
+| sdefl / sinfl | `Extern/sdefl.h`, `Extern/sinfl.h` | Compression | `Source/AssetManagement/AssetManager.c`, `Source/Terrain/TerrainEdit.c` |
 
 ## Prerequisites
 Install a C/C++ toolchain and CMake 3.16+.
