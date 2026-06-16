@@ -1,5 +1,5 @@
 ## Overview
-`CPlayground` is a data-oriented C99 engine/editor project with a small amount of C++ used for basis texture compression. It builds an SDL3 GPU-based executable and now contains much more than a playground: a scene system, deferred renderer, asset pipeline, editor UI, animation, and streamed voxel terrain.
+`CEngine` is a data-oriented C99 engine/editor project with a small amount of C++ used for basis texture compression. It builds an SDL3 GPU-based executable and now contains much more than a playground: a scene system, deferred renderer, asset pipeline, editor UI, animation, and streamed voxel terrain.
 
 ## Features
 - Scene and asset pipeline with glTF/FBX import
@@ -11,7 +11,7 @@
 - Editor tooling with dockable UI, scene editing, asset browsing, and console output.
 - Streamed voxel terrain with procedural generation, sculpt/paint editing, and persisted terrain edits.
 - Custom runtime systems for animation, texture paging, memory allocation, async jobs, and SIMD-oriented math.
-
+[Engine preview](https://github.com/benanil/CEngine/blob/master/Assets/Images/Untitled.png)
 ## Graphics Features
 - Deferred lighting.
 - Static surface, skinned mesh, and terrain pipelines.
@@ -70,7 +70,7 @@ Install a C/C++ toolchain and CMake 3.16+.
 ## Build Notes
 - SDL3 is bundled in `Extern/SDL3`, so no separate SDL install is normally required.
 - OpenMP is detected optionally by CMake and enabled when found.
-- The project builds a single executable target: `CPlayground`.
+- The project builds a single executable target: `CEngine`.
 - Shader helper edits may require a forced rebuild, especially shared shader helper headers.
 
 ## How to Compile
