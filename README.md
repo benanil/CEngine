@@ -11,7 +11,7 @@
 - Editor tooling with dockable UI, scene editing, asset browsing, and console output.
 - Streamed voxel terrain with procedural generation, sculpt/paint editing, and persisted terrain edits.
 - Custom runtime systems for animation, texture paging, memory allocation, async jobs, and SIMD-oriented math.
-[Engine preview](https://github.com/benanil/CEngine/blob/master/Assets/Images/Untitled.png)
+![Engine preview](https://github.com/benanil/CEngine/blob/master/Assets/Images/Untitled.png)
 ## Graphics Features
 - Deferred lighting.
 - Static surface, skinned mesh, and terrain pipelines.
