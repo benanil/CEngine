@@ -1127,7 +1127,7 @@ s32 LoadSceneBundleBinary(const char* path, SceneBundle* gltf)
         zsinflate(gltf->allIndices, allIndexSize, compressedBuffer, compressedSize);
         // index values were saved relative to the bundle's vertex base, the
         // prefix sum seed rebases the whole stream to the allocated range
-        PrefixSumU32Inplace(gltf->allIndices, gltf->totalIndices, vertexBase);
+        PrefixSumU32fInplace(gltf->allIndices, gltf->totalIndices, vertexBase);
 
         ArenaPopGlobal(tempSize);
 

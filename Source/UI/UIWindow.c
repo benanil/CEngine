@@ -100,9 +100,8 @@ void UIWindowSetTopInset(f32 inset)
 
 static float2 UIWindowClampScale(UIWindow* window, float2 scale)
 {
-    scale.x = Maxf32(scale.x, window->minScale.x);
-    scale.y = Maxf32(scale.y, window->minScale.y);
-    return scale;
+    scale = F2Max(scale, window->minScale);
+    return F2Min(scale, g_UI.screenSize);
 }
 
 static void UIWindowSetRect(UIWindow* window, float2 position, float2 scale)

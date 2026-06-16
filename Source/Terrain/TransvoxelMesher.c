@@ -183,7 +183,7 @@ static bool TVSecondary(v128f* ioPos, v128f n, u8 transitionMask, f32 scale)
     if ((transitionMask & 0x20) && pz == maxCoord) dz -= TERRAIN_TRANSITION_SHRINK;
     if (dx == 0.0f && dy == 0.0f && dz == 0.0f) return false;
     v128f delta = VecMulf(VecSetR(dx, dy, dz, 0.0f), scale);
-    delta = VecSub(delta, VecMulf(n, Vec3DotfV(n, delta))); // project onto the surface tangent plane
+    delta  = VecSub(delta, VecMulf(n, Vec3DotfV(n, delta))); // project onto the surface tangent plane
     *ioPos = VecAdd(*ioPos, delta);
     return true;
 }

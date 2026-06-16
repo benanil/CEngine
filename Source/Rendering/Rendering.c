@@ -574,12 +574,11 @@ void Render(void)
     RenderLines(cmd, &color_load_target, &main_depth_target, viewProj);
     Terrain_RenderWireframe(cmd, &color_load_target, &main_depth_target, viewProj);
     RenderOutline(cmd, &color_load_target, &main_depth_target, viewProj);
-    RenderGizmo(cmd, &color_load_target, viewProj);
+    DispatchTonemapCompute(cmd, renderW, renderH, viewProj);
 
     winstate->hiz_view_proj = viewProj;
     winstate->hiz_valid = true;
 
-    DispatchTonemapCompute(cmd, renderW, renderH, viewProj);
     SDL_GPUTexture* finalTexture = winstate->tex_post;
     if (g_RenderSettings.enableMLAA && winstate->tex_mlaa_output)
     {
@@ -588,6 +587,7 @@ void Render(void)
     }
 
     SDL_GPUColorTargetInfo final_load_target = MakeLoadedTextureTarget(finalTexture);
+    RenderGizmo(cmd, &final_load_target, viewProj);
     RenderSlugDemo(cmd, &final_load_target, &main_depth_target, viewProj);
     g_RenderFinalTexture = finalTexture;
 

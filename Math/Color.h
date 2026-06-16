@@ -3,6 +3,46 @@
 
 #include "Vector.h"
 
+#define UCOLOR_BLACK       0xFF000000u
+#define UCOLOR_WHITE       0xFFFFFFFFu
+
+#define UCOLOR_RED         0xFF0000FFu
+#define UCOLOR_GREEN       0xFF00FF00u
+#define UCOLOR_BLUE        0xFFFF0000u
+
+#define UCOLOR_YELLOW      0xFF00FFFFu
+#define UCOLOR_CYAN        0xFFFFFF00u
+#define UCOLOR_MAGENTA     0xFFFF00FFu
+
+#define UCOLOR_ORANGE      0xFF0099FFu
+#define UCOLOR_PURPLE      0xFFFF0080u
+#define UCOLOR_PINK        0xFFAA66FFu
+#define UCOLOR_BROWN       0xFF13458Bu
+
+#define UCOLOR_GRAY        0xFF808080u
+#define UCOLOR_DARK_GRAY   0xFF202020u
+#define UCOLOR_LIGHT_GRAY  0xFFC0C0C0u
+
+#define UCOLOR_DARK_RED    0xFF000080u
+#define UCOLOR_DARK_GREEN  0xFF008000u
+#define UCOLOR_DARK_BLUE   0xFF800000u
+
+#define UCOLOR_GOLD        0xFF00D7FFu
+#define UCOLOR_SKY_BLUE    0xFFFFCC66u
+#define UCOLOR_LIME        0xFF00FFBFu
+#define UCOLOR_TEAL        0xFF808000u
+
+#define UCOLOR_BG_DARK     0xFF121212u
+#define UCOLOR_BG_LIGHT    0xFFF5F5F5u
+
+#define UCOLOR_TEXT_DARK   0xFF111111u
+#define UCOLOR_TEXT_LIGHT  0xFFEEEEEEu
+
+#define UCOLOR_SUCCESS     0xFF71CC2Eu
+#define UCOLOR_WARNING     0xFF0FC4F1u
+#define UCOLOR_ERROR       0xFF3C4CE7u
+#define UCOLOR_INFO        0xFFDB9834u
+
 purefn u32 PackColorToUint(u8 r, u8 g, u8 b, u8 a) {
     return r | ((u32)(g) << 8) | ((u32)(b) << 16) | ((u32)(a) << 24);
 }

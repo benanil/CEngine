@@ -137,6 +137,9 @@ void UIPushFloatAdd(UIFloat what, f32 value);
 void UIPopFloat(UIFloat what);
 bool UIFloatStackZero(UIFloat what);
 
+void UIButtonPushColors(u32 hovered, u32 selected, u32 color);
+void UIButtonPopColors();
+
 Clay_Color UIPanelColor(void);
 
 bool   UITextArea(const char* label, float2 pos, char* buffer, u32 capacity, float2 size);

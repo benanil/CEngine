@@ -135,7 +135,20 @@ static u32 AllocateSparseID(RenderSet* set)
 
 u32 RenderSet_AddSceneBundle(RenderSet* set, const SceneBundle* sceneBundle, u32 materialOffset)
 {
-    if (set->numBundles >= set->maxBundles) return INVALID_BUNDLE;
+    if (set->numBundles >= set->maxBundles)
+    {
+        AX_WARN("maximum render bundle count reached: %d", set->maxBundles);
+        return INVALID_BUNDLE;
+    }
+
+    u32 numNewGroups = 0;
+    for (u32 m = 0; m < (u32)sceneBundle->numMeshes; m++)
+        numNewGroups += (u32)sceneBundle->meshes[m].numPrimitives;
+    if (set->numGroups + numNewGroups > set->maxGroups)
+    {
+        AX_WARN("maximum primitive group count reached: %d + %d > %d", set->numGroups, numNewGroups, set->maxGroups);
+        return INVALID_BUNDLE;
+    }
 
     u32 bundleIdx = set->numBundles++;
     set->bundles[bundleIdx] = sceneBundle;
@@ -152,8 +165,6 @@ u32 RenderSet_AddSceneBundle(RenderSet* set, const SceneBundle* sceneBundle, u32
         const AMesh* mesh = sceneBundle->meshes + m;
         for (u32 p = 0; p < (u32)mesh->numPrimitives; p++)
         {
-            if (set->numGroups >= set->maxGroups) return INVALID_BUNDLE;
-
             const APrimitive* primitive = mesh->primitives + p;
             u32 primitiveIdx = set->numGroups++;
             PrimitiveGroup* group = set->primitiveGroups + primitiveIdx;

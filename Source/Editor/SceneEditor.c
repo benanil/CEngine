@@ -6,6 +6,8 @@
 #include "Include/Scene.h"
 #include "Include/SceneSerializer.h"
 #include "Include/FileSystem.h"
+#include "Include/AssetManager.h"
+#include "Include/GLTFParser.h"
 #include "Include/Rendering.h"
 #include "Include/Camera.h"
 #include "Include/BVH.h"
@@ -14,6 +16,7 @@
 
 extern SDL_GPUDevice* g_GPUDevice;
 extern WindowState g_WindowState;
+extern Graphics gGFX;
 
 //------------------------------------------------------------------------
 // Scene Window
@@ -153,6 +156,136 @@ static void EditorSpawnBundle(Scene* scene, u32 bundleIdx, f32 scale)
     EditorSpawnBundleAt(scene, bundleIdx, VecZero(), QIdentity(), VecSet1(scale));
 }
 
+//------------------------------------------------------------------------
+// Import test / diagnostics window
+
+static char importTestPath[512] = "Assets/Meshes/Bistro/Bistro.glb";
+static char importTestLastAction[128] = "Idle";
+
+static void ImportTestSetLastAction(const char* text)
+{
+    u32 len = Minu32((u32)StringLength(text), sizeof(importTestLastAction) - 1u);
+    MemCopy(importTestLastAction, text, len);
+    importTestLastAction[len] = '\0';
+}
+
+static Clay_String ImportTestBundleRow(Scene* scene, u32 bundleIdx)
+{
+    char* text = UIFrameStringAlloc(384u);
+    if (!text) return CLAY_STRING("alloc failed");
+
+    SceneBundleRef* ref = &scene->bundleRefs[bundleIdx];
+    RenderSet* set = ref->skinned ? &scene->skinnedSet : &scene->surfaceSet;
+    Range range = set->bundleRange[ref->renderIdx];
+
+    u32 entityCount = 0;
+    for (u32 i = range.start; i < range.start + range.count && i < set->numGroups; i++)
+        entityCount += set->primitiveGroups[i].numEntities;
+
+    u32 len = 0;
+    text[len++] = '#';
+    len += (u32)IntToString(text + len, (int64_t)bundleIdx, 0);
+    MemCopy(text + len, ref->skinned ? " skinned " : " static ", ref->skinned ? 9u : 8u);
+    len += ref->skinned ? 9u : 8u;
+    MemCopy(text + len, "render=", 7u); len += 7u;
+    len += (u32)IntToString(text + len, (int64_t)ref->renderIdx, 0);
+    MemCopy(text + len, " mat=", 5u); len += 5u;
+    len += (u32)IntToString(text + len, (int64_t)ref->materialOffset, 0);
+    MemCopy(text + len, " groups=", 8u); len += 8u;
+    len += (u32)IntToString(text + len, (int64_t)range.count, 0);
+    MemCopy(text + len, " ents=", 6u); len += 6u;
+    len += (u32)IntToString(text + len, (int64_t)entityCount, 0);
+    MemCopy(text + len, " path=", 6u); len += 6u;
+    u32 pathLen = Minu32((u32)StringLength(ref->path), 384u - len - 1u);
+    MemCopy(text + len, ref->path, pathLen); len += pathLen;
+    text[len] = '\0';
+    return (Clay_String){ .isStaticallyAllocated = false, .length = (s32)len, .chars = text };
+}
+
+void DrawImportTestWindow(bool* open)
+{
+    Clay_ElementId windowID = (Clay_ElementId){ .id = StringToHash("ImportTestWindow", 5381u) };
+    if (!UIBeginWindowId(windowID, "Import Test", (float2){ 560.0f, 80.0f }, (float2){ 620.0f, 620.0f }, open, 0u)) return;
+
+    CLAY_TEXT(CLAY_STRING("Import path"), CLAY_TEXT_CONFIG({ .fontSize = 14, .textColor = UIGetClayColor(UIColor_Text) }));
+    static UITextAreaCustomData pathData;
+    pathData.type = UICustomType_TextArea;
+    pathData.buffer = importTestPath;
+    pathData.capacity = sizeof(importTestPath);
+    pathData.flags = UITextAreaFlags_CenterY | UITextAreaFlags_NoWrap | UITextAreaFlags_Clip;
+    CLAY(CLAY_ID("ImportTestPath"), {
+        .layout = { .sizing = { CLAY_SIZING_GROW(30), CLAY_SIZING_FIXED(28.0f) } },
+        .custom = { .customData = &pathData }
+    }) {}
+
+    CLAY(CLAY_ID("ImportTestButtons"), {
+        .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(32.0f) }, .childGap = 8, .layoutDirection = CLAY_LEFT_TO_RIGHT }
+    }) {
+        if (UIButton(CLAY_ID("ImportTestImport"), CLAY_STRING("Import"), (Clay_Dimensions){ 92.0f, 28.0f }, false))
+        {
+            EditorImportMeshToScene(importTestPath);
+            ImportTestSetLastAction("Import clicked");
+        }
+        if (UIButton(CLAY_ID("ImportTestDetail"), CLAY_STRING("Detail Popup"), (Clay_Dimensions){ 120.0f, 28.0f }, false))
+        {
+            EditorOpenImportDetail(importTestPath);
+            ImportTestSetLastAction("Detail popup clicked");
+        }
+        if (UIButton(CLAY_ID("ImportTestNewScene"), CLAY_STRING("New Scene"), (Clay_Dimensions){ 104.0f, 28.0f }, false))
+        {
+            EditorNewScene();
+            ImportTestSetLastAction("New scene clicked");
+        }
+    }
+
+    CLAY_TEXT(UIStr(importTestLastAction), CLAY_TEXT_CONFIG({ .fontSize = 13, .textColor = UIGetClayColor(UIColor_SubText) }));
+    UIDivider(CLAY_ID("ImportTestStatsDivider"));
+
+    Scene* scene = Scene_GetActive();
+    if (!scene)
+    {
+        CLAY_TEXT(CLAY_STRING("No active scene."), CLAY_TEXT_CONFIG({ .fontSize = 14, .textColor = UIGetClayColor(UIColor_SubText) }));
+        UIEndWindow();
+        return;
+    }
+
+    UITextU32("Active scenes", g_NumActiveScenes);
+    UITextU32("Scene bundles", scene->numBundles);
+    UITextU32("Scene materials", scene->numMaterials);
+    UITextU32("Render dirty", scene->renderDataDirty);
+    UITextU32("HiZ valid", g_WindowState.hiz_valid);
+    UITextU32("Surface bundles", scene->surfaceSet.numBundles);
+    UITextU32("Surface groups", scene->surfaceSet.numGroups);
+    UITextU32("Surface entities", scene->surfaceSet.numEntities);
+    UITextU32("Surface next sparse", scene->surfaceSet.nextSparseID);
+    UITextU32("Skinned bundles", scene->skinnedSet.numBundles);
+    UITextU32("Skinned groups", scene->skinnedSet.numGroups);
+    UITextU32("Skinned entities", scene->skinnedSet.numEntities);
+    UITextU32("Texture descriptors", scene->textureSystem.numDescriptors);
+    UITextU32("Material watermark", scene->textureSystem.materialWatermark);
+    UITextU32("Albedo layers", scene->textureSystem.classes[TextureClass_Albedo].layerCount);
+    UITextU32("Normal layers", scene->textureSystem.classes[TextureClass_Normal].layerCount);
+    UITextU32("MR layers", scene->textureSystem.classes[TextureClass_MetallicRoughness].layerCount);
+    UITextU32("CPU surface verts", gGFX.NumSurfaceVertices);
+    UITextU32("CPU skinned verts", gGFX.NumSkinnedVertices);
+    UITextU32("CPU indices", gGFX.NumIndices);
+
+    UIDivider(CLAY_ID("ImportTestBundlesDivider"));
+    CLAY_TEXT(CLAY_STRING("Bundles"), CLAY_TEXT_CONFIG({ .fontSize = 15, .textColor = UIGetClayColor(UIColor_Text) }));
+    CLAY(CLAY_ID("ImportTestBundleList"), UIScrollPanelDeclaration(UIWindowRemainingHeight(windowID, CLAY_ID("ImportTestBundleList"), 0.0f), 2u)) {
+        for (u32 i = 0; i < scene->numBundles; i++)
+        {
+            CLAY_TEXT(ImportTestBundleRow(scene, i), CLAY_TEXT_CONFIG({
+                .fontSize = 12,
+                .textColor = UIGetClayColor(UIColor_SubText),
+                .wrapMode = CLAY_TEXT_WRAP_NONE
+            }));
+        }
+    }
+
+    UIEndWindow();
+}
+
 void EditorImportMeshToScene(const char* path)
 {
     Scene* scene = Scene_GetActive();
@@ -174,9 +307,132 @@ void EditorImportMeshToScene(const char* path)
 
 static bool importDetailOpen;
 static char importDetailPath[512];
-static const SceneBundle* importDetailBundle; // peeked cache reference, released on close
 static f32  importDetailScale = 1.0f;
 static char importDetailScaleText[32];
+
+typedef struct ImportDetailInfo_
+{
+    u32 meshes;
+    u32 nodes;
+    u32 materials;
+    u32 images;
+    u32 vertices;
+    u32 indices;
+    u32 skins;
+    u32 animations;
+} ImportDetailInfo;
+
+static ImportDetailInfo importDetailInfo;
+
+static bool EditorReadBundleInfoFromScene(const char* path, ImportDetailInfo* info)
+{
+    Scene* scene = Scene_GetActive();
+    if (!scene) return false;
+
+    u32 pathLen = (u32)StringLength(path) + 1u;
+    for (u32 i = 0; i < scene->numBundles; i++)
+    {
+        if (StringEqual(scene->bundleRefs[i].path, path, pathLen))
+        {
+            const SceneBundle* bundle = scene->bundleRefs[i].bundle;
+            *info = (ImportDetailInfo){
+                .meshes     = (u32)bundle->numMeshes,
+                .nodes      = (u32)bundle->numNodes,
+                .materials  = (u32)bundle->numMaterials,
+                .images     = (u32)bundle->numImages,
+                .vertices   = (u32)bundle->totalVertices,
+                .indices    = (u32)bundle->totalIndices,
+                .skins      = (u32)bundle->numSkins,
+                .animations = (u32)bundle->numAnimations
+            };
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool EditorReadBundleInfoFromABM(const char* path, ImportDetailInfo* info)
+{
+    char buffer[1024];
+    int pathLen = StringLength(path);
+    MemCopy(buffer, path, pathLen + 1);
+    ChangeExtension(buffer, pathLen, "abm");
+    if (!IsABMLastVersion(buffer)) return false;
+
+    AFile file = AFileOpen(buffer, AOpenFlag_ReadBinary);
+    if (!AFileExist(file)) return false;
+
+    s32 version;
+    u64 reserved[4];
+    f32 scale;
+    u16 numMeshes, numNodes, numMaterials, numTextures, numImages, numSamplers;
+    u16 numCameras, numScenes, numSkins, numAnimations, defaultSceneIndex, isSkinned;
+    s32 totalIndices, totalVertices;
+    AFileRead(&version, sizeof(version), file, 1);
+    AFileRead(reserved, sizeof(reserved), file, 1);
+    AFileRead(&scale, sizeof(scale), file, 1);
+    AFileRead(&numMeshes, sizeof(numMeshes), file, 1);
+    AFileRead(&numNodes, sizeof(numNodes), file, 1);
+    AFileRead(&numMaterials, sizeof(numMaterials), file, 1);
+    AFileRead(&numTextures, sizeof(numTextures), file, 1);
+    AFileRead(&numImages, sizeof(numImages), file, 1);
+    AFileRead(&numSamplers, sizeof(numSamplers), file, 1);
+    AFileRead(&numCameras, sizeof(numCameras), file, 1);
+    AFileRead(&numScenes, sizeof(numScenes), file, 1);
+    AFileRead(&numSkins, sizeof(numSkins), file, 1);
+    AFileRead(&numAnimations, sizeof(numAnimations), file, 1);
+    AFileRead(&defaultSceneIndex, sizeof(defaultSceneIndex), file, 1);
+    AFileRead(&isSkinned, sizeof(isSkinned), file, 1);
+    AFileRead(&totalIndices, sizeof(totalIndices), file, 1);
+    AFileRead(&totalVertices, sizeof(totalVertices), file, 1);
+    AFileClose(file);
+
+    (void)version;
+    (void)reserved;
+    (void)scale;
+    (void)numTextures;
+    (void)numSamplers;
+    (void)numCameras;
+    (void)numScenes;
+    (void)defaultSceneIndex;
+    (void)isSkinned;
+    *info = (ImportDetailInfo){
+        .meshes     = (u32)numMeshes,
+        .nodes      = (u32)numNodes,
+        .materials  = (u32)numMaterials,
+        .images     = (u32)numImages,
+        .vertices   = (u32)Maxs32(totalVertices, 0),
+        .indices    = (u32)Maxs32(totalIndices, 0),
+        .skins      = (u32)numSkins,
+        .animations = (u32)numAnimations
+    };
+    return true;
+}
+
+static bool EditorReadBundleInfoFromGLTF(const char* path, ImportDetailInfo* info)
+{
+    SceneBundle bundle;
+    if (!ParseGLTF(path, &bundle, 1.0f)) return false;
+    *info = (ImportDetailInfo){
+        .meshes     = (u32)bundle.numMeshes,
+        .nodes      = (u32)bundle.numNodes,
+        .materials  = (u32)bundle.numMaterials,
+        .images     = (u32)bundle.numImages,
+        .vertices   = (u32)bundle.totalVertices,
+        .indices    = (u32)bundle.totalIndices,
+        .skins      = (u32)bundle.numSkins,
+        .animations = (u32)bundle.numAnimations
+    };
+    FreeSceneBundle(&bundle);
+    return true;
+}
+
+static bool EditorReadBundleInfo(const char* path, ImportDetailInfo* info)
+{
+    if (EditorReadBundleInfoFromScene(path, info)) return true;
+    if (EditorReadBundleInfoFromABM(path, info)) return true;
+    return EditorReadBundleInfoFromGLTF(path, info);
+}
 
 static bool EditorParseScaleText(const char* text, f32* outScale)
 {
@@ -210,22 +466,16 @@ static bool EditorParseScaleText(const char* text, f32* outScale)
 
 void EditorOpenImportDetail(const char* path)
 {
-    if (importDetailBundle)
-    {
-        Scene_ReleaseBundlePeek(importDetailPath);
-        importDetailBundle = NULL;
-    }
-
     char normalized[512];
     EditorNormalizePath(path, normalized, sizeof(normalized));
-    const SceneBundle* bundle = Scene_AcquireBundlePeek(normalized);
-    if (!bundle)
+    ImportDetailInfo info;
+    if (!EditorReadBundleInfo(normalized, &info))
     {
         AX_ERROR("mesh load failed: %s", normalized);
         return;
     }
     MemCopy(importDetailPath, normalized, StringLength(normalized) + 1);
-    importDetailBundle = bundle;
+    importDetailInfo = info;
     importDetailScale = 1.0f;
     MemCopy(importDetailScaleText, "1.000", 6u);
     importDetailOpen = true;
@@ -234,25 +484,12 @@ void EditorOpenImportDetail(const char* path)
 static void SceneImportDetailPopup(void)
 {
     if (!importDetailOpen)
-    {
-        if (importDetailBundle)
-        {
-            Scene_ReleaseBundlePeek(importDetailPath);
-            importDetailBundle = NULL;
-        }
         return;
-    }
-    if (!importDetailBundle)
-    {
-        importDetailOpen = false;
-        return;
-    }
 
     float2 center = { g_WindowState.prev_width * 0.5f - 210.0f, g_WindowState.prev_height * 0.5f - 220.0f };
     if (!UIBeginWindow("Import Mesh", center, (float2){ 420.0f, 440.0f }, &importDetailOpen, UIWindowFlags_NoResize)) return;
 
-    const SceneBundle* bundle = importDetailBundle;
-    bool skinned = bundle->numSkins > 0;
+    bool skinned = importDetailInfo.skins > 0u;
 
     CLAY_TEXT(UIStr(GetFileName(importDetailPath)), CLAY_TEXT_CONFIG({
         .fontSize = 16,
@@ -268,33 +505,25 @@ static void SceneImportDetailPopup(void)
             .layoutDirection = CLAY_TOP_TO_BOTTOM
         }
     }) {
-        UITextU32("Meshes", (u32)bundle->numMeshes);
-        UITextU32("Nodes", (u32)bundle->numNodes);
-        UITextU32("Materials", (u32)bundle->numMaterials);
-        UITextU32("Images", (u32)bundle->numImages);
-        UITextU32("Vertices", (u32)bundle->totalVertices);
-        UITextU32("Triangles", (u32)bundle->totalIndices / 3u);
-        UITextU32("Skins", (u32)bundle->numSkins);
-        UITextU32("Animations", (u32)bundle->numAnimations);
+        UITextU32("Meshes", importDetailInfo.meshes);
+        UITextU32("Nodes", importDetailInfo.nodes);
+        UITextU32("Materials", importDetailInfo.materials);
+        UITextU32("Images", importDetailInfo.images);
+        UITextU32("Vertices", importDetailInfo.vertices);
+        UITextU32("Triangles", importDetailInfo.indices / 3u);
+        UITextU32("Skins", importDetailInfo.skins);
+        UITextU32("Animations", importDetailInfo.animations);
     }
 
-    if (skinned && bundle->numAnimations > 0)
+    if (skinned && importDetailInfo.animations > 0u)
     {
-        u32 defaultAnim = bundle->numAnimations > 1 ? 1u : 0u;
-        const char* animName = bundle->animations[defaultAnim].name;
+        u32 defaultAnim = importDetailInfo.animations > 1u ? 1u : 0u;
         char* text = UIFrameStringAlloc(96u);
         if (text)
         {
             u32 len = (u32)StringLength("Default animation: ");
             MemCopy(text, "Default animation: ", len);
-            if (animName && animName[0])
-            {
-                u32 nameLen = Minu32((u32)StringLength(animName), 64u);
-                MemCopy(text + len, animName, nameLen);
-                len += nameLen;
-            }
-            else
-                len += (u32)IntToString(text + len, (int64_t)defaultAnim, 0);
+            len += (u32)IntToString(text + len, (int64_t)defaultAnim, 0);
             text[len] = '\0';
             CLAY_TEXT(((Clay_String) { .isStaticallyAllocated = false, .length = (s32)len, .chars = text }),
                       CLAY_TEXT_CONFIG({ .fontSize = 13, .textColor = UIGetClayColor(UIColor_SubText) }));

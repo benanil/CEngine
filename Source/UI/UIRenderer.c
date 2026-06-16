@@ -156,6 +156,20 @@ static Clay_Color UIButtonColor(bool hovered, bool selected)
     return UIGetClayColor(UIColor_Quad);
 }
 
+void UIButtonPushColors(u32 hovered, u32 selected, u32 color)
+{
+    UIPushColor(UIColor_Hovered, hovered);
+    UIPushColor(UIColor_SelectedBorder, selected);
+    UIPushColor(UIColor_Quad, color);
+}
+
+void UIButtonPopColors()
+{
+    UIPopColor(UIColor_Hovered);
+    UIPopColor(UIColor_SelectedBorder);
+    UIPopColor(UIColor_Quad);
+}
+
 Clay_Color UIPanelColor(void)
 {
     return UIGetClayColor(UIColor_TextBoxBG);
@@ -535,7 +549,7 @@ bool UIButtonFlags(Clay_ElementId id, Clay_String label, Clay_Dimensions size, b
     if (flags & UIButtonFlag_FitText)
     {
         float2 textSize = SlugCalcTextSizeN(SlugGetDemoFont(), label.chars, (u32)Maxs32(label.length, 0), (f32)fontSize);
-        size.width = Maxf32(size.width, textSize.x + 22.0f);
+        size.width  = Maxf32(size.width, textSize.x + 22.0f);
         size.height = Maxf32(size.height, textSize.y + 8.0f);
     }
     float radius = UIFloatStackZero(UIFloat_CornerRadius) ? size.height * 0.5f : UIGetFloat(UIFloat_CornerRadius);
@@ -548,7 +562,7 @@ bool UIButtonFlags(Clay_ElementId id, Clay_String label, Clay_Dimensions size, b
         },
         .backgroundColor = UIButtonColor(Clay_Hovered(), selected),
         .cornerRadius = cr,
-        .border = { .color = UIGetClayColor(UIColor_Border), .width = CLAY_BORDER_ALL((u16)Maxf32(UIGetFloat(UIFloat_BorderWidth), 1.0f)) } 
+        .border = { .color = UIGetClayColor(UIColor_Border), .width = CLAY_BORDER_ALL(UIGetFloat(UIFloat_BorderWidth)) } 
     }) {
         if (UIClicked()) clicked = true;
         CLAY_TEXT(label, CLAY_TEXT_CONFIG({
@@ -592,7 +606,7 @@ bool UICheckbox(Clay_ElementId id, Clay_String label, bool* value)
             },
             .backgroundColor = UIColorToClay(rowHovered ? UIGetColor(UIColor_Hovered) : UIGetColor(UIColor_CheckboxBG)),
             .cornerRadius = CLAY_CORNER_RADIUS(UIGetFloat(UIFloat_CornerRadius)),
-            .border = { .color = UIGetClayColor(UIColor_Border), .width = CLAY_BORDER_ALL((u16)Maxf32(UIGetFloat(UIFloat_BorderWidth), 1.0f)) }
+            .border = { .color = UIGetClayColor(UIColor_Border), .width = CLAY_BORDER_ALL(UIGetFloat(UIFloat_BorderWidth)) }
         }) {
             if (checked)
             {

@@ -630,6 +630,16 @@ static inline bool IsMobilePlatform()
     #endif
 }
 
+#ifndef PLATFORM_MACOSX
+    #ifndef AX_GPU_SHADER_FORMAT
+        #define AX_GPU_SHADER_FORMAT SDL_GPU_SHADERFORMAT_SPIRV
+        #define AX_GPU_COMPUTE_ENTRYPOINT "main"
+    #endif
+#else
+    #define AX_GPU_SHADER_FORMAT SDL_GPU_SHADERFORMAT_MSL
+    #define AX_GPU_COMPUTE_ENTRYPOINT "main"
+#endif
+
 #if defined(__cplusplus)
 }
 #endif

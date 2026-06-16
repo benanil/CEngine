@@ -4,9 +4,11 @@
 #include "Include/Platform.h"
 #include "Include/Camera.h"
 #include "Include/FileSystem.h"
+#include "Include/Graphics.h"
 #include "Include/Random.h"
 #include "Include/Rendering.h"
 #include "Include/Algorithm.h"
+#include "Math/Color.h"
 #include "EditorInternal.h"
 
 extern WindowState g_WindowState;
@@ -23,16 +25,20 @@ static bool consoleOpen   = false;
 static bool testOpen      = false;
 static bool sceneViewOpen = false; // closed = the scene fills the whole window like before
 static bool terrainOpen   = false;
+static bool importTestOpen = false;
 
 // scene view content rect from last frame's layout, the renderer sizes the scene to it
 static bool   sceneViewVisible;
 static float2 sceneViewContentPos;
 static float2 sceneViewContentSize;
 static UIImageData sceneViewImage;
+static Texture editorLogoTexture;
+static UIImageData editorLogoImage;
 #define SCENE_VIEW_TITLE "Scene View"
 
 #define EDITOR_SETTINGS_PATH "EditorSettings.txt"
 #define EDITOR_UI_LAYOUT_PATH "EditorUI.txt"
+#define EDITOR_TAB_BAR_HEIGHT 40.0f
 
 static bool editorSettingsLoaded;
 static bool editorOpenLastScene;
@@ -307,6 +313,7 @@ static void DrawGraphicsWindow()
         //UISpacing(CLAY_ID("GraphicsEditorDivider0"), 6.0f);
         // reserve the buttons row (38) plus the content child gap (12)
         CLAY(CLAY_ID("GraphicsEditorScroll"), UIScrollPanelDeclaration(UIWindowRemainingHeight(windowID, CLAY_ID("GraphicsEditorScroll"), 50.0f), 12u)) {
+            
             CLAY(CLAY_ID("GraphicsEditorFeatureBox"), EditorPanelBoxDeclaration) {
                 UISectionHeader("Features");
                 static const char* qualityOptions[] = { "Low", "Medium", "High", "Ultra" };
@@ -322,6 +329,7 @@ static void DrawGraphicsWindow()
                 // scene resolution multiplier, the ui stays at native resolution
                 UIEditFloat(CLAY_ID("EditorRenderScale"), CLAY_STRING("Render scale"), &settings->renderScale, 0.25f, 2.0f, 0.25, 3);
             }
+
             CLAY(CLAY_ID("GraphicsEditorLightBox"), EditorPanelBoxDeclaration) {
                 RenderLightDebugInfo lightInfo = RendererGetLightDebugInfo();
                 UISectionHeader("Lights");
@@ -468,7 +476,7 @@ static u32 EditorOpenWindowMask(void)
 {
     return ((u32)editorOpen << 0) | ((u32)sceneOpen << 1) | ((u32)texturesOpen << 2) | ((u32)settingsOpen << 3) |
            ((u32)assetsOpen << 4) | ((u32)consoleOpen << 5) | ((u32)testOpen << 6) | ((u32)sceneViewOpen << 7) |
-           ((u32)terrainOpen << 8);
+           ((u32)terrainOpen << 8) | ((u32)importTestOpen << 9);
 }
 
 bool EditorSceneViewActive(void)
@@ -535,9 +543,86 @@ static void DrawSceneViewWindow(void)
     UIEndWindow();
 }
 
+static bool EditorWindowIsMaximized(void)
+{
+    return (SDL_GetWindowFlags(g_SDLWindow) & SDL_WINDOW_MAXIMIZED) != 0u;
+}
+
+static void EditorToggleWindowMaximized(void)
+{
+    if (EditorWindowIsMaximized()) SDL_RestoreWindow(g_SDLWindow);
+    else SDL_MaximizeWindow(g_SDLWindow);
+}
+
+static Clay_BoundingBox editorTabBarButtonBoxes[16];
+static u32 editorTabBarButtonBoxCount;
+static f32 editorTabBarHitTestHeight;
+
+static bool EditorPointInBox(Clay_BoundingBox box, f32 x, f32 y)
+{
+    return x >= box.x && y >= box.y && x <= box.x + box.width && y <= box.y + box.height;
+}
+
+static void EditorCacheTabBarButtonBox(Clay_ElementId id)
+{
+    if (editorTabBarButtonBoxCount >= ARRAY_SIZE(editorTabBarButtonBoxes)) return;
+    Clay_ElementData data = Clay_GetElementData(id);
+    if (!data.found) return;
+    editorTabBarButtonBoxes[editorTabBarButtonBoxCount++] = data.boundingBox;
+}
+
+static bool EditorPointInCachedTabBarButton(f32 x, f32 y)
+{
+    for (u32 i = 0; i < editorTabBarButtonBoxCount; i++)
+        if (EditorPointInBox(editorTabBarButtonBoxes[i], x, y)) return true;
+    return false;
+}
+
+static SDL_HitTestResult SDLCALL EditorWindowHitTest(SDL_Window* window, const SDL_Point* area, void* data)
+{
+    (void)data;
+    if (!window || !area) return SDL_HITTEST_NORMAL;
+
+    SDL_WindowFlags flags = SDL_GetWindowFlags(window);
+    if ((flags & (SDL_WINDOW_MAXIMIZED | SDL_WINDOW_FULLSCREEN)) != 0u) return SDL_HITTEST_NORMAL;
+
+    int width, height;
+    SDL_GetWindowSize(window, &width, &height);
+
+    const int edge = 8;
+    bool left   = area->x >= 0 && area->x < edge;
+    bool right  = area->x >= width - edge && area->x < width;
+    bool top    = area->y >= 0 && area->y < edge;
+    bool bottom = area->y >= height - edge && area->y < height;
+
+    if (top && left)     return SDL_HITTEST_RESIZE_TOPLEFT;
+    if (top && right)    return SDL_HITTEST_RESIZE_TOPRIGHT;
+    if (bottom && left)  return SDL_HITTEST_RESIZE_BOTTOMLEFT;
+    if (bottom && right) return SDL_HITTEST_RESIZE_BOTTOMRIGHT;
+    if (left)   return SDL_HITTEST_RESIZE_LEFT;
+    if (right)  return SDL_HITTEST_RESIZE_RIGHT;
+    if (top)    return SDL_HITTEST_RESIZE_TOP;
+    if (bottom) return SDL_HITTEST_RESIZE_BOTTOM;
+
+    if ((f32)area->y < editorTabBarHitTestHeight && !EditorPointInCachedTabBarButton((f32)area->x, (f32)area->y))
+        return SDL_HITTEST_DRAGGABLE;
+
+    return SDL_HITTEST_NORMAL;
+}
+
+void EditorInit(void)
+{
+    editorTabBarHitTestHeight = EDITOR_TAB_BAR_HEIGHT;
+    if (!SDL_SetWindowHitTest(g_SDLWindow, EditorWindowHitTest, NULL))
+        AX_WARN("failed to set editor window hit test: %s", SDL_GetError());
+
+    editorLogoTexture = rImportTexture("Assets/Icons/CLogo.png", TexFlags_MipMap, "EditorLogo");
+    editorLogoImage = UIImageFromTexture(&editorLogoTexture);
+}
+
 static void GraphicsEditorUI(void)
 {
-    const f32 tabBarHeight = 40.0f;
+    const f32 tabBarHeight = EDITOR_TAB_BAR_HEIGHT;
     Clay_BeginLayout();
 
     int screenWidth, screenHeight;
@@ -555,32 +640,107 @@ static void GraphicsEditorUI(void)
     }
 
     u32 openMaskBefore = EditorOpenWindowMask();
-
+    UIPushFloat(UIFloat_BorderWidth, 0.0f);
     CLAY(CLAY_ID("TabBar"), {
         .layout = {
             .sizing = { CLAY_SIZING_FIXED(screenWidth), CLAY_SIZING_FIXED(tabBarHeight) },
             .childAlignment = { .x = CLAY_ALIGN_X_LEFT, .y = CLAY_ALIGN_Y_CENTER },
-            .childGap = 15,
-            .padding = { 20, 0 },
             .layoutDirection = CLAY_LEFT_TO_RIGHT
         },
         .backgroundColor = UIPanelColor(),
-        .border = { .color = UIGetClayColor(UIColor_Border),  .width = { borderWidth, borderWidth, borderWidth, borderWidth, 0} }
+        .border = { .color = UIGetClayColor(UIColor_Border),  .width = { 0.0f, 0.0f, 0.0f, borderWidth, 0} }
     }) {
-        UIPushFloatAdd(UIFloat_TextScale, -0.15f);
-        UIPushFloat(UIFloat_CornerRadius, 2.5f);
-        editorOpen   ^= UIButton(CLAY_ID("Graphics"), CLAY_STRING("Graphics"), (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
-        sceneOpen    ^= UIButton(CLAY_ID("Scene")   , CLAY_STRING("Scene")   , (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
-        texturesOpen ^= UIButton(CLAY_ID("Textures"), CLAY_STRING("Textures"), (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
-        settingsOpen ^= UIButton(CLAY_ID("Settings"), CLAY_STRING("Settings"), (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
-        assetsOpen   ^= UIButton(CLAY_ID("Assets")  , CLAY_STRING("Assets")  , (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
-        terrainOpen  ^= UIButton(CLAY_ID("Terrain") , CLAY_STRING("Terrain") , (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
-        consoleOpen  ^= UIButton(CLAY_ID("Console") , CLAY_STRING("Console") , (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
-        testOpen     ^= UIButton(CLAY_ID("Test")    , CLAY_STRING("Test")    , (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
-        sceneViewOpen ^= UIButton(CLAY_ID("View")   , CLAY_STRING("View")    , (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
-        UIPopFloat(UIFloat_CornerRadius);
-        UIPopFloat(UIFloat_TextScale);
+
+        CLAY(CLAY_ID("TabBarLeft"), {
+            .layout = { 
+                .sizing = { CLAY_SIZING_FIXED(screenWidth >> 1), CLAY_SIZING_GROW(0) },
+                .childAlignment = { .x = CLAY_ALIGN_X_LEFT, .y = CLAY_ALIGN_Y_CENTER },
+                .childGap = 15,
+                .padding  = { 20, 0 },
+                .layoutDirection = CLAY_LEFT_TO_RIGHT
+            }
+        }) {
+            UIPushFloatAdd(UIFloat_TextScale, -0.15f);
+            UIPushFloat(UIFloat_CornerRadius, 1.0f);
+            if (editorLogoImage.texture)
+            {
+                CLAY(CLAY_ID("TabBarLogo"), {
+                    .layout = { .sizing = { CLAY_SIZING_FIXED(26.0f), CLAY_SIZING_FIXED(26.0f) } },
+                    .image = { .imageData = &editorLogoImage }
+                }) {
+                    if (UIClicked()) AX_LOG("C Engine logo clicked. The C is for chaos.");
+                }
+            }
+            editorOpen     ^= UIButton(CLAY_ID("Graphics"), CLAY_STRING("Graphics"), (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
+            sceneOpen      ^= UIButton(CLAY_ID("Scene")   , CLAY_STRING("Scene")   , (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
+            texturesOpen   ^= UIButton(CLAY_ID("Textures"), CLAY_STRING("Textures"), (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
+            settingsOpen   ^= UIButton(CLAY_ID("Settings"), CLAY_STRING("Settings"), (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
+            assetsOpen     ^= UIButton(CLAY_ID("Assets")  , CLAY_STRING("Assets")  , (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
+            terrainOpen    ^= UIButton(CLAY_ID("Terrain") , CLAY_STRING("Terrain") , (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
+            importTestOpen ^= UIButton(CLAY_ID("ImportDbg"), CLAY_STRING("ImportDbg"), (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
+            consoleOpen    ^= UIButton(CLAY_ID("Console") , CLAY_STRING("Console") , (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
+            testOpen       ^= UIButton(CLAY_ID("Test")    , CLAY_STRING("Test")    , (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
+            sceneViewOpen  ^= UIButton(CLAY_ID("View")    , CLAY_STRING("View")    , (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
+            UIPopFloat(UIFloat_CornerRadius);
+            UIPopFloat(UIFloat_TextScale);
+        }
+
+        CLAY(CLAY_ID("TabBarRight"), {
+            .layout = { 
+                .sizing = { CLAY_SIZING_FIXED((screenWidth >> 1) - 10), CLAY_SIZING_GROW(0) },
+                .childAlignment = { .x = CLAY_ALIGN_X_RIGHT, .y = CLAY_ALIGN_Y_CENTER },
+                .childGap = 15,
+            }
+        }) {
+            UIPushFloatAdd(UIFloat_TextScale, -0.15f);
+            UIPushFloat(UIFloat_CornerRadius, 9.0f);
+            UIPushColor(UIColor_Text, UCOLOR_LIGHT_GRAY);
+            UIButtonPushColors(UCOLOR_WARNING, UCOLOR_GOLD, UCOLOR_YELLOW);
+            
+            if (UIButton(CLAY_ID("TabBarMinimizeProgram"), CLAY_STRING("-"), (Clay_Dimensions) { 18, 18 }, false))
+            {
+                SDL_MinimizeWindow(g_SDLWindow);
+            }
+
+            UIButtonPushColors(UCOLOR_SUCCESS, UCOLOR_DARK_GREEN, UCOLOR_GREEN);
+            if (UIButton(CLAY_ID("TabBarMaximizeProgram"), EditorWindowIsMaximized() ? CLAY_STRING("=") : CLAY_STRING("+"), (Clay_Dimensions) { 18, 18 }, false))
+            {
+                EditorToggleWindowMaximized();
+            }
+             
+            UIButtonPushColors(UCOLOR_ERROR, UCOLOR_DARK_RED, UCOLOR_RED);
+            if (UIButton(CLAY_ID("TabBarExitProgram"), CLAY_STRING("x"), (Clay_Dimensions) { 18, 18 }, false))
+            {
+                extern void DestroyMain();
+                DestroyMain();
+            }
+         
+            UIPopColor(UIColor_Text);
+            UIPopFloat(UIFloat_TextScale);
+            UIPopFloat(UIFloat_CornerRadius);
+            UIButtonPopColors();
+            UIButtonPopColors();
+            UIButtonPopColors();
+        }
     }
+
+    editorTabBarButtonBoxCount = 0u;
+    EditorCacheTabBarButtonBox(CLAY_ID("Graphics"));
+    EditorCacheTabBarButtonBox(CLAY_ID("Scene"));
+    EditorCacheTabBarButtonBox(CLAY_ID("Textures"));
+    EditorCacheTabBarButtonBox(CLAY_ID("Settings"));
+    EditorCacheTabBarButtonBox(CLAY_ID("Assets"));
+    EditorCacheTabBarButtonBox(CLAY_ID("Terrain"));
+    EditorCacheTabBarButtonBox(CLAY_ID("ImportDbg"));
+    EditorCacheTabBarButtonBox(CLAY_ID("Console"));
+    EditorCacheTabBarButtonBox(CLAY_ID("Test"));
+    EditorCacheTabBarButtonBox(CLAY_ID("View"));
+    EditorCacheTabBarButtonBox(CLAY_ID("TabBarMinimizeProgram"));
+    EditorCacheTabBarButtonBox(CLAY_ID("TabBarMaximizeProgram"));
+    EditorCacheTabBarButtonBox(CLAY_ID("TabBarExitProgram"));
+    EditorCacheTabBarButtonBox(CLAY_ID("TabBarLogo"));
+
+    UIPopFloat(UIFloat_BorderWidth);
 
     CLAY(CLAY_ID("GraphicsEditorRoot"), {
         .layout = {
@@ -596,6 +756,7 @@ static void GraphicsEditorUI(void)
         DrawSettingsWindow();
         DrawSceneWindow(&sceneOpen);
         DrawTexturesWindow(&texturesOpen);
+        DrawImportTestWindow(&importTestOpen);
         DrawAssetsWindow(&assetsOpen);
         DrawTerrainWindow(&terrainOpen);
         DrawConsoleWindow(&consoleOpen);

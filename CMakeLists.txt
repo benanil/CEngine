@@ -11,7 +11,7 @@ set(CMAKE_INSTALL_PREFIX "${CMAKE_BINARY_DIR}" CACHE INTERNAL "")
 set(CMAKE_MSVC_PARALLEL_COMPILE OFF)
 
 # Declare the project
-project(CPlayground)
+project(CEngine)
 
 if ((APPLE AND NOT CMAKE_SYSTEM_NAME MATCHES "Darwin") OR EMSCRIPTEN)
     set(BUILD_SHARED_LIBS OFF CACHE INTERNAL "")    # Disable shared builds on platforms where it does not make sense to use them
@@ -147,6 +147,10 @@ target_sources(${EXECUTABLE_NAME} PRIVATE
     ${BASIS_ENCODER_SOURCES}
 )
 
+if(WIN32)
+    target_sources(${EXECUTABLE_NAME} PRIVATE Source/Windows/info.rc)
+endif()
+
 set_property(TARGET ${EXECUTABLE_NAME} PROPERTY CXX_STANDARD 17)
 set_property(TARGET ${EXECUTABLE_NAME} PROPERTY CXX_STANDARD_REQUIRED ON)
 
@@ -186,7 +190,7 @@ if(MSVC)
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -nostdlib")
     list(REMOVE_ITEM CMAKE_CXX_IMPLICIT_LINK_LIBRARIES stdc++)
     # Prevent CMake from implicitly adding standard library link arguments
-    set_target_properties(CPlayground PROPERTIES 
+    set_target_properties(${EXECUTABLE_NAME} PROPERTIES 
         LINK_DEPENDS_NO_SHARED TRUE
     )
 endif()
@@ -199,6 +203,6 @@ endif()
 
 target_link_libraries(${EXECUTABLE_NAME} PUBLIC SDL3::SDL3) # If using satelite libraries, SDL must be the last item in the list.
 
-set_property(TARGET CPlayground PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+set_property(TARGET ${EXECUTABLE_NAME} PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
 # on Visual Studio, set our app as the default project
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT "${EXECUTABLE_NAME}")

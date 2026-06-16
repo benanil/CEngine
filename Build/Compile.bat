@@ -15,12 +15,12 @@ if "%1"=="Debug" (
     mkdir Debug
 	rem cmake -S . -B Debug -G Ninja -DCMAKE_BUILD_TYPE=Debug
     cmake --build Debug
-    start Debug/Debug/CPlayground.exe
+    start Debug/Debug/CEngine.exe
 ) else (
     mkdir Debug
     rem cmake -S . -B Release -G Ninja -DCMAKE_BUILD_TYPE=Release
     cmake --build Release
-    start Release/Release/CPlayground.exe
+    start Release/Release/CEngine.exe
 )   
 
 exit

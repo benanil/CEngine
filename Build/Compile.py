@@ -10,7 +10,7 @@ from pathlib import Path
 print = functools.partial(print, flush=True)
 
 SHADER_SCRIPT = Path("Shaders/CompileShaders.py")
-PROJECT_EXE = "CPlayground"
+PROJECT_EXE = "CEngine"
 
 VSWHERE = Path(
     r"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe"

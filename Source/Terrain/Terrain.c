@@ -884,11 +884,11 @@ s32 Terrain_Raycast(float3 origin, float3 dir, f32 maxDist, u32 maxLod, BVHHit* 
             if (IntersectTriangle(rayOrigin, rayDir, v0, v1, v2, &hit->hit))
             {
                 anyHit = true;
-                hit->triIndex = t / 3u;
-                hit->entityIdx = i;            // terrain chunk slot
-                hit->groupIdx = chunk->lod;
+                hit->triIndex   = t / 3u;
+                hit->entityIdx  = i;            // terrain chunk slot
+                hit->groupIdx   = chunk->lod;
                 hit->skinnedSet = 0xFFFFFFFFu;
-                hit->bundleIdx = 0xFFFFFFFFu;
+                hit->bundleIdx  = 0xFFFFFFFFu;
             }
         }
     }
@@ -1206,8 +1206,7 @@ void Terrain_Init(void)
     g_Terrain.genParams = Terrain_DefaultGenParams();
     TerrainDensity_SetParams(&g_Terrain.genParams);
     TerrainEdit_Init();
-
-    Transvoxel_SelfTest();
+    // Transvoxel_SelfTest();
 
     g_Terrain.chunks    = (TerrainChunk*)AllocZeroTLSFGlobal(TERRAIN_MAX_CHUNKS, sizeof(TerrainChunk));
     g_Terrain.freeSlots = (u32*)AllocateTLSFGlobal(TERRAIN_MAX_CHUNKS * sizeof(u32));
@@ -1241,8 +1240,8 @@ void Terrain_Init(void)
         CHECK_CREATE(g_Terrain.workers[i], "Terrain Worker Thread");
     }
 
-    g_Terrain.vertexBuffer = CreateBuffer(NULL, TERRAIN_MAX_VERTICES * sizeof(TerrainVertex), BVertexBit, "TerrainVertexBuffer");
-    g_Terrain.indexBuffer  = CreateBuffer(NULL, TERRAIN_MAX_INDICES * sizeof(u32), SDL_GPU_BUFFERUSAGE_INDEX, "TerrainIndexBuffer");
+    g_Terrain.vertexBuffer   = CreateBuffer(NULL, TERRAIN_MAX_VERTICES * sizeof(TerrainVertex), BVertexBit, "TerrainVertexBuffer");
+    g_Terrain.indexBuffer    = CreateBuffer(NULL, TERRAIN_MAX_INDICES * sizeof(u32), SDL_GPU_BUFFERUSAGE_INDEX, "TerrainIndexBuffer");
     g_Terrain.transferBuffer = SDL_CreateGPUTransferBuffer(g_GPUDevice, &(SDL_GPUTransferBufferCreateInfo){
         .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
         .size  = TERRAIN_TRANSFER_BYTES
@@ -1461,11 +1460,11 @@ s32 Terrain_RaycastField(float3 origin, float3 dir, f32 maxDist, BVHHit* hit)
             }
             hit->hit.t = lo;
             hit->hit.u = hit->hit.v = 0.0f;
-            hit->triIndex = 0u;
-            hit->entityIdx = 0xFFFFFFFFu;
-            hit->groupIdx = 0u;
+            hit->triIndex   = 0u;
+            hit->entityIdx  = 0xFFFFFFFFu;
+            hit->groupIdx   = 0u;
             hit->skinnedSet = 0xFFFFFFFFu;
-            hit->bundleIdx = 0xFFFFFFFFu;
+            hit->bundleIdx  = 0xFFFFFFFFu;
             return 1;
         }
         lastT = t;

@@ -8,7 +8,7 @@
 // ==============================================
 
 
-// C adaptation of the table declarations for CPlayground (data unchanged, MIT license,
+// C adaptation of the table declarations for C Engine (data unchanged, MIT license,
 // see https://github.com/EricLengyel/Transvoxel). High nibble of geometryCounts is the
 // vertex count, low nibble is the triangle count.
 
@@ -63,7 +63,7 @@ static const unsigned char regularCellClass[256] =
 
 static const RegularCellData regularCellData[16] =
 {
-	{0x00, {}},
+	{0x00, {0}},
 	{0x31, {0, 1, 2}},
 	{0x62, {0, 1, 2, 3, 4, 5}},
 	{0x42, {0, 1, 2, 0, 2, 3}},
@@ -90,7 +90,7 @@ static const RegularCellData regularCellData[16] =
 
 static const unsigned short regularVertexData[256][12] =
 {
-	{},
+	{0},
 	{0x6201, 0x5102, 0x3304},
 	{0x6201, 0x2315, 0x4113},
 	{0x5102, 0x3304, 0x2315, 0x4113},
@@ -345,7 +345,7 @@ static const unsigned short regularVertexData[256][12] =
 	{0x5102, 0x4113, 0x2315, 0x3304},
 	{0x6201, 0x4113, 0x2315},
 	{0x6201, 0x3304, 0x5102},
-	{}
+	{0}
 };
 
 
@@ -399,7 +399,7 @@ static const unsigned char transitionCellClass[512] =
 
 static const TransitionCellData transitionCellData[56] =
 {
-	{0x00, {}},
+	{0x00, { 0 }},
 	{0x42, {0, 1, 3, 1, 2, 3}},
 	{0x31, {0, 1, 2}},
 	{0x42, {0, 1, 2, 0, 2, 3}},
@@ -475,7 +475,7 @@ static const unsigned char transitionCornerData[13] =
 
 static const unsigned short transitionVertexData[512][12] =
 {
-	{},
+	{0},
 	{0x2301, 0x1503, 0x199B, 0x289A},
 	{0x2301, 0x2412, 0x4514},
 	{0x1503, 0x4514, 0x2412, 0x289A, 0x199B},
@@ -986,7 +986,7 @@ static const unsigned short transitionVertexData[512][12] =
 	{0x1503, 0x4514, 0x2412, 0x289A, 0x199B},
 	{0x2301, 0x2412, 0x4514},
 	{0x2301, 0x1503, 0x199B, 0x289A},
-	{}
+	{0}
 };
 
 #endif // TRANSVOXEL_TABLES_H

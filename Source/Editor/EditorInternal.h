@@ -11,6 +11,7 @@ extern "C" {
 // implemented in SceneEditor.c
 void DrawSceneWindow(bool* open);
 void DrawTexturesWindow(bool* open);
+void DrawImportTestWindow(bool* open);
 void EditorImportMeshToScene(const char* path);
 void EditorOpenImportDetail(const char* path);
 void EditorOpenScene(const char* path);

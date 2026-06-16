@@ -19,18 +19,45 @@
 #include "Math/Quaternion.h"
 
 static s32 done = 0;
+static bool g_MainLoopTicking;
 
 Camera       g_Camera;
 SDL_Window*  g_SDLWindow;
 
-static void MainLoop(void)
+extern bool TerrainEditorUpdate(Camera* camera);
+extern bool EditorGizmoUpdate(Camera* camera);
+extern bool EditorLightGizmoUpdate(Camera* camera);
+extern void EditorPickingUpdate(Camera* camera);
+extern void EditorInit(void);
+extern void EditorConsoleInit(void);
+extern Scene* EditorNewScene(void);
+extern void EditorSceneStartup(void);
+
+static void MainSyncWindowSize(void)
 {
-    SDL_Event event;
-    while (SDL_PollEvent(&event) && !done)
+    int width, height;
+    SDL_GetWindowSize(g_SDLWindow, &width, &height);
+    if ((width + height) == 0) return;
+
+    if (PlatformCtx.WindowWidth != width || PlatformCtx.WindowHeight != height)
     {
-        done = (event.type == SDL_EVENT_QUIT);
-        EventCallback(&event);
+        Camera_RecalculateProjection(&g_Camera, width, height);
+        PlatformCtx.WindowWidth = width;
+        PlatformCtx.WindowHeight = height;
     }
+}
+
+void DestroyMain()
+{
+    done = 1;
+}
+
+static void MainLoopTick(void)
+{
+    if (g_MainLoopTicking) return;
+
+    g_MainLoopTicking = true;
+    MainSyncWindowSize();
 
     SetPressedAndReleasedKeys();
     PlatformUpdate();
@@ -42,11 +69,6 @@ static void MainLoop(void)
     extern void EditorSceneHotkeys(void);
     EditorSceneHotkeys();
 
-    // terrain brush, then the gizmo own the mouse while active, picking runs otherwise
-    extern bool TerrainEditorUpdate(Camera* camera);
-    extern bool EditorGizmoUpdate(Camera* camera);
-    extern bool EditorLightGizmoUpdate(Camera* camera);
-    extern void EditorPickingUpdate(Camera* camera);
     if (!TerrainEditorUpdate(&g_Camera) && !EditorGizmoUpdate(&g_Camera) && !EditorLightGizmoUpdate(&g_Camera))
         EditorPickingUpdate(&g_Camera);
 
@@ -55,30 +77,33 @@ static void MainLoop(void)
 
     RecordLastKeys();
     PlatformCtx.FrameCount++;
+    g_MainLoopTicking = false;
 }
 
-s32 main(s32 argc, char* argv[])
+static SDL_AppResult SDLCALL MainAppInit(void** appstate, int argc, char* argv[])
 {
+    (void)appstate;
+    (void)argc;
+    (void)argv;
+
     s32 msaa = 1;
     done = 0;
 
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO))
-        return 0;
+        return SDL_APP_FAILURE;
 
-    const SDL_WindowFlags windowFlags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY;
-    SDL_Window* window = SDL_CreateWindow("CPlayground", 1920, 1080, windowFlags);
+    const SDL_WindowFlags windowFlags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_BORDERLESS;
+    SDL_Window* window = SDL_CreateWindow("C Engine", 1920, 1080, windowFlags);
     g_SDLWindow = window;
     if (!window)
     {
         AX_ERROR("creating window failed!");
-        return 0;
+        return SDL_APP_FAILURE;
     }
 
     InitGlobalArena();
     PlatformInit();
 
-    // hook the sdl log output before the systems init so the console records everything
-    extern void EditorConsoleInit(void);
     EditorConsoleInit();
 
     BasisuSetup();
@@ -86,25 +111,44 @@ s32 main(s32 argc, char* argv[])
     GraphicsInit(msaa);
     TextureSystem_InitDevice();
     RendererInit();
+    EditorInit();
 
-    // boot into an empty editor scene, the demo scene stays available from code
-    extern Scene* EditorNewScene(void);
-    if (!EditorNewScene()) return 0;
-    extern void EditorSceneStartup(void);
+    if (!EditorNewScene()) return SDL_APP_FAILURE;
     EditorSceneStartup();
     InitBuffers();
     Terrain_Init();
 
     CameraInit(&g_Camera, 1920, 1080);
 
-    // emscripten_set_main_loop(MainLoop, 0, 1);
-    while (!done)
-    {
-        MainLoop();
-    }
+    return SDL_APP_CONTINUE;
+}
 
-    #if !defined(__ANDROID__)
-    Quit(0);
-    #endif
-    return 0;
+static SDL_AppResult SDLCALL MainAppEvent(void* appstate, SDL_Event* event)
+{
+    (void)appstate;
+    if (!event) return SDL_APP_CONTINUE;
+
+    done = done || (event->type == SDL_EVENT_QUIT);
+    EventCallback(event);
+    return done ? SDL_APP_SUCCESS : SDL_APP_CONTINUE;
+}
+
+static SDL_AppResult SDLCALL MainAppIterate(void* appstate)
+{
+    (void)appstate;
+    if (done) return SDL_APP_SUCCESS;
+
+    MainLoopTick();
+    return done ? SDL_APP_SUCCESS : SDL_APP_CONTINUE;
+}
+
+static void SDLCALL MainAppQuit(void* appstate, SDL_AppResult result)
+{
+    (void)appstate;
+    (void)result;
+}
+
+s32 main(s32 argc, char* argv[])
+{
+    return SDL_EnterAppMainCallbacks(argc, argv, MainAppInit, MainAppIterate, MainAppEvent, MainAppQuit);
 }

@@ -221,6 +221,7 @@ static u32 SlugExtractCurves(stbtt_fontinfo* info, u32 glyphIndex, f32 emScale, 
     *outCurves = curves;
     return numCurves;
 }
+
 static void SlugBuildGlyphByIndex(stbtt_fontinfo* info, u32 glyphIndex, f32 emScale, SlugBuildBuffers* buffers, SlugGlyph* glyph)
 {
     *glyph = (SlugGlyph){0};
@@ -1204,7 +1205,8 @@ SlugFont* SlugGetDemoFont(void)
 void SlugInitDemo(void)
 {
     // if (!SlugLoadFont(&g_SlugDemoFont, "Assets/Fonts/Quivira.otf")) AX_WARN("Slug demo font load failed");
-    if (!SlugLoadFont(&g_SlugDemoFont, "Assets/Fonts/JetBrainsMono-Regular.ttf")) AX_WARN("Slug demo font load failed");
+    if (!SlugLoadFont(&g_SlugDemoFont, "Assets/Fonts/maple-mono-latin-400-normal.ttf")) AX_WARN("Slug demo font load failed");
+    // if (!SlugLoadFont(&g_SlugDemoFont, "Assets/Fonts/JetBrainsMono-Regular.ttf")) AX_WARN("Slug demo font load failed");
     if (!SlugCloneFont(&g_SlugDemo3DFont, &g_SlugDemoFont, "Slug3DDemoFont")) AX_WARN("Slug 3D demo font clone failed");
 }
 
