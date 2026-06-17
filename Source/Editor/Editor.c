@@ -320,6 +320,7 @@ static void DrawGraphicsWindow()
                 if (UIDropdown(CLAY_ID("EditorQualityPreset"), CLAY_STRING("Quality"), qualityOptions, 4u, &editorQualityIndex))
                     EditorApplyQualityPreset(settings, editorQualityIndex);
                 UICheckbox(CLAY_ID("EditorEnableOcclusion"), CLAY_STRING("Hi-Z occlusion culling"), &settings->enableOcclusion);
+                UICheckbox(CLAY_ID("EditorCPUSceneNoCullDraw"), CLAY_STRING("CPU scene no-cull draw"), &settings->cpuSceneNoCullDraw);
                 UICheckbox(CLAY_ID("EditorEnableHBAO")     , CLAY_STRING("HBAO ambient occlusion"), &settings->enableHBAO);
                 UICheckbox(CLAY_ID("EditorEnableMLAA")     , CLAY_STRING("Anti-aliasing (MLAA)"), &settings->enableMLAA);
                 UICheckbox(CLAY_ID("EditorShowMLAAEdges")  , CLAY_STRING("Show MLAA edge mask"), &settings->showMLAAEdges);
@@ -386,6 +387,7 @@ static void DrawGraphicsWindow()
                 editorQualityIndex = 2u; // defaults are the High preset
                 *settings = (RenderSettings){
                     .enableOcclusion = true,
+                    .cpuSceneNoCullDraw = false,
                     .enableHBAO = true,
                     .enableMLAA = true,
                     .showMLAAEdges = false,
@@ -648,7 +650,6 @@ static void GraphicsEditorUI(void)
             .layoutDirection = CLAY_LEFT_TO_RIGHT
         },
         .backgroundColor = UIPanelColor(),
-        .border = { .color = UIGetClayColor(UIColor_Border),  .width = { 0.0f, 0.0f, 0.0f, borderWidth, 0} }
     }) {
 
         CLAY(CLAY_ID("TabBarLeft"), {
@@ -677,7 +678,6 @@ static void GraphicsEditorUI(void)
             settingsOpen   ^= UIButton(CLAY_ID("Settings"), CLAY_STRING("Settings"), (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
             assetsOpen     ^= UIButton(CLAY_ID("Assets")  , CLAY_STRING("Assets")  , (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
             terrainOpen    ^= UIButton(CLAY_ID("Terrain") , CLAY_STRING("Terrain") , (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
-            importTestOpen ^= UIButton(CLAY_ID("ImportDbg"), CLAY_STRING("ImportDbg"), (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
             consoleOpen    ^= UIButton(CLAY_ID("Console") , CLAY_STRING("Console") , (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
             testOpen       ^= UIButton(CLAY_ID("Test")    , CLAY_STRING("Test")    , (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
             sceneViewOpen  ^= UIButton(CLAY_ID("View")    , CLAY_STRING("View")    , (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
@@ -756,7 +756,6 @@ static void GraphicsEditorUI(void)
         DrawSettingsWindow();
         DrawSceneWindow(&sceneOpen);
         DrawTexturesWindow(&texturesOpen);
-        DrawImportTestWindow(&importTestOpen);
         DrawAssetsWindow(&assetsOpen);
         DrawTerrainWindow(&terrainOpen);
         DrawConsoleWindow(&consoleOpen);

@@ -27,6 +27,8 @@
 /Debug
 /Release
 /vsbuild
+/Shaders/spv
+/Shaders/msl
 
 *.spv
 *.opencode

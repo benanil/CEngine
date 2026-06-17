@@ -29,11 +29,12 @@ typedef struct TexturePageClass_
 
 // per scene texture state: page atlases, descriptors and materials.
 // material slots are stable: bundle->materialOffset never moves once assigned,
-// removal leaves holes that only TextureSystem_ResetPacking + re-append reclaim.
+// removal frees material/descriptor slots, while atlas page space is reclaimed by repack.
 typedef struct TextureSystem_
 {
     TextureDescriptor* descriptors;       // MAX_TEXTURE_DESCRIPTORS
     MaterialGPU*       materials;         // MAX_GPU_MATERIALS
+    u64*               descriptorSlots;   // MAX_TEXTURE_DESCRIPTORS bits, 1 means occupied
     u32                numDescriptors;
     u32                materialWatermark; // highest used material slot + 1
     SDL_GPUBuffer*     descriptorBuffer;
@@ -57,8 +58,8 @@ void TextureSystem_Destroy(TextureSystem* ts);
 // caller keeps ownership of the staging textures. out: 0 on failure
 s32 TextureSystem_AppendBundle(TextureSystem* ts, const SceneBundle* bundle, const Texture* stagingTextures, u32 materialOffset);
 
-// clears the bundle's material slots to defaults. descriptor and page space of the
-// bundle leak until TextureSystem_ResetPacking
+// clears the bundle's material slots to defaults and releases descriptor slots.
+// page space of the bundle leaks until TextureSystem_ResetPacking
 void TextureSystem_RemoveBundle(TextureSystem* ts, const SceneBundle* bundle, u32 materialOffset);
 
 // downloads the class pages from gpu memory and writes them to path as a raw dump in

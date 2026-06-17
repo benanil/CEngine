@@ -88,6 +88,9 @@ bool  RenderSet_FindNodeEntity(const RenderSet* set, Range range, u32 meshIndex,
                               u32* outGroup, u32* outEntity);
 u32   RenderSet_CountTriangles(const RenderSet* set);
 
+// debug validation for insertion/upload invariants. out: false when corruption is found.
+bool  RenderSet_Validate(const RenderSet* set, const char* label);
+
 void  RenderSet_InitSet(RenderSet* set, u32 maxEntities, u32 maxGroups, u32 maxBundles, bool skinned);
 
 // materialOffset is the scene's gpu material slot base of the bundle.

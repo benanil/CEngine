@@ -20,6 +20,30 @@ static inline void BitsetReset(u64* bits, s32 idx) {
     bits[idx / 64] &= ~(1ull << (idx & 63));
 }
 
+static inline s32 FindFirstSet(u64 bits) {
+    if (bits == 0) return -1;
+    return (s32)TrailingZeroCount64(bits);
+}
+
+static inline s32 BitsetFindFirstEmpty(const u64* bits, s32 bitCount) {
+    if (bitCount <= 0) return -1;
+
+    const s32 wordCount = bitCount >> 6;
+
+    for (s32 wordIdx = 0; wordIdx < wordCount; ++wordIdx) {
+        const u64 emptyBits = ~bits[wordIdx];
+        const s32 bitIdx = FindFirstSet(emptyBits);
+        if (bitIdx >= 0) return (wordIdx << 6) + bitIdx;
+    }
+
+    const s32 remainingBits = bitCount & 63;
+    if (remainingBits == 0) return -1;
+
+    const u64 remainingMask = (1ull << remainingBits) - 1ull;
+    const s32 bitIdx = FindFirstSet(~bits[wordCount] & remainingMask);
+    return bitIdx < 0 ? -1 : (wordCount << 6) + bitIdx;
+}
+
 #define BIT_OPERATION(_Name, _Operation, _256Operation)                              \
 static inline void _Name##256(u64* res, const u64* a, const u64* b)                  \
 {                                                                                    \

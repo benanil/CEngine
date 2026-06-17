@@ -7,6 +7,7 @@
 #include "Include/Platform.h"
 #include "Include/FileSystem.h"
 #include "Include/Async.h"
+#include "Include/Bitset.h"
 #include "Math/Half.h"
 #include "Math/Vector.h"
 
@@ -229,13 +230,17 @@ static void ReleasePageTexture(Texture* texture)
 
 static u32 AddDescriptor(TextureSystem* ts, u32 pageIndex, float x, float y, float w, float h)
 {
-    if (ts->numDescriptors >= MAX_TEXTURE_DESCRIPTORS)
+    s32 descriptorIdx = BitsetFindFirstEmpty(ts->descriptorSlots, MAX_TEXTURE_DESCRIPTORS);
+    if (descriptorIdx < 0)
     {
         AX_ERROR("maximum texture descriptors reached");
         return TextureDesc_Invalid;
     }
 
-    u32 idx = ts->numDescriptors++;
+    u32 idx = (u32)descriptorIdx;
+    BitsetSet(ts->descriptorSlots, descriptorIdx);
+    if (idx >= ts->numDescriptors) ts->numDescriptors = idx + 1u;
+
     TextureDescriptor* desc = &ts->descriptors[idx];
     desc->pageIndex = pageIndex;
     desc->flags = 0;
@@ -253,8 +258,43 @@ static u32 AddDescriptorFlags(TextureSystem* ts, u32 pageIndex, float x, float y
     return idx;
 }
 
+static void UpdateDescriptorWatermark(TextureSystem* ts)
+{
+    while (ts->numDescriptors > TextureDesc_DefaultCount &&
+           !BitsetGet(ts->descriptorSlots, (s32)(ts->numDescriptors - 1u)))
+        ts->numDescriptors--;
+}
+
+static void FreeDescriptor(TextureSystem* ts, u32 descriptorIdx)
+{
+    if (descriptorIdx < TextureDesc_DefaultCount || descriptorIdx >= MAX_TEXTURE_DESCRIPTORS) return;
+    BitsetReset(ts->descriptorSlots, (s32)descriptorIdx);
+    ts->descriptors[descriptorIdx] = (TextureDescriptor){0};
+}
+
+static void MarkDescriptorOccupied(TextureSystem* ts, u32 descriptorIdx)
+{
+    if (descriptorIdx >= MAX_TEXTURE_DESCRIPTORS) return;
+    BitsetSet(ts->descriptorSlots, (s32)descriptorIdx);
+}
+
+static void RebuildDescriptorSlotsFromMaterials(TextureSystem* ts, const MaterialGPU* materials, u32 materialCount)
+{
+    MemsetZero(ts->descriptorSlots, ((MAX_TEXTURE_DESCRIPTORS + 63u) >> 6) * sizeof(u64));
+    for (u32 i = 0; i < TextureDesc_DefaultCount; i++)
+        MarkDescriptorOccupied(ts, i);
+
+    for (u32 i = 0; i < materialCount; i++)
+    {
+        MarkDescriptorOccupied(ts, materials[i].albedoDescriptor);
+        MarkDescriptorOccupied(ts, materials[i].normalDescriptor);
+        MarkDescriptorOccupied(ts, materials[i].metallicRoughnessDescriptor);
+    }
+}
+
 static void AddDefaultDescriptors(TextureSystem* ts)
 {
+    MemsetZero(ts->descriptorSlots, ((MAX_TEXTURE_DESCRIPTORS + 63u) >> 6) * sizeof(u64));
     ts->numDescriptors = 0;
     AddDescriptorFlags(ts, 0, 0, 0, TextureDefaultSize, TextureDefaultSize, TextureDesc_DefaultAlbedo); // invalid also samples harmless default
     AddDescriptorFlags(ts, 0, 0, 0, TextureDefaultSize, TextureDefaultSize, TextureDesc_DefaultAlbedo);
@@ -906,6 +946,7 @@ void TextureSystem_Init(TextureSystem* ts)
     MemsetZero(ts, sizeof(*ts));
     ts->descriptors = (TextureDescriptor*)AllocZeroTLSFGlobal(MAX_TEXTURE_DESCRIPTORS, sizeof(TextureDescriptor));
     ts->materials   = (MaterialGPU*)AllocZeroTLSFGlobal(MAX_GPU_MATERIALS, sizeof(MaterialGPU));
+    ts->descriptorSlots = (u64*)AllocZeroTLSFGlobal((MAX_TEXTURE_DESCRIPTORS + 63u) >> 6, sizeof(u64));
     ts->descriptorBuffer = CreateBuffer(NULL, sizeof(TextureDescriptor) * MAX_TEXTURE_DESCRIPTORS, SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ, "TextureDescriptors");
     ts->materialBuffer   = CreateBuffer(NULL, sizeof(MaterialGPU) * MAX_GPU_MATERIALS, SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ, "Materials");
 
@@ -923,6 +964,7 @@ void TextureSystem_Destroy(TextureSystem* ts)
     if (ts->materialBuffer)   SDL_ReleaseGPUBuffer(g_GPUDevice, ts->materialBuffer);
     if (ts->descriptors)      DeAllocateTLSFGlobal(ts->descriptors);
     if (ts->materials)        DeAllocateTLSFGlobal(ts->materials);
+    if (ts->descriptorSlots)  DeAllocateTLSFGlobal(ts->descriptorSlots);
     MemsetZero(ts, sizeof(*ts));
 }
 
@@ -970,7 +1012,6 @@ s32 TextureSystem_AppendBundle(TextureSystem* ts, const SceneBundle* bundle, con
             MarkWantedTexture(wanted, numImages, TextureClass_Albedo, image);
     }
 
-    u32 firstNewDescriptor = ts->numDescriptors;
     gNumCopyRequests = 0;
 
     for (u32 c = 0; c < TextureClass_Count; c++)
@@ -1027,10 +1068,9 @@ s32 TextureSystem_AppendBundle(TextureSystem* ts, const SceneBundle* bundle, con
     if (materialOffset + numMaterials > ts->materialWatermark)
         ts->materialWatermark = materialOffset + numMaterials;
 
-    if (ts->numDescriptors > firstNewDescriptor)
-        UpdateGPUBuffer(ts->descriptorBuffer, ts->descriptors + firstNewDescriptor,
-                        (ts->numDescriptors - firstNewDescriptor) * sizeof(TextureDescriptor),
-                        firstNewDescriptor * sizeof(TextureDescriptor));
+    if (ts->numDescriptors > 0)
+        UpdateGPUBuffer(ts->descriptorBuffer, ts->descriptors,
+                        ts->numDescriptors * sizeof(TextureDescriptor), 0);
     if (numMaterials > 0)
         UpdateGPUBuffer(ts->materialBuffer, ts->materials + materialOffset,
                         numMaterials * sizeof(MaterialGPU), materialOffset * sizeof(MaterialGPU));
@@ -1046,8 +1086,17 @@ void TextureSystem_RemoveBundle(TextureSystem* ts, const SceneBundle* bundle, u3
     u32 numMaterials = bundle->numMaterials > 0 ? (u32)bundle->numMaterials : 0u;
     if (numMaterials == 0 || materialOffset + numMaterials > MAX_GPU_MATERIALS) return;
 
-    // material slots stay reserved so other bundles' baked indices remain valid,
-    // page space and descriptors of the bundle leak until TextureSystem_ResetPacking
+    // page atlas space still leaks until TextureSystem_ResetPacking, but descriptor
+    // slots are only referenced through these material slots and can be reused now.
+    for (u32 m = 0; m < numMaterials; m++)
+    {
+        MaterialGPU* material = &ts->materials[materialOffset + m];
+        FreeDescriptor(ts, material->albedoDescriptor);
+        FreeDescriptor(ts, material->normalDescriptor);
+        FreeDescriptor(ts, material->metallicRoughnessDescriptor);
+    }
+    UpdateDescriptorWatermark(ts);
+
     for (u32 m = 0; m < numMaterials; m++)
     {
         MaterialGPU* dst = &ts->materials[materialOffset + m];
@@ -1281,6 +1330,16 @@ s32 TextureSystem_RestoreBaked(TextureSystem* ts,
         AX_ERROR("baked restore tables out of range: descriptors=%d materials=%d", numDescriptors, materialWatermark);
         return 0;
     }
+    for (u32 i = 0; i < materialWatermark; i++)
+    {
+        const MaterialGPU* material = &materials[i];
+        if (material->albedoDescriptor >= numDescriptors || material->normalDescriptor >= numDescriptors ||
+            material->metallicRoughnessDescriptor >= numDescriptors)
+        {
+            AX_ERROR("baked material descriptor out of range: material=%d descriptors=%d", i, numDescriptors);
+            return 0;
+        }
+    }
 
     double startTime = TimeSinceStartup();
     for (u32 c = 0; c < TextureClass_Count; c++)
@@ -1292,7 +1351,9 @@ s32 TextureSystem_RestoreBaked(TextureSystem* ts,
 
     MemCopy(ts->descriptors, descriptors, numDescriptors * sizeof(TextureDescriptor));
     ts->numDescriptors = numDescriptors;
-    UpdateGPUBuffer(ts->descriptorBuffer, ts->descriptors, numDescriptors * sizeof(TextureDescriptor), 0);
+    RebuildDescriptorSlotsFromMaterials(ts, materials, materialWatermark);
+    UpdateDescriptorWatermark(ts);
+    UpdateGPUBuffer(ts->descriptorBuffer, ts->descriptors, ts->numDescriptors * sizeof(TextureDescriptor), 0);
 
     if (materialWatermark > 0)
     {

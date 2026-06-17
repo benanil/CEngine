@@ -35,11 +35,12 @@ typedef struct Scene_
     SceneBundleRef* bundleRefs;     // tlsf, doubles on demand up to MAX_SCENE_BUNDLES
     u32             numBundles;
     u32             bundleCapacity;
+    u64*            materialSlots;   // MAX_GPU_MATERIALS bits, 1 means occupied
 
     LightGPU* lights;    // tlsf, MAX_SCENE_LIGHTS, authored lights pushed by Scene_SubmitLights
     u32       numLights;
 
-    u32 numMaterials;    // material slot watermark, slots are stable and leak on removal
+    u32 numMaterials;    // material slot watermark, offsets stay stable while occupied
     u32 renderDataDirty; // static render set buffers need re-upload, consumed by Render
     u32 texturesBaked;   // pages came from a baked atlas, packer state is unusable until a repack
 } Scene;

@@ -438,7 +438,7 @@ static void InitOutlinePipeline(void)
         .primitive_type  = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
         .target_info     = (SDL_GPUGraphicsPipelineTargetInfo){
             .num_color_targets         = 1,
-            .color_target_descriptions = &(SDL_GPUColorTargetDescription){ .format = SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT },
+            .color_target_descriptions = &(SDL_GPUColorTargetDescription){ .format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM },
             .depth_stencil_format      = SDL_GPU_TEXTUREFORMAT_D32_FLOAT,
             .has_depth_stencil_target  = true
         },

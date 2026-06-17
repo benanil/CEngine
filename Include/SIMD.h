@@ -221,20 +221,42 @@ typedef __m128i v128u;
 #define VeciNeg(a)               _mm_sub_epi32(_mm_set1_epi32(0), a) /* -a */
 
 // Vector Math
-#define VecDot(a, b)             _mm_dp_ps(a, b, 0xff)
-#define VecDotf(a, b)            _mm_cvtss_f32(_mm_dp_ps(a, b, 0xff))
-#define VecNorm(v)               _mm_div_ps(v, _mm_sqrt_ps(_mm_dp_ps(v, v, 0xff)))
-#define VecNormEst(v)            _mm_mul_ps(_mm_rsqrt_ps(_mm_dp_ps(v, v, 0xff)), v)
-#define VecLenf(v)               _mm_cvtss_f32(_mm_sqrt_ss(_mm_dp_ps(v, v, 0xff)))
-#define VecLen(v)                _mm_sqrt_ps(_mm_dp_ps(v, v, 0xff))
-#define VecLenSq(v)              _mm_dp_ps(v, v, 0xff)
+// Dot products avoid _mm_dp_ps (DPPS): it has ~13-cycle latency and serializes
+// on dependency chains. A multiply + lane reduction is shorter-latency. The *v
+// forms broadcast the sum to all lanes (matching the old DPPS result); the *f
+// forms extract a scalar. The 3-component forms sum x,y,z via splats, so the w
+// lane is naturally excluded (no mask needed).
+purefn v128f VCALL VecDotV(v128f a, v128f b) {
+    v128f m = _mm_mul_ps(a, b);
+    return _mm_add_ps(_mm_add_ps(VecSplatX(m), VecSplatY(m)),
+                      _mm_add_ps(VecSplatZ(m), VecSplatW(m)));
+}
+purefn v128f VCALL Vec3DotVImpl(v128f a, v128f b) {
+    v128f m = _mm_mul_ps(a, b);
+    return _mm_add_ps(_mm_add_ps(VecSplatX(m), VecSplatY(m)), VecSplatZ(m));
+}
+purefn f32 VCALL VecDotfImpl(v128f a, v128f b) {
+    v128f m = _mm_mul_ps(a, b);
+    return VecGetX(m) + VecGetY(m) + VecGetZ(m) + VecGetW(m);
+}
+purefn f32 VCALL Vec3DotfImpl(v128f a, v128f b) {
+    v128f m = _mm_mul_ps(a, b);
+    return VecGetX(m) + VecGetY(m) + VecGetZ(m);
+}
+#define VecDot(a, b)             VecDotV(a, b)
+#define VecDotf(a, b)            VecDotfImpl(a, b)
+#define VecNorm(v)               _mm_div_ps(v, _mm_sqrt_ps(VecDotV(v, v)))
+#define VecNormEst(v)            _mm_mul_ps(_mm_rsqrt_ps(VecDotV(v, v)), v)
+#define VecLenf(v)               _mm_cvtss_f32(_mm_sqrt_ss(VecDotV(v, v)))
+#define VecLen(v)                _mm_sqrt_ps(VecDotV(v, v))
+#define VecLenSq(v)              VecDotV(v, v)
 
-#define Vec3DotV(a, b)           _mm_dp_ps(a, b, 0x7f)
-#define Vec3DotfV(a, b)          _mm_cvtss_f32(_mm_dp_ps(a, b, 0x7f))
-#define Vec3NormV(v)             _mm_div_ps(v, _mm_sqrt_ps(_mm_dp_ps(v, v, 0x7f)))
-#define Vec3NormEstV(v)          _mm_mul_ps(_mm_rsqrt_ps(_mm_dp_ps(v, v, 0x7f)), v)
-#define Vec3LenfV(v)             _mm_cvtss_f32(_mm_sqrt_ss(_mm_dp_ps(v, v, 0x7f)))
-#define Vec3LenV(v)              _mm_sqrt_ps(_mm_dp_ps(v, v, 0x7f))
+#define Vec3DotV(a, b)           Vec3DotVImpl(a, b)
+#define Vec3DotfV(a, b)          Vec3DotfImpl(a, b)
+#define Vec3NormV(v)             _mm_div_ps(v, _mm_sqrt_ps(Vec3DotVImpl(v, v)))
+#define Vec3NormEstV(v)          _mm_mul_ps(_mm_rsqrt_ps(Vec3DotVImpl(v, v)), v)
+#define Vec3LenfV(v)             _mm_cvtss_f32(_mm_sqrt_ss(Vec3DotVImpl(v, v)))
+#define Vec3LenV(v)              _mm_sqrt_ps(Vec3DotVImpl(v, v))
 
 // Swizzling Masking
 #define VecSelect1000  _mm_castsi128_ps(_mm_setr_epi32(0xFFFFFFFF, 0x00000000, 0x00000000, 0x00000000))

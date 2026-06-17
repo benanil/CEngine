@@ -3,6 +3,7 @@
 #include "Include/UIRenderer.h"
 #include "Include/Platform.h"
 #include "Include/Animation.h"
+#include "Include/Memory.h"
 #include "Include/Scene.h"
 #include "Include/Terrain.h"
 
@@ -40,6 +41,7 @@ RenderSettings g_RenderSettings = {
     .enableLocalLights           = true,
     .enableLightFrustumCulling   = true,
     .enableLightOcclusionCulling = true,
+    .cpuSceneNoCullDraw          = false,
     .showLightRects              = false,
     .terrainWireframe            = false,
     .terrainLodFactor            = 1.0f,
@@ -393,8 +395,83 @@ static void UploadRenderSetEntities(RenderSet* set, RenderSetBuffers* buffers)
     UpdateGPUBuffer(buffers->entity, set->entities, set->numEntities * sizeof(Entity), 0ull);
 }
 
+static void UploadCPUNoCullDrawSet(RenderSet* set, RenderSetBuffers* buffers)
+{
+    if (set->numGroups == 0) return;
+
+    u32 numDraws = set->numGroups * MESH_LOD_COUNT;
+    SDL_GPUIndexedIndirectDrawCommand* drawArgs = (SDL_GPUIndexedIndirectDrawCommand*)ArenaPushGlobal(numDraws * sizeof(SDL_GPUIndexedIndirectDrawCommand));
+    u32* drawSparseIndices = set->numEntities ? (u32*)ArenaPushGlobal(set->numEntities * sizeof(u32)) : NULL;
+    u32* visibleSparseIndices = set->numEntities ? (u32*)ArenaPushGlobal(set->numEntities * sizeof(u32)) : NULL;
+    u32* visibilityMask = (u32*)ArenaPushGlobal(set->maxEntities * sizeof(u32));
+    u32 dispatchArgs[6] = { 0u, 1u, 1u, numDraws, 0u, 0u };
+    u32 visibleCount = 0u;
+    u32 maxLODVertices = 0u;
+
+    MemsetZero(drawArgs, numDraws * sizeof(SDL_GPUIndexedIndirectDrawCommand));
+    MemsetZero(visibilityMask, set->maxEntities * sizeof(u32));
+
+    for (u32 groupIdx = 0; groupIdx < set->numGroups; groupIdx++)
+    {
+        PrimitiveGroup* group = &set->primitiveGroups[groupIdx];
+        for (u32 lod = 0; lod < MESH_LOD_COUNT; lod++)
+        {
+            u32 drawIdx = groupIdx * MESH_LOD_COUNT + lod;
+            drawArgs[drawIdx].num_indices = group->lodNumIndices[lod];
+            drawArgs[drawIdx].num_instances = lod == 0 ? group->numEntities : 0u;
+            drawArgs[drawIdx].first_index = group->lodIndexOffset[lod];
+            drawArgs[drawIdx].vertex_offset = 0;
+            drawArgs[drawIdx].first_instance = 0u;
+        }
+
+        for (u32 e = 0; e < group->numEntities; e++)
+        {
+            u32 denseIdx = group->entityOffset + e;
+            drawSparseIndices[denseIdx] = denseIdx;
+
+            u32 sparseIdx = set->entities[denseIdx].sparseIdx;
+            if (sparseIdx < set->maxEntities && visibilityMask[sparseIdx] == 0u)
+            {
+                visibilityMask[sparseIdx] = 1u;
+                visibleSparseIndices[visibleCount++] = sparseIdx;
+            }
+        }
+        maxLODVertices = Maxu32(maxLODVertices, group->lodNumVertices[0]);
+    }
+
+    dispatchArgs[0] = (visibleCount + 31u) / 32u;
+    dispatchArgs[4] = (visibleCount + 31u) / 32u;
+    dispatchArgs[5] = (maxLODVertices + 31u) / 32u;
+
+    UpdateGPUBuffer(buffers->drawArgs, drawArgs, numDraws * sizeof(SDL_GPUIndexedIndirectDrawCommand), 0);
+    UpdateGPUBuffer(buffers->dispatchArgs, dispatchArgs, sizeof(dispatchArgs), 0);
+    UpdateGPUBuffer(buffers->visibleCount, &visibleCount, sizeof(visibleCount), 0);
+    if (set->numEntities)
+    {
+        UpdateGPUBuffer(buffers->drawSparseIndices, drawSparseIndices, set->numEntities * sizeof(u32), 0);
+        UpdateGPUBuffer(buffers->visibleSparseIndices, visibleSparseIndices, visibleCount * sizeof(u32), 0);
+    }
+
+    ArenaPopGlobal(set->maxEntities * sizeof(u32));
+    if (visibleSparseIndices) ArenaPopGlobal(set->numEntities * sizeof(u32));
+    if (drawSparseIndices) ArenaPopGlobal(set->numEntities * sizeof(u32));
+    ArenaPopGlobal(numDraws * sizeof(SDL_GPUIndexedIndirectDrawCommand));
+}
+
+static void UploadCPUNoCullDraws(void)
+{
+    for (u32 s = 0; s < g_NumActiveScenes; s++)
+    {
+        Scene* scene = g_ActiveScenes[s];
+        UploadCPUNoCullDrawSet(&scene->skinnedSet, &scene->skinnedBuffers);
+        UploadCPUNoCullDrawSet(&scene->surfaceSet, &scene->surfaceBuffers);
+    }
+}
+
 void CullScene(SDL_GPUCommandBuffer* cmd, FrustumPlanes planes, mat4x4 viewProj, bool enableHiZ, bool enableSurfaceLOD, u32 forcedLOD)
 {
+    if (g_RenderSettings.cpuSceneNoCullDraw) return;
+
     for (u32 s = 0; s < g_NumActiveScenes; s++)
     {
         Scene* scene = g_ActiveScenes[s];
@@ -518,6 +595,8 @@ void Render(void)
         UploadRenderSetEntities(&scene->skinnedSet, &scene->skinnedBuffers);
         UploadRenderSetEntities(&scene->surfaceSet, &scene->surfaceBuffers);
     }
+    if (g_RenderSettings.cpuSceneNoCullDraw)
+        UploadCPUNoCullDraws();
     mat4x4 viewProj = M44Multiply(g_Camera.view, g_Camera.projection);
     bool enableHiZ  = g_RenderSettings.enableOcclusion && winstate->hiz_valid;
     mat4x4 hiZViewProj = enableHiZ ? winstate->hiz_view_proj : viewProj;
@@ -525,7 +604,7 @@ void Render(void)
     FrustumPlanes cameraFrustum = CreateFrustumPlanes(viewProj);
     UpdateLightShadows();
     UploadLightBuffer();
-    for (u32 s = 0; s < g_NumActiveScenes; s++)
+    for (u32 s = 0; s < g_NumActiveScenes && !g_RenderSettings.cpuSceneNoCullDraw; s++)
     {
         Scene* scene = g_ActiveScenes[s];
         GatherSkinnedAnimationVisibility(cmd, &scene->skinnedSet, &scene->skinnedBuffers,
@@ -573,7 +652,6 @@ void Render(void)
     }
     RenderLines(cmd, &color_load_target, &main_depth_target, viewProj);
     Terrain_RenderWireframe(cmd, &color_load_target, &main_depth_target, viewProj);
-    RenderOutline(cmd, &color_load_target, &main_depth_target, viewProj);
     DispatchTonemapCompute(cmd, renderW, renderH, viewProj);
 
     winstate->hiz_view_proj = viewProj;
@@ -587,6 +665,7 @@ void Render(void)
     }
 
     SDL_GPUColorTargetInfo final_load_target = MakeLoadedTextureTarget(finalTexture);
+    RenderOutline(cmd, &final_load_target, &main_depth_target, viewProj);
     RenderGizmo(cmd, &final_load_target, viewProj);
     RenderSlugDemo(cmd, &final_load_target, &main_depth_target, viewProj);
     g_RenderFinalTexture = finalTexture;

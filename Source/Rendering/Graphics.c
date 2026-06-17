@@ -42,7 +42,6 @@
     ((((uint32_t)(variant)) << 29U) | (((uint32_t)(major)) << 22U) | (((uint32_t)(minor)) << 12U) | ((uint32_t)(patch)))
 #endif
 
-
 #include "Extern/stb/stb_image.h"
 #include "Extern/stb/stb_image_resize2.h"
 
@@ -149,7 +148,6 @@ void GeometryHeapFree(GeometryBufferKind kind, void* raw)
     if (!raw || !g_GeometryTLSF[kind]) return;
     tlsf_free(g_GeometryTLSF[kind], raw);
 }
-
 
 void GraphicsInit(bool msaa)
 {
@@ -326,53 +324,34 @@ SDL_GPUBuffer* CreateBuffer(
     return gpu_buffer;
 }
 
-static void UpdateGPUBufferSingle(SDL_GPUBuffer* buffer, const void* data, size_t bufferSize, size_t offset);
-
 void UpdateGPUBuffer(SDL_GPUBuffer* buffer, const void* data, size_t bufferSize, size_t offset)
-{
-    const size_t maxUploadChunk = 16ull * 1024ull * 1024ull;
-    const u8* src = (const u8*)data;
-    while (bufferSize > 0)
-    {
-        size_t chunkSize = Minu64(bufferSize, maxUploadChunk);
-        UpdateGPUBufferSingle(buffer, src, chunkSize, offset);
-        src += chunkSize;
-        offset += chunkSize;
-        bufferSize -= chunkSize;
-    }
-}
-
-static void UpdateGPUBufferSingle(SDL_GPUBuffer* buffer, const void* data, size_t bufferSize, size_t offset)
 {
     SDL_GPUTransferBufferCreateInfo transferBufferCreateInfo;
     transferBufferCreateInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
     transferBufferCreateInfo.size  = bufferSize;
     transferBufferCreateInfo.props = 0;
 
-    SDL_GPUTransferBuffer* boneTransferBuffer;
-    SDL_GPUCopyPass* copyPass;
-    Uint8* boneTransferPtr;
-    SDL_GPUCommandBuffer* uploadCmdBuf;
-
-    uploadCmdBuf = SDL_AcquireGPUCommandBuffer(g_GPUDevice);
-    copyPass = SDL_BeginGPUCopyPass(uploadCmdBuf);
+    SDL_GPUTransferBuffer* dataTransferBuffer;
+    Uint8* dataTransferPtr;
+    SDL_GPUCommandBuffer* uploadCmdBuf = SDL_AcquireGPUCommandBuffer(g_GPUDevice);
+    SDL_GPUCopyPass* copyPass = SDL_BeginGPUCopyPass(uploadCmdBuf);
     
-    boneTransferBuffer = SDL_CreateGPUTransferBuffer(g_GPUDevice, &transferBufferCreateInfo);
-    boneTransferPtr = (Uint8*)SDL_MapGPUTransferBuffer(g_GPUDevice, boneTransferBuffer, true);
-    MemCopy(boneTransferPtr, data, bufferSize);
-    SDL_UnmapGPUTransferBuffer(g_GPUDevice, boneTransferBuffer);
+    dataTransferBuffer = SDL_CreateGPUTransferBuffer(g_GPUDevice, &transferBufferCreateInfo);
+    dataTransferPtr = (Uint8*)SDL_MapGPUTransferBuffer(g_GPUDevice, dataTransferBuffer, true);
+    MemCopy(dataTransferPtr, data, bufferSize);
+    SDL_UnmapGPUTransferBuffer(g_GPUDevice, dataTransferBuffer);
 
     SDL_UploadToGPUBuffer(copyPass,
-                          &(SDL_GPUTransferBufferLocation) { .transfer_buffer = boneTransferBuffer, .offset = 0}, 
-                          &(SDL_GPUBufferRegion) { .buffer = buffer,  .offset = offset,  .size = bufferSize }, 
-                          true);
+        &(SDL_GPUTransferBufferLocation) { .transfer_buffer = dataTransferBuffer, .offset = 0}, 
+        &(SDL_GPUBufferRegion) { .buffer = buffer,  .offset = offset,  .size = bufferSize }, 
+        false);
     
     SDL_EndGPUCopyPass(copyPass);
     
     SDL_GPUFence* fence = SDL_SubmitGPUCommandBufferAndAcquireFence(uploadCmdBuf);
     SDL_WaitForGPUFences(g_GPUDevice, true, &fence, 1);
     SDL_ReleaseGPUFence(g_GPUDevice, fence);
-    SDL_ReleaseGPUTransferBuffer(g_GPUDevice, boneTransferBuffer);
+    SDL_ReleaseGPUTransferBuffer(g_GPUDevice, dataTransferBuffer);
 }
 
 static u32 GetMipCount(u32 width, u32 height)
