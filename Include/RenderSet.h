@@ -116,6 +116,7 @@ u32   RenderSet_RemoveEntities(RenderSet* set, u32 groupIdx, u32 localStartIdx, 
 
 u32   RenderSet_RemoveSceneBundle(RenderSet* set, u32 bundleIdx);
 
+// shouldn't be called frequently
 void  RenderSet_CompactEntities(RenderSet* set);
 
 

@@ -125,6 +125,7 @@ typedef void (SDLCALL *CP_DialogFileCallback)(void *userdata, const char * const
 // Window
 void wSetWindowSize(s32 width, s32 height);
 void wSetWindowPosition(s32 x, s32 y);
+void wApplyWindowShape(void);
 void wOpenFolder(const char* folderPath, CP_DialogFileCallback callback);
 void wOpenFile(const char* filePath, CP_DialogFileCallback callback);
 

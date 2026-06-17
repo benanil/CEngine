@@ -34,11 +34,25 @@ static float2 sceneViewContentSize;
 static UIImageData sceneViewImage;
 static Texture editorLogoTexture;
 static UIImageData editorLogoImage;
+static Texture editorMinimizeTexture;
+static Texture editorMaximizeTexture;
+static Texture editorRestoreTexture;
+static Texture editorCloseTexture;
+static UIImageData editorMinimizeImage;
+static UIImageData editorMaximizeImage;
+static UIImageData editorRestoreImage;
+static UIImageData editorCloseImage;
+static u32 editorMinimizePixels[64 * 64];
+static u32 editorMaximizePixels[64 * 64];
+static u32 editorRestorePixels[64 * 64];
+static u32 editorClosePixels[64 * 64];
 #define SCENE_VIEW_TITLE "Scene View"
 
 #define EDITOR_SETTINGS_PATH "EditorSettings.txt"
 #define EDITOR_UI_LAYOUT_PATH "EditorUI.txt"
 #define EDITOR_TAB_BAR_HEIGHT 40.0f
+
+#include "../UI/WindowButtonIcons.inl"
 
 static bool editorSettingsLoaded;
 static bool editorOpenLastScene;
@@ -464,7 +478,7 @@ static void DrawSettingsWindow()
                 .layoutDirection = CLAY_LEFT_TO_RIGHT
             }
         }) {
-            if (UIButton(CLAY_ID("SettingsClearLastScene"), CLAY_STRING("Clear Last Scene"), (Clay_Dimensions){ 140.0f, 30.0f }, false))
+        if (UIButtonFlags(CLAY_ID("SettingsClearLastScene"), CLAY_STRING("Clear Last Scene"), (Clay_Dimensions){ 140.0f, 30.0f }, false, UIButtonFlag_FitText))
             {
                 editorLastScene[0] = '\0';
                 EditorSettingsSave();
@@ -573,6 +587,50 @@ static void EditorCacheTabBarButtonBox(Clay_ElementId id)
     editorTabBarButtonBoxes[editorTabBarButtonBoxCount++] = data.boundingBox;
 }
 
+static Clay_Color EditorButtonColor(bool hovered, bool selected)
+{
+    if (hovered) return UIGetClayColor(UIColor_Hovered);
+    if (selected) return UIGetClayColor(UIColor_SelectedBorder);
+    return UIGetClayColor(UIColor_Quad);
+}
+
+static bool EditorTabBarIconButton(Clay_ElementId id, UIImageData* image, Clay_Dimensions size)
+{
+    bool clicked = false;
+    f32 radius = UIFloatStackZero(UIFloat_CornerRadius) ? size.height * 0.5f : UIGetFloat(UIFloat_CornerRadius);
+    CLAY(id, {
+        .layout = {
+            .sizing = { CLAY_SIZING_FIXED(size.width), CLAY_SIZING_FIXED(size.height) },
+            .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER }
+        },
+        .backgroundColor = EditorButtonColor(Clay_Hovered(), false),
+        .cornerRadius = CLAY_CORNER_RADIUS(radius),
+        .border = { .color = UIGetClayColor(UIColor_Border), .width = CLAY_BORDER_ALL(UIGetFloat(UIFloat_BorderWidth)) }
+    }) {
+        if (UIClicked()) clicked = true;
+        if (image && image->texture)
+        {
+            CLAY(CLAY_ID_LOCAL("Icon"), {
+                .layout = { .sizing = { CLAY_SIZING_FIXED(16.0f), CLAY_SIZING_FIXED(16.0f) } },
+                .image = { .imageData = image }
+            }) {}
+        }
+    }
+    return clicked;
+}
+
+static Texture EditorCreateWindowIconTexture(const u64 rows[64], u32 pixels[64 * 64], const char* label)
+{
+    for (u32 y = 0; y < 64u; y++)
+    {
+        u64 row = rows[y];
+        for (u32 x = 0; x < 64u; x++)
+            pixels[y * 64u + x] = (row & (1ull << x)) ? UCOLOR_WHITE : 0x00FFFFFFu;
+    }
+
+    return rCreateTexture(64, 64, pixels, TEX_FMT_8UNORM4, TexFlags_None, TEX_SAMPLER, label);
+}
+
 static bool EditorPointInCachedTabBarButton(f32 x, f32 y)
 {
     for (u32 i = 0; i < editorTabBarButtonBoxCount; i++)
@@ -619,7 +677,15 @@ void EditorInit(void)
         AX_WARN("failed to set editor window hit test: %s", SDL_GetError());
 
     editorLogoTexture = rImportTexture("Assets/Icons/CLogo.png", TexFlags_MipMap, "EditorLogo");
-    editorLogoImage = UIImageFromTexture(&editorLogoTexture);
+    editorLogoImage   = UIImageFromTexture(&editorLogoTexture);
+    editorMinimizeTexture = EditorCreateWindowIconTexture(EditorMinimizeIconRows, editorMinimizePixels, "EditorMinimizeIcon");
+    editorMaximizeTexture = EditorCreateWindowIconTexture(EditorMaximizeIconRows, editorMaximizePixels, "EditorMaximizeIcon");
+    editorRestoreTexture  = EditorCreateWindowIconTexture(EditorRestoreIconRows , editorRestorePixels , "EditorRestoreIcon");
+    editorCloseTexture    = EditorCreateWindowIconTexture(EditorCloseIconRows   , editorClosePixels   , "EditorCloseIcon");
+    editorMinimizeImage = UIImageFromTexture(&editorMinimizeTexture);
+    editorMaximizeImage = UIImageFromTexture(&editorMaximizeTexture);
+    editorRestoreImage  = UIImageFromTexture(&editorRestoreTexture);
+    editorCloseImage    = UIImageFromTexture(&editorCloseTexture);
 }
 
 static void GraphicsEditorUI(void)
@@ -692,31 +758,27 @@ static void GraphicsEditorUI(void)
                 .childGap = 15,
             }
         }) {
-            UIPushFloatAdd(UIFloat_TextScale, -0.15f);
             UIPushFloat(UIFloat_CornerRadius, 9.0f);
-            UIPushColor(UIColor_Text, UCOLOR_LIGHT_GRAY);
-            UIButtonPushColors(UCOLOR_WARNING, UCOLOR_GOLD, UCOLOR_YELLOW);
+            UIButtonPushColors(UCOLOR_GOLD, UCOLOR_GOLD, UCOLOR_ORANGE);
             
-            if (UIButton(CLAY_ID("TabBarMinimizeProgram"), CLAY_STRING("-"), (Clay_Dimensions) { 18, 18 }, false))
+            if (EditorTabBarIconButton(CLAY_ID("TabBarMinimizeProgram"), &editorMinimizeImage, (Clay_Dimensions) { 23, 23 }))
             {
                 SDL_MinimizeWindow(g_SDLWindow);
             }
 
             UIButtonPushColors(UCOLOR_SUCCESS, UCOLOR_DARK_GREEN, UCOLOR_GREEN);
-            if (UIButton(CLAY_ID("TabBarMaximizeProgram"), EditorWindowIsMaximized() ? CLAY_STRING("=") : CLAY_STRING("+"), (Clay_Dimensions) { 18, 18 }, false))
+            if (EditorTabBarIconButton(CLAY_ID("TabBarMaximizeProgram"), EditorWindowIsMaximized() ? &editorRestoreImage : &editorMaximizeImage, (Clay_Dimensions) { 23, 23 }))
             {
                 EditorToggleWindowMaximized();
             }
-             
+ 
             UIButtonPushColors(UCOLOR_ERROR, UCOLOR_DARK_RED, UCOLOR_RED);
-            if (UIButton(CLAY_ID("TabBarExitProgram"), CLAY_STRING("x"), (Clay_Dimensions) { 18, 18 }, false))
+            if (EditorTabBarIconButton(CLAY_ID("TabBarExitProgram"), &editorCloseImage, (Clay_Dimensions) { 23, 23 }))
             {
                 extern void DestroyMain();
                 DestroyMain();
             }
          
-            UIPopColor(UIColor_Text);
-            UIPopFloat(UIFloat_TextScale);
             UIPopFloat(UIFloat_CornerRadius);
             UIButtonPopColors();
             UIButtonPopColors();

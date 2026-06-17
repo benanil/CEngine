@@ -14,7 +14,9 @@
 #include <SDL3/SDL_events.h>
 #include <SDL3/SDL_dialog.h>
 #include <SDL3/SDL_mouse.h>
+#include <SDL3/SDL_properties.h>
 #include <SDL3/SDL_timer.h>
+#include <SDL3/SDL_video.h>
 
 #define STB_SPRINTF_IMPLEMENTATION
 #include "Extern/stb/stb_sprintf.h"
@@ -32,6 +34,63 @@ static wCursor g_CurrentCursor = wCursor_Count;
 
 #ifdef PLATFORM_WINDOWS
 #include <DbgHelp.h>
+
+#define WINDOW_CORNER_RADIUS 28
+
+static HWND PlatformGetWin32WindowHandle(void)
+{
+    if (!g_SDLWindow)
+    {
+        AX_WARN("missing SDL window for Win32 handle");
+        return NULL;
+    }
+
+    SDL_PropertiesID props = SDL_GetWindowProperties(g_SDLWindow);
+    if (!props)
+    {
+        AX_WARN("getting SDL window properties failed: %s", SDL_GetError());
+        return NULL;
+    }
+
+    HWND hwnd = (HWND)SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WIN32_HWND_POINTER, NULL);
+    if (!hwnd) AX_WARN("getting Win32 window handle failed: %s", SDL_GetError());
+    return hwnd;
+}
+
+static void PlatformApplyRoundedWindowRegion(void)
+{
+    HWND hwnd = PlatformGetWin32WindowHandle();
+    if (!hwnd) return;
+
+    SDL_WindowFlags flags = SDL_GetWindowFlags(g_SDLWindow);
+    if ((flags & (SDL_WINDOW_MAXIMIZED | SDL_WINDOW_FULLSCREEN)) != 0u)
+    {
+        SetWindowRgn(hwnd, NULL, TRUE);
+        return;
+    }
+
+    int width = 0;
+    int height = 0;
+    SDL_GetWindowSize(g_SDLWindow, &width, &height);
+    if (width <= 0 || height <= 0)
+    {
+        AX_WARN("skipping rounded window region for invalid size %d x %d", width, height);
+        return;
+    }
+    // https://learn.microsoft.com/en-us/windows/apps/desktop/modernize/ui/apply-rounded-corners
+    HRGN region = CreateRoundRectRgn(0, 0, width + 1, height + 1, WINDOW_CORNER_RADIUS, WINDOW_CORNER_RADIUS);
+    if (!region)
+    {
+        AX_WARN("creating rounded window region failed");
+        return;
+    }
+
+    if (!SetWindowRgn(hwnd, region, TRUE))
+    {
+        DeleteObject(region);
+        AX_WARN("setting rounded window region failed");
+    }
+}
 
 static void PrintCrashFrame(u32 idx, void* addr)
 {
@@ -189,8 +248,15 @@ void EventCallback(const SDL_Event* event)
                 Camera_RecalculateProjection(&g_Camera, event->window.data1, event->window.data2);
             PlatformCtx.WindowWidth = event->window.data1;
             PlatformCtx.WindowHeight = event->window.data2;
+            wApplyWindowShape();
             break;
         }
+        case SDL_EVENT_WINDOW_MAXIMIZED:
+        case SDL_EVENT_WINDOW_RESTORED:
+        case SDL_EVENT_WINDOW_ENTER_FULLSCREEN:
+        case SDL_EVENT_WINDOW_LEAVE_FULLSCREEN:
+            wApplyWindowShape();
+            break;
         case SDL_EVENT_WINDOW_MOVED:
             PlatformCtx.WindowPosX = event->window.data1;
             PlatformCtx.WindowPosY = event->window.data2;
@@ -309,6 +375,7 @@ void wSetWindowSize(s32 width, s32 height)
     SDL_SetWindowSize(g_SDLWindow, width, height);
     PlatformCtx.WindowWidth = width;
     PlatformCtx.WindowHeight = height;
+    wApplyWindowShape();
 }
 
 void wSetWindowPosition(s32 x, s32 y)
@@ -327,6 +394,13 @@ void wOpenFolder(const char* folderPath, SDL_DialogFileCallback callback)
 void wOpenFile(const char* filePath, SDL_DialogFileCallback callback)
 {
     SDL_ShowOpenFileDialog(callback, NULL, NULL, NULL, 0, filePath, false);
+}
+
+void wApplyWindowShape(void)
+{
+    #ifdef PLATFORM_WINDOWS
+    PlatformApplyRoundedWindowRegion();
+    #endif
 }
 
 static void EnableConsoleColors(void)
@@ -366,6 +440,7 @@ void PlatformInit()
     PlatformCtx.StartupTime           = SDL_GetPerformanceCounter();
     PlatformCtx.LastTime              = PlatformCtx.StartupTime;
     PlatformCtx.FrameCount            = 0;
+    wApplyWindowShape();
 }
 
 void PlatformUpdate()

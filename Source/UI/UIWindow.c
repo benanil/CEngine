@@ -4,6 +4,7 @@
 #include "Include/Random.h"
 #include "Include/FileSystem.h"
 #include "Include/Algorithm.h"
+#include "Math/Color.h"
 
 typedef enum UIWindowState_
 {
@@ -73,6 +74,19 @@ static u32    g_UIRightClickMenuHash; // open menu's window, 0 when closed
 static float2 g_UIRightClickMenuPos;
 static bool   g_UIRightClickMenuDrawn;
 
+static Texture g_UIWindowMinimizeTexture;
+static Texture g_UIWindowMaximizeTexture;
+static Texture g_UIWindowCloseTexture;
+static UIImageData g_UIWindowMinimizeImage;
+static UIImageData g_UIWindowMaximizeImage;
+static UIImageData g_UIWindowCloseImage;
+static u32 g_UIWindowMinimizePixels[64 * 64];
+static u32 g_UIWindowMaximizePixels[64 * 64];
+static u32 g_UIWindowClosePixels[64 * 64];
+static bool g_UIWindowButtonIconsInitialized;
+
+#include "WindowButtonIcons.inl"
+
 enum
 {
     UIWindowSnap_Left   = 1u << 0,
@@ -80,6 +94,40 @@ enum
     UIWindowSnap_Top    = 1u << 2,
     UIWindowSnap_Bottom = 1u << 3
 };
+
+static Texture UIWindowCreateButtonIconTexture(const u64 rows[64], u32 pixels[64 * 64], const char* label)
+{
+    for (u32 y = 0; y < 64u; y++)
+    {
+        u64 row = rows[y];
+        for (u32 x = 0; x < 64u; x++)
+            pixels[y * 64u + x] = (row & (1ull << x)) ? UCOLOR_WHITE : 0x00FFFFFFu;
+    }
+
+    return rCreateTexture(64, 64, pixels, TEX_FMT_8UNORM4, TexFlags_None, TEX_SAMPLER, label);
+}
+
+static void UIWindowEnsureButtonIcons(void)
+{
+    if (g_UIWindowButtonIconsInitialized) return;
+    g_UIWindowButtonIconsInitialized = true;
+
+    g_UIWindowMinimizeTexture = UIWindowCreateButtonIconTexture(EditorMinimizeIconRows, g_UIWindowMinimizePixels, "UIWindowMinimizeIcon");
+    g_UIWindowMaximizeTexture = UIWindowCreateButtonIconTexture(EditorMaximizeIconRows, g_UIWindowMaximizePixels, "UIWindowMaximizeIcon");
+    g_UIWindowCloseTexture    = UIWindowCreateButtonIconTexture(EditorCloseIconRows   , g_UIWindowClosePixels   , "UIWindowCloseIcon");
+    g_UIWindowMinimizeImage = UIImageFromTexture(&g_UIWindowMinimizeTexture);
+    g_UIWindowMaximizeImage = UIImageFromTexture(&g_UIWindowMaximizeTexture);
+    g_UIWindowCloseImage    = UIImageFromTexture(&g_UIWindowCloseTexture);
+}
+
+static void UIWindowTitleButtonIcon(UIImageData* image)
+{
+    if (!image || !image->texture) return;
+    CLAY(CLAY_ID_LOCAL("Icon"), {
+        .layout = { .sizing = { CLAY_SIZING_FIXED(16.0f), CLAY_SIZING_FIXED(16.0f) } },
+        .image = { .imageData = image }
+    }) {}
+}
 
 // screen area windows may occupy, the top inset keeps them below overlays like the editor tab bar
 static float2 UIWindowWorkPos(void)
@@ -1266,6 +1314,7 @@ bool UIBeginWindowId(Clay_ElementId id, const char* title, float2 position, floa
 
     g_UIWindowCurrent = windowIndex;
     UIWindow* window = &g_UIWindows[windowIndex];
+    UIWindowEnsureButtonIcons();
     window->isOpenPtr = open;
     window->flags = flags;
     window->currElement = 0;
@@ -1325,7 +1374,7 @@ bool UIBeginWindowId(Clay_ElementId id, const char* title, float2 position, floa
     }
 
     f32 titlePad = 10.0f;
-    f32 buttonSize = 18.0f;
+    f32 buttonSize = 22.0f;
     float2 closePos = { window->position.x + window->scale.x - titlePad - buttonSize, window->position.y + (window->topHeight - buttonSize) * 0.5f };
     float2 collapsePos = { closePos.x - buttonSize - 8.0f, closePos.y };
     bool closeHovered = window->topHeight > 0.0f && UIHitRect(closePos, F2Set1(buttonSize), g_UI.mouse);
@@ -1428,10 +1477,10 @@ bool UIBeginWindowId(Clay_ElementId id, const char* title, float2 position, floa
             CLAY(CLAY_ID_LOCAL("TitleSpacer"), { .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(1.0f) } } }) {}
             CLAY(CLAY_ID_LOCAL("Collapse"), {
                 .layout = { .sizing = { CLAY_SIZING_FIXED(buttonSize), CLAY_SIZING_FIXED(buttonSize) }, .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER } },
-                .backgroundColor = UIColorToClay(collapseHovered ? UIGetColor(UIColor_Hovered) : UIGetColor(UIColor_CheckboxBG)),
+                .backgroundColor = UIColorToClay(collapseHovered ? UCOLOR_ORANGE : UIGetColor(UIColor_CheckboxBG)),
                 .cornerRadius = CLAY_CORNER_RADIUS(3.0f)
             }) {
-                CLAY_TEXT(window->isCollapsed ? CLAY_STRING("+") : CLAY_STRING("-"), CLAY_TEXT_CONFIG({ .fontSize = 16, .textColor = UIGetClayColor(UIColor_Text) }));
+                UIWindowTitleButtonIcon(window->isCollapsed ? &g_UIWindowMaximizeImage : &g_UIWindowMinimizeImage);
             }
             if (open)
             {
@@ -1440,7 +1489,7 @@ bool UIBeginWindowId(Clay_ElementId id, const char* title, float2 position, floa
                     .backgroundColor = UIColorToClay(closeHovered ? 0xFF3030FFu : UIGetColor(UIColor_CheckboxBG)),
                     .cornerRadius = CLAY_CORNER_RADIUS(3.0f)
                 }) {
-                    CLAY_TEXT(CLAY_STRING("x"), CLAY_TEXT_CONFIG({ .fontSize = 14, .textColor = UIGetClayColor(UIColor_Text) }));
+                    UIWindowTitleButtonIcon(&g_UIWindowCloseImage);
                 }
             }
         }
