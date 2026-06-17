@@ -76,6 +76,15 @@ BIT_OPERATION(Or,     VeciOr,     VeciOr256)
 BIT_OPERATION(And,    VeciAnd,    VeciAnd256)
 BIT_OPERATION(Xor,    VeciXor,    VeciXor256)
 
+static inline void Not256(u64* res, const u64* a)
+{
+    #if defined(AX_SUPPORT_AVX2)
+    VecStoreI256(res, VeciNot256(VecLoadI256(a)));
+    #else
+    VecStoreU(res,     VeciNot(VeciLoad(a)));
+    VecStoreU(res + 2, VeciNot(VeciLoad(a + 2)));
+    #endif
+}
 
 #if defined(__aarch64__) || defined(__arm__)
     #define HSum32_128(x) vaddvq_u32(x)
@@ -106,7 +115,7 @@ purefn u32 VCALL PopCount256(const u64* ptr)
     #ifdef AX_SUPPORT_AVX2
     const v256i lookup = _mm256_setr_epi8(0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4, 0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4);
     const v256i low_mask = _mm256_set1_epi8(0x0f);
-    v256i v       = _mm256_stream_load_si256((v256i const *)ptr);
+    v256i v       = _mm256_loadu_si256((__m256i const *)ptr);
     v256i lo      = _mm256_and_si256(v, low_mask);
     v256i hi      = _mm256_and_si256(_mm256_srli_epi32(v, 4), low_mask);
     v256i popcnt1 = _mm256_shuffle_epi8(lookup, lo);
@@ -125,6 +134,87 @@ purefn u32 VCALL PopCount512(const u64* ptr) {
 
 purefn u32 VCALL PopCount1024(const u64* ptr) {
     return PopCount512(ptr) + PopCount512(ptr + 8);
+}
+
+// bitCount = number of valid bits/elements in the bitset
+purefn u32 BitsetPopCount(const u64* bits, s32 bitCount)
+{
+    if (!bits || bitCount <= 0)
+        return 0;
+
+    u32 result = 0;
+    s32 wordCount = bitCount >> 6;
+    s32 tailBits  = bitCount & 63;
+    s32 wordIdx   = 0;
+
+    while (wordIdx + 8 <= wordCount) {
+        result += PopCount512(bits + wordIdx);
+        wordIdx += 8;
+    }
+
+    if (wordIdx + 4 <= wordCount) {
+        result += PopCount256(bits + wordIdx);
+        wordIdx += 4;
+    }
+
+    // Remaining full u64 words: max 3.
+    switch (wordCount - wordIdx)
+    {
+        case 3: result += PopCount64(bits[wordIdx++]); // fallthrough
+        case 2: result += PopCount64(bits[wordIdx++]); // fallthrough
+        case 1: result += PopCount64(bits[wordIdx++]); // fallthrough
+    }
+
+    if (tailBits) {
+        const u64 mask = (1ull << tailBits) - 1ull;
+        result += PopCount64(bits[wordCount] & mask);
+    }
+
+    return result;
+}
+
+static bool BitsetHasAtLeastEmptyBits(const u64* bits, s32 bitCount, u32 needed)
+{
+    if (needed == 0)
+        return true;
+
+    if (!bits || bitCount <= 0)
+        return false;
+
+    u32 found = 0;
+    const s32 fullWords = bitCount >> 6;
+    const s32 tailBits  = bitCount & 63;
+
+    s32 wordIdx = 0;
+    // 512-bit chunks = 8 x u64. 64byte cacheline
+    while (wordIdx + 8 <= fullWords)
+    {
+        found += 512u - PopCount512(bits + wordIdx);
+        if (found >= needed)
+            return true;
+        wordIdx += 8;
+    }
+
+    if (wordIdx + 4 <= fullWords)
+    {
+        found += 256u - PopCount256(bits + wordIdx);
+        wordIdx += 4;
+    }
+
+    // Remaining full u64 words: max 3.
+    switch (fullWords - wordIdx)
+    {
+        case 3: found += PopCount64(~bits[wordIdx++]); // fallthrough
+        case 2: found += PopCount64(~bits[wordIdx++]); // fallthrough
+        case 1: found += PopCount64(~bits[wordIdx++]); // fallthrough
+    }
+
+    if (tailBits)
+    {
+        const u64 mask = (1ull << tailBits) - 1ull;
+        found += PopCount64((~bits[wordIdx]) & mask);
+    }
+    return found >= needed;
 }
 
 #if defined(__cplusplus)

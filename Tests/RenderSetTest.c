@@ -150,6 +150,89 @@ static Entity MakeEntity(u32 sparseIdx)
     return e;
 }
 
+static void AddEntitiesToGroup(RenderSet* set, u32 groupIdx, u32 count)
+{
+    Entity entities[32];
+
+    CHECK(count <= (u32)(sizeof(entities) / sizeof(entities[0])),
+          "too many test entities: %u", count);
+
+    if (count > (u32)(sizeof(entities) / sizeof(entities[0])))
+        return;
+
+    for (u32 i = 0; i < count; i++)
+        entities[i] = MakeEntity(INVALID_ENTITY);
+
+    u32 result = RenderSet_AddEntities(set, groupIdx, count, entities);
+    CHECK(result != INVALID_ENTITY, "AddEntities failed group=%u count=%u", groupIdx, count);
+}
+
+static void CheckGroupRange(const RenderSet* set, u32 groupIdx, u32 offset, u32 count, const char* label)
+{
+    CHECK(groupIdx < set->numGroups, "%s group out of range group=%u numGroups=%u",
+          label, groupIdx, set->numGroups);
+
+    if (groupIdx >= set->numGroups)
+        return;
+
+    const PrimitiveGroup* group = &set->primitiveGroups[groupIdx];
+
+    CHECK(group->entityOffset == offset && group->numEntities == count,
+          "%s group=%u range=%u+%u expected=%u+%u",
+          label,
+          groupIdx,
+          group->entityOffset,
+          group->numEntities,
+          offset,
+          count);
+}
+
+static void CheckDensePrimitivePattern(const RenderSet* set, const u32* expected, u32 count, const char* label)
+{
+    CHECK(set->numEntities == count, "%s numEntities=%u expected=%u",
+          label, set->numEntities, count);
+
+    u32 n = set->numEntities < count ? set->numEntities : count;
+
+    for (u32 i = 0; i < n; i++)
+    {
+        CHECK(set->denseToPrimitiveIndex[i] == expected[i],
+              "%s denseToPrimitiveIndex[%u]=%u expected=%u",
+              label,
+              i,
+              set->denseToPrimitiveIndex[i],
+              expected[i]);
+    }
+}
+
+static void CheckDenseMappingsMatchGroups(const RenderSet* set, const char* label)
+{
+    for (u32 groupIdx = 0; groupIdx < set->numGroups; groupIdx++)
+    {
+        const PrimitiveGroup* group = &set->primitiveGroups[groupIdx];
+
+        CHECK(group->entityOffset + group->numEntities <= set->numEntities,
+              "%s group=%u invalid range %u+%u numEntities=%u",
+              label,
+              groupIdx,
+              group->entityOffset,
+              group->numEntities,
+              set->numEntities);
+
+        for (u32 i = 0; i < group->numEntities; i++)
+        {
+            u32 denseIdx = group->entityOffset + i;
+
+            CHECK(set->denseToPrimitiveIndex[denseIdx] == groupIdx,
+                  "%s dense=%u maps to group=%u expected=%u",
+                  label,
+                  denseIdx,
+                  set->denseToPrimitiveIndex[denseIdx],
+                  groupIdx);
+        }
+    }
+}
+
 static void TestBundleRegistration(void)
 {
     RenderSet set;
@@ -230,7 +313,6 @@ static void TestAddScenePlaceholderHierarchy(void)
 
     CHECK(added == 3, "added=%u", added);
     CHECK(set.numEntities == 3, "numEntities=%u", set.numEntities);
-    CHECK(set.nextSparseID == 2, "nextSparseID=%u (per mesh node, not primitive)", set.nextSparseID);
     CHECK(set.entities[0].sparseIdx == set.entities[1].sparseIdx, "mesh0 primitives should share sparse id");
     CHECK(set.entities[2].sparseIdx != set.entities[0].sparseIdx, "mesh1 should get another sparse id");
     CHECK(RenderSet_Validate(&set, "add scene"), "validation failed");
@@ -252,10 +334,341 @@ static void TestSparseCapacityFailureDoesNotMutate(void)
     CHECK(result == INVALID_ENTITY, "result=%u", result);
     CHECK(set.numEntities == 0, "numEntities mutated to %u", set.numEntities);
     CHECK(set.primitiveGroups[0].numEntities == 0, "group count mutated to %u", set.primitiveGroups[0].numEntities);
-    CHECK(set.nextSparseID == 0, "nextSparseID mutated to %u", set.nextSparseID);
     CHECK(RenderSet_Validate(&set, "sparse failure"), "validation failed");
 }
 
+static void TestRemoveSingleEntityMiddleOfGroup(void)
+{
+    RenderSet set;
+    RenderSet_InitSet(&set, 16, 8, 4, false);
+
+    APrimitive prim[3] = {
+        MakePrimitive(0,  0, 9, 0, 3),
+        MakePrimitive(0,  9, 9, 3, 3),
+        MakePrimitive(0, 18, 9, 6, 3)
+    };
+
+    AMesh meshes[1] = { { "A", prim, 3, 0, NULL } };
+    SceneBundle bundle = MakeBundle(meshes, 1, NULL, 0, 1, 0);
+
+    RenderSet_AddSceneBundle(&set, &bundle, 0);
+
+    AddEntitiesToGroup(&set, 0, 2);
+    AddEntitiesToGroup(&set, 1, 3);
+    AddEntitiesToGroup(&set, 2, 2);
+
+    {
+        const u32 expected[] = { 0, 0, 1, 1, 1, 2, 2 };
+        CheckDensePrimitivePattern(&set, expected, 7, "before remove single");
+    }
+
+    u32 removed = RenderSet_RemoveEntity(&set, 1, 1);
+    CHECK(removed != INVALID_ENTITY, "RemoveEntity failed");
+
+    CheckGroupRange(&set, 0, 0, 2, "remove single");
+    CheckGroupRange(&set, 1, 2, 2, "remove single");
+    CheckGroupRange(&set, 2, 4, 2, "remove single");
+
+    {
+        const u32 expected[] = { 0, 0, 1, 1, 2, 2 };
+        CheckDensePrimitivePattern(&set, expected, 6, "after remove single");
+    }
+
+    CheckDenseMappingsMatchGroups(&set, "after remove single");
+    CHECK(RenderSet_Validate(&set, "remove single entity"), "validation failed");
+}
+
+static void TestRemoveEntityRangeMiddleOfGroup(void)
+{
+    RenderSet set;
+    RenderSet_InitSet(&set, 16, 8, 4, false);
+
+    APrimitive prim[3] = {
+        MakePrimitive(0,  0, 9, 0, 3),
+        MakePrimitive(0,  9, 9, 3, 3),
+        MakePrimitive(0, 18, 9, 6, 3)
+    };
+
+    AMesh meshes[1] = { { "A", prim, 3, 0, NULL } };
+    SceneBundle bundle = MakeBundle(meshes, 1, NULL, 0, 1, 0);
+
+    RenderSet_AddSceneBundle(&set, &bundle, 0);
+
+    AddEntitiesToGroup(&set, 0, 2);
+    AddEntitiesToGroup(&set, 1, 4);
+    AddEntitiesToGroup(&set, 2, 2);
+
+    u32 removed = RenderSet_RemoveEntities(&set, 1, 1, 2);
+    CHECK(removed != INVALID_ENTITY, "RemoveEntities failed");
+
+    CheckGroupRange(&set, 0, 0, 2, "remove range");
+    CheckGroupRange(&set, 1, 2, 2, "remove range");
+    CheckGroupRange(&set, 2, 4, 2, "remove range");
+
+    {
+        const u32 expected[] = { 0, 0, 1, 1, 2, 2 };
+        CheckDensePrimitivePattern(&set, expected, 6, "after remove range");
+    }
+
+    CheckDenseMappingsMatchGroups(&set, "after remove range");
+    CHECK(RenderSet_Validate(&set, "remove entity range"), "validation failed");
+}
+
+static void TestRemoveInvalidEntityDoesNotMutate(void)
+{
+    RenderSet set;
+    RenderSet_InitSet(&set, 16, 8, 4, false);
+
+    APrimitive prim[2] = {
+        MakePrimitive(0, 0, 9, 0, 3),
+        MakePrimitive(0, 9, 9, 3, 3)
+    };
+
+    AMesh meshes[1] = { { "A", prim, 2, 0, NULL } };
+    SceneBundle bundle = MakeBundle(meshes, 1, NULL, 0, 1, 0);
+
+    RenderSet_AddSceneBundle(&set, &bundle, 0);
+
+    AddEntitiesToGroup(&set, 0, 2);
+    AddEntitiesToGroup(&set, 1, 1);
+
+    u32 numEntities = set.numEntities;
+    u32 numGroups = set.numGroups;
+    u32 group0Offset = set.primitiveGroups[0].entityOffset;
+    u32 group0Count = set.primitiveGroups[0].numEntities;
+    u32 group1Offset = set.primitiveGroups[1].entityOffset;
+    u32 group1Count = set.primitiveGroups[1].numEntities;
+
+    CHECK(RenderSet_RemoveEntity(&set, 0, 99) == 0,
+          "invalid local entity remove should return 0");
+
+    CHECK(RenderSet_RemoveEntity(&set, 99, 0) == 0,
+          "invalid group remove should return 0");
+
+    CHECK(RenderSet_RemoveEntities(&set, 0, 99, 1) == 0,
+          "invalid range start remove should return 0");
+
+    CHECK(RenderSet_RemoveEntities(&set, 0, 0, 0) == 0,
+          "zero count remove should return 0");
+
+    CHECK(set.numEntities == numEntities, "numEntities mutated %u -> %u", numEntities, set.numEntities);
+    CHECK(set.numGroups == numGroups, "numGroups mutated %u -> %u", numGroups, set.numGroups);
+
+    CheckGroupRange(&set, 0, group0Offset, group0Count, "invalid remove");
+    CheckGroupRange(&set, 1, group1Offset, group1Count, "invalid remove");
+
+    CHECK(RenderSet_Validate(&set, "invalid remove entity"), "validation failed");
+}
+
+static void TestClearEntitiesKeepsBundlesAndGroups(void)
+{
+    RenderSet set;
+    RenderSet_InitSet(&set, 16, 8, 4, false);
+
+    APrimitive primA[2] = {
+        MakePrimitive(0,  0, 9, 0, 3),
+        MakePrimitive(0,  9, 9, 3, 3)
+    };
+
+    AMesh meshesA[1] = { { "A", primA, 2, 0, NULL } };
+    SceneBundle bundleA = MakeBundle(meshesA, 1, NULL, 0, 1, 0);
+
+    APrimitive primB[1] = {
+        MakePrimitive(0, 18, 9, 6, 3)
+    };
+
+    AMesh meshesB[1] = { { "B", primB, 1, 0, NULL } };
+    SceneBundle bundleB = MakeBundle(meshesB, 1, NULL, 0, 1, 64);
+
+    RenderSet_AddSceneBundle(&set, &bundleA, 10);
+    RenderSet_AddSceneBundle(&set, &bundleB, 20);
+
+    AddEntitiesToGroup(&set, 0, 2);
+    AddEntitiesToGroup(&set, 1, 1);
+    AddEntitiesToGroup(&set, 2, 3);
+
+    RenderSet_ClearEntities(&set);
+
+    CHECK(set.numEntities == 0, "numEntities=%u", set.numEntities);
+
+    CHECK(set.numBundles == 2, "numBundles=%u", set.numBundles);
+    CHECK(set.numGroups == 3, "numGroups=%u", set.numGroups);
+
+    CHECK(set.bundles[0] == &bundleA, "bundle 0 pointer changed");
+    CHECK(set.bundles[1] == &bundleB, "bundle 1 pointer changed");
+
+    CHECK(set.bundleRange[0].start == 0 && set.bundleRange[0].count == 2,
+          "bundle A range %u+%u", set.bundleRange[0].start, set.bundleRange[0].count);
+
+    CHECK(set.bundleRange[1].start == 2 && set.bundleRange[1].count == 1,
+          "bundle B range %u+%u", set.bundleRange[1].start, set.bundleRange[1].count);
+
+    CheckGroupRange(&set, 0, 0, 0, "clear entities");
+    CheckGroupRange(&set, 1, 0, 0, "clear entities");
+    CheckGroupRange(&set, 2, 0, 0, "clear entities");
+
+    AddEntitiesToGroup(&set, 1, 1);
+
+    CheckGroupRange(&set, 0, 0, 0, "add after clear");
+    CheckGroupRange(&set, 1, 0, 1, "add after clear");
+    CheckGroupRange(&set, 2, 1, 0, "add after clear");
+
+    {
+        const u32 expected[] = { 1 };
+        CheckDensePrimitivePattern(&set, expected, 1, "after add post clear");
+    }
+
+    CHECK(RenderSet_Validate(&set, "clear entities"), "validation failed");
+}
+
+static void TestRemoveSceneBundleMiddleWithEntities(void)
+{
+    RenderSet set;
+    RenderSet_InitSet(&set, 32, 8, 4, false);
+
+    APrimitive primA[2] = {
+        MakePrimitive(0,  0, 9, 0, 3),
+        MakePrimitive(1,  9, 9, 3, 3)
+    };
+    AMesh meshesA[1] = { { "A", primA, 2, 0, NULL } };
+    SceneBundle bundleA = MakeBundle(meshesA, 1, NULL, 0, 2, 0);
+
+    APrimitive primB[1] = {
+        MakePrimitive(0, 18, 9, 6, 3)
+    };
+    AMesh meshesB[1] = { { "B", primB, 1, 0, NULL } };
+    SceneBundle bundleB = MakeBundle(meshesB, 1, NULL, 0, 1, 64);
+
+    APrimitive primC[2] = {
+        MakePrimitive(0, 27, 9,  9, 3),
+        MakePrimitive(1, 36, 9, 12, 3)
+    };
+    AMesh meshesC[1] = { { "C", primC, 2, 0, NULL } };
+    SceneBundle bundleC = MakeBundle(meshesC, 1, NULL, 0, 2, 128);
+
+    u32 a = RenderSet_AddSceneBundle(&set, &bundleA, 10);
+    u32 b = RenderSet_AddSceneBundle(&set, &bundleB, 20);
+    u32 c = RenderSet_AddSceneBundle(&set, &bundleC, 30);
+
+    CHECK(a == 0, "bundle A index=%u", a);
+    CHECK(b == 1, "bundle B index=%u", b);
+    CHECK(c == 2, "bundle C index=%u", c);
+
+    AddEntitiesToGroup(&set, 0, 1);
+    AddEntitiesToGroup(&set, 1, 2);
+    AddEntitiesToGroup(&set, 2, 3);
+    AddEntitiesToGroup(&set, 3, 1);
+    AddEntitiesToGroup(&set, 4, 1);
+
+    u32 removed = RenderSet_RemoveSceneBundle(&set, 1);
+    CHECK(removed != INVALID_BUNDLE, "RemoveSceneBundle failed");
+
+    CHECK(set.numBundles == 2, "numBundles=%u", set.numBundles);
+    CHECK(set.numGroups == 4, "numGroups=%u", set.numGroups);
+    CHECK(set.numEntities == 5, "numEntities=%u", set.numEntities);
+
+    CHECK(set.bundles[0] == &bundleA, "bundle 0 should be A");
+    CHECK(set.bundles[1] == &bundleC, "bundle 1 should be C");
+
+    CHECK(set.bundleRange[0].start == 0 && set.bundleRange[0].count == 2,
+          "bundle A range %u+%u", set.bundleRange[0].start, set.bundleRange[0].count);
+
+    CHECK(set.bundleRange[1].start == 2 && set.bundleRange[1].count == 2,
+          "bundle C range %u+%u", set.bundleRange[1].start, set.bundleRange[1].count);
+
+    CHECK(set.primitiveGroups[0].materialIndex == 10, "group0 material=%u", set.primitiveGroups[0].materialIndex);
+    CHECK(set.primitiveGroups[1].materialIndex == 11, "group1 material=%u", set.primitiveGroups[1].materialIndex);
+    CHECK(set.primitiveGroups[2].materialIndex == 30, "group2 material=%u", set.primitiveGroups[2].materialIndex);
+    CHECK(set.primitiveGroups[3].materialIndex == 31, "group3 material=%u", set.primitiveGroups[3].materialIndex);
+
+    CheckGroupRange(&set, 0, 0, 1, "remove bundle middle");
+    CheckGroupRange(&set, 1, 1, 2, "remove bundle middle");
+    CheckGroupRange(&set, 2, 3, 1, "remove bundle middle");
+    CheckGroupRange(&set, 3, 4, 1, "remove bundle middle");
+
+    {
+        const u32 expected[] = { 0, 1, 1, 2, 3 };
+        CheckDensePrimitivePattern(&set, expected, 5, "after remove bundle middle");
+    }
+
+    AddEntitiesToGroup(&set, 2, 2);
+
+    CheckGroupRange(&set, 0, 0, 1, "add after remove bundle");
+    CheckGroupRange(&set, 1, 1, 2, "add after remove bundle");
+    CheckGroupRange(&set, 2, 3, 3, "add after remove bundle");
+    CheckGroupRange(&set, 3, 6, 1, "add after remove bundle");
+
+    {
+        const u32 expected[] = { 0, 1, 1, 2, 2, 2, 3 };
+        CheckDensePrimitivePattern(&set, expected, 7, "after add post bundle remove");
+    }
+
+    CheckDenseMappingsMatchGroups(&set, "after remove bundle middle");
+    CHECK(RenderSet_Validate(&set, "remove scene bundle middle"), "validation failed");
+}
+
+static void TestRemoveInvalidSceneBundleDoesNotMutate(void)
+{
+    RenderSet set;
+    RenderSet_InitSet(&set, 16, 8, 4, false);
+
+    APrimitive prim[1] = {
+        MakePrimitive(0, 0, 9, 0, 3)
+    };
+
+    AMesh meshes[1] = { { "A", prim, 1, 0, NULL } };
+    SceneBundle bundle = MakeBundle(meshes, 1, NULL, 0, 1, 0);
+
+    RenderSet_AddSceneBundle(&set, &bundle, 0);
+    AddEntitiesToGroup(&set, 0, 2);
+
+    u32 numEntities = set.numEntities;
+    u32 numGroups = set.numGroups;
+    u32 numBundles = set.numBundles;
+
+    CHECK(RenderSet_RemoveSceneBundle(&set, 9) == 0,
+    "invalid bundle remove should return 0");
+
+    CHECK(set.numEntities == numEntities, "numEntities mutated %u -> %u", numEntities, set.numEntities);
+    CHECK(set.numGroups == numGroups, "numGroups mutated %u -> %u", numGroups, set.numGroups);
+    CHECK(set.numBundles == numBundles, "numBundles mutated %u -> %u", numBundles, set.numBundles);
+
+    CheckGroupRange(&set, 0, 0, 2, "invalid bundle remove");
+    CHECK(RenderSet_Validate(&set, "invalid scene bundle remove"), "validation failed");
+}
+static void TestRemoveEntityRangeClampsToGroupEnd(void)
+{
+    RenderSet set;
+    RenderSet_InitSet(&set, 16, 8, 4, false);
+
+    APrimitive prim[2] = {
+        MakePrimitive(0, 0, 9, 0, 3),
+        MakePrimitive(0, 9, 9, 3, 3)
+    };
+
+    AMesh meshes[1] = { { "A", prim, 2, 0, NULL } };
+    SceneBundle bundle = MakeBundle(meshes, 1, NULL, 0, 1, 0);
+
+    RenderSet_AddSceneBundle(&set, &bundle, 0);
+
+    AddEntitiesToGroup(&set, 0, 3);
+    AddEntitiesToGroup(&set, 1, 2);
+
+    u32 removed = RenderSet_RemoveEntities(&set, 0, 1, 99);
+
+    CHECK(removed == 2, "removed=%u expected=2", removed);
+
+    CheckGroupRange(&set, 0, 0, 1, "clamped remove");
+    CheckGroupRange(&set, 1, 1, 2, "clamped remove");
+
+    {
+        const u32 expected[] = { 0, 1, 1 };
+        CheckDensePrimitivePattern(&set, expected, 3, "after clamped remove");
+    }
+
+    CheckDenseMappingsMatchGroups(&set, "after clamped remove");
+    CHECK(RenderSet_Validate(&set, "clamped remove entity range"), "validation failed");
+}
 int main(void)
 {
     gGFX.SurfaceVertexBuffer = gSurfaceVertices;
@@ -267,6 +680,13 @@ int main(void)
     TestAddScenePlaceholderHierarchy();
     TestSparseCapacityFailureDoesNotMutate();
 
+    TestRemoveSingleEntityMiddleOfGroup();
+    TestRemoveEntityRangeMiddleOfGroup();
+    TestRemoveInvalidEntityDoesNotMutate();
+    TestClearEntitiesKeepsBundlesAndGroups();
+    TestRemoveSceneBundleMiddleWithEntities();
+    TestRemoveInvalidSceneBundleDoesNotMutate();
+    TestRemoveEntityRangeClampsToGroupEnd();
     printf("RenderSetTest: %d checks, %d failures\n", gChecks, gFailures);
     return gFailures ? 1 : 0;
 }

@@ -141,13 +141,22 @@ static void EditorSpawnBundleAt(Scene* scene, u32 bundleIdx, v128f position, v12
     if (!Scene_Spawn(scene, bundleIdx, position, rotation, scale))
         return;
 
-    if (scene->bundleRefs[bundleIdx].skinned && scene->skinnedSet.nextSparseID > 0u)
+    if (scene->bundleRefs[bundleIdx].skinned)
     {
-        // skinned spawns share one freshly allocated sparse id, the animation
-        // instance pool is indexed by it
-        u32 sparseIdx = scene->skinnedSet.nextSparseID - 1u;
-        GPUAnimationInstance instance = { .animIdx = EditorDefaultAnimation(scene, bundleIdx), .timeOffset = 0.0f };
-        AnimationSystem_SetInstance(&scene->animSystem, sparseIdx, instance);
+        RenderSet* set = &scene->skinnedSet;
+        Range range = set->bundleRange[scene->bundleRefs[bundleIdx].renderIdx];
+        for (u32 g = range.start; g < range.start + range.count; g++)
+        {
+            PrimitiveGroup* group = &set->primitiveGroups[g];
+            if (!group->valid || group->numEntities == 0) continue;
+
+            u32 sparseIdx = set->entities[group->entityOffset + group->numEntities - 1u].sparseIdx;
+            if (sparseIdx == INVALID_ENTITY) continue;
+
+            GPUAnimationInstance instance = { .animIdx = EditorDefaultAnimation(scene, bundleIdx), .timeOffset = 0.0f };
+            AnimationSystem_SetInstance(&scene->animSystem, sparseIdx, instance);
+            break;
+        }
     }
 }
 

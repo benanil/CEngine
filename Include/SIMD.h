@@ -848,6 +848,7 @@ typedef __m256i v256u;
 #define VecStoreI256(ptr, x) _mm256_stream_si256((__m256i *)(ptr), x)
 
 #define VeciAndNot256(x, y)  _mm256_andnot_si256(x, y)
+#define VeciNot256(x)        _mm256_andnot_si256(x,  _mm256_set1_epi32(0xFFFFFFFF))
 #define VeciAnd256(x, y)     _mm256_and_si256(x, y)
 #define VeciOr256(x, y)      _mm256_or_si256(x, y)
 #define VeciXor256(x, y)     _mm256_xor_si256(x, y)
@@ -871,6 +872,7 @@ typedef struct Vec8x32i_ { v128i lo, hi; } v256i;
 typedef struct Vec8x32u_ { v128u lo, hi; } v256u;
 
 #define VeciAndNot256(x, y)   (v256u){ VeciAndNot((x).lo, (y).lo), VeciAndNot((x).hi, (y).hi) }
+#define VeciNot256(x)         (v256u){ VeciNot((x).lo), VeciNot((x).hi) }
 #define VeciAnd256(x, y)      (v256u){ VeciAnd   ((x).lo, (y).lo), VeciAnd   ((x).hi, (y).hi) }
 #define VeciOr256(x, y)       (v256u){ VeciOr    ((x).lo, (y).lo), VeciOr    ((x).hi, (y).hi) }
 #define VeciXor256(x, y)      (v256u){ VeciXor   ((x).lo, (y).lo), VeciXor   ((x).hi, (y).hi) }

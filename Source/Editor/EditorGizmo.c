@@ -174,13 +174,8 @@ bool EditorGizmoDuplicateSelected(void)
             }
         }
         if (numRecords == 0u) continue;
-        if (set->nextSparseID >= set->maxEntities)
-        {
-            AX_WARN("maximum sparse id reached: %d", set->maxEntities);
-            continue;
-        }
-
-        u32 newSparse = set->nextSparseID++;
+        u32 newSparse = RenderSet_AllocateSparseID(set);
+        if (newSparse == INVALID_ENTITY) continue;
         bool targetSet = false;
         for (u32 i = 0u; i < numRecords; i++)
         {
@@ -197,6 +192,7 @@ bool EditorGizmoDuplicateSelected(void)
             }
         }
         duplicated |= targetSet;
+        if (!targetSet) RenderSet_FreeSparseID(set, newSparse);
 
         if (target.skinned)
         {

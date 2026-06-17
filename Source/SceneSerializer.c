@@ -542,8 +542,6 @@ s32 SceneSerializer_Load(Scene* scene, const char* path)
                 anySparse = true;
             }
         }
-        if (anySparse && set->nextSparseID <= maxSparse)
-            set->nextSparseID = maxSparse + 1u;
     }
 
     if (data.numLights > 0)
