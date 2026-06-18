@@ -1,4 +1,6 @@
-![CEngine logo](Assets/Icons/CLogo.png)
+<p align="center">
+  <img src="Assets/Icons/CLogo.png" alt="CEngine logo" width="160">
+</p>
 
 ## Overview
 `CEngine` is a data-oriented GPU driven C99 engine/editor project with a small amount of C++ used for basis texture compression. It builds an SDL3 GPU-based executable and now contains much more than a playground: a scene system, deferred renderer, asset pipeline, editor UI, animation, and streamed voxel terrain.
