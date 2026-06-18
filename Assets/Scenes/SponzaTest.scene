@@ -1,8 +1,8 @@
 axscene 1
 sun 116.565002 63.435001
-atlas 0 2 SponzaTest_albedo.basis
-atlas 1 1 SponzaTest_normal.basis
-atlas 2 1 SponzaTest_mr.basis
+atlas 0 2 SponzaTest_albedo.ctex
+atlas 1 1 SponzaTest_normal.ctex
+atlas 2 1 SponzaTest_mr.ctex
 bundles 1
 bundle 0 0 25 Assets/Meshes/Sponza/scene.gltf
 descriptors 72

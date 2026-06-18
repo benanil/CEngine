@@ -15,7 +15,6 @@ void EditorImportMeshToScene(const char* path);
 void EditorOpenImportDetail(const char* path);
 void EditorOpenScene(const char* path);
 void EditorSceneStartup(void);
-const char* EditorSceneActivePath(void);
 struct Scene_* EditorNewScene(void);
 struct Camera_;
 void EditorSceneHotkeys(void);

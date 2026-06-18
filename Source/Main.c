@@ -30,7 +30,6 @@ extern bool   EditorLightGizmoUpdate(Camera* camera);
 extern void   EditorPickingUpdate(Camera* camera);
 extern void   EditorInit(void);
 extern void   EditorConsoleInit(void);
-extern Scene* EditorNewScene(void);
 extern void   EditorSceneStartup(void);
 
 static void MainSyncWindowSize(void)
@@ -113,10 +112,10 @@ static SDL_AppResult SDLCALL MainAppInit(void** appstate, int argc, char* argv[]
     RendererInit();
     EditorInit();
 
-    if (!EditorNewScene()) return SDL_APP_FAILURE;
-    EditorSceneStartup();
+    if (!Scene_NewActive()) return SDL_APP_FAILURE;
     InitBuffers();
     Terrain_Init();
+    EditorSceneStartup();
 
     CameraInit(&g_Camera, 1920, 1080);
 

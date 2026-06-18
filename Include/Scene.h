@@ -6,7 +6,6 @@
 #include "Animation.h"
 
 #define MAX_SCENE_BUNDLES 1024u
-#define MAX_ACTIVE_SCENES 2u
 #define MAX_SCENE_LIGHTS  256u
 
 // one bundle registered in a scene
@@ -46,11 +45,18 @@ typedef struct Scene_
 } Scene;
 
 // scenes the renderer draws each frame, in activation order
-extern Scene* g_ActiveScenes[MAX_ACTIVE_SCENES];
-extern u32    g_NumActiveScenes;
+extern Scene* g_ActiveScene;
 
 void Scene_Init(Scene* scene);
 void Scene_Destroy(Scene* scene);
+
+// engine-owned active scene helpers. These are usable without editor code and keep
+// the active .scene path in Scene.c.
+Scene* Scene_NewActive(void);
+Scene* Scene_OpenActive(const char* path);
+s32    Scene_SaveActive(void);
+s32    Scene_SaveActiveAs(const char* path);
+const char* Scene_GetActivePath(void);
 
 // adds the scene to the rendered scenes. out: 0 when the active list is full.
 // note: the animated vertex pool is shared and indexed by sparse id, only one

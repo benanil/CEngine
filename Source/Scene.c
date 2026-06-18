@@ -7,6 +7,8 @@
 #include "Include/Animation.h"
 #include "Include/FileSystem.h"
 #include "Include/Rendering.h"
+#include "Include/SceneSerializer.h"
+#include "Include/Terrain.h"
 #include "Include/Random.h"
 #include "Include/Algorithm.h"
 #include "Include/Bitset.h"
@@ -14,10 +16,47 @@
 #include "Include/BVH.h"
 #include "Include/DataStructures/HashMap.h"
 
-Scene* g_ActiveScenes[MAX_ACTIVE_SCENES];
-u32    g_NumActiveScenes;
+Scene* g_ActiveScene = NULL;
+
+static Scene g_OwnedActiveScene;
+static bool  g_OwnedActiveSceneInit;
+static char  g_ActiveScenePath[512];
 
 extern Graphics gGFX;
+
+static void SceneNormalizePath(const char* path, char* out, u32 outSize)
+{
+    u32 i = 0u;
+    for (; path[i] && i + 1u < outSize; i++)
+        out[i] = path[i] == '\\' ? '/' : path[i];
+    out[i] = '\0';
+}
+
+static bool SceneTerrainPath(const char* scenePath, char* out, u32 outSize)
+{
+    SceneNormalizePath(scenePath, out, outSize);
+    u32 len = (u32)StringLength(out);
+    u32 stem = len;
+    while (stem > 0u && out[stem - 1u] != '.' && out[stem - 1u] != '/' && out[stem - 1u] != '\\') stem--;
+    if (stem > 0u && out[stem - 1u] == '.') len = stem - 1u;
+
+    static const char ext[] = ".terrain";
+    u32 extLen = (u32)sizeof(ext);
+    if (len + extLen > outSize) return false;
+    MemCopy(out + len, ext, extLen);
+    return true;
+}
+
+static void SceneSaveTerrainSidecar(const char* scenePath)
+{
+    char terrainPath[512];
+    if (!SceneTerrainPath(scenePath, terrainPath, sizeof(terrainPath))) return;
+
+    if (Terrain_GetEnabled())
+        Terrain_SaveWorld(terrainPath);
+    else if (FileExist(terrainPath))
+        RemoveFile(terrainPath);
+}
 
 // returns the bundle's vertex/index ranges to the geometry heaps. safe to call
 // twice, the pointers are nulled after the free. bundles whose geometry lives
@@ -193,43 +232,88 @@ void Scene_Destroy(Scene* scene)
     scene->bundleCapacity = 0;
     scene->lights = NULL;
     scene->materialSlots = NULL;
+    if (scene == &g_OwnedActiveScene)
+    {
+        g_OwnedActiveSceneInit = false;
+        g_ActiveScenePath[0] = '\0';
+    }
     // render set cpu allocations stay, consistent with the rest of the engine teardown
+}
+
+Scene* Scene_NewActive(void)
+{
+    if (g_OwnedActiveSceneInit)
+        Scene_Destroy(&g_OwnedActiveScene);
+    Scene_Init(&g_OwnedActiveScene);
+    g_OwnedActiveSceneInit = true;
+    g_ActiveScenePath[0] = '\0';
+    Scene_MakeActive(&g_OwnedActiveScene);
+    RendererSetLights(NULL, 0u);
+    Terrain_DeleteWorld();
+    return &g_OwnedActiveScene;
+}
+
+Scene* Scene_OpenActive(const char* path)
+{
+    char normalized[512];
+    SceneNormalizePath(path, normalized, sizeof(normalized));
+
+    Scene* scene = Scene_NewActive();
+    if (!scene) return NULL;
+    if (!SceneSerializer_Load(scene, normalized))
+    {
+        AX_ERROR("scene load failed: %s", normalized);
+        return NULL;
+    }
+    MemCopy(g_ActiveScenePath, normalized, StringLength(normalized) + 1);
+
+    Terrain_DeleteWorld();
+    char terrainPath[512];
+    if (SceneTerrainPath(normalized, terrainPath, sizeof(terrainPath)) && FileExist(terrainPath))
+        Terrain_LoadWorld(terrainPath);
+    return scene;
+}
+
+s32 Scene_SaveActive(void)
+{
+    Scene* scene = Scene_GetActive();
+    if (!scene || g_ActiveScenePath[0] == '\0') return 0;
+    if (!SceneSerializer_Save(scene, g_ActiveScenePath)) return 0;
+    SceneSaveTerrainSidecar(g_ActiveScenePath);
+    return 1;
+}
+
+s32 Scene_SaveActiveAs(const char* path)
+{
+    Scene* scene = Scene_GetActive();
+    if (!scene || !path || path[0] == '\0') return 0;
+
+    char normalized[512];
+    SceneNormalizePath(path, normalized, sizeof(normalized));
+    EnsurePath(normalized);
+    if (!SceneSerializer_Save(scene, normalized)) return 0;
+    MemCopy(g_ActiveScenePath, normalized, StringLength(normalized) + 1);
+    SceneSaveTerrainSidecar(g_ActiveScenePath);
+    return 1;
+}
+
+const char* Scene_GetActivePath(void)
+{
+    return g_ActiveScenePath;
 }
 
 s32 Scene_Activate(Scene* scene)
 {
-    for (u32 i = 0; i < g_NumActiveScenes; i++)
-        if (g_ActiveScenes[i] == scene) return 1;
-
-    if (g_NumActiveScenes >= MAX_ACTIVE_SCENES)
-    {
-        AX_WARN("maximum active scene count reached: %d", MAX_ACTIVE_SCENES);
-        return 0;
-    }
-
-    // skinned animation instances and their gpu pools are indexed by sparse id,
-    // two active scenes with skinned entities would collide in those pools
-    if (scene->skinnedSet.numEntities > 0)
-        for (u32 i = 0; i < g_NumActiveScenes; i++)
-            if (g_ActiveScenes[i]->skinnedSet.numEntities > 0)
-                AX_WARN("multiple active scenes with skinned entities share animation instance slots");
-
-    g_ActiveScenes[g_NumActiveScenes++] = scene;
+    if (g_ActiveScene == scene) return 1;
+    g_ActiveScene = scene;
     scene->renderDataDirty = 1;
     return 1;
 }
 
 void Scene_Deactivate(Scene* scene)
 {
-    for (u32 i = 0; i < g_NumActiveScenes; i++)
-    {
-        if (g_ActiveScenes[i] != scene) continue;
-        for (u32 j = i + 1; j < g_NumActiveScenes; j++)
-            g_ActiveScenes[j - 1] = g_ActiveScenes[j];
-        g_NumActiveScenes--;
-        g_ActiveScenes[g_NumActiveScenes] = NULL;
-        return;
-    }
+    if (g_ActiveScene != scene) return;
+    g_ActiveScene = NULL;
 }
 
 // loads the cached basis images of a gltf into a bundle local staging array
@@ -580,12 +664,11 @@ void Scene_SubmitLights(void)
 
 s32 Scene_MakeActive(Scene* scene)
 {
-    while (g_NumActiveScenes > 0)
-        Scene_Deactivate(g_ActiveScenes[g_NumActiveScenes - 1]);
+    if (g_ActiveScene) Scene_Deactivate(g_ActiveScene);
     return Scene_Activate(scene);
 }
 
 Scene* Scene_GetActive(void)
 {
-    return g_NumActiveScenes > 0 ? g_ActiveScenes[0] : NULL;
+    return g_ActiveScene;
 }

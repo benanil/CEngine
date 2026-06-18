@@ -4,7 +4,6 @@
 #include "Include/Random.h"
 #include "Include/Algorithm.h"
 #include "Include/Scene.h"
-#include "Include/SceneSerializer.h"
 #include "Include/FileSystem.h"
 #include "Include/AssetManager.h"
 #include "Include/GLTFParser.h"
@@ -47,15 +46,10 @@ typedef struct SceneObjectSelection_
 
 static SceneObjectSelection sceneObjectSelection;
 
-// editor authored scene, created on demand by New / Open Scene
-static Scene g_EditorScene;
-static bool  g_EditorSceneInit;
-
 static bool sceneSavePopupOpen;
 static bool sceneSaveConfirmOpen;
 static bool sceneDeletePopupOpen;
 static char sceneSaveName[128];
-static char sceneActivePath[512];
 static char sceneDeletePath[512];
 
 #define EDITOR_SCENE_FOLDER "Assets/Scenes"
@@ -79,27 +73,23 @@ static u32 sceneLastClickHash;
 static const char* const kEditorSceneAtlasSuffix[TextureClass_Count] = { "_albedo.ctex", "_normal.ctex", "_mr.ctex" };
 
 static bool SceneRowRightClicked(Clay_ElementId id);
+extern void TerrainEditorSceneChanged(bool loadSidecar);
 
-Scene* EditorNewScene(void)
+static void EditorSceneResetState(void)
 {
-    if (g_EditorSceneInit)
-        Scene_Destroy(&g_EditorScene);
-    Scene_Init(&g_EditorScene);
-    g_EditorSceneInit = true;
-    Scene_MakeActive(&g_EditorScene);
-    RendererSetLights(NULL, 0u);
     EditorGizmoClear();
     sceneSelectedBundle = INVALID_BUNDLE;
     sceneSelectedNode = -1;
     sceneSelectedLight = -1;
     sceneObjectSelection.valid = false;
-    sceneActivePath[0] = '\0';
-    return &g_EditorScene;
 }
 
-const char* EditorSceneActivePath(void)
+Scene* EditorNewScene(void)
 {
-    return sceneActivePath;
+    Scene* scene = Scene_NewActive();
+    EditorSceneResetState();
+    TerrainEditorSceneChanged(false);
+    return scene;
 }
 
 // asset browser paths use backslashes, the bundle cache and .scene files key on the
@@ -459,16 +449,11 @@ static void SceneImportDetailPopup(void)
 
 void EditorOpenScene(const char* path)
 {
-    char normalized[512];
-    EditorNormalizePath(path, normalized, sizeof(normalized));
-    Scene* scene = EditorNewScene();
-    if (!SceneSerializer_Load(scene, normalized))
-    {
-        AX_ERROR("scene load failed: %s", normalized);
-        return;
-    }
-    MemCopy(sceneActivePath, normalized, StringLength(normalized) + 1);
-    EditorSettingsSetLastScene(sceneActivePath);
+    Scene* scene = Scene_OpenActive(path);
+    if (!scene) return;
+    EditorSceneResetState();
+    EditorSettingsSetLastScene(Scene_GetActivePath());
+    TerrainEditorSceneChanged(false);
 }
 
 // click picking: ray casts the scene through the bundle blas data, logs the hit and
@@ -547,10 +532,9 @@ static void EditorSaveSceneAs(const char* name)
         if (pathLen + 7 > (int)sizeof(path)) return;
         MemCopy(path + pathLen, ".scene", 7);
     }
-    if (SceneSerializer_Save(scene, path))
+    if (Scene_SaveActiveAs(path))
     {
-        MemCopy(sceneActivePath, path, StringLength(path) + 1);
-        EditorSettingsSetLastScene(sceneActivePath);
+        EditorSettingsSetLastScene(Scene_GetActivePath());
         sceneFilesDirty = true;
     }
 }
@@ -558,10 +542,10 @@ static void EditorSaveSceneAs(const char* name)
 static void EditorSaveActiveScene(void)
 {
     Scene* scene = Scene_GetActive();
-    if (!scene || sceneActivePath[0] == '\0') return;
-    if (SceneSerializer_Save(scene, sceneActivePath))
+    if (!scene || Scene_GetActivePath()[0] == '\0') return;
+    if (Scene_SaveActive())
     {
-        EditorSettingsSetLastScene(sceneActivePath);
+        EditorSettingsSetLastScene(Scene_GetActivePath());
         sceneFilesDirty = true;
     }
 }
@@ -616,7 +600,7 @@ static void SceneDeleteWithDependencies(const char* path)
         if (atlasPath[0] && FileExist(atlasPath)) RemoveFile(atlasPath);
     }
     RemoveFile(path);
-    if (ScenePathsEqual(path, sceneActivePath)) EditorNewScene();
+    if (ScenePathsEqual(path, Scene_GetActivePath())) EditorNewScene();
     sceneSelectedFile = -1;
     sceneFilesDirty = true;
 }
@@ -660,7 +644,7 @@ static void SceneFilesUI(void)
         EditorSceneFile* file = &sceneFiles[i];
         Clay_ElementId id = Clay_GetElementIdWithIndex(CLAY_STRING("SceneFileRow"), i);
         u32 flags = UITreeNodeFlags_Leaf;
-        if ((s32)i == sceneSelectedFile || ScenePathsEqual(file->path, sceneActivePath)) flags |= UITreeNodeFlags_Selected;
+        if ((s32)i == sceneSelectedFile || ScenePathsEqual(file->path, Scene_GetActivePath())) flags |= UITreeNodeFlags_Selected;
 
         bool selected = false;
         UITreeNode(id, UIStr(file->path + file->nameOffset), 0u, flags, false, &selected);
@@ -1396,7 +1380,7 @@ static void SceneSavePopup(void)
 static void SceneSaveConfirmPopup(void)
 {
     if (!sceneSaveConfirmOpen) return;
-    if (sceneActivePath[0] == '\0')
+    if (Scene_GetActivePath()[0] == '\0')
     {
         sceneSaveConfirmOpen = false;
         return;
@@ -1409,7 +1393,7 @@ static void SceneSaveConfirmPopup(void)
         .fontSize = 15,
         .textColor = UIGetClayColor(UIColor_Text)
     }));
-    CLAY_TEXT(UIStr(sceneActivePath), CLAY_TEXT_CONFIG({
+    CLAY_TEXT(UIStr(Scene_GetActivePath()), CLAY_TEXT_CONFIG({
         .fontSize = 13,
         .textColor = UIGetClayColor(UIColor_SubText)
     }));
@@ -1534,7 +1518,7 @@ void DrawSceneWindow(bool* open)
                 EditorNewScene();
             if (scene && UIButton(CLAY_ID("SceneSaveButton"), CLAY_STRING("Save"), (Clay_Dimensions){ 80.0f, 26.0f }, false))
             {
-                if (sceneActivePath[0])
+                if (Scene_GetActivePath()[0])
                     sceneSaveConfirmOpen = true;
                 else
                 {
@@ -1570,7 +1554,6 @@ void DrawSceneWindow(bool* open)
                         .layoutDirection = CLAY_TOP_TO_BOTTOM
                     }
                 }) {
-                    UITextU32("Active scenes", g_NumActiveScenes);
                     UITextU32("Bundles", scene->numBundles);
                     UITextU32("Materials", scene->numMaterials);
                     UITextU32("Static entities", scene->surfaceSet.numEntities);

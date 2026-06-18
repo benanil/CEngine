@@ -12,8 +12,6 @@
 #include "Math/Quaternion.h"
 
 extern WindowState g_WindowState;
-
-#define EDITOR_TERRAIN_FOLDER "Assets/Terrain"
 #define EDITOR_TERRAIN_FOLIAGE_SCENE "Assets/Scenes/TerrainFolliage.scene"
 #define EDITOR_TERRAIN_MAX_LAYERS 8u
 #define EDITOR_TERRAIN_MAX_FOLIAGE 8u
@@ -114,8 +112,52 @@ static void TerrainNormalizePath(const char* src, char* dst, u32 dstSize)
     dst[i] = '\0';
 }
 
+static bool TerrainScenePath(char* dst, u32 dstSize)
+{
+    const char* scenePath = Scene_GetActivePath();
+    if (!scenePath || !scenePath[0]) return false;
+
+    TerrainNormalizePath(scenePath, dst, dstSize);
+    u32 len = (u32)StringLength(dst);
+    u32 stem = len;
+    while (stem > 0u && dst[stem - 1u] != '.' && dst[stem - 1u] != '/' && dst[stem - 1u] != '\\') stem--;
+    if (stem > 0u && dst[stem - 1u] == '.') len = stem - 1u;
+
+    static const char ext[] = ".terrain";
+    u32 extLen = (u32)sizeof(ext);
+    if (len + extLen > dstSize) return false;
+    MemCopy(dst + len, ext, extLen);
+    return true;
+}
+
+static void TerrainNameFromPath(const char* path, char* dst, u32 dstSize)
+{
+    u32 begin = 0u;
+    u32 end = (u32)StringLength(path);
+    for (u32 i = 0u; path[i]; i++)
+        if (path[i] == '/' || path[i] == '\\') begin = i + 1u;
+    for (u32 i = begin; path[i]; i++)
+        if (path[i] == '.') { end = i; break; }
+
+    u32 len = Minu32(end - begin, dstSize - 1u);
+    MemCopy(dst, path + begin, len);
+    dst[len] = '\0';
+}
+
+static bool TerrainSyncScenePath(void)
+{
+    if (!TerrainScenePath(terrainUI.savePath, sizeof(terrainUI.savePath)))
+    {
+        terrainUI.savePath[0] = '\0';
+        return false;
+    }
+    TerrainNameFromPath(terrainUI.savePath, terrainUI.terrainName, sizeof(terrainUI.terrainName));
+    return true;
+}
+
 static bool TerrainChunksPath(char* dst, u32 dstSize)
 {
+    if (!TerrainSyncScenePath()) return false;
     u32 len = Minu32((u32)StringLength(terrainUI.savePath), dstSize - 1u);
     MemCopy(dst, terrainUI.savePath, len);
     dst[len] = '\0';
@@ -158,7 +200,7 @@ static void TerrainEditorInit(void)
     terrainUI.editMode = false;
     terrainUI.mode = TerrainEditorMode_Manipulate;
     TerrainSetString(terrainUI.terrainName, sizeof(terrainUI.terrainName), "NewTerrain");
-    TerrainSetString(terrainUI.savePath, sizeof(terrainUI.savePath), EDITOR_TERRAIN_FOLDER "/NewTerrain.terrain");
+    TerrainSyncScenePath();
     terrainUI.seed           = 1.0f;
     terrainUI.seaLevel       = 0.0f;
     terrainUI.baseHeight     = -8.0f;
@@ -416,6 +458,23 @@ static TerrainGenParams TerrainEditorBuildParams(void)
     return params;
 }
 
+static void TerrainEditorApplyParams(const TerrainGenParams* params)
+{
+    terrainUI.seed           = (f32)params->seed;
+    terrainUI.seaLevel       = params->seaLevel;
+    terrainUI.baseHeight     = params->baseHeight;
+    terrainUI.hillAmplitude  = params->hillAmplitude;
+    terrainUI.hillFrequency  = params->hillFrequency;
+    terrainUI.ridgeAmplitude = params->ridgeAmplitude;
+    terrainUI.ridgeFrequency = params->ridgeFrequency;
+    terrainUI.caveAmplitude  = params->carveAmplitude;
+    terrainUI.caveFrequency  = params->carveFrequency;
+    terrainUI.island         = params->island;
+    terrainUI.islandRadius   = params->islandRadius;
+    terrainUI.islandFalloff  = params->islandFalloff;
+    terrainUI.fixedChunkSize = params->fixedArea;
+}
+
 // per frame brush interaction, runs from the main loop before gizmo/picking and
 // consumes the mouse while terrain edit mode is active over the scene
 bool TerrainEditorUpdate(Camera* camera)
@@ -508,6 +567,11 @@ static char* TerrainWriteBool(char* p, const char* key, bool value)
 
 static bool TerrainEditorSave(void)
 {
+    if (!TerrainSyncScenePath())
+    {
+        AX_WARN("terrain save skipped: active scene has no saved .scene path");
+        return false;
+    }
     EnsurePath(terrainUI.savePath);
 
     u32 capacity = 16384u;
@@ -588,6 +652,11 @@ static bool TerrainKeyIs(const char* line, const char* key, const char** value)
 
 static bool TerrainEditorLoad(void)
 {
+    if (!TerrainSyncScenePath())
+    {
+        AX_WARN("terrain load skipped: active scene has no saved .scene path");
+        return false;
+    }
     char* text = ReadAllFileAlloc(terrainUI.savePath);
     if (!text) return false;
 
@@ -687,6 +756,18 @@ static bool TerrainEditorLoad(void)
     return true;
 }
 
+void TerrainEditorSceneChanged(bool loadSidecar)
+{
+    (void)loadSidecar;
+    TerrainEditorInit();
+    terrainUI.created = Terrain_GetEnabled();
+    terrainUI.editMode = false;
+    terrainUI.lastSaveOk = false;
+    TerrainSyncScenePath();
+    if (terrainUI.created)
+        TerrainEditorApplyParams(Terrain_GetGenParams());
+}
+
 static void TerrainTextEdit(Clay_ElementId id, char* buffer, u32 capacity, f32 height)
 {
     if (terrainTextDataCount >= (u32)(sizeof(terrainTextData) / sizeof(terrainTextData[0]))) return;
@@ -728,6 +809,7 @@ static void TerrainToolbar(void)
         UIPushFloatAdd(UIFloat_TextScale, -0.15f);
         if (UIButton(CLAY_ID("TerrainCreate"), CLAY_STRING("Create"), (Clay_Dimensions){ 78.0f, 26.0f }, false))
         {
+            TerrainSyncScenePath();
             // applies the current noise settings, also regenerates an existing world
             TerrainGenParams params = TerrainEditorBuildParams();
             Terrain_CreateWorld(&params);
@@ -746,8 +828,22 @@ static void TerrainToolbar(void)
 static void TerrainNoiseUI(void)
 {
     UISectionHeader("Noise Settings");
-    TerrainLabeledText(CLAY_ID("TerrainNameEdit"), "Terrain name", terrainUI.terrainName, sizeof(terrainUI.terrainName));
-    TerrainLabeledText(CLAY_ID("TerrainPathEdit"), "Save path (.terrain, edits use .chunks)", terrainUI.savePath, sizeof(terrainUI.savePath));
+    bool hasScenePath = TerrainSyncScenePath();
+    TerrainTextLabel("Terrain file (from active scene)");
+    if (hasScenePath)
+    {
+        CLAY_TEXT(UIStr(terrainUI.savePath), CLAY_TEXT_CONFIG({
+            .fontSize = 13,
+            .textColor = UIGetClayColor(UIColor_Text)
+        }));
+    }
+    else
+    {
+        CLAY_TEXT(CLAY_STRING("Save the scene first to create ScenePathAndName.terrain"), CLAY_TEXT_CONFIG({
+            .fontSize = 13,
+            .textColor = UIGetClayColor(UIColor_SubText)
+        }));
+    }
     bool edited = false;
     edited |= UICheckbox(CLAY_ID("TerrainFixedChunks"), CLAY_STRING("Fixed chunk size, do not stream with movement"), &terrainUI.fixedChunkSize);
     edited |= UICheckbox(CLAY_ID("TerrainIsland"), CLAY_STRING("Island mask, center area above sea level"), &terrainUI.island);

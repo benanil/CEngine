@@ -306,7 +306,6 @@ static void ReleaseQueuedResizeTextures(bool force)
     }
 }
 
-
 static void ResizeWindowFrameTextures(WindowState* winstate, u32 width, u32 height)
 {
     QueueWindowFrameTexturesForRelease(winstate);
@@ -397,6 +396,7 @@ static void UploadRenderSetEntities(RenderSet* set, RenderSetBuffers* buffers)
     UpdateGPUBuffer(buffers->entity, set->entities, set->numEntities * sizeof(Entity), 0ull);
 }
 
+// cpu only for test
 static void UploadCPUNoCullDrawSet(RenderSet* set, RenderSetBuffers* buffers)
 {
     if (set->numGroups == 0) return;
@@ -462,24 +462,17 @@ static void UploadCPUNoCullDrawSet(RenderSet* set, RenderSetBuffers* buffers)
 
 static void UploadCPUNoCullDraws(void)
 {
-    for (u32 s = 0; s < g_NumActiveScenes; s++)
-    {
-        Scene* scene = g_ActiveScenes[s];
-        UploadCPUNoCullDrawSet(&scene->skinnedSet, &scene->skinnedBuffers);
-        UploadCPUNoCullDrawSet(&scene->surfaceSet, &scene->surfaceBuffers);
-    }
+    Scene* scene = g_ActiveScene;
+    UploadCPUNoCullDrawSet(&scene->skinnedSet, &scene->skinnedBuffers);
+    UploadCPUNoCullDrawSet(&scene->surfaceSet, &scene->surfaceBuffers);
 }
 
 void CullScene(SDL_GPUCommandBuffer* cmd, FrustumPlanes planes, mat4x4 viewProj, bool enableHiZ, bool enableSurfaceLOD, u32 forcedLOD)
 {
     if (g_RenderSettings.cpuSceneNoCullDraw) return;
-
-    for (u32 s = 0; s < g_NumActiveScenes; s++)
-    {
-        Scene* scene = g_ActiveScenes[s];
-        DispatchCullDrawArgsCompute(cmd, &scene->skinnedSet, &scene->skinnedBuffers, planes, viewProj, enableHiZ, false, false, true, forcedLOD);
-        DispatchCullDrawArgsCompute(cmd, &scene->surfaceSet, &scene->surfaceBuffers, planes, viewProj, enableHiZ, false, false, enableSurfaceLOD, forcedLOD);
-    }
+    Scene* scene = g_ActiveScene;
+    DispatchCullDrawArgsCompute(cmd, &scene->skinnedSet, &scene->skinnedBuffers, planes, viewProj, enableHiZ, false, false, true, forcedLOD);
+    DispatchCullDrawArgsCompute(cmd, &scene->surfaceSet, &scene->surfaceBuffers, planes, viewProj, enableHiZ, false, false, enableSurfaceLOD, forcedLOD);
 }
 
 static void GatherSkinnedAnimationVisibility(SDL_GPUCommandBuffer* cmd, RenderSet* skinnedSet, RenderSetBuffers* skinnedBuffers,
@@ -521,18 +514,13 @@ static void GatherSkinnedAnimationVisibility(SDL_GPUCommandBuffer* cmd, RenderSe
 
 static void AnimateSkinned(SDL_GPUCommandBuffer* cmd)
 {
-    for (u32 s = 0; s < g_NumActiveScenes; s++)
-    {
-        Scene* scene = g_ActiveScenes[s];
-        DispatchAnimationCompute(cmd, &scene->skinnedSet, &scene->skinnedBuffers, &scene->animSystem);
-        DispatchAnimateVerticesCompute(cmd, &scene->skinnedSet, &scene->skinnedBuffers, &scene->animSystem);
-    }
+    Scene* scene = g_ActiveScene;
+    DispatchAnimationCompute(cmd, &scene->skinnedSet, &scene->skinnedBuffers, &scene->animSystem);
+    DispatchAnimateVerticesCompute(cmd, &scene->skinnedSet, &scene->skinnedBuffers, &scene->animSystem);
 }
 
 void Render(void)
 {
-    if (g_NumActiveScenes == 0) return;
-
     g_RenderFrameIndex++;
     ReleaseQueuedResizeTextures(false);
 
@@ -585,9 +573,17 @@ void Render(void)
     MakeGBufferTargets(winstate, gbuffer_targets);
     UploadDirtyGeometry();
     Terrain_GPUFlush(cmd);
-    for (u32 s = 0; s < g_NumActiveScenes; s++)
+    
+    mat4x4 viewProj = M44Multiply(g_Camera.view, g_Camera.projection);
+    bool enableHiZ  = g_RenderSettings.enableOcclusion && winstate->hiz_valid;
+    mat4x4 hiZViewProj = enableHiZ ? winstate->hiz_view_proj : viewProj;
+    FrustumPlanes cameraFrustum = CreateFrustumPlanes(viewProj);
+    SDL_GPUTexture* finalTexture = winstate->tex_post;
+    SDL_GPUColorTargetInfo final_load_target = MakeLoadedTextureTarget(finalTexture);
+    
+    if (g_ActiveScene)
     {
-        Scene* scene = g_ActiveScenes[s];
+        Scene* scene = g_ActiveScene;
         if (scene->renderDataDirty)
         {
             UploadRenderSetStatics(&scene->skinnedSet, &scene->skinnedBuffers);
@@ -596,78 +592,76 @@ void Render(void)
         }
         UploadRenderSetEntities(&scene->skinnedSet, &scene->skinnedBuffers);
         UploadRenderSetEntities(&scene->surfaceSet, &scene->surfaceBuffers);
-    }
-    if (g_RenderSettings.cpuSceneNoCullDraw)
-        UploadCPUNoCullDraws();
-    mat4x4 viewProj = M44Multiply(g_Camera.view, g_Camera.projection);
-    bool enableHiZ  = g_RenderSettings.enableOcclusion && winstate->hiz_valid;
-    mat4x4 hiZViewProj = enableHiZ ? winstate->hiz_view_proj : viewProj;
 
-    FrustumPlanes cameraFrustum = CreateFrustumPlanes(viewProj);
-    UpdateLightShadows();
-    UploadLightBuffer();
-    for (u32 s = 0; s < g_NumActiveScenes && !g_RenderSettings.cpuSceneNoCullDraw; s++)
-    {
-        Scene* scene = g_ActiveScenes[s];
-        GatherSkinnedAnimationVisibility(cmd, &scene->skinnedSet, &scene->skinnedBuffers,
-                                         cameraFrustum, hiZViewProj, enableHiZ, &pointShadows, &spotShadows);
-    }
-    AnimateSkinned(cmd);
+        if (g_RenderSettings.cpuSceneNoCullDraw)
+            UploadCPUNoCullDraws();
 
-    if (g_RenderSettings.enableLocalLights)
-    {
-        RenderShadows(cmd);
+        UpdateLightShadows();
+        UploadLightBuffer();
+        if (!g_RenderSettings.cpuSceneNoCullDraw)
+        {
+            Scene* scene = g_ActiveScene;
+            GatherSkinnedAnimationVisibility(cmd, &scene->skinnedSet, &scene->skinnedBuffers,
+                                             cameraFrustum, hiZViewProj, enableHiZ, &pointShadows, &spotShadows);
+        }
+        AnimateSkinned(cmd);
+
+        if (g_RenderSettings.enableLocalLights)
+        {
+            RenderShadows(cmd);
+        }
+
+        ShadowCascadeData shadowCascades = CascadedShadowmaps(cmd);
+        UploadShadowCascadeBuffer(&shadowCascades);
+        CullScene(cmd, cameraFrustum, hiZViewProj, enableHiZ, true, ~0u);
+
+        RenderDepth(cmd, &(DepthPassContext){
+            .colorTarget       = &hiz_depth_target,
+            .depthTarget       = &depth_target,
+            .skinnedPipeline   = g_RenderState.skinned.depthPipeline,
+            .surfacePipeline   = g_RenderState.surface.depthPipeline,
+            .viewProj          = viewProj,
+            .cascadeIndex      = 0,
+            .useShadowCascades = false,
+            .alphaClip         = true,
+            .enableLOD         = true
+        });
+        RenderScene(cmd, &(ScenePassContext){
+            .colorTargets    = gbuffer_targets,
+            .numColorTargets = SDL_arraysize(gbuffer_targets),
+            .depthTarget     = &main_depth_target,
+            .shadowCascades  = shadowCascades,
+            .viewProj        = viewProj
+        });
+        DispatchHBAOCompute(cmd, g_RenderSettings.enableHBAO, renderW, renderH);
+        DispatchDeferredLightingCompute(cmd, renderW, renderH, viewProj);
+        DispatchHiZBuildCompute(cmd);
+        if (g_RenderSettings.enableLocalLights)
+        {
+            DispatchCullLightsCompute(cmd, cameraFrustum, viewProj,
+                                      g_RenderSettings.enableLightFrustumCulling,
+                                      g_RenderSettings.enableOcclusion && g_RenderSettings.enableLightOcclusionCulling,
+                                      renderW, renderH);
+            RenderDeferredLights(cmd, &color_load_target, viewProj, renderW, renderH);
+        }
+        Terrain_RenderWireframe(cmd, &color_load_target, &main_depth_target, viewProj);
+
+        winstate->hiz_view_proj = viewProj;
+        winstate->hiz_valid = true;
+
+        if (g_RenderSettings.enableMLAA && winstate->tex_mlaa_output)
+        {
+            DispatchMLAACompute(cmd, renderW, renderH, g_RenderSettings.mlaaThreshold, g_RenderSettings.showMLAAEdges);
+            finalTexture = winstate->tex_mlaa_output;
+            final_load_target = MakeLoadedTextureTarget(winstate->tex_post);
+        }
+
+        RenderOutline(cmd, &final_load_target, &main_depth_target, viewProj);
     }
 
-    ShadowCascadeData shadowCascades = CascadedShadowmaps(cmd);
-    UploadShadowCascadeBuffer(&shadowCascades);
-    CullScene(cmd, cameraFrustum, hiZViewProj, enableHiZ, true, ~0u);
-
-    RenderDepth(cmd, &(DepthPassContext){
-        .colorTarget       = &hiz_depth_target,
-        .depthTarget       = &depth_target,
-        .skinnedPipeline   = g_RenderState.skinned.depthPipeline,
-        .surfacePipeline   = g_RenderState.surface.depthPipeline,
-        .viewProj          = viewProj,
-        .cascadeIndex      = 0,
-        .useShadowCascades = false,
-        .alphaClip         = true,
-        .enableLOD         = true
-    });
-    RenderScene(cmd, &(ScenePassContext){
-        .colorTargets    = gbuffer_targets,
-        .numColorTargets = SDL_arraysize(gbuffer_targets),
-        .depthTarget     = &main_depth_target,
-        .shadowCascades  = shadowCascades,
-        .viewProj        = viewProj
-    });
-    DispatchHBAOCompute(cmd, g_RenderSettings.enableHBAO, renderW, renderH);
-    DispatchDeferredLightingCompute(cmd, renderW, renderH, viewProj);
-    DispatchHiZBuildCompute(cmd);
-    if (g_RenderSettings.enableLocalLights)
-    {
-        DispatchCullLightsCompute(cmd, cameraFrustum, viewProj,
-                                  g_RenderSettings.enableLightFrustumCulling,
-                                  g_RenderSettings.enableOcclusion && g_RenderSettings.enableLightOcclusionCulling,
-                                  renderW, renderH);
-        RenderDeferredLights(cmd, &color_load_target, viewProj, renderW, renderH);
-    }
     RenderLines(cmd, &color_load_target, &main_depth_target, viewProj);
-    Terrain_RenderWireframe(cmd, &color_load_target, &main_depth_target, viewProj);
     DispatchTonemapCompute(cmd, renderW, renderH, viewProj);
 
-    winstate->hiz_view_proj = viewProj;
-    winstate->hiz_valid = true;
-
-    SDL_GPUTexture* finalTexture = winstate->tex_post;
-    if (g_RenderSettings.enableMLAA && winstate->tex_mlaa_output)
-    {
-        DispatchMLAACompute(cmd, renderW, renderH, g_RenderSettings.mlaaThreshold, g_RenderSettings.showMLAAEdges);
-        finalTexture = winstate->tex_mlaa_output;
-    }
-
-    SDL_GPUColorTargetInfo final_load_target = MakeLoadedTextureTarget(finalTexture);
-    RenderOutline(cmd, &final_load_target, &main_depth_target, viewProj);
     RenderGizmo(cmd, &final_load_target, viewProj);
     RenderSlugDemo(cmd, &final_load_target, &main_depth_target, viewProj);
     g_RenderFinalTexture = finalTexture;
@@ -746,8 +740,7 @@ void DestroyPipeline(void)
     if (g_RenderState.sampler)                  SDL_ReleaseGPUSampler(g_GPUDevice, g_RenderState.sampler);
     if (g_RenderState.hiZSampler)               SDL_ReleaseGPUSampler(g_GPUDevice, g_RenderState.hiZSampler);
     if (g_RenderState.shadowSampler)            SDL_ReleaseGPUSampler(g_GPUDevice, g_RenderState.shadowSampler);
-    while (g_NumActiveScenes > 0)
-        Scene_Destroy(g_ActiveScenes[g_NumActiveScenes - 1]);
+    if (g_ActiveScene) Scene_Destroy(g_ActiveScene);
     TextureSystem_DestroyDevice();
     UIDestroy();
     SlugDestroyDemo();

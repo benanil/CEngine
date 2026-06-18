@@ -10,6 +10,8 @@
 #include "TerrainInternal.h"
 #include "Source/Rendering/RenderingInternal.h"
 #include "Include/Memory.h"
+#include "Include/FileSystem.h"
+#include "Include/Algorithm.h"
 #include "Include/DataStructures/HashMap.h"
 
 #include "Extern/stb/stb_image.h"
@@ -1127,7 +1129,6 @@ void Terrain_Init(void)
 {
     if (g_Terrain.initialized) return;
     SDL_memset(&g_Terrain, 0, sizeof(g_Terrain));
-
     g_Terrain.genParams = Terrain_DefaultGenParams();
     TerrainDensity_SetParams(&g_Terrain.genParams);
     TerrainEdit_Init();
@@ -1173,7 +1174,7 @@ void Terrain_Init(void)
     TerrainInitPipelines();
     TerrainInitTextures();
 
-    g_Terrain.enabled = true;
+    g_Terrain.enabled = false;
     g_Terrain.initialized = true;
 }
 
@@ -1261,8 +1262,16 @@ void Terrain_Update(const Camera* camera)
     TerrainDispatchJobs(camera);
 }
 
-void Terrain_SetEnabled(bool enabled) { g_Terrain.enabled = enabled; }
-bool Terrain_GetEnabled(void)         { return g_Terrain.enabled; }
+void Terrain_SetEnabled(bool enabled)
+{
+    if (!g_Terrain.initialized) return;
+    g_Terrain.enabled = enabled;
+}
+
+bool Terrain_GetEnabled(void)
+{
+    return g_Terrain.initialized && g_Terrain.enabled;
+}
 
 // frees every resident chunk. in flight worker jobs are marked dying and release
 // when their result is consumed, nothing of theirs uploads
@@ -1277,6 +1286,11 @@ static void TerrainEvictAll(void)
 
 void Terrain_ApplyGenParams(const TerrainGenParams* params)
 {
+    if (!g_Terrain.initialized)
+    {
+        AX_WARN("Terrain_ApplyGenParams called without terrain instance");
+        return;
+    }
     g_Terrain.genParams = *params;
     g_Terrain.fixedCenterValid = false; // recapture at the next update
     // jobs sampling while the params swap produce torn results, but every live and
@@ -1287,17 +1301,30 @@ void Terrain_ApplyGenParams(const TerrainGenParams* params)
 
 const TerrainGenParams* Terrain_GetGenParams(void)
 {
+    static TerrainGenParams defaultParams;
+    static bool defaultValid;
+    if (!g_Terrain.initialized)
+    {
+        if (!defaultValid)
+        {
+            defaultParams = Terrain_DefaultGenParams();
+            defaultValid = true;
+        }
+        return &defaultParams;
+    }
     return &g_Terrain.genParams;
 }
 
 void Terrain_CreateWorld(const TerrainGenParams* params)
 {
+    if (!g_Terrain.initialized) return;
     Terrain_ApplyGenParams(params);
     g_Terrain.enabled = true;
 }
 
 void Terrain_DeleteWorld(void)
 {
+    if (!g_Terrain.initialized) return;
     g_Terrain.enabled = false;
     g_Terrain.brushRadius = 0.0f;
     TerrainEvictAll();
@@ -1310,6 +1337,7 @@ void Terrain_DeleteWorld(void)
 
 void Terrain_SetBrushCursor(float3 position, f32 radius, bool active)
 {
+    if (!g_Terrain.initialized) return;
     g_Terrain.brushPos = position;
     g_Terrain.brushRadius = active ? radius : 0.0f;
 }
@@ -1338,6 +1366,7 @@ static void TerrainRemeshRegion(float3 mn, float3 mx)
 
 void Terrain_SculptSphere(float3 center, f32 radius, f32 strength, f32 softness)
 {
+    if (!g_Terrain.initialized || !g_Terrain.enabled) return;
     float3 mn, mx;
     TerrainEdit_SculptSphere(center, radius, strength, softness, &mn, &mx);
     TerrainRemeshRegion(mn, mx);
@@ -1345,6 +1374,7 @@ void Terrain_SculptSphere(float3 center, f32 radius, f32 strength, f32 softness)
 
 void Terrain_PaintSphere(float3 center, f32 radius, u32 layer, f32 strength, f32 softness)
 {
+    if (!g_Terrain.initialized || !g_Terrain.enabled) return;
     float3 mn, mx;
     TerrainEdit_PaintSphere(center, radius, (u8)Clamps32((s32)layer + 1, 1, 15), strength, softness, &mn, &mx);
     TerrainRemeshRegion(mn, mx);
@@ -1391,9 +1421,151 @@ s32 Terrain_RaycastField(float3 origin, float3 dir, f32 maxDist, BVHHit* hit)
     return 0;
 }
 
-u32 Terrain_NumEditedRegions(void)                  { return TerrainEdit_NumChunks(); }
-bool Terrain_SaveEditChunks(const char* path)       { return TerrainEdit_SaveChunks(path); }
-bool Terrain_LoadEditChunks(const char* path)       { return TerrainEdit_LoadChunks(path); }
+u32 Terrain_NumEditedRegions(void)
+{
+    return g_Terrain.initialized ? TerrainEdit_NumChunks() : 0u;
+}
+
+bool Terrain_SaveEditChunks(const char* path)
+{
+    return g_Terrain.initialized && TerrainEdit_SaveChunks(path);
+}
+
+bool Terrain_LoadEditChunks(const char* path)
+{
+    if (!g_Terrain.initialized) Terrain_Init();
+    return g_Terrain.initialized && TerrainEdit_LoadChunks(path);
+}
+
+static char* TerrainWriteString(char* p, const char* s)
+{
+    u32 len = (u32)StringLength(s);
+    MemCopy(p, s, len);
+    return p + len;
+}
+
+static char* TerrainWriteF32(char* p, const char* key, f32 value, int decimals)
+{
+    p = TerrainWriteString(p, key);
+    *p++ = ' ';
+    p += FloatToString(p, value, decimals);
+    *p++ = '\n';
+    return p;
+}
+
+static char* TerrainWriteBool(char* p, const char* key, bool value)
+{
+    p = TerrainWriteString(p, key);
+    *p++ = ' ';
+    *p++ = value ? '1' : '0';
+    *p++ = '\n';
+    return p;
+}
+
+static bool TerrainKeyIs(const char* line, const char* key, const char** value)
+{
+    u32 len = (u32)StringLength(key);
+    for (u32 i = 0; i < len; i++)
+        if (line[i] != key[i]) return false;
+    if (line[len] != ' ') return false;
+    *value = line + len + 1;
+    return true;
+}
+
+static bool TerrainChunksPathFromWorld(const char* terrainPath, char* dst, u32 dstSize)
+{
+    u32 len = Minu32((u32)StringLength(terrainPath), dstSize - 1u);
+    MemCopy(dst, terrainPath, len);
+    dst[len] = '\0';
+
+    u32 dot = len;
+    while (dot > 0u && dst[dot - 1u] != '.' && dst[dot - 1u] != '/' && dst[dot - 1u] != '\\') dot--;
+    if (dot > 0u && dst[dot - 1u] == '.') len = dot - 1u;
+
+    static const char ext[] = ".chunks";
+    u32 extLen = (u32)sizeof(ext);
+    if (len + extLen > dstSize) return false;
+    MemCopy(dst + len, ext, extLen);
+    return true;
+}
+
+bool Terrain_SaveWorld(const char* path)
+{
+    if (!path || !path[0] || !g_Terrain.initialized || !g_Terrain.enabled) return false;
+    EnsurePath(path);
+
+    char* text = (char*)SDL_malloc(4096u);
+    if (!text) return false;
+
+    TerrainGenParams* params = &g_Terrain.genParams;
+    char* p = text;
+    p = TerrainWriteString(p, "terrain 1\n");
+    p = TerrainWriteBool(p, "fixed_chunk_size", params->fixedArea);
+    p = TerrainWriteBool(p, "island", params->island);
+    p = TerrainWriteF32(p, "seed", (f32)params->seed, 0);
+    p = TerrainWriteF32(p, "sea_level", params->seaLevel, 3);
+    p = TerrainWriteF32(p, "base_height", params->baseHeight, 3);
+    p = TerrainWriteF32(p, "hill_amplitude", params->hillAmplitude, 3);
+    p = TerrainWriteF32(p, "hill_frequency", params->hillFrequency, 6);
+    p = TerrainWriteF32(p, "ridge_amplitude", params->ridgeAmplitude, 3);
+    p = TerrainWriteF32(p, "ridge_frequency", params->ridgeFrequency, 6);
+    p = TerrainWriteF32(p, "cave_amplitude", params->carveAmplitude, 3);
+    p = TerrainWriteF32(p, "cave_frequency", params->carveFrequency, 6);
+    p = TerrainWriteF32(p, "island_radius", params->islandRadius, 3);
+    p = TerrainWriteF32(p, "island_falloff", params->islandFalloff, 3);
+
+    WriteAllBytes(path, text, (unsigned long)(p - text));
+    SDL_free(text);
+
+    char chunksPath[512];
+    if (!TerrainChunksPathFromWorld(path, chunksPath, sizeof(chunksPath))) return false;
+    EnsurePath(chunksPath);
+    return FileExist(path) && Terrain_SaveEditChunks(chunksPath);
+}
+
+bool Terrain_LoadWorld(const char* path)
+{
+    if (!path || !path[0]) return false;
+    if (!g_Terrain.initialized) Terrain_Init();
+    if (!g_Terrain.initialized) return false;
+
+    char* text = ReadAllFileAlloc(path);
+    if (!text) return false;
+
+    TerrainGenParams params = Terrain_DefaultGenParams();
+    const char* value;
+    char* line = text;
+    while (line && *line)
+    {
+        char* next = line;
+        while (*next && *next != '\n') next++;
+        bool hadNewline = *next == '\n';
+        *next = '\0';
+
+        if      (TerrainKeyIs(line, "fixed_chunk_size", &value)) params.fixedArea = value[0] == '1';
+        else if (TerrainKeyIs(line, "island", &value))           params.island = value[0] == '1';
+        else if (TerrainKeyIs(line, "seed", &value))             { f32 f; ParseFloat(value, &f); params.seed = (u32)f; }
+        else if (TerrainKeyIs(line, "sea_level", &value))        ParseFloat(value, &params.seaLevel);
+        else if (TerrainKeyIs(line, "base_height", &value))      ParseFloat(value, &params.baseHeight);
+        else if (TerrainKeyIs(line, "hill_amplitude", &value))   ParseFloat(value, &params.hillAmplitude);
+        else if (TerrainKeyIs(line, "hill_frequency", &value))   ParseFloat(value, &params.hillFrequency);
+        else if (TerrainKeyIs(line, "ridge_amplitude", &value))  ParseFloat(value, &params.ridgeAmplitude);
+        else if (TerrainKeyIs(line, "ridge_frequency", &value))  ParseFloat(value, &params.ridgeFrequency);
+        else if (TerrainKeyIs(line, "cave_amplitude", &value))   ParseFloat(value, &params.carveAmplitude);
+        else if (TerrainKeyIs(line, "cave_frequency", &value))   ParseFloat(value, &params.carveFrequency);
+        else if (TerrainKeyIs(line, "island_radius", &value))    ParseFloat(value, &params.islandRadius);
+        else if (TerrainKeyIs(line, "island_falloff", &value))   ParseFloat(value, &params.islandFalloff);
+
+        line = hadNewline ? next + 1 : NULL;
+    }
+    FreeAllText(text);
+
+    char chunksPath[512];
+    if (!TerrainChunksPathFromWorld(path, chunksPath, sizeof(chunksPath))) return false;
+    if (FileExist(chunksPath) && !Terrain_LoadEditChunks(chunksPath)) return false;
+    Terrain_CreateWorld(&params);
+    return true;
+}
 
 TerrainStats Terrain_GetStats(void)
 {

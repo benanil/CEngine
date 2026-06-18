@@ -56,6 +56,8 @@ void Terrain_PaintSphere(float3 center, f32 radius, u32 layer, f32 strength, f32
 u32  Terrain_NumEditedRegions(void);
 bool Terrain_SaveEditChunks(const char* path);
 bool Terrain_LoadEditChunks(const char* path);
+bool Terrain_SaveWorld(const char* path);
+bool Terrain_LoadWorld(const char* path);
 
 typedef struct TerrainStats_
 {
