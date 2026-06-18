@@ -29,6 +29,7 @@
 /vsbuild
 /Shaders/spv
 /Shaders/msl
+/Assets/Test
 
 *.spv
 *.opencode
