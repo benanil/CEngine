@@ -34,7 +34,8 @@ static wCursor g_CurrentCursor = wCursor_Count;
 
 #ifdef PLATFORM_WINDOWS
 #include <DbgHelp.h>
-
+#include <dwmapi.h>
+#pragma comment(lib, "dwmapi.lib")
 #define WINDOW_CORNER_RADIUS 28
 
 static HWND PlatformGetWin32WindowHandle(void)
@@ -61,35 +62,8 @@ static void PlatformApplyRoundedWindowRegion(void)
 {
     HWND hwnd = PlatformGetWin32WindowHandle();
     if (!hwnd) return;
-
-    SDL_WindowFlags flags = SDL_GetWindowFlags(g_SDLWindow);
-    if ((flags & (SDL_WINDOW_MAXIMIZED | SDL_WINDOW_FULLSCREEN)) != 0u)
-    {
-        SetWindowRgn(hwnd, NULL, TRUE);
-        return;
-    }
-
-    int width = 0;
-    int height = 0;
-    SDL_GetWindowSize(g_SDLWindow, &width, &height);
-    if (width <= 0 || height <= 0)
-    {
-        AX_WARN("skipping rounded window region for invalid size %d x %d", width, height);
-        return;
-    }
-    // https://learn.microsoft.com/en-us/windows/apps/desktop/modernize/ui/apply-rounded-corners
-    HRGN region = CreateRoundRectRgn(0, 0, width + 1, height + 1, WINDOW_CORNER_RADIUS, WINDOW_CORNER_RADIUS);
-    if (!region)
-    {
-        AX_WARN("creating rounded window region failed");
-        return;
-    }
-
-    if (!SetWindowRgn(hwnd, region, TRUE))
-    {
-        DeleteObject(region);
-        AX_WARN("setting rounded window region failed");
-    }
+    DWM_WINDOW_CORNER_PREFERENCE preference = DWMWCP_ROUND;
+    DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, &preference, sizeof(preference));
 }
 
 static void PrintCrashFrame(u32 idx, void* addr)
@@ -191,7 +165,6 @@ void EventCallback(const SDL_Event* event)
             else SDL_Log("unhandelled key code down: %x", vk_code);
 
             PlatformPushTextKeyEvent(event->key.key, (u16)event->key.mod);
-
             break;
         }
         case SDL_EVENT_KEY_UP: {

@@ -64,6 +64,13 @@ float3 TonemapACES(float3 color)
     return saturate(v);
 }
 
+float Vignette(float2 uv)
+{
+    uv *=  1.0 - uv.yx;   //vec2(1.0)- uv.yx; -> 1.-u.yx; Thanks FabriceNeyret !
+    float vig = uv.x * uv.y * 15.0; // multiply with sth for intensity
+    return pow(vig, 0.2); // change pow for modifying the extend of the  vignette
+}
+
 [numthreads(8, 8, 1)]
 void main(uint3 tid : SV_DispatchThreadID)
 {
@@ -80,5 +87,6 @@ void main(uint3 tid : SV_DispatchThreadID)
     color += godRays * float3(1.35f, 1.08f, 0.72f);
     color = TonemapACES(color * exposure);
     color = pow(color, 1.0f / max(gamma, 0.001f));
+    color *= max(Vignette(uv), 0.05);
     OutputTexture[tid.xy] = float4(color, 1.0f);
 }
