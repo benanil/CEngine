@@ -13,6 +13,8 @@
 
 #define TERRAIN_VOXEL_SIZE     1.0f   // meters per cell at lod 0
 #define TERRAIN_LOD_COUNT      4      // chunk world sizes 16/32/64/128 m
+#define TERRAIN_MAX_VERTICES   (1u << 20) // 16 MB of TerrainVertex
+#define TERRAIN_MAX_INDICES    (4u << 20) // 16 MB of u32
 
 // densities are clamped signed distance in meters, negative inside the solid, scaled so
 // that +-TERRAIN_SDF_CLAMP maps to +-127. the scale is world fixed (NOT per lod): the

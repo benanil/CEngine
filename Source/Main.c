@@ -24,14 +24,14 @@ static bool g_MainLoopTicking;
 Camera       g_Camera;
 SDL_Window*  g_SDLWindow;
 
-extern bool TerrainEditorUpdate(Camera* camera);
-extern bool EditorGizmoUpdate(Camera* camera);
-extern bool EditorLightGizmoUpdate(Camera* camera);
-extern void EditorPickingUpdate(Camera* camera);
-extern void EditorInit(void);
-extern void EditorConsoleInit(void);
+extern bool   TerrainEditorUpdate(Camera* camera);
+extern bool   EditorGizmoUpdate(Camera* camera);
+extern bool   EditorLightGizmoUpdate(Camera* camera);
+extern void   EditorPickingUpdate(Camera* camera);
+extern void   EditorInit(void);
+extern void   EditorConsoleInit(void);
 extern Scene* EditorNewScene(void);
-extern void EditorSceneStartup(void);
+extern void   EditorSceneStartup(void);
 
 static void MainSyncWindowSize(void)
 {
@@ -127,7 +127,6 @@ static SDL_AppResult SDLCALL MainAppEvent(void* appstate, SDL_Event* event)
 {
     (void)appstate;
     if (!event) return SDL_APP_CONTINUE;
-
     done = done || (event->type == SDL_EVENT_QUIT);
     EventCallback(event);
     return done ? SDL_APP_SUCCESS : SDL_APP_CONTINUE;
@@ -137,7 +136,6 @@ static SDL_AppResult SDLCALL MainAppIterate(void* appstate)
 {
     (void)appstate;
     if (done) return SDL_APP_SUCCESS;
-
     MainLoopTick();
     return done ? SDL_APP_SUCCESS : SDL_APP_CONTINUE;
 }

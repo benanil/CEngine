@@ -241,18 +241,20 @@ static void UploadDirtyGeometry(void)
     if (!g_RenderState.indexBuffer) return;
 
     SDL_GPUBuffer* gpuBuffers[GeometryBuffer_Count] = {
-        g_RenderState.skinned.vertexBuffer, g_RenderState.surface.vertexBuffer, g_RenderState.indexBuffer
+        g_RenderState.skinned.vertexBuffer, g_RenderState.surface.vertexBuffer, g_RenderState.indexBuffer, NULL, NULL
     };
     const u8* sources[GeometryBuffer_Count] = {
-        (const u8*)gGFX.SkinnedVertexBuffer, (const u8*)gGFX.SurfaceVertexBuffer, (const u8*)gGFX.IndexBuffer
+        (const u8*)gGFX.SkinnedVertexBuffer, (const u8*)gGFX.SurfaceVertexBuffer, (const u8*)gGFX.IndexBuffer,
+        NULL, NULL
     };
-    const size_t strides[GeometryBuffer_Count] = { sizeof(ASkinedVertex), sizeof(AVertex), sizeof(u32) };
+    const size_t strides[GeometryBuffer_Count] = { sizeof(ASkinedVertex), sizeof(AVertex), sizeof(u32), 0u, 0u };
 
     for (u32 kind = 0; kind < GeometryBuffer_Count; kind++)
     {
         for (u32 i = 0; i < g_NumGeometryDirty[kind]; i++)
         {
             GeometryDirtyRange range = g_GeometryDirty[kind][i];
+            if (!gpuBuffers[kind]) continue;
             UpdateGPUBuffer(gpuBuffers[kind],
                             sources[kind] + (size_t)range.begin * strides[kind],
                             (size_t)(range.end - range.begin) * strides[kind],

@@ -81,8 +81,8 @@ bool Terrain_GetEnabled(void);
 // casts a world space ray against the resident terrain meshes (the same set that
 // draws: live, not hidden, retiring included). dir must be normalized, hits beyond
 // maxDist are rejected. only chunks with lod <= maxLod are tested, lower values make
-// cheap queries cheaper. cpu mesh copies are kept for lod 0..1 only (the near rings,
-// TERRAIN_RAYCAST_KEEP_LOD), coarser chunks never hit regardless of maxLod.
+// cheap queries cheaper. raycast uses the terrain geometry heap cpu mirrors for lod
+// 0..1 only (the near rings, TERRAIN_RAYCAST_KEEP_LOD), coarser chunks never hit.
 // fills the scene BVHHit: t/u/v/position/triIndex are valid, entityIdx holds the
 // terrain chunk slot, groupIdx the chunk lod, and skinnedSet/bundleIdx are 0xFFFFFFFF
 // to mark a terrain hit. out: 1 when hit

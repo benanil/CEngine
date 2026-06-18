@@ -42,8 +42,6 @@
 #define TERRAIN_MAX_JOBS        16u
 #define TERRAIN_MAX_WORKERS     8u
 #define TERRAIN_RING_RADIUS     2
-#define TERRAIN_MAX_VERTICES    (1u << 20)             // 16 MB of TerrainVertex
-#define TERRAIN_MAX_INDICES     (4u << 20)             // 16 MB of u32
 #define TERRAIN_TRANSFER_BYTES  (8u * 1024u * 1024u)
 #define TERRAIN_PENDING_CAP     4096u
 #define TERRAIN_DEBUG_HOLES     0    // 1: log a streaming audit + raycast hole probe every 240 frames
@@ -89,9 +87,8 @@ typedef struct TerrainChunk_
     u32 vertexOffset, numVertices;
     u32 indexOffset, numIndices;
     float3 aabbMin, aabbMax; // world space, tight bounds from the mesher
-    // cpu copy of the resident mesh for Terrain_Raycast, same lifetime as the gpu ranges
-    TerrainVertex* cpuVertices;
-    u32*           cpuIndices;
+    void* vertexHeapPtr;
+    void* indexHeapPtr;
 } TerrainChunk;
 
 typedef struct TerrainJob_
@@ -108,20 +105,6 @@ typedef struct TerrainJob_
     TerrainMeshScratch scratch;  // allocated once per slot, reused
     TerrainMeshOut mesh;         // capacity persists across jobs
 } TerrainJob;
-
-typedef struct TerrainHeapBlock_
-{
-    u32 offset;
-    u32 count;
-} TerrainHeapBlock;
-
-typedef struct TerrainHeap_
-{
-    TerrainHeapBlock* freeBlocks; // sorted by offset
-    u32 numFreeBlocks;
-    u32 freeBlockCapacity;
-    u32 used;
-} TerrainHeap;
 
 typedef struct TerrainBox_ { s32 min[3], max[3]; } TerrainBox; // inclusive chunk coords
 
@@ -140,8 +123,8 @@ typedef struct TerrainState_
 
     TerrainJob jobs[TERRAIN_MAX_JOBS];
 
-    TerrainHeap vertexHeap;
-    TerrainHeap indexHeap;
+    u32 numAllocatedVertices;
+    u32 numAllocatedIndices;
 
     u32 gen;
     s32 lastCamChunk[3];
@@ -208,79 +191,7 @@ static u64 TerrainChunkKey(s32 x, s32 y, s32 z, u32 lod)
          | (u64)lod;
 }
 
-// ---------------------------------------------------------------------------------
-// gpu heap
-// ---------------------------------------------------------------------------------
-
-static void TerrainHeapInit(TerrainHeap* heap, u32 capacity, u32 stride)
-{
-    (void)stride;
-    heap->freeBlockCapacity = TERRAIN_MAX_CHUNKS + 1u;
-    heap->freeBlocks = (TerrainHeapBlock*)AllocateTLSFGlobal(heap->freeBlockCapacity * sizeof(TerrainHeapBlock));
-    heap->freeBlocks[0] = (TerrainHeapBlock){ 0u, capacity };
-    heap->numFreeBlocks = 1u;
-    heap->used = 0u;
-}
-
-static void TerrainHeapDestroy(TerrainHeap* heap)
-{
-    if (heap->freeBlocks) DeAllocateTLSFGlobal(heap->freeBlocks);
-    SDL_memset(heap, 0, sizeof(*heap));
-}
-
-#define TERRAIN_HEAP_FAIL 0xFFFFFFFFu
-
-static u32 TerrainHeapAlloc(TerrainHeap* heap, u32 count)
-{
-    if (count == 0u) return TERRAIN_HEAP_FAIL;
-    for (u32 i = 0; i < heap->numFreeBlocks; i++)
-    {
-        TerrainHeapBlock* block = &heap->freeBlocks[i];
-        if (block->count < count) continue;
-        u32 offset = block->offset;
-        block->offset += count;
-        block->count -= count;
-        if (block->count == 0u)
-        {
-            for (u32 j = i; j + 1u < heap->numFreeBlocks; j++) heap->freeBlocks[j] = heap->freeBlocks[j + 1u];
-            heap->numFreeBlocks--;
-        }
-        heap->used += count;
-        return offset;
-    }
-    return TERRAIN_HEAP_FAIL;
-}
-
-static void TerrainHeapFree(TerrainHeap* heap, u32 offset, u32 count)
-{
-    if (count == 0u) return;
-    heap->used -= count;
-
-    u32 i = 0;
-    while (i < heap->numFreeBlocks && heap->freeBlocks[i].offset < offset) i++;
-
-    bool mergePrev = i > 0u && heap->freeBlocks[i - 1u].offset + heap->freeBlocks[i - 1u].count == offset;
-    bool mergeNext = i < heap->numFreeBlocks && offset + count == heap->freeBlocks[i].offset;
-    if (mergePrev && mergeNext)
-    {
-        heap->freeBlocks[i - 1u].count += count + heap->freeBlocks[i].count;
-        for (u32 j = i; j + 1u < heap->numFreeBlocks; j++) heap->freeBlocks[j] = heap->freeBlocks[j + 1u];
-        heap->numFreeBlocks--;
-    }
-    else if (mergePrev) heap->freeBlocks[i - 1u].count += count;
-    else if (mergeNext)
-    {
-        heap->freeBlocks[i].offset = offset;
-        heap->freeBlocks[i].count += count;
-    }
-    else
-    {
-        ASSERT(heap->numFreeBlocks < heap->freeBlockCapacity);
-        for (u32 j = heap->numFreeBlocks; j > i; j--) heap->freeBlocks[j] = heap->freeBlocks[j - 1u];
-        heap->freeBlocks[i] = (TerrainHeapBlock){ offset, count };
-        heap->numFreeBlocks++;
-    }
-}
+#define TERRAIN_HEAP_FAIL GEOMETRY_ALLOC_FAIL
 
 // ---------------------------------------------------------------------------------
 // chunk pool
@@ -300,12 +211,14 @@ static void TerrainChunkRelease(u32 slot)
 
 static void TerrainChunkFreeMesh(TerrainChunk* chunk)
 {
-    if (chunk->numVertices) TerrainHeapFree(&g_Terrain.vertexHeap, chunk->vertexOffset, chunk->numVertices);
-    if (chunk->numIndices)  TerrainHeapFree(&g_Terrain.indexHeap, chunk->indexOffset, chunk->numIndices);
+    if (chunk->vertexHeapPtr) GeometryHeapFree(GeometryBuffer_TerrainVertex, chunk->vertexHeapPtr);
+    if (chunk->indexHeapPtr)  GeometryHeapFree(GeometryBuffer_TerrainIndex, chunk->indexHeapPtr);
+    if (chunk->numVertices) g_Terrain.numAllocatedVertices -= chunk->numVertices;
+    if (chunk->numIndices)  g_Terrain.numAllocatedIndices  -= chunk->numIndices;
     if (chunk->numIndices && g_Terrain.numDrawable) g_Terrain.numDrawable--;
     chunk->numVertices = chunk->numIndices = 0u;
-    SDL_free(chunk->cpuVertices); chunk->cpuVertices = NULL;
-    SDL_free(chunk->cpuIndices);  chunk->cpuIndices = NULL;
+    chunk->vertexHeapPtr = NULL;
+    chunk->indexHeapPtr = NULL;
 }
 
 static void TerrainPendingPush(u32 slot)
@@ -752,13 +665,15 @@ void Terrain_GPUFlush(SDL_GPUCommandBuffer* cmd)
         if (cursor + vertexBytes + indexBytes > TERRAIN_TRANSFER_BYTES)
             break; // out of staging space, the job stays done and retries next frame
 
-        u32 vertexOffset = TerrainHeapAlloc(&g_Terrain.vertexHeap, job->mesh.numVertices);
+        void* vertexRaw = NULL;
+        void* indexRaw = NULL;
+        u32 vertexOffset = GeometryHeapAlloc(GeometryBuffer_TerrainVertex, job->mesh.numVertices, &vertexRaw);
         u32 indexOffset  = vertexOffset == TERRAIN_HEAP_FAIL ? TERRAIN_HEAP_FAIL
-                         : TerrainHeapAlloc(&g_Terrain.indexHeap, job->mesh.numIndices);
+                         : GeometryHeapAlloc(GeometryBuffer_TerrainIndex, job->mesh.numIndices, &indexRaw);
         if (indexOffset == TERRAIN_HEAP_FAIL)
         {
             if (vertexOffset != TERRAIN_HEAP_FAIL)
-                TerrainHeapFree(&g_Terrain.vertexHeap, vertexOffset, job->mesh.numVertices);
+                GeometryHeapFree(GeometryBuffer_TerrainVertex, vertexRaw);
             AX_WARN("terrain geometry heap full, chunk dropped to retry");
             chunk->jobSlot = -1;
             chunk->state = ChunkState_Queued;
@@ -767,18 +682,29 @@ void Terrain_GPUFlush(SDL_GPUCommandBuffer* cmd)
             continue;
         }
 
+        TerrainVertex* cpuVertices = (TerrainVertex*)gGFX.TerrainVertexBuffer + vertexOffset;
+        u32* cpuIndices = gGFX.TerrainIndexBuffer + indexOffset;
+        MemCopy(cpuVertices, job->mesh.vertices, vertexBytes);
+        MemCopy(cpuIndices, job->mesh.indices, indexBytes);
+
         if (!mapped)
         {
             mapped = (u8*)SDL_MapGPUTransferBuffer(g_GPUDevice, g_Terrain.transferBuffer, true);
-            if (!mapped) { AX_WARN("terrain transfer map failed: %s", SDL_GetError()); break; }
+            if (!mapped)
+            {
+                GeometryHeapFree(GeometryBuffer_TerrainVertex, vertexRaw);
+                GeometryHeapFree(GeometryBuffer_TerrainIndex, indexRaw);
+                AX_WARN("terrain transfer map failed: %s", SDL_GetError());
+                break;
+            }
         }
 
-        MemCopy(mapped + cursor, job->mesh.vertices, vertexBytes);
+        MemCopy(mapped + cursor, cpuVertices, vertexBytes);
         regions[numRegions++] = (TerrainCopyRegion){
             g_Terrain.vertexBuffer, cursor, vertexOffset * (u32)sizeof(TerrainVertex), vertexBytes };
         cursor += vertexBytes;
 
-        MemCopy(mapped + cursor, job->mesh.indices, indexBytes);
+        MemCopy(mapped + cursor, cpuIndices, indexBytes);
         regions[numRegions++] = (TerrainCopyRegion){
             g_Terrain.indexBuffer, cursor, indexOffset * (u32)sizeof(u32), indexBytes };
         cursor += indexBytes;
@@ -787,17 +713,14 @@ void Terrain_GPUFlush(SDL_GPUCommandBuffer* cmd)
         // pass lands before this frame's draws and the draws use the new offsets
         bool wasVisible = chunk->numIndices > 0u;
         TerrainChunkFreeMesh(chunk);
+        chunk->vertexHeapPtr = vertexRaw;
+        chunk->indexHeapPtr  = indexRaw;
         chunk->vertexOffset = vertexOffset;
         chunk->numVertices  = job->mesh.numVertices;
         chunk->indexOffset  = indexOffset;
         chunk->numIndices   = job->mesh.numIndices;
-        if (chunk->lod <= TERRAIN_RAYCAST_KEEP_LOD)
-        {
-            chunk->cpuVertices = (TerrainVertex*)SDL_malloc(vertexBytes);
-            chunk->cpuIndices  = (u32*)SDL_malloc(indexBytes);
-            if (chunk->cpuVertices) MemCopy(chunk->cpuVertices, job->mesh.vertices, vertexBytes);
-            if (chunk->cpuIndices)  MemCopy(chunk->cpuIndices, job->mesh.indices, indexBytes);
-        }
+        g_Terrain.numAllocatedVertices += chunk->numVertices;
+        g_Terrain.numAllocatedIndices  += chunk->numIndices;
         chunk->empty = 0;
         chunk->appliedMask = job->transitionMask;
         chunk->state = ChunkState_Live;
@@ -866,7 +789,7 @@ s32 Terrain_Raycast(float3 origin, float3 dir, f32 maxDist, u32 maxLod, BVHHit* 
         // exactly the drawn set: live with geometry, hidden swaps excluded
         if (!chunk->used || chunk->state != ChunkState_Live || chunk->numIndices == 0u || chunk->hidden) continue;
         if (chunk->lod > maxLod) continue;
-        if (!chunk->cpuVertices || !chunk->cpuIndices) continue;
+        if (chunk->lod > TERRAIN_RAYCAST_KEEP_LOD) continue;
 
         v128f bmin = Vec3Load(&chunk->aabbMin.x);
         v128f bmax = Vec3Load(&chunk->aabbMax.x);
@@ -875,12 +798,14 @@ s32 Terrain_Raycast(float3 origin, float3 dir, f32 maxDist, u32 maxLod, BVHHit* 
         f32 size = TerrainChunkWorldSize(chunk->lod);
         v128f chunkOrigin = VecSetR((f32)chunk->x * size, (f32)chunk->y * size, (f32)chunk->z * size, 0.0f);
         f32 metersPerStep = size / (f32)TERRAIN_POS_MAX;
+        TerrainVertex* vertices = (TerrainVertex*)gGFX.TerrainVertexBuffer + chunk->vertexOffset;
+        u32* indices = gGFX.TerrainIndexBuffer + chunk->indexOffset;
 
         for (u32 t = 0; t + 2 < chunk->numIndices; t += 3)
         {
-            v128f v0 = TerrainDecodePosition(&chunk->cpuVertices[chunk->cpuIndices[t + 0]], chunkOrigin, metersPerStep);
-            v128f v1 = TerrainDecodePosition(&chunk->cpuVertices[chunk->cpuIndices[t + 1]], chunkOrigin, metersPerStep);
-            v128f v2 = TerrainDecodePosition(&chunk->cpuVertices[chunk->cpuIndices[t + 2]], chunkOrigin, metersPerStep);
+            v128f v0 = TerrainDecodePosition(&vertices[indices[t + 0]], chunkOrigin, metersPerStep);
+            v128f v1 = TerrainDecodePosition(&vertices[indices[t + 1]], chunkOrigin, metersPerStep);
+            v128f v2 = TerrainDecodePosition(&vertices[indices[t + 2]], chunkOrigin, metersPerStep);
             if (IntersectTriangle(rayOrigin, rayDir, v0, v1, v2, &hit->hit))
             {
                 anyHit = true;
@@ -1216,9 +1141,6 @@ void Terrain_Init(void)
     g_Terrain.numFreeSlots = TERRAIN_MAX_CHUNKS;
     g_Terrain.chunkMap = HMCreate(TERRAIN_MAX_CHUNKS, sizeof(u32));
 
-    TerrainHeapInit(&g_Terrain.vertexHeap, TERRAIN_MAX_VERTICES, (u32)sizeof(TerrainVertex));
-    TerrainHeapInit(&g_Terrain.indexHeap, TERRAIN_MAX_INDICES, (u32)sizeof(u32));
-
     for (u32 i = 0; i < TERRAIN_MAX_JOBS; i++)
     {
         TerrainJob* job = &g_Terrain.jobs[i];
@@ -1288,14 +1210,9 @@ void Terrain_Destroy(void)
     ReleaseTexture(&g_Terrain.armLayers);
 
     for (u32 i = 0; i < TERRAIN_MAX_CHUNKS; i++)
-    {
-        SDL_free(g_Terrain.chunks[i].cpuVertices);
-        SDL_free(g_Terrain.chunks[i].cpuIndices);
-    }
+        TerrainChunkFreeMesh(&g_Terrain.chunks[i]);
 
     HMDestroy(&g_Terrain.chunkMap);
-    TerrainHeapDestroy(&g_Terrain.vertexHeap);
-    TerrainHeapDestroy(&g_Terrain.indexHeap);
     DeAllocateTLSFGlobal(g_Terrain.chunks);
     DeAllocateTLSFGlobal(g_Terrain.freeSlots);
     DeAllocateTLSFGlobal(g_Terrain.pending);
@@ -1495,7 +1412,7 @@ TerrainStats Terrain_GetStats(void)
         if (jobState == JobState_Queued || jobState == JobState_Running) stats.jobsInFlight++;
     }
     stats.drawnChunks = g_Terrain.drawnLastFrame;
-    stats.numVertices = g_Terrain.vertexHeap.used;
-    stats.numIndices  = g_Terrain.indexHeap.used;
+    stats.numVertices = g_Terrain.numAllocatedVertices;
+    stats.numIndices  = g_Terrain.numAllocatedIndices;
     return stats;
 }

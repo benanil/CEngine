@@ -279,6 +279,8 @@ typedef struct Graphics_
 {
     ASkinedVertex* SkinnedVertexBuffer;
     AVertex*       SurfaceVertexBuffer;
+    void*          TerrainVertexBuffer;
+    u32*           TerrainIndexBuffer;
     u32*           IndexBuffer;
     u32            NumIndices;          // in use stats, not cursors
     u32            NumSkinnedVertices;
@@ -304,13 +306,15 @@ enum GeometryBufferKind_
     GeometryBuffer_SkinnedVertex,
     GeometryBuffer_SurfaceVertex,
     GeometryBuffer_Index,
+    GeometryBuffer_TerrainVertex,
+    GeometryBuffer_TerrainIndex,
     GeometryBuffer_Count
 };
 typedef s32 GeometryBufferKind;
 
-// per bundle sub allocation of the cpu/gpu mega buffers. tlsf runs directly
-// over the cpu mirrors, allocations are over sized and rounded up to the
-// element stride. raw is the heap pointer, keep it to shrink or free
+// sub allocation of the cpu/gpu mega buffers. tlsf runs directly over the cpu
+// mirrors, allocations are over sized and rounded up to the element stride.
+// raw is the heap pointer, keep it to shrink or free
 #define GEOMETRY_ALLOC_FAIL 0xFFFFFFFFu
 
 // out: element offset of count free elements, GEOMETRY_ALLOC_FAIL when full
