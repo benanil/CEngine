@@ -354,7 +354,6 @@ purefn f32 VCALL Vec3DotfImpl(v128f a, v128f b) {
 #define VeciSll(a, b)               _mm_sllv_epi32(a, b)    /*  a << b */
 #define VeciSrl32(a, b)             _mm_srli_epi32(a, b)    /*  a >> b */
 #define VeciSll32(a, b)             _mm_slli_epi32(a, b)    /*  a << b */
-#define VeciToVecf(a)               _mm_castsi128_ps(a)     /*  a << b */
                                     
 // signed compares. le/ge have no sse instruction, they are not(gt)/not(lt)
 #define VeciCmpLt(a, b)             _mm_cmplt_epi32(a, b)
@@ -658,7 +657,6 @@ VecSetR( \
 #define VeciSll(a, b)               vshlq_u32(a, vreinterpretq_s32_u32(b))             /* a << b */
 #define VeciSrl32(a, b)             vshrq_n_u32(a, b)           /* a >> b */
 #define VeciSll32(a, b)             vshlq_n_u32(a, b)           /* a << b */
-#define VeciToVecf(a)               vreinterpretq_f32_u32(a)    /* Reinterpret int as float */
 #define VeciNeg(a)                  vreinterpretq_u32_s32(vnegq_s32(vreinterpretq_s32_u32(a))) /* -a */
 
 /* signed compares like the sse versions */

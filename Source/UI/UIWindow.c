@@ -1122,9 +1122,10 @@ static bool UIWindowLayoutLineIs(const char* line, const char* prefix)
 
 bool UIWindowLoadLayout(const char* path)
 {
+    if (!FileExist(path)) { AX_LOG("editor window layout file is not exists"); return false; }
     u64 size = 0u;
     char* text = ReadAllTextAlloc(path, &size, NULL);
-    if (!text) return false;
+    if (!text) { AX_WARN("reading editor layout file failed"); return false; }
 
     g_UIWindowPlacementCount = 0u;
     float2 savedWorkPos = { 0.0f, 0.0f };

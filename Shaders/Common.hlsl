@@ -294,7 +294,6 @@ typedef float4x4 mat4x4;
 #define VeciSll(a, b)                   ((uint4(a) << (b)))
 #define VeciSrl32(a, b)                 ((uint4(a) >> (b)))
 #define VeciSll32(a, b)                 ((uint4(a) << (b)))
-#define VeciToVecf(a)                   asfloat(uint4(a))
 
 #define VecFabs(x)                      VecAnd(x, VecFromInt1(0x7fffffff))
 

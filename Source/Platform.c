@@ -10,6 +10,7 @@
 #include "Include/Platform.h"
 #include "Include/Bitset.h"
 #include "Include/Camera.h"
+#include "Include/Memory.h"
 
 #include <SDL3/SDL_events.h>
 #include <SDL3/SDL_dialog.h>
@@ -17,6 +18,7 @@
 #include <SDL3/SDL_properties.h>
 #include <SDL3/SDL_timer.h>
 #include <SDL3/SDL_video.h>
+#include <SDL3/SDL_filesystem.h>
 
 #define STB_SPRINTF_IMPLEMENTATION
 #include "Extern/stb/stb_sprintf.h"
@@ -241,6 +243,18 @@ void EventCallback(const SDL_Event* event)
         default:
             break;
     }
+}
+
+const char* ConcatWithTempPath(const char* added, size_t addedLen)
+{
+    char* prefPath = SDL_GetPrefPath("CEngine", APPLICATION_NAME);
+    if (!prefPath) { AX_WARN("getting pref path failed!"); return NULL; }
+    int len = StringLength(prefPath);
+    char* path = ArenaAllocGlobal(4096);
+    MemsetZero(path, 4096);
+    SmallMemCpy(path, prefPath, len);
+    SmallMemCpy(path + len, added, addedLen);
+    return path;
 }
 
 void GetMousePos(float* x, float* y) { SDL_GetMouseState(x, y); }

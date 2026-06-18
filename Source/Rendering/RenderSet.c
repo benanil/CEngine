@@ -34,10 +34,9 @@ void RenderSet_InitSet(RenderSet* set, u32 maxEntities, u32 maxGroups, u32 maxBu
 
 v128f RenderSet_UnpackEntityScale01(u32 packed)
 {
-    return VecSetR((f32)(packed & 0x7FFu) / 2047.0f,
-                   (f32)((packed >> 11u) & 0x7FFu) / 2047.0f,
-                   (f32)((packed >> 22u) & 0x3FFu) / 1023.0f,
-                   0.0f);
+    v128u i = VeciSrl(VeciSet1(packed), VeciSetR(0, 11, 22, 31));
+    i = VeciAnd(i, VeciSetR(0x7FF, 0x7FF, 0x3FF, 0));
+    return VecMul(VecI32ToF32(i), VecSetR(1.0f / 2047.0f, 1.0f / 2047.0f, 1.0f / 1023.0f, 0.0f));
 }
 
 v128f RenderSet_UnpackEntityWorldScale(u32 packed)
@@ -49,9 +48,7 @@ v128f RenderSet_UnpackEntityWorldScale(u32 packed)
 
 u32 RenderSet_PackEntityWorldScale(v128f scale)
 {
-    return PackXY11Z10UnormToU32(VecSetR(Clampf32(VecGetX(scale) * 0.1f, 0.0001f, 1.0f),
-                                          Clampf32(VecGetY(scale) * 0.1f, 0.0001f, 1.0f),
-                                          Clampf32(VecGetZ(scale) * 0.1f, 0.0001f, 1.0f), 0.0f));
+    return PackXY11Z10UnormToU32(VecClamp(VecMulf(scale, 0.1f), VecSet1(0.0001f), VecOne()));
 }
 
 u32 RenderSet_PackEntityUniformWorldScale(f32 scale)
@@ -124,7 +121,6 @@ u32 RenderSet_CountTriangles(const RenderSet* set)
     }
     return (u32)Minu64(triangles, 0xFFFFFFFFull);
 }
-
 
 u32 RenderSet_AllocateSparseID(RenderSet* set)
 {
@@ -243,9 +239,8 @@ static void RefreshDenseToPrimitive(RenderSet* set, u32 firstGroup)
 
 static void RebuildSparseToDense(RenderSet* set)
 {
-    for (u32 i = 0; i < set->maxEntities; i++)
-        set->sparseID[i] = INVALID_ENTITY;
-    MemsetZero(set->sparseSlots, ((set->maxEntities + 63u) >> 6) * sizeof(u64));
+    MemSet(set->sparseID, 0xFF, set->maxEntities * sizeof(u32));
+    MemSet(set->sparseSlots, 0, ((set->maxEntities + 63u) >> 6) * sizeof(u64));
 
     for (u32 e = 0; e < set->numEntities; e++)
     {

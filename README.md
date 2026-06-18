@@ -3,25 +3,26 @@
 </p>
 
 ## Overview
-`CEngine` is a data-oriented GPU driven C99 engine/editor project with a small amount of C++ used for basis texture compression. It builds an SDL3 GPU-based executable and now contains much more than a playground: a scene system, deferred renderer, asset pipeline, editor UI, animation, and streamed voxel terrain.
+`CEngine` is a data-oriented GPU driven C99 engine with a small amount of C++ used for basis texture compression. It builds an SDL3 GPU-based executable and now contains much more than a playground: a scene system, deferred renderer, asset pipeline, editor UI, animation, and streamed voxel terrain with lod.
 
 ## Features
 - Scene and asset pipeline with glTF/FBX import
 - Compute shader Hi-Z oclussion culling + frustum culling for draws and lights.
+- BVH data structure over the world, (ray casting + picking support)
 - Texture system with 4k texture2d atlass array's instead of bindless textures
 - All objects in a world can be rendered with single draw call
 - Clay layout with SDF UI shapes such as rounded rectangle circle
 - Slug text rendering high quality with all alphabets/languages supported without texture atlasses. Thanks Eric Lengyel
-- Editor tooling with dockable UI, scene editing, asset browsing, and console output.
+- Editor tooling with dockable UI, scene editing, asset browsing.
 - Streamed voxel terrain with procedural generation, sculpt/paint editing, and persisted terrain edits.
-- Custom runtime systems for animation, texture paging, memory allocation, async jobs, and SIMD-oriented math.
+- Full compute + raster animation pipeline.
 ![Engine preview](Assets/Images/Untitled.png)
 ## Graphics Features
 - Deferred lighting.
-- Static surface, skinned mesh, and terrain pipelines.
-- Directional, point, and spot shadows.
+- GPU compute draw call recording with HI-Z oclussion culling + frustum culling + lod selection
+- Directional cascaded + point and spot light shadows.
 - Animation compute and animated-vertex generation.
-- HBAO, MLAA, tonemapping and god rays.
+- HBAO, MLAA, tonemapping, god rays, procedural sky.
 - Precompiled shader outputs for SPIR-V and Metal (`spv/`, `msl/`).
 
 ## Project Layout

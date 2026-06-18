@@ -306,7 +306,7 @@ SDL_GPUBuffer* CreateBuffer(
 
     // Map and copy data
     void* map = SDL_MapGPUTransferBuffer(g_GPUDevice, upload_buf, false);
-    SDL_memcpy(map, buffer, bufferSize);
+    MemCopy(map, buffer, bufferSize);
     SDL_UnmapGPUTransferBuffer(g_GPUDevice, upload_buf);
 
     // Copy to GPU buffer

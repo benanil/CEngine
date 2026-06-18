@@ -773,12 +773,12 @@ void Terrain_GPUFlush(SDL_GPUCommandBuffer* cmd)
             if (!mapped) { AX_WARN("terrain transfer map failed: %s", SDL_GetError()); break; }
         }
 
-        SDL_memcpy(mapped + cursor, job->mesh.vertices, vertexBytes);
+        MemCopy(mapped + cursor, job->mesh.vertices, vertexBytes);
         regions[numRegions++] = (TerrainCopyRegion){
             g_Terrain.vertexBuffer, cursor, vertexOffset * (u32)sizeof(TerrainVertex), vertexBytes };
         cursor += vertexBytes;
 
-        SDL_memcpy(mapped + cursor, job->mesh.indices, indexBytes);
+        MemCopy(mapped + cursor, job->mesh.indices, indexBytes);
         regions[numRegions++] = (TerrainCopyRegion){
             g_Terrain.indexBuffer, cursor, indexOffset * (u32)sizeof(u32), indexBytes };
         cursor += indexBytes;
@@ -795,8 +795,8 @@ void Terrain_GPUFlush(SDL_GPUCommandBuffer* cmd)
         {
             chunk->cpuVertices = (TerrainVertex*)SDL_malloc(vertexBytes);
             chunk->cpuIndices  = (u32*)SDL_malloc(indexBytes);
-            if (chunk->cpuVertices) SDL_memcpy(chunk->cpuVertices, job->mesh.vertices, vertexBytes);
-            if (chunk->cpuIndices)  SDL_memcpy(chunk->cpuIndices, job->mesh.indices, indexBytes);
+            if (chunk->cpuVertices) MemCopy(chunk->cpuVertices, job->mesh.vertices, vertexBytes);
+            if (chunk->cpuIndices)  MemCopy(chunk->cpuIndices, job->mesh.indices, indexBytes);
         }
         chunk->empty = 0;
         chunk->appliedMask = job->transitionMask;

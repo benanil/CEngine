@@ -1,8 +1,12 @@
 #ifndef PLATFORM_H
 #define PLATFORM_H
 
+#include "Bitset.h"
+#include <SDL3/SDL_events.h>
+
 // enables logging no matter what
 #define AX_ENABLE_LOGGING
+#define APPLICATION_NAME "Engine"
 
 #if defined(AX_ENABLE_LOGGING) || defined(_DEBUG) || defined(DEBUG) || defined(Debug)
     #include <SDL3/SDL_log.h>
@@ -28,10 +32,6 @@
     #define AX_WARN(format, ...)
 #endif
 
-
-#include "Bitset.h"
-#include <SDL3/SDL_events.h>
-// #include "sokol_app.h"
 
 #if defined(__cplusplus)
 extern "C" {
@@ -92,6 +92,8 @@ typedef enum wCursor_
     wCursor_Count
 } wCursor;
 
+// free global arena with 4096
+const char* ConcatWithTempPath(const char* added, size_t addedLen);
 // Mouse
 void GetMousePos(f32* x, f32* y);
 void SetMousePos(f32 x, f32 y);
@@ -106,7 +108,6 @@ u8   GetMousePressed(s32 button);
 void wGetMouseWindowPos(f32* x, f32* y);
 void wGetMonitorSize(s32* width, s32* height);
 void wSetCursor(wCursor cursor);
-
 
 // Keyboard
 u8   AnyKeyDown();

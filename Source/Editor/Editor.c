@@ -87,8 +87,11 @@ static void EditorSettingsSave(void)
     u32 pathLen = Minu32((u32)StringLength(editorLastScene), 511u);
     MemCopy(p, editorLastScene, pathLen); p += pathLen;
     *p++ = '\n';
-
-    WriteAllBytes(EDITOR_SETTINGS_PATH, text, (unsigned long)(p - text));
+    
+    const char* path = ConcatWithTempPath(EDITOR_SETTINGS_PATH, sizeof(EDITOR_SETTINGS_PATH));
+    if (!path) return;
+    WriteAllBytes(path, text, (unsigned long)(p - text));
+    ArenaPopGlobal(4096);
 }
 
 static void EditorSettingsLoad(void)
@@ -97,7 +100,10 @@ static void EditorSettingsLoad(void)
     editorSettingsLoaded = true;
 
     uint64_t size = 0;
-    char* text = ReadAllTextAlloc(EDITOR_SETTINGS_PATH, &size, NULL);
+    const char* path = ConcatWithTempPath(EDITOR_SETTINGS_PATH, sizeof(EDITOR_SETTINGS_PATH));
+    if (!path || !FileExist(path)) return;
+    char* text = ReadAllTextAlloc(path, &size, NULL);
+    ArenaPopGlobal(4096);
     if (!text) return;
 
     const char* line = text;
@@ -460,7 +466,16 @@ static void DrawSettingsWindow()
         {
             editorContinueLastUI = continueUI;
             EditorSettingsSave();
-            if (continueUI) UIWindowSaveLayout(EDITOR_UI_LAYOUT_PATH);
+            
+            if (continueUI)
+            {
+                const char* layoutPath = ConcatWithTempPath(EDITOR_UI_LAYOUT_PATH, sizeof(EDITOR_UI_LAYOUT_PATH));
+                if (layoutPath)
+                {
+                    UIWindowSaveLayout(layoutPath);
+                    ArenaPopGlobal(4096);
+                }
+            }
         }
         CLAY_TEXT(CLAY_STRING("Last active scene:"), CLAY_TEXT_CONFIG({
             .fontSize = 13,
@@ -704,7 +719,15 @@ static void GraphicsEditorUI(void)
     {
         uiLayoutLoadAttempted = true;
         EditorSettingsLoad();
-        if (editorContinueLastUI) UIWindowLoadLayout(EDITOR_UI_LAYOUT_PATH);
+        if (editorContinueLastUI)
+        {
+            const char* layoutPath = ConcatWithTempPath(EDITOR_UI_LAYOUT_PATH, sizeof(EDITOR_UI_LAYOUT_PATH));
+            if (layoutPath)
+            {
+                UIWindowLoadLayout(layoutPath);
+                ArenaPopGlobal(4096);
+            }
+        }
     }
 
     u32 openMaskBefore = EditorOpenWindowMask();
@@ -825,7 +848,15 @@ static void GraphicsEditorUI(void)
     }
 
     if (EditorOpenWindowMask() != openMaskBefore) UIWindowMarkLayoutChanged();
-    if (UIWindowConsumeLayoutChanged() && editorContinueLastUI) UIWindowSaveLayout(EDITOR_UI_LAYOUT_PATH);
+    if (UIWindowConsumeLayoutChanged() && editorContinueLastUI)
+    {
+        const char* layoutPath = ConcatWithTempPath(EDITOR_UI_LAYOUT_PATH, sizeof(EDITOR_UI_LAYOUT_PATH));
+        if (layoutPath)
+        {
+            UIWindowSaveLayout(layoutPath);
+            ArenaPopGlobal(4096);
+        }
+    }
 
     // the renderer sizes the scene to the view content (0 0 = fullscreen like before)
     if (sceneViewVisible) SetSceneViewSize((u32)(sceneViewContentSize.x + 0.5f), (u32)(sceneViewContentSize.y + 0.5f));

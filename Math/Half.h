@@ -153,7 +153,7 @@ static inline void Half4ToFloat4(f32* result, const f16 half4[4])
     v128u f_em = VeciOr(f_e, f_m);
 
     v128u i_result = VeciOr(f_s, f_em);
-    VecStore(result, VeciToVecf(i_result));
+    VecStore(result, VeciBitcastF32(i_result));
     
     #else // no intrinsics
     Half2ToFloat2(result, *(u32*)half4);

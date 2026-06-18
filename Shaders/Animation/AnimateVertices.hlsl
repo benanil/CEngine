@@ -30,7 +30,6 @@ StructuredBuffer<PrimitiveGroup> sPrimitiveGroups   : register(t2);
 StructuredBuffer<uint>           sDrawSparseIndices : register(t3);
 StructuredBuffer<SkinnedVertex>  sVertexBuffer      : register(t4);
 StructuredBuffer<IndexedDrawCommand> sDrawArgs      : register(t5); // unused; kept for binding layout
-StructuredBuffer<uint>           sSparseToDense     : register(t6);
 
 RWStructuredBuffer<AnimatedVert> sAnimatedVert      : register(u0, space1);
 
@@ -45,16 +44,18 @@ void main(uint3 globalID : SV_DispatchThreadID, uint3 groupID : SV_GroupID, uint
     uint lod = drawIdx - primitiveIdx * MESH_LOD_COUNT;
     PrimitiveGroup group = sPrimitiveGroups[primitiveIdx];
 
-    uint visibleSlot = groupID.y * 32u + groupThreadID.y;
+    uint instanceSlot = groupID.y * 32u + groupThreadID.y;
+    if (instanceSlot >= group.numEntities)
+        return;
 
     uint vertexBase = groupID.z * 32u;
     uint animatedBase = group.lodAnimatedVertexOffset[lod];
     uint numVertices = group.lodNumVertices[lod];
     uint sourceVertexBase = group.lodVertexOffset[lod];
 
-    uint sparse = sDrawSparseIndices[visibleSlot];
-    uint denseIdx = sSparseToDense[sparse];
+    uint denseIdx = group.entityOffset + instanceSlot;
     Entity entity = sEntities[denseIdx];
+    uint sparse = entity.sparse;
 
     uint cameraLOD = SelectEntityLOD(entity, group, viewProjection, viewportSize, lodDistanceModifier);
     uint requiredShadowLOD = min(shadowLOD, MESH_LOD_COUNT - 1u);
