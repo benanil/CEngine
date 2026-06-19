@@ -86,6 +86,7 @@ s32   RenderSet_NodeSpawnOrdinal(const SceneBundle* bundle, s32 nodeIdx);
 bool  RenderSet_FindNodeEntity(const RenderSet* set, Range range, u32 meshIndex, u32 sparseIdx,
                                u32* outGroup, u32* outEntity);
 u32   RenderSet_AllocateSparseID(RenderSet* set);
+u32   RenderSet_AllocateSparseIDRange(RenderSet* set, int count);
 void  RenderSet_FreeSparseID(RenderSet* set, u32 sparseIdx);
 u32   RenderSet_CountTriangles(const RenderSet* set);
 
