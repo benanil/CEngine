@@ -79,6 +79,17 @@ purefn u32 VCALL HSum32_128(v128u x)
 }
 #endif
 
+#if defined(__aarch64__) || defined(__arm__)
+purefn v128u VCALL PopCount128(v128u x)
+{
+    // 1. Count bits in each of the sixteen 8-bit lanes simultaneously
+    uint8x16_t cnt = vcntq_u8(vreinterpretq_u8_u32(x));   
+    // 2. Pairwise add the 8-bit counts into 16-bit lanes, then 32-bit lanes
+    uint16x8_t sum16 = vpaddlq_u8(cnt);
+    uint32x4_t sum32 = vpaddlq_u16(sum16);
+    return vreinterpretq_u32_u32(sum32);
+}
+#else
 purefn v128u VCALL PopCount128(v128u x)
 {
     v128u y;
@@ -89,6 +100,7 @@ purefn v128u VCALL PopCount128(v128u x)
     x = VeciAnd(VeciAdd(x, VeciSrl32(x, 4)), VeciSet1(0x0F0F0F0F));
     return VeciSrl32(VeciMul(x, VeciSet1(0x01010101)), 24);
 }
+#endif
 
 // from Faster Population Counts Using AVX2 Instructions resource paper
 purefn u32 VCALL PopCount256(const u64* ptr)
@@ -104,6 +116,15 @@ purefn u32 VCALL PopCount256(const u64* ptr)
     v256i total   = _mm256_add_epi8(popcnt1, popcnt2);	
     v = _mm256_sad_epu8(total, _mm256_setzero_si256());
     return _mm256_cvtsi256_si32(v) + _mm256_extract_epi64(v, 1) + _mm256_extract_epi64(v, 2) + _mm256_extract_epi64(v, 3);
+    #elif defined(__aarch64__) || defined(__arm__)
+    // Explicit high-speed pipeline for ARM Neon
+    uint8x16_t v1 = vcntq_u8(vld1q_u8((const uint8_t*)ptr));
+    uint8x16_t v2 = vcntq_u8(vld1q_u8((const uint8_t*)(ptr + 2)));
+    // Merge byte counts into 16-bit lanes first
+    uint16x8_t sum16 = vpaddlq_u8(vaddq_u8(v1, v2));
+    // Merge into 32-bit lanes
+    uint32x4_t sum32 = vpaddlq_u16(sum16);
+    return vaddvq_u32(sum32); // hsum
     #else
     return HSum32_128(PopCount128(VeciLoad(ptr))) + HSum32_128(PopCount128(VeciLoad(ptr + 2)));
     #endif
@@ -117,27 +138,42 @@ purefn u32 VCALL PopCount1024(const u64* ptr) {
     return PopCount512(ptr) + PopCount512(ptr + 8);
 }
 
-static inline s32 BitsetFindEmptyRange(const u64* bits, u32 bitCount, u32 count)
-{
-    if (count == 0u) return 0;
-    if (count > bitCount) return -1;
-    for (u32 start = 0u; start + count <= bitCount; start++)
-    {
-        u32 i = 0u;
-        for (; i < count; i++)
-            if (BitsetGet(bits, (s32)(start + i))) break;
-        if (i == count) return (s32)start;
-        start += i;
-    }
-    return -1;
-}
-
 static inline void BitsetSetRange(u64* bits, u32 offset, u32 count, bool set)
 {
-    for (u32 i = 0u; i < count; i++)
+    if (!bits || count == 0u)
+        return;
+
+    u32 wordIdx = offset >> 6;
+    u32 bitIdx  = offset & 63u;
+    const u64 fill = set ? ~0ull : 0ull;
+    // First partial word.
+    if (bitIdx)
     {
-        if (set) BitsetSet(bits, (s32)(offset + i));
-        else     BitsetReset(bits, (s32)(offset + i));
+        const u32 n = Minu32(count, 64u - bitIdx);
+        const u64 mask = (((1ull << n) - 1ull) << bitIdx);
+
+        if (set) bits[wordIdx] |= mask;
+        else     bits[wordIdx] &= ~mask;
+
+        count -= n;
+        wordIdx++;
+
+        if (count == 0u)
+            return;
+    }
+
+    // Full words
+    u32 fullWords = count >> 6;
+    while (fullWords--)
+        bits[wordIdx++] = fill;
+
+    // Last partial word.
+    const u32 tailBits = count & 63u;
+    if (tailBits)
+    {
+        const u64 mask = (1ull << tailBits) - 1ull;
+        if (set) bits[wordIdx] |= mask;
+        else     bits[wordIdx] &= ~mask;
     }
 }
 
@@ -163,6 +199,82 @@ static inline s32 BitsetFindFirstEmpty(const u64* bits, s32 bitCount)
     const u64 mask = (1ull << remainingBits) - 1ull;
     const s32 bitIdx = FindFirstSet(~bits[wordCount] & mask);
     return bitIdx < 0 ? -1 : (wordCount << 6) + bitIdx;
+}
+
+
+static inline s32 BitsetFindEmptyRange(const u64* bits, u32 bitCount, u32 count)
+{
+    if (count == 0u) return 0;
+    if (!bits || count > bitCount) return -1;
+
+    // Fast path for the common case.
+    if (count == 1u)
+    {
+        return BitsetFindFirstEmpty(bits, bitCount);
+    }
+
+    const u32 wordCount = (bitCount + 63u) >> 6;
+    u32 runStart = 0u;
+    u32 runLen   = 0u;
+
+    for (u32 wordIdx = 0u; wordIdx < wordCount; ++wordIdx)
+    {
+        const u32 base      = wordIdx << 6;
+        const u32 remaining = bitCount - base;
+        const u32 validBits = remaining < 64u ? remaining : 64u;
+        const u64 validMask = validBits == 64u ? UINT64_MAX : ((1ull << validBits) - 1ull);
+        // Empty bits are 1s.
+        u64 empty = ~bits[wordIdx] & validMask;
+
+        if (empty == 0ull)
+        {
+            runLen = 0u;
+            continue;
+        }
+
+        // Whole valid word is empty.
+        if (empty == validMask)
+        {
+            if (runLen == 0u) runStart = base;
+
+            runLen += validBits;
+            if (runLen >= count)
+                return (s32)runStart;
+            continue;
+        }
+
+        // Mixed word: scan only zero-runs, not every bit.
+        while (empty)
+        {
+            const u32 start = (u32)TrailingZeroCount64(empty);
+            const u64 shifted = empty >> start;
+
+            // Safe because the full-word/all-empty case was handled above.
+            const u32 len = (u32)TrailingZeroCount64(~shifted);
+
+            // If the run does not start at bit 0, it cannot extend previous word.
+            if (start != 0u)
+                runLen = 0u;
+
+            if (runLen == 0u)
+                runStart = base + start;
+
+            runLen += len;
+
+            if (runLen >= count)
+                return (s32)runStart;
+
+            // If this run does not reach the end of the valid word,
+            // an occupied bit breaks the range.
+            if (start + len != validBits)
+                runLen = 0u;
+
+            // Clear current run of 1s.
+            empty &= empty + (1ull << start);
+        }
+    }
+
+    return -1;
 }
 
 // bitCount = number of valid bits/elements in the bitset

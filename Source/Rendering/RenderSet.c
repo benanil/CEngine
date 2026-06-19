@@ -239,8 +239,8 @@ static void RefreshDenseToPrimitive(RenderSet* set, u32 firstGroup)
 
 static void RebuildSparseToDense(RenderSet* set)
 {
-    MemSet(set->sparseID, 0xFF, set->maxEntities * sizeof(u32));
-    MemSet(set->sparseSlots, 0, ((set->maxEntities + 63u) >> 6) * sizeof(u64));
+    MemSet(set->sparseID, 0xFF, set->numEntities * sizeof(u32));
+    MemSet(set->sparseSlots, 0, ((set->numEntities + 63u) >> 6) * sizeof(u64));
 
     for (u32 e = 0; e < set->numEntities; e++)
     {
