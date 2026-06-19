@@ -196,7 +196,6 @@ void CreateRenderSetBuffers(RenderSetBuffers* buffers, u32 maxEntities, u32 maxG
     buffers->drawSparseIndices = CreateBuffer(NULL, maxEntities * lodMultiplier * sizeof(u32), BReadRasterBit |  BWriteComputeBit, "CPDrawSparseIndices");
     buffers->sparseToDense     = CreateBuffer(NULL, maxEntities * sizeof(u32), BReadCompute, "CPSparseToDense");
     buffers->drawArgs          = CreateBuffer(NULL, maxGroups * lodMultiplier * sizeof(SDL_GPUIndexedIndirectDrawCommand), BIndirectBit | BWriteComputeBit, "CPDrawArgs");
-    buffers->denseToPrimitive  = CreateBuffer(NULL, maxEntities * sizeof(u32), BReadCompute, "CPDenseToPrimitive");
     buffers->entity            = CreateBuffer(NULL, entityBytes, BReadRasterBit | BReadCompute, "CPEntities");
     buffers->visibilityMask    = CreateBuffer(NULL, maxEntities * sizeof(u32), BWriteComputeBit, "CPVisibilityMask");
     buffers->visibleCount      = CreateBuffer(NULL, sizeof(u32), BWriteComputeBit, "CPVisibleCount");
@@ -209,7 +208,6 @@ static void UploadRenderSetStatics(const RenderSet* set, RenderSetBuffers* buffe
 {
     UpdateGPUBuffer(buffers->primitiveGroup, set->primitiveGroups, set->maxGroups * sizeof(PrimitiveGroup), 0);
     UpdateGPUBuffer(buffers->sparseToDense, set->sparseID, set->maxEntities * sizeof(u32), 0);
-    UpdateGPUBuffer(buffers->denseToPrimitive, set->denseToPrimitiveIndex, set->maxEntities * sizeof(u32), 0);
 }
 
 // geometry ranges loaders queued for upload, flushed once the gpu buffers exist.
@@ -713,7 +711,6 @@ void DestroyRenderSetBuffers(RenderSetBuffers* buffers)
     if (buffers->primitiveGroup)       SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->primitiveGroup);
     if (buffers->drawSparseIndices)    SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->drawSparseIndices);
     if (buffers->drawArgs)             SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->drawArgs);
-    if (buffers->denseToPrimitive)     SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->denseToPrimitive);
     if (buffers->sparseToDense)        SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->sparseToDense);
     if (buffers->visibleSparseIndices) SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->visibleSparseIndices);
     if (buffers->visibilityMask)       SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->visibilityMask);

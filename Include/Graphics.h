@@ -224,7 +224,6 @@ typedef struct RenderSetBuffers_
     SDL_GPUBuffer* primitiveGroup;
     SDL_GPUBuffer* drawSparseIndices;
     SDL_GPUBuffer* drawArgs;
-    SDL_GPUBuffer* denseToPrimitive;
     SDL_GPUBuffer* sparseToDense;
     SDL_GPUBuffer* entity;
     SDL_GPUBuffer* visibleSparseIndices;

@@ -24,14 +24,14 @@ cbuffer params : register(b0, space2)
     float4x4 viewProjection;
 }
 
-StructuredBuffer<uint>           sBoneMtx           : register(t0);
-StructuredBuffer<Entity>         sEntities          : register(t1);
-StructuredBuffer<PrimitiveGroup> sPrimitiveGroups   : register(t2);
-StructuredBuffer<uint>           sDrawSparseIndices : register(t3);
-StructuredBuffer<SkinnedVertex>  sVertexBuffer      : register(t4);
-StructuredBuffer<IndexedDrawCommand> sDrawArgs      : register(t5); // unused; kept for binding layout
+StructuredBuffer<uint>               sBoneMtx           : register(t0);
+StructuredBuffer<Entity>             sEntities          : register(t1);
+StructuredBuffer<PrimitiveGroup>     sPrimitiveGroups   : register(t2);
+StructuredBuffer<uint>               sDrawSparseIndices : register(t3);
+StructuredBuffer<SkinnedVertex>      sVertexBuffer      : register(t4);
+StructuredBuffer<IndexedDrawCommand> sDrawArgs          : register(t5); // unused; kept for binding layout
 
-RWStructuredBuffer<AnimatedVert> sAnimatedVert      : register(u0, space1);
+RWStructuredBuffer<AnimatedVert> sAnimatedVert : register(u0, space1);
 
 [numthreads(1, 32, 1)]
 void main(uint3 globalID : SV_DispatchThreadID, uint3 groupID : SV_GroupID, uint3 groupThreadID : SV_GroupThreadID)

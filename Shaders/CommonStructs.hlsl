@@ -32,8 +32,12 @@ typedef struct Entity_
 {
     float4 position;
     uint2  rotation;
-    uint  scale;
-    uint  sparse;
+    uint   scale;
+    uint   scale1;
+    uint   primitiveIdx; // primitive group
+    uint   sparse;
+    uint   parentIdx; // sparseIdx
+    uint   padding;
 } Entity;
 
 typedef struct PrimitiveGroup_

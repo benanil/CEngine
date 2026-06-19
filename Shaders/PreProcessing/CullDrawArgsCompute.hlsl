@@ -15,7 +15,6 @@
 Texture2D<float>                 hiZTexture            : register(t0);
 StructuredBuffer<Entity>         entities              : register(t1);
 StructuredBuffer<PrimitiveGroup> primitiveGroups       : register(t2);
-StructuredBuffer<uint>           denseToPrimitiveIndex : register(t3);
 
 RWStructuredBuffer<uint>                drawSparseIndices    : register(u0, space1);
 RWStructuredBuffer<IndexedDrawCommand>  drawArgs             : register(u1, space1);
@@ -24,7 +23,7 @@ RWStructuredBuffer<IndirectDrawCommand> lineDrawCommand      : register(u3, spac
 RWStructuredBuffer<uint>                visibleSparseIndices : register(u4, space1);
 RWStructuredBuffer<uint>                visibilityMask       : register(u5, space1);
 RWStructuredBuffer<uint>                visibleCount         : register(u6, space1);
-RWStructuredBuffer<IndirectDispatchCommand> dispatchArgs      : register(u7, space1);
+RWStructuredBuffer<IndirectDispatchCommand> dispatchArgs     : register(u7, space1);
 
 cbuffer params : register(b0, space2)
 {
@@ -286,15 +285,15 @@ void main(uint3 tid : SV_DispatchThreadID)
         return;
 
     uint sparse = idx;
-    uint primitiveIdx = denseToPrimitiveIndex[sparse];
-
+    Entity entity = entities[sparse];
+    uint primitiveIdx = entity.primitiveIdx;
     PrimitiveGroup group = primitiveGroups[primitiveIdx];
 
     float3 worldCenter;
     float3 worldExtent;
     float3 worldMin;
     float3 worldMax;
-    BuildWorldAABB(entities[sparse], group, worldCenter, worldExtent, worldMin, worldMax);
+    BuildWorldAABB(entity, group, worldCenter, worldExtent, worldMin, worldMax);
 
     bool frustumVisible = AABBVisible(worldCenter, worldExtent);
 

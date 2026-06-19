@@ -276,9 +276,6 @@
 						<Path>Include/GLTFParser.h</Path>
 					</File>
 					<File>
-						<Path>Include/Graphics.h</Path>
-					</File>
-					<File>
 						<Path>Include/Memory.h</Path>
 					</File>
 					<File>
@@ -304,9 +301,6 @@
 					</File>
 					<File>
 						<Path>Include/RenderLimits.h</Path>
-					</File>
-					<File>
-						<Path>Include/RenderSet.h</Path>
 					</File>
 					<File>
 						<Path>Include/Slug.h</Path>
@@ -337,6 +331,12 @@
 					</File>
 					<File>
 						<Path>Include/Terrain.h</Path>
+					</File>
+					<File>
+						<Path>Include/Graphics.h</Path>
+					</File>
+					<File>
+						<Path>Include/RenderSet.h</Path>
 					</File>
 				</Children>
 			</Folder>
@@ -450,16 +450,10 @@
 						<Children></Children>
 					</Folder>
 					<File>
-						<Path>Shaders/Bitpack.hlsl</Path>
-					</File>
-					<File>
 						<Path>Shaders/Common.hlsl</Path>
 					</File>
 					<File>
 						<Path>Shaders/ShaderCompile.bat</Path>
-					</File>
-					<File>
-						<Path>Shaders/CommonStructs.hlsl</Path>
 					</File>
 					<File>
 						<Path>Shaders/Math.hlsl</Path>
@@ -469,9 +463,6 @@
 					</File>
 					<File>
 						<Path>Shaders/CompileShaders.py</Path>
-					</File>
-					<File>
-						<Path>Shaders/Surface.hlsl</Path>
 					</File>
 					<File>
 						<Path>Shaders/TexturePageCopyRG.hlsl</Path>
@@ -486,9 +477,6 @@
 						<Path>Shaders/PBR.hlsl</Path>
 					</File>
 					<File>
-						<Path>Shaders/SurfaceDepthOnly.hlsl</Path>
-					</File>
-					<File>
 						<Path>Shaders/NoiseHash.hlsl</Path>
 					</File>
 					<File>
@@ -496,15 +484,6 @@
 					</File>
 					<File>
 						<Path>Shaders/ExtractNormalCompute.hlsl</Path>
-					</File>
-					<File>
-						<Path>Shaders/Skinned.hlsl</Path>
-					</File>
-					<File>
-						<Path>Shaders/SkinnedDepthOnly.hlsl</Path>
-					</File>
-					<File>
-						<Path>Shaders/LOD.hlsl</Path>
 					</File>
 					<File>
 						<Path>Shaders/DeferredLightVolume.hlsl</Path>
@@ -517,6 +496,27 @@
 					</File>
 					<File>
 						<Path>Shaders/TerrainDepthOnly.hlsl</Path>
+					</File>
+					<File>
+						<Path>Shaders/Bitpack.hlsl</Path>
+					</File>
+					<File>
+						<Path>Shaders/CommonStructs.hlsl</Path>
+					</File>
+					<File>
+						<Path>Shaders/LOD.hlsl</Path>
+					</File>
+					<File>
+						<Path>Shaders/Skinned.hlsl</Path>
+					</File>
+					<File>
+						<Path>Shaders/SkinnedDepthOnly.hlsl</Path>
+					</File>
+					<File>
+						<Path>Shaders/Surface.hlsl</Path>
+					</File>
+					<File>
+						<Path>Shaders/SurfaceDepthOnly.hlsl</Path>
 					</File>
 				</Children>
 			</Folder>
@@ -590,9 +590,6 @@
 						<Path>Source/DemoScene.c</Path>
 					</File>
 					<File>
-						<Path>Source/SceneSerializer.c</Path>
-					</File>
-					<File>
 						<Path>Source/Async.c</Path>
 					</File>
 					<File>
@@ -628,6 +625,9 @@
 						<IncludeFilesWithoutExt>false</IncludeFilesWithoutExt>
 						<Children></Children>
 					</Folder>
+					<File>
+						<Path>Source/SceneSerializer.c</Path>
+					</File>
 				</Children>
 			</Folder>
 			<Folder>
@@ -711,7 +711,17 @@
 				<Recursive>true</Recursive>
 				<ShowEmptyFolders>true</ShowEmptyFolders>
 				<IncludeFilesWithoutExt>false</IncludeFilesWithoutExt>
-				<Children></Children>
+				<Children>
+					<File>
+						<Path>Tests/BitsetTest.c</Path>
+					</File>
+					<File>
+						<Path>Tests/RunRenderSetTest.bat</Path>
+					</File>
+					<File>
+						<Path>Tests/RenderSetTest.c</Path>
+					</File>
+				</Children>
 			</Folder>
 		</Children>
 	</Workspace>

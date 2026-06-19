@@ -189,18 +189,17 @@ static void CheckGroupRange(const RenderSet* set, u32 groupIdx, u32 offset, u32 
 
 static void CheckDensePrimitivePattern(const RenderSet* set, const u32* expected, u32 count, const char* label)
 {
-    CHECK(set->numEntities == count, "%s numEntities=%u expected=%u",
-          label, set->numEntities, count);
+    CHECK(set->numEntities == count, "%s numEntities=%u expected=%u", label, set->numEntities, count);
 
     u32 n = set->numEntities < count ? set->numEntities : count;
 
     for (u32 i = 0; i < n; i++)
     {
-        CHECK(set->denseToPrimitiveIndex[i] == expected[i],
-              "%s denseToPrimitiveIndex[%u]=%u expected=%u",
+        CHECK(set->entities[i].primitiveIdx == expected[i],
+              "%s primitiveIdx[%u]=%u expected=%u",
               label,
               i,
-              set->denseToPrimitiveIndex[i],
+              set->entities[i].primitiveIdx,
               expected[i]);
     }
 }
@@ -223,11 +222,11 @@ static void CheckDenseMappingsMatchGroups(const RenderSet* set, const char* labe
         {
             u32 denseIdx = group->entityOffset + i;
 
-            CHECK(set->denseToPrimitiveIndex[denseIdx] == groupIdx,
+            CHECK(set->entities[denseIdx].primitiveIdx == groupIdx,
                   "%s dense=%u maps to group=%u expected=%u",
                   label,
                   denseIdx,
-                  set->denseToPrimitiveIndex[denseIdx],
+                  set->entities[denseIdx].primitiveIdx,
                   groupIdx);
         }
     }
@@ -290,7 +289,7 @@ static void TestMiddleInsertionKeepsMappings(void)
     CHECK(set.primitiveGroups[2].entityOffset == 2 && set.primitiveGroups[2].numEntities == 1, "group2 range %u+%u", set.primitiveGroups[2].entityOffset, set.primitiveGroups[2].numEntities);
     CHECK(set.primitiveGroups[3].entityOffset == 3 && set.primitiveGroups[3].numEntities == 0, "group3 offset=%u", set.primitiveGroups[3].entityOffset);
     for (u32 i = 0; i < set.numEntities; i++)
-        CHECK(set.denseToPrimitiveIndex[i] == i, "dense %u primitive=%u", i, set.denseToPrimitiveIndex[i]);
+        CHECK(set.entities[i].primitiveIdx == i, "dense %u primitive=%u", i, set.entities[i].primitiveIdx);
     CHECK(RenderSet_Validate(&set, "middle insertion"), "validation failed");
 }
 

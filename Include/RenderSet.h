@@ -15,7 +15,11 @@ typedef struct Entity_
     v128f position;
     u64   rotation;
     u32   scale; // xyz10
+    u32   scale1; 
+    u32   primitiveIdx; // primitive group
     u32   sparseIdx;
+    u32   parentIdx; // parent sparseIdx
+    u32   padding;
 } Entity;
 
 typedef struct Range_
@@ -31,7 +35,6 @@ typedef struct RenderSet_
     Entity*             entities;
     u32*                sparseID; // sparse to dense
     u64*                sparseSlots; // bitset for used sparse id's
-    u32*                denseToPrimitiveIndex;
     
     PrimitiveGroup*     primitiveGroups;
 

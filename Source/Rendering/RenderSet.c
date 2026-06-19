@@ -20,16 +20,13 @@ void RenderSet_InitSet(RenderSet* set, u32 maxEntities, u32 maxGroups, u32 maxBu
     set->maxBundles  = maxBundles;
     set->skinned     = skinned ? 1u : 0u;
 
-    set->entities                = (Entity*)AllocZeroTLSFGlobal(maxEntities, sizeof(Entity));
-    set->sparseID                = (u32*)AllocateTLSFGlobal(maxEntities * sizeof(u32));
-    set->sparseSlots             = (u64*)AllocZeroTLSFGlobal((maxEntities + 63u) >> 6, sizeof(u64));
-    set->denseToPrimitiveIndex   = (u32*)AllocZeroTLSFGlobal(maxEntities, sizeof(u32));
-    set->primitiveGroups         = (PrimitiveGroup*)AllocZeroTLSFGlobal(maxGroups, sizeof(PrimitiveGroup));
-    set->bundleRange             = (Range*)AllocZeroTLSFGlobal(maxBundles, sizeof(Range));
-    set->bundles                 = (const SceneBundle**)AllocZeroTLSFGlobal(maxBundles, sizeof(SceneBundle*));
-
-    for (u32 i = 0; i < maxEntities; i++)
-        set->sparseID[i] = INVALID_ENTITY;
+    set->entities         = (Entity*)AllocZeroTLSFGlobal(maxEntities, sizeof(Entity));
+    set->sparseID         = (u32*)AllocateTLSFGlobal(maxEntities * sizeof(u32));
+    set->sparseSlots      = (u64*)AllocZeroTLSFGlobal((maxEntities + 63u) >> 6, sizeof(u64));
+    set->primitiveGroups  = (PrimitiveGroup*)AllocZeroTLSFGlobal(maxGroups, sizeof(PrimitiveGroup));
+    set->bundleRange      = (Range*)AllocZeroTLSFGlobal(maxBundles, sizeof(Range));
+    set->bundles          = (const SceneBundle**)AllocZeroTLSFGlobal(maxBundles, sizeof(SceneBundle*));
+    MemSet(set->sparseID, 0xFF, maxEntities);
 }
 
 v128f RenderSet_UnpackEntityScale01(u32 packed)
@@ -293,7 +290,7 @@ static u32 LeaveSpaceForEntities(RenderSet* set, u32 primitiveIdx, u32 numAdded)
             u32 src = srcOffset + (u32)j;
             u32 dst = dstOffset + (u32)j;
             set->entities[dst] = set->entities[src];
-            set->denseToPrimitiveIndex[dst] = (u32)i;
+            set->entities[dst].primitiveIdx = (u32)i;
 
             u32 sparseIdx = set->entities[dst].sparseIdx;
             if (sparseIdx != INVALID_ENTITY && sparseIdx < set->maxEntities)
@@ -339,7 +336,7 @@ u32 RenderSet_AddEntities(RenderSet* set, u32 primitiveIdx, u32 numAdded, const 
         set->entities[denseIdx] = data[i];
         if (set->entities[denseIdx].sparseIdx == INVALID_ENTITY)
             set->entities[denseIdx].sparseIdx = sparseStart + sparseAdded++;
-        set->denseToPrimitiveIndex[denseIdx] = primitiveIdx;
+        set->entities[denseIdx].primitiveIdx = primitiveIdx;
         SetSparseToDense(set, set->entities[denseIdx].sparseIdx, denseIdx);
     }
     group->numEntities += numAdded;
@@ -471,7 +468,7 @@ void RenderSet_CompactEntities(RenderSet* set)
                 continue;
 
             set->entities[writeEntity] = entity;
-            set->denseToPrimitiveIndex[writeEntity] = groupIdx;
+            set->entities[writeEntity].primitiveIdx = groupIdx;
             writeEntity++;
             newCount++;
         }
@@ -483,7 +480,6 @@ void RenderSet_CompactEntities(RenderSet* set)
     for (u32 i = writeEntity; i < oldNumEntities; i++)
     {
         MemsetZero(&set->entities[i], sizeof(Entity));
-        set->denseToPrimitiveIndex[i] = 0;
     }
 
     set->numEntities = writeEntity;
@@ -493,9 +489,7 @@ void RenderSet_CompactEntities(RenderSet* set)
 void RenderSet_ClearEntities(RenderSet* set)
 {
     MemsetZero(set->entities, set->maxEntities * sizeof(Entity));
-    MemsetZero(set->denseToPrimitiveIndex, set->maxEntities * sizeof(u32));
-    for (u32 i = 0; i < set->maxEntities; i++)
-        set->sparseID[i] = INVALID_ENTITY;
+    MemSet(set->sparseID, 0xFF, set->numEntities * sizeof(u32));
     MemsetZero(set->sparseSlots, ((set->maxEntities + 63u) >> 6) * sizeof(u64));
 
     for (u32 g = 0; g < set->numGroups; g++)
@@ -514,12 +508,10 @@ void RenderSet_Clear(RenderSet* set)
     set->numEntities = 0;
     set->numGroups = 0;
     set->numBundles = 0;
-
-    for (u32 i = 0; i < set->maxEntities; i++)
-        set->sparseID[i] = INVALID_ENTITY;
+    
+    MemSet(set->sparseID, 0xFF, set->maxEntities);
     MemsetZero(set->sparseSlots, ((set->maxEntities + 63u) >> 6) * sizeof(u64));
     MemsetZero(set->entities, set->maxEntities * sizeof(Entity));
-    MemsetZero(set->denseToPrimitiveIndex, set->maxEntities * sizeof(u32));
     MemsetZero(set->primitiveGroups, set->maxGroups * sizeof(PrimitiveGroup));
     MemsetZero(set->bundleRange, set->maxBundles * sizeof(Range));
     MemsetZero(set->bundles, set->maxBundles * sizeof(SceneBundle*));
@@ -546,7 +538,6 @@ static void ShiftEntitiesLeft(RenderSet* set, u32 firstRemoved, u32 count)
     {
         u32 dst = i - count;
         set->entities[dst] = set->entities[i];
-        set->denseToPrimitiveIndex[dst] = set->denseToPrimitiveIndex[i];
 
         u32 sparseIdx = set->entities[dst].sparseIdx;
         if (sparseIdx != INVALID_ENTITY && sparseIdx < set->maxEntities &&
@@ -611,7 +602,7 @@ u32 RenderSet_RemoveSceneBundle(RenderSet* set, u32 bundleIdx)
         moved.entityOffset -= entityCount;
         set->primitiveGroups[i - groupCount] = moved;
         for (u32 e = 0; e < moved.numEntities; e++)
-            set->denseToPrimitiveIndex[moved.entityOffset + e] = i - groupCount;
+            set->entities[moved.entityOffset + e].primitiveIdx = i - groupCount;
     }
     set->numGroups -= groupCount;
 
@@ -684,7 +675,7 @@ bool RenderSet_Validate(const RenderSet* set, const char* label)
 
     for (u32 e = 0; e < set->numEntities; e++)
     {
-        u32 groupIdx = set->denseToPrimitiveIndex[e];
+        u32 groupIdx = set->entities[e].primitiveIdx;
         if (groupIdx >= set->numGroups)
         {
             AX_WARN("RenderSet invalid %s: dense %d primitive=%d groups=%d", label ? label : "", e, groupIdx, set->numGroups);

@@ -238,7 +238,7 @@ static void InitComputePipelines(void)
     }); CHECK_CREATE(g_AnimVerticesPipeline, "Animation vertices Pipeline");
 
     g_CullDrawArgsComputePipeline = COMPUTE_DEF(Shaders_CullDrawArgsCompute_spv),
-        .num_readonly_storage_textures = 1, .num_uniform_buffers = 1, .num_readonly_storage_buffers  = 3, .num_readwrite_storage_buffers = 8,
+        .num_readonly_storage_textures = 1, .num_uniform_buffers = 1, .num_readonly_storage_buffers  = 2, .num_readwrite_storage_buffers = 8,
         THREAD_COUNT_XYZ(64, 1, 1)
     }); CHECK_CREATE(g_CullDrawArgsComputePipeline, "Cull Draw Args Compute Pipeline");
 

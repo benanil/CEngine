@@ -6,11 +6,11 @@ void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet
                                  RenderSetBuffers* buffers,
                                  FrustumPlanes frustumPlanes,
                                  mat4x4 viewProj,
-                                  bool enableHiZ,
-                                  bool enableVisibilityOutput,
-                                  bool resetVisibilityOutput,
-                                  bool enableLOD,
-                                  u32 forcedLOD)
+                                 bool enableHiZ,
+                                 bool enableVisibilityOutput,
+                                 bool resetVisibilityOutput,
+                                 bool enableLOD,
+                                 u32 forcedLOD)
 {
     if (renderSet->numGroups == 0) return;
     CHECK_CREATE(g_CullDrawArgsComputePipeline, "Cull Draw Args Compute Pipeline");
@@ -58,10 +58,9 @@ void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet
     params.lodDistanceModifier = Maxf32(g_RenderSettings.lodDistanceModifier, 0.001f);
     params.padding = 0.0f;
 
-    SDL_GPUBuffer* ro_buffers[3] = {
+    SDL_GPUBuffer* ro_buffers[2] = {
         buffers->entity,
-        buffers->primitiveGroup,
-        buffers->denseToPrimitive
+        buffers->primitiveGroup
     };
     SDL_GPUStorageBufferReadWriteBinding rw_bindings[8] = {
         { buffers->drawSparseIndices },
