@@ -358,24 +358,13 @@ static bool BVH_Intersect(const BundleCacheEntry* bundleCache, bool skinned, u32
 /*                              Scene Raycast                               */
 /*//////////////////////////////////////////////////////////////////////////*/
 
-static const BundleCacheEntry* BVH_FindCacheForRenderBundle(const Scene* scene, bool skinned, u32 renderIdx)
-{
-    for (u32 i = 0; i < scene->numBundles; i++)
-    {
-        const SceneBundleRef* ref = &scene->bundleRefs[i];
-        if ((ref->skinned != 0) == skinned && ref->renderIdx == renderIdx)
-            return ref->cache;
-    }
-    return NULL;
-}
-
 static s32 BVH_RaycastSet(const Scene* scene, const RenderSet* set, bool skinned, v128f origin, v128f dir, BVHHit* hit)
 {
     s32 anyHit = 0;
     for (u32 b = 0; b < set->numBundles; b++)
     {
         const SceneBundle* bundle = set->bundles[b];
-        const BundleCacheEntry* bundleCache = BVH_FindCacheForRenderBundle(scene, skinned, b);
+        const BundleCacheEntry* bundleCache = FindCacheForRenderBundle(scene, skinned, b);
         if (!bundle || !bundleCache || !bundleCache->bvhNodes) continue;
 
         Range range = set->bundleRange[b];

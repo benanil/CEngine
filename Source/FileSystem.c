@@ -742,6 +742,21 @@ void AbsolutePath(const char* path, char* outBuffer, int bufferSize)
     outBuffer[currLength] = '\0';
 }
 
+void NormalizePath(const char* path, char* out, u32 outSize)
+{
+    u32 i = 0u;
+    for (; path[i] && i + 1u < outSize; i++)
+        out[i] = path[i] == '\\' ? '/' : path[i];
+    out[i] = '\0';
+}
+
+void ChangeExtensionAndCopy(const char* path, const char* extension, char* out, u32 outSize)
+{
+    MemsetZero(out, outSize);
+    MemCopy(out, path, StringLength(path));
+    ChangeExtension(out, outSize, extension);
+}
+
 bool CombinePaths(char* dst, uint64_t dstSize, const char* a, const char* b)
 {
     int aLen = StringLength(a);

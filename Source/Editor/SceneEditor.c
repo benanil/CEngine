@@ -13,6 +13,28 @@
 #include "Math/Quaternion.h"
 #include "Math/Bitpack.h"
 
+#define SCENE_LIGHT_GIZMO_RADIUS 10.0f
+#define EDITOR_SCENE_FOLDER "Assets/Scenes"
+#define EDITOR_SCENE_MAX_FILES 256
+#define EDITOR_SCENE_DOUBLE_CLICK_SECONDS 0.4f
+
+typedef struct EditorSceneFile_
+{
+    char path[512];
+    u16 nameOffset;
+} EditorSceneFile;
+
+typedef struct SceneObjectSelection_
+{
+    bool valid;
+    u32 skinned;
+    u32 groupIdx;
+    u32 entityIdx;
+    u32 bundleIdx;
+    u32 animIdx;
+    f32 animTime;
+} SceneObjectSelection;
+
 extern SDL_GPUDevice* g_GPUDevice;
 extern WindowState g_WindowState;
 extern Graphics gGFX;
@@ -31,19 +53,6 @@ static s32 sceneSelectedLight = -1;
 static bool sceneLightGizmoDragging;
 static f32 sceneLightGizmoDepth;
 
-#define SCENE_LIGHT_GIZMO_RADIUS 10.0f
-
-typedef struct SceneObjectSelection_
-{
-    bool valid;
-    u32 skinned;
-    u32 groupIdx;
-    u32 entityIdx;
-    u32 bundleIdx;
-    u32 animIdx;
-    f32 animTime;
-} SceneObjectSelection;
-
 static SceneObjectSelection sceneObjectSelection;
 
 static bool sceneSavePopupOpen;
@@ -51,16 +60,6 @@ static bool sceneSaveConfirmOpen;
 static bool sceneDeletePopupOpen;
 static char sceneSaveName[128];
 static char sceneDeletePath[512];
-
-#define EDITOR_SCENE_FOLDER "Assets/Scenes"
-#define EDITOR_SCENE_MAX_FILES 256
-#define EDITOR_SCENE_DOUBLE_CLICK_SECONDS 0.4f
-
-typedef struct EditorSceneFile_
-{
-    char path[512];
-    u16 nameOffset;
-} EditorSceneFile;
 
 static EditorSceneFile sceneFiles[EDITOR_SCENE_MAX_FILES];
 static u32 sceneNumFiles;
@@ -90,16 +89,6 @@ Scene* EditorNewScene(void)
     EditorSceneResetState();
     TerrainEditorSceneChanged(false);
     return scene;
-}
-
-// asset browser paths use backslashes, the bundle cache and .scene files key on the
-// path string, keep everything forward slashed like the code side
-static void EditorNormalizePath(const char* path, char* out, u32 outSize)
-{
-    u32 i = 0;
-    for (; path[i] && i + 1u < outSize; i++)
-        out[i] = path[i] == '\\' ? '/' : path[i];
-    out[i] = '\0';
 }
 
 // skinned spawns default to the bundle's second animation when there is one,
@@ -161,7 +150,7 @@ void EditorImportMeshToScene(const char* path)
     if (!scene) scene = EditorNewScene();
 
     char normalized[512];
-    EditorNormalizePath(path, normalized, sizeof(normalized));
+    NormalizePath(path, normalized, sizeof(normalized));
     u32 bundleIdx = Scene_AddBundleAuto(scene, normalized);
     if (bundleIdx == INVALID_BUNDLE)
     {
@@ -336,7 +325,7 @@ static bool EditorParseScaleText(const char* text, f32* outScale)
 void EditorOpenImportDetail(const char* path)
 {
     char normalized[512];
-    EditorNormalizePath(path, normalized, sizeof(normalized));
+    NormalizePath(path, normalized, sizeof(normalized));
     ImportDetailInfo info;
     if (!EditorReadBundleInfo(normalized, &info))
     {
@@ -550,19 +539,6 @@ static void EditorSaveActiveScene(void)
     }
 }
 
-static void SceneAtlasPath(const char* scenePath, const char* suffix, char* out, u32 outSize)
-{
-    int len = StringLength(scenePath);
-    int stem = len;
-    while (stem > 0 && scenePath[stem - 1] != '.') stem--;
-    if (stem > 0) stem--; else stem = len;
-
-    int suffixLen = StringLength(suffix);
-    if (stem + suffixLen + 1 > (int)outSize) { out[0] = '\0'; return; }
-    MemCopy(out, scenePath, stem);
-    MemCopy(out + stem, suffix, suffixLen + 1);
-}
-
 static bool ScenePathsEqual(const char* a, const char* b)
 {
     while (*a && *a == *b) { a++; b++; }
@@ -576,7 +552,7 @@ static void SceneFilesCollectFn(const char* path, void* data)
     if (!FileHasExtension(path, StringLength(path), ".scene")) return;
 
     EditorSceneFile* file = &sceneFiles[sceneNumFiles++];
-    EditorNormalizePath(path, file->path, sizeof(file->path));
+    NormalizePath(path, file->path, sizeof(file->path));
     file->nameOffset = 0u;
     for (u32 i = 0u; file->path[i]; i++)
         if (file->path[i] == '/' || file->path[i] == '\\') file->nameOffset = (u16)(i + 1u);
@@ -596,7 +572,7 @@ static void SceneDeleteWithDependencies(const char* path)
     for (u32 i = 0u; i < TextureClass_Count; i++)
     {
         char atlasPath[512];
-        SceneAtlasPath(path, kEditorSceneAtlasSuffix[i], atlasPath, sizeof(atlasPath));
+        ChangeExtensionAndCopy(path, kEditorSceneAtlasSuffix[i], atlasPath, sizeof(atlasPath));
         if (atlasPath[0] && FileExist(atlasPath)) RemoveFile(atlasPath);
     }
     RemoveFile(path);

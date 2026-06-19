@@ -44,6 +44,7 @@ typedef void(*FolderVisitFn)(const char* path, void* data);
 const char* GetFileExtension(const char* path, int size);
 
 int      ChangeExtension (      char* path, int pathLen, const char* newExt);
+void     ChangeExtensionAndCopy(const char* path, const char* ext, char* out, u32 outSize);
 void     GetBaseDir      (const char* path, char* out);
 s32      GetFileNameNoExt(const char* path, char* out);
 bool     FileHasExtension(const char* path, int size   , const char* extension);
@@ -73,6 +74,7 @@ void     WriteAllBytes   (const char* file, const char *bytes, unsigned long siz
 void     FreeAllText     (      char* text);
 void     ACopyFile       (const char* source, const char* dst, char* buffer);
 
+void     NormalizePath   (const char* path, char* out, u32 outSize);
 void     AbsolutePath    (const char* path, char* outBuffer, int bufferSize); // output: workDir/path
 bool     CombinePaths    (      char* dst , uint64_t dstSize, const char* a, const char* b);
 

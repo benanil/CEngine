@@ -47,20 +47,6 @@ static const char* RSkipWord(const char* p)
     return p;
 }
 
-// builds "<sceneDir>/<sceneName><suffix>" from the .scene path
-static void BuildAtlasPath(const char* scenePath, const char* suffix, char* out, u32 outSize)
-{
-    int len = StringLength(scenePath);
-    int stem = len;
-    while (stem > 0 && scenePath[stem - 1] != '.') stem--;
-    if (stem > 0) stem--; else stem = len;
-
-    int suffixLen = StringLength(suffix);
-    if (stem + suffixLen + 1 > (int)outSize) { out[0] = '\0'; return; }
-    MemCopy(out, scenePath, stem);
-    MemCopy(out + stem, suffix, suffixLen + 1);
-}
-
 /*//////////////////////////////////////////////////////////////////////////*/
 /*                                  Save                                    */
 /*//////////////////////////////////////////////////////////////////////////*/
@@ -79,7 +65,7 @@ s32 SceneSerializer_Save(Scene* scene, const char* path)
     {
         for (u32 c = 0; c < TextureClass_Count; c++)
         {
-            BuildAtlasPath(path, kAtlasSuffix[c], atlasPath[c], sizeof(atlasPath[c]));
+            ChangeExtensionAndCopy(path, kAtlasSuffix[c], atlasPath[c], sizeof(atlasPath[c]));
             atlasBaked[c] = TextureSystem_SaveBakedClass(ts, c, atlasPath[c]);
         }
     }

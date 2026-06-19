@@ -128,4 +128,6 @@ s32 Scene_MakeActive(Scene* scene);
 // out: the first active scene, NULL when none
 Scene* Scene_GetActive(void);
 
+const BundleCacheEntry* FindCacheForRenderBundle(const Scene* scene, bool skinned, u32 renderIdx);
+
 #endif // SCENE_H

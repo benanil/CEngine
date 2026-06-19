@@ -118,14 +118,14 @@ static int AnimationGetGPUData(AnimationSystem* anims, const SceneBundle* bundle
     return numFrames;
 }
 
-static bool StoreBundleSkinGPUData(AnimationSystem* anims, const SceneBundle* bundle, u32* jointOffset, u32* invBindOffset, u32* hierarchyOffset)
+static bool StoreBundleSkinGPUData(AnimationSystem* anims, const SceneBundle* bundle, u32 jointOffset, u32 invBindOffset, u32 hierarchyOffset)
 {
     const ASkin* skin = &bundle->skins[0];
-    if (*jointOffset + (u32)skin->numJoints > MAX_BONES * MAX_SKIN_COUNT ||
-        *invBindOffset + (u32)skin->numJoints > MAX_BONES * MAX_SKIN_COUNT ||
-        *hierarchyOffset + (u32)bundle->numNodes > MAX_SKIN_COUNT * ANIM_NODE_COUNT)
+    if (jointOffset + (u32)skin->numJoints > MAX_BONES * MAX_SKIN_COUNT ||
+        invBindOffset + (u32)skin->numJoints > MAX_BONES * MAX_SKIN_COUNT ||
+        hierarchyOffset + (u32)bundle->numNodes > MAX_SKIN_COUNT * ANIM_NODE_COUNT)
     {
-        AX_WARN("animation skin GPU data capacity exceeded joints=%d hierarchy=%d", *jointOffset, *hierarchyOffset);
+        AX_WARN("animation skin GPU data capacity exceeded joints=%d hierarchy=%d", jointOffset, hierarchyOffset);
         return false;
     }
 
@@ -155,13 +155,13 @@ static bool StoreBundleSkinGPUData(AnimationSystem* anims, const SceneBundle* bu
 
     if (bundle->numNodes > 0)
         UpdateGPUBuffer(anims->hierarchyBuffer, hierarchy, (size_t)bundle->numNodes * sizeof(u32),
-                        (size_t)*hierarchyOffset * sizeof(u32));
+                        (size_t)hierarchyOffset * sizeof(u32));
     if (skin->numJoints > 0)
     {
         UpdateGPUBuffer(anims->jointsBuffer, joints, (size_t)skin->numJoints * sizeof(u32),
-                        (size_t)*jointOffset * sizeof(u32));
+                        (size_t)jointOffset * sizeof(u32));
         UpdateGPUBuffer(anims->invBindBuffer, invBind, (size_t)skin->numJoints * ANIM_MATRIX_NUM_INT32 * sizeof(u32),
-                        (size_t)*invBindOffset * ANIM_MATRIX_NUM_INT32 * sizeof(u32));
+                        (size_t)invBindOffset * ANIM_MATRIX_NUM_INT32 * sizeof(u32));
     }
     ArenaRestore(&GlobalArena, mark);
     return true;
@@ -243,7 +243,7 @@ s32 AnimationSystem_AppendBundle(AnimationSystem* anims, const SceneBundle* bund
     u32 jointOffset = (u32)skinSlot * MAX_BONES;
     u32 invBindOffset = (u32)skinSlot * MAX_BONES;
     u32 hierarchyOffset = (u32)skinSlot * ANIM_NODE_COUNT;
-    if (!StoreBundleSkinGPUData(anims, bundle, &jointOffset, &invBindOffset, &hierarchyOffset))
+    if (!StoreBundleSkinGPUData(anims, bundle, jointOffset, invBindOffset, hierarchyOffset))
     {
         BitsetSetRange(anims->usedAnimSlots, (u32)animOffset, animCount, false);
         BitsetReset(anims->usedSkinSlots, skinSlot);

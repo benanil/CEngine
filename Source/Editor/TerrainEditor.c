@@ -161,15 +161,7 @@ static bool TerrainChunksPath(char* dst, u32 dstSize)
     u32 len = Minu32((u32)StringLength(terrainUI.savePath), dstSize - 1u);
     MemCopy(dst, terrainUI.savePath, len);
     dst[len] = '\0';
-
-    u32 dot = len;
-    while (dot > 0u && dst[dot - 1u] != '.' && dst[dot - 1u] != '/' && dst[dot - 1u] != '\\') dot--;
-    if (dot > 0u && dst[dot - 1u] == '.') len = dot - 1u;
-
-    static const char ext[] = ".chunks";
-    u32 extLen = (u32)sizeof(ext);
-    if (len + extLen > dstSize) return false;
-    MemCopy(dst + len, ext, extLen);
+    ChangeExtension(dst, 512, "chunks");
     return true;
 }
 

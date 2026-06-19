@@ -24,33 +24,16 @@ static char  g_ActiveScenePath[512];
 
 extern Graphics gGFX;
 
-static void SceneNormalizePath(const char* path, char* out, u32 outSize)
+static void SceneTerrainPath(const char* scenePath, char* out, u32 outSize)
 {
-    u32 i = 0u;
-    for (; path[i] && i + 1u < outSize; i++)
-        out[i] = path[i] == '\\' ? '/' : path[i];
-    out[i] = '\0';
-}
-
-static bool SceneTerrainPath(const char* scenePath, char* out, u32 outSize)
-{
-    SceneNormalizePath(scenePath, out, outSize);
-    u32 len = (u32)StringLength(out);
-    u32 stem = len;
-    while (stem > 0u && out[stem - 1u] != '.' && out[stem - 1u] != '/' && out[stem - 1u] != '\\') stem--;
-    if (stem > 0u && out[stem - 1u] == '.') len = stem - 1u;
-
-    static const char ext[] = ".terrain";
-    u32 extLen = (u32)sizeof(ext);
-    if (len + extLen > outSize) return false;
-    MemCopy(out + len, ext, extLen);
-    return true;
+    NormalizePath(scenePath, out, outSize);
+    ChangeExtension(out, 512, "terrain");
 }
 
 static void SceneSaveTerrainSidecar(const char* scenePath)
 {
     char terrainPath[512];
-    if (!SceneTerrainPath(scenePath, terrainPath, sizeof(terrainPath))) return;
+    SceneTerrainPath(scenePath, terrainPath, sizeof(terrainPath));
 
     if (Terrain_GetEnabled())
         Terrain_SaveWorld(terrainPath);
@@ -252,7 +235,7 @@ Scene* Scene_NewActive(void)
 Scene* Scene_OpenActive(const char* path)
 {
     char normalized[512];
-    SceneNormalizePath(path, normalized, sizeof(normalized));
+    NormalizePath(path, normalized, sizeof(normalized));
 
     Scene* scene = Scene_NewActive();
     if (!scene) return NULL;
@@ -265,7 +248,8 @@ Scene* Scene_OpenActive(const char* path)
 
     Terrain_DeleteWorld();
     char terrainPath[512];
-    if (SceneTerrainPath(normalized, terrainPath, sizeof(terrainPath)) && FileExist(terrainPath))
+    SceneTerrainPath(normalized, terrainPath, sizeof(terrainPath));
+    if (FileExist(terrainPath))
         Terrain_LoadWorld(terrainPath);
     return scene;
 }
@@ -285,7 +269,7 @@ s32 Scene_SaveActiveAs(const char* path)
     if (!scene || !path || path[0] == '\0') return 0;
 
     char normalized[512];
-    SceneNormalizePath(path, normalized, sizeof(normalized));
+    NormalizePath(path, normalized, sizeof(normalized));
     EnsurePath(normalized);
     if (!SceneSerializer_Save(scene, normalized)) return 0;
     MemCopy(g_ActiveScenePath, normalized, StringLength(normalized) + 1);
@@ -341,8 +325,6 @@ static void Scene_UpdateMaterialWatermark(Scene* scene)
 static s32 Scene_AllocateMaterialSlots(Scene* scene, u32 numMaterials)
 {
     if (numMaterials == 0) return 0;
-
-    // s32 firstEmpty = BitsetFindFirstEmpty(scene->materialSlots, MAX_GPU_MATERIALS);
     s32 firstEmpty = BitsetFindEmptyRange(scene->materialSlots, MAX_GPU_MATERIALS, numMaterials);
     if (firstEmpty != -1)
     {
@@ -465,6 +447,17 @@ const SceneBundle* Scene_AcquireBundlePeek(const char* path)
 {
     BundleCacheEntry* entry = BundleCacheAcquire(path);
     return entry ? entry->bundle : NULL;
+}
+
+const BundleCacheEntry* FindCacheForRenderBundle(const Scene* scene, bool skinned, u32 renderIdx)
+{
+    for (u32 i = 0; i < scene->numBundles; i++)
+    {
+        const SceneBundleRef* ref = &scene->bundleRefs[i];
+        if ((ref->skinned != 0) == skinned && ref->renderIdx == renderIdx)
+            return ref->cache;
+    }
+    return NULL;
 }
 
 void Scene_ReleaseBundlePeek(const char* path)
