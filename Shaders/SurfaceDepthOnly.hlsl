@@ -39,7 +39,7 @@ VSOutput vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("Dra
     Entity entity = sEntities[denseIdx];
 
     f16_4 insRot   = normalize(UnpackRGBA16Snorm(entity.rotation[0], entity.rotation[1]));
-    f16_3 insScale = UnpackVec3XY11Z10Unorm(entity.scale) * f16(10.0);
+    f16_3 insScale = UnpackRGBA16Unorm(entity.scale).xyz * f16(10.0);
     f16_3 worldPos = QMulVec3(insRot, f16_3(input.aPos) * insScale);
     float3 finalWorldPos = float3(worldPos) + entity.position.xyz;
 

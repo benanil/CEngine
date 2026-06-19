@@ -29,29 +29,27 @@ void RenderSet_InitSet(RenderSet* set, u32 maxEntities, u32 maxGroups, u32 maxBu
     MemSet(set->sparseID, 0xFF, maxEntities * sizeof(u32));
 }
 
-v128f RenderSet_UnpackEntityScale01(u32 packed)
+v128f RenderSet_UnpackEntityScale01(u64 packed)
 {
-    v128u i = VeciSrl(VeciSet1(packed), VeciSetR(0, 11, 22, 31));
-    i = VeciAnd(i, VeciSetR(0x7FF, 0x7FF, 0x3FF, 0));
-    return VecMul(VecI32ToF32(i), VecSetR(1.0f / 2047.0f, 1.0f / 2047.0f, 1.0f / 1023.0f, 0.0f));
+    return UnpackUnorm16x4(packed);
 }
 
-v128f RenderSet_UnpackEntityWorldScale(u32 packed)
+v128f RenderSet_UnpackEntityWorldScale(u64 packed)
 {
     v128f scale = VecMulf(RenderSet_UnpackEntityScale01(packed), 10.0f);
     VecSetW(scale, 1.0f);
     return scale;
 }
 
-u32 RenderSet_PackEntityWorldScale(v128f scale)
+u64 RenderSet_PackEntityWorldScale(v128f scale)
 {
-    return PackXY11Z10UnormToU32(VecClamp(VecMulf(scale, 0.1f), VecSet1(0.0001f), VecOne()));
+    return PackUnorm16x4(VecClamp01(VecMulf(scale, 0.1f)));
 }
 
-u32 RenderSet_PackEntityUniformWorldScale(f32 scale)
+u64 RenderSet_PackEntityUniformWorldScale(f32 scale)
 {
-    f32 packedScale = Clampf32(scale * 0.1f, 0.0001f, 1.0f);
-    return PackXY11Z10UnormToU32(VecSet1(packedScale));
+    f32 packedScale = Saturatef32(scale * 0.1f);
+    return PackUnorm16x4(VecSet1(packedScale));
 }
 
 v128f RenderSet_GroupLocalCenter(const PrimitiveGroup* group)
@@ -363,7 +361,7 @@ static u32 AddNodeEntity(RenderSet* set, Range range, const SceneBundle* bundle,
         Entity entity;
         entity.position = position;
         PackQuaternionS16Norm(VecNorm(rotation), &entity.rotation);
-        entity.scale = PackXY11Z10UnormToU32(scale);
+        entity.scale = RenderSet_PackEntityWorldScale(scale);
         entity.sparseIdx = sparseIdx;
         if (RenderSet_AddEntity(set, groupIdx, &entity) != INVALID_ENTITY)
             added++;

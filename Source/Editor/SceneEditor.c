@@ -946,7 +946,7 @@ typedef struct SceneInspectorCache_
     u32 entityIdx;
     v128f position;
     u64 rotation;
-    u32 scalePacked;
+    u64 scalePacked;
     f32 positionUi[3];
     s32 rotationUi[3];
     f32 scaleUi[3];

@@ -43,7 +43,7 @@ void BuildWorldAABB(Entity entity, PrimitiveGroup group, out float3 worldCenter,
     float3 localExtent = (localMax - localMin) * 0.5f;
 
     float4 q = VecNorm(UnpackRGBA16Snorm(entity.rotation.x, entity.rotation.y));
-    float3 s = float3(UnpackVec3XY11Z10Unorm(entity.scale.x)) * 10.0f;
+    float3 s = float3(UnpackRGBA16Unorm(entity.scale).xyz) * 10.0f;
     float3x3 rotM = M33FromQuaternionF32(q);
 
     worldCenter = entity.position.xyz + QMulVec3F32(q, localCenter * s);

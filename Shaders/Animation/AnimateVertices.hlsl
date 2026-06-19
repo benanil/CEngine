@@ -64,7 +64,7 @@ void main(uint3 globalID : SV_DispatchThreadID, uint3 groupID : SV_GroupID, uint
 
     uint boneStart = sparse * MAX_BONES;
     f16_4 insRot = normalize(UnpackRGBA16Snorm(entity.rotation[0], entity.rotation[1]));
-    f16_3 insScale = UnpackVec3XY11Z10Unorm(entity.scale) * f16(10.0);
+    f16_3 insScale = UnpackRGBA16Unorm(entity.scale).xyz * f16(10.0);
 
     [loop]
     for (uint vertexOffset = 0; vertexOffset < 32u; vertexOffset++)

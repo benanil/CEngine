@@ -61,6 +61,10 @@ f16_4 UnpackRGBA16Snorm(uint xy, uint zw) {
     ) * f16(1.0 / 32767.0);
 }
 
+f16_4 UnpackRGBA16Unorm(uint2 p) {
+    return f16_4((p.xxyy >> uint4(0u, 16u, 0u, 16u)) & 0xFFFFu) * (1.0f / 65534.0f);
+}
+
 f16_3 UnpackVec3XY11Z10Unorm(uint packed) {
     const f16 scale11 = f16(1.0 / 2047.0);
     const f16 scale10 = f16(1.0 / 1023.0);

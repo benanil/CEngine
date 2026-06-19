@@ -14,8 +14,7 @@ typedef struct Entity_
 {
     v128f position;
     u64   rotation;
-    u32   scale; // xyz10
-    u32   scale1; 
+    u64   scale; // xyz16
     u32   primitiveIdx; // primitive group
     u32   sparseIdx;
     u32   parentIdx; // parent sparseIdx
@@ -73,10 +72,10 @@ struct PrimitiveGroup_
     u32 lodAnimatedVertexOffset[4];
 };
 
-v128f RenderSet_UnpackEntityScale01(u32 packed);
-v128f RenderSet_UnpackEntityWorldScale(u32 packed);
-u32   RenderSet_PackEntityWorldScale(v128f scale);
-u32   RenderSet_PackEntityUniformWorldScale(f32 scale);
+v128f RenderSet_UnpackEntityScale01(u64 packed);
+v128f RenderSet_UnpackEntityWorldScale(u64 packed);
+u64   RenderSet_PackEntityWorldScale(v128f scale);
+u64   RenderSet_PackEntityUniformWorldScale(f32 scale);
 
 v128f RenderSet_GroupLocalCenter(const PrimitiveGroup* group);
 v128f RenderSet_EntityBoundsCenter(const PrimitiveGroup* group, const Entity* entity, v128f rotation, v128f worldScale);

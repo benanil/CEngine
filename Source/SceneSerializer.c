@@ -9,8 +9,9 @@
 #include "Include/Memory.h"
 #include "Include/Platform.h"
 #include "Include/Rendering.h"
+#include "Math/Bitpack.h"
 
-#define SCENE_FILE_VERSION 1
+#define SCENE_FILE_VERSION 2
 
 // first descriptors of a texture system are the built in defaults (TextureSystem.c)
 enum { SceneSer_DefaultDescriptors = 4 };
@@ -35,10 +36,26 @@ static const char* RU32(const char* p, u32* v)
     return p;
 }
 
+static const char* RU64(const char* p, u64* v)
+{
+    s64 value = 0;
+    while (*p == ' ') p++;
+    p = ParseNumberI64(p, &value);
+    *v = (u64)value;
+    return p;
+}
+
 static const char* RFlt(const char* p, f32* v)
 {
     while (*p == ' ') p++;
     return ParseFloat(p, v);
+}
+
+static v128f SceneUnpackLegacyScaleXY11Z10(u32 packed)
+{
+    v128u i = VeciSrl(VeciSet1(packed), VeciSetR(0, 11, 22, 31));
+    i = VeciAnd(i, VeciSetR(0x7FF, 0x7FF, 0x3FF, 0));
+    return VecMul(VecI32ToF32(i), VecSetR(1.0f / 2047.0f, 1.0f / 2047.0f, 1.0f / 1023.0f, 0.0f));
 }
 
 static const char* RSkipWord(const char* p)
@@ -215,10 +232,10 @@ s32 SceneSerializer_Save(Scene* scene, const char* path)
 // one serialized render set entity, packed transform forms round trip exactly
 typedef struct SceneEntRecord_
 {
-    float position[3];
     u64   rotation;
+    u64   scale;
+    float position[3];
     u32   groupIdx;
-    u32   scale;
     u32   sparseIdx;
 } SceneEntRecord;
 
@@ -293,7 +310,7 @@ static s32 ParseSceneFile(const char* path, SceneFileData* data)
         p = line + 3 + 7;
     }
     RU32(p, &version);
-    if (version != SCENE_FILE_VERSION)
+    if (version > 2)
     {
         AX_ERROR("scene file version %d not supported: %s", version, path);
         AFileClose(file);
@@ -415,7 +432,16 @@ static s32 ParseSceneFile(const char* path, SceneFileData* data)
             for (u32 k = 0; k < 3u; k++) p = RFlt(p, &record->position[k]);
             p = RU32(p, &rotLo);
             p = RU32(p, &rotHi);
-            p = RU32(p, &record->scale);
+            record->scale = 0;
+            if (version == 1)
+            {
+                u32 legacyScale = 0;
+                p = RU32(p, &legacyScale);
+                record->scale = RenderSet_PackEntityWorldScale(SceneUnpackLegacyScaleXY11Z10(legacyScale));
+            }
+            if (version == 2)
+                p = RU64(p, &record->scale);
+
             RU32(p, &record->sparseIdx);
             record->rotation = (u64)rotLo | ((u64)rotHi << 32u);
         }
