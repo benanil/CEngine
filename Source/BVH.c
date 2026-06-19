@@ -6,6 +6,7 @@
 #include "Include/Graphics.h"
 #include "Include/Memory.h"
 #include "Include/Platform.h"
+#include "Include/Scene.h"
 #include "Math/Quaternion.h"
 #include "Math/Bitpack.h"
 #include "Math/Half.h"
@@ -198,9 +199,9 @@ static void BVH_Subdivide(BVHBuild* build, u32 nodeIdx)
     BVH_Subdivide(build, leftChild + 1);
 }
 
-s32 BVH_BuildBundle(SceneBundle* bundle, bool skinned)
+s32 BVH_BuildBundleCached(SceneBundle* bundle, BundleCacheEntry* bundleCache, bool skinned)
 {
-    if (bundle->bvhNodes || !bundle->allIndices) return bundle->bvhNodes != NULL;
+    if (bundleCache->bvhNodes || !bundle->allIndices) return bundleCache->bvhNodes != NULL;
 
     double startTime = TimeSinceStartup();
     u32 totalTris = 0;
@@ -265,22 +266,22 @@ s32 BVH_BuildBundle(SceneBundle* bundle, bool skinned)
     }
 
     SDL_aligned_free(build.centroids);
-    bundle->bvhNodes = SDL_realloc(build.nodes, (u64)build.nodesUsed * sizeof(BVHNode));
-    bundle->bvhTris = build.tris;
-    bundle->numBvhNodes = (int)build.nodesUsed;
-    bundle->numBvhTris = (int)totalTris;
+    bundleCache->bvhNodes = SDL_realloc(build.nodes, (u64)build.nodesUsed * sizeof(BVHNode));
+    bundleCache->bvhTris = build.tris;
+    bundleCache->numBvhNodes = (int)build.nodesUsed;
+    bundleCache->numBvhTris = (int)totalTris;
     AX_LOG("bvh built: tris=%d nodes=%d %.2fs", totalTris, build.nodesUsed, TimeSinceStartup() - startTime);
     return 1;
 }
 
-void BVH_FreeBundle(SceneBundle* bundle)
+void BVH_FreeBundle(BundleCacheEntry* bundleCache)
 {
-    if (bundle->bvhNodes) SDL_free(bundle->bvhNodes);
-    if (bundle->bvhTris) SDL_free(bundle->bvhTris);
-    bundle->bvhNodes = NULL;
-    bundle->bvhTris = NULL;
-    bundle->numBvhNodes = 0;
-    bundle->numBvhTris = 0;
+    if (bundleCache->bvhNodes) SDL_free(bundleCache->bvhNodes);
+    if (bundleCache->bvhTris) SDL_free(bundleCache->bvhTris);
+    bundleCache->bvhNodes = NULL;
+    bundleCache->bvhTris = NULL;
+    bundleCache->numBvhNodes = 0;
+    bundleCache->numBvhTris = 0;
 }
 
 /*//////////////////////////////////////////////////////////////////////////*/
@@ -288,11 +289,11 @@ void BVH_FreeBundle(SceneBundle* bundle)
 /*//////////////////////////////////////////////////////////////////////////*/
 
 // stack based traversal of one primitive blas, the ray is already in local space
-static bool BVH_Intersect(const SceneBundle* bundle, bool skinned, u32 rootNode,
+static bool BVH_Intersect(const BundleCacheEntry* bundleCache, bool skinned, u32 rootNode,
                           v128f origin, v128f dir, BVHHit* hit)
 {
-    const BVHNode* nodes = (const BVHNode*)bundle->bvhNodes;
-    const BVHTri* tris = (const BVHTri*)bundle->bvhTris;
+    const BVHNode* nodes = (const BVHNode*)bundleCache->bvhNodes;
+    const BVHTri* tris = (const BVHTri*)bundleCache->bvhTris;
     if (!nodes || rootNode == ~0u) return false;
 
     u32 nodesToVisit[BVH_MAX_DEPTH_STACK];
@@ -357,13 +358,25 @@ static bool BVH_Intersect(const SceneBundle* bundle, bool skinned, u32 rootNode,
 /*                              Scene Raycast                               */
 /*//////////////////////////////////////////////////////////////////////////*/
 
-static s32 BVH_RaycastSet(const RenderSet* set, bool skinned, v128f origin, v128f dir, BVHHit* hit)
+static const BundleCacheEntry* BVH_FindCacheForRenderBundle(const Scene* scene, bool skinned, u32 renderIdx)
+{
+    for (u32 i = 0; i < scene->numBundles; i++)
+    {
+        const SceneBundleRef* ref = &scene->bundleRefs[i];
+        if ((ref->skinned != 0) == skinned && ref->renderIdx == renderIdx)
+            return ref->cache;
+    }
+    return NULL;
+}
+
+static s32 BVH_RaycastSet(const Scene* scene, const RenderSet* set, bool skinned, v128f origin, v128f dir, BVHHit* hit)
 {
     s32 anyHit = 0;
     for (u32 b = 0; b < set->numBundles; b++)
     {
         const SceneBundle* bundle = set->bundles[b];
-        if (!bundle || !bundle->bvhNodes) continue;
+        const BundleCacheEntry* bundleCache = BVH_FindCacheForRenderBundle(scene, skinned, b);
+        if (!bundle || !bundleCache || !bundleCache->bvhNodes) continue;
 
         Range range = set->bundleRange[b];
         for (u32 g = range.start; g < range.start + range.count; g++)
@@ -388,7 +401,7 @@ static s32 BVH_RaycastSet(const RenderSet* set, bool skinned, v128f origin, v128
                 v128f localDir    = VecDiv(QMulVec3V(dir, invRot), scale);
 
                 f32 before = hit->hit.t;
-                if (BVH_Intersect(bundle, skinned, prim->bvhNodeIndex, localOrigin, localDir, hit) && hit->hit.t < before)
+                if (BVH_Intersect(bundleCache, skinned, prim->bvhNodeIndex, localOrigin, localDir, hit) && hit->hit.t < before)
                 {
                     hit->skinnedSet = skinned;
                     hit->groupIdx = g;
@@ -407,8 +420,8 @@ s32 BVH_RaycastScene(const Scene* scene, v128f origin, v128f dir, BVHHit* hit)
     hit->hit.t = BVH_MISS;
 
     s32 anyHit = 0;
-    anyHit |= BVH_RaycastSet(&scene->surfaceSet, false, origin, dir, hit);
-    anyHit |= BVH_RaycastSet(&scene->skinnedSet, true, origin, dir, hit);
+    anyHit |= BVH_RaycastSet(scene, &scene->surfaceSet, false, origin, dir, hit);
+    anyHit |= BVH_RaycastSet(scene, &scene->skinnedSet, true, origin, dir, hit);
     if (!anyHit) return 0;
 
     // resolve the render set bundle back to the scene bundle for reporting

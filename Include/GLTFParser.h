@@ -323,23 +323,10 @@ typedef struct SceneBundle_
 
     void* allVertices;
     void* allIndices;
-    // raw geometry heap pointers, needed to free the mega buffer ranges.
-    // NULL when the geometry doesn't live in the mega buffers (fbx path)
-    void* vertexHeapPtr;
-    void* indexHeapPtr;
 
-    // blas arrays of every primitive, built after load (BVH.c). gpu shareable layout,
-    // primitives point into them through APrimitive.bvhNodeIndex
-    void* bvhNodes;
-    void* bvhTris;
-    int   numBvhNodes;
-    int   numBvhTris;
-
-    int totalVertices;
-    int totalIndices;
+    int   totalVertices;
+    int   totalIndices;
     float scale;
-    int imageOffset;
-    int materialOffset;
 
     GLTFBuffer* buffers;
 

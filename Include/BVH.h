@@ -46,11 +46,10 @@ static inline float3 BVH_HitPositionF(float3 origin, float3 dir, const BVHHit* h
 }
 
 // builds the blas of every primitive of the bundle from the lod0 triangles, fills
-// APrimitive.bvhNodeIndex and the bundle's bvhNodes/bvhTris arrays (heap allocated,
-// shared through the bundle cache like the rest of the bundle). out: 0 on failure
-s32 BVH_BuildBundle(SceneBundle* bundle, bool skinned);
+// APrimitive.bvhNodeIndex and the cache entry's bvhNodes/bvhTris arrays. out: 0 on failure
+s32 BVH_BuildBundleCached(SceneBundle* bundle, struct BundleCacheEntry* bundleCache, bool skinned);
 
-void BVH_FreeBundle(SceneBundle* bundle);
+void BVH_FreeBundle(struct BundleCacheEntry* bundleCache);
 
 struct Scene_;
 

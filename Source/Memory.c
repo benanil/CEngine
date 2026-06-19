@@ -440,6 +440,86 @@ void DeAllocateTLSFGlobal(void* buff)
     #endif
 }
 
+void RangeAllocator_Init(RangeAllocator* alloc, RangeU32* freeRanges, uint32_t maxFreeRanges, uint32_t capacity)
+{
+    MemsetZero(alloc, sizeof(*alloc));
+    alloc->freeRanges = freeRanges;
+    alloc->maxFreeRanges = maxFreeRanges;
+    alloc->capacity = capacity;
+}
+
+int RangeAllocator_Alloc(RangeAllocator* alloc, uint32_t count, uint32_t* outOffset)
+{
+    *outOffset = 0u;
+    if (count == 0u) return 1;
+    for (uint32_t i = 0u; i < alloc->numFreeRanges; i++)
+    {
+        RangeU32* range = &alloc->freeRanges[i];
+        if (range->count < count) continue;
+        *outOffset = range->offset;
+        range->offset += count;
+        range->count -= count;
+        if (range->count == 0u)
+        {
+            alloc->numFreeRanges--;
+            alloc->freeRanges[i] = alloc->freeRanges[alloc->numFreeRanges];
+        }
+        return 1;
+    }
+
+    if (alloc->watermark + count > alloc->capacity)
+        return 0;
+    *outOffset = alloc->watermark;
+    alloc->watermark += count;
+    return 1;
+}
+
+static void RangeAllocator_MergeFreeRanges(RangeAllocator* alloc)
+{
+merge_ranges:
+    for (uint32_t i = 0u; i < alloc->numFreeRanges; i++)
+    {
+        RangeU32* a = &alloc->freeRanges[i];
+        for (uint32_t j = i + 1u; j < alloc->numFreeRanges; j++)
+        {
+            RangeU32* b = &alloc->freeRanges[j];
+            uint32_t aEnd = a->offset + a->count;
+            uint32_t bEnd = b->offset + b->count;
+            if (aEnd < b->offset || bEnd < a->offset) continue;
+
+            uint32_t begin = Minu32(a->offset, b->offset);
+            uint32_t end = Maxu32(aEnd, bEnd);
+            *a = (RangeU32){ begin, end - begin };
+            alloc->numFreeRanges--;
+            alloc->freeRanges[j] = alloc->freeRanges[alloc->numFreeRanges];
+            goto merge_ranges;
+        }
+    }
+
+trim_watermark:
+    for (uint32_t i = 0u; i < alloc->numFreeRanges; i++)
+    {
+        RangeU32 range = alloc->freeRanges[i];
+        if (range.offset + range.count != alloc->watermark) continue;
+        alloc->watermark = range.offset;
+        alloc->numFreeRanges--;
+        alloc->freeRanges[i] = alloc->freeRanges[alloc->numFreeRanges];
+        goto trim_watermark;
+    }
+}
+
+void RangeAllocator_Free(RangeAllocator* alloc, uint32_t offset, uint32_t count)
+{
+    if (count == 0u) return;
+    if (alloc->numFreeRanges >= alloc->maxFreeRanges)
+    {
+        AX_WARN("range allocator free range capacity exceeded");
+        return;
+    }
+    alloc->freeRanges[alloc->numFreeRanges++] = (RangeU32){ offset, count };
+    RangeAllocator_MergeFreeRanges(alloc);
+}
+
 /*//////////////////////////////////////////////////////////////////////////*/
 /*                                  Arena                                   */
 /*//////////////////////////////////////////////////////////////////////////*/

@@ -25,16 +25,16 @@ s32 LoadFBX(const char* path, SceneBundle* fbxScene, f32 scale);
 /* Binary asset cache */
 s32 SaveGLTFBinary(const SceneBundle* gltf, const char* path);
 
-s32 LoadSceneBundleBinary(const char* path, SceneBundle* gltf);
+s32 LoadSceneBundleBinary(const char* path, SceneBundle* gltf, void** outVertexHeapPtr, void** outIndexHeapPtr);
 
-s32 LoadGLTFCached(const char* path, SceneBundle* scene, Texture* textures);
+s32 LoadGLTFCached(const char* path, SceneBundle* scene, Texture* textures, void** outVertexHeapPtr, void** outIndexHeapPtr);
 
 // ABM = AX binary mesh
 u8 IsABMLastVersion(const char* path);
 
 /* Mesh baking */
 // returns 0 on not enough memory
-s32 BakeSceneMeshesAndAnimations(SceneBundle* gltf);
+s32 BakeSceneMeshesAndAnimations(SceneBundle* gltf, void** outVertexHeapPtr, void** outIndexHeapPtr);
 
 void OptimizeMesh(SceneBundle* gltf);
 

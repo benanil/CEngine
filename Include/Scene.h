@@ -17,7 +17,26 @@ typedef struct SceneBundleRef_
     u32          materialOffset; // gpu material slot base of the bundle in this scene
     u32          animOffset;     // first animation of the bundle inside the scene's animation system
     u32          skinned;
+    AnimationBundleAlloc animAlloc;
+    struct BundleCacheEntry* cache;
 } SceneBundleRef;
+
+typedef struct BundleCacheEntry
+{
+    SceneBundle* bundle;
+    char*        path;     // cache owned copy, scenes reference it in bundlePaths
+    u32          refCount;
+    // raw geometry heap pointers, needed to free the mega buffer ranges.
+    // NULL when the geometry doesn't live in the mega buffers (fbx path)
+    void*        vertexHeapPtr;
+    void*        indexHeapPtr;
+    // blas arrays of every primitive, built after load (BVH.c). gpu shareable layout,
+    // primitives point into them through APrimitive.bvhNodeIndex
+    void*        bvhNodes;
+    void*        bvhTris;
+    int          numBvhNodes;
+    int          numBvhTris;
+} BundleCacheEntry;
 
 // a scene owns one render set for skinned meshes, one for static geometry, their gpu
 // buffers, its own texture system and animation system. all gpu resources stay resident,

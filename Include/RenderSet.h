@@ -70,7 +70,6 @@ struct PrimitiveGroup_
     u32 lodAnimatedVertexOffset[4];
 };
 
-
 v128f RenderSet_UnpackEntityScale01(u32 packed);
 v128f RenderSet_UnpackEntityWorldScale(u32 packed);
 u32   RenderSet_PackEntityWorldScale(v128f scale);

@@ -666,7 +666,7 @@ s32 LoadSceneImages(const char* texturePath, Texture* textures, s32 numImages)
     return result;
 }
 
-s32 LoadGLTFCached(const char* path, SceneBundle* scene, Texture* textures)
+s32 LoadGLTFCached(const char* path, SceneBundle* scene, Texture* textures, void** outVertexHeapPtr, void** outIndexHeapPtr)
 {
     char buffer[1024];
     size_t pathLen = StringLength(path);
@@ -675,11 +675,11 @@ s32 LoadGLTFCached(const char* path, SceneBundle* scene, Texture* textures)
     s32 result = 1;
     if (IsABMLastVersion(buffer)) {
         AX_LOG("asset cache hit: %s", buffer);
-        result = LoadSceneBundleBinary(buffer, scene);
+        result = LoadSceneBundleBinary(buffer, scene, outVertexHeapPtr, outIndexHeapPtr);
     }
     else if (ParseGLTF(path, scene, 1.0f)) {
         AX_LOG("asset cache rebuild: %s -> %s", path, buffer);
-        if (!BakeSceneMeshesAndAnimations(scene))
+        if (!BakeSceneMeshesAndAnimations(scene, outVertexHeapPtr, outIndexHeapPtr))
         {
             AX_WARN("asset import failed during mesh bake: %s vertices=%d indices=%d", path, scene->totalVertices, scene->totalIndices);
             return 0;
@@ -1037,7 +1037,7 @@ void ReadGLTFString(char** str, AFile file, FixedPow2Allocator* stringAllocator)
     }
 }
 
-s32 LoadSceneBundleBinary(const char* path, SceneBundle* gltf)
+s32 LoadSceneBundleBinary(const char* path, SceneBundle* gltf, void** outVertexHeapPtr, void** outIndexHeapPtr)
 {
     AX_LOG("abm load: %s", path);
     AFile file = AFileOpen(path, AOpenFlag_ReadBinary);
@@ -1099,8 +1099,8 @@ s32 LoadSceneBundleBinary(const char* path, SceneBundle* gltf)
             GeometryHeapFree(GeometryBuffer_Index, indexRaw);
             return 0;
         }
-        gltf->vertexHeapPtr = vertexRaw;
-        gltf->indexHeapPtr  = indexRaw;
+        if (outVertexHeapPtr) *outVertexHeapPtr = vertexRaw;
+        if (outIndexHeapPtr)  *outIndexHeapPtr = indexRaw;
 
         if (isSkined) gGFX.NumSkinnedVertices += gltf->totalVertices;
         else          gGFX.NumSurfaceVertices += gltf->totalVertices;

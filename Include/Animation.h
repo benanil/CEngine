@@ -3,6 +3,7 @@
 #define _ANIMATION_H
 
 #include "Graphics.h"
+#include "Memory.h"
 #include "../Math/Matrix.h"
 #include "RenderLimits.h"
 
@@ -87,13 +88,25 @@ typedef struct GPUAnimationData_
     u32 padding;
 } GPUAnimationData;
 
+typedef struct AnimationBundleAlloc_
+{
+    u32 animOffset;
+    u32 animCount;
+    u32 frameOffset;
+    u32 frameCount;
+    u32 skinSlot;
+} AnimationBundleAlloc;
+
 // per scene animation state, owned by Scene. gpu buffers are created lazily on the
 // first skinned bundle append so surface only scenes don't pay for them
 typedef struct AnimationSystem_
 {
     GPUAnimationData animData[MAX_ANIM_COUNT];
-    u32 numAnimations;
-    u32 frameOffset;     // baked pose frame cursor
+    u64 usedAnimSlots[(MAX_ANIM_COUNT + 63u) >> 6];
+    u64 usedSkinSlots[(MAX_SKIN_COUNT + 63u) >> 6];
+    RangeU32 freeFrameRanges[MAX_ANIM_COUNT];
+    RangeAllocator frameAllocator; // animation bone frames (not per frame)
+    u32 numAnimations;   // active animation slots
     u32 jointOffset;
     u32 invBindOffset;
     u32 hierarchyOffset;
@@ -112,7 +125,11 @@ void AnimationSystem_Destroy(AnimationSystem* anims);
 
 // bakes the bundle's animations and skin data and uploads only the appended ranges.
 // creates the gpu buffers on first use. fail return 0
-s32 AnimationSystem_AppendBundle(AnimationSystem* anims, const SceneBundle* bundle);
+s32 AnimationSystem_AppendBundle(AnimationSystem* anims, const SceneBundle* bundle, AnimationBundleAlloc* outAlloc);
+void AnimationSystem_RemoveBundle(AnimationSystem* anims, AnimationBundleAlloc alloc);
+
+// out: GPU animation slot at ordinal among active animations, 0 when no active animation exists
+u32 AnimationSystem_GetNthUsedAnim(const AnimationSystem* anims, u32 ordinal);
 
 // uploads instance assignments to the gpu, instances are indexed by the skinned
 // render set's sparse entity id. count is clamped to MAX_ANIM_INSTANCES

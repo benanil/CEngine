@@ -44,6 +44,21 @@ typedef struct FixedPow2Allocator_ {
     FixedFragment* current;
 } FixedPow2Allocator;
 
+typedef struct RangeU32_
+{
+    uint32_t offset;
+    uint32_t count;
+} RangeU32;
+
+typedef struct RangeAllocator_
+{
+    RangeU32* freeRanges;
+    uint32_t  numFreeRanges;
+    uint32_t  maxFreeRanges;
+    uint32_t  watermark;
+    uint32_t  capacity;
+} RangeAllocator;
+
 extern Arena GlobalArena;
 
 uint64_t  AlignAddress(uint64_t addr, uint64_t align);
@@ -85,6 +100,10 @@ void* AllocateTLSFGlobal(size_t size);
 void* ReAllocateTLSFGlobal(void* ptr, size_t size);
 void  DeAllocateTLSFGlobal(void* ptr);
 void* AllocZeroTLSFGlobal(size_t count, size_t size);
+
+void RangeAllocator_Init(RangeAllocator* alloc, RangeU32* freeRanges, uint32_t maxFreeRanges, uint32_t capacity);
+int  RangeAllocator_Alloc(RangeAllocator* alloc, uint32_t count, uint32_t* outOffset);
+void RangeAllocator_Free(RangeAllocator* alloc, uint32_t offset, uint32_t count);
 
 // FixedPow2Allocator
 void  FixedPow2Allocator_Init(FixedPow2Allocator* alloc, size_t initialSize);

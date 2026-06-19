@@ -117,6 +117,30 @@ purefn u32 VCALL PopCount1024(const u64* ptr) {
     return PopCount512(ptr) + PopCount512(ptr + 8);
 }
 
+static inline s32 BitsetFindEmptyRange(const u64* bits, u32 bitCount, u32 count)
+{
+    if (count == 0u) return 0;
+    if (count > bitCount) return -1;
+    for (u32 start = 0u; start + count <= bitCount; start++)
+    {
+        u32 i = 0u;
+        for (; i < count; i++)
+            if (BitsetGet(bits, (s32)(start + i))) break;
+        if (i == count) return (s32)start;
+        start += i;
+    }
+    return -1;
+}
+
+static inline void BitsetSetRange(u64* bits, u32 offset, u32 count, bool set)
+{
+    for (u32 i = 0u; i < count; i++)
+    {
+        if (set) BitsetSet(bits, (s32)(offset + i));
+        else     BitsetReset(bits, (s32)(offset + i));
+    }
+}
+
 static inline s32 BitsetFindFirstEmpty(const u64* bits, s32 bitCount)
 {
     if (bitCount <= 0) return -1;
@@ -124,10 +148,7 @@ static inline s32 BitsetFindFirstEmpty(const u64* bits, s32 bitCount)
     const s32 wordCount = bitCount >> 6;
     s32 wordIdx = 0;
 
-    while (wordIdx + 8 <= wordCount && PopCount512(bits + wordIdx) == 512)
-        wordIdx += 8;
-
-    if (wordIdx + 4 <= wordCount && PopCount256(bits + wordIdx) == 256)
+    while (wordIdx + 4 <= wordCount && PopCount256(bits + wordIdx) == 256)
         wordIdx += 4;
 
     AX_ASSUME(wordCount - wordIdx >= 0 && wordCount - wordIdx < 8);

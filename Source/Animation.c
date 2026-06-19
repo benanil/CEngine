@@ -20,6 +20,7 @@
 #include "Include/FileSystem.h"
 #include "Include/Memory.h"
 #include "Include/Random.h"
+#include "Include/Bitset.h"
 #include "Math/Half.h"
 
 extern SDL_GPUDevice* g_GPUDevice;
@@ -29,9 +30,18 @@ static void StoreHalf4(u32* dst, v128f src)
     Float4ToHalf4V((u64*)dst, src);
 }
 
+static u32 AnimationBundleFrameCount(const SceneBundle* bundle)
+{
+    u32 frameCount = 0u;
+    for (u32 animIdx = 0u; animIdx < (u32)bundle->numAnimations; animIdx++)
+        frameCount += (u32)(bundle->animations[animIdx].duration * ANIM_NUM_FRAMES);
+    return frameCount;
+}
+
 void AnimationSystem_Init(AnimationSystem* anims)
 {
     MemsetZero(anims, sizeof(*anims));
+    RangeAllocator_Init(&anims->frameAllocator, anims->freeFrameRanges, MAX_ANIM_COUNT, MAX_GPU_ANIM_FRAMES);
 }
 
 void AnimationSystem_Destroy(AnimationSystem* anims)
@@ -64,17 +74,11 @@ static void AnimationSystem_EnsureBuffers(AnimationSystem* anims)
 }
 
 static int AnimationGetGPUData(AnimationSystem* anims, const SceneBundle* bundle, Pose poses[MAX_BONES], int animIdx,
-                               u32 jointOffset, u32 invBindOffset, u32 hierarchyOffset)
+                               u32 animSlot, u32 frameOffset, u32 jointOffset, u32 invBindOffset, u32 hierarchyOffset)
 {
     const AAnimation* animation = &bundle->animations[animIdx];
     const ASkin*      skin      = &bundle->skins[0];
     int numFrames = (int)(animation->duration * ANIM_NUM_FRAMES);
-
-    if (anims->numAnimations >= MAX_ANIM_COUNT)
-    {
-        AX_WARN("animation GPU data capacity exceeded anims=%d", anims->numAnimations);
-        return 0;
-    }
 
     // bake into transient scratch and upload only this animation's frame range
     size_t bakeBytes = (size_t)numFrames * MAX_BONES * ANIM_POSE_NUM_INT32 * sizeof(u32);
@@ -97,11 +101,10 @@ static int AnimationGetGPUData(AnimationSystem* anims, const SceneBundle* bundle
 
     if (numFrames > 0)
         UpdateGPUBuffer(anims->poseBuffer, bakedPoses, bakeBytes,
-                        (size_t)anims->frameOffset * MAX_BONES * ANIM_POSE_NUM_INT32 * sizeof(u32));
+                        (size_t)frameOffset * MAX_BONES * ANIM_POSE_NUM_INT32 * sizeof(u32));
     ArenaRestore(&GlobalArena, mark);
-
-    anims->animData[anims->numAnimations++] = (GPUAnimationData){
-        .frameOffset   = anims->frameOffset,
+    anims->animData[animSlot] = (GPUAnimationData){
+        .frameOffset   = frameOffset,
         .numFrames     = (u32)numFrames,
         .rootNodeIndex = (u32)bundle->rootNode,
         .numJoints     = (u32)skin->numJoints,
@@ -112,17 +115,12 @@ static int AnimationGetGPUData(AnimationSystem* anims, const SceneBundle* bundle
         .hierarchyOffset = hierarchyOffset,
         .padding       = 0u,
     };
-
     return numFrames;
 }
 
 static bool StoreBundleSkinGPUData(AnimationSystem* anims, const SceneBundle* bundle, u32* jointOffset, u32* invBindOffset, u32* hierarchyOffset)
 {
     const ASkin* skin = &bundle->skins[0];
-    *jointOffset = anims->jointOffset;
-    *invBindOffset = anims->invBindOffset;
-    *hierarchyOffset = anims->hierarchyOffset;
-
     if (*jointOffset + (u32)skin->numJoints > MAX_BONES * MAX_SKIN_COUNT ||
         *invBindOffset + (u32)skin->numJoints > MAX_BONES * MAX_SKIN_COUNT ||
         *hierarchyOffset + (u32)bundle->numNodes > MAX_SKIN_COUNT * ANIM_NODE_COUNT)
@@ -166,10 +164,6 @@ static bool StoreBundleSkinGPUData(AnimationSystem* anims, const SceneBundle* bu
                         (size_t)*invBindOffset * ANIM_MATRIX_NUM_INT32 * sizeof(u32));
     }
     ArenaRestore(&GlobalArena, mark);
-
-    anims->jointOffset += (u32)skin->numJoints;
-    anims->invBindOffset += (u32)skin->numJoints;
-    anims->hierarchyOffset += (u32)bundle->numNodes;
     return true;
 }
 
@@ -212,43 +206,113 @@ s32 SceneBundleInitAnimations(const SceneBundle* gltfScene, Pose result[MAX_BONE
     return 1;
 }
 
-// maybe return animation handle we might want to delete
-s32 AnimationSystem_AppendBundle(AnimationSystem* anims, const SceneBundle* bundle)
+s32 AnimationSystem_AppendBundle(AnimationSystem* anims, const SceneBundle* bundle, AnimationBundleAlloc* outAlloc)
 {
+    if (outAlloc) MemsetZero(outAlloc, sizeof(*outAlloc));
     Pose poses[MAX_BONES];
     if (!SceneBundleInitAnimations(bundle, poses))
         return 0;
 
     AnimationSystem_EnsureBuffers(anims);
 
-    u32 jointOffset = 0;
-    u32 invBindOffset = 0;
-    u32 hierarchyOffset = 0;
-    if (!StoreBundleSkinGPUData(anims, bundle, &jointOffset, &invBindOffset, &hierarchyOffset))
-        return 0;
+    u32 animCount  = (u32)bundle->numAnimations;
+    u32 frameCount = AnimationBundleFrameCount(bundle);
+    s32 animOffset = BitsetFindEmptyRange(anims->usedAnimSlots, MAX_ANIM_COUNT, animCount);
+    s32 skinSlot   = BitsetFindFirstEmpty(anims->usedSkinSlots, MAX_SKIN_COUNT);
+    u32 frameOffset = 0u;
 
-    u32 firstAnim = anims->numAnimations;
+    if (animOffset < 0)
+    {
+        AX_WARN("animation GPU data capacity exceeded anims=%d count=%d", anims->numAnimations, animCount);
+        return 0;
+    }
+    if (skinSlot < 0)
+    {
+        AX_WARN("animation skin slot capacity exceeded");
+        return 0;
+    }
+    if (!RangeAllocator_Alloc(&anims->frameAllocator, frameCount, &frameOffset))
+    {
+        AX_WARN("animation frame capacity exceeded count=%d max=%d", frameCount, MAX_GPU_ANIM_FRAMES);
+        return 0;
+    }
+
+    BitsetSetRange(anims->usedAnimSlots, (u32)animOffset, animCount, true);
+    BitsetSet(anims->usedSkinSlots, skinSlot);
+
+    u32 jointOffset = (u32)skinSlot * MAX_BONES;
+    u32 invBindOffset = (u32)skinSlot * MAX_BONES;
+    u32 hierarchyOffset = (u32)skinSlot * ANIM_NODE_COUNT;
+    if (!StoreBundleSkinGPUData(anims, bundle, &jointOffset, &invBindOffset, &hierarchyOffset))
+    {
+        BitsetSetRange(anims->usedAnimSlots, (u32)animOffset, animCount, false);
+        BitsetReset(anims->usedSkinSlots, skinSlot);
+        RangeAllocator_Free(&anims->frameAllocator, frameOffset, frameCount);
+        return 0;
+    }
+
+    u32 frameCursor = frameOffset;
     for (u32 animIdx = 0; animIdx < bundle->numAnimations; animIdx++)
     {
         s32 numFrames = (s32)(bundle->animations[animIdx].duration * ANIM_NUM_FRAMES);
-        if (anims->frameOffset + (u32)numFrames > MAX_GPU_ANIM_FRAMES)
-        {
-            AX_WARN("animation couldn't added frame capacity is not enough");
-            break;
-        }
         numFrames = AnimationGetGPUData(anims, bundle, poses, (int)animIdx,
+                                        (u32)animOffset + animIdx, frameCursor,
                                         jointOffset, invBindOffset, hierarchyOffset);
-        if (numFrames == 0) break;
-        anims->frameOffset += (u32)numFrames;
+        if (numFrames == 0)
+        {
+            AnimationSystem_RemoveBundle(anims, (AnimationBundleAlloc){ (u32)animOffset, animCount, frameOffset, frameCount, (u32)skinSlot });
+            return 0;
+        }
+        frameCursor += (u32)numFrames;
     }
 
-    if (anims->numAnimations > firstAnim)
-        UpdateGPUBuffer(anims->dataBuffer, anims->animData + firstAnim,
-                        (anims->numAnimations - firstAnim) * sizeof(GPUAnimationData),
-                        firstAnim * sizeof(GPUAnimationData));
+    if (animCount > 0u)
+        UpdateGPUBuffer(anims->dataBuffer, anims->animData + animOffset,
+                        animCount * sizeof(GPUAnimationData),
+                        (u32)animOffset * sizeof(GPUAnimationData));
 
+    anims->numAnimations += animCount;
+    if (outAlloc)
+    {
+        *outAlloc = (AnimationBundleAlloc){
+            .animOffset = (u32)animOffset,
+            .animCount = animCount,
+            .frameOffset = frameOffset,
+            .frameCount = frameCount,
+            .skinSlot = (u32)skinSlot,
+        };
+    }
     AX_LOG("num animation: %d", anims->numAnimations);
     return 1;
+}
+
+void AnimationSystem_RemoveBundle(AnimationSystem* anims, AnimationBundleAlloc alloc)
+{
+    if (!anims || alloc.skinSlot >= MAX_SKIN_COUNT) return;
+    BitsetSetRange(anims->usedAnimSlots, alloc.animOffset, alloc.animCount, false);
+    BitsetReset(anims->usedSkinSlots, (s32)alloc.skinSlot);
+    RangeAllocator_Free(&anims->frameAllocator, alloc.frameOffset, alloc.frameCount);
+    if (alloc.animCount > 0u)
+    {
+        MemsetZero(anims->animData + alloc.animOffset, alloc.animCount * sizeof(GPUAnimationData));
+        if (anims->dataBuffer)
+            UpdateGPUBuffer(anims->dataBuffer, anims->animData + alloc.animOffset,
+                            alloc.animCount * sizeof(GPUAnimationData),
+                            alloc.animOffset * sizeof(GPUAnimationData));
+        anims->numAnimations = anims->numAnimations >= alloc.animCount ? anims->numAnimations - alloc.animCount : 0u;
+    }
+}
+
+u32 AnimationSystem_GetNthUsedAnim(const AnimationSystem* anims, u32 ordinal)
+{
+    if (!anims || anims->numAnimations == 0u) return 0u;
+    for (u32 i = 0u; i < MAX_ANIM_COUNT; i++)
+    {
+        if (!BitsetGet(anims->usedAnimSlots, (s32)i)) continue;
+        if (ordinal == 0u) return i;
+        ordinal--;
+    }
+    return 0u;
 }
 
 void SampleSkinnedAnimationPose(const SceneBundle* bundle, Pose pose[MAX_BONES], s32 animIdx, f32 normTime)

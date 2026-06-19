@@ -424,7 +424,7 @@ static void ValidatePrimitiveLODs(const SceneBundle* gltf, bool isSkinned, u32 v
     }
 }
 
-s32 BakeSceneMeshesAndAnimations(SceneBundle* gltf)
+s32 BakeSceneMeshesAndAnimations(SceneBundle* gltf, void** outVertexHeapPtr, void** outIndexHeapPtr)
 {
     AX_LOG("mesh bake: meshes=%d vertices=%d indices=%d skins=%d", gltf->numMeshes, gltf->totalVertices, gltf->totalIndices, gltf->numSkins);
     AMesh* meshes    = gltf->meshes;
@@ -467,8 +467,8 @@ s32 BakeSceneMeshesAndAnimations(SceneBundle* gltf)
         return 0;
     }
 
-    gltf->vertexHeapPtr = vertexRaw;
-    gltf->indexHeapPtr  = indexRaw;
+    if (outVertexHeapPtr) *outVertexHeapPtr = vertexRaw;
+    if (outIndexHeapPtr)  *outIndexHeapPtr = indexRaw;
 
     u32 vertexCursor = vertexBase;
     u32 firstVertexCursor = vertexCursor;

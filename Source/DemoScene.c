@@ -22,8 +22,9 @@ static void RandomizeAnimInstances(void)
     for (u32 i = 0; i < MAX_ANIM_INSTANCES; i++)
     {
         u32 hash = WangHash(i + 645u);
-        u32 animIdx = hash % anims->numAnimations;
-        if (animIdx == 0 && anims->numAnimations > 1) animIdx = 1; // skip the bind pose
+        u32 ordinal = hash % anims->numAnimations;
+        if (ordinal == 0 && anims->numAnimations > 1) ordinal = 1; // skip the bind pose
+        u32 animIdx = AnimationSystem_GetNthUsedAnim(anims, ordinal);
         instances[i] = (GPUAnimationInstance){
             .animIdx = animIdx,
             .timeOffset = NextFloat01(hash) * anims->animData[animIdx].duration,
