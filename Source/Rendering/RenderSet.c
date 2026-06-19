@@ -26,7 +26,7 @@ void RenderSet_InitSet(RenderSet* set, u32 maxEntities, u32 maxGroups, u32 maxBu
     set->primitiveGroups  = (PrimitiveGroup*)AllocZeroTLSFGlobal(maxGroups, sizeof(PrimitiveGroup));
     set->bundleRange      = (Range*)AllocZeroTLSFGlobal(maxBundles, sizeof(Range));
     set->bundles          = (const SceneBundle**)AllocZeroTLSFGlobal(maxBundles, sizeof(SceneBundle*));
-    MemSet(set->sparseID, 0xFF, maxEntities);
+    MemSet(set->sparseID, 0xFF, maxEntities * sizeof(u32));
 }
 
 v128f RenderSet_UnpackEntityScale01(u32 packed)
@@ -509,7 +509,7 @@ void RenderSet_Clear(RenderSet* set)
     set->numGroups = 0;
     set->numBundles = 0;
     
-    MemSet(set->sparseID, 0xFF, set->maxEntities);
+    MemSet(set->sparseID, 0xFF, set->maxEntities * sizeof(u32));
     MemsetZero(set->sparseSlots, ((set->maxEntities + 63u) >> 6) * sizeof(u64));
     MemsetZero(set->entities, set->maxEntities * sizeof(Entity));
     MemsetZero(set->primitiveGroups, set->maxGroups * sizeof(PrimitiveGroup));
