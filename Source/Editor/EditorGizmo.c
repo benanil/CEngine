@@ -118,7 +118,7 @@ static u32 GizmoTargetSparseId(const Scene* scene, const GizmoTarget* target)
     const RenderSet* set = target->skinned ? &scene->skinnedSet : &scene->surfaceSet;
     if (target->groupIdx >= set->numGroups) return INVALID_ENTITY;
     const PrimitiveGroup* group = &set->primitiveGroups[target->groupIdx];
-    if (!group->valid || target->entityIdx >= group->numEntities) return INVALID_ENTITY;
+    if (target->entityIdx >= group->numEntities) return INVALID_ENTITY;
     return set->entities[group->entityOffset + target->entityIdx].sparseIdx;
 }
 
@@ -165,7 +165,6 @@ bool EditorGizmoDuplicateSelected(void)
         for (u32 g = 0u; g < set->numGroups && numRecords < GIZMO_MAX_MEMBERS; g++)
         {
             const PrimitiveGroup* group = &set->primitiveGroups[g];
-            if (!group->valid) continue;
             for (u32 e = 0u; e < group->numEntities && numRecords < GIZMO_MAX_MEMBERS; e++)
             {
                 const Entity* entity = &set->entities[group->entityOffset + e];
@@ -299,7 +298,6 @@ static u32 GizmoCollectMembers(Scene* scene, v128f* outCenter)
         for (u32 g = 0; g < set->numGroups && gizmoNumMembers < GIZMO_MAX_MEMBERS; g++)
         {
             const PrimitiveGroup* group = &set->primitiveGroups[g];
-            if (!group->valid) continue;
             v128f mn = group->aabbMin;
             v128f mx = group->aabbMax;
             v128f localCenter = VecMulf(VecAdd(mn, mx), 0.5f);
@@ -315,7 +313,7 @@ static u32 GizmoCollectMembers(Scene* scene, v128f* outCenter)
                 member->entityIdx = e;
                 member->startPos = entity->position;
                 member->startRot = VecNorm(UnpackQuaternionS16Norm1(entity->rotation));
-                member->startScale = RenderSet_UnpackEntityScale01(entity->scale);
+                member->startScale = EntityUnpackScale01(entity->scale);
                 member->localCenter = localCenter;
 
                 v128f worldScale = VecMulf(member->startScale, 10.0f);
@@ -560,7 +558,7 @@ static void GizmoApplyMembers(Scene* scene, const v128f axes[3], f32 mouseY)
                           0.0f);
             v128f scale = VecClamp(VecMul(member->startScale, scaleFactor), VecSet1(0.0001f), VecSet1(1.0f));
             VecSetW(scale, 0.0f);
-            entity->scale = PackUnorm16x4(scale);
+            entity->scale = EntityPackWorldScale(scale);
 
             // the member center moves with the scale: radially for uniform, along the
             // handle's world direction for a single axis

@@ -197,7 +197,6 @@ s32 SceneSerializer_Save(Scene* scene, const char* path)
         for (u32 g = 0; g < set->numGroups; g++)
         {
             const PrimitiveGroup* group = &set->primitiveGroups[g];
-            if (!group->valid) continue;
             for (u32 e = 0; e < group->numEntities; e++)
             {
                 const Entity* entity = &set->entities[group->entityOffset + e];
@@ -437,7 +436,7 @@ static s32 ParseSceneFile(const char* path, SceneFileData* data)
             {
                 u32 legacyScale = 0;
                 p = RU32(p, &legacyScale);
-                record->scale = RenderSet_PackEntityWorldScale(VecMulf(SceneUnpackLegacyScaleXY11Z10(legacyScale), 10.0f));
+                record->scale = EntityPackWorldScale(VecMulf(SceneUnpackLegacyScaleXY11Z10(legacyScale), 10.0f));
             }
             if (version == 2)
                 p = RU64(p, &record->scale);

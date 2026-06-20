@@ -10,16 +10,28 @@
 #define INVALID_GROUP   (~0u)
 #define INVALID_BUNDLE  (~0u)
 
+#define ENTITY_FLAG_NOMESH 1
+
 typedef struct Entity_
 {
-    v128f position;
-    u64   rotation;
-    u64   scale; // xyz16
-    u32   primitiveIdx; // primitive group
+    v128f position;     // last 32bit unused
+    u64   rotation;     
+    u64   scale;        // xyz16-last16 bit unused
+    u32   primitiveIdx; // 
     u32   sparseIdx;
-    u32   parentIdx; // parent sparseIdx
-    u32   padding;
+    // 24 bit parent sparseIdx, last byte ENTITY_FLAG
+    u32   parentIdx;
+    u16   material;
+    u16   padding;
 } Entity;
+
+// staging data structure to create entity
+typedef struct NodeTransform_
+{
+    v128f position;
+    v128f rotation;
+    v128f scale;
+} NodeTransform;
 
 typedef struct Range_
 {
@@ -36,8 +48,7 @@ typedef struct RenderSet_
     u64*                sparseSlots; // bitset for used sparse id's
     
     PrimitiveGroup*     primitiveGroups;
-
-    Range*              bundleRange;
+    Range*              bundlePrimitiveRange;
     const SceneBundle** bundles;
     
     u32 maxEntities;
@@ -61,7 +72,7 @@ struct PrimitiveGroup_
     u32 meshIndex;
     u32 primitiveIndex;
     u32 materialIndex;
-    u32 valid;
+    u32 unused;
     u32 numVertices;
     v128f aabbMin;
     v128f aabbMax;
@@ -72,10 +83,13 @@ struct PrimitiveGroup_
     u32 lodAnimatedVertexOffset[4];
 };
 
-v128f RenderSet_UnpackEntityScale01(u64 packed);
-v128f RenderSet_UnpackEntityWorldScale(u64 packed);
-u64   RenderSet_PackEntityWorldScale(v128f scale);
-u64   RenderSet_PackEntityUniformWorldScale(f32 scale);
+v128f EntityUnpackScale01(u64 packed);
+v128f EntityUnpackWorldScale(u64 packed);
+u64   EntityPackWorldScale(v128f scale);
+u64   EntityPackUniformWorldScale(f32 scale);
+
+v128f EntityUnpackRotation(u64 packed);
+u64   EntityPackRotation(v128f rotation);
 
 v128f RenderSet_GroupLocalCenter(const PrimitiveGroup* group);
 v128f RenderSet_EntityBoundsCenter(const PrimitiveGroup* group, const Entity* entity, v128f rotation, v128f worldScale);

@@ -367,11 +367,11 @@ static s32 BVH_RaycastSet(const Scene* scene, const RenderSet* set, bool skinned
         const BundleCacheEntry* bundleCache = FindCacheForRenderBundle(scene, skinned, b);
         if (!bundle || !bundleCache || !bundleCache->bvhNodes) continue;
 
-        Range range = set->bundleRange[b];
+        Range range = set->bundlePrimitiveRange[b];
         for (u32 g = range.start; g < range.start + range.count; g++)
         {
             const PrimitiveGroup* group = &set->primitiveGroups[g];
-            if (!group->valid || group->numEntities == 0) continue;
+            if (group->numEntities == 0) continue;
 
             const APrimitive* prim = &bundle->meshes[group->meshIndex].primitives[group->primitiveIndex];
             if (prim->bvhNodeIndex == ~0u) continue;
@@ -384,7 +384,7 @@ static s32 BVH_RaycastSet(const Scene* scene, const RenderSet* set, bool skinned
                 // world space, the unnormalized direction keeps t in world units
                 v128f rotation = VecNorm(UnpackQuaternionS16Norm1(entity->rotation));
                 v128f invRot   = QConjugate(rotation);
-                v128f scale    = VecMax(RenderSet_UnpackEntityWorldScale(entity->scale), VecSet1(1.0e-6f));
+                v128f scale    = VecMax(EntityUnpackWorldScale(entity->scale), VecSet1(1.0e-6f));
                 VecSetW(scale, 1.0f);
                 v128f localOrigin = VecDiv(QMulVec3V(VecSub(origin, entity->position), invRot), scale);
                 v128f localDir    = VecDiv(QMulVec3V(dir, invRot), scale);
@@ -418,7 +418,7 @@ s32 BVH_RaycastScene(const Scene* scene, v128f origin, v128f dir, BVHHit* hit)
     u32 renderBundle = ~0u;
     for (u32 b = 0; b < set->numBundles; b++)
     {
-        Range range = set->bundleRange[b];
+        Range range = set->bundlePrimitiveRange[b];
         if (hit->groupIdx >= range.start && hit->groupIdx < range.start + range.count) { renderBundle = b; break; }
     }
     hit->bundleIdx = ~0u;

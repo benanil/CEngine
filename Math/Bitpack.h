@@ -58,6 +58,14 @@ static inline void VCALL PackQuaternionS16Norm(v128f quat, u64* result)
     VecStoreLo64(result, VecPack16S(u32));
 }
 
+static inline u64 VCALL PackQuaternionS16NormRet(v128f quat)
+{
+    u64 result;
+    v128u u32 = VecF32ToI32(VecMulf(quat, INT16_MAX-1));
+    VecStoreLo64(&result, VecPack16S(u32));
+    return result;
+}
+
 static inline v128f VCALL UnpackQuaternionS16Norm1(u64 i16)
 {
     const v128f inv = VecSet1(1.0f / (INT16_MAX - 1));

@@ -4,6 +4,8 @@
 #include "Common.hlsl"
 #include "../Include/RenderLimits.h"
 
+#define ENTITY_FLAG_NOMESH 1u
+
 typedef struct IndexedDrawCommand_
 {
     uint numIndices;

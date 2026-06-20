@@ -12,7 +12,6 @@ typedef struct RenderSettings_
     bool enableLocalLights;
     bool enableLightFrustumCulling;
     bool enableLightOcclusionCulling;
-    bool cpuSceneNoCullDraw;
     bool showLightRects;
     bool terrainWireframe;  // draws the terrain chunk triangles as a line overlay
     f32 terrainLodFactor;   // scales the terrain lod ring radii, 1 = default reach

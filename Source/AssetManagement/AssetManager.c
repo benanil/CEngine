@@ -1140,13 +1140,16 @@ s32 LoadSceneBundleBinary(const char* path, SceneBundle* gltf, void** outVertexH
     char* currIndices = (char*)gltf->allIndices;
     
     if (gltf->numMeshes > 0) gltf->meshes = AllocZeroTLSFGlobal(gltf->numMeshes, sizeof(AMesh));
+    s32 totalPrimitives = 0;
     for (s32 i = 0; i < gltf->numMeshes; i++)
     {
         AMesh* mesh = &gltf->meshes[i];
         ReadGLTFString(&mesh->name, file, allocator);
         
         AFileRead(&mesh->numPrimitives, sizeof(s32), file, 1);
-        
+        mesh->primitiveOffset = totalPrimitives;
+        totalPrimitives += mesh->numPrimitives;
+
         mesh->primitives = FixedPow2Allocator_AllocateUninitialized(allocator, sizeof(APrimitive) * mesh->numPrimitives);
         
         for (s32 j = 0; j < mesh->numPrimitives; j++)
@@ -1187,6 +1190,7 @@ s32 LoadSceneBundleBinary(const char* path, SceneBundle* gltf, void** outVertexH
             AFileRead(primitive->max, sizeof(v128f), file, 1);
         }
     }
+    gltf->totalPrimitives = totalPrimitives;
     
     if (gltf->numNodes > 0) gltf->nodes = AllocZeroTLSFGlobal(gltf->numNodes, sizeof(ANode));
     

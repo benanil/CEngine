@@ -285,10 +285,23 @@ static void SceneBundle_ReportImport(const SceneBundle* scene)
     }
 }
 
+static void SetPrimitiveOffsets(SceneBundle* sceneBundle)
+{
+    s32 totalPrimitives = 0;
+    for (u32 m = 0; m < (u32)sceneBundle->numMeshes; m++)
+    {
+        AMesh* mesh = sceneBundle->meshes + m;
+        mesh->primitiveOffset = totalPrimitives;
+        totalPrimitives += mesh->numPrimitives;
+    }
+    sceneBundle->totalPrimitives = totalPrimitives;
+}
+
 void SceneBundle_Normalize(SceneBundle* scene)
 {
     // Normalize once after parsing/import so cache and runtime see the same scene semantics.
     SceneBundle_FlattenNodes(scene);
     SceneBundle_ValidateNodeHierarchy(scene);
     SceneBundle_ReportImport(scene);
+    SetPrimitiveOffsets(scene);
 }

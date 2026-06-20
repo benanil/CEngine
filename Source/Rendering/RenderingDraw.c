@@ -284,11 +284,11 @@ void RenderOutline(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarge
         const RenderSet* set = &scene->surfaceSet;
         if (target->groupIdx >= set->numGroups) continue;
         const PrimitiveGroup* group = &set->primitiveGroups[target->groupIdx];
-        if (!group->valid || target->entityIdx >= group->numEntities || group->lodNumIndices[0] == 0) continue;
+        if (target->entityIdx >= group->numEntities || group->lodNumIndices[0] == 0) continue;
 
         const Entity* entity = &set->entities[group->entityOffset + target->entityIdx];
         v128f rotation = VecNorm(UnpackQuaternionS16Norm1(entity->rotation));
-        v128f scale = RenderSet_UnpackEntityWorldScale(entity->scale);
+        v128f scale = EntityUnpackWorldScale(entity->scale);
 
         struct { mat4x4 viewProj; float position[4]; float rotationQ[4]; float scaleBias[4]; } params;
         params.viewProj = viewProj;

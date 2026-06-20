@@ -340,7 +340,6 @@ static void DrawGraphicsWindow()
                 if (UIDropdown(CLAY_ID("EditorQualityPreset"), CLAY_STRING("Quality"), qualityOptions, 4u, &editorQualityIndex))
                     EditorApplyQualityPreset(settings, editorQualityIndex);
                 UICheckbox(CLAY_ID("EditorEnableOcclusion"), CLAY_STRING("Hi-Z occlusion culling"), &settings->enableOcclusion);
-                UICheckbox(CLAY_ID("EditorCPUSceneNoCullDraw"), CLAY_STRING("CPU scene no-cull draw"), &settings->cpuSceneNoCullDraw);
                 UICheckbox(CLAY_ID("EditorEnableHBAO")     , CLAY_STRING("HBAO ambient occlusion"), &settings->enableHBAO);
                 UICheckbox(CLAY_ID("EditorEnableMLAA")     , CLAY_STRING("Anti-aliasing (MLAA)"), &settings->enableMLAA);
                 UICheckbox(CLAY_ID("EditorShowMLAAEdges")  , CLAY_STRING("Show MLAA edge mask"), &settings->showMLAAEdges);
@@ -407,7 +406,6 @@ static void DrawGraphicsWindow()
                 editorQualityIndex = 2u; // defaults are the High preset
                 *settings = (RenderSettings){
                     .enableOcclusion = true,
-                    .cpuSceneNoCullDraw = false,
                     .enableHBAO = true,
                     .enableMLAA = true,
                     .showMLAAEdges = false,

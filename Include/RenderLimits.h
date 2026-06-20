@@ -1,7 +1,7 @@
 #ifndef RENDER_LIMITS_H
 #define RENDER_LIMITS_H
 
-#define MAX_ENTITY              65535u
+#define MAX_ENTITY              131070u /* 65k*2 */
 #define MAX_GROUP               (MAX_ENTITY >> 1)
 #define MAX_BUNDLES             (MAX_ENTITY >> 2)
 #define MESH_LOD_COUNT          3u

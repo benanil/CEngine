@@ -123,11 +123,11 @@ static void EditorSpawnBundleAt(Scene* scene, u32 bundleIdx, v128f position, v12
     if (scene->bundleRefs[bundleIdx].skinned)
     {
         RenderSet* set = &scene->skinnedSet;
-        Range range = set->bundleRange[scene->bundleRefs[bundleIdx].renderIdx];
+        Range range = set->bundlePrimitiveRange[scene->bundleRefs[bundleIdx].renderIdx];
         for (u32 g = range.start; g < range.start + range.count; g++)
         {
             PrimitiveGroup* group = &set->primitiveGroups[g];
-            if (!group->valid || group->numEntities == 0) continue;
+            if (group->numEntities == 0) continue;
 
             u32 sparseIdx = set->entities[group->entityOffset + group->numEntities - 1u].sparseIdx;
             if (sparseIdx == INVALID_ENTITY) continue;
@@ -680,7 +680,7 @@ static void SceneSelectNodeInViewport(const Scene* scene, u32 bundleIdx, s32 nod
 
     const RenderSet* set = ref->skinned ? &scene->skinnedSet : &scene->surfaceSet;
     if (ref->renderIdx >= set->numBundles) return;
-    Range range = set->bundleRange[ref->renderIdx];
+    Range range = set->bundlePrimitiveRange[ref->renderIdx];
 
     // gather the subtree's mesh nodes (including the picked one)
     enum { MaxSubtree = 2048 };
@@ -710,7 +710,7 @@ static void SceneSelectNodeInViewport(const Scene* scene, u32 bundleIdx, s32 nod
             for (u32 g = range.start; g < range.start + range.count; g++)
             {
                 const PrimitiveGroup* group = &set->primitiveGroups[g];
-                if (group->valid && group->meshIndex == (u32)node->index && group->numEntities > 0)
+                if (group->meshIndex == (u32)node->index && group->numEntities > 0)
                 {
                     EditorGizmoSetTarget(1, g, 0);
                     return;
@@ -727,7 +727,7 @@ static void SceneSelectNodeInViewport(const Scene* scene, u32 bundleIdx, s32 nod
     for (u32 g = range.start; g < range.start + range.count && baseSparse == INVALID_ENTITY; g++)
     {
         const PrimitiveGroup* group = &set->primitiveGroups[g];
-        if (group->valid && group->meshIndex == (u32)bundle->nodes[meshNodes[0]].index && group->numEntities > 0)
+        if (group->meshIndex == (u32)bundle->nodes[meshNodes[0]].index && group->numEntities > 0)
             baseSparse = set->entities[group->entityOffset].sparseIdx;
     }
     if (baseSparse == INVALID_ENTITY || baseOrdinal < 0) return;
@@ -845,15 +845,15 @@ static void SceneEventDuplicateBundle(void* unused)
     v128f scale    = VecSet1(1.0f);
     if (ref->renderIdx < set->numBundles)
     {
-        Range range = set->bundleRange[ref->renderIdx];
+        Range range = set->bundlePrimitiveRange[ref->renderIdx];
         for (u32 g = range.start; g < range.start + range.count; g++)
         {
             const PrimitiveGroup* group = &set->primitiveGroups[g];
-            if (!group->valid || group->numEntities == 0u) continue;
+            if (group->numEntities == 0u) continue;
             const Entity* entity = &set->entities[group->entityOffset];
             position = entity->position;
             rotation = UnpackQuaternionS16Norm1(entity->rotation);
-            scale    = RenderSet_UnpackEntityScale01(entity->scale);
+            scale    = EntityUnpackScale01(entity->scale);
             break;
         }
     }
@@ -920,11 +920,11 @@ static void SceneEventDeleteNode(void* unused)
     if (ref->renderIdx >= set->numBundles) return;
 
     u32 removed = 0;
-    Range range = set->bundleRange[ref->renderIdx];
+    Range range = set->bundlePrimitiveRange[ref->renderIdx];
     for (u32 g = range.start; g < range.start + range.count; g++)
     {
         const PrimitiveGroup* group = &set->primitiveGroups[g];
-        if (!group->valid || group->meshIndex != (u32)node->index || group->numEntities == 0u) continue;
+        if (group->meshIndex != (u32)node->index || group->numEntities == 0u) continue;
         removed += RenderSet_RemoveEntities(set, g, 0, group->numEntities);
     }
     scene->renderDataDirty = 1;
@@ -935,7 +935,7 @@ static void SceneEventDeleteNode(void* unused)
 
 static v128f SceneEntityWorldScale(const Entity* entity)
 {
-    return RenderSet_UnpackEntityWorldScale(entity->scale);
+    return EntityUnpackWorldScale(entity->scale);
 }
 
 typedef struct SceneInspectorCache_
@@ -973,7 +973,7 @@ static void SceneInspectorRefreshCache(const Entity* entity)
     sceneInspectorCache.rotationUi[1] = Clamps32((s32)(euler.y * MATH_RadToDeg + (euler.y >= 0.0f ? 0.5f : -0.5f)), -180, 180);
     sceneInspectorCache.rotationUi[2] = Clamps32((s32)(euler.z * MATH_RadToDeg + (euler.z >= 0.0f ? 0.5f : -0.5f)), -180, 180);
 
-    v128f scaleV = RenderSet_UnpackEntityWorldScale(entity->scale);
+    v128f scaleV = EntityUnpackWorldScale(entity->scale);
     sceneInspectorCache.scaleUi[0] = VecGetX(scaleV);
     sceneInspectorCache.scaleUi[1] = VecGetY(scaleV);
     sceneInspectorCache.scaleUi[2] = VecGetZ(scaleV);
@@ -1060,7 +1060,7 @@ static void SceneInspectorUI(Scene* scene)
         v128f rotation = VecNorm(UnpackQuaternionS16Norm1(entity->rotation));
         v128f oldScale = SceneEntityWorldScale(entity);
         v128f center   = RenderSet_EntityBoundsCenter(group, entity, rotation, oldScale);
-        entity->scale  = RenderSet_PackEntityWorldScale(Vec3Load(sceneInspectorCache.scaleUi));
+        entity->scale  = EntityPackWorldScale(Vec3Load(sceneInspectorCache.scaleUi));
         v128f newScale = SceneEntityWorldScale(entity);
         entity->position = VecSub(center, QMulVec3V(VecMul(RenderSet_GroupLocalCenter(group), newScale), rotation));
         sceneInspectorCache.position = entity->position;

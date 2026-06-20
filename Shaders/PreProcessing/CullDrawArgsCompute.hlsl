@@ -286,6 +286,9 @@ void main(uint3 tid : SV_DispatchThreadID)
 
     uint sparse = idx;
     Entity entity = entities[sparse];
+    if (((entity.parentIdx >> 24u) & ENTITY_FLAG_NOMESH) != 0u || entity.primitiveIdx == 0xffffffffu)
+        return;
+
     uint primitiveIdx = entity.primitiveIdx;
     PrimitiveGroup group = primitiveGroups[primitiveIdx];
 

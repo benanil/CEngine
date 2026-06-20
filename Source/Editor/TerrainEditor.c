@@ -373,7 +373,7 @@ static bool TerrainGenerateFoliageScene(void)
         SceneBundleRef* ref = &terrainFoliageScene.bundleRefs[bundleIdx[i]];
         if (ref->skinned) continue;
         RenderSet* set = &terrainFoliageScene.surfaceSet;
-        Range range = set->bundleRange[ref->renderIdx];
+        Range range = set->bundlePrimitiveRange[ref->renderIdx];
         f32 density = i < EDITOR_TERRAIN_MAX_FOLIAGE ? terrainUI.foliage[i].density : 0.14f;
         f32 probability = i < EDITOR_TERRAIN_MAX_FOLIAGE ? terrainUI.foliage[i].probability : 1.0f;
         f32 scaleMin = i < EDITOR_TERRAIN_MAX_FOLIAGE ? terrainUI.foliage[i].scaleMin : 0.7f;
@@ -399,7 +399,6 @@ static bool TerrainGenerateFoliageScene(void)
             for (u32 g = range.start; g < range.start + range.count; g++)
             {
                 PrimitiveGroup* group = &set->primitiveGroups[g];
-                if (!group->valid) continue;
                 f32 normalizeScale = TerrainFoliagePrimitiveNormalizeScale(group);
                 u32 targetCount = (u32)Clampf32(density * 120.0f, 0.0f, 500.0f);
                 for (u32 n = 0u; n < targetCount; n++)
@@ -412,8 +411,8 @@ static bool TerrainGenerateFoliageScene(void)
                     Entity entity;
                     entity.position = VecSetR(pos.x, pos.y, pos.z, 1.0f);
                     PackQuaternionS16Norm(VecNorm(QFromEuler(0.0f, yaw, 0.0f)), &entity.rotation);
-                    entity.scale = RenderSet_PackEntityUniformWorldScale(scale);
-                    entity.sparseIdx = INVALID_ENTITY;
+                    entity.scale = EntityPackUniformWorldScale(scale);
+                    entity.sparseIdx = RenderSet_AllocateSparseID(set);
                     spawnedTotal += RenderSet_AddEntity(set, g, &entity) != INVALID_ENTITY;
                 }
             }

@@ -11,3 +11,4 @@ if errorlevel 1 exit /b 1
 cl /nologo /Zi /Od /I "%ROOT%" /I "%ROOT%\Extern\SDL3\include" "%ROOT%\Tests\RenderSetTest.c" /Fe:"%ROOT%\Tests\RenderSetTest.exe"
 if errorlevel 1 exit /b 1
 "%ROOT%\Tests\RenderSetTest.exe"
+cmd /k

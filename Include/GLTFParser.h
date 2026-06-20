@@ -205,6 +205,7 @@ typedef struct AMesh_
     APrimitive* primitives;
     int numPrimitives;
     int numMorphWeights;
+    int primitiveOffset; // scenebundle relative primitiveIdx
     float* morphWeights;
 } AMesh;
 
@@ -318,6 +319,7 @@ typedef struct SceneBundle_
     int numAnimations;
     int numSkins;
     int rootNode;
+    int totalPrimitives;
 
     AErrorType error;
 
