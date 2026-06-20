@@ -243,7 +243,7 @@ static void InitComputePipelines(void)
     }); CHECK_CREATE(g_CullDrawArgsComputePipeline, "Cull Draw Args Compute Pipeline");
 
     g_CullLightsComputePipeline = COMPUTE_DEF(Shaders_CullLightsCompute_spv),
-        .num_readonly_storage_textures = 1, .num_uniform_buffers = 1, .num_readonly_storage_buffers  = 1, .num_readwrite_storage_buffers = 4,
+        .num_readonly_storage_textures = 1, .num_uniform_buffers = 1, .num_readonly_storage_buffers  = 1, .num_readwrite_storage_buffers = 5,
         THREAD_COUNT_XYZ(64, 1, 1)
     }); CHECK_CREATE(g_CullLightsComputePipeline, "Cull Lights Compute Pipeline");
 
@@ -398,7 +398,7 @@ static void InitGizmoLinePipeline(void)
         .primitive_type  = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
         .target_info     = (SDL_GPUGraphicsPipelineTargetInfo){
             .num_color_targets         = 1,
-            .color_target_descriptions = &(SDL_GPUColorTargetDescription){ .format = SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT }
+            .color_target_descriptions = &(SDL_GPUColorTargetDescription){ .format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM }
         },
         .multisample_state  = (SDL_GPUMultisampleState){ .sample_count = SDL_GPU_SAMPLECOUNT_1 },
         .vertex_input_state = (SDL_GPUVertexInputState){

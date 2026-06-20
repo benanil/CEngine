@@ -57,6 +57,13 @@ extern LightGPU       g_RenderLights[MAX_LIGHT_COUNT];
 extern ShadowData pointShadows;
 extern ShadowData spotShadows;
 
+// Per-light visibility read back from the previous frame's light cull
+// (1 = light passed frustum + occlusion culling). When g_LightVisibilityGate is
+// true, shadow slot assignment skips lights whose entry is 0 so occluded lights
+// don't render shadow maps. One frame of latency by design (no GPU stall).
+extern u32  g_LightVisiblePrev[MAX_LIGHT_COUNT];
+extern bool g_LightVisibilityGate;
+
 extern SDL_GPUComputePipeline* g_AnimComputePipeline;
 extern SDL_GPUComputePipeline* g_AnimVerticesPipeline;
 extern SDL_GPUComputePipeline* g_CullDrawArgsComputePipeline;

@@ -66,7 +66,7 @@ void ProjectCorner(float3 p, float4x4 viewProjection, inout ProjectedAABB proj)
     float3 ndc = clip.xyz / clip.w;
     proj.ndcMin = min(proj.ndcMin, ndc.xy);
     proj.ndcMax = max(proj.ndcMax, ndc.xy);
-    proj.nearestDepth = min(proj.nearestDepth, saturate(ndc.z));
+    proj.nearestDepth = min(proj.nearestDepth, saturate(ndc.z * 0.5f + 0.5f));
     proj.anyFront = 1u;
 }
 

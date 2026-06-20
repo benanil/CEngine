@@ -264,6 +264,7 @@ typedef struct RenderState
     SDL_GPUBuffer*           spotShadowMatrixBuffer;
     SDL_GPUBuffer*           lightDrawInfoBuffer;
     SDL_GPUBuffer*           lightDrawArgsBuffer;
+    SDL_GPUBuffer*           lightVisibilityBuffer;
     SDL_GPUBuffer*           uiShapeBuffer;
     SDL_GPUBuffer*           uiShapeDrawArgsBuffer;
     SDL_GPUBuffer*           shadowCascadeBuffer;

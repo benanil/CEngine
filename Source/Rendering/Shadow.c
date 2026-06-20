@@ -171,14 +171,14 @@ static void PointLightShadowMaps(SDL_GPUCommandBuffer* cmd)
 static void SpotLightShadowMaps(SDL_GPUCommandBuffer* cmd)
 {
     WindowState* winstate = &g_WindowState;
-    if (pointShadows.count == 0u || !winstate->tex_spot_shadow_depth || !winstate->tex_spot_shadow_color)
+    if (spotShadows.count == 0u || !winstate->tex_spot_shadow_depth || !winstate->tex_spot_shadow_color)
         return;
 
-    for (u32 shadow = 0; shadow < pointShadows.count; shadow++)
+    for (u32 shadow = 0; shadow < spotShadows.count; shadow++)
     {
-        LightGPU* light = &g_RenderLights[pointShadows.lightIndices[shadow]];
+        LightGPU* light = &g_RenderLights[spotShadows.lightIndices[shadow]];
         u32 layer = light->shadowIndex;
-        mat4x4 shadowViewProj = pointShadows.lightViewProj[layer];
+        mat4x4 shadowViewProj = spotShadows.lightViewProj[layer];
         CullScene(cmd, CreateFrustumPlanes(shadowViewProj), shadowViewProj, false, false, 1u);
 
         SDL_GPUColorTargetInfo shadow_color_target = MakeLocalShadowColorTarget(winstate->tex_spot_shadow_color, layer);
@@ -205,6 +205,27 @@ static f32 LightCameraDistanceSq(const LightGPU* light)
     return Vec3DotfV(l, l);
 }
 
+static bool LightIntersectsCameraFrustum(const LightGPU* light)
+{
+    if (!g_RenderSettings.enableLightFrustumCulling)
+        return true;
+
+    mat4x4 viewProj = M44Multiply(g_Camera.view, g_Camera.projection);
+    FrustumPlanes frustum = CreateFrustumPlanes(viewProj);
+    v128f center = VecLoad(light->positionRadius);
+    f32 radius = Maxf32(light->positionRadius[3], 0.001f);
+
+    for (u32 i = 0u; i < 6u; i++)
+    {
+        v128f plane = frustum.planes[i];
+        f32 distance = VecDotf(plane, VecSelect(VecOne(), center, VecSelect1110));
+        f32 planeScale = Sqrtf(Vec3DotfV(plane, plane));
+        if (distance + planeScale * radius < -0.001f)
+            return false;
+    }
+    return true;
+}
+
 static void AssignNearestShadowSlots(LightType type, u32 maxSlots)
 {
     ShadowCandidate candidates[POINT_SHADOW_MAX_LIGHTS + 1];
@@ -217,6 +238,12 @@ static void AssignNearestShadowSlots(LightType type, u32 maxSlots)
     {
         LightGPU* light = &g_RenderLights[lightIndex];
         if (light->type != type || (light->flags & LIGHT_FLAG_SHADOWED) == 0u)
+            continue;
+        if (!LightIntersectsCameraFrustum(light))
+            continue;
+        // Skip lights the GPU cull found fully occluded last frame: they
+        // contribute no light, so their shadow map would never be sampled.
+        if (g_LightVisibilityGate && !g_LightVisiblePrev[lightIndex])
             continue;
 
         f32 distanceSq = LightCameraDistanceSq(light);

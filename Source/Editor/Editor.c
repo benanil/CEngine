@@ -251,7 +251,7 @@ static void EditorApplyQualityPreset(RenderSettings* settings, u32 quality)
         settings->enableHBAO            = false;
         settings->enableMLAA            = false;
         settings->enableLocalLights     = false;
-        settings->lodDistanceModifier   = 0.35f;
+        settings->lodDistanceModifier   = 0.5f;
         settings->godRaySamples         = 16.0f;
         settings->hbaoDirections        = 4.0f;
         settings->shadowMaxDistance     = SHADOW_MAX_DISTANCE * 0.35f;
@@ -262,7 +262,7 @@ static void EditorApplyQualityPreset(RenderSettings* settings, u32 quality)
         settings->enableHBAO            = true;
         settings->enableMLAA            = true;
         settings->enableLocalLights     = true;
-        settings->lodDistanceModifier   = 0.55f;
+        settings->lodDistanceModifier   = 0.75f;
         settings->godRaySamples         = 32.0f;
         settings->hbaoDirections        = 4.0f;
         settings->shadowMaxDistance     = SHADOW_MAX_DISTANCE * 0.6f;
@@ -273,7 +273,7 @@ static void EditorApplyQualityPreset(RenderSettings* settings, u32 quality)
         settings->enableHBAO            = true;
         settings->enableMLAA            = true;
         settings->enableLocalLights     = true;
-        settings->lodDistanceModifier   = 0.75f;
+        settings->lodDistanceModifier   = 1.0f;
         settings->godRaySamples         = 48.0f;
         settings->hbaoDirections        = 8.0f;
         settings->shadowMaxDistance     = SHADOW_MAX_DISTANCE;
@@ -425,7 +425,7 @@ static void DrawGraphicsWindow()
                     .godRayIntensity = 2.5f,
                     .godRaySamples = 64.0f,
                     .hbaoDirections = 8.0f,
-                    .lodDistanceModifier = 0.75f,
+                    .lodDistanceModifier = 1.0f,
                     .renderScale = 1.0f,
                     .sunYaw = 116.565f,
                     .sunPitch = 63.435f,

@@ -33,6 +33,15 @@ RenderState    g_RenderState;
 SDL_GPUDevice* g_GPUDevice = NULL;
 LightGPU       g_RenderLights[MAX_LIGHT_COUNT];
 
+// Light visibility readback (see RenderingInternal.h). Default to all-visible so
+// shadows behave normally until the first cull result has been read back.
+u32                    g_LightVisiblePrev[MAX_LIGHT_COUNT];
+bool                   g_LightVisibilityGate = false;
+static SDL_GPUTransferBuffer* g_LightVisTransfer = NULL;
+static SDL_GPUFence*          g_LightVisFence    = NULL;
+static bool                   g_LightVisPending  = false;
+static bool                   g_LightVisHasData  = false;
+
 RenderSettings g_RenderSettings = {
     .enableOcclusion             = true,
     .enableHBAO                  = true,
@@ -55,7 +64,7 @@ RenderSettings g_RenderSettings = {
     .godRayIntensity             = 2.5f,
     .godRaySamples               = 64.0f,
     .hbaoDirections              = 8.0f,
-    .lodDistanceModifier         = 0.75f,
+    .lodDistanceModifier         = 1.0f,
     .renderScale                 = 1.0f,
     .sunYaw                      = 116.565f,
     .sunPitch                    = 63.435f,
@@ -274,6 +283,14 @@ void InitBuffers(void)
     g_RenderState.lightBuffer          = CreateBuffer(NULL, sizeof(LightGPU) * MAX_LIGHT_COUNT     , BReadRasterBit | BReadCompute    , "CPLightBuffer");
     g_RenderState.lightDrawInfoBuffer  = CreateBuffer(NULL, sizeof(LightDrawInfo) * MAX_LIGHT_COUNT, BReadRasterBit | BWriteComputeBit, "CPLightDrawInfoBuffer");
     g_RenderState.lightDrawArgsBuffer  = CreateBuffer(NULL, sizeof(SDL_GPUIndirectDrawCommand)     , BIndirectBit   | BWriteComputeBit, "CPLightDrawArgsBuffer");
+    g_RenderState.lightVisibilityBuffer = CreateBuffer(NULL, sizeof(u32) * MAX_LIGHT_COUNT          , BWriteComputeBit, "CPLightVisibilityBuffer");
+
+    g_LightVisTransfer = SDL_CreateGPUTransferBuffer(g_GPUDevice, &(SDL_GPUTransferBufferCreateInfo){
+        .usage = SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD,
+        .size  = sizeof(u32) * MAX_LIGHT_COUNT
+    });
+    for (u32 i = 0; i < MAX_LIGHT_COUNT; i++)
+        g_LightVisiblePrev[i] = 1u;
     g_RenderState.skinned.animatedVertices = CreateBuffer(NULL, animatedVertexSize, BReadRasterBit | BWriteComputeBit, "CPAnimatedVertices");
 
     UploadDirtyGeometry();
@@ -578,6 +595,7 @@ void Render(void)
     FrustumPlanes cameraFrustum = CreateFrustumPlanes(viewProj);
     SDL_GPUTexture* finalTexture = winstate->tex_post;
     SDL_GPUColorTargetInfo final_load_target = MakeLoadedTextureTarget(finalTexture);
+    bool submitLightVisReadback = false;
     
     if (g_ActiveScene)
     {
@@ -593,6 +611,25 @@ void Render(void)
 
         if (g_RenderSettings.cpuSceneNoCullDraw)
             UploadCPUNoCullDraws();
+
+        // Consume the previous frame's light-visibility readback if the GPU has
+        // finished it (non-blocking: if not ready, keep last frame's data). This
+        // drives occlusion-based shadow culling without a pipeline stall.
+        if (g_LightVisFence && SDL_QueryGPUFence(g_GPUDevice, g_LightVisFence))
+        {
+            void* mapped = SDL_MapGPUTransferBuffer(g_GPUDevice, g_LightVisTransfer, false);
+            if (mapped)
+            {
+                MemCopy(g_LightVisiblePrev, mapped, sizeof(u32) * MAX_LIGHT_COUNT);
+                SDL_UnmapGPUTransferBuffer(g_GPUDevice, g_LightVisTransfer);
+                g_LightVisHasData = true;
+            }
+            SDL_ReleaseGPUFence(g_GPUDevice, g_LightVisFence);
+            g_LightVisFence = NULL;
+            g_LightVisPending = false;
+        }
+        g_LightVisibilityGate = g_LightVisHasData && g_RenderSettings.enableLocalLights &&
+                                g_RenderSettings.enableOcclusion && g_RenderSettings.enableLightOcclusionCulling;
 
         UpdateLightShadows();
         UploadLightBuffer();
@@ -641,24 +678,40 @@ void Render(void)
                                       g_RenderSettings.enableOcclusion && g_RenderSettings.enableLightOcclusionCulling,
                                       renderW, renderH);
             RenderDeferredLights(cmd, &color_load_target, viewProj, renderW, renderH);
+
+            // Queue a non-blocking readback of this frame's per-light visibility
+            // so next frame's shadow assignment can skip occluded lights. Only
+            // issue when the previous readback has been consumed to avoid
+            // overwriting an in-flight transfer buffer.
+            if (!g_LightVisPending && g_RenderState.numLights > 0u && g_RenderState.lightVisibilityBuffer)
+            {
+                SDL_GPUCopyPass* copyPass = SDL_BeginGPUCopyPass(cmd);
+                SDL_DownloadFromGPUBuffer(copyPass,
+                    &(SDL_GPUBufferRegion){ .buffer = g_RenderState.lightVisibilityBuffer, .offset = 0, .size = sizeof(u32) * MAX_LIGHT_COUNT },
+                    &(SDL_GPUTransferBufferLocation){ .transfer_buffer = g_LightVisTransfer, .offset = 0 });
+                SDL_EndGPUCopyPass(copyPass);
+                submitLightVisReadback = true;
+            }
         }
         Terrain_RenderWireframe(cmd, &color_load_target, &main_depth_target, viewProj);
 
         winstate->hiz_view_proj = viewProj;
         winstate->hiz_valid = true;
 
-        if (g_RenderSettings.enableMLAA && winstate->tex_mlaa_output)
-        {
-            DispatchMLAACompute(cmd, renderW, renderH, g_RenderSettings.mlaaThreshold, g_RenderSettings.showMLAAEdges);
-            finalTexture = winstate->tex_mlaa_output;
-            final_load_target = MakeLoadedTextureTarget(winstate->tex_post);
-        }
-
-        RenderOutline(cmd, &final_load_target, &main_depth_target, viewProj);
     }
 
     RenderLines(cmd, &color_load_target, &main_depth_target, viewProj);
     DispatchTonemapCompute(cmd, renderW, renderH, viewProj);
+
+    if (g_RenderSettings.enableMLAA && winstate->tex_mlaa_output)
+    {
+        DispatchMLAACompute(cmd, renderW, renderH, g_RenderSettings.mlaaThreshold, g_RenderSettings.showMLAAEdges);
+        finalTexture = winstate->tex_mlaa_output;
+        final_load_target = MakeLoadedTextureTarget(finalTexture);
+    }
+
+    if (g_ActiveScene)
+        RenderOutline(cmd, &final_load_target, &main_depth_target, viewProj);
 
     RenderGizmo(cmd, &final_load_target, viewProj);
     RenderSlugDemo(cmd, &final_load_target, &main_depth_target, viewProj);
@@ -696,7 +749,18 @@ void Render(void)
     UIBeginFrame();
     UIRenderCallback();
     UIEndFrame(cmd, &ui_target);
-    SDL_SubmitGPUCommandBuffer(cmd);
+
+    if (submitLightVisReadback)
+    {
+        // Acquire a fence so next frame can tell when the visibility download has
+        // landed before mapping the transfer buffer.
+        g_LightVisFence = SDL_SubmitGPUCommandBufferAndAcquireFence(cmd);
+        g_LightVisPending = (g_LightVisFence != NULL);
+    }
+    else
+    {
+        SDL_SubmitGPUCommandBuffer(cmd);
+    }
 }
 
 void RendererInit(void)
@@ -732,6 +796,9 @@ void DestroyPipeline(void)
     if (g_RenderState.spotShadowMatrixBuffer)   SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.spotShadowMatrixBuffer);
     if (g_RenderState.lightDrawInfoBuffer)      SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lightDrawInfoBuffer);
     if (g_RenderState.lightDrawArgsBuffer)      SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lightDrawArgsBuffer);
+    if (g_RenderState.lightVisibilityBuffer)    SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lightVisibilityBuffer);
+    if (g_LightVisFence)                        SDL_ReleaseGPUFence(g_GPUDevice, g_LightVisFence);
+    if (g_LightVisTransfer)                     SDL_ReleaseGPUTransferBuffer(g_GPUDevice, g_LightVisTransfer);
     if (g_RenderState.uiShapeBuffer)            SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.uiShapeBuffer);
     if (g_RenderState.uiShapeDrawArgsBuffer)    SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.uiShapeDrawArgsBuffer);
     if (g_RenderState.sampler)                  SDL_ReleaseGPUSampler(g_GPUDevice, g_RenderState.sampler);

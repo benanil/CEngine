@@ -11,6 +11,10 @@ RWStructuredBuffer<LightDrawInfo>       drawInfos       : register(u0, space1);
 RWStructuredBuffer<IndirectDrawCommand> drawArgs        : register(u1, space1);
 RWStructuredBuffer<LineVertex>          lineVertices    : register(u2, space1);
 RWStructuredBuffer<IndirectDrawCommand> lineDrawCommand : register(u3, space1);
+// Per-light visibility (1 = passed frustum + occlusion culling, 0 = culled),
+// indexed by light index. Read back to the CPU one frame later to skip shadow
+// map rendering for lights that contribute nothing this frame.
+RWStructuredBuffer<uint>                lightVisibility : register(u4, space1);
 
 cbuffer Params : register(b0, space2)
 {
@@ -104,6 +108,13 @@ void FinishProjectedAABB(inout ProjectedAABB proj)
 
 void ProjectLightSphere(out ProjectedAABB proj, float3 center, float radius)
 {
+    // NOTE: keep all sample points in the sphere's center depth plane (no
+    // forward/view-axis offset). Offsetting a corner toward the camera makes it
+    // cross the near plane for any light within ~radius of the camera, which
+    // sets proj.anyBehind and forces the light to skip occlusion culling
+    // (RectOccludedHiZ and main() both bail on anyBehind). The +-right/+-up
+    // points already define the screen-space rect, so a view-axis offset adds
+    // nothing but spurious near-plane crossings.
     InitProjectedAABB(proj);
     ProjectCorner(center, viewProjection, proj);
     ProjectCorner(center + cameraRight * radius, viewProjection, proj);
@@ -119,7 +130,7 @@ bool SphereVisible(float3 center, float radius)
     for (uint i = 0; i < 6; i++)
     {
         float4 plane = frustumPlanes[i];
-        if (dot(plane.xyz, center) + plane.w + radius < -0.001f)
+        if (dot(plane.xyz, center) + plane.w + length(plane.xyz) * radius < -0.001f)
             return false;
     }
     return true;
@@ -136,6 +147,13 @@ bool RectOccludedHiZ(in ProjectedAABB proj)
     float2 rectMax = saturate(proj.uvMax + HIZ_RECT_PADDING_PIXELS / float2(hiZSize));
     float2 extentPixels = max((rectMax - rectMin) * float2(hiZSize), 1.0f);
     float mip = clamp(ceil(log2(max(extentPixels.x, extentPixels.y))), 0.0f, float(hiZMipCount - 1u));
+
+    float lowerMip = max(mip - 1.0f, 0.0f);
+    float2 lowerMipSize = max(floor(float2(hiZSize) / exp2(lowerMip)), 1.0f);
+    float2 lowerDims = ceil(rectMax * lowerMipSize) - floor(rectMin * lowerMipSize);
+    if (lowerDims.x <= 2.0f && lowerDims.y <= 2.0f)
+        mip = lowerMip;
+
     uint selectedMip = uint(mip);
     uint2 mipSize = max(hiZSize >> selectedMip, uint2(1u, 1u));
     float2 mipSizeF = float2(mipSize);
@@ -173,6 +191,11 @@ void main(uint3 tid : SV_DispatchThreadID)
 
     if (idx >= numLights)
         return;
+
+    // Default to culled. Each thread owns one light index, so every light in
+    // [0, numLights) gets written exactly once below; we flip this to 1 only on
+    // the path that adds the light to the deferred draw list.
+    lightVisibility[idx] = 0u;
 
     LightGPU light = lights[idx];
     float3 center = light.positionRadius.xyz;
@@ -213,6 +236,8 @@ void main(uint3 tid : SV_DispatchThreadID)
             return;
         }
     }
+
+    lightVisibility[idx] = 1u;
 
     uint visibleIndex;
     InterlockedAdd(drawArgs[0].numInstances, 1u, visibleIndex);
