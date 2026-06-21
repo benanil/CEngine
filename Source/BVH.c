@@ -28,16 +28,27 @@ typedef struct BVHBuild_
     v128f*   centroids; // build only, parallel to tris
     u32      nodesUsed;
     bool     skinned;
+    // de-quantization for the static unorm16 positions of the primitive currently building.
+    v128f    decodeMin, decodeExtent;
 } BVHBuild;
 
+// de-quantization range (min, extent) for a static primitive's unorm16 positions; must match
+// the pack in SurfaceVerticesForPrimitive (same 1e-6 zero-extent guard) for an exact roundtrip.
+static inline void BVH_PrimitiveDecode(const APrimitive* prim, v128f* outMin, v128f* outExtent)
+{
+    v128f min = VecLoad(prim->min);
+    *outMin = min;
+    *outExtent = VecMax(VecSub(VecLoad(prim->max), min), VecSet1(1.0e-6f));
+}
+
 // vertex position fetch from the cpu mega buffers, indices are mega absolute.
-// skinned vertices store the bind pose as packed halves
-static v128f BVH_Position(bool skinned, u32 index)
+// static positions are xyz unorm16 vs the primitive AABB; skinned store the bind pose as halves
+static v128f BVH_Position(bool skinned, u32 index, v128f decodeMin, v128f decodeExtent)
 {
     if (!skinned)
     {
         const AVertex* v = gGFX.SurfaceVertexBuffer + index;
-        return VecSetR(v->position.x, v->position.y, v->position.z, 0.0f);
+        return VecAdd(decodeMin, VecMul(UnpackUnorm16x4(v->position), decodeExtent));
     }
     const ASkinedVertex* v = gGFX.SkinnedVertexBuffer + index;
     return Half4ToFloat4Vec(&v->positionXY);
@@ -50,9 +61,9 @@ static void BVH_UpdateNodeBounds(BVHBuild* build, BVHNode* node)
     for (u32 i = node->leftFirst; i < node->leftFirst + node->triCount; i++)
     {
         const BVHTri* tri = &build->tris[i];
-        v128f v0 = BVH_Position(build->skinned, tri->v0);
-        v128f v1 = BVH_Position(build->skinned, tri->v1);
-        v128f v2 = BVH_Position(build->skinned, tri->v2);
+        v128f v0 = BVH_Position(build->skinned, tri->v0, build->decodeMin, build->decodeExtent);
+        v128f v1 = BVH_Position(build->skinned, tri->v1, build->decodeMin, build->decodeExtent);
+        v128f v2 = BVH_Position(build->skinned, tri->v2, build->decodeMin, build->decodeExtent);
         bmin = VecMin(bmin, VecMin(v0, VecMin(v1, v2)));
         bmax = VecMax(bmax, VecMax(v0, VecMax(v1, v2)));
     }
@@ -107,9 +118,9 @@ static f32 BVH_FindBestSplit(BVHBuild* build, const BVHNode* node, int* outAxis,
             BVHBin* bin = &bins[binIdx];
             bin->triCount++;
             const BVHTri* tri = &build->tris[i];
-            v128f v0 = BVH_Position(build->skinned, tri->v0);
-            v128f v1 = BVH_Position(build->skinned, tri->v1);
-            v128f v2 = BVH_Position(build->skinned, tri->v2);
+            v128f v0 = BVH_Position(build->skinned, tri->v0, build->decodeMin, build->decodeExtent);
+            v128f v1 = BVH_Position(build->skinned, tri->v1, build->decodeMin, build->decodeExtent);
+            v128f v2 = BVH_Position(build->skinned, tri->v2, build->decodeMin, build->decodeExtent);
             bin->bmin = VecMin(bin->bmin, VecMin(v0, VecMin(v1, v2)));
             bin->bmax = VecMax(bin->bmax, VecMax(v0, VecMax(v1, v2)));
         }
@@ -243,6 +254,8 @@ s32 BVH_BuildBundleCached(SceneBundle* bundle, BundleCacheEntry* bundleCache, bo
 
             u32 firstTri = triCursor;
             const u32* indices = gGFX.IndexBuffer + prim->lodIndexOffset[0];
+            // de-quantization range for this primitive's static unorm16 positions
+            BVH_PrimitiveDecode(prim, &build.decodeMin, &build.decodeExtent);
             for (u32 t = 0; t < numTris; t++)
             {
                 BVHTri* tri = &build.tris[triCursor];
@@ -250,8 +263,9 @@ s32 BVH_BuildBundleCached(SceneBundle* bundle, BundleCacheEntry* bundleCache, bo
                 tri->v1 = indices[t * 3u + 1u];
                 tri->v2 = indices[t * 3u + 2u];
                 tri->padding = 0;
-                v128f sum = VecAdd(VecAdd(BVH_Position(skinned, tri->v0), BVH_Position(skinned, tri->v1)),
-                                   BVH_Position(skinned, tri->v2));
+                v128f sum = VecAdd(VecAdd(BVH_Position(skinned, tri->v0, build.decodeMin, build.decodeExtent),
+                                          BVH_Position(skinned, tri->v1, build.decodeMin, build.decodeExtent)),
+                                   BVH_Position(skinned, tri->v2, build.decodeMin, build.decodeExtent));
                 build.centroids[triCursor] = VecMulf(sum, third);
                 triCursor++;
             }
@@ -290,7 +304,7 @@ void BVH_FreeBundle(BundleCacheEntry* bundleCache)
 
 // stack based traversal of one primitive blas, the ray is already in local space
 static bool BVH_Intersect(const BundleCacheEntry* bundleCache, bool skinned, u32 rootNode,
-                          v128f origin, v128f dir, BVHHit* hit)
+                          v128f decodeMin, v128f decodeExtent, v128f origin, v128f dir, BVHHit* hit)
 {
     const BVHNode* nodes = (const BVHNode*)bundleCache->bvhNodes;
     const BVHTri* tris = (const BVHTri*)bundleCache->bvhTris;
@@ -314,9 +328,9 @@ static bool BVH_Intersect(const BundleCacheEntry* bundleCache, bool skinned, u32
             for (u32 i = leftFirst; i < leftFirst + triCount; i++)
             {
                 const BVHTri* tri = tris + i;
-                v128f v0 = BVH_Position(skinned, tri->v0);
-                v128f v1 = BVH_Position(skinned, tri->v1);
-                v128f v2 = BVH_Position(skinned, tri->v2);
+                v128f v0 = BVH_Position(skinned, tri->v0, decodeMin, decodeExtent);
+                v128f v1 = BVH_Position(skinned, tri->v1, decodeMin, decodeExtent);
+                v128f v2 = BVH_Position(skinned, tri->v2, decodeMin, decodeExtent);
                 if (IntersectTriangle(origin, dir, v0, v1, v2, &hit->hit))
                 {
                     hit->triIndex = i;
@@ -390,7 +404,9 @@ static s32 BVH_RaycastSet(const Scene* scene, const RenderSet* set, bool skinned
                 v128f localDir    = VecDiv(QMulVec3V(dir, invRot), scale);
 
                 f32 before = hit->hit.t;
-                if (BVH_Intersect(bundleCache, skinned, prim->bvhNodeIndex, localOrigin, localDir, hit) && hit->hit.t < before)
+                v128f decodeMin, decodeExtent;
+                BVH_PrimitiveDecode(prim, &decodeMin, &decodeExtent);
+                if (BVH_Intersect(bundleCache, skinned, prim->bvhNodeIndex, decodeMin, decodeExtent, localOrigin, localDir, hit) && hit->hit.t < before)
                 {
                     hit->skinnedSet = skinned;
                     hit->groupIdx = g;

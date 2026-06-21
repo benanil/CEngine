@@ -290,7 +290,7 @@ void RenderOutline(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarge
         v128f rotation = VecNorm(UnpackQuaternionS16Norm1(entity->rotation));
         v128f scale = EntityUnpackWorldScale(entity->scale);
 
-        struct { mat4x4 viewProj; float position[4]; float rotationQ[4]; float scaleBias[4]; } params;
+        struct { mat4x4 viewProj; float position[4]; float rotationQ[4]; float scaleBias[4]; float aabbMin[4]; float aabbMax[4]; } params;
         params.viewProj = viewProj;
         VecStore(params.position, entity->position);
         VecStore(params.rotationQ, rotation);
@@ -299,6 +299,9 @@ void RenderOutline(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarge
         params.scaleBias[2] = VecGetZ(scale);
         // constant world thickness like the old engine's 0.04 normal bias
         params.scaleBias[3] = 0.04f / Maxf32(VecGetX(scale), 1.0e-4f);
+        // primitive AABB to de-quantize the unorm16 vertex position in the shader
+        VecStore(params.aabbMin, group->aabbMin);
+        VecStore(params.aabbMax, group->aabbMax);
 
         if (!pass)
         {

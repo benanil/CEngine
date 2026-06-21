@@ -26,6 +26,7 @@
 #define VFORMAT_FLOAT3 SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3
 #define VFORMAT_FLOAT4 SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4
 #define VFORMAT_UINT   SDL_GPU_VERTEXELEMENTFORMAT_UINT
+#define VFORMAT_UINT2  SDL_GPU_VERTEXELEMENTFORMAT_UINT2
 #define VFORMAT_HALF2  SDL_GPU_VERTEXELEMENTFORMAT_HALF2
 #define VFORMAT_HALF4  SDL_GPU_VERTEXELEMENTFORMAT_HALF4
 #define VFORMAT_UBYTE4 SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4
@@ -97,7 +98,8 @@ typedef s32 GraphicType;
 // https://www.yosoygames.com.ar/wp/2018/03/vertex-formats-part-1-compression/
 typedef struct AVertex_
 {
-    float3 position;
+    // xyz unorm16 normalized to the primitive AABB (w unused), packed via PackUnorm16x4
+    u64 position; 
     u32 octTbn;
     u32 texCoord; // half2
 } AVertex;

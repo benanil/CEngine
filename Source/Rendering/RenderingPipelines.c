@@ -427,7 +427,7 @@ static void InitOutlinePipeline(void)
     SDL_GPUShader* fragment_shader = PIPELINE_FRAG_DEF(Shaders_OutlineFrag_spv)});                            CHECK_CREATE(fragment_shader, "Outline Fragment Shader")
 
     const SDL_GPUVertexAttribute vertex_attributes[3] = {
-        { .location = 0, .buffer_slot = 0, .format = VFORMAT_FLOAT3, .offset = offsetof(AVertex, position) },
+        { .location = 0, .buffer_slot = 0, .format = VFORMAT_UINT2,  .offset = offsetof(AVertex, position) },
         { .location = 1, .buffer_slot = 0, .format = VFORMAT_UINT,   .offset = offsetof(AVertex, octTbn)   },
         { .location = 2, .buffer_slot = 0, .format = VFORMAT_HALF2,  .offset = offsetof(AVertex, texCoord) }
     };
@@ -711,7 +711,7 @@ static void InitSurfacePipeline(void)
     SDL_GPUShader* fragment_shader = PIPELINE_FRAG_DEF(Shaders_SurfaceFrag_spv), .num_uniform_buffers = 1, .num_samplers        = 4, .num_storage_buffers = 2 }); CHECK_CREATE(fragment_shader, "Surface Fragment Shader")
 
     const SDL_GPUVertexAttribute vertex_attributes[3] = {
-        { .location = 0, .buffer_slot = 0, .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3, .offset = offsetof(AVertex, position) },
+        { .location = 0, .buffer_slot = 0, .format = SDL_GPU_VERTEXELEMENTFORMAT_UINT2,  .offset = offsetof(AVertex, position) },
         { .location = 1, .buffer_slot = 0, .format = SDL_GPU_VERTEXELEMENTFORMAT_UINT,   .offset = offsetof(AVertex, octTbn) },
         { .location = 2, .buffer_slot = 0, .format = SDL_GPU_VERTEXELEMENTFORMAT_HALF2,  .offset = offsetof(AVertex, texCoord) }
     };
@@ -790,7 +790,7 @@ static void InitDepthOnlyPipelines(void)
     CHECK_CREATE(sur_point_shadow_frag , "Surface Point Shadow Fragment Shader") CHECK_CREATE(ski_point_shadow_ver, "Skinned Point Shadow Vertex Shader") CHECK_CREATE(ski_point_shadow_frag, "Skinned Point Shadow Fragment Shader")
 
     const SDL_GPUVertexAttribute sur_attributes[3] = {
-        { .location = 0, .buffer_slot = 0, .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3, .offset = offsetof(AVertex, position) },
+        { .location = 0, .buffer_slot = 0, .format = SDL_GPU_VERTEXELEMENTFORMAT_UINT2,  .offset = offsetof(AVertex, position) },
         { .location = 1, .buffer_slot = 0, .format = SDL_GPU_VERTEXELEMENTFORMAT_UINT,   .offset = offsetof(AVertex, octTbn)   },
         { .location = 2, .buffer_slot = 0, .format = SDL_GPU_VERTEXELEMENTFORMAT_HALF2,  .offset = offsetof(AVertex, texCoord) }
     };

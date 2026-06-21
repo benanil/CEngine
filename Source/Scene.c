@@ -100,7 +100,11 @@ static s32 LoadBundleMeshCached(const char* path, SceneBundle* bundle, void** ou
         return 0;
     }
     ChangeExtension(buffer, newLen, "bdc");
-    SaveSceneImages(bundle, buffer, FileHasExtension(path, pathLen, ".glb"));
+    if (!FileExist(buffer))
+    {
+        bool deleteRemaining = FileHasExtension(path, pathLen, ".glb");
+        SaveSceneImages(bundle, buffer, deleteRemaining);
+    }
     return 1;
 }
 

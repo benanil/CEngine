@@ -134,6 +134,9 @@ static void VerticesForPrimitive(APrimitive* primitive, ASkinedVertex* currVerte
     }
 }
 
+// Requires primitive->min/max to be set first (BoundsForPrimitive). Positions are quantized
+// to xyz unorm16 relative to the primitive AABB; the vertex/depth/shadow shaders and the BVH
+// de-quantize with the same AABB (PrimitiveGroup.aabbMin/aabbMax == primitive->min/max).
 static void SurfaceVerticesForPrimitive(APrimitive* primitive, AVertex* currVertex)
 {
     primitive->vertices = currVertex;
@@ -142,13 +145,19 @@ static void SurfaceVerticesForPrimitive(APrimitive* primitive, AVertex* currVert
     const float3* normals   = (const float3*)primitive->vertexAttribs[AAttribIdx_NORMAL];
     const v128f*  tangents  = (const v128f*)primitive->vertexAttribs[AAttribIdx_TANGENT];
 
+    v128f aabbMin    = VecLoad(primitive->min);
+    // guard against a zero-extent axis (planar mesh) so the divide can't produce NaN
+    v128f aabbExtent = VecMax(VecSub(VecLoad(primitive->max), aabbMin), VecSet1(1.0e-6f));
+    v128f invExtent  = VecDiv(VecSet1(1.0f), aabbExtent);
+
     for (s32 v = 0; v < primitive->numVertices; v++)
     {
         v128f tangent = tangents ? tangents[v] : VecZero();
         float2 texCoord = texCoords ? texCoords[v] : (float2){0.0f, 0.0f};
         float3 normal = normals ? normals[v] : (float3){0.5f, 0.5f, 0.0f};
 
-        currVertex[v].position = positions[v];
+        v128f unorm = VecMul(VecSub(VecLoad(&positions[v].x), aabbMin), invExtent);
+        currVertex[v].position = PackUnorm16x4(unorm); // PackUnorm16x4 clamps to [0,1]
         currVertex[v].texCoord = Float2ToHalf2(&texCoord.x);
         currVertex[v].octTbn = PackNormalTangent(Vec3Load(&normal.x), tangent);
     }
@@ -179,6 +188,27 @@ static void SetPrimitiveLODFallback(APrimitive* primitive, u32 vertexOffset, u32
         primitive->lodNumVertices[lod] = primitive->numVertices;
         primitive->lodAnimatedVertexOffset[lod] = (int)animatedVertexOffset;
     }
+}
+
+// Reorder a primitive's base (LOD0) triangles for the post-transform vertex cache. This only
+// permutes triangles within the primitive's own index range, so vertex order, offsets, bounds,
+// generated LODs and the BVH triangle set are all unaffected. Indices in the mega-buffer are
+// global (vertexBase-relative), so localize before meshopt and re-add the base afterwards.
+static void OptimizePrimitiveVertexCache(u32* indices, s32 numIndices, s32 numVertices, u32 vertexBase)
+{
+    if (numIndices < 3 || numVertices <= 0)
+        return;
+
+    u32* localIndices = (u32*)ArenaPushGlobal((u64)numIndices * sizeof(u32));
+    for (s32 i = 0; i < numIndices; i++)
+        localIndices[i] = indices[i] - vertexBase;
+
+    meshopt_optimizeVertexCache(localIndices, localIndices, (size_t)numIndices, (size_t)numVertices);
+
+    for (s32 i = 0; i < numIndices; i++)
+        indices[i] = localIndices[i] + vertexBase;
+
+    ArenaPopGlobal((u64)numIndices * sizeof(u32));
 }
 
 static u32 RoundTriangleIndexCount(size_t count)
@@ -503,6 +533,8 @@ s32 BakeSceneMeshesAndAnimations(SceneBundle* gltf, void** outVertexHeapPtr, voi
             u32 primitiveIndexCursor = indexCursor;
             u32 primitiveAnimatedOffset = localAnimatedVertexCursor;
             IndicesForPrimitive(primitive, currIndices, primitiveVertexCursor);
+            // Bounds first: surface vertices quantize their position against this AABB.
+            BoundsForPrimitive(primitive);
             if (isSkinned)
             {
                 VerticesForPrimitive(primitive, currSkinnedVertex);
@@ -516,8 +548,9 @@ s32 BakeSceneMeshesAndAnimations(SceneBundle* gltf, void** outVertexHeapPtr, voi
             {
                 SurfaceVerticesForPrimitive(primitive, currSurfaceVertex);
                 currSurfaceVertex += primitive->numVertices;
+                // Optimize LOD0 index order before LODs are generated from it.
+                OptimizePrimitiveVertexCache(currIndices, primitive->numIndices, primitive->numVertices, primitiveVertexCursor);
             }
-            BoundsForPrimitive(primitive);
 
             primitive->indexOffset = primitiveIndexCursor;
             SetPrimitiveLODFallback(primitive, primitiveVertexCursor, primitiveAnimatedOffset);
@@ -565,42 +598,3 @@ s32 BakeSceneMeshesAndAnimations(SceneBundle* gltf, void** outVertexHeapPtr, voi
 void GenerateLOD_50_GLTF(SceneBundle* sceneBundle) { (void)sceneBundle; }
 
 void GenerateLOD_75_GLTF(SceneBundle* sceneBundle) { (void)sceneBundle; }
-
-void OptimizeMesh(SceneBundle* gltf)
-{
-    if (gltf->allVertices == NULL || gltf->allIndices == NULL || gltf->totalVertices <= 0 || gltf->totalIndices <= 0)
-    {
-        AX_WARN("mesh optimize skipped: scene is not baked vertices=%d indices=%d", gltf->totalVertices, gltf->totalIndices);
-        return;
-    }
-    
-    // for now only for single meshes
-    if (gltf->numMeshes != 1)
-        return;
-
-    size_t vertexSize = gltf->numSkins > 0 ? sizeof(ASkinedVertex) : sizeof(AVertex);
-    int* remap = ArenaAllocGlobal(gltf->totalIndices * sizeof(s32));
-    size_t totalVertices = meshopt_generateVertexRemap((u32*)remap, (const u32 *)gltf->allIndices,
-                                                       (size_t)gltf->totalIndices, gltf->allVertices,
-                                                       (size_t)gltf->totalVertices, vertexSize);
-
-    int* temp = ArenaAllocGlobal(gltf->totalIndices * sizeof(s32));
-    meshopt_remapIndexBuffer((u32*)temp, gltf->allIndices, (size_t)gltf->totalIndices, (u32*)remap);
-
-    void* vertexBufferNew = ArenaAllocGlobal((size_t)gltf->totalVertices * vertexSize);
-    meshopt_remapVertexBuffer(vertexBufferNew, gltf->allVertices, (size_t)gltf->totalVertices, vertexSize, (u32*)remap);
-
-    MemSet(gltf->allVertices, 0, (size_t)gltf->totalVertices * vertexSize);
-    MemSet(gltf->allIndices , 0, (size_t)gltf->totalIndices * sizeof(s32));
-
-    MemCopy(gltf->allIndices , temp, (size_t)gltf->totalIndices * sizeof(s32));
-    MemCopy(gltf->allVertices, vertexBufferNew, (size_t)totalVertices * vertexSize);
-
-    ArenaPopGlobal((size_t)gltf->totalIndices * sizeof(s32));
-    ArenaPopGlobal((size_t)gltf->totalIndices * sizeof(s32));
-    ArenaPopGlobal((size_t)gltf->totalVertices * vertexSize);
-
-    meshopt_optimizeVertexCache((u32*)gltf->allIndices , (const u32*)gltf->allIndices, gltf->totalIndices, (size_t)totalVertices);
-    meshopt_optimizeVertexFetch(gltf->allVertices, (u32*)gltf->allIndices, gltf->totalIndices,
-                                gltf->allVertices, (size_t)totalVertices, vertexSize);
-}

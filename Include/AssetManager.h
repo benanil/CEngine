@@ -14,7 +14,7 @@
 
 
 #include "Graphics.h"
-
+#include "Async.h"
 
 #if defined(__cplusplus)
 extern "C" {
@@ -39,8 +39,6 @@ u8 IsABMLastVersion(const char* path);
 // returns 0 on not enough memory
 s32 BakeSceneMeshesAndAnimations(SceneBundle* gltf, void** outVertexHeapPtr, void** outIndexHeapPtr);
 
-void OptimizeMesh(SceneBundle* gltf);
-
 void GenerateLOD_75_GLTF(SceneBundle* sceneBundle);
 
 void GenerateLOD_50_GLTF(SceneBundle* sceneBundle);
@@ -55,8 +53,11 @@ u8 IsTextureLastVersion(const char* path);
 
 void SaveSceneImages(SceneBundle* scene, const char* savePath, bool deleteRemaining);
 
+void SaveSceneImagesAsync(SceneBundle* scene, const char* savePath, bool deleteRemaining, AsyncCallback callback);
+
 // returns: 0 = noFile, 1 = success, 2 = missingImages, 3 = fileNumImage missmatch
 s32 LoadSceneImages(const char* texturePath, Texture* textures, s32 numImages);
+
 
 #if defined(__cplusplus)
 }

@@ -634,6 +634,59 @@ void SaveSceneImages(SceneBundle* scene, const char* savePath, bool deleteRemain
     RenameFile(tmpPath, bdcPath);
 }
 
+typedef struct ScaneImgCompTaskData_
+{
+    SceneBundle* scene; 
+    char* savePath; 
+    bool deleteRemaining;
+} ScaneImgCompTaskData;
+
+static s32 SaveSceneImagesTask(void* userData)
+{
+    ScaneImgCompTaskData* taskData = (ScaneImgCompTaskData*)userData;
+    SaveSceneImages(taskData->scene, taskData->savePath, taskData->deleteRemaining);
+    SDL_free(taskData->savePath);
+    SDL_free(taskData);
+    return 1;
+}
+
+void SaveSceneImagesAsync(SceneBundle* scene, const char* path, bool deleteRemaining, AsyncCallback callback)
+{
+    if (!scene || !path || path[0] == '\0')
+    {
+        AX_WARN("Texture compress task invalid arguments");
+        return;
+    }
+
+    ScaneImgCompTaskData* taskData = (ScaneImgCompTaskData*)SDL_malloc(sizeof(ScaneImgCompTaskData));
+    if (!taskData)
+    {
+        AX_WARN("Texture compress task allocation failed");
+        return;
+    }
+
+    int newLen = StringLength(path);
+    char* savePath = (char*)SDL_malloc(newLen + 1);
+    if (!savePath)
+    {
+        SDL_free(taskData);
+        AX_WARN("Texture compress path allocation failed");
+        return;
+    }
+    MemCopy(savePath, path, newLen + 1);
+    *taskData = (ScaneImgCompTaskData){
+        .scene = scene,
+        .savePath = savePath,
+        .deleteRemaining = deleteRemaining
+    };
+    if (!AsyncRun("SaveSceneImages", SaveSceneImagesTask, callback, taskData))
+    {
+        SDL_free(savePath);
+        SDL_free(taskData);
+        AX_WARN("Texture compress task start failed");
+    }
+}
+
 // result: 1 fine, 2 some file is not exist, 3 not enough images for scene
 s32 LoadSceneImages(const char* texturePath, Texture* textures, s32 numImages)
 {
@@ -754,7 +807,11 @@ s32 LoadGLTFCached(const char* path, SceneBundle* scene, Texture* textures, void
             return 0;
         }
         ChangeExtension(buffer, newLen, "bdc");
-        SaveSceneImages(scene, buffer, FileHasExtension(path, pathLen,".glb"));
+        if (!FileExist(buffer))
+        {
+            bool deleteRemaining = FileHasExtension(path, pathLen, ".glb");
+            SaveSceneImages(scene, buffer, deleteRemaining);
+        }
     }
     else {
         AX_WARN("asset import failed: %s", path);
@@ -782,7 +839,8 @@ s32 LoadGLTFCached(const char* path, SceneBundle* scene, Texture* textures, void
 // ZSTD_CCtx* zstdCompressorCTX = NULL;
 // 79: geometry offsets and index values are stored bundle relative, the
 // runtime placement comes from the mega buffer range allocators
-const s32 ABMMeshVersion = 79;
+// 80: surface (static) AVertex.position quantized to xyz unorm16 vs the primitive AABB
+const s32 ABMMeshVersion = 80;
 
 u8 IsABMLastVersion(const char* path)
 {

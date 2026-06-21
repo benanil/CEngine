@@ -11,11 +11,13 @@ cbuffer vs_params : register(b0, space1)
     float4 uPosition;  // entity world position
     float4 uRotation;  // entity rotation quaternion
     float4 uScaleBias; // xyz entity scale, w local space outline thickness
+    float4 uAABBMin;   // primitive AABB, to de-quantize the unorm16 position
+    float4 uAABBMax;
 };
 
 struct VSInput
 {
-    float3   aPos          : POSITION0;
+    uint2    aPos          : POSITION0;
     uint     aTangentSpace : TANGENT0;
     f16_2_io aTexCoords    : TEXCOORD0;
 };
@@ -26,7 +28,8 @@ float4 vert(VSInput input) : SV_Position
     UnpackNormalTangent(input.aTangentSpace, normal, tangent);
 
     // grow the mesh along the normal like the old engine's outline shader
-    float3 localPos = input.aPos + float3(normal) * uScaleBias.w;
+    float3 decodedPos = uAABBMin.xyz + UnpackUnorm16x4(input.aPos).xyz * (uAABBMax.xyz - uAABBMin.xyz);
+    float3 localPos = decodedPos + float3(normal) * uScaleBias.w;
     float3 worldPos = QMulVec3F32(uRotation, localPos * uScaleBias.xyz) + uPosition.xyz;
     return mul(uViewProj, float4(worldPos, 1.0));
 }

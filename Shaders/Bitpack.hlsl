@@ -66,6 +66,13 @@ f16_4 UnpackRGBA16Unorm(uint2 p) {
     return f16_4(float4(u) * (1.0 / 65534.0));
 }
 
+// full precision unorm16x4, matches CPU PackUnorm16x4 (Math/Bitpack.h, normalized by 1/65534).
+// used to de-quantize static AVertex.position against the primitive AABB.
+float4 UnpackUnorm16x4(uint2 p) {
+    uint4 u = (p.xxyy >> uint4(0u, 16u, 0u, 16u)) & 0xFFFFu;
+    return float4(u) * (1.0 / 65534.0);
+}
+
 f16_3 UnpackVec3XY11Z10Unorm(uint packed) {
     const f16 scale11 = f16(1.0 / 2047.0);
     const f16 scale10 = f16(1.0 / 1023.0);

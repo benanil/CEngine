@@ -15,7 +15,7 @@ StructuredBuffer<PointShadowMatrix>   sPointShadowSides  : register(t3);
 
 struct VSInput
 {
-    float3   aPos          : POSITION0;
+    uint2    aPos          : POSITION0;
     uint     aTangentSpace : TANGENT0;
     f16_2_io aTexCoords    : TEXCOORD0;
 };
@@ -30,7 +30,8 @@ float4 vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("DrawI
 
     f16_4 insRot   = normalize(UnpackRGBA16Snorm(entity.rotation[0], entity.rotation[1]));
     f16_3 insScale = UnpackRGBA16Unorm(entity.scale).xyz * f16(10.0);
-    f16_3 worldPos = QMulVec3(insRot, f16_3(input.aPos) * insScale);
+    float3 localPos = group.aabbMin.xyz + UnpackUnorm16x4(input.aPos).xyz * (group.aabbMax.xyz - group.aabbMin.xyz);
+    f16_3 worldPos = QMulVec3(insRot, f16_3(localPos) * insScale);
     float3 finalWorldPos = float3(worldPos) + entity.position.xyz;
     return MulPointShadowSide(sPointShadowSides[uPointShadowSideIndex], float4(finalWorldPos, 1.0));
 }
