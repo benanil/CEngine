@@ -49,6 +49,15 @@ static inline v128f QFromAxisAngle(float3 axis, float angle)
     return VecSetR(axis.x * SinV, axis.y * SinV, axis.z * SinV, CosV);
 }
 
+static inline v128f QFromAxisAngleV(v128f axis, float angle)
+{
+    f32 s = Sin(0.5f * angle);
+    f32 c = Cos(0.5f * angle);
+    v128f q = VecMulf(axis, s);
+    VecSetW(q, c);
+    return q;
+}
+
 // below 3 function are same as QFromAxisAngle but with single axis, 
 // faster because no normalization and less multipication
 static inline v128f QFromXAngle(float angle) {

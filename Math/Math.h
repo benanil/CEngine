@@ -329,6 +329,17 @@ static inline bool IntersectTriangle(v128f origin, v128f dir, v128f v0, v128f v1
     return false;
 }
 
+// ray vs plane through planeOrigin with the given normal. out: false when parallel
+static inline bool RayPlaneHit(v128f rayOrigin, v128f rayDir, v128f planeOrigin, v128f normal, v128f* outHit)
+{
+    f32 dn = Vec3DotfV(rayDir, normal);
+    if (Absf32(dn) < 1.0e-6f) return false;
+    f32 t = Vec3DotfV(VecSub(planeOrigin, rayOrigin), normal) / dn;
+    if (t <= 0.0f) return false;
+    *outHit = VecAdd(rayOrigin, VecMulf(rayDir, t));
+    return true;
+}
+
 purefn f32 Sqrf(f32 x) {
     return x * x;
 }

@@ -12,6 +12,7 @@
 #include "Include/BVH.h"
 #include "Math/Quaternion.h"
 #include "Math/Bitpack.h"
+#include "Math/Color.h"
 
 #define SCENE_LIGHT_GIZMO_RADIUS 10.0f
 #define EDITOR_SCENE_FOLDER "Assets/Scenes"
@@ -1121,10 +1122,7 @@ static bool SceneLightWorldToScreen(Camera* camera, const LightGPU* light, float
 
 static u32 SceneLightGizmoColor(const LightGPU* light)
 {
-    u32 r = (u32)Clampf32(light->colorIntensity[0] * 255.0f, 0.0f, 255.0f);
-    u32 g = (u32)Clampf32(light->colorIntensity[1] * 255.0f, 0.0f, 255.0f);
-    u32 b = (u32)Clampf32(light->colorIntensity[2] * 255.0f, 0.0f, 255.0f);
-    return 0xCC000000u | (b << 16u) | (g << 8u) | r;
+    return 0xCC000000u | PackColor3PtrToUint(light->colorIntensity);
 }
 
 static bool SceneLightPlaneHit(Camera* camera, float2 mouse, f32 depth, v128f* outHit)
@@ -1133,12 +1131,7 @@ static bool SceneLightPlaneHit(Camera* camera, float2 mouse, f32 depth, v128f* o
     v128f camPos = VecLoad(&camera->position.x);
     v128f normal = Vec3NormV(VecLoad(&camera->Front.x));
     v128f planePoint = VecAdd(camPos, VecMulf(normal, depth));
-    f32 denom = Vec3DotfV(ray.dir, normal);
-    if (Absf32(denom) < 1.0e-6f) return false;
-    f32 t = Vec3DotfV(VecSub(planePoint, ray.origin), normal) / denom;
-    if (t <= 0.0f) return false;
-    *outHit = VecAdd(ray.origin, VecMulf(ray.dir, t));
-    return true;
+    return RayPlaneHit(ray.origin, ray.dir, planePoint, normal, outHit);
 }
 
 bool EditorLightGizmoUpdate(Camera* camera)

@@ -270,15 +270,6 @@ bool EditorGizmoDeleteSelected(void)
     return true;
 }
 
-static v128f GizmoQFromAxisAngle(v128f axis, f32 angle)
-{
-    f32 s = Sin(0.5f * angle);
-    f32 c = Cos(0.5f * angle);
-    v128f q = VecMulf(axis, s);
-    VecSetW(q, c);
-    return q;
-}
-
 // gathers every entity of every target and the merged center of their aabb centers.
 // out: number of members, 0 when nothing resolves anymore
 static u32 GizmoCollectMembers(Scene* scene, v128f* outCenter)
@@ -364,17 +355,6 @@ static f32 GizmoAxisDistance(v128f rayOrigin, v128f rayDir, v128f axisOrigin, v1
     return Sqrtf(Vec3DotfV(delta, delta));
 }
 
-// ray vs plane through planeOrigin with the given normal. out: false when parallel
-static bool GizmoPlaneHit(v128f rayOrigin, v128f rayDir, v128f planeOrigin, v128f normal, v128f* outHit)
-{
-    f32 dn = Vec3DotfV(rayDir, normal);
-    if (Absf32(dn) < 1.0e-6f) return false;
-    f32 t = Vec3DotfV(VecSub(planeOrigin, rayOrigin), normal) / dn;
-    if (t <= 0.0f) return false;
-    *outHit = VecAdd(rayOrigin, VecMulf(rayDir, t));
-    return true;
-}
-
 // stable perpendicular basis of a rotation ring
 static void GizmoRingBasis(v128f axis, v128f* u, v128f* v)
 {
@@ -387,7 +367,7 @@ static void GizmoRingBasis(v128f axis, v128f* u, v128f* v)
 static bool GizmoRingHit(v128f rayOrigin, v128f rayDir, v128f center, v128f axis, f32 radius, f32* outAngle, f32* outRingDist)
 {
     v128f hitPoint;
-    if (!GizmoPlaneHit(rayOrigin, rayDir, center, axis, &hitPoint)) return false;
+    if (!RayPlaneHit(rayOrigin, rayDir, center, axis, &hitPoint)) return false;
     v128f rel = VecSub(hitPoint, center);
     v128f u, v;
     GizmoRingBasis(axis, &u, &v);
@@ -531,7 +511,7 @@ static void GizmoApplyMembers(Scene* scene, const v128f axes[3], f32 mouseY)
         }
         else if (gizmo.mode == GizmoMode_Rotate)
         {
-            v128f deltaQ = GizmoQFromAxisAngle(axes[gizmo.hotAxis], gizmo.dragStart);
+            v128f deltaQ = QFromAxisAngleV(axes[gizmo.hotAxis], gizmo.dragStart);
             v128f newQ = VecNorm(QMul(startRot, deltaQ)); // extra world rotation
             PackQuaternionS16Norm(newQ, &entity->rotation);
 
@@ -659,7 +639,7 @@ bool EditorGizmoUpdate(Camera* camera)
             {
                 v128f normal = axes[gizmo.hotAxis - GizmoAxis_PlaneX];
                 v128f hitPoint;
-                if (GizmoPlaneHit(ray.origin, ray.dir, startPivot, normal, &hitPoint))
+                if (RayPlaneHit(ray.origin, ray.dir, startPivot, normal, &hitPoint))
                 {
                     gizmo.planeDelta = VecSub(hitPoint, gizmo.startPlaneHit);
                     apply = true;
@@ -681,7 +661,7 @@ bool EditorGizmoUpdate(Camera* camera)
                 // adds a small increment to the accumulated angle
                 v128f planeNormal = Vec3NormV(VecSub(camPos, startPivot));
                 v128f hitPoint;
-                if (GizmoPlaneHit(ray.origin, ray.dir, startPivot, planeNormal, &hitPoint))
+                if (RayPlaneHit(ray.origin, ray.dir, startPivot, planeNormal, &hitPoint))
                 {
                     v128f hitDelta = VecSub(hitPoint, gizmo.startPlaneHit);
                     gizmo.startPlaneHit = hitPoint;
@@ -736,7 +716,7 @@ bool EditorGizmoUpdate(Camera* camera)
             for (int i = 0; i < 3; i++)
             {
                 v128f hitPoint;
-                if (!GizmoPlaneHit(ray.origin, ray.dir, center, axes[i], &hitPoint)) continue;
+                if (!RayPlaneHit(ray.origin, ray.dir, center, axes[i], &hitPoint)) continue;
                 v128f rel = VecSub(hitPoint, center);
                 f32 a = Vec3DotfV(rel, axes[(i + 1) % 3]);
                 f32 b = Vec3DotfV(rel, axes[(i + 2) % 3]);
@@ -777,7 +757,7 @@ bool EditorGizmoUpdate(Camera* camera)
 
                 v128f planeNormal = Vec3NormV(VecSub(camPos, center));
                 v128f hitPoint = center;
-                GizmoPlaneHit(ray.origin, ray.dir, center, planeNormal, &hitPoint);
+                RayPlaneHit(ray.origin, ray.dir, center, planeNormal, &hitPoint);
                 gizmo.startPlaneHit = hitPoint;
             }
             consumed = true;

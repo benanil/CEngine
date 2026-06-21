@@ -108,85 +108,11 @@ static void TestRestoreLoop(RenderSet* set, TestRestoreScratch* scratch, const T
     }
 }
 
-static u32 OldAllocateSparseID(RenderSet* set)
-{
-    s32 sparseIdx = BitsetFindFirstEmpty(set->sparseSlots, (s32)set->maxEntities);
-    if (sparseIdx < 0)
-        return INVALID_ENTITY;
-
-    BitsetSet(set->sparseSlots, sparseIdx);
-    return (u32)sparseIdx;
-}
-
-static u32 OldAddEntity(RenderSet* set, u32 primitiveIdx, const Entity* data)
-{
-    PrimitiveGroup* group = &set->primitiveGroups[primitiveIdx];
-    u32 entityStart = group->entityOffset + group->numEntities;
-    if (set->numEntities + 1u > set->maxEntities)
-        return INVALID_ENTITY;
-
-    for (s32 i = (s32)set->numEntities - 1; i >= (s32)entityStart; i--)
-    {
-        u32 dst = (u32)i + 1u;
-        set->entities[dst] = set->entities[i];
-
-        u32 sparseIdx = set->entities[dst].sparseIdx;
-        if (sparseIdx != INVALID_ENTITY && sparseIdx < set->maxEntities && set->sparseID[sparseIdx] == (u32)i)
-            set->sparseID[sparseIdx] = dst;
-    }
-
-    for (u32 i = primitiveIdx + 1u; i < set->numGroups; i++)
-        set->primitiveGroups[i].entityOffset++;
-
-    set->numEntities++;
-    set->entities[entityStart] = *data;
-    set->entities[entityStart].primitiveIdx = primitiveIdx;
-    if (data->sparseIdx != INVALID_ENTITY && data->sparseIdx < set->maxEntities &&
-        (set->sparseID[data->sparseIdx] == INVALID_ENTITY || entityStart < set->sparseID[data->sparseIdx]))
-    {
-        set->sparseID[data->sparseIdx] = entityStart;
-    }
-    group->numEntities++;
-    group->capacity = group->numEntities;
-    return entityStart;
-}
-
-static void OldRestoreLoop(RenderSet* set, const TestSceneEntRecord* records, u32 recordCount)
-{
-    for (u32 i = 0; i < recordCount; i++)
-    {
-        const TestSceneEntRecord* record = &records[i];
-        if (record->primGroupIdx >= set->numGroups)
-            continue;
-
-        Entity entity;
-        memset(&entity, 0, sizeof(entity));
-        entity.rotation = record->rotation;
-        entity.scale = record->scale;
-        entity.sparseIdx = OldAllocateSparseID(set);
-        if (entity.sparseIdx == INVALID_ENTITY)
-            continue;
-        OldAddEntity(set, record->primGroupIdx, &entity);
-    }
-}
-
 static void ResetRestoreTarget(RenderSet* set)
 {
     set->numEntities = 0;
     memset(set->sparseID, 0xFF, set->maxEntities * sizeof(u32));
     memset(set->sparseSlots, 0, ((set->maxEntities + 63u) >> 6) * sizeof(u64));
-}
-
-static void ResetOldRestoreTarget(RenderSet* set)
-{
-    ResetRestoreTarget(set);
-    for (u32 g = 0; g < set->numGroups; g++)
-    {
-        PrimitiveGroup* group = &set->primitiveGroups[g];
-        group->entityOffset = 0;
-        group->numEntities = 0;
-        group->capacity = 0;
-    }
 }
 
 static void InitRenderSetStorage(RenderSet* set, u32 maxEntities, u32 numGroups)
@@ -376,19 +302,6 @@ static void Perf_BistroRestoreLoop(void* arg)
     }
 }
 
-static void Perf_BistroOldRestoreLoop(void* arg)
-{
-    TestBistroPerfCase* perf = (TestBistroPerfCase*)arg;
-    for (u32 i = 0; i < perf->iterations; i++)
-    {
-        for (u32 s = 0; s < 2u; s++)
-        {
-            ResetOldRestoreTarget(&perf->renderSets[s]);
-            OldRestoreLoop(&perf->renderSets[s], perf->sets[s].records, perf->sets[s].count);
-        }
-    }
-}
-
 static void PrintMiniPerfResult(const char* label, MiniPerfResult result, u32 iterations)
 {
     printf("PERF %s: %.6f sec total, %.3f us/iter, ctxsw=%llu\n",
@@ -415,10 +328,6 @@ static void RunBistroPerfTest(void)
     MiniPerfResult newResult = MiniPerf(Perf_BistroRestoreLoop, &perf);
     PrintMiniPerfResult("SceneSerializer_BistroRestoreLoop_New", newResult, perf.iterations);
 
-    MiniPerfResult oldResult = MiniPerf(Perf_BistroOldRestoreLoop, &perf);
-    PrintMiniPerfResult("SceneSerializer_BistroRestoreLoop_Old", oldResult, perf.iterations);
-    if (newResult.ElapsedTime > 0.0)
-        printf("PERF SceneSerializer_BistroRestoreLoop speedup: %.2fx\n", oldResult.ElapsedTime / newResult.ElapsedTime);
     FreeBistroPerfCase(&perf);
 }
 

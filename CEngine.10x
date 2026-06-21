@@ -721,6 +721,12 @@
 					<File>
 						<Path>Tests/RenderSetTest.c</Path>
 					</File>
+					<File>
+						<Path>Tests/RunSceneSerializerLoadLoopTest.bat</Path>
+					</File>
+					<File>
+						<Path>Tests/SceneSerializerLoadLoopTest.c</Path>
+					</File>
 				</Children>
 			</Folder>
 		</Children>

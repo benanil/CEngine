@@ -252,7 +252,7 @@ static UIImageData* AssetIconForEntry(const AssetEntry* e)
     const char* ext = GetFileExtension(e->path, (int)e->pathLen);
     if (AssetExtIs(ext, "gltf") || AssetExtIs(ext, "glb") || AssetExtIs(ext, "fbx") || AssetExtIs(ext, "abm"))
         return &assetIconImages[AssetIcon_Mesh];
-    if (AssetExtIs(ext, "png") || AssetExtIs(ext, "jpg") || AssetExtIs(ext, "jpeg") || AssetExtIs(ext, "dds") || AssetExtIs(ext, "basis") || AssetExtIs(ext, "bdc") || AssetExtIs(ext, "ktx2"))
+    if (AssetExtIs(ext, "png") || AssetExtIs(ext, "jpg") || AssetExtIs(ext, "jpeg") || AssetExtIs(ext, "dds") || AssetExtIs(ext, "basis") || AssetExtIs(ext, "bdc") || AssetExtIs(ext, "ctex"))
         return &assetIconImages[AssetIcon_Image];
     if (AssetExtIs(ext, "wav") || AssetExtIs(ext, "ogg") || AssetExtIs(ext, "mp3"))
         return &assetIconImages[AssetIcon_Audio];

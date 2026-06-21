@@ -55,22 +55,22 @@ purefn u32 PackColorToUint3Float(f32 r, f32 g, f32 b) {
     return (u32)(r * 255.0f) | ((u32)(g * 255.0f) << 8) | ((u32)(b * 255.0f) << 16);
 }
 
-purefn u32 PackColor3PtrToUint(f32* c) {
+purefn u32 PackColor3PtrToUint(const f32* c) {
     return (u32)(*c * 255.0f) | ((u32)(c[1] * 255.0f) << 8) | ((u32)(c[2] * 255.0f) << 16);
 }
 
-purefn u32 PackColor4PtrToUint(f32* c) {
+purefn u32 PackColor4PtrToUint(const f32* c) {
     return (u32)(*c * 255.0f) | ((u32)(c[1] * 255.0f) << 8) | ((u32)(c[2] * 255.0f) << 16) | ((u32)(c[3] * 255.0f) << 24);
 }
 
-forceinline void UnpackColor3Uint(u32 color, f32* colorf) {
+forceinline void UnpackColor3Uint(u32 color, const f32* colorf) {
     const f32 tof1 = 1.0f / 255.0f;
     colorf[0] = (f32)(color >> 0  & 0xFF) * tof1;
     colorf[1] = (f32)(color >> 8  & 0xFF) * tof1;
     colorf[2] = (f32)(color >> 16 & 0xFF) * tof1;
 }
 
-forceinline void UnpackColor4Uint(u32 color, f32* colorf) {
+forceinline void UnpackColor4Uint(u32 color, const f32* colorf) {
     const f32 tof1 = 1.0f / 255.0f;
     colorf[0] = (f32)(color >> 0  & 0xFF) * tof1;
     colorf[1] = (f32)(color >> 8  & 0xFF) * tof1;
