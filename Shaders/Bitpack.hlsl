@@ -85,6 +85,15 @@ float4 UnpackColor4Uint(uint color)
         float((color >> 24u) & 0xFFu)) * (1.0f / 255.0f);
 }
 
+f16_4 UnpackColor4UintF16(uint color)
+{
+    return f16_4(
+        f16((color >> 0u)  & 0xFFu),
+        f16((color >> 8u)  & 0xFFu),
+        f16((color >> 16u) & 0xFFu),
+        f16((color >> 24u) & 0xFFu)) * (1.0f / 255.0f);
+}
+
 f16_3 UnpackColor3Uint(uint color)
 {
     const f16 tof1 = f16(1.0 / 255.0);

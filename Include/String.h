@@ -125,4 +125,9 @@ static inline uint32_t CodepointToUtf8(char* utf8, uint32_t unicode)
     return 4u;
 }
 
+// defined in algorithm.h
+bool StringContains(const char* name, const char* search);
+
+// StringEqual also defined in algorithm.h
+
 #endif

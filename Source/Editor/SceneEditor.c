@@ -147,6 +147,7 @@ void EditorImportMeshToScene(const char* path)
 static bool importDetailOpen;
 static char importDetailPath[512];
 static f32  importDetailScale = 1.0f;
+static f32  importDetailEuler[3];
 static char importDetailScaleText[32];
 
 typedef struct ImportDetailInfo_
@@ -391,6 +392,9 @@ void EditorOpenImportDetail(const char* path)
     MemCopy(importDetailPath, normalized, StringLength(normalized) + 1);
     importDetailInfo = info;
     ImportDetailSetScaleText(info.animBoundsWarning ? info.recommendedScale : 1.0f);
+    importDetailEuler[0] = 0.0f;
+    importDetailEuler[1] = 0.0f;
+    importDetailEuler[2] = 0.0f;
     importDetailOpen = true;
 }
 
@@ -399,7 +403,7 @@ static void SceneImportDetailPopup(void)
     if (!importDetailOpen)
         return;
 
-    float2 windowSize = importDetailInfo.animBoundsWarning ? (float2){ 720.0f, 740.0f } : (float2){ 620.0f, 640.0f };
+    float2 windowSize = importDetailInfo.animBoundsWarning ? (float2){ 720.0f, 780.0f } : (float2){ 620.0f, 680.0f };
     float2 center = {
         Maxf32(10.0f, g_WindowState.prev_width * 0.5f - windowSize.x * 0.5f),
         Maxf32(10.0f, g_WindowState.prev_height * 0.5f - windowSize.y * 0.5f)
@@ -489,6 +493,8 @@ static void SceneImportDetailPopup(void)
         }) {}
     }
 
+    UIEditFloatN(CLAY_ID("ImportDetailEuler"), CLAY_STRING("Euler"), importDetailEuler, 3u, -360.0f, 360.0f, 3);
+
     CLAY(CLAY_ID("ImportDetailButtons"), {
         .layout = {
             .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(34.0f) },
@@ -503,7 +509,12 @@ static void SceneImportDetailPopup(void)
             if (!scene) scene = EditorNewScene();
             u32 bundleIdx = Scene_AddBundleAuto(scene, importDetailPath);
             if (bundleIdx != INVALID_BUNDLE)
-                EditorSpawnBundle(scene, bundleIdx, importDetailScale);
+            {
+                v128f rotation = VecNorm(QFromEuler(importDetailEuler[0] * MATH_DegToRad,
+                                                   importDetailEuler[1] * MATH_DegToRad,
+                                                   importDetailEuler[2] * MATH_DegToRad));
+                EditorSpawnBundleAt(scene, bundleIdx, VecZero(), rotation, VecSet1(importDetailScale));
+            }
             else
                 AX_ERROR("import to scene failed: %s", importDetailPath);
             importDetailOpen = false;

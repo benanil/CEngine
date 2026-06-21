@@ -18,6 +18,7 @@
 
 #if !AX_GAME_BUILD
 	#include "Extern/ufbx.h"
+	#include "Extern/meshoptimizer/src/meshoptimizer.h"
 #endif
 
 #include "Math/Matrix.h"
@@ -45,31 +46,23 @@ extern Graphics gGFX;
 
 #if !AX_GAME_BUILD
 
-static s32 void_ptr_compare(const void* a, const void* b)
-{
-    const void* const* ptr_a = (const void* const*)a;
-    const void* const* ptr_b = (const void* const*)b;
-    if (*ptr_a < *ptr_b) return -1;
-    return *ptr_a > *ptr_b ? 1 : 0;
-}
-
 static u16 GetFBXTexture(const ufbx_material* umaterial, const ufbx_scene* uscene, ufbx_material_feature feature, ufbx_material_pbr_map pbr, ufbx_material_fbx_map fbx)
 {
+    (void)uscene;
     if (umaterial->features.features[feature].enabled)
     {
         ufbx_texture* texture = NULL;
         // search for normal texture
         if (umaterial->features.pbr.enabled)
             texture = umaterial->pbr.maps[pbr].texture;
-        
+
         if (!texture)
             texture = umaterial->fbx.maps[fbx].texture;
-        
+
         if (texture)
         {
-            u16 textureIndex = aIndexOf(uscene->textures.data, texture, (s32)uscene->textures.count, sizeof(ufbx_texture*), void_ptr_compare);
-            ASSERT(textureIndex != -1); // we should find in textures
-            return textureIndex;
+            // typed_id is the texture's index within uscene->textures (which we mirror 1:1).
+            return (u16)texture->typed_id;
         }
     }
     return -1;
@@ -82,6 +75,73 @@ static char* GetNameFromFBX(ufbx_string ustr, FixedPow2Allocator* stringAllocato
     SmallMemCpy(name, ustr.data, ustr.length);
     name[ustr.length] = 0;
     return name;
+}
+
+// Resolve an FBX texture file to a real path on this machine so the basis encoder
+// (SaveSceneImages) has a source to compress. Prefers <fbxDir>/<relative_filename> because
+// the absolute path baked into an FBX usually points at the artist's drive; embedded image
+// blobs are written out next to the FBX. Returns an allocator-owned, possibly-empty path.
+static char* ResolveFBXImagePath(const char* fbxBaseDir, s32 fbxBaseLen,
+                                 ufbx_string filename, ufbx_string absolute_filename, ufbx_string relative_filename,
+                                 ufbx_blob content, s32 index, FixedPow2Allocator* allocator)
+{
+    enum { PATH_CAP = 1024 };
+    char* out = (char*)FixedPow2Allocator_AllocateUninitialized(allocator, PATH_CAP);
+    out[0] = '\0';
+
+    if (content.size > 0)
+    {
+        // Embedded image data: derive a file name and write the blob beside the FBX.
+        char nameBuf[256];
+        s32 nameLen = 0;
+        const ufbx_string* src = filename.length ? &filename
+                               : (relative_filename.length ? &relative_filename : NULL);
+        if (src)
+        {
+            const char* base = GetFileName(src->data);
+            nameLen = StringLengthSafe(base, sizeof(nameBuf) - 1);
+            SmallMemCpy(nameBuf, base, nameLen);
+        }
+        else
+        {
+            const char prefix[] = "fbx_embedded_";
+            SmallMemCpy(nameBuf, prefix, sizeof(prefix) - 1);
+            s32 n = IntToString(nameBuf + sizeof(prefix) - 1, index, 0);
+            SmallMemCpy(nameBuf + sizeof(prefix) - 1 + n, ".png", 4);
+            nameLen = (s32)(sizeof(prefix) - 1) + n + 4;
+        }
+        nameBuf[nameLen] = '\0';
+
+        if (fbxBaseLen + nameLen < PATH_CAP)
+        {
+            SmallMemCpy(out, fbxBaseDir, fbxBaseLen);
+            SmallMemCpy(out + fbxBaseLen, nameBuf, nameLen + 1);
+            WriteAllBytes(out, (const char*)content.data, (unsigned long)content.size);
+        }
+        else
+        {
+            AX_WARN("fbx embedded texture path too long, skipping image %d: %s", index, nameBuf);
+            out[0] = '\0';
+        }
+        return out;
+    }
+
+    // External file: FBX-relative path resolves on this machine, try it first.
+    if (relative_filename.length && fbxBaseLen + (s32)relative_filename.length < PATH_CAP)
+    {
+        SmallMemCpy(out, fbxBaseDir, fbxBaseLen);
+        SmallMemCpy(out + fbxBaseLen, relative_filename.data, relative_filename.length + 1);
+    }
+    // Fall back to the stored absolute path, then the raw filename.
+    if ((out[0] == '\0' || !FileExist(out)) && absolute_filename.length && absolute_filename.length < PATH_CAP)
+        SmallMemCpy(out, absolute_filename.data, absolute_filename.length + 1);
+    if (out[0] == '\0' && filename.length && filename.length < PATH_CAP)
+        SmallMemCpy(out, filename.data, filename.length + 1);
+
+    if (out[0] == '\0' || !FileExist(out))
+        AX_WARN("fbx texture source not found on disk, compression skipped for image %d: %s", index, out[0] ? out : "<empty>");
+
+    return out;
 }
 #endif
 
@@ -133,28 +193,22 @@ s32 LoadFBX(const char* path, SceneBundle* fbxScene, f32 scale)
     
     FixedPow2Allocator* allocator = AllocateTLSFGlobal(sizeof(FixedPow2Allocator));
     FixedPow2Allocator_Init(allocator, 2048);
-    
-    u64 totalIndices  = 0, totalVertices = 0;
-    for (s32 i = 0; i < fbxScene->numMeshes; i++)
-    {
-        ufbx_mesh* umesh = uscene->meshes.data[i];
-        if (umesh->num_triangles == 0 || umesh->num_vertices == 0)
-            AX_WARN("fbx mesh %d has no renderable triangles/vertices", i);
-        totalIndices  += umesh->num_triangles * 3;
-        totalVertices += umesh->num_vertices;
-    }
-    
-    fbxScene->allVertices = AllocAligned(sizeof(ASkinedVertex) * totalVertices, 4);
-    fbxScene->allIndices  = AllocAligned(sizeof(u32) * totalIndices, 4);
-    
+
+    // Static import only: skinning and animation are intentionally dropped so the
+    // baker selects the surface (non-skinned) vertex path. See plan: skip animation.
+    fbxScene->numSkins      = 0;
+    fbxScene->skins         = NULL;
+    fbxScene->numAnimations = 0;
+    fbxScene->animations    = NULL;
+
     if (fbxScene->numMeshes) fbxScene->meshes = (AMesh*)AllocZeroTLSFGlobal(fbxScene->numMeshes, sizeof(AMesh));
     fbxScene->scenes = (AScene*)AllocZeroTLSFGlobal(1, sizeof(AScene));
-    
-    u32* currentIndex = (u32*)fbxScene->allIndices;
-    ASkinedVertex* currentVertex = (ASkinedVertex*)fbxScene->allVertices;
 
-    u32 vertexCursor = 0u, indexCursor = 0u;
-    
+    s32 totalIndices = 0, totalVertices = 0;
+
+    // Build the same intermediate representation ParseGLTF produces: per-primitive raw
+    // float attribute arrays + an index buffer. BakeSceneMeshesAndAnimations() then
+    // compresses, generates LODs and uploads to the GPU geometry heap, identical to GLTF.
     for (s32 i = 0; i < fbxScene->numMeshes; i++)
     {
         AMesh* amesh = &fbxScene->meshes[i];
@@ -162,175 +216,172 @@ s32 LoadFBX(const char* path, SceneBundle* fbxScene, f32 scale)
         amesh->name = GetNameFromFBX(umesh->name, allocator);
         amesh->primitives = dynarray_create_prealloc(APrimitive, 1);
         amesh->numPrimitives = 1;
-        
+
         APrimitive* primitive = &amesh->primitives[0];
-        primitive->numIndices  = (s32)umesh->num_triangles * 3;
-        primitive->numVertices = (s32)umesh->num_vertices;
-        primitive->indexType   = 5; //GraphicType_UnsignedInt;
-        primitive->material    = 0; // todo
-        primitive->indices     = currentIndex; 
-        primitive->vertices    = currentVertex;
-        
-        primitive->attributes |= AAttribType_POSITION;
-        primitive->attributes |= ((s32)umesh->vertex_uv.exists << 1) & AAttribType_TEXCOORD_0;
-        primitive->attributes |= ((s32)umesh->vertex_normal.exists << 2) & AAttribType_NORMAL;
-        if (!umesh->vertex_uv.exists)
+        MemsetZero(primitive, sizeof(APrimitive));
+        primitive->material    = 0;
+        primitive->mode        = 4;
+        primitive->indiceIndex = UINT16_MAX;
+        primitive->indexType   = AComponentType_UNSIGNED_INT;
+
+        if (umesh->num_triangles == 0 || umesh->num_vertices == 0)
+        {
+            AX_WARN("fbx mesh %d has no renderable triangles/vertices", i);
+            continue;
+        }
+
+        bool hasUV     = umesh->vertex_uv.exists;
+        bool hasNormal = umesh->vertex_normal.exists;
+        if (!hasUV)
             AX_WARN("fbx mesh %d (%s) has no UVs", i, amesh->name ? amesh->name : "<unnamed>");
-        
-        for (s32 j = 0; j < primitive->numVertices; j++)
-        {
-            // SmallMemCpy(&currentVertex[j].position.x, &umesh->vertex_position.values.data[j], sizeof(float) * 3);
-            if (umesh->vertex_uv.exists)
-            {
-                currentVertex[j].texCoord = Float2ToHalf2((f32*)(umesh->vertex_uv.values.data + j));
-            }
-            if (umesh->vertex_normal.exists) 
-            {
-                // currentVertex[j].qtangentXYf16 = PackVec3XYZ10BitToInt(Vec3Load((f1*)(umesh->vertex_normal.values.data + j)));
-            }
-            if (umesh->vertex_tangent.exists)
-            {
-                v128f tangent = Vec3Load((f32*)(umesh->vertex_tangent.values.data + j));
-                VecSetW(tangent, 1.0f);
-                // currentVertex[j].qtangentZWF16 = PackVec3XYZ10BitToInt(tangent);
-            }
-        }
 
-        u32* currIndices = (u32*)primitive->indices;
-        u32 indices[64] = {0};
-        
-        for (s32 j = 0; j < umesh->faces.count; j++)
+        // Flatten every triangulated face corner into temporary attribute streams.
+        // cornerCapacity is fixed for the arena push/pop pairing; numCorners is the
+        // actually-emitted count fed to meshopt (they match unless a face is degenerate).
+        s32 cornerCapacity = (s32)umesh->num_triangles * 3;
+        float3* cornerPos = (float3*)ArenaPushGlobal((u64)cornerCapacity * sizeof(float3));
+        float2* cornerUV  = hasUV     ? (float2*)ArenaPushGlobal((u64)cornerCapacity * sizeof(float2)) : NULL;
+        float3* cornerNrm = hasNormal ? (float3*)ArenaPushGlobal((u64)cornerCapacity * sizeof(float3)) : NULL;
+
+        u32 triIndices[64];
+        s32 corner = 0;
+        for (s32 f = 0; f < (s32)umesh->faces.count; f++)
         {
-            ufbx_face face = umesh->faces.data[j];
-            u32 num_triangles = ufbx_triangulate_face(indices, ARRAY_SIZE(indices), umesh, face);
-            
-            for (u32 tri_ix = 0; tri_ix < num_triangles; tri_ix++)
+            ufbx_face face = umesh->faces.data[f];
+            u32 numTris = ufbx_triangulate_face(triIndices, ARRAY_SIZE(triIndices), umesh, face);
+            for (u32 c = 0; c < numTris * 3u && corner < cornerCapacity; c++, corner++)
             {
-                *currIndices++ = umesh->vertex_indices.data[indices[tri_ix * 3 + 0]] + vertexCursor;
-                *currIndices++ = umesh->vertex_indices.data[indices[tri_ix * 3 + 1]] + vertexCursor;
-                *currIndices++ = umesh->vertex_indices.data[indices[tri_ix * 3 + 2]] + vertexCursor;
-            }
-        }
-            
-        u8 hasSkin = umesh->skin_deformers.count > 0;
-        if (hasSkin)
-        {
-            primitive->attributes |= AAttribType_JOINTS | AAttribType_WEIGHTS;
-            ufbx_skin_deformer* deformer = umesh->skin_deformers.data[0];
-                
-            for (s32 j = 0; j < deformer->vertices.count; j++)
-            {
-                u32 weightBegin = deformer->vertices.data[j].weight_begin;
-                u32 weightResult = 0, shift = 0;
-                u32 indexResult  = 0;
-            
-                for (u32 w = 0; w < deformer->vertices.data[j].num_weights && w < 4; w++, shift += 8)
+                u32 ci = triIndices[c];
+                ufbx_vec3 p = ufbx_get_vertex_vec3(&umesh->vertex_position, ci);
+                cornerPos[corner] = (float3){ p.x, p.y, p.z };
+                if (hasUV)
                 {
-                    ufbx_skin_weight skinWeight = deformer->weights.data[weightBegin + w];
-                    f32  weight = skinWeight.weight;
-                    u32 index  = skinWeight.cluster_index;
-                    ASSERT(index < 255 && weight <= 1.0f);
-                    weightResult |= (u32)(weight * 255.0f) << shift;
-                    indexResult  |= index << shift;
+                    // FBX UVs are bottom-left origin (V up); the rest of the pipeline assumes
+                    // glTF top-left origin (V down), so flip V to match baked glTF meshes.
+                    ufbx_vec2 uv = ufbx_get_vertex_vec2(&umesh->vertex_uv, ci);
+                    cornerUV[corner] = (float2){ uv.x, 1.0f - uv.y };
                 }
-            
-                currentVertex[j].weights = weightResult;
-                currentVertex[j].joints  = indexResult;
+                if (hasNormal)
+                {
+                    ufbx_vec3 n = ufbx_get_vertex_vec3(&umesh->vertex_normal, ci);
+                    cornerNrm[corner] = (float3){ n.x, n.y, n.z };
+                }
             }
         }
-        
-        fbxScene->totalIndices  += primitive->numIndices;
-        fbxScene->totalVertices += primitive->numVertices;
-        
-        currentIndex  += primitive->numIndices;
-        currentVertex += primitive->numVertices;
-        
-        primitive->indexOffset = indexCursor;
-        vertexCursor += primitive->numVertices;
-        indexCursor  += primitive->numIndices;
+        s32 numCorners = corner;
+
+        // Collapse binary-equal corners into unique vertices + a real index buffer.
+        struct meshopt_Stream streams[3];
+        size_t streamCount = 0;
+        streams[streamCount++] = (struct meshopt_Stream){ cornerPos, sizeof(float3), sizeof(float3) };
+        if (hasUV)     streams[streamCount++] = (struct meshopt_Stream){ cornerUV,  sizeof(float2), sizeof(float2) };
+        if (hasNormal) streams[streamCount++] = (struct meshopt_Stream){ cornerNrm, sizeof(float3), sizeof(float3) };
+
+        u32* remap = (u32*)ArenaPushGlobal((u64)numCorners * sizeof(u32));
+        size_t uniqueCount = meshopt_generateVertexRemapMulti(remap, NULL, (size_t)numCorners, (size_t)numCorners, streams, streamCount);
+
+        // Final attribute arrays live in the bundle allocator so they survive until bake.
+        // One extra position slot pads wide v128f loads in BoundsForPrimitive().
+        float3* finalPos = (float3*)FixedPow2Allocator_Allocate(allocator, (uniqueCount + 1) * sizeof(float3));
+        meshopt_remapVertexBuffer(finalPos, cornerPos, (size_t)numCorners, sizeof(float3), remap);
+        primitive->vertexAttribs[AAttribIdx_POSITION] = finalPos;
+        primitive->attributes = AAttribType_POSITION;
+
+        if (hasUV)
+        {
+            float2* finalUV = (float2*)FixedPow2Allocator_Allocate(allocator, uniqueCount * sizeof(float2));
+            meshopt_remapVertexBuffer(finalUV, cornerUV, (size_t)numCorners, sizeof(float2), remap);
+            primitive->vertexAttribs[AAttribIdx_TEXCOORD_0] = finalUV;
+            primitive->attributes |= AAttribType_TEXCOORD_0;
+        }
+        if (hasNormal)
+        {
+            float3* finalNrm = (float3*)FixedPow2Allocator_Allocate(allocator, uniqueCount * sizeof(float3));
+            meshopt_remapVertexBuffer(finalNrm, cornerNrm, (size_t)numCorners, sizeof(float3), remap);
+            primitive->vertexAttribs[AAttribIdx_NORMAL] = finalNrm;
+            primitive->attributes |= AAttribType_NORMAL;
+        }
+
+        u32* finalIdx = (u32*)FixedPow2Allocator_Allocate(allocator, (u64)numCorners * sizeof(u32));
+        meshopt_remapIndexBuffer(finalIdx, NULL, (size_t)numCorners, remap);
+
+        primitive->numVertices = (s32)uniqueCount;
+        primitive->numIndices  = numCorners;
+        primitive->indices     = finalIdx;
+
+        ArenaPopGlobal((u64)numCorners * sizeof(u32));
+        if (hasNormal) ArenaPopGlobal((u64)cornerCapacity * sizeof(float3));
+        if (hasUV)     ArenaPopGlobal((u64)cornerCapacity * sizeof(float2));
+        ArenaPopGlobal((u64)cornerCapacity * sizeof(float3));
+
+        totalIndices  += primitive->numIndices;
+        totalVertices += primitive->numVertices;
     }
 
-    u32 numSkins = (u32)uscene->skin_deformers.count;
-    fbxScene->numSkins = numSkins;
-    
-    if (numSkins > 0) {
-        fbxScene->skins = AllocateTLSFGlobal(numSkins * sizeof(ASkin));
-    }
+    fbxScene->totalIndices  = totalIndices;
+    fbxScene->totalVertices = totalVertices;
 
-    for (u32 d = 0; d < numSkins; d++)
-    {
-        ufbx_skin_deformer* deformer = uscene->skin_deformers.data[d];
-        ASkin* skin = &fbxScene->skins[d];
-        u32 numJoints = (u32)deformer->clusters.count;
-        skin->numJoints = numJoints;
-        skin->skeleton = 0;
-        skin->inverseBindMatrices = AllocateTLSFGlobal(numJoints * sizeof(mat4x4));
-        skin->joints = FixedPow2Allocator_AllocateUninitialized(allocator, (sizeof(s32) + 1) * numJoints);
-    
-        mat4x4* matrices = (mat4x4*)skin->inverseBindMatrices;
-        for (u32 j = 0u; j < numJoints; j++)
-        {
-            ufbx_matrix uMatrix = deformer->clusters.data[j]->geometry_to_bone;
-            matrices[j].r[0] = Vec3Load(&uMatrix.cols[0].x); 
-            matrices[j].r[1] = Vec3Load(&uMatrix.cols[1].x); 
-            matrices[j].r[2] = Vec3Load(&uMatrix.cols[2].x); 
-            matrices[j].r[3] = Vec3Load(&uMatrix.cols[3].x); 
-            VecSetW(matrices[j].r[3], 1.0f); 
-        }
-        
-        for (u32 j = 0u; j < numJoints; j++)
-        {
-            skin->joints[j] = aIndexOf(uscene->nodes.data, deformer->clusters.data[j]->bone_node, (s32)uscene->nodes.count, sizeof(void*), void_ptr_compare);
-        }
-    }
-    
-    u16 numImages = (u16)uscene->texture_files.count;
-    AImage* images = dynarray_create_prealloc(AImage, (s32)uscene->texture_files.count);
-    
-    for (s32 i = 0; i < numImages; i++)
-    {
-        images[i].path = GetNameFromFBX(uscene->texture_files.data[i].filename, allocator);
-    }
-    
+    if (uscene->skin_deformers.count > 0)
+        AX_WARN("fbx skin deformers ignored (static import only): %s", path);
+
+    // Build the image list from the textures themselves: ufbx does not always populate
+    // scene->texture_files, but every FILE texture carries its own path/content. Resolve and
+    // dedup by path so repeated references share one basis-compressed output.
+    char fbxBaseDir[1024];
+    GetBaseDir(path, fbxBaseDir);
+    s32 fbxBaseLen = StringLengthSafe(fbxBaseDir, sizeof(fbxBaseDir));
+
     u16 numTextures = (u16)uscene->textures.count;
     fbxScene->numTextures = numTextures;
     fbxScene->numSamplers = numTextures;
-    
+
+    AImage* images = dynarray_create_prealloc(AImage, numTextures ? numTextures : 1);
+
     if (numTextures)
     {
         fbxScene->textures = (ATexture*)AllocZeroTLSFGlobal(numTextures, sizeof(ATexture));
         fbxScene->samplers = (ASampler*)AllocZeroTLSFGlobal(numTextures, sizeof(ASampler));
     }
-    
+
     for (u16 i = 0; i < numTextures; i++)
     {
         ufbx_texture* utexture = uscene->textures.data[i];
         ATexture* atexture = &fbxScene->textures[i];
-        
-        atexture->source  = utexture->has_file ? utexture->file_index : 0; // index to images array
+
         atexture->name    = GetNameFromFBX(utexture->name, allocator);
-        
-        // is this embedded
-        if (utexture->content.size)
-        {
-            char* buffer = FixedPow2Allocator_AllocateUninitialized(allocator, 512);
-            MemsetZero(buffer, 512);
-            s32 pathLen = StringLengthSafe(path, 512);
-            SmallMemCpy(buffer, path, pathLen);
-            
-            char* fbxPath = PathGoBackwards(buffer, pathLen, false);
-            // concat: FbxPath/TextureName
-            SmallMemCpy(fbxPath, utexture->name.data, utexture->name.length); 
-            SmallMemCpy(fbxPath + utexture->name.length, ".png", 4); // FbxPath/TextureName.png
-            AFile file = AFileOpen(buffer, AOpenFlag_WriteBinary);
-            AFileWrite(utexture->content.data, utexture->content.size, file, 1);
-            atexture->source = dynarray_length(images);
-            dynarray_push(images, (AImage) { buffer });
-        }
-        
         atexture->sampler = i;
+        atexture->source  = 0;
         fbxScene->samplers[i].wrapS = utexture->wrap_u;
         fbxScene->samplers[i].wrapT = utexture->wrap_v;
+
+        // Only FILE textures map to an image source.
+        if (utexture->type != UFBX_TEXTURE_FILE || (utexture->filename.length == 0 && utexture->content.size == 0))
+            continue;
+
+        char* resolved = ResolveFBXImagePath(fbxBaseDir, fbxBaseLen, utexture->filename,
+                                             utexture->absolute_filename, utexture->relative_filename,
+                                             utexture->content, i, allocator);
+        if (resolved[0] == '\0')
+            continue;
+
+        // Reuse an existing image entry when the same file is referenced again.
+        s32 found = -1;
+        s32 resolvedLen = StringLength(resolved);
+        for (s32 k = 0; k < (s32)dynarray_length(images); k++)
+            if (images[k].path && StringLength(images[k].path) == resolvedLen &&
+                StringEqual(images[k].path, resolved, resolvedLen))
+            {
+                found = k;
+                break;
+            }
+
+        if (found >= 0)
+            atexture->source = found;
+        else
+        {
+            atexture->source = (s32)dynarray_length(images);
+            dynarray_push(images, (AImage){ resolved });
+        }
     }
     
     u16 numMaterials = (u16)uscene->materials.count;
@@ -355,9 +406,7 @@ s32 LoadFBX(const char* path, SceneBundle* fbxScene, f32 scale)
         
         if (normalTexture)
         {
-            u16 normalIndex = aIndexOf(uscene->textures.data, normalTexture, (s32)uscene->textures.count, 8, void_ptr_compare);
-            ASSERT(normalIndex != -1); // we should find in textures
-            amaterial->textures[0].index = normalIndex;
+            amaterial->textures[0].index = (u16)normalTexture->typed_id;
         }
         
         amaterial->textures[1].index = GetFBXTexture(umaterial, uscene, UFBX_MATERIAL_FEATURE_AMBIENT_OCCLUSION,
@@ -387,7 +436,7 @@ s32 LoadFBX(const char* path, SceneBundle* fbxScene, f32 scale)
         
         amaterial->metallicFactor   = MakeFloat16(umaterial->pbr.metalness.value_real);
         amaterial->roughnessFactor  = MakeFloat16(umaterial->pbr.roughness.value_real);
-        amaterial->baseColorFactor  = MakeFloat16(umaterial->pbr.base_factor.value_real);
+        amaterial->baseColorFactor  = MakeRGBGrayScale((u8)(Saturatef32(umaterial->pbr.base_factor.value_real) * 255.0f));
         
         amaterial->specularFactor   = umaterial->features.pbr.enabled ? MakeFloat16(umaterial->pbr.specular_factor.value_real)
                                                                      : MakeFloat16(umaterial->fbx.specular_factor.value_real);
@@ -416,7 +465,7 @@ s32 LoadFBX(const char* path, SceneBundle* fbxScene, f32 scale)
     if (numNodes)
         fbxScene->nodes = (ANode*)AllocZeroTLSFGlobal(numNodes, sizeof(ANode));
 
-    fbxScene->rootNode = aIndexOf(uscene->nodes.data, uscene->root_node, (s32)uscene->nodes.count, sizeof(void*), void_ptr_compare);
+    fbxScene->rootNode = uscene->root_node ? (s32)uscene->root_node->typed_id : 0;
     if (fbxScene->rootNode < 0) fbxScene->rootNode = 0;
     fbxScene->scenes[0].numNodes = 1;
     fbxScene->scenes[0].nodes = FixedPow2Allocator_AllocateUninitialized(allocator, sizeof(s32));
@@ -436,8 +485,7 @@ s32 LoadFBX(const char* path, SceneBundle* fbxScene, f32 scale)
         
         for (s32 j = 0; j < anode->numChildren; j++)
         {
-            anode->children[j] = aIndexOf(uscene->nodes.data, unode->children.data[j], (s32)uscene->nodes.count, 8, void_ptr_compare);
-            ASSERT(anode->children[j] != -1);
+            anode->children[j] = (s32)unode->children.data[j]->typed_id;
         }
         
         SmallMemCpy(anode->translation, &unode->local_transform.translation.x, sizeof(float3));
@@ -446,12 +494,12 @@ s32 LoadFBX(const char* path, SceneBundle* fbxScene, f32 scale)
         
         if (unode->mesh)
         {
-            anode->index = aIndexOf(uscene->meshes.data, unode->mesh, (s32)uscene->meshes.count, 8, void_ptr_compare);
+            anode->index = (s32)unode->mesh->typed_id;
             if (anode->index >= 0 && unode->materials.count > 0)
-                fbxScene->meshes[anode->index].primitives[0].material = aIndexOf(uscene->materials.data, unode->materials.data[0], (s32)uscene->materials.count, 8, void_ptr_compare);
+                fbxScene->meshes[anode->index].primitives[0].material = (u16)unode->materials.data[0]->typed_id;
         }
         else if (unode->camera)
-            anode->index = aIndexOf(uscene->cameras.data, unode->camera, (s32)uscene->cameras.count, 8, void_ptr_compare);
+            anode->index = (s32)unode->camera->typed_id;
     }
     
     fbxScene->numImages = dynarray_length(images);
@@ -464,6 +512,22 @@ s32 LoadFBX(const char* path, SceneBundle* fbxScene, f32 scale)
     ufbx_free_scene(uscene);
 #endif // android
     return 1;
+}
+
+// Parse a source mesh file into the intermediate SceneBundle, dispatching by extension.
+// FBX import is editor-only (ufbx is excluded from game builds); shipped assets are pre-baked .abm.
+s32 ImportSceneBundle(const char* path, SceneBundle* scene, f32 scale)
+{
+    if (FileHasExtension(path, StringLength(path), ".fbx"))
+    {
+#if !AX_GAME_BUILD
+        return LoadFBX(path, scene, scale);
+#else
+        AX_WARN("fbx import unavailable in game build: %s", path);
+        return 0;
+#endif
+    }
+    return ParseGLTF(path, scene, scale);
 }
 
 void SaveSceneImages(SceneBundle* scene, const char* savePath, bool deleteRemaining)
@@ -677,7 +741,7 @@ s32 LoadGLTFCached(const char* path, SceneBundle* scene, Texture* textures, void
         AX_LOG("asset cache hit: %s", buffer);
         result = LoadSceneBundleBinary(buffer, scene, outVertexHeapPtr, outIndexHeapPtr);
     }
-    else if (ParseGLTF(path, scene, 1.0f)) {
+    else if (ImportSceneBundle(path, scene, 1.0f)) {
         AX_LOG("asset cache rebuild: %s -> %s", path, buffer);
         if (!BakeSceneMeshesAndAnimations(scene, outVertexHeapPtr, outIndexHeapPtr))
         {
@@ -760,9 +824,16 @@ static void WriteAMaterialTexture(GLTFTexture texture, AFile file)
 
 static void WriteGLTFString(const char* str, AFile file)
 {
+    if (str == NULL || str == (char*)0xCDCDCDCDCDCDCDCDull)
+    {
+        s32 nameLen = sizeof("no_name_mat");
+        AFileWrite(&nameLen, sizeof(s32), file, 1);
+        AFileWrite("no_name_mat", (uint64_t)(nameLen + 1), file, 1);
+        return;
+    }
     s32 nameLen = str ? StringLength(str) : 0;
     AFileWrite(&nameLen, sizeof(s32), file, 1);
-    if (str) AFileWrite(str, (uint64_t)(nameLen + 1), file, 1);
+    AFileWrite(str, (uint64_t)(nameLen + 1), file, 1);
 }
 
 s32 SaveGLTFBinary(const SceneBundle* gltf, const char* path)

@@ -51,6 +51,10 @@ purefn u32 MakeRGBAGrayScale(u8 gray) {
     return (u32)(gray) * 0x01010101u;
 }
 
+purefn u32 MakeRGBGrayScale(u8 gray) {
+    return 0xFF000000u | ((u32)(gray) * 0x01010101u);
+}
+
 purefn u32 PackColorToUint3Float(f32 r, f32 g, f32 b) {
     return (u32)(r * 255.0f) | ((u32)(g * 255.0f) << 8) | ((u32)(b * 255.0f) << 16);
 }

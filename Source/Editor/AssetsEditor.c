@@ -74,26 +74,6 @@ static u8* AssetFolderOpenSlot(u32 hash)
     return &overflow;
 }
 
-static bool AssetPathsEqual(const char* a, const char* b)
-{
-    while (*a && *a == *b) { a++; b++; }
-    return *a == *b;
-}
-
-static char AssetLower(char c) { return (c >= 'A' && c <= 'Z') ? c + 32 : c; }
-
-static bool AssetNameContains(const char* name, const char* search)
-{
-    for (; *name; name++)
-    {
-        const char* a = name;
-        const char* b = search;
-        while (*a && *b && AssetLower(*a) == AssetLower(*b)) { a++; b++; }
-        if (*b == '\0') return true;
-    }
-    return false;
-}
-
 static void AssetCollectFn(const char* path, void* data)
 {
     (void)data;
@@ -145,9 +125,9 @@ static void AssetSetCurrentFolder(const char* path)
 // out: entry index, -1 for the assets root, -2 when the path no longer exists
 static s32 AssetFindEntry(const char* path)
 {
-    if (AssetPathsEqual(path, ASSET_ROOT)) return -1;
+    if (StringEqual(path, ASSET_ROOT, sizeof(ASSET_ROOT))) return -1;
     for (u32 i = 0u; i < assetNumEntries; i++)
-        if (AssetPathsEqual(assetEntries[i].path, path)) return (s32)i;
+        if (StringEqual(assetEntries[i].path, path, StringLength(path) + 1)) return (s32)i;
     return -2;
 }
 
@@ -175,21 +155,21 @@ static void AssetPaste(void)
     char destination[ASSET_MAX_PATH * 2];
     MemsetZero(destination, sizeof(destination));
     if (!CombinePaths(destination, sizeof(destination), assetCurrentFolder, GetFileName(assetCopiedPath))) return;
-    if (AssetPathsEqual(destination, assetCopiedPath)) return;
+    if (StringEqual(destination, assetCopiedPath, StringLength(assetCopiedPath) + 1)) return;
     ACopyFile(assetCopiedPath, destination, NULL);
     assetDbDirty = true;
 }
 
 static bool AssetExtIs(const char* ext, const char* match)
 {
-    while (*ext && *match && AssetLower(*ext) == *match) { ext++; match++; }
+    while (*ext && *match && ToLower(*ext) == *match) { ext++; match++; }
     return *ext == '\0' && *match == '\0';
 }
 
 static bool AssetIsMeshPath(const char* path)
 {
     const char* ext = GetFileExtension(path, StringLength(path));
-    return AssetExtIs(ext, "gltf") || AssetExtIs(ext, "glb") || AssetExtIs(ext, "abm");
+    return AssetExtIs(ext, "fbx") ||  AssetExtIs(ext, "gltf") || AssetExtIs(ext, "glb") || AssetExtIs(ext, "abm");
 }
 
 static bool AssetIsScenePath(const char* path)
@@ -252,7 +232,7 @@ static UIImageData* AssetIconForEntry(const AssetEntry* e)
     const char* ext = GetFileExtension(e->path, (int)e->pathLen);
     if (AssetExtIs(ext, "gltf") || AssetExtIs(ext, "glb") || AssetExtIs(ext, "fbx") || AssetExtIs(ext, "abm"))
         return &assetIconImages[AssetIcon_Mesh];
-    if (AssetExtIs(ext, "png") || AssetExtIs(ext, "jpg") || AssetExtIs(ext, "jpeg") || AssetExtIs(ext, "dds") || AssetExtIs(ext, "basis") || AssetExtIs(ext, "bdc") || AssetExtIs(ext, "ctex"))
+    if (AssetExtIs(ext, "png") || AssetExtIs(ext, "jpg") || AssetExtIs(ext, "jpeg") || AssetExtIs(ext, "dds") || AssetExtIs(ext, "basis") || AssetExtIs(ext, "ctex"))
         return &assetIconImages[AssetIcon_Image];
     if (AssetExtIs(ext, "wav") || AssetExtIs(ext, "ogg") || AssetExtIs(ext, "mp3"))
         return &assetIconImages[AssetIcon_Audio];
@@ -292,7 +272,7 @@ static void AssetFolderTree(s32 parentIdx, u32 depth)
 
         u32 flags = 0u;
         if (!AssetDirHasSubdir((s32)i)) flags |= UITreeNodeFlags_Leaf;
-        if (AssetPathsEqual(e->path, assetCurrentFolder)) flags |= UITreeNodeFlags_Selected;
+        if (StringEqual(e->path, assetCurrentFolder, StringLength(assetCurrentFolder) + 1)) flags |= UITreeNodeFlags_Selected;
 
         bool selectClicked = false;
         Clay_ElementId id = Clay_GetElementIdWithIndex(CLAY_STRING("AssetTreeNode"), hash);
@@ -329,7 +309,7 @@ static void AssetBuildGridList(void)
             if ((e->isDir != 0u) != (pass == 0u)) continue;
             if (searching)
             {
-                if (!AssetNameContains(e->path + e->nameOffset, assetSearchText)) continue;
+                if (!StringContains(e->path + e->nameOffset, assetSearchText)) continue;
             }
             else if (e->parent != current) continue;
             assetGridItems[assetNumGridItems++] = (u16)i;
@@ -366,7 +346,7 @@ static void AssetDrawGridItem(u32 entryIdx, u32 itemIdx)
     AssetEntry* e = &assetEntries[entryIdx];
     const char* name = e->path + e->nameOffset;
     Clay_ElementId id = Clay_GetElementIdWithIndex(CLAY_STRING("AssetItem"), itemIdx);
-    bool isSelected = AssetPathsEqual(e->path, assetSelectedPath);
+    bool isSelected = StringEqual(e->path, assetSelectedPath, StringLength(assetSelectedPath) + 1);
 
     CLAY(id, {
         .layout = {
@@ -722,7 +702,7 @@ void DrawAssetsWindow(bool* open)
             }) {
                 CLAY(CLAY_ID("AssetsTreeScroll"), UIScrollPanelDeclaration(0.0f, 2u)) {
                     bool rootClicked = false;
-                    u32 rootFlags = AssetPathsEqual(assetCurrentFolder, ASSET_ROOT) ? UITreeNodeFlags_Selected : 0u;
+                    u32 rootFlags = StringEqual(assetCurrentFolder, ASSET_ROOT, sizeof(ASSET_ROOT)) ? UITreeNodeFlags_Selected : 0u;
                     assetTreeRootOpen ^= UITreeNode(CLAY_ID("AssetTreeRoot"), CLAY_STRING(ASSET_ROOT), 0u, rootFlags, assetTreeRootOpen, &rootClicked);
                     if (rootClicked) AssetSetCurrentFolder(ASSET_ROOT);
                     if (assetTreeRootOpen) AssetFolderTree(-1, 1u);

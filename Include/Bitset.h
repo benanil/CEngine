@@ -188,6 +188,7 @@ static inline s32 BitsetFindFirstEmpty(const u64* bits, s32 bitCount)
         wordIdx += 4;
 
     AX_ASSUME(wordCount - wordIdx >= 0 && wordCount - wordIdx < 8);
+    AX_NO_UNROLL
     for (; wordIdx < wordCount; ++wordIdx) {
         const s32 bitIdx = FindFirstSet(~bits[wordIdx]);
         if (bitIdx >= 0) return (wordIdx << 6) + bitIdx;

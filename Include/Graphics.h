@@ -11,7 +11,7 @@
 #define CHECK_CREATE(var, thing) { if (!(var)) { AX_ERROR("Failed to create %s: %s", thing, SDL_GetError()); /*Quit(2);*/ } }
 
 #define TEXTURE_PAGE_SIZE       4096
-#define TEXTURE_PAGE_LAYERS     8
+#define TEXTURE_PAGE_LAYERS     16
 #define MAX_SCENE_TEXTURES      1024
 #define MAX_TEXTURE_DESCRIPTORS 2048
 #define MAX_GPU_MATERIALS       2048

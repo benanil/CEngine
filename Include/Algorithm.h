@@ -17,8 +17,8 @@ extern "C" {
 purefn bool IsNumber(char a) { return a <= '9' && a >= '0'; };
 purefn bool IsLower(char a)  { return a >= 'a' && a <= 'z'; };
 purefn bool IsUpper(char a)  { return a >= 'A' && a <= 'Z'; };
-purefn bool ToLower(char a)  { return a < 'a' ? a + ('A' - 'a') : a; }
-purefn bool ToUpper(char a)  { return a > 'Z' ? a - 'a' + 'A' : a; }
+purefn char ToLower(char a)  { return IsUpper(a) ? a + ('a' - 'A') : a; }
+purefn char ToUpper(char a)  { return IsLower(a) ? a - ('a' - 'A') : a; }
 // is alphabetical character?
 purefn bool IsChar(char a) { return IsUpper(a) || IsLower(a); };
 purefn bool IsWhitespace(char c) { return c <= ' '; }
@@ -89,7 +89,10 @@ static inline bool StrCmp16(const char* a, const char* b, uint64_t n)
 }
 #endif
 
-bool StringEqual(const char* a, const char* b, int n);
+bool StringContains(const char* name, const char* search);
+
+bool StringEqual(const char* RESTRICT a, const char* RESTRICT b, int n);
+
 
 #if defined(__cplusplus)
 }

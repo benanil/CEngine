@@ -22,6 +22,9 @@ extern "C" {
 
 s32 LoadFBX(const char* path, SceneBundle* fbxScene, f32 scale);
 
+// Parse a source mesh file (.gltf/.glb/.fbx) into an intermediate SceneBundle by extension.
+s32 ImportSceneBundle(const char* path, SceneBundle* scene, f32 scale);
+
 /* Binary asset cache */
 s32 SaveGLTFBinary(const SceneBundle* gltf, const char* path);
 

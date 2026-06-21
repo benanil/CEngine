@@ -116,7 +116,7 @@ GBufferOutput frag(VSOutput input)
     TextureDescriptor mrDesc     = sTextureDescriptors[material.metallicRoughnessDescriptor];
 
     f16_4 albedoSample = SampleTexturePageRGBA(AlbedoPages, Sampler, albedo, float2(input.texCoords));
-    float4 baseFactor  = UnpackColor4Uint(material.baseColorFactor);
+    f16_4 baseFactor = UnpackColor4UintF16(material.baseColorFactor);// f16_4(1.0, 1.0, 1.0, 1.0); // UnpackColor4Uint(material.baseColorFactor);
     AlphaClipMaterial(material, float(albedoSample.a));
     f16_3 baseColor = SRGBToLinear(albedoSample.rgb) * f16_3(baseFactor.rgb);
 #if LOD_DEBUG_COLORS
@@ -130,7 +130,7 @@ GBufferOutput frag(VSOutput input)
                          tangentNormal.y * normalize(float3(input.bitangent)) +
                          tangentNormal.z * normalize(float3(input.normal)));
 
-    float metallic  = float(mr.x);
+    float metallic = float(mr.x);
     float roughness = float(mr.y);
 
     uint cascadeIndex = input.viewDepth > input.cascadeSplits.x ? 1u : 0u;

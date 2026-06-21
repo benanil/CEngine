@@ -83,7 +83,7 @@ static s32 LoadBundleMeshCached(const char* path, SceneBundle* bundle, void** ou
         AX_LOG("asset cache hit: %s", buffer);
         return LoadSceneBundleBinary(buffer, bundle, outVertexHeapPtr, outIndexHeapPtr);
     }
-    if (!ParseGLTF(path, bundle, 1.0f))
+    if (!ImportSceneBundle(path, bundle, 1.0f))
     {
         AX_WARN("asset import failed: %s", path);
         return 0;

@@ -5,11 +5,11 @@
 #include <stdint.h>
 
 #ifndef TLSF_MEMORY_SIZE
-    #define TLSF_MEMORY_SIZE (256ull * 1024ull * 1024ull)
+    #define TLSF_MEMORY_SIZE (2048ull * 1024ull * 1024ull)
 #endif
 
 #ifndef ARENA_MEMORY_SIZE
-    #define ARENA_MEMORY_SIZE (128 * 1024 * 1024) /* 128 mb */ 
+    #define ARENA_MEMORY_SIZE (256 * 1024 * 1024) /* 128 mb */ 
 #endif
 
 #ifndef DEFAULT_ALIGN
