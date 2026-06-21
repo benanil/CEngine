@@ -167,7 +167,7 @@ static s32 Scene_EnsureBundleCapacity(Scene* scene, u32 needed)
     }
 
     u32 newCapacity = scene->bundleCapacity ? scene->bundleCapacity * 2u : 16u;
-    while (newCapacity < needed) newCapacity *= 2u;
+    while (newCapacity < needed) newCapacity += newCapacity >> 1;
     if (newCapacity > MAX_SCENE_BUNDLES) newCapacity = MAX_SCENE_BUNDLES;
 
     SceneBundleRef* refs = (SceneBundleRef*)AllocateTLSFGlobal(newCapacity * sizeof(SceneBundleRef));

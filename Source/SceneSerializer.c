@@ -9,6 +9,7 @@
 #include "Include/Memory.h"
 #include "Include/Platform.h"
 #include "Include/Rendering.h"
+#include "Include/Bitset.h"
 #include "Math/Bitpack.h"
 
 #define SCENE_FILE_VERSION 2
@@ -234,7 +235,7 @@ typedef struct SceneEntRecord_
     u64   rotation;
     u64   scale;
     float position[3];
-    u32   groupIdx;
+    u32   primGroupIdx;
     u32   sparseIdx;
 } SceneEntRecord;
 
@@ -427,7 +428,7 @@ static s32 ParseSceneFile(const char* path, SceneFileData* data)
             SceneEntRecord* record = &data->entities[s][i];
             u32 rotLo = 0, rotHi = 0;
             if (!(p = ReadRecord(file, line, sizeof(line), "ent"))) goto fail;
-            p = RU32(p, &record->groupIdx);
+            p = RU32(p, &record->primGroupIdx);
             for (u32 k = 0; k < 3u; k++) p = RFlt(p, &record->position[k]);
             p = RU32(p, &rotLo);
             p = RU32(p, &rotHi);
@@ -530,35 +531,80 @@ s32 SceneSerializer_Load(Scene* scene, const char* path)
     // so the dense layout and sparse ids come back exactly as saved
     for (u32 s = 0; s < 2u; s++)
     {
-        RenderSet* set = s == 0u ? &scene->surfaceSet : &scene->skinnedSet;
+        bool isSkinned = s == 1u;
+        RenderSet* set = isSkinned ? &scene->skinnedSet : &scene->surfaceSet;
+
+        u32* primitiveCounts = (u32*)ArenaAllocGlobal(set->numGroups * sizeof(u32));
+        MemSet(primitiveCounts, 0, set->numGroups * sizeof(u32));
+        u32 validEntities = 0;
+
         for (u32 i = 0; i < data.numEntities[s]; i++)
         {
             const SceneEntRecord* record = &data.entities[s][i];
-            if (record->groupIdx >= set->numGroups)
+            if (record->primGroupIdx >= set->numGroups)
             {
-                AX_WARN("scene entity group out of range: %d >= %d", record->groupIdx, set->numGroups);
+                AX_WARN("scene entity group out of range: %d >= %d", record->primGroupIdx, set->numGroups);
                 continue;
             }
-            Entity entity;
-            MemsetZero(&entity, sizeof(entity));
-            entity.position  = Vec3Load(record->position);
-            entity.rotation  = record->rotation;
-            entity.scale     = record->scale;
-            entity.sparseIdx = RenderSet_AllocateSparseID(set);
-            if (entity.sparseIdx == INVALID_ENTITY)
-                continue;
-            RenderSet_AddEntity(set, record->groupIdx, &entity);
-            if (s == 1u)
+            if (record->sparseIdx >= set->maxEntities)
             {
-                u32 bundleIdx = Scene_FindBundleForRenderGroup(scene, true, record->groupIdx);
+                AX_WARN("scene entity sparse id out of range: %d >= %d", record->sparseIdx, set->maxEntities);
+                continue;
+            }
+            primitiveCounts[record->primGroupIdx]++;
+            validEntities++;
+        }
+
+        u32 entityOffset = 0;
+        for (u32 g = 0; g < set->numGroups; g++)
+        {
+            PrimitiveGroup* group = &set->primitiveGroups[g];
+            group->entityOffset = entityOffset;
+            u32 numEntities = primitiveCounts[g];
+            group->numEntities = 0;
+            group->capacity = numEntities;
+            entityOffset += numEntities;
+        }
+        set->numEntities = validEntities;
+        primitiveCounts = NULL;
+        ArenaPopGlobal(set->numGroups * sizeof(u32)); // primitiveCounts
+
+        for (u32 i = 0; i < data.numEntities[s]; i++)
+        {
+            const SceneEntRecord* record = &data.entities[s][i];
+            u32 groupIdx = record->primGroupIdx;
+            if (groupIdx >= set->numGroups || record->sparseIdx >= set->maxEntities)
+                continue;
+
+            PrimitiveGroup* group = &set->primitiveGroups[groupIdx];
+            u32 denseIdx = group->entityOffset + group->numEntities;
+            Entity* entity = &set->entities[denseIdx];
+            MemsetZero(entity, sizeof(entity));
+            group->numEntities++;
+            entity->position  = Vec3Load(record->position);
+            entity->rotation  = record->rotation;
+            entity->scale     = record->scale;
+            entity->primitiveIdx = groupIdx;
+            entity->sparseIdx = record->sparseIdx;
+
+            BitsetSet(set->sparseSlots, (s32)record->sparseIdx);
+            if (set->sparseID[record->sparseIdx] == INVALID_ENTITY || denseIdx < set->sparseID[record->sparseIdx])
+                set->sparseID[record->sparseIdx] = denseIdx;
+
+            if (isSkinned)
+            {
+                u32 bundleIdx = Scene_FindBundleForRenderGroup(scene, true, groupIdx);
                 if (bundleIdx != INVALID_BUNDLE)
                 {
-                    GPUAnimationInstance instance = { .animIdx = Scene_DefaultAnimation(scene, bundleIdx), .timeOffset = 0.0f };
-                    AnimationSystem_SetInstance(&scene->animSystem, entity.sparseIdx, instance);
+                    GPUAnimationInstance instance = {
+                        .animIdx = Scene_DefaultAnimation(scene, bundleIdx),
+                        .timeOffset = 0.0f
+                    };
+                    AnimationSystem_SetInstance(&scene->animSystem, entity->sparseIdx, instance);
                 }
             }
         }
-        RenderSet_Validate(set, s == 0u ? "load surface" : "load skinned");
+        RenderSet_Validate(set, isSkinned ? "load skinned" : "load surface" );
     }
 
     if (data.numLights > 0)
