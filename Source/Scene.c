@@ -460,6 +460,31 @@ const BundleCacheEntry* FindCacheForRenderBundle(const Scene* scene, bool skinne
     return NULL;
 }
 
+u32 Scene_DefaultAnimation(const Scene* scene, u32 bundleIdx)
+{
+    if (!scene || bundleIdx >= scene->numBundles) return 0u;
+    const SceneBundleRef* ref = &scene->bundleRefs[bundleIdx];
+    u32 numAnims = ref->bundle ? (u32)ref->bundle->numAnimations : 0u;
+    if (numAnims == 0u) return 0u;
+    return ref->animOffset + (numAnims > 1u ? 1u : 0u);
+}
+
+u32 Scene_FindBundleForRenderGroup(const Scene* scene, bool skinned, u32 groupIdx)
+{
+    if (!scene) return INVALID_BUNDLE;
+    for (u32 i = 0; i < scene->numBundles; i++)
+    {
+        const SceneBundleRef* ref = &scene->bundleRefs[i];
+        if ((ref->skinned != 0) != skinned) continue;
+
+        const RenderSet* set = skinned ? &scene->skinnedSet : &scene->surfaceSet;
+        Range range = set->bundlePrimitiveRange[ref->renderIdx];
+        if (groupIdx >= range.start && groupIdx < range.start + range.count)
+            return i;
+    }
+    return INVALID_BUNDLE;
+}
+
 void Scene_ReleaseBundlePeek(const char* path)
 {
     BundleCacheRelease(path);
@@ -605,7 +630,31 @@ u32 Scene_Spawn(Scene* scene, u32 bundleIdx, v128f position, v128f rotation, v12
 
     bool skinned = scene->bundleRefs[bundleIdx].skinned != 0;
     RenderSet* set = skinned ? &scene->skinnedSet : &scene->surfaceSet;
+    Range range = set->bundlePrimitiveRange[scene->bundleRefs[bundleIdx].renderIdx];
+    u32* oldCounts = NULL;
+    if (skinned && range.count > 0u)
+    {
+        oldCounts = (u32*)ArenaAllocGlobal(range.count * sizeof(u32));
+        for (u32 i = 0; i < range.count; i++)
+            oldCounts[i] = set->primitiveGroups[range.start + i].numEntities;
+    }
+
     u32 added = RenderSet_AddScene(set, scene->bundleRefs[bundleIdx].renderIdx, position, rotation, scale, skinned);
+    if (skinned && added && oldCounts)
+    {
+        GPUAnimationInstance instance = { .animIdx = Scene_DefaultAnimation(scene, bundleIdx), .timeOffset = 0.0f };
+        for (u32 i = 0; i < range.count; i++)
+        {
+            PrimitiveGroup* group = &set->primitiveGroups[range.start + i];
+            for (u32 e = oldCounts[i]; e < group->numEntities; e++)
+            {
+                u32 sparseIdx = set->entities[group->entityOffset + e].sparseIdx;
+                AnimationSystem_SetInstance(&scene->animSystem, sparseIdx, instance);
+            }
+        }
+    }
+    if (oldCounts) ArenaPopGlobal(range.count * sizeof(u32));
+
     if (added) scene->renderDataDirty = 1;
     return added;
 }

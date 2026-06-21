@@ -628,8 +628,8 @@ void DispatchAnimateVerticesCompute(SDL_GPUCommandBuffer* cmd, RenderSet* render
         setBuffers->primitiveGroup,
         setBuffers->visibleSparseIndices,
         g_RenderState.skinned.vertexBuffer,
-        setBuffers->drawArgs,
-        setBuffers->sparseToDense
+        setBuffers->sparseToDense,
+        setBuffers->visibleCount
     };
 
     SDL_GPUComputePass* pass = SDL_BeginGPUComputePass(cmd, NULL, 0, rw_bindings, SDL_arraysize(rw_bindings));

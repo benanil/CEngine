@@ -104,6 +104,9 @@ void Scene_ReleaseBundlePeek(const char* path);
 // out: scene bundle index, INVALID_BUNDLE otherwise
 u32 Scene_AddBundleBaked(Scene* scene, const char* path, u32 materialOffset);
 
+u32 Scene_DefaultAnimation(const Scene* scene, u32 bundleIdx);
+u32 Scene_FindBundleForRenderGroup(const Scene* scene, bool skinned, u32 groupIdx);
+
 // pushes the active scene's authored lights to the renderer, call once per frame
 void Scene_SubmitLights(void);
 

@@ -91,16 +91,6 @@ Scene* EditorNewScene(void)
     return scene;
 }
 
-// skinned spawns default to the bundle's second animation when there is one,
-// animation 0 is usually the bind pose
-static u32 EditorDefaultAnimation(const Scene* scene, u32 bundleIdx)
-{
-    const SceneBundleRef* ref = &scene->bundleRefs[bundleIdx];
-    u32 numAnims = (u32)ref->bundle->numAnimations;
-    if (numAnims == 0u) return 0u;
-    return ref->animOffset + (numAnims > 1u ? 1u : 0u);
-}
-
 static void SceneSelectObject(u32 skinned, u32 groupIdx, u32 entityIdx, u32 bundleIdx)
 {
     sceneObjectSelection = (SceneObjectSelection){
@@ -117,26 +107,7 @@ static void SceneSelectObject(u32 skinned, u32 groupIdx, u32 entityIdx, u32 bund
 // spawns one instance and assigns the default animation to skinned ones
 static void EditorSpawnBundleAt(Scene* scene, u32 bundleIdx, v128f position, v128f rotation, v128f scale)
 {
-    if (!Scene_Spawn(scene, bundleIdx, position, rotation, scale))
-        return;
-
-    if (scene->bundleRefs[bundleIdx].skinned)
-    {
-        RenderSet* set = &scene->skinnedSet;
-        Range range = set->bundlePrimitiveRange[scene->bundleRefs[bundleIdx].renderIdx];
-        for (u32 g = range.start; g < range.start + range.count; g++)
-        {
-            PrimitiveGroup* group = &set->primitiveGroups[g];
-            if (group->numEntities == 0) continue;
-
-            u32 sparseIdx = set->entities[group->entityOffset + group->numEntities - 1u].sparseIdx;
-            if (sparseIdx == INVALID_ENTITY) continue;
-
-            GPUAnimationInstance instance = { .animIdx = EditorDefaultAnimation(scene, bundleIdx), .timeOffset = 0.0f };
-            AnimationSystem_SetInstance(&scene->animSystem, sparseIdx, instance);
-            break;
-        }
-    }
+    Scene_Spawn(scene, bundleIdx, position, rotation, scale);
 }
 
 static void EditorSpawnBundle(Scene* scene, u32 bundleIdx, f32 scale)

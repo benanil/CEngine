@@ -430,13 +430,13 @@ static void TestAddScenePlaceholderHierarchy(void)
 
     CHECK(added == 3, "added=%u", added);
     CHECK(set.numEntities == 3, "numEntities=%u", set.numEntities);
-    CHECK(set.entities[0].sparseIdx == set.entities[1].sparseIdx, "mesh0 primitives should share sparse id");
+    CHECK(set.entities[0].sparseIdx != set.entities[1].sparseIdx, "mesh0 primitives should get separate sparse ids");
     CHECK(set.entities[2].sparseIdx != set.entities[0].sparseIdx, "mesh1 should get another sparse id");
     CHECK(((set.entities[0].parentIdx >> 24u) & ENTITY_FLAG_NOMESH) == 0u, "root mesh should not be no-mesh flagged");
     CHECK(RenderSet_Validate(&set, "add scene"), "validation failed");
 }
 
-static void TestAddSceneKeepsNoMeshSparseNode(void)
+static void TestAddSceneSkipsNoMeshNode(void)
 {
     RenderSet set;
     RenderSet_InitSet(&set, 16, 8, 4, false);
@@ -450,13 +450,34 @@ static void TestAddSceneKeepsNoMeshSparseNode(void)
     u32 bundleIdx = RenderSet_AddSceneBundle(&set, &bundle, 0);
     u32 added = RenderSet_AddScene(&set, bundleIdx, VecZero(), QIdentity(), VecSet1(1.0f), false);
 
+    CHECK(added == 1, "added=%u", added);
+    CHECK(set.numEntities == 1, "numEntities=%u", set.numEntities);
+    CHECK(set.primitiveGroups[0].numEntities == 1, "drawable count=%u", set.primitiveGroups[0].numEntities);
+    CHECK(((set.entities[0].parentIdx >> 24u) & ENTITY_FLAG_NOMESH) == 0u, "mesh should not be no-mesh flagged");
+    CHECK(RenderSet_Validate(&set, "skip no-mesh scene"), "validation failed");
+}
+
+static void TestAddSkinnedSceneSharesSparsePerMeshNode(void)
+{
+    RenderSet set;
+    RenderSet_InitSet(&set, 16, 8, 4, true);
+
+    APrimitive prim[2] = {
+        MakePrimitive(0, 0, 9, 0, 3),
+        MakePrimitive(0, 9, 12, 3, 4)
+    };
+    AMesh meshes[1] = { { "M0", prim, 2, 0, NULL } };
+    ANode nodes[1] = { MakeMeshNode(0) };
+    nodes[0].skin = 0;
+    SceneBundle bundle = MakeBundle(meshes, 1, nodes, 1, 1, 0);
+
+    u32 bundleIdx = RenderSet_AddSceneBundle(&set, &bundle, 0);
+    u32 added = RenderSet_AddScene(&set, bundleIdx, VecZero(), QIdentity(), VecSet1(1.0f), true);
+
     CHECK(added == 2, "added=%u", added);
     CHECK(set.numEntities == 2, "numEntities=%u", set.numEntities);
-    CHECK(set.primitiveGroups[0].numEntities == 1, "drawable count=%u", set.primitiveGroups[0].numEntities);
-    CHECK(set.entities[1].primitiveIdx == 0, "no-mesh primitive=%u", set.entities[1].primitiveIdx);
-    CHECK(((set.entities[1].parentIdx >> 24u) & ENTITY_FLAG_NOMESH) != 0u, "no-mesh flag missing");
-    CHECK(set.entities[0].parentIdx == set.entities[1].sparseIdx, "mesh parent sparse=%u expected=%u", set.entities[0].parentIdx, set.entities[1].sparseIdx);
-    CHECK(RenderSet_Validate(&set, "add no-mesh scene"), "validation failed");
+    CHECK(set.entities[0].sparseIdx == set.entities[1].sparseIdx, "skinned mesh node primitives should share sparse id");
+    CHECK(RenderSet_Validate(&set, "add skinned shared sparse"), "validation failed");
 }
 
 static void TestSparseCapacityFailureDoesNotMutate(void)
@@ -478,7 +499,7 @@ static void TestSparseCapacityFailureDoesNotMutate(void)
     CHECK(RenderSet_Validate(&set, "sparse failure"), "validation failed");
 }
 
-static void TestAddEntityAfterNoMeshKeepsNoMesh(void)
+static void TestAddEntityAfterSceneKeepsGroups(void)
 {
     RenderSet set;
     RenderSet_InitSet(&set, 16, 8, 4, false);
@@ -495,16 +516,12 @@ static void TestAddEntityAfterNoMeshKeepsNoMesh(void)
     u32 bundleIdx = RenderSet_AddSceneBundle(&set, &bundle, 0);
     RenderSet_AddScene(&set, bundleIdx, VecZero(), QIdentity(), VecSet1(1.0f), false);
 
-    u32 noMeshSparse = set.entities[2].sparseIdx;
     AddEntitiesToGroup(&set, 1, 1);
 
-    CheckGroupRange(&set, 0, 0, 1, "add after no-mesh");
-    CheckGroupRange(&set, 1, 1, 2, "add after no-mesh");
-    CHECK(set.numEntities == 4, "numEntities=%u", set.numEntities);
-    CHECK(((set.entities[3].parentIdx >> 24u) & ENTITY_FLAG_NOMESH) != 0u, "no-mesh flag missing after insert");
-    CHECK(set.entities[3].sparseIdx == noMeshSparse, "no-mesh sparse=%u expected=%u", set.entities[3].sparseIdx, noMeshSparse);
-    CHECK(set.sparseID[noMeshSparse] == 3, "no-mesh sparse dense=%u", set.sparseID[noMeshSparse]);
-    CHECK(RenderSet_Validate(&set, "add after no-mesh"), "validation failed");
+    CheckGroupRange(&set, 0, 0, 1, "add after scene");
+    CheckGroupRange(&set, 1, 1, 2, "add after scene");
+    CHECK(set.numEntities == 3, "numEntities=%u", set.numEntities);
+    CHECK(RenderSet_Validate(&set, "add after scene"), "validation failed");
 }
 
 static void TestRemoveSingleEntityMiddleOfGroup(void)
@@ -844,7 +861,7 @@ static void TestCompactEntitiesRemovesInvalidSparseHoles(void)
     CHECK(RenderSet_Validate(&set, "compact holes"), "validation failed");
 }
 
-static void TestCompactEntitiesPreservesNoMeshNodes(void)
+static void TestCompactEntitiesAfterSkippedNoMesh(void)
 {
     RenderSet set;
     RenderSet_InitSet(&set, 16, 8, 4, false);
@@ -858,20 +875,16 @@ static void TestCompactEntitiesPreservesNoMeshNodes(void)
     u32 bundleIdx = RenderSet_AddSceneBundle(&set, &bundle, 0);
     RenderSet_AddScene(&set, bundleIdx, VecZero(), QIdentity(), VecSet1(1.0f), false);
 
-    u32 noMeshSparse = set.entities[1].sparseIdx;
     set.entities[0].sparseIdx = INVALID_ENTITY;
 
     RenderSet_CompactEntities(&set);
 
-    CheckGroupRange(&set, 0, 0, 0, "compact no-mesh");
-    CHECK(set.numEntities == 1, "numEntities=%u", set.numEntities);
-    CHECK(set.entities[0].primitiveIdx == 0, "no-mesh primitive=%u", set.entities[0].primitiveIdx);
-    CHECK(set.entities[0].sparseIdx == noMeshSparse, "no-mesh sparse=%u expected=%u", set.entities[0].sparseIdx, noMeshSparse);
-    CHECK(set.sparseID[noMeshSparse] == 0, "no-mesh sparse dense=%u", set.sparseID[noMeshSparse]);
-    CHECK(RenderSet_Validate(&set, "compact no-mesh"), "validation failed");
+    CheckGroupRange(&set, 0, 0, 0, "compact skipped no-mesh");
+    CHECK(set.numEntities == 0, "numEntities=%u", set.numEntities);
+    CHECK(RenderSet_Validate(&set, "compact skipped no-mesh"), "validation failed");
 }
 
-static void TestRemoveSceneBundleRemovesNoMeshNodes(void)
+static void TestRemoveSceneBundleAfterSkippedNoMesh(void)
 {
     RenderSet set;
     RenderSet_InitSet(&set, 16, 8, 4, false);
@@ -887,11 +900,11 @@ static void TestRemoveSceneBundleRemovesNoMeshNodes(void)
 
     u32 removed = RenderSet_RemoveSceneBundle(&set, bundleIdx);
 
-    CHECK(removed == 2, "removed=%u", removed);
+    CHECK(removed == 1, "removed=%u", removed);
     CHECK(set.numEntities == 0, "numEntities=%u", set.numEntities);
     CHECK(set.numGroups == 0, "numGroups=%u", set.numGroups);
     CHECK(set.numBundles == 0, "numBundles=%u", set.numBundles);
-    CHECK(RenderSet_Validate(&set, "remove no-mesh bundle"), "validation failed");
+    CHECK(RenderSet_Validate(&set, "remove skipped no-mesh bundle"), "validation failed");
 }
 
 static void TestRemoveEntityRangeClampsToGroupEnd(void)
@@ -942,9 +955,10 @@ int main(int argc, char** argv)
     TestBundleRegistration();
     TestMiddleInsertionKeepsMappings();
     TestAddScenePlaceholderHierarchy();
-    TestAddSceneKeepsNoMeshSparseNode();
+    TestAddSceneSkipsNoMeshNode();
+    TestAddSkinnedSceneSharesSparsePerMeshNode();
     TestSparseCapacityFailureDoesNotMutate();
-    TestAddEntityAfterNoMeshKeepsNoMesh();
+    TestAddEntityAfterSceneKeepsGroups();
 
     TestRemoveSingleEntityMiddleOfGroup();
     TestRemoveEntityRangeMiddleOfGroup();
@@ -953,8 +967,8 @@ int main(int argc, char** argv)
     TestRemoveSceneBundleMiddleWithEntities();
     TestRemoveInvalidSceneBundleDoesNotMutate();
     TestCompactEntitiesRemovesInvalidSparseHoles();
-    TestCompactEntitiesPreservesNoMeshNodes();
-    TestRemoveSceneBundleRemovesNoMeshNodes();
+    TestCompactEntitiesAfterSkippedNoMesh();
+    TestRemoveSceneBundleAfterSkippedNoMesh();
     TestRemoveEntityRangeClampsToGroupEnd();
     printf("RenderSetTest: %d checks, %d failures\n", gChecks, gFailures);
     return gFailures ? 1 : 0;

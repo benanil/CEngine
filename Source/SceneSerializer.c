@@ -531,8 +531,6 @@ s32 SceneSerializer_Load(Scene* scene, const char* path)
     for (u32 s = 0; s < 2u; s++)
     {
         RenderSet* set = s == 0u ? &scene->surfaceSet : &scene->skinnedSet;
-        u32 maxSparse = 0;
-        bool anySparse = false;
         for (u32 i = 0; i < data.numEntities[s]; i++)
         {
             const SceneEntRecord* record = &data.entities[s][i];
@@ -542,17 +540,25 @@ s32 SceneSerializer_Load(Scene* scene, const char* path)
                 continue;
             }
             Entity entity;
+            MemsetZero(&entity, sizeof(entity));
             entity.position  = Vec3Load(record->position);
             entity.rotation  = record->rotation;
             entity.scale     = record->scale;
-            entity.sparseIdx = record->sparseIdx;
+            entity.sparseIdx = RenderSet_AllocateSparseID(set);
+            if (entity.sparseIdx == INVALID_ENTITY)
+                continue;
             RenderSet_AddEntity(set, record->groupIdx, &entity);
-            if (record->sparseIdx != INVALID_ENTITY)
+            if (s == 1u)
             {
-                if (record->sparseIdx > maxSparse) maxSparse = record->sparseIdx;
-                anySparse = true;
+                u32 bundleIdx = Scene_FindBundleForRenderGroup(scene, true, record->groupIdx);
+                if (bundleIdx != INVALID_BUNDLE)
+                {
+                    GPUAnimationInstance instance = { .animIdx = Scene_DefaultAnimation(scene, bundleIdx), .timeOffset = 0.0f };
+                    AnimationSystem_SetInstance(&scene->animSystem, entity.sparseIdx, instance);
+                }
             }
         }
+        RenderSet_Validate(set, s == 0u ? "load surface" : "load skinned");
     }
 
     if (data.numLights > 0)

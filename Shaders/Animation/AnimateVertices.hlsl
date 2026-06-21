@@ -2,7 +2,6 @@
 #include "../CommonStructs.hlsl"
 #include "../Bitpack.hlsl"
 #include "../Math.hlsl"
-#include "../LOD.hlsl"
 
 struct SkinnedVertex
 {
@@ -27,9 +26,10 @@ cbuffer params : register(b0, space2)
 StructuredBuffer<uint>               sBoneMtx           : register(t0);
 StructuredBuffer<Entity>             sEntities          : register(t1);
 StructuredBuffer<PrimitiveGroup>     sPrimitiveGroups   : register(t2);
-StructuredBuffer<uint>               sDrawSparseIndices : register(t3);
+StructuredBuffer<uint>               sVisibleSparseIndices : register(t3);
 StructuredBuffer<SkinnedVertex>      sVertexBuffer      : register(t4);
-StructuredBuffer<IndexedDrawCommand> sDrawArgs          : register(t5); // unused; kept for binding layout
+StructuredBuffer<uint>               sSparseToDense     : register(t5);
+StructuredBuffer<uint>               sVisibleCount      : register(t6);
 
 RWStructuredBuffer<AnimatedVert> sAnimatedVert : register(u0, space1);
 
@@ -44,23 +44,33 @@ void main(uint3 globalID : SV_DispatchThreadID, uint3 groupID : SV_GroupID, uint
     uint lod = drawIdx - primitiveIdx * MESH_LOD_COUNT;
     PrimitiveGroup group = sPrimitiveGroups[primitiveIdx];
 
-    uint instanceSlot = groupID.y * 32u + groupThreadID.y;
+    uint visibleSlot = groupID.y * 32u + groupThreadID.y;
+    if (visibleSlot >= sVisibleCount[0])
+        return;
+
+    uint sparse = sVisibleSparseIndices[visibleSlot];
+    if (sparse >= uint(MAX_ANIM_INSTANCES))
+        return;
+
+    uint baseDenseIdx = sSparseToDense[sparse];
+    if (baseDenseIdx == 0xffffffffu)
+        return;
+
+    Entity baseEntity = sEntities[baseDenseIdx];
+    PrimitiveGroup baseGroup = sPrimitiveGroups[baseEntity.primitiveIdx];
+    uint instanceSlot = baseDenseIdx - baseGroup.entityOffset;
     if (instanceSlot >= group.numEntities)
+        return;
+
+    uint denseIdx = group.entityOffset + instanceSlot;
+    Entity entity = sEntities[denseIdx];
+    if (entity.sparse != sparse)
         return;
 
     uint vertexBase = groupID.z * 32u;
     uint animatedBase = group.lodAnimatedVertexOffset[lod];
     uint numVertices = group.lodNumVertices[lod];
     uint sourceVertexBase = group.lodVertexOffset[lod];
-
-    uint denseIdx = group.entityOffset + instanceSlot;
-    Entity entity = sEntities[denseIdx];
-    uint sparse = entity.sparse;
-
-    uint cameraLOD = SelectEntityLOD(entity, group, viewProjection, viewportSize, lodDistanceModifier);
-    uint requiredShadowLOD = min(shadowLOD, MESH_LOD_COUNT - 1u);
-    if (lod != cameraLOD && lod != requiredShadowLOD)
-        return;
 
     uint boneStart = sparse * MAX_BONES;
     f16_4 insRot = normalize(UnpackRGBA16Snorm(entity.rotation[0], entity.rotation[1]));

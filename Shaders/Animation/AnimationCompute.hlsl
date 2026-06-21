@@ -39,7 +39,7 @@ StructuredBuffer<AnimationData>      animData              : register(t2); // pe
 StructuredBuffer<uint>               joints                : register(t3); // per instance * bone
 StructuredBuffer<uint>               inverseBindMatrices   : register(t4); // per skin * bone
 StructuredBuffer<AnimationInstance>  animInstances         : register(t5); // per instance 
-StructuredBuffer<uint>               visibleSparseIndices  : register(t6); // unused; kept for binding layout
+StructuredBuffer<uint>               visibleSparseIndices  : register(t6);
 
 RWStructuredBuffer<uint> outBoneMtx          : register(u0, space1); // per instance * bone
 
@@ -117,8 +117,12 @@ void FlattenBoneMatrices(uint numNodes, uint hierarchyOffset, inout Pose poses[M
 [numthreads(32, 1, 1)]
 void main(uint3 GlobalInvocationID : SV_DispatchThreadID)
 {
-    uint instanceIdx = GlobalInvocationID.x;
-    if (instanceIdx >= uint(numInstances))
+    uint visibleIdx = GlobalInvocationID.x;
+    if (visibleIdx >= uint(numInstances))
+        return;
+
+    uint instanceIdx = visibleSparseIndices[visibleIdx];
+    if (instanceIdx >= uint(MAX_ANIM_INSTANCES))
         return;
 
     AnimationInstance anim = animInstances[instanceIdx];
