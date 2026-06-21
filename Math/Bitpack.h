@@ -39,14 +39,14 @@ purefn u32 VCALL PackXY11Z10UnormToU32(v128f v)
 static inline u64 VCALL PackUnorm16x4(v128f val)
 {
     u64 result;
-    v128u u32 = VecF32ToI32(VecMulf(val, UINT16_MAX-1));
+    v128u u32 = VecF32ToI32(VecMul(VecClamp01(val), VecSet1((f32)(UINT16_MAX - 1))));
     VecStoreLo64(&result, VecPack16(u32));
     return result;
 }
 
 static inline v128f VCALL UnpackUnorm16x4(u64 i16)
 {
-    const v128f inv = VecSet1(1.0f / (UINT16_MAX - 1));
+    const v128f inv = VecSet1(1.0f / (f32)(UINT16_MAX - 1));
     return VecMul(VecI32ToF32(VecUnpackLo32(VeciDup64(i16))), inv);
 }
 

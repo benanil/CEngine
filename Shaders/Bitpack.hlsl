@@ -63,7 +63,7 @@ f16_4 UnpackRGBA16Snorm(uint xy, uint zw) {
 
 f16_4 UnpackRGBA16Unorm(uint2 p) {
     uint4 u = (p.xxyy >> uint4(0u, 16u, 0u, 16u)) & 0xFFFFu;
-    return f16_4(f16(u.x), f16(u.y), f16(u.z), f16(u.w)) * f16(1.0 / 65534.0);
+    return f16_4(float4(u) * (1.0 / 65534.0));
 }
 
 f16_3 UnpackVec3XY11Z10Unorm(uint packed) {

@@ -538,7 +538,7 @@ static void GizmoApplyMembers(Scene* scene, const v128f axes[3], f32 mouseY)
                           0.0f);
             v128f scale = VecClamp(VecMul(member->startScale, scaleFactor), VecSet1(0.0001f), VecSet1(1.0f));
             VecSetW(scale, 0.0f);
-            entity->scale = EntityPackWorldScale(scale);
+            entity->scale = EntityPackWorldScale(VecMulf(scale, 10.0f));
 
             // the member center moves with the scale: radially for uniform, along the
             // handle's world direction for a single axis
