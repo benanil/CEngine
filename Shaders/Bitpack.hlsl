@@ -225,10 +225,10 @@ void UnpackTangentSpace25(uint packed, out f16_3 normal, out f16_3 tangent, out 
     handedness = (packed & 0x1000000u) != 0u ? f16(-1.0) : f16(1.0);
 }
 
-// max animation bounds is 4095 * 0.002 = 8.19mt
+// max animation bounds is ANIMATION_MAX_METERS
 uint2 PackAnimatedVertex(f16_3 position, f16_3 normal, f16_3 tangent, f16 handedness)
 {
-    int3 u = clamp(int3(round(float3(position) * 1000.0)), -4096, 4095) & 0x1FFFu;
+    int3 u = clamp(int3(round(float3(position) * (1.0 / ANIMATION_PRECISION))), -4096, 4095) & 0x1FFFu;
     uint tangentSpace = PackTangentSpace25(normal, tangent, handedness);
     return uint2(u.x | (u.y << 13) | ((u.z & 0x3Fu) << 26),
                  (u.z >> 6) | (tangentSpace << 7));
@@ -241,7 +241,7 @@ f16_3 UnpackAnimatedPosition(uint2 packed)
         f32(int((packed.x         & 0x1FFFu) << 19u) >> 19),
         f32(int(((packed.x >> 13) & 0x1FFFu) << 19u) >> 19),
         f32(int(z                            << 19u) >> 19)
-    ) * 0.001);
+    ) * ANIMATION_PRECISION);
 }
 
 void UnpackAnimatedTangentSpace(uint2 packed, out f16_3 normal, out f16_3 tangent, out f16 handedness)

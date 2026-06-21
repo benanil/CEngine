@@ -41,6 +41,7 @@ static u32 AnimationBundleFrameCount(const SceneBundle* bundle)
 void AnimationSystem_Init(AnimationSystem* anims)
 {
     MemsetZero(anims, sizeof(*anims));
+    anims->instanceDirtyStart = MAX_ANIM_INSTANCES;
     RangeAllocator_Init(&anims->frameAllocator, anims->freeFrameRanges, MAX_ANIM_COUNT, MAX_GPU_ANIM_FRAMES);
 }
 
@@ -169,15 +170,31 @@ static bool StoreBundleSkinGPUData(AnimationSystem* anims, const SceneBundle* bu
 
 void AnimationSystem_UpdateInstances(AnimationSystem* anims, const GPUAnimationInstance* instances, u32 count)
 {
-    if (!anims->instanceBuffer || !instances || count == 0) return;
+    if (!anims || !instances || count == 0) return;
     count = Minu32(count, MAX_ANIM_INSTANCES);
-    UpdateGPUBuffer(anims->instanceBuffer, instances, count * sizeof(GPUAnimationInstance), 0);
+    MemCopy(anims->instances, instances, count * sizeof(GPUAnimationInstance));
+    anims->instanceDirtyStart = 0u;
+    anims->instanceDirtyEnd = Maxu32(anims->instanceDirtyEnd, count);
 }
 
 void AnimationSystem_SetInstance(AnimationSystem* anims, u32 sparseIdx, GPUAnimationInstance instance)
 {
-    if (!anims->instanceBuffer || sparseIdx >= MAX_ANIM_INSTANCES) return;
-    UpdateGPUBuffer(anims->instanceBuffer, &instance, sizeof(instance), sparseIdx * sizeof(GPUAnimationInstance));
+    if (!anims || sparseIdx >= MAX_ANIM_INSTANCES) return;
+    anims->instances[sparseIdx] = instance;
+    anims->instanceDirtyStart = Minu32(anims->instanceDirtyStart, sparseIdx);
+    anims->instanceDirtyEnd = Maxu32(anims->instanceDirtyEnd, sparseIdx + 1u);
+}
+
+void AnimationSystem_FlushInstances(AnimationSystem* anims)
+{
+    if (!anims || !anims->instanceBuffer || anims->instanceDirtyStart >= anims->instanceDirtyEnd) return;
+    u32 count = anims->instanceDirtyEnd - anims->instanceDirtyStart;
+    UpdateGPUBuffer(anims->instanceBuffer,
+                    anims->instances + anims->instanceDirtyStart,
+                    count * sizeof(GPUAnimationInstance),
+                    anims->instanceDirtyStart * sizeof(GPUAnimationInstance));
+    anims->instanceDirtyStart = MAX_ANIM_INSTANCES;
+    anims->instanceDirtyEnd = 0u;
 }
 
 s32 SceneBundleInitAnimations(const SceneBundle* gltfScene, Pose result[MAX_BONES])

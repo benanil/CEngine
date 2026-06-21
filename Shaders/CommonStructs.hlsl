@@ -65,8 +65,8 @@ typedef struct PrimitiveGroup_
 } PrimitiveGroup;
 
 // Animated vertex cache format, 8 bytes per vertex. 
-// packed0/packed1: 39-bit signed fixed-point local position at 4095/500 = 0.002 unit precision
-// max animation bounds is 4095 * 0.002 = 8.19mt
+// packed0/packed1: 39-bit signed fixed-point local position at ANIMATION_PRECISION unit precision
+// max animation bounds is ANIMATION_MAX_METERS
 // plus 25-bit tangent space packed as 9/9 oct, 6-bit diamond tangent, 1-bit handedness.
 typedef struct AnimatedVert_
 {

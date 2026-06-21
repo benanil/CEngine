@@ -40,13 +40,14 @@
 #define MAX_GPU_ANIM_FRAMES     (ANIM_NUM_FRAMES * MAX_ANIM_DURATION * MAX_ANIM_COUNT)
 #define ANIM_NODE_COUNT         (MAX_BONES * 2)
 #define ANIM_CHILD_PACKED_COUNT ((ANIM_NODE_COUNT + 3) / 4)
+#define ANIMATION_PRECISION     0.002f
+#define ANIMATION_MAX_METERS    (4095.0f * ANIMATION_PRECISION)
 
 
 #define MAX_LINE_COUNT (MAX_ENTITY * 100)
 #define MAX_LIGHT_COUNT 1024u
 
-// max animation bounds is 4095 * 0.002 = 8.19mt cube
-// because we are using 0.002 bit precision
+// max animation bounds is ANIMATION_MAX_METERS because we use ANIMATION_PRECISION bit precision
 #define MAX_SURFACE_VERTEX                   3200000ull
 #define MAX_SKINNED_SOURCE_VERTEX            262144ull
 #define MAX_SKINNED_VERTEX_PER_ANIM_INSTANCE 65536ull

@@ -13,6 +13,7 @@
 #include "Math/Quaternion.h"
 #include "Math/Bitpack.h"
 #include "Math/Color.h"
+#include "Math/Half.h"
 
 #define SCENE_LIGHT_GIZMO_RADIUS 10.0f
 #define EDITOR_SCENE_FOLDER "Assets/Scenes"
@@ -116,6 +117,8 @@ static void EditorSpawnBundle(Scene* scene, u32 bundleIdx, f32 scale)
     EditorSpawnBundleAt(scene, bundleIdx, VecZero(), QIdentity(), VecSet1(scale));
 }
 
+static bool EditorImportNeedsDetailWarning(const char* normalizedPath);
+
 void EditorImportMeshToScene(const char* path)
 {
     Scene* scene = Scene_GetActive();
@@ -123,6 +126,12 @@ void EditorImportMeshToScene(const char* path)
 
     char normalized[512];
     NormalizePath(path, normalized, sizeof(normalized));
+    if (EditorImportNeedsDetailWarning(normalized))
+    {
+        EditorOpenImportDetail(normalized);
+        return;
+    }
+
     u32 bundleIdx = Scene_AddBundleAuto(scene, normalized);
     if (bundleIdx == INVALID_BUNDLE)
     {
@@ -150,9 +159,70 @@ typedef struct ImportDetailInfo_
     u32 indices;
     u32 skins;
     u32 animations;
+    f32 maxSkinnedAnimMeters;
+    f32 recommendedScale;
+    bool animBoundsWarning;
 } ImportDetailInfo;
 
 static ImportDetailInfo importDetailInfo;
+
+static void ImportDetailSetScaleText(f32 scale)
+{
+    importDetailScale = scale;
+    int len = FloatToString(importDetailScaleText, scale, 4);
+    importDetailScaleText[len] = '\0';
+}
+
+static f32 ImportRecommendAnimationScale(f32 maxMeters)
+{
+    if (maxMeters <= 0.0f) return 1.0f;
+    f32 exact = ANIMATION_MAX_METERS / maxMeters;
+    if (exact >= 1.0f)  return 1.0f;
+    if (exact >= 0.1f)  return 0.1f;
+    if (exact >= 0.01f) return 0.01f;
+    return 0.01f;
+}
+
+static bool ImportPositionValid(v128f position)
+{
+    f32 maxAbs = Max3(VecFabs(position));
+    return maxAbs == maxAbs && maxAbs < 100000.0f;
+}
+
+static void ImportDetailSetAnimationBoundsInfo(ImportDetailInfo* info, const SceneBundle* bundle)
+{
+    if (!info || !bundle || bundle->numSkins <= 0) return;
+
+    f32 maxMeters = 0.0f;
+    bool foundBounds = false;
+    for (s32 m = 0; m < bundle->numMeshes; m++)
+    {
+        const AMesh* mesh = &bundle->meshes[m];
+        for (s32 p = 0; p < mesh->numPrimitives; p++)
+        {
+            const APrimitive* primitive = &mesh->primitives[p];
+            const float3* positions = (const float3*)primitive->vertexAttribs[AAttribIdx_POSITION];
+            if (!positions || primitive->numVertices <= 0) continue;
+
+            for (s32 v = 0; v < primitive->numVertices; v++)
+            {
+                v128f position = Vec3Load(&positions[v].x);
+                if (!ImportPositionValid(position)) continue;
+                maxMeters = Maxf32(maxMeters, Max3(VecFabs(position)));
+                foundBounds = true;
+            }
+        }
+    }
+
+    if (!foundBounds)
+    {
+        AX_LOG("couldn't found bounds of mesh when importing");
+        return;
+    }
+    info->maxSkinnedAnimMeters = maxMeters;
+    info->recommendedScale = ImportRecommendAnimationScale(maxMeters);
+    info->animBoundsWarning = maxMeters > ANIMATION_MAX_METERS;
+}
 
 static bool EditorReadBundleInfoFromScene(const char* path, ImportDetailInfo* info)
 {
@@ -175,6 +245,7 @@ static bool EditorReadBundleInfoFromScene(const char* path, ImportDetailInfo* in
                 .skins      = (u32)bundle->numSkins,
                 .animations = (u32)bundle->numAnimations
             };
+            ImportDetailSetAnimationBoundsInfo(info, bundle);
             return true;
         }
     }
@@ -242,7 +313,12 @@ static bool EditorReadBundleInfoFromABM(const char* path, ImportDetailInfo* info
 static bool EditorReadBundleInfoFromGLTF(const char* path, ImportDetailInfo* info)
 {
     SceneBundle bundle;
-    if (!ParseGLTF(path, &bundle, 1.0f)) return false;
+    bool loaded = false;
+    if (FileHasExtension(path, StringLength(path), ".fbx"))
+        loaded = LoadFBX(path, &bundle, 1.0f) != 0;
+    else
+        loaded = ParseGLTF(path, &bundle, 1.0f) != 0;
+    if (!loaded) return false;
     *info = (ImportDetailInfo){
         .meshes     = (u32)bundle.numMeshes,
         .nodes      = (u32)bundle.numNodes,
@@ -253,6 +329,7 @@ static bool EditorReadBundleInfoFromGLTF(const char* path, ImportDetailInfo* inf
         .skins      = (u32)bundle.numSkins,
         .animations = (u32)bundle.numAnimations
     };
+    ImportDetailSetAnimationBoundsInfo(info, &bundle);
     FreeSceneBundle(&bundle);
     return true;
 }
@@ -260,8 +337,15 @@ static bool EditorReadBundleInfoFromGLTF(const char* path, ImportDetailInfo* inf
 static bool EditorReadBundleInfo(const char* path, ImportDetailInfo* info)
 {
     if (EditorReadBundleInfoFromScene(path, info)) return true;
-    if (EditorReadBundleInfoFromABM(path, info)) return true;
-    return EditorReadBundleInfoFromGLTF(path, info);
+    if (EditorReadBundleInfoFromGLTF(path, info)) return true;
+    return EditorReadBundleInfoFromABM(path, info);
+}
+
+static bool EditorImportNeedsDetailWarning(const char* normalizedPath)
+{
+    ImportDetailInfo info;
+    if (!EditorReadBundleInfo(normalizedPath, &info)) return false;
+    return info.animBoundsWarning;
 }
 
 static bool EditorParseScaleText(const char* text, f32* outScale)
@@ -306,8 +390,7 @@ void EditorOpenImportDetail(const char* path)
     }
     MemCopy(importDetailPath, normalized, StringLength(normalized) + 1);
     importDetailInfo = info;
-    importDetailScale = 1.0f;
-    MemCopy(importDetailScaleText, "1.000", 6u);
+    ImportDetailSetScaleText(info.animBoundsWarning ? info.recommendedScale : 1.0f);
     importDetailOpen = true;
 }
 
@@ -316,8 +399,12 @@ static void SceneImportDetailPopup(void)
     if (!importDetailOpen)
         return;
 
-    float2 center = { g_WindowState.prev_width * 0.5f - 210.0f, g_WindowState.prev_height * 0.5f - 220.0f };
-    if (!UIBeginWindow("Import Mesh", center, (float2){ 420.0f, 440.0f }, &importDetailOpen, UIWindowFlags_NoResize)) return;
+    float2 windowSize = importDetailInfo.animBoundsWarning ? (float2){ 720.0f, 740.0f } : (float2){ 620.0f, 640.0f };
+    float2 center = {
+        Maxf32(10.0f, g_WindowState.prev_width * 0.5f - windowSize.x * 0.5f),
+        Maxf32(10.0f, g_WindowState.prev_height * 0.5f - windowSize.y * 0.5f)
+    };
+    if (!UIBeginWindow("Import Mesh", center, windowSize, &importDetailOpen, 0)) return;
 
     bool skinned = importDetailInfo.skins > 0u;
 
@@ -357,6 +444,27 @@ static void SceneImportDetailPopup(void)
             text[len] = '\0';
             CLAY_TEXT(((Clay_String) { .isStaticallyAllocated = false, .length = (s32)len, .chars = text }),
                       CLAY_TEXT_CONFIG({ .fontSize = 13, .textColor = UIGetClayColor(UIColor_SubText) }));
+        }
+    }
+
+    if (importDetailInfo.animBoundsWarning)
+    {
+        char* text = UIFrameStringAlloc(384u);
+        if (text)
+        {
+            u32 len = 0u;
+            const char* a = "Warning: skinned animated vertices can only be packed up to ";
+            u32 n = (u32)StringLength(a); MemCopy(text + len, a, n); len += n;
+            len += (u32)FloatToString(text + len, ANIMATION_MAX_METERS, 3);
+            const char* b = "m.\nThis mesh reaches ";
+            n = (u32)StringLength(b); MemCopy(text + len, b, n); len += n;
+            len += (u32)FloatToString(text + len, importDetailInfo.maxSkinnedAnimMeters, 3);
+            const char* c = "m\nso animation output may clamp. Recommended import scale: ";
+            n = (u32)StringLength(c); MemCopy(text + len, c, n); len += n;
+            len += (u32)FloatToString(text + len, importDetailInfo.recommendedScale, 4);
+            text[len] = '\0';
+            CLAY_TEXT(((Clay_String) { .isStaticallyAllocated = false, .length = (s32)len, .chars = text }),
+                      CLAY_TEXT_CONFIG({ .fontSize = 13, .textColor = UIColorToClay(0xFF30B0FFu), .wrapMode = CLAY_TEXT_WRAP_WORDS }));
         }
     }
 

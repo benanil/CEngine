@@ -25,14 +25,6 @@ typedef struct Entity_
     u16   padding;
 } Entity;
 
-// staging data structure to create entity
-typedef struct NodeTransform_
-{
-    v128f position;
-    v128f rotation;
-    v128f scale;
-} NodeTransform;
-
 typedef struct Range_
 {
     u32 start;

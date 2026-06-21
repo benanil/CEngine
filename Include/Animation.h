@@ -118,6 +118,9 @@ typedef struct AnimationSystem_
     SDL_GPUBuffer* jointsBuffer;
     SDL_GPUBuffer* invBindBuffer;
     SDL_GPUBuffer* instanceBuffer;
+    GPUAnimationInstance instances[MAX_ANIM_INSTANCES];
+    u32 instanceDirtyStart;
+    u32 instanceDirtyEnd;
 } AnimationSystem;
 
 void AnimationSystem_Init(AnimationSystem* anims);
@@ -137,6 +140,9 @@ void AnimationSystem_UpdateInstances(AnimationSystem* anims, const GPUAnimationI
 
 // assigns one animation instance slot, indexed by the skinned render set's sparse id
 void AnimationSystem_SetInstance(AnimationSystem* anims, u32 sparseIdx, GPUAnimationInstance instance);
+
+// uploads dirty CPU-owned animation instance assignments once before animation compute
+void AnimationSystem_FlushInstances(AnimationSystem* anims);
 
 // fail return 0
 s32 SceneBundleInitAnimations(const SceneBundle* prefab, Pose pose[MAX_BONES]);

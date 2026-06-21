@@ -557,6 +557,7 @@ void Render(void)
 
         UpdateLightShadows();
         UploadLightBuffer();
+        AnimationSystem_FlushInstances(&scene->animSystem);
         GatherSkinnedAnimationVisibility(cmd, &scene->skinnedSet, &scene->skinnedBuffers,
                                          cameraFrustum, hiZViewProj, enableHiZ, &pointShadows, &spotShadows);
         AnimateSkinned(cmd);
