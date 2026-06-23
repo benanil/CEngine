@@ -79,6 +79,7 @@ Install a C/C++ toolchain and CMake 3.16+.
 - Shader helper edits may require a forced rebuild, especially shared shader helper headers.
 
 ## How to Compile
+python 3.9 and above
 ```bash
 python Build/Compile.py
 ```
