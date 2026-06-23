@@ -339,7 +339,9 @@ static bool EditorReadBundleInfoFromGLTF(const char* path, ImportDetailInfo* inf
     int pathLen = StringLength(path);
     if (FileHasExtension(path, pathLen, ".glb") || FileHasExtension(path, pathLen, ".gltf"))
         loaded = ParseGLTF(path, &bundle, 1.0f) != 0;
-    else
+    else if (FileHasExtension(path, pathLen, ".abm"))
+        return EditorReadBundleInfoFromABM(path, info);
+    else // fbx obj
         loaded = LoadFBX(path, &bundle, 1.0f) != 0;
     
     if (!loaded) return false;

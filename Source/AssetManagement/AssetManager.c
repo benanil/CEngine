@@ -207,7 +207,7 @@ s32 LoadFBX(const char* path, SceneBundle* fbxScene, f32 scale)
     uscene = ufbx_load_file((const char*)path, &opts, &error);
     
     if (!uscene) {
-        AX_ERROR("%s mesh load failed! %s", importType, error.info);
+        AX_WARN("%s mesh load failed! %s", importType, error.info);
         return 0;
     }    
     
@@ -1008,8 +1008,9 @@ s32 SaveGLTFBinary(const SceneBundle* gltf, const char* path)
     // buffer, and use a per-call deflate state (the shared static one is not thread safe).
     // layout: [deflate output (max(vtx,idx)) | delta-encoded indices (idx)]
     u64 deflateSlotSize = Maxu64(allVertexSize, allIndexSize);
-    char* compressedBuffer = (char*)AllocateTLSFGlobal(deflateSlotSize + allIndexSize);
-    struct sdefl* sdfl = (struct sdefl*)AllocateTLSFGlobal(sizeof(struct sdefl));
+    char* compressedBuffer = (char*)AllocZeroTLSFGlobal(1ull, deflateSlotSize + allIndexSize + 64);
+    struct sdefl* sdfl = (struct sdefl*)AllocZeroTLSFGlobal(1ull, sizeof(struct sdefl));
+
     if (!compressedBuffer || !sdfl)
     {
         AX_WARN("abm save alloc failed: %s", path);
@@ -1315,7 +1316,7 @@ s32 LoadSceneBundleBinary(const char* path, SceneBundle* gltf, void** outVertexH
 
         u64 deflateSlotSize = Maxu64(allVertexSize, allIndexSize);
         u64 tempSize        = deflateSlotSize;
-        char* compressedBuffer = (char*)AllocateTLSFGlobal(tempSize);
+        char* compressedBuffer = (char*)AllocateTLSFGlobal(tempSize + 16);
 
         u64 compressedSize;
 

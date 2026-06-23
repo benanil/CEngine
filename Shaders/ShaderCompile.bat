@@ -9,13 +9,22 @@ set SPV_DIR=Shaders\spv
 
 rem One HLSL file per graphics pass:
 rem FileName:VertexEntry:FragmentEntry
-set GRAPHICS_SHADERS=Skinned:vert:frag Surface:vert:frag LineDebug:vert:frag UI\Slug:vert:frag UI\UIShape:vert:frag UI\UIImage:vert:frag SurfaceDepthOnly:vert:frag SkinnedDepthOnly:vert:frag Shadow\SurfaceShadowDepthOnly:vert:frag Shadow\SkinnedShadowDepthOnly:vert:frag Shadow\SurfacePointShadowDepthOnly:vert:frag Shadow\SkinnedPointShadowDepthOnly:vert:frag
+set GRAPHICS_SHADERS=Surface:vert:frag DeferredLightVolume:vert:frag SurfaceDepthOnly:vert:frag Skinned:vert:frag SkinnedDepthOnly:vert:frag LineDebug:vert:frag Outline:vert:frag UI\Slug:vert:frag UI\UIShape:vert:frag UI\UIImage:vert:frag Shadow\SurfaceShadowDepthOnly:vert:frag Shadow\SkinnedShadowDepthOnly:vert:frag Shadow\SurfacePointShadowDepthOnly:vert:frag Shadow\SkinnedPointShadowDepthOnly:vert:frag Terrain:vert:frag TerrainDepthOnly:vert:frag
+
+rem Extra single-stage graphics passes with custom entry/output/target:
+rem FileName:OutputName:Entry:Target
+set EXTRA_GRAPHICS_SHADERS=UI\Slug:Slug2DVert:vert2d:vs_6_6 TerrainDepthOnly:TerrainWireFrag:wireFrag:ps_6_6 Shadow\SurfaceSpotShadowDepthOnly:Shadow\SurfaceSpotShadowDepthOnlyVert:vert:vs_6_6 Shadow\SkinnedSpotShadowDepthOnly:Shadow\SkinnedSpotShadowDepthOnlyVert:vert:vs_6_6
 
 rem One HLSL file per compute pass:
 rem FileName:ComputeEntry
-set COMPUTE_SHADERS=Animation\AnimationCompute:main Animation\AnimateVertices:main PreProcessing\CullDrawArgsCompute:main PreProcessing\CullLightsCompute:main TexturePageCopyRGBA:main TexturePageCopyRG:main DeferredLighting:main PostProcessing\TonemapCompute:main PreProcessing\HiZBuildCompute:main PreProcessing\HiZDownscaleCompute:main ExtractNormalCompute:main PostProcessing\HBAOCompute:main PostProcessing\HBAOBlurCompute:main PostProcessing\MLAAEdgeMaskCompute:main PostProcessing\MLAALineLengthCompute:main PostProcessing\MLAABlendCompute:main
+set COMPUTE_SHADERS=TexturePageCopyRGBA:main TexturePageCopyRG:main UI\ColorPickCompute:main DeferredLighting:main ExtractNormalCompute:main Animation\AnimationCompute:main Animation\AnimateVertices:main PreProcessing\CullDrawArgsCompute:main PreProcessing\CullLightsCompute:main PreProcessing\HiZBuildCompute:main PreProcessing\HiZDownscaleCompute:main PostProcessing\TonemapCompute:main PostProcessing\HBAOCompute:main PostProcessing\HBAOBlurCompute:main PostProcessing\MLAAEdgeMaskCompute:main PostProcessing\MLAALineLengthCompute:main PostProcessing\MLAABlendCompute:main
 
 if not exist %SPV_DIR% mkdir %SPV_DIR%
+if not exist %SPV_DIR%\UI mkdir %SPV_DIR%\UI
+if not exist %SPV_DIR%\Shadow mkdir %SPV_DIR%\Shadow
+if not exist %SPV_DIR%\Animation mkdir %SPV_DIR%\Animation
+if not exist %SPV_DIR%\PreProcessing mkdir %SPV_DIR%\PreProcessing
+if not exist %SPV_DIR%\PostProcessing mkdir %SPV_DIR%\PostProcessing
 
 echo [1/2] Compiling graphics shaders...
 
@@ -35,6 +44,21 @@ for %%S in (%GRAPHICS_SHADERS%) do (
 		%DXC% -spirv -fspv-target-env=vulkan1.1 -T ps_6_6 -E %%C -enable-16bit-types %SHADER_DIR%\%%A.hlsl -Fo %SHADER_DIR%\%%AFrag.spv
 		if !ERRORLEVEL! neq 0 (
 			echo [ERROR] Failed to compile %%A.hlsl fragment entry %%C
+			pause
+			exit /b !ERRORLEVEL!
+		)
+	)
+)
+
+echo Compiling extra graphics shaders...
+
+for %%S in (%EXTRA_GRAPHICS_SHADERS%) do (
+	for /f "tokens=1,2,3,4 delims=:" %%A in ("%%S") do (
+		echo Compiling %%A.hlsl entry %%C -^> %%B...
+
+		%DXC% -spirv -fspv-target-env=vulkan1.1 -T %%D -E %%C -enable-16bit-types %SHADER_DIR%\%%A.hlsl -Fo %SHADER_DIR%\%%B.spv
+		if !ERRORLEVEL! neq 0 (
+			echo [ERROR] Failed to compile %%A.hlsl entry %%C
 			pause
 			exit /b !ERRORLEVEL!
 		)
@@ -67,6 +91,14 @@ for %%S in (%GRAPHICS_SHADERS%) do (
 		%BIN2C% -o %SHADER_DIR%\%%AFrag.spv.h %SHADER_DIR%\%%AFrag.spv
 		if !ERRORLEVEL! neq 0 goto :bin_error
 		move /Y %SHADER_DIR%\%%AFrag.spv.h %SPV_DIR%\%%AFrag.spv.h >NUL
+	)
+)
+
+for %%S in (%EXTRA_GRAPHICS_SHADERS%) do (
+	for /f "tokens=1,2,3,4 delims=:" %%A in ("%%S") do (
+		%BIN2C% -o %SHADER_DIR%\%%B.spv.h %SHADER_DIR%\%%B.spv
+		if !ERRORLEVEL! neq 0 goto :bin_error
+		move /Y %SHADER_DIR%\%%B.spv.h %SPV_DIR%\%%B.spv.h >NUL
 	)
 )
 
