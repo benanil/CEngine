@@ -101,8 +101,21 @@ void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd,
                                   bool enableHiZ,
                                   bool enableVisibilityOutput,
                                   bool resetVisibilityOutput,
-                                  bool enableLOD,
-                                  u32 forcedLOD);
+                                 bool enableLOD,
+                                 u32 forcedLOD);
+void DispatchCullDrawArgsComputeEx(SDL_GPUCommandBuffer* cmd,
+                                   RenderSet* renderSet,
+                                   RenderSetBuffers* buffers,
+                                   FrustumPlanes frustumPlanes,
+                                   mat4x4 viewProj,
+                                   bool enableHiZ,
+                                   bool enableVisibilityOutput,
+                                   bool resetVisibilityOutput,
+                                   bool enableLOD,
+                                   u32 forcedLOD,
+                                   u32 instanceMultiplier,
+                                   u32 cullMode,
+                                   const f32 cullSphere[4]);
 
 void DispatchHiZBuildCompute(SDL_GPUCommandBuffer* cmd);
 void DispatchHBAOCompute(SDL_GPUCommandBuffer* cmd, bool enabled, u32 width, u32 height);

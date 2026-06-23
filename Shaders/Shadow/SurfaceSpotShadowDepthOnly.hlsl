@@ -20,34 +20,12 @@ struct VSInput
     f16_2_io aTexCoords    : TEXCOORD0;
 };
 
-struct VSOutput
+float4 vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("DrawIndex")]] uint drawID : DRAWINDEX) : SV_Position
 {
-    float4 position     : SV_Position;
-    float4 clipDistance : SV_ClipDistance;
-};
-
-float4 AtlasPointShadowClip(float4 clip, uint face)
-{
-    clip.x = (clip.x + (float(face) * 2.0f - 5.0f) * clip.w) * (1.0f / 6.0f);
-    return clip;
-}
-
-VSOutput MakeAtlasOutput(float4 clip, uint face)
-{
-    VSOutput output;
-    output.position = AtlasPointShadowClip(clip, face);
-    output.clipDistance = float4(clip.x + clip.w, clip.w - clip.x, clip.y + clip.w, clip.w - clip.y);
-    return output;
-}
-
-VSOutput vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("DrawIndex")]] uint drawID : DRAWINDEX)
-{
-    uint face = instanceID % POINT_SHADOW_FACE_COUNT;
-    uint entityInstanceID = instanceID / POINT_SHADOW_FACE_COUNT;
     uint primitiveIdx = drawID / MESH_LOD_COUNT;
     uint lod = drawID - primitiveIdx * MESH_LOD_COUNT;
     PrimitiveGroup group = sPrimitiveGroups[primitiveIdx];
-    uint denseIdx = sDrawSparseIndices[lod * MAX_ENTITY + group.entityOffset + entityInstanceID];
+    uint denseIdx = sDrawSparseIndices[lod * MAX_ENTITY + group.entityOffset + instanceID];
     Entity entity = sEntities[denseIdx];
 
     f16_4 insRot   = normalize(UnpackRGBA16Snorm(entity.rotation[0], entity.rotation[1]));
@@ -55,8 +33,7 @@ VSOutput vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("Dra
     float3 localPos = group.aabbMin.xyz + UnpackUnorm16x4(input.aPos).xyz * (group.aabbMax.xyz - group.aabbMin.xyz);
     f16_3 worldPos = QMulVec3(insRot, f16_3(localPos) * insScale);
     float3 finalWorldPos = float3(worldPos) + entity.position.xyz;
-    float4 clip = MulPointShadowSide(sPointShadowSides[uShadowSideIndex + face], float4(finalWorldPos, 1.0));
-    return MakeAtlasOutput(clip, face);
+    return MulPointShadowSide(sPointShadowSides[uShadowSideIndex], float4(finalWorldPos, 1.0));
 }
 
 float frag(float4 position : SV_Position) : SV_Target0

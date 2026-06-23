@@ -144,27 +144,29 @@ static void PointLightShadowMaps(SDL_GPUCommandBuffer* cmd)
     for (u32 shadow = 0; shadow < pointShadows.count; shadow++)
     {
         LightGPU* light = &g_RenderLights[pointShadows.lightIndices[shadow]];
-        for (u32 face = 0; face < POINT_SHADOW_FACE_COUNT; face++)
-        {
-            u32 layer = light->shadowIndex * POINT_SHADOW_FACE_COUNT + face;
-            mat4x4 shadowViewProj = pointShadows.lightViewProj[layer];
-            CullScene(cmd, CreateFrustumPlanes(shadowViewProj), shadowViewProj, false, false, 1u);
+        u32 baseLayer = light->shadowIndex * POINT_SHADOW_FACE_COUNT;
+        f32 cullSphere[4] = { light->positionRadius[0], light->positionRadius[1], light->positionRadius[2], light->positionRadius[3] };
+        DispatchCullDrawArgsComputeEx(cmd, &g_ActiveScene->skinnedSet, &g_ActiveScene->skinnedBuffers,
+                                      (FrustumPlanes){0}, pointShadows.lightViewProj[baseLayer], false, false, false, false, 1u,
+                                      POINT_SHADOW_FACE_COUNT, 2u, cullSphere);
+        DispatchCullDrawArgsComputeEx(cmd, &g_ActiveScene->surfaceSet, &g_ActiveScene->surfaceBuffers,
+                                      (FrustumPlanes){0}, pointShadows.lightViewProj[baseLayer], false, false, false, false, 1u,
+                                      POINT_SHADOW_FACE_COUNT, 2u, cullSphere);
 
-            SDL_GPUColorTargetInfo shadow_color_target = MakeLocalShadowColorTarget(winstate->tex_point_shadow_color, layer);
-            SDL_GPUDepthStencilTargetInfo shadow_depth_target = MakeLocalShadowDepthTarget(winstate->tex_point_shadow_depth);
-            RenderDepth(cmd, &(DepthPassContext){
-                .colorTarget          = &shadow_color_target,
-                .depthTarget          = &shadow_depth_target,
-                .skinnedPipeline      = g_RenderState.skinned.pointShadowPipeline,
-                .surfacePipeline      = g_RenderState.surface.pointShadowPipeline,
-                .viewProj             = shadowViewProj,
-                .cascadeIndex         = layer,
-                .useShadowCascades    = false,
-                .usePointShadowSides  = true,
-                .alphaClip            = false,
-                .enableLOD            = false
-            });
-        }
+        SDL_GPUColorTargetInfo shadow_color_target = MakeLocalShadowColorTarget(winstate->tex_point_shadow_color, light->shadowIndex);
+        SDL_GPUDepthStencilTargetInfo shadow_depth_target = MakeLocalShadowDepthTarget(winstate->tex_point_shadow_depth);
+        RenderDepth(cmd, &(DepthPassContext){
+            .colorTarget          = &shadow_color_target,
+            .depthTarget          = &shadow_depth_target,
+            .skinnedPipeline      = g_RenderState.skinned.pointShadowPipeline,
+            .surfacePipeline      = g_RenderState.surface.pointShadowPipeline,
+            .viewProj             = pointShadows.lightViewProj[baseLayer],
+            .cascadeIndex         = baseLayer,
+            .useShadowCascades    = false,
+            .usePointShadowSides  = true,
+            .alphaClip            = false,
+            .enableLOD            = false
+        });
     }
 }
 
@@ -183,12 +185,12 @@ static void SpotLightShadowMaps(SDL_GPUCommandBuffer* cmd)
 
         SDL_GPUColorTargetInfo shadow_color_target = MakeLocalShadowColorTarget(winstate->tex_spot_shadow_color, layer);
         SDL_GPUDepthStencilTargetInfo shadow_depth_target = MakeLocalShadowDepthTarget(winstate->tex_spot_shadow_depth);
-        RenderDepth(cmd, &(DepthPassContext){
-            .colorTarget          = &shadow_color_target,
-            .depthTarget          = &shadow_depth_target,
-            .skinnedPipeline      = g_RenderState.skinned.pointShadowPipeline,
-            .surfacePipeline      = g_RenderState.surface.pointShadowPipeline,
-            .viewProj             = shadowViewProj,
+            RenderDepth(cmd, &(DepthPassContext){
+                .colorTarget          = &shadow_color_target,
+                .depthTarget          = &shadow_depth_target,
+                .skinnedPipeline      = g_RenderState.skinned.spotShadowPipeline,
+                .surfacePipeline      = g_RenderState.surface.spotShadowPipeline,
+                .viewProj             = shadowViewProj,
             .cascadeIndex         = layer,
             .useShadowCascades    = false,
             .usePointShadowSides  = false,

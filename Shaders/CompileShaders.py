@@ -33,6 +33,8 @@ GRAPHICS_SHADERS = [
 EXTRA_GRAPHICS_SHADERS = [
     ("UI/Slug", "Slug2DVert", "vert2d", "vs_6_6"),
     ("TerrainDepthOnly", "TerrainWireFrag", "wireFrag", "ps_6_6"),
+    ("Shadow/SurfaceSpotShadowDepthOnly", "Shadow/SurfaceSpotShadowDepthOnlyVert", "vert", "vs_6_6"),
+    ("Shadow/SkinnedSpotShadowDepthOnly", "Shadow/SkinnedSpotShadowDepthOnlyVert", "vert", "vs_6_6"),
 ]
 
 COMPUTE_SHADERS = [
@@ -214,8 +216,8 @@ def compile_shader(src_name: str, out_name: str, entry: str, target: str, fmt: s
     require_file(hlsl)
 
     script = Path(__file__)
-    if header.exists() and header.stat().st_mtime > max(hlsl.stat().st_mtime, script.stat().st_mtime):
-        return False
+    # if header.exists() and header.stat().st_mtime > max(hlsl.stat().st_mtime, script.stat().st_mtime):
+    #     return False
 
     print(f"Compiling {src_name}.hlsl entry {entry} -> {out_name}.{fmt}...")
     shader.parent.mkdir(parents=True, exist_ok=True)

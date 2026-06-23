@@ -2,15 +2,18 @@
 #include <SDL3/SDL_timer.h>
 #include <SDL3/SDL_time.h>
 
-void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet,
-                                 RenderSetBuffers* buffers,
-                                 FrustumPlanes frustumPlanes,
-                                 mat4x4 viewProj,
-                                 bool enableHiZ,
-                                 bool enableVisibilityOutput,
-                                 bool resetVisibilityOutput,
-                                 bool enableLOD,
-                                 u32 forcedLOD)
+void DispatchCullDrawArgsComputeEx(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet,
+                                   RenderSetBuffers* buffers,
+                                   FrustumPlanes frustumPlanes,
+                                   mat4x4 viewProj,
+                                   bool enableHiZ,
+                                   bool enableVisibilityOutput,
+                                   bool resetVisibilityOutput,
+                                   bool enableLOD,
+                                   u32 forcedLOD,
+                                   u32 instanceMultiplier,
+                                   u32 cullMode,
+                                   const f32 cullSphere[4])
 {
     if (renderSet->numGroups == 0) return;
     CHECK_CREATE(g_CullDrawArgsComputePipeline, "Cull Draw Args Compute Pipeline");
@@ -31,7 +34,10 @@ void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet
         u32 forcedLOD;
         f32 lodDistanceModifier;
         u32 resetVisibilityOutput;
-        f32 padding;
+        u32 instanceMultiplier;
+        u32 cullMode;
+        u32 padding[3];
+        f32 cullSphere[4];
     } params;
 
     WindowState* winstate = &g_WindowState;
@@ -56,7 +62,11 @@ void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet
     params.enableLODSelection = enableLOD ? 1u : 0u;
     params.forcedLOD = forcedLOD;
     params.lodDistanceModifier = Maxf32(g_RenderSettings.lodDistanceModifier, 0.001f);
-    params.padding = 0.0f;
+    params.instanceMultiplier = Maxu32(instanceMultiplier, 1u);
+    params.cullMode = cullMode;
+    params.padding[0] = params.padding[1] = params.padding[2] = 0u;
+    if (cullSphere) MemCopy(params.cullSphere, cullSphere, sizeof(params.cullSphere));
+    else SDL_zero(params.cullSphere);
 
     SDL_GPUBuffer* ro_buffers[2] = {
         buffers->entity,
@@ -638,4 +648,19 @@ void DispatchAnimateVerticesCompute(SDL_GPUCommandBuffer* cmd, RenderSet* render
     SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
     SDL_DispatchGPUComputeIndirect(pass, setBuffers->dispatchArgs, sizeof(u32) * 3);
     SDL_EndGPUComputePass(pass);
+}
+
+void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet,
+                                 RenderSetBuffers* buffers,
+                                 FrustumPlanes frustumPlanes,
+                                 mat4x4 viewProj,
+                                 bool enableHiZ,
+                                 bool enableVisibilityOutput,
+                                 bool resetVisibilityOutput,
+                                 bool enableLOD,
+                                 u32 forcedLOD)
+{
+    DispatchCullDrawArgsComputeEx(cmd, renderSet, buffers, frustumPlanes, viewProj,
+                                  enableHiZ, enableVisibilityOutput, resetVisibilityOutput,
+                                  enableLOD, forcedLOD, 1u, 0u, NULL);
 }

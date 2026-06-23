@@ -43,7 +43,10 @@ cbuffer params : register(b0, space2)
     uint   forcedLOD;
     float  lodDistanceModifier;
     uint   resetVisibilityOutput;
-    float  padding;
+    uint   instanceMultiplier;
+    uint   cullMode;
+    uint3  padding;
+    float4 cullSphere;
 };
 
 uint WangHash(uint x)
@@ -111,6 +114,16 @@ void AddAABBLine(float3 worldMin, float3 worldMax)
 
 bool AABBVisible(float3 center, float3 extent)
 {
+    if (cullMode == 2u)
+        return true;
+
+    if (cullMode == 1u)
+    {
+        float3 closest = clamp(cullSphere.xyz, center - extent, center + extent);
+        float3 delta = cullSphere.xyz - closest;
+        return dot(delta, delta) <= cullSphere.w * cullSphere.w;
+    }
+
     [unroll]
     for (uint i = 0; i < 6; i++)
     {
@@ -340,8 +353,10 @@ void main(uint3 tid : SV_DispatchThreadID)
 
     uint drawIdx = primitiveIdx * lodCount + lod;
 
-    uint localVisibleIdx;
-    InterlockedAdd(drawArgs[drawIdx].numInstances, 1, localVisibleIdx);
+    uint visibleInstanceCount = max(instanceMultiplier, 1u);
+    uint localVisibleInstance;
+    InterlockedAdd(drawArgs[drawIdx].numInstances, visibleInstanceCount, localVisibleInstance);
+    uint localVisibleIdx = localVisibleInstance / visibleInstanceCount;
 
     uint globalVisibleIdx;
     InterlockedAdd(lineDrawCommand[0].firstInstance, 1, globalVisibleIdx);

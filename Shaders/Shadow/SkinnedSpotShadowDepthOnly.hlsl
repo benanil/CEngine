@@ -24,37 +24,15 @@ struct VSInput
     uint      aWeights      : BLENDWEIGHT0;
 };
 
-struct VSOutput
+float4 vert(VSInput input,
+            uint instanceID : SV_InstanceID,
+            [[vk::builtin("DrawIndex")]] uint drawID : DRAWINDEX,
+            uint vertexId : SV_VertexID) : SV_Position
 {
-    float4 position     : SV_Position;
-    float4 clipDistance : SV_ClipDistance;
-};
-
-float4 AtlasPointShadowClip(float4 clip, uint face)
-{
-    clip.x = (clip.x + (float(face) * 2.0f - 5.0f) * clip.w) * (1.0f / 6.0f);
-    return clip;
-}
-
-VSOutput MakeAtlasOutput(float4 clip, uint face)
-{
-    VSOutput output;
-    output.position = AtlasPointShadowClip(clip, face);
-    output.clipDistance = float4(clip.x + clip.w, clip.w - clip.x, clip.y + clip.w, clip.w - clip.y);
-    return output;
-}
-
-VSOutput vert(VSInput input,
-              uint instanceID : SV_InstanceID,
-              [[vk::builtin("DrawIndex")]] uint drawID : DRAWINDEX,
-              uint vertexId : SV_VertexID)
-{
-    uint face = instanceID % POINT_SHADOW_FACE_COUNT;
-    uint entityInstanceID = instanceID / POINT_SHADOW_FACE_COUNT;
     uint primitiveIdx = drawID / MESH_LOD_COUNT;
     uint lod = drawID - primitiveIdx * MESH_LOD_COUNT;
     PrimitiveGroup group = sPrimitiveGroups[primitiveIdx];
-    uint denseIdx  = sDrawSparseIndices[lod * uint(MAX_ANIM_INSTANCES) + group.entityOffset + entityInstanceID];
+    uint denseIdx  = sDrawSparseIndices[lod * uint(MAX_ANIM_INSTANCES) + group.entityOffset + instanceID];
     uint localVertex = vertexId - group.lodVertexOffset[lod];
     uint sparse = sEntities[denseIdx].sparse;
     uint animatedVertex = sparse * uint(MAX_SKINNED_VERTEX_PER_ANIM_INSTANCE) + group.lodAnimatedVertexOffset[lod] + localVertex;
@@ -62,8 +40,7 @@ VSOutput vert(VSInput input,
     Entity entity = sEntities[denseIdx];
     f16_3 localPos = UnpackAnimatedPosition(uint2(animated.packed0, animated.packed1));
     float3 finalWorldPos = float3(localPos) + entity.position.xyz;
-    float4 clip = MulPointShadowSide(sPointShadowSides[uShadowSideIndex + face], float4(finalWorldPos, 1.0));
-    return MakeAtlasOutput(clip, face);
+    return MulPointShadowSide(sPointShadowSides[uShadowSideIndex], float4(finalWorldPos, 1.0));
 }
 
 float frag(float4 position : SV_Position) : SV_Target0

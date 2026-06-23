@@ -457,13 +457,10 @@ static void GatherSkinnedAnimationVisibility(SDL_GPUCommandBuffer* cmd, RenderSe
     for (u32 shadow = 0; shadow < pointShadows->count; shadow++)
     {
         LightGPU* light = &g_RenderLights[pointShadows->lightIndices[shadow]];
-        for (u32 face = 0; face < POINT_SHADOW_FACE_COUNT; face++)
-        {
-            u32 layer = light->shadowIndex * POINT_SHADOW_FACE_COUNT + face;
-            mat4x4 shadowViewProj = pointShadows->lightViewProj[layer];
-            DispatchCullDrawArgsCompute(cmd, skinnedSet, skinnedBuffers, CreateFrustumPlanes(shadowViewProj), shadowViewProj,
-                                        false, true, false, false, 1u);
-        }
+        u32 baseLayer = light->shadowIndex * POINT_SHADOW_FACE_COUNT;
+        f32 cullSphere[4] = { light->positionRadius[0], light->positionRadius[1], light->positionRadius[2], light->positionRadius[3] };
+        DispatchCullDrawArgsComputeEx(cmd, skinnedSet, skinnedBuffers, (FrustumPlanes){0}, pointShadows->lightViewProj[baseLayer],
+                                      false, true, false, false, 1u, 1u, 1u, cullSphere);
     }
 
     for (u32 shadow = 0; shadow < spotShadows->count; shadow++)

@@ -710,6 +710,7 @@ static s32 SaveSceneImagesTask(void* userData)
     return 1;
 }
 
+// unusded for now 
 void SaveSceneImagesAsync(SceneBundle* scene, const char* path, bool deleteRemaining, AsyncCallback callback)
 {
     if (!scene || !path || path[0] == '\0')
@@ -849,8 +850,9 @@ s32 LoadGLTFCached(const char* path, SceneBundle* scene, Texture* textures, void
     char buffer[1024];
     size_t pathLen = StringLength(path);
     MemCopy(buffer, path, pathLen + 1);
-    int newLen = ChangeExtension(buffer, pathLen, "abm");
-    bool deleteRemaining = FileHasExtension(path, pathLen, ".glb");
+    int newLen = ChangeExtension(buffer, pathLen, "glb");
+    bool deleteRemaining = FileExist(buffer);
+    newLen = ChangeExtension(buffer, pathLen, "abm");
     s32 result = 1;
     if (IsABMLastVersion(buffer)) {
         AX_LOG("asset cache hit: %s", buffer);
@@ -1327,7 +1329,6 @@ s32 LoadSceneBundleBinary(const char* path, SceneBundle* gltf, void** outVertexH
         // index values were saved relative to the bundle's vertex base, the
         // prefix sum seed rebases the whole stream to the allocated range
         PrefixSumU32Inplace(gltf->allIndices, gltf->totalIndices, vertexBase);
-
 
         Rendering_QueueGeometryUpload(isSkined ? GeometryBuffer_SkinnedVertex : GeometryBuffer_SurfaceVertex,
                                       vertexBase, vertexBase + (u32)gltf->totalVertices);

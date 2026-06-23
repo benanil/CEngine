@@ -241,6 +241,7 @@ typedef struct RenderSetShared_
     SDL_GPUGraphicsPipeline* depthPipeline;
     SDL_GPUGraphicsPipeline* shadowPipeline;
     SDL_GPUGraphicsPipeline* pointShadowPipeline;
+    SDL_GPUGraphicsPipeline* spotShadowPipeline;
     SDL_GPUBuffer*           vertexBuffer;
     SDL_GPUBuffer*           animatedVertices; // skinned only
 } RenderSetShared;

@@ -216,9 +216,9 @@ void GraphicsInit(bool msaa)
     WindowState* winstate = &g_WindowState;
     winstate->tex_shadow_depth       = CreateTexture2D(SHADOW_MAP_SIZE  , SHADOW_MAP_SIZE  , TEX_FMT_D32_FLT, TEX_DEPTH_STENCIL, TEX_SMP_CNT1, SHADOW_CASCADE_COUNT, "Shadow Depth Texture");
     winstate->tex_shadow_color       = CreateTexture2D(SHADOW_MAP_SIZE  , SHADOW_MAP_SIZE  , TEX_FMT_R32_FLT, TEX_COLOR_TARGET | TEX_SAMPLER, TEX_SMP_CNT1, SHADOW_CASCADE_COUNT, "Shadow Color Texture");
-    winstate->tex_point_shadow_depth = CreateTexture2D(POINT_SHADOW_SIZE, POINT_SHADOW_SIZE, TEX_FMT_D32_FLT, TEX_DEPTH_STENCIL, TEX_SMP_CNT1, 1, "Point Shadow Depth Texture");
+    winstate->tex_point_shadow_depth = CreateTexture2D(POINT_SHADOW_ATLAS_WIDTH, POINT_SHADOW_SIZE, TEX_FMT_D32_FLT, TEX_DEPTH_STENCIL, TEX_SMP_CNT1, 1, "Point Shadow Depth Texture");
     winstate->tex_spot_shadow_depth  = CreateTexture2D(SPOT_SHADOW_SIZE , SPOT_SHADOW_SIZE , TEX_FMT_D32_FLT, TEX_DEPTH_STENCIL, TEX_SMP_CNT1, 1, "Spot Shadow Depth Texture");
-    winstate->tex_point_shadow_color = CreateTexture2DArray(POINT_SHADOW_SIZE, POINT_SHADOW_SIZE, POINT_SHADOW_LAYER_COUNT, TEX_FMT_R32_FLT, TEX_COLOR_TARGET | TEX_SAMPLER, "Point Shadow Depth Texture");
+    winstate->tex_point_shadow_color = CreateTexture2DArray(POINT_SHADOW_ATLAS_WIDTH, POINT_SHADOW_SIZE, POINT_SHADOW_MAX_LIGHTS, TEX_FMT_R32_FLT, TEX_COLOR_TARGET | TEX_SAMPLER, "Point Shadow Depth Texture");
     winstate->tex_spot_shadow_color  = CreateTexture2DArray(SPOT_SHADOW_SIZE , SPOT_SHADOW_SIZE , POINT_SHADOW_LAYER_COUNT, TEX_FMT_R32_FLT, TEX_COLOR_TARGET | TEX_SAMPLER, "Spot Shadow Depth Texture");
     
     g_RenderState.skyNoise3D = Create3DNoise3DTexture(64u);

@@ -45,6 +45,8 @@
 #include "Shaders/msl/Shadow/SurfacePointShadowDepthOnlyFrag.msl.h"
 #include "Shaders/msl/Shadow/SkinnedPointShadowDepthOnlyVert.msl.h"
 #include "Shaders/msl/Shadow/SkinnedPointShadowDepthOnlyFrag.msl.h"
+#include "Shaders/msl/Shadow/SurfaceSpotShadowDepthOnlyVert.msl.h"
+#include "Shaders/msl/Shadow/SkinnedSpotShadowDepthOnlyVert.msl.h"
 
 #define Shaders_SkinnedFrag_spv Shaders_SkinnedFrag_msl
 #define Shaders_SkinnedVert_spv Shaders_SkinnedVert_msl
@@ -89,6 +91,8 @@
 #define Shaders_SurfacePointShadowDepthOnlyFrag_spv Shaders_Shadow_SurfacePointShadowDepthOnlyFrag_msl
 #define Shaders_SkinnedPointShadowDepthOnlyVert_spv Shaders_Shadow_SkinnedPointShadowDepthOnlyVert_msl
 #define Shaders_SkinnedPointShadowDepthOnlyFrag_spv Shaders_Shadow_SkinnedPointShadowDepthOnlyFrag_msl
+#define Shaders_Shadow_SurfaceSpotShadowDepthOnlyVert_spv Shaders_Shadow_SurfaceSpotShadowDepthOnlyVert_msl
+#define Shaders_Shadow_SkinnedSpotShadowDepthOnlyVert_spv Shaders_Shadow_SkinnedSpotShadowDepthOnlyVert_msl
 #elif defined(PLATFORM_WINDOWS)
 #include "Shaders/spv/SkinnedFrag.spv.h"
 #include "Shaders/spv/SkinnedVert.spv.h"
@@ -133,6 +137,8 @@
 #include "Shaders/spv/Shadow/SurfacePointShadowDepthOnlyFrag.spv.h"
 #include "Shaders/spv/Shadow/SkinnedPointShadowDepthOnlyVert.spv.h"
 #include "Shaders/spv/Shadow/SkinnedPointShadowDepthOnlyFrag.spv.h"
+#include "Shaders/spv/Shadow/SurfaceSpotShadowDepthOnlyVert.spv.h"
+#include "Shaders/spv/Shadow/SkinnedSpotShadowDepthOnlyVert.spv.h"
 #define Shaders_AnimationCompute_spv Shaders_Animation_AnimationCompute_spv
 #define Shaders_AnimationCompute_spv_size Shaders_Animation_AnimationCompute_spv_size
 #define Shaders_AnimateVertices_spv Shaders_Animation_AnimateVertices_spv
@@ -757,7 +763,8 @@ static void InitSurfacePipeline(void)
 static void CreatePipelineWithDesc(RenderSetShared* buffers, SDL_GPUGraphicsPipelineCreateInfo* desc,
                                    SDL_GPUShader* vertexDepth, SDL_GPUShader* fragmentDepth,
                                    SDL_GPUShader* vertexShadow, SDL_GPUShader* fragmentShadow,
-                                   SDL_GPUShader* pointShadowVertex, SDL_GPUShader* pointShadowFragment)
+                                   SDL_GPUShader* pointShadowVertex, SDL_GPUShader* pointShadowFragment,
+                                   SDL_GPUShader* spotShadowVertex, SDL_GPUShader* spotShadowFragment)
 {
     desc->vertex_shader     = vertexDepth; desc->fragment_shader = fragmentDepth;
     buffers->depthPipeline  = SDL_CreateGPUGraphicsPipeline(g_GPUDevice, desc);
@@ -765,10 +772,13 @@ static void CreatePipelineWithDesc(RenderSetShared* buffers, SDL_GPUGraphicsPipe
     buffers->shadowPipeline = SDL_CreateGPUGraphicsPipeline(g_GPUDevice, desc);
     desc->vertex_shader     = pointShadowVertex; desc->fragment_shader = pointShadowFragment;
     buffers->pointShadowPipeline = SDL_CreateGPUGraphicsPipeline(g_GPUDevice, desc);
-    CHECK_CREATE(buffers->depthPipeline, "Depth Pipeline") CHECK_CREATE(buffers->shadowPipeline, "Shadow Pipeline") CHECK_CREATE(buffers->pointShadowPipeline, "Point Shadow Pipeline")
+    desc->vertex_shader     = spotShadowVertex; desc->fragment_shader = spotShadowFragment;
+    buffers->spotShadowPipeline = SDL_CreateGPUGraphicsPipeline(g_GPUDevice, desc);
+    CHECK_CREATE(buffers->depthPipeline, "Depth Pipeline") CHECK_CREATE(buffers->shadowPipeline, "Shadow Pipeline") CHECK_CREATE(buffers->pointShadowPipeline, "Point Shadow Pipeline") CHECK_CREATE(buffers->spotShadowPipeline, "Spot Shadow Pipeline")
     SDL_ReleaseGPUShader(g_GPUDevice, vertexDepth);       SDL_ReleaseGPUShader(g_GPUDevice, fragmentDepth);
     SDL_ReleaseGPUShader(g_GPUDevice, vertexShadow);      SDL_ReleaseGPUShader(g_GPUDevice, fragmentShadow);
     SDL_ReleaseGPUShader(g_GPUDevice, pointShadowVertex); SDL_ReleaseGPUShader(g_GPUDevice, pointShadowFragment);
+    SDL_ReleaseGPUShader(g_GPUDevice, spotShadowVertex);  SDL_ReleaseGPUShader(g_GPUDevice, spotShadowFragment);
 }
 
 static void InitDepthOnlyPipelines(void)
@@ -784,10 +794,14 @@ static void InitDepthOnlyPipelines(void)
     SDL_GPUShader* ski_shadow_frag       = PIPELINE_FRAG_DEF(Shaders_SkinnedShadowDepthOnlyFrag_spv) });
     SDL_GPUShader* sur_point_shadow_ver  = PIPELINE_VERT_DEF(Shaders_SurfacePointShadowDepthOnlyVert_spv), .num_uniform_buffers = 1, .num_storage_buffers = 4 });
     SDL_GPUShader* ski_point_shadow_ver  = PIPELINE_VERT_DEF(Shaders_SkinnedPointShadowDepthOnlyVert_spv), .num_uniform_buffers = 1, .num_storage_buffers = 5 });
+    SDL_GPUShader* sur_spot_shadow_ver   = PIPELINE_VERT_DEF(Shaders_Shadow_SurfaceSpotShadowDepthOnlyVert_spv), .num_uniform_buffers = 1, .num_storage_buffers = 4 });
+    SDL_GPUShader* ski_spot_shadow_ver   = PIPELINE_VERT_DEF(Shaders_Shadow_SkinnedSpotShadowDepthOnlyVert_spv), .num_uniform_buffers = 1, .num_storage_buffers = 5 });
     SDL_GPUShader* sur_point_shadow_frag = PIPELINE_FRAG_DEF(Shaders_SurfacePointShadowDepthOnlyFrag_spv) });
     SDL_GPUShader* ski_point_shadow_frag = PIPELINE_FRAG_DEF(Shaders_SkinnedPointShadowDepthOnlyFrag_spv) });
+    SDL_GPUShader* sur_spot_shadow_frag  = PIPELINE_FRAG_DEF(Shaders_SurfacePointShadowDepthOnlyFrag_spv) });
+    SDL_GPUShader* ski_spot_shadow_frag  = PIPELINE_FRAG_DEF(Shaders_SkinnedPointShadowDepthOnlyFrag_spv) });
     CHECK_CREATE(sur_ver, "Surface Depth Vertex Shader") CHECK_CREATE(sur_frag, "Surface Depth Fragment Shader") CHECK_CREATE(ski_ver, "Skinned Depth Vertex Shader") CHECK_CREATE(ski_frag, "Skinned Depth Fragment Shader") CHECK_CREATE(sur_shadow_ver, "Surface Shadow Vertex Shader") CHECK_CREATE(sur_shadow_frag, "Surface Shadow Fragment Shader") CHECK_CREATE(ski_shadow_ver, "Skinned Shadow Vertex Shader") CHECK_CREATE(ski_shadow_frag, "Skinned Shadow Fragment Shader") CHECK_CREATE(sur_point_shadow_ver, "Surface Point Shadow Vertex Shader")
-    CHECK_CREATE(sur_point_shadow_frag , "Surface Point Shadow Fragment Shader") CHECK_CREATE(ski_point_shadow_ver, "Skinned Point Shadow Vertex Shader") CHECK_CREATE(ski_point_shadow_frag, "Skinned Point Shadow Fragment Shader")
+    CHECK_CREATE(sur_point_shadow_frag , "Surface Point Shadow Fragment Shader") CHECK_CREATE(ski_point_shadow_ver, "Skinned Point Shadow Vertex Shader") CHECK_CREATE(ski_point_shadow_frag, "Skinned Point Shadow Fragment Shader") CHECK_CREATE(sur_spot_shadow_ver, "Surface Spot Shadow Vertex Shader") CHECK_CREATE(ski_spot_shadow_ver, "Skinned Spot Shadow Vertex Shader") CHECK_CREATE(sur_spot_shadow_frag, "Surface Spot Shadow Fragment Shader") CHECK_CREATE(ski_spot_shadow_frag, "Skinned Spot Shadow Fragment Shader")
 
     const SDL_GPUVertexAttribute sur_attributes[3] = {
         { .location = 0, .buffer_slot = 0, .format = SDL_GPU_VERTEXELEMENTFORMAT_UINT2,  .offset = offsetof(AVertex, position) },
@@ -831,8 +845,8 @@ static void InitDepthOnlyPipelines(void)
         .num_vertex_attributes = ARRAY_SIZE(ski_attributes)
     };
 
-    CreatePipelineWithDesc(&g_RenderState.surface, &sur_desc, sur_ver, sur_frag, sur_shadow_ver, sur_shadow_frag, sur_point_shadow_ver, sur_point_shadow_frag);
-    CreatePipelineWithDesc(&g_RenderState.skinned, &ski_desc, ski_ver, ski_frag, ski_shadow_ver, ski_shadow_frag, ski_point_shadow_ver, ski_point_shadow_frag);
+    CreatePipelineWithDesc(&g_RenderState.surface, &sur_desc, sur_ver, sur_frag, sur_shadow_ver, sur_shadow_frag, sur_point_shadow_ver, sur_point_shadow_frag, sur_spot_shadow_ver, sur_spot_shadow_frag);
+    CreatePipelineWithDesc(&g_RenderState.skinned, &ski_desc, ski_ver, ski_frag, ski_shadow_ver, ski_shadow_frag, ski_point_shadow_ver, ski_point_shadow_frag, ski_spot_shadow_ver, ski_spot_shadow_frag);
 }
 extern void InitShadows();
 
@@ -861,6 +875,7 @@ static void DestroyRenderSetBufferPipelines(RenderSetShared buffer)
     if (buffer.shadowPipeline)      SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, buffer.shadowPipeline);
     if (buffer.depthPipeline)       SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, buffer.depthPipeline);
     if (buffer.pointShadowPipeline) SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, buffer.pointShadowPipeline);
+    if (buffer.spotShadowPipeline)  SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, buffer.spotShadowPipeline);
 }
 
 void DestroyRenderPipelines(void)

@@ -79,8 +79,8 @@ float SamplePointShadow(LightGPU light, float3 worldPos, float3 normal, float3 l
 
     float3 lightToWorld = worldPos - light.positionRadius.xyz;
     uint face = PointShadowFace(lightToWorld);
-    uint layer = light.shadowIndex * POINT_SHADOW_FACE_COUNT + face;
-    float4 shadowPos = MulPointShadowSide(PS_PointShadowMatrices[layer], float4(worldPos, 1.0f));
+    uint matrixIndex = light.shadowIndex * POINT_SHADOW_FACE_COUNT + face;
+    float4 shadowPos = MulPointShadowSide(PS_PointShadowMatrices[matrixIndex], float4(worldPos, 1.0f));
     float3 proj = shadowPos.xyz / max(abs(shadowPos.w), 0.00001f);
     float2 uv = proj.xy * float2(0.5f, -0.5f) + 0.5f;
     float depth = proj.z;
@@ -89,19 +89,21 @@ float SamplePointShadow(LightGPU light, float3 worldPos, float3 normal, float3 l
 
     uint width, height, layers;
     PointShadowTexture.GetDimensions(width, height, layers);
-    if (layer >= layers)
+    if (light.shadowIndex >= layers)
         return 1.0f;
 
     float ndotl = saturate(dot(normal, lightDir));
     float bias = max(0.0025f * (1.0f - ndotl), 0.0008f);
-    float2 texel = 1.0f / float2(max(width, 1u), max(height, 1u));
+    uint faceWidth = max(width / POINT_SHADOW_FACE_COUNT, 1u);
+    float2 texel = 1.0f / float2(faceWidth, max(height, 1u));
     float shadow = 0.0f;
 
     [unroll]
     for (int i = 0; i < 8; i++)
     {
-        float2 sampleUV = uv + ShadowKernel[i] * texel * 1.5f;
-        float mapDepth = PointShadowTexture.SampleLevel(PointShadowSampler, float3(sampleUV, float(layer)), 0.0f);
+        float2 sampleUV = clamp(uv + ShadowKernel[i] * texel * 1.5f, texel * 0.5f, 1.0f - texel * 0.5f);
+        float2 atlasUV = float2((sampleUV.x + float(face)) / float(POINT_SHADOW_FACE_COUNT), sampleUV.y);
+        float mapDepth = PointShadowTexture.SampleLevel(PointShadowSampler, float3(atlasUV, float(light.shadowIndex)), 0.0f);
         shadow += float(mapDepth >= depth - bias);
     }
     return max(shadow * 0.125f, 0.15f);

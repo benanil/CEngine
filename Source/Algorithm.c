@@ -258,109 +258,87 @@ int aCountIf(const void* arr, const void* val, int n, size_t elemSize, int (*cmp
     return count;
 }
 
-// Scalar helper to verify the remaining characters of a match candidate
-static inline bool ScalarMatchRemaining(const char* a, const char* b) {
-    while (*b && ToLower(*a) == ToLower(*b)) { 
-        a++; b++; 
-    }
-    return *b == '\0';
-}
-
 bool StringContains(const char* name, const char* search)
 {
     if (!*search) return true;
 
-    char s0_lower = ToLower(*search);
-    char s0_upper = (*search >= 'a' && *search <= 'z') ? (*search - 32) : *search;
+    const char* nameStart = name;
+    u64 nameLen = StringLength(name);
+    u64 searchLen = StringLength(search);
+    if (searchLen > nameLen) return false;
 
-    #if defined(AX_SUPPORT_SSE)
-    // --- x86 / x64 SSE2 Implementation ---
-    __m128i v_upper = _mm_set1_epi8(s0_upper);
-    __m128i v_lower = _mm_set1_epi8(s0_lower);
-    __m128i v_zero  = _mm_setzero_si128();
+    char s0Lower = ToLower(*search);
+    v128u firstChar = VeciSet1_8((u8)s0Lower);
+    v128u zero = VeciZero();
 
-    while (1) {
-        // Load 16 bytes unaligned
-        __m128i chunk = _mm_loadu_si128((const __m128i*)name);
-        
-        // Compare chunk against upper and lower variations
-        __m128i eq_upper = _mm_cmpeq_epi8(chunk, v_upper);
-        __m128i eq_lower = _mm_cmpeq_epi8(chunk, v_lower);
-        __m128i matched  = _mm_or_si128(eq_upper, eq_lower);
-        
-        // Check for null terminator to prevent over-reading past the string
-        __m128i zero_mask = _mm_cmpeq_epi8(chunk, v_zero);
-        
-        int match_mask = _mm_movemask_epi8(matched);
-        int zero_mask_bit = _mm_movemask_epi8(zero_mask);
+    u64 safeVectorLen = (nameLen >= 16) ? (nameLen - 16) : 0;
+    u64 offset = 0;
 
-        // Process potential matches within this 16-byte block
-        while (match_mask != 0) {
-            #if defined(__GNUC__) || defined(__clang__)
-            int index = __builtin_ctz(match_mask); // Count trailing zeros
-            #elif defined(_MSC_VER)
-            unsigned long index;
-            _BitScanForward(&index, match_mask);
-            #else
-            int index = 0;
-            while ((match_mask & (1 << index)) == 0) index++;
-            #endif
-            // If a null terminator occurred before this match, the string ended early
-            #if defined(_MSC_VER) && !defined(__clang__)
-            unsigned long zero_index;
-            if (_BitScanForward(&zero_index, zero_mask_bit) && (zero_index < index)) return false;
-            #else
-            if (zero_mask_bit && (__builtin_ctz(zero_mask_bit) < index)) return false;
-            #endif
-            if (ScalarMatchRemaining(name + index + 1, search + 1)) return true;
-            match_mask &= ~(1 << index); // Clear bit and check next
+    for (; offset <= safeVectorLen; offset += 16)
+    {
+        v128u chunk = VeciLoad(name + offset);
+        v128u lower = VeciToLowerASCII(chunk);
+        
+        u32 matchMask = (u32)VeciMovemask8(VeciCmpEq8(lower, firstChar));
+        u32 zeroMask  = (u32)VeciMovemask8(VeciCmpEq8(chunk, zero));
+
+        // If a null terminator is present in this chunk, ignore any matches that appear AFTER the null terminator.
+        if (zeroMask)
+        {
+            u32 zeroIdx = TrailingZeroCount32(zeroMask);
+            matchMask &= (1u << zeroIdx) - 1u; 
         }
 
-        if (zero_mask_bit) return false; 
-        name += 16;
-    }
+        while (matchMask)
+        {
+            u32 idx = TrailingZeroCount32(matchMask);
+            const char* a = name + offset + idx;
+            const char* b = search;
+            u64 remaining = searchLen;
+            u64 nameOffset = (u64)(a - nameStart);
 
-    #elif defined(AX_ARM)
-    // --- ARM Neon Implementation ---
-    uint8x16_t v_upper = vdupq_n_u8(s0_upper);
-    uint8x16_t v_lower = vdupq_n_u8(s0_lower);
-    uint8x16_t v_zero  = vdupq_n_u8(0);
+            if (nameLen - nameOffset >= searchLen)
+            {
+                while (remaining >= 16 && StrCmp16Lower(a, b, 16))
+                {
+                    a += 16; b += 16; remaining -= 16;
+                }
 
-    while (1) {
-        uint8x16_t chunk = vld1q_u8((const uint8_t*)name);
-        
-        uint8x16_t eq_upper = vceqq_u8(chunk, v_upper);
-        uint8x16_t eq_lower = vceqq_u8(chunk, v_lower);
-        uint8x16_t matched  = vorrq_u8(eq_upper, eq_lower);
-        uint8x16_t has_zero = vceqq_u8(chunk, v_zero);
-
-        // Quick check: If no elements matched and no null terminators exist, skip ahead
-        uint32x4_t max_match = vpmaxq_u32((uint32x4_t)matched, (uint32x4_t)has_zero);
-        if (vgetq_lane_u32(max_match, 0) == 0 && vgetq_lane_u32(max_match, 1) == 0 &&
-            vgetq_lane_u32(max_match, 2) == 0 && vgetq_lane_u32(max_match, 3) == 0) {
-            name += 16;
-            continue;
-        }
-
-        // Evaluate the lane intersections step-by-step
-        for (int i = 0; i < 16; ++i) {
-            if (name[i] == '\0') return false;
-            if (platform_to_lower(name[i]) == s0_lower) {
-                if (ScalarMatchRemaining(name + i + 1, search + 1)) return true;
+                while (remaining && ToLower(*a) == ToLower(*b))
+                {
+                    a++; b++; remaining--;
+                }
+                if (remaining == 0) return true;
             }
+
+            matchMask &= matchMask - 1u;
         }
-        name += 16;
+
+        // If we hit a null-terminator in this chunk, we are done looking.
+        if (zeroMask) return false;
     }
 
-    #else
-    // Pure C99 Generic Fallback Loop
-    for (; *name; name++) {
-        if (ToLower(*name) == s0_lower) {
-            if (ScalarMatchRemaining(name + 1, search + 1)) return true;
-        }
+    // Handles the remaining tail of the string (< 16 bytes) safely without page-faulting
+    for (; offset < nameLen; offset++)
+    {
+        if (ToLower(name[offset]) == s0Lower)
+        {
+            const char* a = name + offset;
+            const char* b = search;
+            u64 remaining = searchLen;
+
+            if (nameLen - offset >= searchLen)
+            {
+                while (remaining && ToLower(*a) == ToLower(*b))
+                {
+                    a++; b++; remaining--;
+                }
+                if (remaining == 0) return true;
+            }
+        };
     }
+
     return false;
-    #endif
 }
 
 bool StringEqual(const char* RESTRICT a, const char* RESTRICT b, int n) 
