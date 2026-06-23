@@ -6,7 +6,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 print = functools.partial(print, flush=True)
 
@@ -18,7 +18,12 @@ VSWHERE = Path(
 )
 
 
-def run_cmd(args: list[str], error_msg: str, env=None, quiet: bool = False):
+def run_cmd(
+    args: List[str],
+    error_msg: str,
+    env: Optional[Dict[str, str]] = None,
+    quiet: bool = False,
+) -> None:
     print(" ".join(str(a) for a in args))
 
     result = subprocess.run(
@@ -32,13 +37,16 @@ def run_cmd(args: list[str], error_msg: str, env=None, quiet: bool = False):
 
     if result.returncode != 0:
         print(error_msg)
+
         if quiet:
             if result.stdout:
                 print("----- stdout -----")
                 print(result.stdout)
+
             if result.stderr:
                 print("----- stderr -----")
                 print(result.stderr)
+
         sys.exit(result.returncode)
 
 
@@ -86,7 +94,7 @@ def find_vcvarsall() -> Path:
         Path(r"C:\Program Files (x86)\Microsoft Visual Studio"),
     ]
 
-    matches: list[Path] = []
+    matches: List[Path] = []
 
     for root in roots:
         if root.exists():
@@ -101,19 +109,19 @@ def find_vcvarsall() -> Path:
     sys.exit(1)
 
 
-def get_msvc_env() -> dict[str, str]:
+def get_msvc_env() -> Dict[str, str]:
     vcvarsall = find_vcvarsall()
 
-    print(f"Using MSVC env: {vcvarsall}")
+    print("Using MSVC env: {}".format(vcvarsall))
 
     temp_bat = Path("_msvc_env.bat")
 
     temp_bat.write_text(
-        f"""@echo off
-call "{vcvarsall}" x64
+        """@echo off
+call "{}" x64
 if errorlevel 1 exit /b %errorlevel%
 set
-""",
+""".format(vcvarsall),
         encoding="mbcs",
     )
 
@@ -161,7 +169,7 @@ def choose_generator() -> str:
     return "Unix Makefiles"
 
 
-def choose_unix_compiler_env() -> dict[str, str]:
+def choose_unix_compiler_env() -> Dict[str, str]:
     env = os.environ.copy()
 
     cc = find_program(["clang", "gcc", "cc"])
@@ -175,25 +183,27 @@ def choose_unix_compiler_env() -> dict[str, str]:
     env["CC"] = cc
     env["CXX"] = cxx
 
-    print(f"Using C compiler:   {cc}")
-    print(f"Using C++ compiler: {cxx}")
+    print("Using C compiler:   {}".format(cc))
+    print("Using C++ compiler: {}".format(cxx))
 
     return env
 
 
-def compile_shaders():
+def compile_shaders() -> None:
     print("Compiling shaders...")
+
     run_cmd(
         [sys.executable, str(SHADER_SCRIPT)],
         "[ERROR] Failed to compile shaders",
     )
 
-def configure_and_build(config: str, env: dict[str, str]):
+
+def configure_and_build(config: str, env: Dict[str, str]) -> None:
     build_dir = Path(config)
     generator = choose_generator()
 
-    print(f"Using CMake generator: {generator}")
-    print(f"Compiling project [{config}]...")
+    print("Using CMake generator: {}".format(generator))
+    print("Compiling project [{}]...".format(config))
 
     build_dir.mkdir(exist_ok=True)
 
@@ -204,9 +214,9 @@ def configure_and_build(config: str, env: dict[str, str]):
             "-B", str(build_dir),
             "-G", generator,
             "--log-level=WARNING",
-            f"-DCMAKE_BUILD_TYPE={config}",
+            "-DCMAKE_BUILD_TYPE={}".format(config),
         ],
-        f"[ERROR] CMake configure failed for {config}",
+        "[ERROR] CMake configure failed for {}".format(config),
         env=env,
         quiet=True,
     )
@@ -217,23 +227,23 @@ def configure_and_build(config: str, env: dict[str, str]):
             "--build", str(build_dir),
             "--config", config,
         ],
-        f"[ERROR] Build failed for {config}",
+        "[ERROR] Build failed for {}".format(config),
         env=env,
     )
 
 
 def get_exe_path(config: str) -> Path:
     if platform.system() == "Windows":
-        return Path(config) / config / f"{PROJECT_EXE}.exe"
+        return Path(config) / config / "{}.exe".format(PROJECT_EXE)
 
     return Path(config) / PROJECT_EXE
 
 
-def delete_old_exe(config: str):
+def delete_old_exe(config: str) -> None:
     exe = get_exe_path(config)
 
     if exe.exists():
-        print(f"Deleting old executable: {exe}")
+        print("Deleting old executable: {}".format(exe))
         exe.unlink()
 
 
@@ -249,24 +259,25 @@ def get_config() -> str:
     if arg == "release":
         return "Release"
 
-    print(f"[ERROR] Unknown build config: {sys.argv[1]}")
+    print("[ERROR] Unknown build config: {}".format(sys.argv[1]))
     print("Usage: python Compile.py [Debug|Release]")
     sys.exit(1)
 
 
-def run_exe(config: str):
+def run_exe(config: str) -> None:
     exe = get_exe_path(config)
 
     if not exe.exists():
-        print(f"[ERROR] Missing executable: {exe}")
+        print("[ERROR] Missing executable: {}".format(exe))
         sys.exit(1)
 
-    print(f"Running {exe}...")
+    print("Running {}...".format(exe))
 
     if platform.system() == "Windows":
-        os.startfile(exe)
+        os.startfile(str(exe))
     else:
         subprocess.Popen([str(exe)])
+
 
 def main() -> int:
     config = get_config()
@@ -281,6 +292,7 @@ def main() -> int:
 
     configure_and_build(config, env)
     run_exe(config)
+
     return 0
 
 
