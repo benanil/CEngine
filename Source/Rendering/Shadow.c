@@ -125,10 +125,9 @@ ShadowCascadeData CascadedShadowmaps(SDL_GPUCommandBuffer* cmd)
             .skinnedPipeline   = g_RenderState.skinned.shadowPipeline,
             .surfacePipeline   = g_RenderState.surface.shadowPipeline,
             .viewProj          = shadowViewProj,
+            .shadowMatrixBuffer = g_RenderState.shadowCascadeBuffer,
             .cascadeIndex      = cascade,
-            .useShadowCascades = true,
-            .alphaClip         = false,
-            .enableLOD         = false
+            .flags             = DepthPassFlag_ShadowCascades
         });
     }
     shadowCacheValid = true;
@@ -147,8 +146,8 @@ static void PointLightShadowMaps(SDL_GPUCommandBuffer* cmd)
         u32 baseLayer = light->shadowIndex * POINT_SHADOW_FACE_COUNT;
         f32 cullSphere[4] = { light->positionRadius[0], light->positionRadius[1], light->positionRadius[2], light->positionRadius[3] };
         DispatchCullDrawArgsCompute(cmd, &g_ActiveScene->skinnedSet, &g_ActiveScene->skinnedBuffers,
-                                      (FrustumPlanes){0}, pointShadows.lightViewProj[baseLayer], CullDrawFlag_CullSphere, 1u,
-                                      POINT_SHADOW_FACE_COUNT, cullSphere);
+                                    (FrustumPlanes){0}, pointShadows.lightViewProj[baseLayer], CullDrawFlag_CullSphere, 1u,
+                                    POINT_SHADOW_FACE_COUNT, cullSphere);
         DispatchCullDrawArgsCompute(cmd, &g_ActiveScene->surfaceSet, &g_ActiveScene->surfaceBuffers,
                                     (FrustumPlanes){0}, pointShadows.lightViewProj[baseLayer], CullDrawFlag_CullSphere, 1u,
                                     POINT_SHADOW_FACE_COUNT, cullSphere);
@@ -161,11 +160,9 @@ static void PointLightShadowMaps(SDL_GPUCommandBuffer* cmd)
             .skinnedPipeline      = g_RenderState.skinned.pointShadowPipeline,
             .surfacePipeline      = g_RenderState.surface.pointShadowPipeline,
             .viewProj             = pointShadows.lightViewProj[baseLayer],
+            .shadowMatrixBuffer   = g_RenderState.pointShadowMatrixBuffer,
             .cascadeIndex         = baseLayer,
-            .useShadowCascades    = false,
-            .usePointShadowSides  = true,
-            .alphaClip            = false,
-            .enableLOD            = false
+            .flags                = DepthPassFlag_PointShadowSides
         });
     }
 }
@@ -191,12 +188,9 @@ static void SpotLightShadowMaps(SDL_GPUCommandBuffer* cmd)
                 .skinnedPipeline      = g_RenderState.skinned.spotShadowPipeline,
                 .surfacePipeline      = g_RenderState.surface.spotShadowPipeline,
                 .viewProj             = shadowViewProj,
+            .shadowMatrixBuffer   = g_RenderState.spotShadowMatrixBuffer,
             .cascadeIndex         = layer,
-            .useShadowCascades    = false,
-            .usePointShadowSides  = false,
-            .useSpotShadowSides   = true,
-            .alphaClip            = false,
-            .enableLOD            = false
+            .flags                = DepthPassFlag_SpotShadowSides
         });
     }
 }

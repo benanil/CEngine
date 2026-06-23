@@ -596,9 +596,7 @@ void Render(void)
             .surfacePipeline   = g_RenderState.surface.depthPipeline,
             .viewProj          = viewProj,
             .cascadeIndex      = 0,
-            .useShadowCascades = false,
-            .alphaClip         = true,
-            .enableLOD         = true
+            .flags             = DepthPassFlag_AlphaClip | DepthPassFlag_EnableLOD
         });
         RenderScene(cmd, &(ScenePassContext){
             .colorTargets    = gbuffer_targets,

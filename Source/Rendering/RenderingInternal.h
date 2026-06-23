@@ -21,6 +21,17 @@ typedef struct ShadowData_
     u32 count;
 } ShadowData;
 
+typedef enum DepthPassFlags_
+{
+    DepthPassFlag_None             = 0,
+    DepthPassFlag_ShadowCascades   = 1u << 0,
+    DepthPassFlag_PointShadowSides = 1u << 1,
+    DepthPassFlag_SpotShadowSides  = 1u << 2,
+    DepthPassFlag_AlphaClip        = 1u << 3,
+    DepthPassFlag_EnableLOD        = 1u << 4,
+    DepthPassFlag_AnyShadow        = DepthPassFlag_ShadowCascades | DepthPassFlag_PointShadowSides | DepthPassFlag_SpotShadowSides,
+} DepthPassFlags;
+
 typedef struct DepthPassContext_
 {
     SDL_GPUColorTargetInfo* colorTarget;
@@ -30,12 +41,9 @@ typedef struct DepthPassContext_
     SDL_GPUGraphicsPipeline* skinnedPipeline;
     SDL_GPUGraphicsPipeline* surfacePipeline;
     mat4x4 viewProj;
+    SDL_GPUBuffer* shadowMatrixBuffer;
     u32 cascadeIndex;
-    bool useShadowCascades;
-    bool usePointShadowSides;
-    bool useSpotShadowSides;
-    bool alphaClip;
-    bool enableLOD;
+    DepthPassFlags flags;
 } DepthPassContext;
 
 typedef enum CullDrawFlags_
