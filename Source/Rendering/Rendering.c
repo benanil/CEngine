@@ -431,19 +431,20 @@ static void UploadRenderSetEntities(RenderSet* set, RenderSetBuffers* buffers)
     UpdateGPUBufferCycle(buffers->entity, set->entities, set->numEntities * sizeof(Entity), 0ull, true);
 }
 
-void CullScene(SDL_GPUCommandBuffer* cmd, FrustumPlanes planes, mat4x4 viewProj, bool enableHiZ, bool enableSurfaceLOD, u32 forcedLOD)
+void CullScene(SDL_GPUCommandBuffer* cmd, FrustumPlanes planes, mat4x4 viewProj, CullDrawFlags flags, u32 forcedLOD)
 {
     Scene* scene = g_ActiveScene;
-    DispatchCullDrawArgsCompute(cmd, &scene->skinnedSet, &scene->skinnedBuffers, planes, viewProj, enableHiZ, false, false, true, forcedLOD);
-    DispatchCullDrawArgsCompute(cmd, &scene->surfaceSet, &scene->surfaceBuffers, planes, viewProj, enableHiZ, false, false, enableSurfaceLOD, forcedLOD);
+    DispatchCullDrawArgsCompute(cmd, &scene->skinnedSet, &scene->skinnedBuffers, planes, viewProj, flags, forcedLOD, 1u, NULL);
+    DispatchCullDrawArgsCompute(cmd, &scene->surfaceSet, &scene->surfaceBuffers, planes, viewProj, flags, forcedLOD, 1u, NULL);
 }
 
 static void GatherSkinnedAnimationVisibility(SDL_GPUCommandBuffer* cmd, RenderSet* skinnedSet, RenderSetBuffers* skinnedBuffers,
                                              FrustumPlanes cameraFrustum, mat4x4 cameraViewProj, bool enableHiZ,
                                              const ShadowData* pointShadows, const ShadowData* spotShadows)
 {
-    DispatchCullDrawArgsCompute(cmd, skinnedSet, skinnedBuffers, cameraFrustum, cameraViewProj,
-                                enableHiZ, true, true, true, ~0u);
+
+    u32 flags = CullDrawFlag_EnableHiZ | CullDrawFlag_VisibilityOutput | CullDrawFlag_ResetVisibility | CullDrawFlag_EnableLODSelection;
+    DispatchCullDrawArgsCompute(cmd, skinnedSet, skinnedBuffers, cameraFrustum, cameraViewProj, flags, ~0u, 1u, NULL);
 
     ShadowCascadeData cascades = GetShadowCascades();
     for (u32 cascade = 0; cascade < SHADOW_CASCADE_COUNT; cascade++)
@@ -451,16 +452,15 @@ static void GatherSkinnedAnimationVisibility(SDL_GPUCommandBuffer* cmd, RenderSe
         mat4x4 shadowViewProj = cascades.lightViewProj[cascade];
         FrustumPlanes shadowFrustum = CreateFrustumPlanes(shadowViewProj);
         DispatchCullDrawArgsCompute(cmd, skinnedSet, skinnedBuffers, shadowFrustum, shadowViewProj,
-                                    false, true, false, false, 1u);
+                                      CullDrawFlag_VisibilityOutput, 1u, 1u, NULL);
     }
 
     for (u32 shadow = 0; shadow < pointShadows->count; shadow++)
     {
         LightGPU* light = &g_RenderLights[pointShadows->lightIndices[shadow]];
         u32 baseLayer = light->shadowIndex * POINT_SHADOW_FACE_COUNT;
-        f32 cullSphere[4] = { light->positionRadius[0], light->positionRadius[1], light->positionRadius[2], light->positionRadius[3] };
-        DispatchCullDrawArgsComputeEx(cmd, skinnedSet, skinnedBuffers, (FrustumPlanes){0}, pointShadows->lightViewProj[baseLayer],
-                                      false, true, false, false, 1u, 1u, 1u, cullSphere);
+        DispatchCullDrawArgsCompute(cmd, skinnedSet, skinnedBuffers, (FrustumPlanes){0}, pointShadows->lightViewProj[baseLayer],
+                                      CullDrawFlag_VisibilityOutput | CullDrawFlag_CullSphere, 1u, 1u, light->positionRadius);
     }
 
     for (u32 shadow = 0; shadow < spotShadows->count; shadow++)
@@ -468,7 +468,7 @@ static void GatherSkinnedAnimationVisibility(SDL_GPUCommandBuffer* cmd, RenderSe
         LightGPU* light = &g_RenderLights[spotShadows->lightIndices[shadow]];
         mat4x4 shadowViewProj = spotShadows->lightViewProj[light->shadowIndex];
         DispatchCullDrawArgsCompute(cmd, skinnedSet, skinnedBuffers, CreateFrustumPlanes(shadowViewProj), shadowViewProj,
-                                    false, true, false, false, 1u);
+                                    CullDrawFlag_VisibilityOutput, 1u, 1u, NULL);
     }
 }
 
@@ -587,7 +587,7 @@ void Render(void)
 
         ShadowCascadeData shadowCascades = CascadedShadowmaps(cmd);
         UploadShadowCascadeBuffer(&shadowCascades);
-        CullScene(cmd, cameraFrustum, hiZViewProj, enableHiZ, true, ~0u);
+        CullScene(cmd, cameraFrustum, hiZViewProj, CullDrawFlag_EnableHiZ | CullDrawFlag_EnableLODSelection, ~0u);
 
         RenderDepth(cmd, &(DepthPassContext){
             .colorTarget       = &hiz_depth_target,

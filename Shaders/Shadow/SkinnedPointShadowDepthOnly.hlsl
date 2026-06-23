@@ -49,17 +49,18 @@ VSOutput vert(VSInput input,
               [[vk::builtin("DrawIndex")]] uint drawID : DRAWINDEX,
               uint vertexId : SV_VertexID)
 {
-    uint face = instanceID % POINT_SHADOW_FACE_COUNT;
     uint entityInstanceID = instanceID / POINT_SHADOW_FACE_COUNT;
+    uint face         = instanceID % POINT_SHADOW_FACE_COUNT;
     uint primitiveIdx = drawID / MESH_LOD_COUNT;
-    uint lod = drawID - primitiveIdx * MESH_LOD_COUNT;
-    PrimitiveGroup group = sPrimitiveGroups[primitiveIdx];
-    uint denseIdx  = sDrawSparseIndices[lod * uint(MAX_ANIM_INSTANCES) + group.entityOffset + entityInstanceID];
-    uint localVertex = vertexId - group.lodVertexOffset[lod];
-    uint sparse = sEntities[denseIdx].sparse;
-    uint animatedVertex = sparse * uint(MAX_SKINNED_VERTEX_PER_ANIM_INSTANCE) + group.lodAnimatedVertexOffset[lod] + localVertex;
+    uint lod          = drawID - primitiveIdx * MESH_LOD_COUNT;
+
+    PrimitiveGroup group  = sPrimitiveGroups[primitiveIdx];
+    uint denseIdx         = sDrawSparseIndices[lod * uint(MAX_ANIM_INSTANCES) + group.entityOffset + entityInstanceID];
+    uint localVertex      = vertexId - group.lodVertexOffset[lod];
+    uint sparse           = sEntities[denseIdx].sparse;
+    uint animatedVertex   = sparse * uint(MAX_SKINNED_VERTEX_PER_ANIM_INSTANCE) + group.lodAnimatedVertexOffset[lod] + localVertex;
     AnimatedVert animated = sAnimatedVert[animatedVertex];
-    Entity entity = sEntities[denseIdx];
+    Entity entity  = sEntities[denseIdx];
     f16_3 localPos = UnpackAnimatedPosition(uint2(animated.packed0, animated.packed1));
     float3 finalWorldPos = float3(localPos) + entity.position.xyz;
     float4 clip = MulPointShadowSide(sPointShadowSides[uShadowSideIndex + face], float4(finalWorldPos, 1.0));

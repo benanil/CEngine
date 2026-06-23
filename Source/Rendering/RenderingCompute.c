@@ -2,18 +2,14 @@
 #include <SDL3/SDL_timer.h>
 #include <SDL3/SDL_time.h>
 
-void DispatchCullDrawArgsComputeEx(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet,
-                                   RenderSetBuffers* buffers,
-                                   FrustumPlanes frustumPlanes,
-                                   mat4x4 viewProj,
-                                   bool enableHiZ,
-                                   bool enableVisibilityOutput,
-                                   bool resetVisibilityOutput,
-                                   bool enableLOD,
-                                   u32 forcedLOD,
-                                   u32 instanceMultiplier,
-                                   u32 cullMode,
-                                   const f32 cullSphere[4])
+void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet,
+                                 RenderSetBuffers* buffers,
+                                 FrustumPlanes     frustumPlanes,
+                                 mat4x4            viewProj,
+                                 CullDrawFlags     flags,
+                                 u32               forcedLOD,
+                                 u32               instanceMultiplier,
+                                 const f32         cullSphere[4])
 {
     if (renderSet->numGroups == 0) return;
     CHECK_CREATE(g_CullDrawArgsComputePipeline, "Cull Draw Args Compute Pipeline");
@@ -22,20 +18,16 @@ void DispatchCullDrawArgsComputeEx(SDL_GPUCommandBuffer* cmd, RenderSet* renderS
         u32 numEntities;
         u32 numPrimitiveGroups;
         u32 mode;
-        u32 enableVisibilityOutput;
+        u32 flags;
         mat4x4 viewProjection;
         u32 hiZSize[2];
         u32 hiZMipCount;
-        u32 enableHiZ;
         f32 hiZDepthBias;
         u32 lodCount;
         u32 sparseIndexLODStride;
-        u32 enableLODSelection;
         u32 forcedLOD;
         f32 lodDistanceModifier;
-        u32 resetVisibilityOutput;
         u32 instanceMultiplier;
-        u32 cullMode;
         u32 padding[3];
         f32 cullSphere[4];
     } params;
@@ -49,21 +41,17 @@ void DispatchCullDrawArgsComputeEx(SDL_GPUCommandBuffer* cmd, RenderSet* renderS
     params.numEntities = renderSet->numEntities;
     params.numPrimitiveGroups = renderSet->numGroups;
     params.mode = 0;
-    params.enableVisibilityOutput = enableVisibilityOutput ? 1u : 0u;
-    params.resetVisibilityOutput = resetVisibilityOutput ? 1u : 0u;
+    params.flags = flags;
     params.viewProjection = viewProj;
     params.hiZSize[0] = hiZWidth;
     params.hiZSize[1] = hiZHeight;
     params.hiZMipCount = hiZMipCount;
-    params.enableHiZ = enableHiZ ? 1u : 0u;
     params.hiZDepthBias = 0.02f;
-    params.lodCount = (enableLOD || forcedLOD < MESH_LOD_COUNT) ? MESH_LOD_COUNT : 1u;
+    params.lodCount = ((flags & CullDrawFlag_EnableLODSelection) != 0u || forcedLOD < MESH_LOD_COUNT) ? MESH_LOD_COUNT : 1u;
     params.sparseIndexLODStride = renderSet->maxEntities;
-    params.enableLODSelection = enableLOD ? 1u : 0u;
     params.forcedLOD = forcedLOD;
     params.lodDistanceModifier = Maxf32(g_RenderSettings.lodDistanceModifier, 0.001f);
     params.instanceMultiplier = Maxu32(instanceMultiplier, 1u);
-    params.cullMode = cullMode;
     params.padding[0] = params.padding[1] = params.padding[2] = 0u;
     if (cullSphere) MemCopy(params.cullSphere, cullSphere, sizeof(params.cullSphere));
     else SDL_zero(params.cullSphere);
@@ -91,7 +79,7 @@ void DispatchCullDrawArgsComputeEx(SDL_GPUCommandBuffer* cmd, RenderSet* renderS
     SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
 
     u32 resetCount = renderSet->numGroups * params.lodCount;
-    if (enableVisibilityOutput && renderSet->numEntities > resetCount) resetCount = renderSet->numEntities;
+    if ((flags & CullDrawFlag_VisibilityOutput) != 0u && renderSet->numEntities > resetCount) resetCount = renderSet->numEntities;
     SDL_DispatchGPUCompute(pass, (resetCount + 63) / 64, 1, 1);
 
     if (renderSet->numEntities > 0)
@@ -648,19 +636,4 @@ void DispatchAnimateVerticesCompute(SDL_GPUCommandBuffer* cmd, RenderSet* render
     SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
     SDL_DispatchGPUComputeIndirect(pass, setBuffers->dispatchArgs, sizeof(u32) * 3);
     SDL_EndGPUComputePass(pass);
-}
-
-void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet,
-                                 RenderSetBuffers* buffers,
-                                 FrustumPlanes frustumPlanes,
-                                 mat4x4 viewProj,
-                                 bool enableHiZ,
-                                 bool enableVisibilityOutput,
-                                 bool resetVisibilityOutput,
-                                 bool enableLOD,
-                                 u32 forcedLOD)
-{
-    DispatchCullDrawArgsComputeEx(cmd, renderSet, buffers, frustumPlanes, viewProj,
-                                  enableHiZ, enableVisibilityOutput, resetVisibilityOutput,
-                                  enableLOD, forcedLOD, 1u, 0u, NULL);
 }

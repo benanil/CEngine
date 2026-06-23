@@ -38,10 +38,10 @@ VSOutput vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("Dra
     uint denseIdx = sDrawSparseIndices[lod * MAX_ENTITY + group.entityOffset + instanceID];
     Entity entity = sEntities[denseIdx];
 
-    f16_4 insRot   = normalize(UnpackRGBA16Snorm(entity.rotation[0], entity.rotation[1]));
-    f16_3 insScale = UnpackRGBA16Unorm(entity.scale).xyz * f16(10.0);
+    f16_4  insRot   = normalize(UnpackRGBA16Snorm(entity.rotation[0], entity.rotation[1]));
+    f16_3  insScale = UnpackRGBA16Unorm(entity.scale).xyz * f16(10.0);
     float3 localPos = group.aabbMin.xyz + UnpackUnorm16x4(input.aPos).xyz * (group.aabbMax.xyz - group.aabbMin.xyz);
-    f16_3 worldPos = QMulVec3(insRot, f16_3(localPos) * insScale);
+    f16_3  worldPos = QMulVec3(insRot, f16_3(localPos) * insScale);
     float3 finalWorldPos = float3(worldPos) + entity.position.xyz;
 
     VSOutput o;

@@ -12,6 +12,13 @@
 
 #define HIZ_RECT_PADDING_PIXELS     1.0f
 
+#define CULL_DRAW_FLAG_ENABLE_HIZ          (1u << 0u)
+#define CULL_DRAW_FLAG_VISIBILITY_OUTPUT   (1u << 1u)
+#define CULL_DRAW_FLAG_RESET_VISIBILITY    (1u << 2u)
+#define CULL_DRAW_FLAG_ENABLE_LOD          (1u << 3u)
+#define CULL_DRAW_FLAG_CULL_SPHERE         (1u << 4u)
+#define CULL_DRAW_FLAG_NO_FRUSTUM          (1u << 5u)
+
 Texture2D<float>                 hiZTexture            : register(t0);
 StructuredBuffer<Entity>         entities              : register(t1);
 StructuredBuffer<PrimitiveGroup> primitiveGroups       : register(t2);
@@ -31,20 +38,16 @@ cbuffer params : register(b0, space2)
     uint   maxEntityID;
     uint   numPrimitiveGroups;
     uint   mode;
-    uint   enableVisibilityOutput;
+    uint   flags;
     float4x4 viewProjection;
     uint2  hiZSize;
     uint   hiZMipCount;
-    uint   enableHiZ;
     float  hiZDepthBias;
     uint   lodCount;
     uint   sparseIndexLODStride;
-    uint   enableLODSelection;
     uint   forcedLOD;
     float  lodDistanceModifier;
-    uint   resetVisibilityOutput;
     uint   instanceMultiplier;
-    uint   cullMode;
     uint3  padding;
     float4 cullSphere;
 };
@@ -114,10 +117,10 @@ void AddAABBLine(float3 worldMin, float3 worldMax)
 
 bool AABBVisible(float3 center, float3 extent)
 {
-    if (cullMode == 2u)
+    if ((flags & CULL_DRAW_FLAG_NO_FRUSTUM) != 0u)
         return true;
 
-    if (cullMode == 1u)
+    if ((flags & CULL_DRAW_FLAG_CULL_SPHERE) != 0u)
     {
         float3 closest = clamp(cullSphere.xyz, center - extent, center + extent);
         float3 delta = cullSphere.xyz - closest;
@@ -141,7 +144,7 @@ bool AABBVisible(float3 center, float3 extent)
 bool AABBTooSmallAndFar(in ProjectedAABB proj)
 {
     #if SMALL_OBJECT_CULL_ENABLED
-    if (enableHiZ == 0u)
+    if ((flags & CULL_DRAW_FLAG_ENABLE_HIZ) == 0u)
         return false;
 
     if (proj.anyFront == 0u || proj.anyBehind != 0u)
@@ -156,7 +159,7 @@ bool AABBTooSmallAndFar(in ProjectedAABB proj)
 
 bool AABBOccludedHiZ(in ProjectedAABB proj)
 {
-    if (enableHiZ == 0u || hiZMipCount == 0u || hiZSize.x == 0u || hiZSize.y == 0u)
+    if ((flags & CULL_DRAW_FLAG_ENABLE_HIZ) == 0u || hiZMipCount == 0u || hiZSize.x == 0u || hiZSize.y == 0u)
         return false;
 
     if (proj.anyFront == 0u || proj.anyBehind != 0u)
@@ -225,7 +228,7 @@ uint SelectLOD(in ProjectedAABB proj)
     if (forcedLOD < lodCount)
         return forcedLOD;
 
-    if (enableLODSelection == 0u)
+    if ((flags & CULL_DRAW_FLAG_ENABLE_LOD) == 0u)
         return 0u;
 
     if (proj.anyFront == 0u)
@@ -263,7 +266,7 @@ void Initialize(uint idx)
         lineDrawCommand[1].firstVertex   = 0;
         lineDrawCommand[1].firstInstance = 0;
 
-        if (enableVisibilityOutput != 0u && resetVisibilityOutput != 0u)
+        if ((flags & (CULL_DRAW_FLAG_VISIBILITY_OUTPUT | CULL_DRAW_FLAG_RESET_VISIBILITY)) == (CULL_DRAW_FLAG_VISIBILITY_OUTPUT | CULL_DRAW_FLAG_RESET_VISIBILITY))
         {
             visibleCount[0] = 0;
 
@@ -277,7 +280,7 @@ void Initialize(uint idx)
         }
     }
 
-    if (enableVisibilityOutput != 0u && resetVisibilityOutput != 0u && idx < maxEntityID)
+    if ((flags & (CULL_DRAW_FLAG_VISIBILITY_OUTPUT | CULL_DRAW_FLAG_RESET_VISIBILITY)) == (CULL_DRAW_FLAG_VISIBILITY_OUTPUT | CULL_DRAW_FLAG_RESET_VISIBILITY) && idx < maxEntityID)
     {
         visibilityMask[idx] = 0;
     }
@@ -313,8 +316,8 @@ void main(uint3 tid : SV_DispatchThreadID)
 
     bool frustumVisible = AABBVisible(worldCenter, worldExtent);
 
-    bool needProjection = frustumVisible && (enableHiZ != 0u ||
-                                             enableLODSelection != 0u ||
+    bool needProjection = frustumVisible && ((flags & CULL_DRAW_FLAG_ENABLE_HIZ) != 0u ||
+                                             (flags & CULL_DRAW_FLAG_ENABLE_LOD) != 0u ||
                                              SMALL_OBJECT_CULL_ENABLED != 0);
     ProjectedAABB proj;
     bool tooSmallFar = false;
@@ -343,7 +346,7 @@ void main(uint3 tid : SV_DispatchThreadID)
 
     uint lod = 0u;
 
-    if ((enableLODSelection != 0u || forcedLOD < lodCount) && lodCount > 1u)
+    if (((flags & CULL_DRAW_FLAG_ENABLE_LOD) != 0u || forcedLOD < lodCount) && lodCount > 1u)
     {
         if (forcedLOD >= lodCount && !needProjection)
             ProjectAABB(proj, worldMin, worldMax, viewProjection, hiZSize);
@@ -363,7 +366,7 @@ void main(uint3 tid : SV_DispatchThreadID)
 
     drawSparseIndices[lod * sparseIndexLODStride + group.entityOffset + localVisibleIdx] = sparse;
 
-    if (enableVisibilityOutput != 0u)
+    if ((flags & CULL_DRAW_FLAG_VISIBILITY_OUTPUT) != 0u)
     {
         uint visibleSparse = entities[sparse].sparse;
 

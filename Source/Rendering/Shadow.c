@@ -114,7 +114,7 @@ ShadowCascadeData CascadedShadowmaps(SDL_GPUCommandBuffer* cmd)
         mat4x4 shadowViewProj = cachedShadowCascades.lightViewProj[cascade];
         FrustumPlanes shadowFrustum = CreateFrustumPlanes(shadowViewProj);
         // planes.planes[4] = planes.planes[5] = VecZero(); // disable near, far plane frustum check
-        CullScene(cmd, shadowFrustum, shadowViewProj, false, false, 1u);
+        CullScene(cmd, shadowFrustum, shadowViewProj, CullDrawFlag_None, 1u);
 
         WindowState* winstate = &g_WindowState;
         SDL_GPUColorTargetInfo shadow_color_target = MakeShadowColorTarget(winstate, cascade);
@@ -146,12 +146,12 @@ static void PointLightShadowMaps(SDL_GPUCommandBuffer* cmd)
         LightGPU* light = &g_RenderLights[pointShadows.lightIndices[shadow]];
         u32 baseLayer = light->shadowIndex * POINT_SHADOW_FACE_COUNT;
         f32 cullSphere[4] = { light->positionRadius[0], light->positionRadius[1], light->positionRadius[2], light->positionRadius[3] };
-        DispatchCullDrawArgsComputeEx(cmd, &g_ActiveScene->skinnedSet, &g_ActiveScene->skinnedBuffers,
-                                      (FrustumPlanes){0}, pointShadows.lightViewProj[baseLayer], false, false, false, false, 1u,
-                                      POINT_SHADOW_FACE_COUNT, 2u, cullSphere);
-        DispatchCullDrawArgsComputeEx(cmd, &g_ActiveScene->surfaceSet, &g_ActiveScene->surfaceBuffers,
-                                      (FrustumPlanes){0}, pointShadows.lightViewProj[baseLayer], false, false, false, false, 1u,
-                                      POINT_SHADOW_FACE_COUNT, 2u, cullSphere);
+        DispatchCullDrawArgsCompute(cmd, &g_ActiveScene->skinnedSet, &g_ActiveScene->skinnedBuffers,
+                                      (FrustumPlanes){0}, pointShadows.lightViewProj[baseLayer], CullDrawFlag_CullSphere, 1u,
+                                      POINT_SHADOW_FACE_COUNT, cullSphere);
+        DispatchCullDrawArgsCompute(cmd, &g_ActiveScene->surfaceSet, &g_ActiveScene->surfaceBuffers,
+                                    (FrustumPlanes){0}, pointShadows.lightViewProj[baseLayer], CullDrawFlag_CullSphere, 1u,
+                                    POINT_SHADOW_FACE_COUNT, cullSphere);
 
         SDL_GPUColorTargetInfo shadow_color_target = MakeLocalShadowColorTarget(winstate->tex_point_shadow_color, light->shadowIndex);
         SDL_GPUDepthStencilTargetInfo shadow_depth_target = MakeLocalShadowDepthTarget(winstate->tex_point_shadow_depth);
@@ -181,7 +181,7 @@ static void SpotLightShadowMaps(SDL_GPUCommandBuffer* cmd)
         LightGPU* light = &g_RenderLights[spotShadows.lightIndices[shadow]];
         u32 layer = light->shadowIndex;
         mat4x4 shadowViewProj = spotShadows.lightViewProj[layer];
-        CullScene(cmd, CreateFrustumPlanes(shadowViewProj), shadowViewProj, false, false, 1u);
+        CullScene(cmd, CreateFrustumPlanes(shadowViewProj), shadowViewProj, CullDrawFlag_None, 1u);
 
         SDL_GPUColorTargetInfo shadow_color_target = MakeLocalShadowColorTarget(winstate->tex_spot_shadow_color, layer);
         SDL_GPUDepthStencilTargetInfo shadow_depth_target = MakeLocalShadowDepthTarget(winstate->tex_spot_shadow_depth);
