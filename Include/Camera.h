@@ -146,7 +146,7 @@ static inline float2 InfiniteMouse(float2 point)
 {
     int2 monitorSize;
     wGetMonitorSize(&monitorSize.x, &monitorSize.y);
-    if (monitorSize.x <= 4 || monitorSize.y <= 4) return point;
+    if (monitorSize.x <= 32 || monitorSize.y <= 32) return point;
     
     if (point.x > monitorSize.x - 2) { point.x = 3.0f;                    SDL_WarpMouseGlobal((int)point.x, (int)point.y); }
     if (point.y > monitorSize.y - 2) { point.y = 3.0f;                    SDL_WarpMouseGlobal((int)point.x, (int)point.y); }

@@ -767,16 +767,17 @@ bool CombinePaths(char* dst, uint64_t dstSize, const char* a, const char* b)
 
 typedef void(*FolderVisitFn)(const char* path, void* data);
 
+// this is an function that can traverse your all computer files! very fast
 // returns 0: reading failed, 1: success, 2: not enough buffer
 int VisitFolder(const char* root, FolderVisitFn visitFn, void* data, bool recurse)
 {
-    static int16_t stack[1024 * SIMD_NUM_BYTES * 2]; // 128kb
+    static AX_THREAD_LOCAL int16_t stack[1024 * SIMD_NUM_BYTES * 2]; // 128kb
     char* buffer = (char*)ArenaPushGlobal(0);
     char combined[MAX_PATH];
     int sp = 0;
     int bufPos = 0;
 
-    MemSet(buffer, 0, Minu64(ArenaRemainingCurrent(), (u64)(MAX_PATH * 8)));
+    MemSet(buffer, 0, Minu64(ArenaRemainingCurrent(), (u64)(MAX_PATH)));
     MemsetZero(combined, sizeof(combined));
 
     int rootLen = (int)StringLength(root);

@@ -1,4 +1,5 @@
 #define INT16_SUPPORTED 0
+#define FLOAT16_SUPPORTED 0
 
 #include "../../Include/RenderLimits.h"
 #include "../Bitpack.hlsl"

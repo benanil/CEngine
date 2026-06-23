@@ -34,7 +34,7 @@ f16 ASin(f16 x) {
 }
 
 f16_3 SafeNormalize(f16_3 inVec) {
-    half dp3 = max(HALF_EPS, dot(inVec, inVec));
+    f16 dp3 = max(HALF_EPS, dot(inVec, inVec));
     return inVec * rsqrt(dp3);
 }
 

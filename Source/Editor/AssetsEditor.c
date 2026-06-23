@@ -9,8 +9,8 @@
 extern WindowState g_WindowState;
 
 #define ASSET_ROOT          "Assets"
-#define ASSET_MAX_ENTRIES   1024
-#define ASSET_MAX_PATH      260
+#define ASSET_MAX_ENTRIES   (1024*16)
+#define ASSET_MAX_PATH      1024
 #define ASSET_FOLDER_STATES 512
 #define ASSET_BOX_WIDTH     92.0f
 #define ASSET_BOX_HEIGHT    116.0f
@@ -19,11 +19,11 @@ extern WindowState g_WindowState;
 
 typedef struct AssetEntry_
 {
-    char path[ASSET_MAX_PATH];
     u16  pathLen;
     u16  nameOffset; // file name start inside path
     s16  parent;     // entry index, -1 when directly under the assets root
     u8   isDir;
+    char path[ASSET_MAX_PATH];
 } AssetEntry;
 
 // directory snapshot, rescanned periodically because nesting VisitFolder calls
@@ -77,9 +77,18 @@ static u8* AssetFolderOpenSlot(u32 hash)
 static void AssetCollectFn(const char* path, void* data)
 {
     (void)data;
-    if (assetNumEntries >= ASSET_MAX_ENTRIES) return;
+    static int numTry = 0;
+    if (assetNumEntries >= ASSET_MAX_ENTRIES && numTry++ < 16)
+    {
+        AX_WARN("asset folder ASSET_MAX_ENTRIES reached!");
+        return;
+    }
     u32 len = (u32)StringLength(path);
-    if (len == 0u || len >= ASSET_MAX_PATH) return;
+    if ((len == 0u || len >= ASSET_MAX_PATH) && numTry++ < 16)
+    {
+        AX_WARN("asset folder path is too long");
+        return;
+    }
 
     AssetEntry* e = &assetEntries[assetNumEntries++];
     MemCopy(e->path, path, len + 1u);
@@ -116,7 +125,11 @@ static void AssetRefresh(void)
 static void AssetSetCurrentFolder(const char* path)
 {
     u32 len = (u32)StringLength(path);
-    if (len >= ASSET_MAX_PATH) return;
+    if (len >= ASSET_MAX_PATH) 
+    {
+        AX_WARN("AssetSetCurrentFolder path is too long");
+        return;
+    }
     MemsetZero(assetCurrentFolder, sizeof(assetCurrentFolder));
     MemCopy(assetCurrentFolder, path, len);
     assetSelectedPath[0] = '\0';
@@ -154,8 +167,16 @@ static void AssetPaste(void)
     }
     char destination[ASSET_MAX_PATH * 2];
     MemsetZero(destination, sizeof(destination));
-    if (!CombinePaths(destination, sizeof(destination), assetCurrentFolder, GetFileName(assetCopiedPath))) return;
-    if (StringEqual(destination, assetCopiedPath, StringLength(assetCopiedPath) + 1)) return;
+    if (!CombinePaths(destination, sizeof(destination), assetCurrentFolder, GetFileName(assetCopiedPath)))
+    {
+        AX_WARN("combining paths when asset pasting failed");
+        return;
+    }
+    if (StringEqual(destination, assetCopiedPath, StringLength(assetCopiedPath) + 1))
+    {
+        AX_WARN("trying to paste into same file");
+        return;
+    }
     ACopyFile(assetCopiedPath, destination, NULL);
     assetDbDirty = true;
 }

@@ -1,3 +1,5 @@
+#define FLOAT16_SUPPORTED 0
+#define INT16_SUPPORTED 0
 #include "../../Include/RenderLimits.h"
 #include "../CommonStructs.hlsl"
 #include "../Bitpack.hlsl"
@@ -23,13 +25,13 @@ cbuffer params : register(b0, space2)
     float4x4 viewProjection;
 }
 
-StructuredBuffer<uint>               sBoneMtx           : register(t0);
-StructuredBuffer<Entity>             sEntities          : register(t1);
-StructuredBuffer<PrimitiveGroup>     sPrimitiveGroups   : register(t2);
-StructuredBuffer<uint>               sVisibleSparseIndices : register(t3);
-StructuredBuffer<SkinnedVertex>      sVertexBuffer      : register(t4);
-StructuredBuffer<uint>               sSparseToDense     : register(t5);
-StructuredBuffer<uint>               sVisibleCount      : register(t6);
+StructuredBuffer<uint>           sBoneMtx           : register(t0);
+StructuredBuffer<Entity>         sEntities          : register(t1);
+StructuredBuffer<PrimitiveGroup> sPrimitiveGroups   : register(t2);
+StructuredBuffer<uint>           sVisibleSparseIndices : register(t3);
+StructuredBuffer<SkinnedVertex>  sVertexBuffer      : register(t4);
+StructuredBuffer<uint>           sSparseToDense     : register(t5);
+StructuredBuffer<uint>           sVisibleCount      : register(t6);
 
 RWStructuredBuffer<AnimatedVert> sAnimatedVert : register(u0, space1);
 

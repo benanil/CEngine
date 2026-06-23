@@ -52,15 +52,7 @@
     #define MiB(x) ((size_t)(x) * 1024ull * 1024ull)
 #endif
 
-#if defined(_MSC_VER)
-    #define MEMORY_ALIGN_DECL(N) __declspec(align(N))
-    #define RETURN_ADDRESS() _ReturnAddress()
-    #define AX_THREAD_LOCAL __declspec(thread)
-#else
-    #define MEMORY_ALIGN_DECL(N) __attribute__((aligned(N)))
-    #define RETURN_ADDRESS() __builtin_return_address(0)
-    #define AX_THREAD_LOCAL _Thread_local
-#endif
+
 
 #define MEMORY_GUARD_WORDS 16u
 #define ARENA_GUARD_BEFORE 0x1111222233334444ull

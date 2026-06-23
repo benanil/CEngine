@@ -8,6 +8,7 @@
 #include "Include/AssetManager.h"
 #include "Include/GLTFParser.h"
 #include "Include/Rendering.h"
+#include "Include/Graphics.h"
 #include "Include/Camera.h"
 #include "Include/BVH.h"
 #include "Math/Quaternion.h"
@@ -224,8 +225,35 @@ static void ImportDetailSetAnimationBoundsInfo(ImportDetailInfo* info, const Sce
         {
             const APrimitive* primitive = &mesh->primitives[p];
             const float3* positions = (const float3*)primitive->vertexAttribs[AAttribIdx_POSITION];
-            if (!positions || primitive->numVertices <= 0) continue;
-
+            bool skinned = bundle->numSkins > 0;
+            if (!positions || (float3*)(0xcdcdcdcdcdcdcdcdull) == positions)
+            {
+                if (bundle->numSkins > 0)
+                {
+                    const ASkinedVertex* vertices = (ASkinedVertex*)primitive->vertices;
+                    for (s32 v = 0; v < primitive->numVertices; v++)
+                    {
+                        v128f position = Half4ToFloat4Vec(&vertices[v].positionXY);
+                        if (!ImportPositionValid(position)) continue;
+                        maxMeters = Maxf32(maxMeters, Max3(VecFabs(position)));
+                        foundBounds = true;
+                    }
+                }
+                else
+                {
+                    v128f primMin = VecLoad(primitive->min);
+                    v128f primExtend = VecMax(VecSub(VecLoad(primitive->max), primMin), VecSet1(1.0e-6f));
+                    for (s32 v = 0; v < primitive->numVertices; v++)
+                    {
+                        const AVertex* v = (const AVertex*)primitive->vertices;
+                        v128f position = VecAdd(primMin, VecMul(UnpackUnorm16x4(v->position), primExtend));
+                        if (!ImportPositionValid(position)) continue;
+                        maxMeters = Maxf32(maxMeters, Max3(VecFabs(position)));
+                        foundBounds = true;
+                    }
+                }
+                continue;
+            }
             for (s32 v = 0; v < primitive->numVertices; v++)
             {
                 v128f position = Vec3Load(&positions[v].x);
