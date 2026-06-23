@@ -77,6 +77,42 @@ static char* GetNameFromFBX(ufbx_string ustr, FixedPow2Allocator* stringAllocato
     return name;
 }
 
+static bool CopyUFBXPath(char* dst, s32 dstSize, const char* baseDir, s32 baseLen, ufbx_string path)
+{
+    if (dstSize <= 0) return false;
+    dst[0] = '\0';
+    if (path.length == 0 || path.length >= (size_t)dstSize) return false;
+
+    s32 prefixLen = baseDir ? baseLen : 0;
+    s32 copyLen = (s32)path.length;
+    if (copyLen <= 0 || prefixLen + copyLen >= dstSize) return false;
+
+    if (prefixLen > 0)
+        SmallMemCpy(dst, baseDir, prefixLen);
+    SmallMemCpy(dst + prefixLen, path.data, copyLen);
+    dst[prefixLen + copyLen] = '\0';
+    return true;
+}
+
+static s32 CopyUFBXFilename(char* dst, s32 dstSize, ufbx_string path)
+{
+    if (dstSize <= 0) return 0;
+    dst[0] = '\0';
+    if (path.length == 0 || path.length >= (size_t)dstSize) return 0;
+
+    s32 start = (s32)path.length;
+    while (start > 0 && path.data[start - 1] != '/' && path.data[start - 1] != '\\')
+        start--;
+
+    s32 copyLen = (s32)path.length - start;
+    if (copyLen >= dstSize) copyLen = dstSize - 1;
+    if (copyLen <= 0) return 0;
+
+    SmallMemCpy(dst, path.data + start, copyLen);
+    dst[copyLen] = '\0';
+    return copyLen;
+}
+
 // Resolve an FBX texture file to a real path on this machine so the basis encoder
 // (SaveSceneImages) has a source to compress. Prefers <fbxDir>/<relative_filename> because
 // the absolute path baked into an FBX usually points at the artist's drive; embedded image
@@ -98,9 +134,7 @@ static char* ResolveFBXImagePath(const char* fbxBaseDir, s32 fbxBaseLen,
                                : (relative_filename.length ? &relative_filename : NULL);
         if (src)
         {
-            const char* base = GetFileName(src->data);
-            nameLen = StringLengthSafe(base, sizeof(nameBuf) - 1);
-            SmallMemCpy(nameBuf, base, nameLen);
+            nameLen = CopyUFBXFilename(nameBuf, sizeof(nameBuf), *src);
         }
         else
         {
@@ -129,14 +163,13 @@ static char* ResolveFBXImagePath(const char* fbxBaseDir, s32 fbxBaseLen,
     // External file: FBX-relative path resolves on this machine, try it first.
     if (relative_filename.length && fbxBaseLen + (s32)relative_filename.length < PATH_CAP)
     {
-        SmallMemCpy(out, fbxBaseDir, fbxBaseLen);
-        SmallMemCpy(out + fbxBaseLen, relative_filename.data, relative_filename.length + 1);
+        CopyUFBXPath(out, PATH_CAP, fbxBaseDir, fbxBaseLen, relative_filename);
     }
     // Fall back to the stored absolute path, then the raw filename.
     if ((out[0] == '\0' || !FileExist(out)) && absolute_filename.length && absolute_filename.length < PATH_CAP)
-        SmallMemCpy(out, absolute_filename.data, absolute_filename.length + 1);
+        CopyUFBXPath(out, PATH_CAP, NULL, 0, absolute_filename);
     if (out[0] == '\0' && filename.length && filename.length < PATH_CAP)
-        SmallMemCpy(out, filename.data, filename.length + 1);
+        CopyUFBXPath(out, PATH_CAP, NULL, 0, filename);
 
     if (out[0] == '\0' || !FileExist(out))
         AX_WARN("fbx texture source not found on disk, compression skipped for image %d: %s", index, out[0] ? out : "<empty>");
@@ -148,14 +181,18 @@ static char* ResolveFBXImagePath(const char* fbxBaseDir, s32 fbxBaseLen,
 s32 LoadFBX(const char* path, SceneBundle* fbxScene, f32 scale)
 {
 #if !AX_GAME_BUILD
+    s32 pathLen = StringLength(path);
+    bool isObj = FileHasExtension(path, pathLen, ".obj");
+    const char* importType = isObj ? "obj" : "fbx";
+
     MemsetZero(fbxScene, sizeof(SceneBundle));
-    AX_LOG("fbx import: %s scale=%f", path, scale);
+    AX_LOG("%s import: %s scale=%f", importType, path, scale);
 
     ufbx_load_opts opts = { 0 };
-    // FBX is currently imported as static/non-animated scene data; animation stacks are intentionally ignored.
+    // ufbx imports FBX/OBJ as static scene data here; animation stacks are intentionally ignored.
     opts.evaluate_skinning = false;
     opts.evaluate_caches = false;
-    opts.load_external_files = false;
+    opts.load_external_files = isObj; // OBJ needs this for implicitly referenced .mtl files.
     opts.generate_missing_normals = true;
     opts.ignore_missing_external_files = true;
     opts.target_axes = ufbx_axes_right_handed_y_up;
@@ -170,7 +207,7 @@ s32 LoadFBX(const char* path, SceneBundle* fbxScene, f32 scale)
     uscene = ufbx_load_file((const char*)path, &opts, &error);
     
     if (!uscene) {
-        AX_ERROR("fbx mesh load failed! %s", error.info);
+        AX_ERROR("%s mesh load failed! %s", importType, error.info);
         return 0;
     }    
     
@@ -185,11 +222,12 @@ s32 LoadFBX(const char* path, SceneBundle* fbxScene, f32 scale)
     fbxScene->numScenes     = 1;
     fbxScene->defaultSceneIndex = 0;
     fbxScene->numAnimations = 0;
-    AX_LOG("fbx parse: nodes=%d meshes=%d materials=%d textures=%d cameras=%d skins=%d",
+    AX_LOG("%s parse: nodes=%d meshes=%d materials=%d textures=%d cameras=%d skins=%d",
+           importType,
            fbxScene->numNodes, fbxScene->numMeshes, fbxScene->numMaterials,
            fbxScene->numTextures, fbxScene->numCameras, (s32)uscene->skin_deformers.count);
     if (uscene->skin_deformers.count > 0)
-        AX_WARN("fbx contains skin deformers, but this importer is intended for non-skinned meshes only: %s", path);
+        AX_WARN("%s contains skin deformers, but this importer is intended for non-skinned meshes only: %s", importType, path);
     
     FixedPow2Allocator* allocator = AllocateTLSFGlobal(sizeof(FixedPow2Allocator));
     FixedPow2Allocator_Init(allocator, 2048);
@@ -322,7 +360,7 @@ s32 LoadFBX(const char* path, SceneBundle* fbxScene, f32 scale)
     fbxScene->totalVertices = totalVertices;
 
     if (uscene->skin_deformers.count > 0)
-        AX_WARN("fbx skin deformers ignored (static import only): %s", path);
+        AX_WARN("%s skin deformers ignored (static import only): %s", importType, path);
 
     // Build the image list from the textures themselves: ufbx does not always populate
     // scene->texture_files, but every FILE texture carries its own path/content. Resolve and
@@ -508,17 +546,39 @@ s32 LoadFBX(const char* path, SceneBundle* fbxScene, f32 scale)
     fbxScene->scale = scale;
     fbxScene->error = AError_NONE;
     SceneBundle_Normalize(fbxScene);
-    AX_LOG("fbx import complete: %s", path);
+    AX_LOG("%s import complete: %s", importType, path);
     ufbx_free_scene(uscene);
 #endif // android
     return 1;
 }
 
+s32 LoadOBJ(const char* path, SceneBundle* objScene, f32 scale)
+{
+#if !AX_GAME_BUILD
+    return LoadFBX(path, objScene, scale);
+#else
+    (void)objScene;
+    (void)scale;
+    AX_WARN("obj import unavailable in game build: %s", path);
+    return 0;
+#endif
+}
+
 // Parse a source mesh file into the intermediate SceneBundle, dispatching by extension.
-// FBX import is editor-only (ufbx is excluded from game builds); shipped assets are pre-baked .abm.
+// FBX/OBJ import is editor-only (ufbx is excluded from game builds); shipped assets are pre-baked .abm.
 s32 ImportSceneBundle(const char* path, SceneBundle* scene, f32 scale)
 {
-    if (FileHasExtension(path, StringLength(path), ".fbx"))
+    s32 pathLen = StringLength(path);
+    if (FileHasExtension(path, pathLen, ".obj"))
+    {
+#if !AX_GAME_BUILD
+        return LoadOBJ(path, scene, scale);
+#else
+        AX_WARN("obj import unavailable in game build: %s", path);
+        return 0;
+#endif
+    }
+    if (FileHasExtension(path, pathLen, ".fbx"))
     {
 #if !AX_GAME_BUILD
         return LoadFBX(path, scene, scale);
@@ -721,28 +781,28 @@ s32 LoadSceneImages(const char* texturePath, Texture* textures, s32 numImages)
         if (pathLen <= 0)
         {
             AX_WARN("basis metadata ended early index:%d, file:%s", i, texturePath);
-            result = 3;
-            break;
-        }
-
-        GetFileNameNoExt(buffer, fileName);
-        s32 fileNameLen = (s32)StringLengthSafe(fileName, sizeof(fileName));
-        if (fileNameLen <= 0)
-        {
-            AX_WARN("basis metadata has empty image path index:%d, file:%s", i, texturePath);
-            textures[i].handle = NULL;
-            textures[i].buffer = NULL;
-            textures[i].bufferSize = 0;
-            textures[i].type = (u32)textureType;
+            textures[i] = rCreateTexture(32, 32, buffer, TEX_FMT_8UNORM1, 0, TEX_SAMPLER, "BasisNoMetadata");
             result = 3;
             continue;
         }
 
+        GetFileNameNoExt(buffer, fileName);
+        s32 fileNameLen = (s32)StringLengthSafe(fileName, sizeof(fileName));
+        textures[i].type = (u32)textureType;
+        textures[i].channels = (textureType & 3u) ? 2u : 4u;
+        if (fileNameLen <= 0)
+        {
+            AX_WARN("basis metadata has empty image path index:%d, file:%s", i, texturePath);
+            textures[i] = rCreateTexture(32, 32, buffer, TEX_FMT_8UNORM1, 0, TEX_SAMPLER, "BasisNoMetadata");
+            result = 3;
+            continue;
+        }
         s32 baseLen = (s32)StringLengthSafe(baseDir, sizeof(baseDir));
         s32 nameLen = (s32)StringLengthSafe(fileName, sizeof(fileName));
         if (baseLen + nameLen + 7 > (s32)sizeof(basisPath))
         {
             AX_WARN("basis path too long index:%d, file:%s", i, texturePath);
+            textures[i] = rCreateTexture(32, 32, buffer, TEX_FMT_8UNORM1, 0, TEX_SAMPLER, "BasisNoMetadata");
             result = 2;
             continue;
         }
@@ -757,7 +817,7 @@ s32 LoadSceneImages(const char* texturePath, Texture* textures, s32 numImages)
         if (!mem || size == 0)
         {
             const char* reason = size == 0 ? "BasisFileNotExist" : "OSAllocFailed";
-            // textures[i] = rCreateTexture(32, 32, buffer, 0, TexFlags_Nearest, reason); // fill with placeholder
+            textures[i] = rCreateTexture(32, 32, buffer,TEX_FMT_8UNORM1, 0, TEX_SAMPLER, "BasisNotFound");
             AX_WARN("%s index:%d, fileSize:%llu, path:%s", reason, i, size, basisPath);
             result = 2;
             continue;
@@ -767,15 +827,16 @@ s32 LoadSceneImages(const char* texturePath, Texture* textures, s32 numImages)
         s32 isNormal =  textureType & 1;
         s32 isMetallicRoughness = (textureType >> 1) & 1;
 
-        textures[i].type = (u32)textureType;
-        textures[i].channels = (textureType & 3u) ? 2u : 4u;
         textures[i].buffer = basisData;
         textures[i].bufferSize = size;
         textures[i].handle = BasisuMakeImage(basisData, size, &textures[i].width, &textures[i].height, &textures[i].format, &textures[i].mipLevels,
                                              (u8)isNormal, (u8)isMetallicRoughness);
+
         if (!textures[i].handle)
         {
-            AX_WARN("basis gpu texture creation failed index:%d, path:%s", i, basisPath);
+            AX_WARN("basis gpu texture creation failed index:%d size:%llu dimensions:%dx%d path:%s", i, size, textures[i].width, textures[i].height, basisPath);
+            SDL_free(mem);
+            textures[i] = rCreateTexture(32, 32, buffer, TEX_FMT_8UNORM1, 0, TEX_SAMPLER, "BasisNotFound");
             result = 2;
         }
     }
@@ -789,6 +850,7 @@ s32 LoadGLTFCached(const char* path, SceneBundle* scene, Texture* textures, void
     size_t pathLen = StringLength(path);
     MemCopy(buffer, path, pathLen + 1);
     int newLen = ChangeExtension(buffer, pathLen, "abm");
+    bool deleteRemaining = FileHasExtension(path, pathLen, ".glb");
     s32 result = 1;
     if (IsABMLastVersion(buffer)) {
         AX_LOG("asset cache hit: %s", buffer);
@@ -809,7 +871,6 @@ s32 LoadGLTFCached(const char* path, SceneBundle* scene, Texture* textures, void
         ChangeExtension(buffer, newLen, "bdc");
         if (!FileExist(buffer))
         {
-            bool deleteRemaining = FileHasExtension(path, pathLen, ".glb");
             SaveSceneImages(scene, buffer, deleteRemaining);
         }
     }
@@ -822,7 +883,7 @@ s32 LoadGLTFCached(const char* path, SceneBundle* scene, Texture* textures, void
     if (imageResult == 0 || imageResult == 3)
     {
         AX_WARN("scene image cache invalid, rebuilding: %s result=%d", buffer, imageResult);
-        SaveSceneImages(scene, buffer, false);
+        SaveSceneImages(scene, buffer, deleteRemaining);
         imageResult = LoadSceneImages(buffer, textures, scene->numImages);
     }
     else if (imageResult == 2)
@@ -897,7 +958,7 @@ static void WriteGLTFString(const char* str, AFile file)
 s32 SaveGLTFBinary(const SceneBundle* gltf, const char* path)
 {
 #if !AX_GAME_BUILD
-    AX_LOG("abm save: %s version=%d meshes=%d nodes=%d skins=%d animations=%d",
+    AX_LOG("saving abm: %s version=%d meshes=%d nodes=%d skins=%d animations=%d",
            path, ABMMeshVersion, gltf->numMeshes, gltf->numNodes, gltf->numSkins, gltf->numAnimations);
     if (gltf->allVertices == NULL || gltf->allIndices == NULL || gltf->totalVertices <= 0 || gltf->totalIndices <= 0)
     {
@@ -940,27 +1001,36 @@ s32 SaveGLTFBinary(const SceneBundle* gltf, const char* path)
                                    : (u32)((const AVertex*)gltf->allVertices - gGFX.SurfaceVertexBuffer);
     u32 bakedIndexBase  = (u32)((const u32*)gltf->allIndices - gGFX.IndexBuffer);
 
-    // layout: [deflate output | delta indices]
-    // deflate output must fit in max(allVertexSize, allIndexSize) bytes
-    // delta indices need allIndexSize bytes
+    // This runs on a background thread (see the async cache-save task), so it must only READ the
+    // resident geometry. Delta-encode indices into a temp buffer instead of mutating the live index
+    // buffer, and use a per-call deflate state (the shared static one is not thread safe).
+    // layout: [deflate output (max(vtx,idx)) | delta-encoded indices (idx)]
     u64 deflateSlotSize = Maxu64(allVertexSize, allIndexSize);
-    u64 tempSize        = deflateSlotSize + allIndexSize;
-    char* compressedBuffer = ArenaPushGlobal(tempSize);
+    char* compressedBuffer = (char*)AllocateTLSFGlobal(deflateSlotSize + allIndexSize);
+    struct sdefl* sdfl = (struct sdefl*)AllocateTLSFGlobal(sizeof(struct sdefl));
+    if (!compressedBuffer || !sdfl)
+    {
+        AX_WARN("abm save alloc failed: %s", path);
+        if (compressedBuffer) DeAllocateTLSFGlobal(compressedBuffer);
+        if (sdfl) DeAllocateTLSFGlobal(sdfl);
+        AFileClose(file);
+        return 0;
+    }
 
     char* deflateOutput = compressedBuffer;
-    u32*  deltaPtr      = (u32*)(compressedBuffer + deflateSlotSize);
+    u32*  deltaIndices  = (u32*)(compressedBuffer + deflateSlotSize);
 
-    static struct sdefl sdfl;
-    u64 afterCompSize = zsdeflate(&sdfl, deflateOutput, gltf->allVertices, allVertexSize, 5);
+    u64 afterCompSize = zsdeflate(sdfl, deflateOutput, gltf->allVertices, allVertexSize, 5);
     AFileWrite(&afterCompSize, sizeof(u64), file, 1);
     AFileWrite(deflateOutput, afterCompSize, file, 1);
 
-    DeltaEncodingU32(gltf->allIndices, gltf->totalIndices, deltaPtr, bakedVertexBase);
-    afterCompSize = zsdeflate(&sdfl, deflateOutput, deltaPtr, allIndexSize, 5);
+    DeltaEncodingU32((const u32*)gltf->allIndices, gltf->totalIndices, deltaIndices, bakedVertexBase);
+    afterCompSize = zsdeflate(sdfl, deflateOutput, deltaIndices, allIndexSize, 5);
     AFileWrite(&afterCompSize, sizeof(u64), file, 1);
     AFileWrite(deflateOutput, afterCompSize, file, 1);
 
-    ArenaPopGlobal(tempSize);
+    DeAllocateTLSFGlobal(sdfl);
+    DeAllocateTLSFGlobal(compressedBuffer);
     // Cache stores runtime-ready mesh/animation data. Morph target animation is intentionally not serialized yet.
 
     for (s32 i = 0; i < gltf->numMeshes; i++)
@@ -1242,8 +1312,8 @@ s32 LoadSceneBundleBinary(const char* path, SceneBundle* gltf, void** outVertexH
         u64 allIndexSize  = gltf->totalIndices * sizeof(u32);
 
         u64 deflateSlotSize = Maxu64(allVertexSize, allIndexSize);
-        u64 tempSize        = deflateSlotSize + allIndexSize;
-        char* compressedBuffer = ArenaPushGlobal(tempSize);
+        u64 tempSize        = deflateSlotSize;
+        char* compressedBuffer = (char*)AllocateTLSFGlobal(tempSize);
 
         u64 compressedSize;
 
@@ -1256,13 +1326,13 @@ s32 LoadSceneBundleBinary(const char* path, SceneBundle* gltf, void** outVertexH
         zsinflate(gltf->allIndices, allIndexSize, compressedBuffer, compressedSize);
         // index values were saved relative to the bundle's vertex base, the
         // prefix sum seed rebases the whole stream to the allocated range
-        PrefixSumU32fInplace(gltf->allIndices, gltf->totalIndices, vertexBase);
+        PrefixSumU32Inplace(gltf->allIndices, gltf->totalIndices, vertexBase);
 
-        ArenaPopGlobal(tempSize);
 
         Rendering_QueueGeometryUpload(isSkined ? GeometryBuffer_SkinnedVertex : GeometryBuffer_SurfaceVertex,
                                       vertexBase, vertexBase + (u32)gltf->totalVertices);
         Rendering_QueueGeometryUpload(GeometryBuffer_Index, indexBase, indexBase + (u32)gltf->totalIndices);
+        DeAllocateTLSFGlobal(compressedBuffer);
     }
     
     char* currVertices = (char*)gltf->allVertices;

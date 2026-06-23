@@ -117,10 +117,10 @@ static void IndicesForPrimitive(APrimitive* primitive, u32* currIndices, const u
 static void VerticesForPrimitive(APrimitive* primitive, ASkinedVertex* currVertex)
 {
     primitive->vertices = currVertex;
-    const float3* positions   = (const float3*)primitive->vertexAttribs[AAttribIdx_POSITION];
-    const float2* texCoords   = (const float2*)primitive->vertexAttribs[AAttribIdx_TEXCOORD_0];
-    const float3* normals     = (const float3*)primitive->vertexAttribs[AAttribIdx_NORMAL];
-    const v128f* tangents  = (const v128f*)primitive->vertexAttribs[AAttribIdx_TANGENT];
+    const float3* positions  = (const float3*)primitive->vertexAttribs[AAttribIdx_POSITION];
+    const float2* texCoords  = (const float2*)primitive->vertexAttribs[AAttribIdx_TEXCOORD_0];
+    const float3* normals    = (const float3*)primitive->vertexAttribs[AAttribIdx_NORMAL];
+    const v128f* tangents    = (const v128f*)primitive->vertexAttribs[AAttribIdx_TANGENT];
 
     for (s32 v = 0; v < primitive->numVertices; v++)
     {
@@ -303,9 +303,9 @@ static void GenerateSkinnedLODsForPrimitive(APrimitive* primitive, const u32* gl
 
     const size_t numIndices = (size_t)primitive->numIndices;
     const size_t numVertices = (size_t)primitive->numVertices;
-    u32* localIndices = (u32*)ArenaPushGlobal(numIndices * sizeof(u32));
-    u32* simplified   = (u32*)ArenaPushGlobal(numIndices * sizeof(u32));
-    u32* vertexRemap  = (u32*)ArenaPushGlobal(numVertices * sizeof(u32));
+    u32* localIndices   = (u32*)ArenaPushGlobal(numIndices * sizeof(u32));
+    u32* simplified     = (u32*)ArenaPushGlobal(numIndices * sizeof(u32));
+    u32* vertexRemap    = (u32*)ArenaPushGlobal(numVertices * sizeof(u32));
     f32* skinAttributes = (f32*)ArenaPushGlobal(numVertices * 7u * sizeof(f32));
     for (u32 i = 0; i < (u32)numIndices; i++)
         localIndices[i] = globalIndices[i] - vertexBase;
@@ -382,10 +382,10 @@ static void GenerateSkinnedLODsForPrimitive(APrimitive* primitive, const u32* gl
                 (*vertexWrite)[remapped] = sourceVertices[v];
         }
 
-        primitive->lodIndexOffset[lod] = (int)*lodIndexCursor;
-        primitive->lodNumIndices[lod]  = (int)simplifiedCount;
+        primitive->lodIndexOffset[lod]  = (int)*lodIndexCursor;
+        primitive->lodNumIndices[lod]   = (int)simplifiedCount;
         primitive->lodVertexOffset[lod] = (int)lodVertexOffset;
-        primitive->lodNumVertices[lod] = (int)compactVertexCount;
+        primitive->lodNumVertices[lod]  = (int)compactVertexCount;
         primitive->lodAnimatedVertexOffset[lod] = (int)*animatedVertexCursor;
 
         for (u32 i = 0; i < (u32)simplifiedCount; i++)
@@ -598,3 +598,4 @@ s32 BakeSceneMeshesAndAnimations(SceneBundle* gltf, void** outVertexHeapPtr, voi
 void GenerateLOD_50_GLTF(SceneBundle* sceneBundle) { (void)sceneBundle; }
 
 void GenerateLOD_75_GLTF(SceneBundle* sceneBundle) { (void)sceneBundle; }
+

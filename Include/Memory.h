@@ -3,13 +3,14 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdbool.h>
 
 #ifndef TLSF_MEMORY_SIZE
     #define TLSF_MEMORY_SIZE (2048ull * 1024ull * 1024ull)
 #endif
 
 #ifndef ARENA_MEMORY_SIZE
-    #define ARENA_MEMORY_SIZE (256 * 1024 * 1024) /* 128 mb */ 
+    #define ARENA_MEMORY_SIZE (128 * 1024 * 1024) /* 128 mb */ 
 #endif
 
 #ifndef DEFAULT_ALIGN
@@ -31,6 +32,32 @@ typedef struct Arena_ {
 typedef struct ArenaMark_ {
     size_t offset;
 } ArenaMark;
+
+// Per-import bump buffer; allocations larger than what's left spill to TLSF instead of forcing a
+// huge fixed arena. Sized so the common small import/bake scratch never spills.
+#ifndef ARENA_SCRATCH_SIZE
+    #define ARENA_SCRATCH_SIZE (32 * 1024 * 1024) /* 32 mb */
+#endif
+// Max simultaneously-live TLSF spill allocations. Bounded by code nesting depth (a handful), not by
+// data size, so a small fixed count is safe.
+#define ARENA_SCRATCH_MAX_SPILLS 24
+
+typedef struct ArenaScratchSpill_ {
+    size_t offset;   // bump offset when this spill was made; lets pop/restore tell spill from bump
+    void*  ptr;      // TLSF allocation
+} ArenaScratchSpill;
+
+// A scratch arena that temporarily replaces the calling thread's "current" arena (the one
+// ArenaPushGlobal/ArenaPopGlobal operate on). Small bump buffer + TLSF spill. Lives on the caller's stack.
+typedef struct ArenaScratch_ {
+    struct ArenaScratch_* previous;
+    const char* name;
+    char*    buf;
+    size_t   buffLen;
+    size_t   currOffset;
+    uint32_t spillCount;
+    ArenaScratchSpill spills[ARENA_SCRATCH_MAX_SPILLS];
+} ArenaScratch;
 
 typedef struct FixedFragment_ {
     struct FixedFragment_* next;
@@ -83,6 +110,14 @@ void      InitGlobalArena();
 Arena*    GetGlobalArena();
 void*     ArenaPushGlobal(uint64_t size);
 void      ArenaPopGlobal(uint64_t size);
+
+// Installs a fresh TLSF-backed scratch arena as the calling thread's current arena: every
+// ArenaPushGlobal/ArenaPopGlobal until the matching ArenaEndScratch comes from it instead of
+// the shared GlobalArena. This lets a worker thread run the import/bake scratch allocations
+// without racing the main thread's GlobalArena. Nestable. out: false on allocation failure
+// (current arena is left unchanged).
+bool      ArenaBeginScratch(ArenaScratch* scratch, size_t size, const char* name);
+void      ArenaEndScratch(ArenaScratch* scratch);
 uint64_t  ArenaRemainingCurrent(void);
 uint64_t  ArenaGetCurrentOffset(void);
 void      ArenaSetCurrentOffset(size_t offset);

@@ -116,13 +116,12 @@ void BakeGLTFAnimations(SceneBundle* gltf)
     f32* currSampler = (f32*)AllocZeroTLSFGlobal(totalSamplerInput, 4);
     v128f* currOutput = (v128f*)AllocZeroTLSFGlobal(totalSamplerInput, sizeof(v128f));
 
+    s32 numInvalidComponents = 0;
+    s32 numNonFloatsIn = 0;
+    s32 numNonFloatOut = 0;
+    s32 numCubic = 0;
     for (s32 a = 0; a < gltf->numAnimations; a++)
     {
-        s32 numInvalidComponents = 0;
-        s32 numNonFloatsIn = 0;
-        s32 numNonFloatOut = 0;
-        s32 numCubic = 0;
-
         for (s32 s = 0; s < gltf->animations[a].numSamplers; s++)
         {
             const bool scaleTranslation = ShouldScaleTranslationSampler(&gltf->animations[a], scaledNodes, s);
@@ -155,9 +154,9 @@ void BakeGLTFAnimations(SceneBundle* gltf)
             currOutput += sampler->count;
         }
 
-        if (numCubic)       AX_WARN("sampler cubic spline not supported numCubic: %d", numCubic);
-        if (numNonFloatsIn) AX_WARN("unsupported sampler input type: %d", numNonFloatsIn);
-        if (numNonFloatOut) AX_WARN("unsupported sampler output type: %d", numNonFloatOut);
-        if (numInvalidComponents) AX_WARN("anim sampler num components has to be 4 or 3 numInvalid: %d", numInvalidComponents);
     }
+    if (numCubic)       AX_WARN("sampler cubic spline not supported numCubic: %d", numCubic);
+    if (numNonFloatsIn) AX_WARN("unsupported sampler input type: %d", numNonFloatsIn);
+    if (numNonFloatOut) AX_WARN("unsupported sampler output type: %d", numNonFloatOut);
+    if (numInvalidComponents) AX_WARN("anim sampler num components has to be 4 or 3 numInvalid: %d", numInvalidComponents);
 }

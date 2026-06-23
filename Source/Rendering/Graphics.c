@@ -19,6 +19,7 @@
 #include "Extern/ufbx.h"
 #include "Extern/tlsf.h"
 #include <SDL3/SDL_hints.h>
+#include <SDL3/SDL_atomic.h>
 
 #define STBI_NO_BMP
 #define STBI_NO_PSD
@@ -62,6 +63,9 @@ extern void Quit(int rc);
 // tlsf instances managing the cpu mega buffers directly, the headers live
 // inside the buffers between bundle ranges
 static tlsf_t g_GeometryTLSF[GeometryBuffer_Count];
+// editor mesh import allocates/shrinks geometry ranges from a worker thread, so serialize the
+// heap mutations against main-thread bundle add/remove. one tlsf call per critical section.
+static SDL_SpinLock g_GeometryHeapLock;
 
 static char* GeometryHeapBase(GeometryBufferKind kind)
 {
@@ -130,7 +134,9 @@ u32 GeometryHeapAlloc(GeometryBufferKind kind, u32 count, void** raw)
     // 16 aligned which takes a gap path that wastes 48 bytes per allocation
     size_t stride = GeometryHeapStride(kind);
     size_t bytes = (size_t)count * stride + (stride - 1u);
+    SDL_LockSpinlock(&g_GeometryHeapLock);
     void* ptr = tlsf_memalign(g_GeometryTLSF[kind], tlsf_align_size(), bytes);
+    SDL_UnlockSpinlock(&g_GeometryHeapLock);
     if (!ptr) return GEOMETRY_ALLOC_FAIL;
 
     size_t rawOffset = (size_t)((char*)ptr - GeometryHeapBase(kind));
@@ -144,7 +150,9 @@ void GeometryHeapShrink(GeometryBufferKind kind, void* raw, u32 offset, u32 newC
     size_t stride = GeometryHeapStride(kind);
     size_t dataEnd = ((size_t)offset + newCount) * stride;
     size_t newBytes = dataEnd - (size_t)((char*)raw - GeometryHeapBase(kind));
+    SDL_LockSpinlock(&g_GeometryHeapLock);
     void* ptr = tlsf_realloc(g_GeometryTLSF[kind], raw, newBytes);
+    SDL_UnlockSpinlock(&g_GeometryHeapLock);
     ASSERT(ptr == raw); // shrink trims in place, never moves
     (void)ptr;
 }
@@ -152,7 +160,9 @@ void GeometryHeapShrink(GeometryBufferKind kind, void* raw, u32 offset, u32 newC
 void GeometryHeapFree(GeometryBufferKind kind, void* raw)
 {
     if (!raw || !g_GeometryTLSF[kind]) return;
+    SDL_LockSpinlock(&g_GeometryHeapLock);
     tlsf_free(g_GeometryTLSF[kind], raw);
+    SDL_UnlockSpinlock(&g_GeometryHeapLock);
 }
 
 void GraphicsInit(bool msaa)
@@ -332,7 +342,7 @@ SDL_GPUBuffer* CreateBuffer(
     return gpu_buffer;
 }
 
-void UpdateGPUBuffer(SDL_GPUBuffer* buffer, const void* data, size_t bufferSize, size_t offset)
+void UpdateGPUBufferCycle(SDL_GPUBuffer* buffer, const void* data, size_t bufferSize, size_t offset, bool cycle)
 {
     SDL_GPUTransferBufferCreateInfo transferBufferCreateInfo;
     transferBufferCreateInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
@@ -350,9 +360,9 @@ void UpdateGPUBuffer(SDL_GPUBuffer* buffer, const void* data, size_t bufferSize,
     SDL_UnmapGPUTransferBuffer(g_GPUDevice, dataTransferBuffer);
 
     SDL_UploadToGPUBuffer(copyPass,
-        &(SDL_GPUTransferBufferLocation) { .transfer_buffer = dataTransferBuffer, .offset = 0}, 
-        &(SDL_GPUBufferRegion) { .buffer = buffer,  .offset = offset,  .size = bufferSize }, 
-        false);
+                          &(SDL_GPUTransferBufferLocation) { .transfer_buffer = dataTransferBuffer, .offset = 0}, 
+                          &(SDL_GPUBufferRegion) { .buffer = buffer,  .offset = offset,  .size = bufferSize }, 
+                          cycle);
     
     SDL_EndGPUCopyPass(copyPass);
     
@@ -360,6 +370,11 @@ void UpdateGPUBuffer(SDL_GPUBuffer* buffer, const void* data, size_t bufferSize,
     SDL_WaitForGPUFences(g_GPUDevice, true, &fence, 1);
     SDL_ReleaseGPUFence(g_GPUDevice, fence);
     SDL_ReleaseGPUTransferBuffer(g_GPUDevice, dataTransferBuffer);
+}
+
+void UpdateGPUBuffer(SDL_GPUBuffer* buffer, const void* data, size_t bufferSize, size_t offset)
+{
+    UpdateGPUBufferCycle(buffer, data, bufferSize, offset, false);
 }
 
 static u32 GetMipCount(u32 width, u32 height)

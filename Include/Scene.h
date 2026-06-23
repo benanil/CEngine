@@ -4,6 +4,7 @@
 #include "RenderSet.h"
 #include "TextureSystem.h"
 #include "Animation.h"
+#include <SDL3/SDL_atomic.h>
 
 #define MAX_SCENE_BUNDLES 1024u
 #define MAX_SCENE_LIGHTS  256u
@@ -18,7 +19,8 @@ typedef struct SceneBundleRef_
     u32          animOffset;     // first animation of the bundle inside the scene's animation system
     u32          skinned;
     AnimationBundleAlloc animAlloc;
-    struct BundleCacheEntry* cache;
+    u64          cacheKey;       // gBundleCache key (path hash); never store the entry pointer,
+                                 // the cache map relocates entries on grow and on swap-with-last erase
 } SceneBundleRef;
 
 typedef struct BundleCacheEntry
@@ -62,6 +64,36 @@ typedef struct Scene_
     u32 renderDataDirty; // static render set buffers need re-upload, consumed by Render
     u32 texturesBaked;   // pages came from a baked atlas, packer state is unusable until a repack
 } Scene;
+
+typedef enum SceneAsyncOp_
+{
+    SceneAsyncOp_None = 0,
+    SceneAsyncOp_ImportMesh,
+    SceneAsyncOp_OpenScene
+} SceneAsyncOp;
+
+typedef struct SceneAsyncRequest_ SceneAsyncRequest;
+
+typedef void (*SceneAsyncRequestCallback)(SceneAsyncRequest* request);
+
+struct SceneAsyncRequest_
+{
+    SceneAsyncOp op;
+    SDL_AtomicInt done;
+    Scene* scene;
+    SceneAsyncRequestCallback callback;
+    s32    result;
+    u32    bundleIdx;
+    v128f  position;
+    v128f  rotation;
+    v128f  scale;
+    char   path[512];
+    // bundle cache keys the probe acquired (and is holding) on the worker. The scene takes its own
+    // references in the callback, then SceneAsyncUpdate drops these warming references. SDL_malloc'd.
+    u64*   heldKeys;
+    u32    heldCount;
+    u32    heldCap;
+};
 
 // scenes the renderer draws each frame, in activation order
 extern Scene* g_ActiveScene;
@@ -131,6 +163,14 @@ s32 Scene_MakeActive(Scene* scene);
 // out: the first active scene, NULL when none
 Scene* Scene_GetActive(void);
 
-const BundleCacheEntry* FindCacheForRenderBundle(const Scene* scene, bool skinned, u32 renderIdx);
+// Copies the resident cache entry for a scene render bundle into *out (looked up by key under the
+// cache lock). out: false when the bundle is not resident. The copied bvhNodes/bvhTris pointers stay
+// valid while the bundle is referenced; never hold the entry pointer itself, the map relocates it.
+bool FindCacheForRenderBundle(const Scene* scene, bool skinned, u32 renderIdx, BundleCacheEntry* out);
+
+// ASYNC
+
+bool SceneAsyncBegin(SceneAsyncOp op, const char* path, const char* taskName, SceneAsyncRequestCallback callback);
+
 
 #endif // SCENE_H

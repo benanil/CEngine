@@ -166,6 +166,10 @@ typedef __m128i v128u;
 #define VecLoadIU(x)             _mm_loadu_si128(x)
 #define VecStoreU(ptr, x)        _mm_storeu_si128((v128u*)ptr, x)
 #define VecStoreI(ptr, x)        _mm_store_si128((v128u*)ptr, x)
+#define VeciSet1_8(x)            _mm_set1_epi8(x)
+#define VeciCmpEq8(a, b)         _mm_cmpeq_epi8(a, b)
+#define VeciCmpGt8(a, b)         _mm_cmpgt_epi8(a, b)
+#define VeciMovemask8(a)         _mm_movemask_epi8(a)
                                 
 #define VecStore(ptr, x)         _mm_storeu_ps(ptr, x)
 #define VecStoreA(ptr, x)        _mm_store_ps(ptr, x)
@@ -288,9 +292,11 @@ purefn f32 VCALL Vec3DotfImpl(v128f a, v128f b) {
 // Pairwise swap (0<->1, 2<->3)
 #define VecSwapPairs(v)             _mm_shuffle_ps(v,v,_MM_SHUFFLE(2,3,0,1))
 #define VecSwapPairsU(a)            _mm_shuffle_epi32((a), _MM_SHUFFLE(2,3,0,1))
+#define VeciSwapPairs(a)            VecSwapPairsU(a)
 // Half swap (0123 -> 2301)
 #define VecSwapHalves(v)            _mm_shuffle_ps(v,v,_MM_SHUFFLE(1,0,3,2))
 #define VecSwapHalvesU(a)           _mm_shuffle_epi32((a), _MM_SHUFFLE(1,0,3,2))
+#define VeciSwapHalves(a)           VecSwapHalvesU(a)
 
 // Logical
 #define VecNot(a)                   _mm_andnot_ps(a, VecSelect1111)
@@ -343,6 +349,9 @@ purefn f32 VCALL Vec3DotfImpl(v128f a, v128f b) {
 #define VeciAdd(a, b)               _mm_add_epi32(a, b)
 #define VeciSub(a, b)               _mm_sub_epi32(a, b)
 #define VeciMul(a, b)               _mm_mullo_epi32(a, b)
+#define VeciAdd8(a, b)              _mm_add_epi8(a, b)
+#define VeciMin(a, b)               _mm_min_epu32(a, b)
+#define VeciMax(a, b)               _mm_max_epu32(a, b)
                                     
 #define VeciNot(a)                  _mm_andnot_si128(a, _mm_set1_epi32(0xFFFFFFFF))
 #define VeciAnd(a, b)               _mm_and_si128(a, b)
@@ -361,6 +370,9 @@ purefn f32 VCALL Vec3DotfImpl(v128f a, v128f b) {
 #define VeciCmpGt(a, b)             _mm_cmpgt_epi32(a, b)
 #define VeciCmpGe(a, b)             VeciNot(_mm_cmplt_epi32(a, b))
 #define VeciCmpEq(a, b)             _mm_cmpeq_epi32(a, b)
+#define VeciCmpLt8(a, b)            VeciCmpGt8(b, a)
+#define VeciCmpLe8(a, b)            VeciNot(VeciCmpGt8(a, b))
+#define VeciCmpGe8(a, b)            VeciNot(VeciCmpLt8(a, b))
                                     
 #define VeciBlend(a, b, c)          _mm_blendv_epi8(a, b, c)
 #define VecFabs(x)                  VecAnd(x, VecFromInt1(0x7fffffff))
@@ -382,7 +394,7 @@ purefn __m128 VCALL VecU32ToF32(__m128i v) {
     __m128i hi = _mm_srli_epi32(v, 16);
     return _mm_add_ps(_mm_mul_ps(_mm_cvtepi32_ps(hi), _mm_set1_ps(65536.0f)), _mm_cvtepi32_ps(lo));
 }
-                                                                               
+
 #define VecZipLo32(a, b)            _mm_unpacklo_epi32(a, b)                   /* interleave low i32: [a0 b0 a1 b1] | NEON: vzip1q_s32 */
 #define VecZipLo16(a, b)            _mm_unpacklo_epi16(a, b)                   /* interleave low i16  | NEON: vzip1q_s16 */
 #define VecZipHi16(a, b)            _mm_unpackhi_epi16(a, b)                   /* interleave high i16 | NEON: vzip2q_s16 */
@@ -432,6 +444,9 @@ typedef uint32x4_t v128u;
 #define VecStoreI(ptr, x)           vst1q_u32((u32*)ptr, x)
 #define VecStoreU(ptr, x)           vst1q_u32((u32*)ptr, x)
 #define VecSetBytes(x)              vdupq_n_u8(x)
+#define VeciSet1_8(x)               vreinterpretq_u32_u8(vdupq_n_u8(x))
+#define VeciCmpEq8(a, b)            vreinterpretq_u32_u8(vceqq_u8(vreinterpretq_u8_u32(a), vreinterpretq_u8_u32(b)))
+#define VeciCmpGt8(a, b)            vreinterpretq_u32_u8(vcgtq_s8(vreinterpretq_s8_u32(a), vreinterpretq_s8_u32(b)))
                                     
 #define Vec3Load(x)                 ARMVector3Load(x)
                                     
@@ -568,9 +583,11 @@ VecSetR( \
 // Pairwise swap (0<->1, 2<->3)
 #define VecSwapPairs(v)             vrev64q_f32(v)
 #define VecSwapPairsU(a)            vrev64q_u32(a)
+#define VeciSwapPairs(a)            VecSwapPairsU(a)
 // Half swap (0123 -> 2301)         
 #define VecSwapHalves(v)            vextq_f32(v,v,2)
 #define VecSwapHalvesU(a)           vcombine_u32(vget_high_u32(a), vget_low_u32(a))
+#define VeciSwapHalves(a)           VecSwapHalvesU(a)
 
 #define VecNot(a)                   vreinterpretq_f32_u32(vmvnq_u32(vreinterpretq_u32_f32(a)))
 #define VecAnd(a, b)                vreinterpretq_f32_u32(vandq_u32(vreinterpretq_u32_f32(a), vreinterpretq_u32_f32(b)))
@@ -619,6 +636,9 @@ VecSetR( \
 #define VeciAdd(a, b)               vaddq_u32(a, b)
 #define VeciSub(a, b)               vsubq_u32(a, b)
 #define VeciMul(a, b)               vmulq_u32(a, b)
+#define VeciAdd8(a, b)              vreinterpretq_u32_u8(vaddq_u8(vreinterpretq_u8_u32(a), vreinterpretq_u8_u32(b)))
+#define VeciMin(a, b)               vminq_u32(a, b)
+#define VeciMax(a, b)               vmaxq_u32(a, b)
 
 #define VecBitcastU32(x)            vreinterpretq_u32_f32(x)
 #define VeciBitcastF32(x)           vreinterpretq_f32_u32(x)
@@ -665,6 +685,9 @@ VecSetR( \
 #define VeciCmpGt(a, b)             vcgtq_s32(vreinterpretq_s32_u32(a), vreinterpretq_s32_u32(b))
 #define VeciCmpGe(a, b)             vcgeq_s32(vreinterpretq_s32_u32(a), vreinterpretq_s32_u32(b))
 #define VeciCmpEq(a, b)             vceqq_u32(a, b)
+#define VeciCmpLt8(a, b)            VeciCmpGt8(b, a)
+#define VeciCmpLe8(a, b)            VeciNot(VeciCmpGt8(a, b))
+#define VeciCmpGe8(a, b)            VeciNot(VeciCmpLt8(a, b))
 
 #define VeciBlend(a, b, c)          vbslq_u32(c, b, a)  /* Blend a and b based on mask c */
 #define VecFabs(x)                  vabsq_f32(x)
@@ -833,6 +856,27 @@ purefn int ARMVecMovemask(v128f v) {
     return (int)vaddvq_u32(vshlq_u32(vshrq_n_u32(vreinterpretq_u32_f32(v), 31), shift));
 }
 
+purefn int VCALL VeciMovemask8(v128u v)
+{
+    // Isolate the MSB of each byte into a 0x01 or 0x00
+    uint8x16_t bits = vshrq_n_u8(vreinterpretq_u8_u32(v), 7);
+    // Define a multiplier mask for each byte position
+    // (Byte 0 gets 1, Byte 1 gets 2, Byte 2 gets 4 ... Byte 7 gets 128)
+    // For bytes 8-15, we keep the same relative bit positions but we'll scale them later
+    static const uint8_t mask_arr[16] = { 
+        1, 2, 4, 8, 16, 32, 64, 128, 
+        1, 2, 4, 8, 16, 32, 64, 128 
+    };
+    uint8x16_t mask = vld1q_u8(mask_arr);
+    // Multiply isolated bits by their positional power of 2
+    uint8x16_t matches = vmulq_u8(bits, mask);
+    // Sum the lower 8 bytes and upper 8 bytes separately across the vector
+    // vaddv sums elements into a single scalar register
+    int low_sum  = vaddv_u8(vget_low_u8(matches));       // Accumulates bits 0-7
+    int high_sum = vaddv_u8(vget_high_u8(matches)) << 8; // Accumulates bits 8-15
+    return low_sum | high_sum;
+}
+
 #endif
 
 #if defined(AX_SUPPORT_AVX2)
@@ -889,11 +933,20 @@ typedef struct Vec8x32u_ { v128u lo, hi; } v256u;
 #define VecSetBytes256(x)     (v256u){ VecSetBytes(x)   , VecSetBytes(x)                  }
 
 #endif
+
+purefn v128u VCALL VeciToLowerASCII(v128u v)
+{
+    v128u geA = VeciCmpGe8(v, VeciSet1_8('A'));
+    v128u leZ = VeciCmpLe8(v, VeciSet1_8('Z'));
+    v128u upper = VeciAnd(geA, leZ);
+    return VeciAdd8(v, VeciAnd(upper, VeciSet1_8('a' - 'A')));
+}
+
 typedef v128f f4;
 typedef v128i i4;
 
 // shared 
-purefn f4 VCALL Vec3DistV    (f4 a, f4 b) { f4 x = VecSub(a, b); return Vec3LenV(x);  } 
+purefn f4 VCALL Vec3DistV     (f4 a, f4 b) { f4 x = VecSub(a, b); return Vec3LenV(x);  } 
 purefn f32 VCALL Vec3DistfV   (f4 a, f4 b) { f4 x = VecSub(a, b); return Vec3LenfV(x); } 
 purefn f32 VCALL Vec3DistSqrfV(f4 a, f4 b) { f4 x = VecSub(a, b); return Vec3DotfV(x, x); } 
 

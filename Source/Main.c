@@ -16,6 +16,7 @@
 #include "Include/Scene.h"
 #include "Include/DemoScene.h"
 #include "Include/Terrain.h"
+#include "Include/Editor.h"
 #include "Math/Quaternion.h"
 
 static s32 done = 0;
@@ -23,14 +24,6 @@ static bool g_MainLoopTicking;
 
 Camera       g_Camera;
 SDL_Window*  g_SDLWindow;
-
-extern bool   TerrainEditorUpdate(Camera* camera);
-extern bool   EditorGizmoUpdate(Camera* camera);
-extern bool   EditorLightGizmoUpdate(Camera* camera);
-extern void   EditorPickingUpdate(Camera* camera);
-extern void   EditorInit(void);
-extern void   EditorConsoleInit(void);
-extern void   EditorSceneStartup(void);
 
 static void MainSyncWindowSize(void)
 {
@@ -65,9 +58,9 @@ static void MainLoopTick(void)
     DemoScene_Update(PlatformCtx.DeltaTime);
     Scene_SubmitLights();
 
-    extern void EditorSceneHotkeys(void);
     EditorSceneHotkeys();
 
+    SceneAsyncUpdate();
     if (!TerrainEditorUpdate(&g_Camera) && !EditorGizmoUpdate(&g_Camera) && !EditorLightGizmoUpdate(&g_Camera))
         EditorPickingUpdate(&g_Camera);
 

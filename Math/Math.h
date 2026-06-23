@@ -77,6 +77,20 @@ purefn f32 VCALL VecMaxVal(v128f a)
     return VecGetX(VecMax(m, VecSwapHalves(m)));
 }
 
+purefn u32 VCALL VeciMinVal(v128u a)
+{
+    v128u t = VeciSwapPairs(a);
+    v128u m = VeciMin(a, t);
+    return VeciGetX(VeciMin(m, VeciSwapHalves(m)));
+}
+
+purefn u32 VCALL VeciMaxVal(v128u a)
+{
+    v128u t = VeciSwapPairs(a);
+    v128u m = VeciMax(a, t);
+    return VeciGetX(VeciMax(m, VeciSwapHalves(m)));
+}
+
 purefn f32 VCALL Min3(v128f a)
 {
     VecSetW(a, FLT_MAX);
@@ -87,6 +101,16 @@ purefn f32 VCALL Max3(v128f a)
 {
     VecSetW(a, -FLT_MAX);
     return VecMaxVal(a);
+}
+
+purefn u32 VCALL Mini3(v128u a)
+{
+    return VeciMinVal(VeciSetR(VeciGetX(a), VeciGetY(a), VeciGetZ(a), UINT32_MAX));
+}
+
+purefn u32 VCALL Maxi3(v128u a)
+{
+    return VeciMaxVal(VeciSetR(VeciGetX(a), VeciGetY(a), VeciGetZ(a), 0u));
 }
 
 #define VecClamp01(v) VecClamp(v, VecZero(), VecOne())

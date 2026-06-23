@@ -771,16 +771,16 @@ typedef void(*FolderVisitFn)(const char* path, void* data);
 int VisitFolder(const char* root, FolderVisitFn visitFn, void* data, bool recurse)
 {
     static int16_t stack[1024 * SIMD_NUM_BYTES * 2]; // 128kb
-    char* buffer = ArenaPushGlobal(0); 
+    char* buffer = (char*)ArenaPushGlobal(0);
     char combined[MAX_PATH];
     int sp = 0;
     int bufPos = 0;
 
-    MemsetZero(buffer, MAX_PATH);
+    MemSet(buffer, 0, Minu64(ArenaRemainingCurrent(), (u64)(MAX_PATH * 8)));
     MemsetZero(combined, sizeof(combined));
 
     int rootLen = (int)StringLength(root);
-    if (rootLen <= 0)
+    if (rootLen <= 0 || rootLen + 1 > ArenaRemainingCurrent())
         return 0;
 
     MemCopy(buffer + bufPos, root, rootLen);

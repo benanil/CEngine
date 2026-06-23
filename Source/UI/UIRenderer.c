@@ -1885,7 +1885,7 @@ void UIRender(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget)
 
     if (g_UIRenderer.count > 0u)
     {
-        UpdateGPUBuffer(g_RenderState.uiShapeBuffer, g_UIRenderer.shapes, (size_t)g_UIRenderer.count * sizeof(UIShape), 0ull);
+        UpdateGPUBufferCycle(g_RenderState.uiShapeBuffer, g_UIRenderer.shapes, (size_t)g_UIRenderer.count * sizeof(UIShape), 0ull, true);
     }
     if (g_UIRenderer.imageCount > 0u && (!g_RenderState.uiImagePipeline || !g_RenderState.sampler))
     {

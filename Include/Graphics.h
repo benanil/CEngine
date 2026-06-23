@@ -382,6 +382,8 @@ SDL_GPUBuffer* CreateBuffer(const void* buffer, size_t bufferSize, SDL_GPUBuffer
 
 void UpdateGPUBuffer(SDL_GPUBuffer* buffer, const void* data, size_t bufferSize, size_t offset);
 
+void UpdateGPUBufferCycle(SDL_GPUBuffer* buffer, const void* data, size_t bufferSize, size_t offset, bool cycle);
+
 SDL_GPUTexture* CreateHiZDepthTexture(u32 drawablew, u32 drawableh);
 
 SDL_GPUTexture* CreateHBAOTexture(u32 hbaoWidth, u32 hbaoHeight);

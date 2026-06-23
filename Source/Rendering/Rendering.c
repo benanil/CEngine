@@ -225,10 +225,15 @@ static void UploadRenderSetStatics(const RenderSet* set, RenderSetBuffers* buffe
 typedef struct GeometryDirtyRange_ { u32 begin, end; } GeometryDirtyRange;
 static GeometryDirtyRange g_GeometryDirty[GeometryBuffer_Count][GEOMETRY_DIRTY_MAX];
 static u32 g_NumGeometryDirty[GeometryBuffer_Count];
+// Editor mesh import bakes on a worker thread and queues its uploads from there, so the queue is
+// shared with the main thread's per-frame drain. The critical sections are tiny (push a range /
+// snapshot+clear the queue), so a spinlock is enough.
+static SDL_SpinLock g_GeometryUploadLock;
 
 void Rendering_QueueGeometryUpload(GeometryBufferKind kind, u32 begin, u32 end)
 {
     if (end <= begin || kind < 0 || kind >= GeometryBuffer_Count) return;
+    SDL_LockSpinlock(&g_GeometryUploadLock);
     u32* num = &g_NumGeometryDirty[kind];
     if (*num == GEOMETRY_DIRTY_MAX)
     {
@@ -236,9 +241,12 @@ void Rendering_QueueGeometryUpload(GeometryBufferKind kind, u32 begin, u32 end)
         GeometryDirtyRange* last = &g_GeometryDirty[kind][GEOMETRY_DIRTY_MAX - 1u];
         last->begin = Minu32(last->begin, begin);
         last->end   = Maxu32(last->end, end);
-        return;
     }
-    g_GeometryDirty[kind][(*num)++] = (GeometryDirtyRange){ begin, end };
+    else
+    {
+        g_GeometryDirty[kind][(*num)++] = (GeometryDirtyRange){ begin, end };
+    }
+    SDL_UnlockSpinlock(&g_GeometryUploadLock);
 }
 
 // uploads the queued geometry ranges, called every frame and on init
@@ -255,18 +263,31 @@ static void UploadDirtyGeometry(void)
     };
     const size_t strides[GeometryBuffer_Count] = { sizeof(ASkinedVertex), sizeof(AVertex), sizeof(u32), 0u, 0u };
 
+    // Snapshot and clear the queue under the lock, then do the (slower) GPU copies without holding
+    // it, so a baking worker thread never spins waiting on a transfer. The source ranges are stable
+    // once queued: the worker writes all geometry before it calls Rendering_QueueGeometryUpload.
+    GeometryDirtyRange ranges[GeometryBuffer_Count][GEOMETRY_DIRTY_MAX];
+    u32 counts[GeometryBuffer_Count];
+    SDL_LockSpinlock(&g_GeometryUploadLock);
     for (u32 kind = 0; kind < GeometryBuffer_Count; kind++)
     {
-        for (u32 i = 0; i < g_NumGeometryDirty[kind]; i++)
+        counts[kind] = g_NumGeometryDirty[kind];
+        MemCopy(ranges[kind], g_GeometryDirty[kind], counts[kind] * sizeof(GeometryDirtyRange));
+        g_NumGeometryDirty[kind] = 0;
+    }
+    SDL_UnlockSpinlock(&g_GeometryUploadLock);
+
+    for (u32 kind = 0; kind < GeometryBuffer_Count; kind++)
+    {
+        if (!gpuBuffers[kind]) continue;
+        for (u32 i = 0; i < counts[kind]; i++)
         {
-            GeometryDirtyRange range = g_GeometryDirty[kind][i];
-            if (!gpuBuffers[kind]) continue;
+            GeometryDirtyRange range = ranges[kind][i];
             UpdateGPUBuffer(gpuBuffers[kind],
                             sources[kind] + (size_t)range.begin * strides[kind],
                             (size_t)(range.end - range.begin) * strides[kind],
                             (size_t)range.begin * strides[kind]);
         }
-        g_NumGeometryDirty[kind] = 0;
     }
 }
 
@@ -407,7 +428,7 @@ static SDL_GPUColorTargetInfo MakeHiZDepthTarget(WindowState* winstate)
 static void UploadRenderSetEntities(RenderSet* set, RenderSetBuffers* buffers)
 {
     if (set->numEntities == 0) return;
-    UpdateGPUBuffer(buffers->entity, set->entities, set->numEntities * sizeof(Entity), 0ull);
+    UpdateGPUBufferCycle(buffers->entity, set->entities, set->numEntities * sizeof(Entity), 0ull, true);
 }
 
 void CullScene(SDL_GPUCommandBuffer* cmd, FrustumPlanes planes, mat4x4 viewProj, bool enableHiZ, bool enableSurfaceLOD, u32 forcedLOD)

@@ -169,7 +169,7 @@ static bool AssetExtIs(const char* ext, const char* match)
 static bool AssetIsMeshPath(const char* path)
 {
     const char* ext = GetFileExtension(path, StringLength(path));
-    return AssetExtIs(ext, "fbx") ||  AssetExtIs(ext, "gltf") || AssetExtIs(ext, "glb") || AssetExtIs(ext, "abm");
+    return AssetExtIs(ext, "fbx") ||  AssetExtIs(ext, "gltf") ||  AssetExtIs(ext, "obj") || AssetExtIs(ext, "glb") || AssetExtIs(ext, "abm");
 }
 
 static bool AssetIsScenePath(const char* path)
@@ -230,7 +230,7 @@ static UIImageData* AssetIconForEntry(const AssetEntry* e)
     if (e->isDir) return &assetIconImages[AssetIcon_Folder];
 
     const char* ext = GetFileExtension(e->path, (int)e->pathLen);
-    if (AssetExtIs(ext, "gltf") || AssetExtIs(ext, "glb") || AssetExtIs(ext, "fbx") || AssetExtIs(ext, "abm"))
+    if (AssetExtIs(ext, "gltf") || AssetExtIs(ext, "glb") || AssetExtIs(ext, "fbx") || AssetExtIs(ext, "obj") || AssetExtIs(ext, "abm"))
         return &assetIconImages[AssetIcon_Mesh];
     if (AssetExtIs(ext, "png") || AssetExtIs(ext, "jpg") || AssetExtIs(ext, "jpeg") || AssetExtIs(ext, "dds") || AssetExtIs(ext, "basis") || AssetExtIs(ext, "ctex"))
         return &assetIconImages[AssetIcon_Image];

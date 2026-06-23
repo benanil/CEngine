@@ -1064,7 +1064,7 @@ void SlugRender(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget, 
         AX_WARN("Slug render skipped, glyph buffers upload failed");
         return;
     }
-    UpdateGPUBuffer(font->vertexBuffer, font->vertices, (size_t)font->numVertices * sizeof(SlugVertex), 0);
+    UpdateGPUBufferCycle(font->vertexBuffer, font->vertices, (size_t)font->numVertices * sizeof(SlugVertex), 0, true);
 
     // the depth variant draws into the scene textures which run at render scale,
     // the 2d variant draws over the swapchain at the window resolution
@@ -1131,7 +1131,7 @@ bool SlugPrepare2D(SDL_GPUCommandBuffer* cmd, SlugFont* font)
         AX_WARN("Slug render skipped, glyph buffers upload failed");
         return false;
     }
-    UpdateGPUBuffer(font->vertexBuffer, font->vertices, (size_t)font->numVertices * sizeof(SlugVertex), 0);
+    UpdateGPUBufferCycle(font->vertexBuffer, font->vertices, (size_t)font->numVertices * sizeof(SlugVertex), 0, true);
     return true;
 }
 

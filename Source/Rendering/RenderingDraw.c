@@ -257,7 +257,7 @@ void RenderGizmo(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget,
 {
     if (g_NumGizmoVertices == 0 || !g_GizmoLinePipeline) return;
 
-    UpdateGPUBuffer(g_RenderState.gizmoLineBuffer, g_GizmoVertices, g_NumGizmoVertices * sizeof(ALineVertex), 0);
+    UpdateGPUBufferCycle(g_RenderState.gizmoLineBuffer, g_GizmoVertices, g_NumGizmoVertices * sizeof(ALineVertex), 0, true);
 
     SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmd, colorTarget, 1, NULL);
     SDL_GPUBufferBinding vertex_binding = { g_RenderState.gizmoLineBuffer, 0 };

@@ -338,6 +338,9 @@
 					<File>
 						<Path>Include/RenderSet.h</Path>
 					</File>
+					<File>
+						<Path>Include/Editor.h</Path>
+					</File>
 				</Children>
 			</Folder>
 			<Folder>
@@ -627,6 +630,9 @@
 					</Folder>
 					<File>
 						<Path>Source/SceneSerializer.c</Path>
+					</File>
+					<File>
+						<Path>Source/Algorithm - Copy.c</Path>
 					</File>
 				</Children>
 			</Folder>

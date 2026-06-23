@@ -84,7 +84,7 @@ static void PrintCrashFrame(u32 idx, void* addr)
     symbol->MaxNameLen = 255;
     DWORD64 displacement = 0;
     const char* name = SymFromAddr(GetCurrentProcess(), (DWORD64)(uintptr_t)addr, &displacement, symbol) ? symbol->Name : "?";
-    AX_WARN("  #%02u %p %s+0x%llx rva 0x%llx %s", idx, addr, name, (unsigned long long)displacement, (unsigned long long)rva, moduleName);
+    AX_ERROR("  #%02u %p %s+0x%llx rva 0x%llx %s", idx, addr, name, (unsigned long long)displacement, (unsigned long long)rva, moduleName);
 }
 
 static LONG WINAPI CrashHandler(EXCEPTION_POINTERS* ep)
@@ -93,14 +93,14 @@ static LONG WINAPI CrashHandler(EXCEPTION_POINTERS* ep)
     GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
                        (LPCSTR)ep->ExceptionRecord->ExceptionAddress, &module);
     uintptr_t rva = module ? (uintptr_t)ep->ExceptionRecord->ExceptionAddress - (uintptr_t)module : 0u;
-    AX_WARN("Exception code: 0x%08lX at %p module %p rva 0x%Ix",
+    AX_ERROR("Exception code: 0x%08lX at %p module %p rva 0x%Ix",
              ep->ExceptionRecord->ExceptionCode,
              ep->ExceptionRecord->ExceptionAddress,
              module,
              rva);
     if (ep->ExceptionRecord->ExceptionCode == 0xC0000005)
     {
-        AX_WARN("Access violation: %s address %p",
+        AX_ERROR("Access violation: %s address %p",
                  ep->ExceptionRecord->ExceptionInformation[0] == 0 ? "reading" : "writing",
                  (void*)ep->ExceptionRecord->ExceptionInformation[1]);
     }

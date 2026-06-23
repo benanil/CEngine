@@ -17,7 +17,6 @@ void EditorOpenScene(const char* path);
 void EditorSceneStartup(void);
 struct Scene_* EditorNewScene(void);
 struct Camera_;
-void EditorSceneHotkeys(void);
 void EditorPickingUpdate(struct Camera_* camera);
 bool EditorLightGizmoUpdate(struct Camera_* camera);
 void DrawSceneLightGizmos(struct Camera_* camera);

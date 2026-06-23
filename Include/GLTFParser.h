@@ -345,24 +345,6 @@ typedef struct SceneBundle_
     void*       allocator;
 } SceneBundle;
 
-typedef struct ParsedObj_
-{
-    int numMeshes;
-    int numMaterials;
-    int numImages;
-    
-    AErrorType error;
-
-    void* allVertices;
-    void* allIndices;
-
-    char* materialText; // we hold material names in this.
-
-    AMesh*     meshes;
-    AMaterial* materials;
-    AImage*    images;
-} ParsedObj;
-
 // outScene should not be null
 int ParseGLTF(const char* path, SceneBundle* outScene, float scale);
 

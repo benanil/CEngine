@@ -229,8 +229,14 @@ SDL_GPUTexture* BasisuMakeImage(
     SDL_memset(&textureRegion           , 0, sizeof(SDL_GPUTextureRegion));
     SDL_memset(imageLevelDescriptions   , 0xCD, sizeof(imageLevelDescriptions));
 
-    transcoder.start_transcoding(basisu_data, (uint32_t)size);
-    transcoder.get_image_info(basisu_data, (uint32_t)size, img_info, 0);
+    if (!transcoder.start_transcoding(basisu_data, (uint32_t)size))
+        return NULL;
+
+    if (!transcoder.get_image_info(basisu_data, (uint32_t)size, img_info, 0))
+        return NULL;
+
+    if (img_info.m_width == 0 || img_info.m_height == 0)
+        return NULL;
     
     basisTexFmt = transcoder.get_basis_tex_format(basisu_data, (uint32_t)size);
     fmt = BasisTexToTranscoderFormat(basisTexFmt, img_info.m_alpha_flag, isNormal, isMetallicRoughness);
@@ -245,9 +251,6 @@ SDL_GPUTexture* BasisuMakeImage(
         imageDataLength += levelDesc->blocks * bytes_per_block;
     }
     
-    uploadCmdBuf = SDL_AcquireGPUCommandBuffer(gpuDevice);
-    copyPass     = SDL_BeginGPUCopyPass(uploadCmdBuf);
-    
     texDesc.type                 = SDL_GPU_TEXTURETYPE_2D;
     texDesc.format               = BasisToSDLPixelFormat(fmt);
     texDesc.width                = img_info.m_width;
@@ -257,6 +260,9 @@ SDL_GPUTexture* BasisuMakeImage(
     texDesc.sample_count         = SDL_GPU_SAMPLECOUNT_1;
     texDesc.usage                = SDL_GPU_TEXTUREUSAGE_SAMPLER;
     texDesc.props                = 0;
+
+    uploadCmdBuf = SDL_AcquireGPUCommandBuffer(gpuDevice);
+    copyPass     = SDL_BeginGPUCopyPass(uploadCmdBuf);
     
     result = SDL_CreateGPUTexture(gpuDevice, &texDesc);
     // CHECK_CREATE(result, "Compressed Texture");

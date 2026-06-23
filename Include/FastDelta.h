@@ -70,7 +70,7 @@ static inline void PrefixSumU32(const u32* RESTRICT input, size_t length, u32* R
 
 // write to buffer the successive differences of buffer (buffer[0]-starting_point, buffer[1]-buffer[2], ...)
 // there are "length" values in buffer
-static inline void PrefixSumU32fInplace(u32* buffer, size_t length, u32 starting_point) {
+static inline void PrefixSumU32Inplace(u32* buffer, size_t length, u32 starting_point) {
     __m128i prev = _mm_set1_epi32(starting_point);
     size_t i = 0;
     for(; i  < length/4; i++) {

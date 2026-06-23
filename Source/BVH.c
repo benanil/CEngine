@@ -7,6 +7,7 @@
 #include "Include/Memory.h"
 #include "Include/Platform.h"
 #include "Include/Scene.h"
+#include "Include/Bitset.h"
 #include "Math/Quaternion.h"
 #include "Math/Bitpack.h"
 #include "Math/Half.h"
@@ -225,14 +226,14 @@ s32 BVH_BuildBundleCached(SceneBundle* bundle, BundleCacheEntry* bundleCache, bo
     // build. heap allocated, the engine tlsf pool is too small for big scenes
     BVHBuild build;
     build.nodes     = (BVHNode*)SDL_malloc((u64)totalTris * 2u * sizeof(BVHNode));
-    build.tris      = (BVHTri*)SDL_malloc((u64)totalTris * sizeof(BVHTri));
-    build.centroids = (v128f*)SDL_aligned_alloc(16, (u64)totalTris * sizeof(v128f));
+    build.tris      = (BVHTri*)SDL_aligned_alloc(sizeof(v128f), (u64)totalTris * sizeof(BVHTri));
+    build.centroids = (v128f*)SDL_aligned_alloc(sizeof(v128f), (u64)totalTris * sizeof(v128f));
     build.nodesUsed = 0;
     build.skinned   = skinned;
     if (!build.nodes || !build.tris || !build.centroids)
     {
         if (build.nodes) SDL_free(build.nodes);
-        if (build.tris) SDL_free(build.tris);
+        if (build.tris)  SDL_aligned_free(build.tris);
         if (build.centroids) SDL_aligned_free(build.centroids);
         AX_ERROR("bvh build allocation failed: tris=%d", totalTris);
         return 0;
@@ -254,6 +255,8 @@ s32 BVH_BuildBundleCached(SceneBundle* bundle, BundleCacheEntry* bundleCache, bo
 
             u32 firstTri = triCursor;
             const u32* indices = gGFX.IndexBuffer + prim->lodIndexOffset[0];
+            u32 vertexBegin = (u32)prim->lodVertexOffset[0];
+            u32 vertexEnd = vertexBegin + (u32)prim->lodNumVertices[0];
             // de-quantization range for this primitive's static unorm16 positions
             BVH_PrimitiveDecode(prim, &build.decodeMin, &build.decodeExtent);
             for (u32 t = 0; t < numTris; t++)
@@ -262,6 +265,17 @@ s32 BVH_BuildBundleCached(SceneBundle* bundle, BundleCacheEntry* bundleCache, bo
                 tri->v0 = indices[t * 3u + 0u];
                 tri->v1 = indices[t * 3u + 1u];
                 tri->v2 = indices[t * 3u + 2u];
+                v128u triV = VeciLoad(&tri->v0);
+                v128u cmp = VeciOr(VeciCmpLt(triV, VeciSet1(vertexBegin)), VeciCmpGe(triV, VeciSet1(vertexEnd)));
+
+                if (Maxi3(cmp) > 0)
+                {
+                    AX_WARN("bvh primitive skipped: invalid index mesh=%d primitive=%d tri=%d vertices=%d..%d idx=(%d,%d,%d) indexOffset=%d numIndices=%d",
+                            m, p, t, vertexBegin, vertexEnd, tri->v0, tri->v1, tri->v2, prim->lodIndexOffset[0], prim->lodNumIndices[0]);
+                    triCursor = firstTri;
+                    prim->bvhNodeIndex = ~0u;
+                    goto next_primitive;
+                }
                 tri->padding = 0;
                 v128f sum = VecAdd(VecAdd(BVH_Position(skinned, tri->v0, build.decodeMin, build.decodeExtent),
                                           BVH_Position(skinned, tri->v1, build.decodeMin, build.decodeExtent)),
@@ -276,6 +290,7 @@ s32 BVH_BuildBundleCached(SceneBundle* bundle, BundleCacheEntry* bundleCache, bo
             build.nodes[rootIdx].triCount = numTris;
             BVH_UpdateNodeBounds(&build, &build.nodes[rootIdx]);
             BVH_Subdivide(&build, rootIdx);
+next_primitive:;
         }
     }
 
@@ -290,8 +305,8 @@ s32 BVH_BuildBundleCached(SceneBundle* bundle, BundleCacheEntry* bundleCache, bo
 
 void BVH_FreeBundle(BundleCacheEntry* bundleCache)
 {
-    if (bundleCache->bvhNodes) SDL_free(bundleCache->bvhNodes);
-    if (bundleCache->bvhTris) SDL_free(bundleCache->bvhTris);
+    if (bundleCache->bvhNodes) SDL_free(bundleCache->bvhNodes);            // SDL_malloc/realloc
+    if (bundleCache->bvhTris) SDL_aligned_free(bundleCache->bvhTris);      // SDL_aligned_alloc
     bundleCache->bvhNodes = NULL;
     bundleCache->bvhTris = NULL;
     bundleCache->numBvhNodes = 0;
@@ -378,8 +393,9 @@ static s32 BVH_RaycastSet(const Scene* scene, const RenderSet* set, bool skinned
     for (u32 b = 0; b < set->numBundles; b++)
     {
         const SceneBundle* bundle = set->bundles[b];
-        const BundleCacheEntry* bundleCache = FindCacheForRenderBundle(scene, skinned, b);
-        if (!bundle || !bundleCache || !bundleCache->bvhNodes) continue;
+        BundleCacheEntry bundleCacheCopy;
+        if (!bundle || !FindCacheForRenderBundle(scene, skinned, b, &bundleCacheCopy) || !bundleCacheCopy.bvhNodes) continue;
+        const BundleCacheEntry* bundleCache = &bundleCacheCopy;
 
         Range range = set->bundlePrimitiveRange[b];
         for (u32 g = range.start; g < range.start + range.count; g++)

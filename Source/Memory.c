@@ -8,11 +8,13 @@
 // quick A/B switch for hunting allocator related corruption,
 // 0 routes the global allocations through SDL's allocator instead of tlsf
 #ifndef USE_TLSF_ALLOCATOR
-    #define USE_TLSF_ALLOCATOR 1
+    #define USE_TLSF_ALLOCATOR 0
 #endif
 
 #if !USE_TLSF_ALLOCATOR
     #include <SDL3/SDL_stdinc.h>
+#else
+    #include <SDL3/SDL_atomic.h>
 #endif
 
 #include <stddef.h>
@@ -53,9 +55,11 @@
 #if defined(_MSC_VER)
     #define MEMORY_ALIGN_DECL(N) __declspec(align(N))
     #define RETURN_ADDRESS() _ReturnAddress()
+    #define AX_THREAD_LOCAL __declspec(thread)
 #else
     #define MEMORY_ALIGN_DECL(N) __attribute__((aligned(N)))
     #define RETURN_ADDRESS() __builtin_return_address(0)
+    #define AX_THREAD_LOCAL _Thread_local
 #endif
 
 #define MEMORY_GUARD_WORDS 16u
@@ -71,6 +75,26 @@ typedef struct AlignedAllocHeader
 static AX_ALIGN(64) char g_ArenaStorage[ARENA_MEMORY_SIZE];
 Arena  GlobalArena = { 0, 0, 0 };
 tlsf_t GlobalTLSF = NULL;
+
+// When set, ArenaPushGlobal/ArenaPopGlobal target this thread's scratch arena instead of the shared
+// GlobalArena. A worker installs one (ArenaBeginScratch) so its import/bake scratch never touches the
+// main thread's GlobalArena. The bump pointer is not thread safe, so two threads never share a scratch.
+static AX_THREAD_LOCAL ArenaScratch* g_CurrentScratch = NULL;
+
+#if USE_TLSF_ALLOCATOR
+// The global TLSF heap is shared across threads (the editor bakes meshes on async worker
+// threads). TLSF's segregated free lists are a multi-word data structure that cannot be
+// updated atomically, so every heap mutation is serialized behind a spinlock. Each critical
+// section is a single tlsf_* call, so contention stays cheap. NOTE: this only makes the
+// allocator safe; the LIFO GlobalArena, the GPU upload queue and gBundleCache are still
+// single-threaded and must not be touched from worker threads.
+static SDL_SpinLock g_TLSFLock;
+#define TLSF_LOCK()   SDL_LockSpinlock(&g_TLSFLock)
+#define TLSF_UNLOCK() SDL_UnlockSpinlock(&g_TLSFLock)
+#else
+#define TLSF_LOCK()   ((void)0)
+#define TLSF_UNLOCK() ((void)0)
+#endif
 
 void*  TLSFMemory = NULL;
 size_t TLSFMemorySize = 0;
@@ -351,7 +375,9 @@ void* AllocAligned(uint64_t bytes, uint64_t align)
     #if USE_TLSF_ALLOCATOR
     if (align < tlsf_align_size())
         align = tlsf_align_size();
+    TLSF_LOCK();
     void* ptr = tlsf_memalign(GlobalTLSF, (size_t)align, (size_t)bytes);
+    TLSF_UNLOCK();
     #else
     ASSERT(align <= 16u); // SDL_malloc natural alignment
     void* ptr = SDL_malloc((size_t)bytes);
@@ -367,7 +393,9 @@ void FreeAligned(void* pMem)
     if (!pMem) return;
     CheckMemorySystem("FreeAligned");
     #if USE_TLSF_ALLOCATOR
+    TLSF_LOCK();
     tlsf_free(GlobalTLSF, pMem);
+    TLSF_UNLOCK();
     #else
     SDL_free(pMem);
     #endif
@@ -398,7 +426,9 @@ void* AllocateTLSFGlobal(size_t size)
     if (size == 0) return NULL;
     CheckMemorySystem("malloc");
     #if USE_TLSF_ALLOCATOR
+    TLSF_LOCK();
     void* ptr = tlsf_malloc(GlobalTLSF, size);
+    TLSF_UNLOCK();
     #else
     void* ptr = SDL_malloc(size);
     #endif
@@ -420,7 +450,9 @@ void* ReAllocateTLSFGlobal(void* ptr, size_t size)
         return NULL;
 
     #if USE_TLSF_ALLOCATOR
+    TLSF_LOCK();
     void* res = tlsf_realloc(GlobalTLSF, ptr, size);
+    TLSF_UNLOCK();
     #else
     void* res = SDL_realloc(ptr, size);
     #endif
@@ -434,7 +466,9 @@ void DeAllocateTLSFGlobal(void* buff)
     if (!buff) return;
     CheckMemorySystem("free");
     #if USE_TLSF_ALLOCATOR
+    TLSF_LOCK();
     tlsf_free(GlobalTLSF, buff);
+    TLSF_UNLOCK();
     #else
     SDL_free(buff);
     #endif
@@ -531,6 +565,37 @@ static inline void CheckArenaSize(void)
         GlobalArena.buf        = g_ArenaStorage;
         GlobalArena.buffLen    = ARENA_MEMORY_SIZE;
         GlobalArena.currOffset = 0;
+    }
+}
+
+bool ArenaBeginScratch(ArenaScratch* scratch, size_t size, const char* name)
+{
+    scratch->buf        = (char*)AllocateTLSFGlobal(size);
+    scratch->name       = name;
+    scratch->buffLen    = size;
+    scratch->currOffset = 0;
+    scratch->spillCount = 0;
+    scratch->previous   = g_CurrentScratch;
+    if (!scratch->buf)
+    {
+        AX_WARN("ArenaBeginScratch failed size=%llu", (u64)size);
+        scratch->buffLen = 0;
+        return false;
+    }
+    g_CurrentScratch = scratch;
+    return true;
+}
+
+void ArenaEndScratch(ArenaScratch* scratch)
+{
+    // free any spills the scope leaked (balanced push/pop or save/restore should leave none)
+    while (scratch->spillCount > 0)
+        DeAllocateTLSFGlobal(scratch->spills[--scratch->spillCount].ptr);
+    g_CurrentScratch = scratch->previous;
+    if (scratch->buf)
+    {
+        DeAllocateTLSFGlobal(scratch->buf);
+        scratch->buf = NULL;
     }
 }
 
@@ -645,31 +710,72 @@ void ArenaRestore(Arena* a, ArenaMark mark)
 
 uint64_t ArenaRemainingCurrent(void)
 {
+    ArenaScratch* s = g_CurrentScratch;
+    if (s) return s->buffLen - s->currOffset;     // bump space; big allocs spill to tlsf beyond this
+    CheckArenaSize();
     ASSERT(GlobalArena.currOffset <= GlobalArena.buffLen);
     return GlobalArena.buffLen - GlobalArena.currOffset;
 }
 
 uint64_t ArenaGetCurrentOffset(void)
 {
+    ArenaScratch* s = g_CurrentScratch;
+    if (s) return s->currOffset;
+    CheckArenaSize();
     return GlobalArena.currOffset;
 }
 
 void ArenaSetCurrentOffset(size_t offset)
 {
+    ArenaScratch* s = g_CurrentScratch;
+    if (s)
+    {
+        // restore the bump pointer and release every spill made at or after this mark (the most
+        // recent suffix of the spill stack), so a save/restore scope frees its spilled allocations too
+        while (s->spillCount > 0 && s->spills[s->spillCount - 1].offset >= offset)
+            DeAllocateTLSFGlobal(s->spills[--s->spillCount].ptr);
+        if (offset > s->buffLen) offset = s->buffLen;
+        s->currOffset = offset;
+        return;
+    }
     CheckArenaSize();
     if (offset > GlobalArena.buffLen)
     {
         AX_ERROR("ArenaSetCurrentOffset invalid offset=%llu capacity=%llu", (u64)offset, (u64)GlobalArena.buffLen);
         offset = GlobalArena.buffLen;
     }
-
     GlobalArena.currOffset = offset;
 }
 
 void* ArenaPushGlobal(uint64_t size)
 {
-    CheckArenaSize();
+    ArenaScratch* s = g_CurrentScratch;
+    if (s)
+    {
+        // small allocations bump; anything that doesn't fit spills to the (thread-safe) tlsf heap so
+        // the scratch buffer can stay small. The spill records the bump offset so pop/restore can
+        // distinguish a spill from a bump allocation.
+        if (size <= s->buffLen - s->currOffset)
+        {
+            void* result = s->buf + s->currOffset;
+            s->currOffset += size;
+            return result;
+        }
+        if (s->spillCount >= ARENA_SCRATCH_MAX_SPILLS)
+        {
+            AX_ERROR("Arena scratch spill overflow %s: requested=%llu spills=%u", s->name, (u64)size, s->spillCount);
+            return NULL;
+        }
+        AX_WARN("arena spilled: %s", s->name);
+        void* result = AllocateTLSFGlobal(size);
+        if (!result) return NULL;
+        s->spills[s->spillCount].offset = s->currOffset;
+        s->spills[s->spillCount].ptr    = result;
+        s->spillCount++;
+        return result;
+    }
 
+    CheckArenaSize();
     if (GlobalArena.currOffset > GlobalArena.buffLen ||
         size > GlobalArena.buffLen - GlobalArena.currOffset)
     {
@@ -685,6 +791,25 @@ void* ArenaPushGlobal(uint64_t size)
 
 void ArenaPopGlobal(uint64_t size)
 {
+    ArenaScratch* s = g_CurrentScratch;
+    if (s)
+    {
+        // The most recent allocation was a spill iff the top spill was made at the current offset
+        // (a later bump would have advanced the offset past it). Otherwise it was a bump allocation.
+        if (s->spillCount > 0 && s->spills[s->spillCount - 1].offset == s->currOffset)
+            DeAllocateTLSFGlobal(s->spills[--s->spillCount].ptr);
+        else
+        {
+            if (size > s->currOffset)
+            {
+                AX_WARN("scratch %s trying to free more than allocated: pop=%llu curr=%llu", s->name, (u64)size, (u64)s->currOffset);
+                size = s->currOffset;
+            }
+            s->currOffset -= size;
+        }
+        return;
+    }
+
     CheckArenaSize();
     if (GlobalArena.currOffset < size)
     {

@@ -45,15 +45,15 @@ extern Graphics gGFX;
 // Scene Window
 
 // hierarchy selection, bundle row when node is -1, nothing when bundle is INVALID_BUNDLE
-static u32 sceneSelectedBundle = INVALID_BUNDLE;
-static s32 sceneSelectedNode   = -1;
-static u32 sceneTreeRowBudget;
-static bool sceneInfoOpen = true;
-static bool sceneLightsOpen = true;
-static bool sceneInspectorOpen = true;
-static s32 sceneSelectedLight = -1;
+static u32  sceneSelectedBundle = INVALID_BUNDLE;
+static s32  sceneSelectedNode   = -1;
+static bool sceneInfoOpen       = true;
+static bool sceneLightsOpen     = true;
+static bool sceneInspectorOpen  = true;
+static s32  sceneSelectedLight  = -1;
+static u32  sceneTreeRowBudget;
 static bool sceneLightGizmoDragging;
-static f32 sceneLightGizmoDepth;
+static f32  sceneLightGizmoDepth;
 
 static SceneObjectSelection sceneObjectSelection;
 
@@ -64,47 +64,20 @@ static char sceneSaveName[128];
 static char sceneDeletePath[512];
 
 static EditorSceneFile sceneFiles[EDITOR_SCENE_MAX_FILES];
-static u32 sceneNumFiles;
+static f32  sceneFilesLastScan;
+static f32  sceneLastClickTime = -10.0f;
+static s32  sceneSelectedFile  = -1;
 static bool sceneFilesDirty = true;
-static f32 sceneFilesLastScan;
-static s32 sceneSelectedFile = -1;
-static f32 sceneLastClickTime = -10.0f;
-static u32 sceneLastClickHash;
+static u32  sceneNumFiles;
+static u32  sceneLastClickHash;
 
 static const char* const kEditorSceneAtlasSuffix[TextureClass_Count] = { "_albedo.ctex", "_normal.ctex", "_mr.ctex" };
 
-static bool SceneRowRightClicked(Clay_ElementId id);
 extern void TerrainEditorSceneChanged(bool loadSidecar);
 
-static void EditorSceneResetState(void)
-{
-    EditorGizmoClear();
-    sceneSelectedBundle = INVALID_BUNDLE;
-    sceneSelectedNode = -1;
-    sceneSelectedLight = -1;
-    sceneObjectSelection.valid = false;
-}
+static bool SceneRowRightClicked(Clay_ElementId id);
+static bool EditorImportNeedsDetailWarning(const char* normalizedPath);
 
-Scene* EditorNewScene(void)
-{
-    Scene* scene = Scene_NewActive();
-    EditorSceneResetState();
-    TerrainEditorSceneChanged(false);
-    return scene;
-}
-
-static void SceneSelectObject(u32 skinned, u32 groupIdx, u32 entityIdx, u32 bundleIdx)
-{
-    sceneObjectSelection = (SceneObjectSelection){
-        .valid = true,
-        .skinned = skinned,
-        .groupIdx = groupIdx,
-        .entityIdx = entityIdx,
-        .bundleIdx = bundleIdx,
-        .animIdx = 0u,
-        .animTime = 0.0f
-    };
-}
 
 // spawns one instance and assigns the default animation to skinned ones
 static void EditorSpawnBundleAt(Scene* scene, u32 bundleIdx, v128f position, v128f rotation, v128f scale)
@@ -117,13 +90,62 @@ static void EditorSpawnBundle(Scene* scene, u32 bundleIdx, f32 scale)
     EditorSpawnBundleAt(scene, bundleIdx, VecZero(), QIdentity(), VecSet1(scale));
 }
 
-static bool EditorImportNeedsDetailWarning(const char* normalizedPath);
+static void EditorSceneResetState(void)
+{
+    EditorGizmoClear();
+    sceneSelectedBundle = INVALID_BUNDLE;
+    sceneSelectedNode   = -1;
+    sceneSelectedLight  = -1;
+    sceneObjectSelection.valid = false;
+}
 
-void EditorImportMeshToScene(const char* path)
+Scene* EditorNewScene(void)
+{
+    Scene* scene = Scene_NewActive();
+    EditorSceneResetState();
+    TerrainEditorSceneChanged(false);
+    return scene;
+}
+
+static void ImportMeshToSceneFinish(SceneAsyncRequest* request)
 {
     Scene* scene = Scene_GetActive();
     if (!scene) scene = EditorNewScene();
 
+    u32 bundleIdx = Scene_AddBundleAuto(scene, request->path);
+    if (bundleIdx == INVALID_BUNDLE)
+    {
+        AX_ERROR("import to scene failed: %s", request->path);
+        return;
+    }
+    EditorSpawnBundle(scene, bundleIdx, 1.0f);
+}
+
+static void OpenSceneFinish(SceneAsyncRequest* request)
+{
+    const char* path = request->path;
+    Scene* scene = Scene_OpenActive(path);
+    if (!scene) return;
+    EditorSceneResetState();
+    EditorSettingsSetLastScene(Scene_GetActivePath());
+    TerrainEditorSceneChanged(false);
+}
+
+static void SceneSelectObject(u32 skinned, u32 groupIdx, u32 entityIdx, u32 bundleIdx)
+{
+    sceneObjectSelection = (SceneObjectSelection){
+        .valid     = true,
+        .skinned   = skinned,
+        .groupIdx  = groupIdx,
+        .entityIdx = entityIdx,
+        .bundleIdx = bundleIdx,
+        .animIdx   = 0u,
+        .animTime  = 0.0f
+    };
+}
+
+void EditorImportMeshToScene(const char* path)
+{
     char normalized[512];
     NormalizePath(path, normalized, sizeof(normalized));
     if (EditorImportNeedsDetailWarning(normalized))
@@ -132,13 +154,12 @@ void EditorImportMeshToScene(const char* path)
         return;
     }
 
-    u32 bundleIdx = Scene_AddBundleAuto(scene, normalized);
-    if (bundleIdx == INVALID_BUNDLE)
-    {
-        AX_ERROR("import to scene failed: %s", normalized);
-        return;
-    }
-    EditorSpawnBundle(scene, bundleIdx, 1.0f);
+    SceneAsyncBegin(SceneAsyncOp_ImportMesh, path, "EditorImportMesh", ImportMeshToSceneFinish);
+}
+
+void EditorOpenScene(const char* path)
+{
+    SceneAsyncBegin(SceneAsyncOp_OpenScene, path, "EditorOpenScene", OpenSceneFinish);
 }
 
 //------------------------------------------------------------------------
@@ -270,23 +291,23 @@ static bool EditorReadBundleInfoFromABM(const char* path, ImportDetailInfo* info
     u16 numMeshes, numNodes, numMaterials, numTextures, numImages, numSamplers;
     u16 numCameras, numScenes, numSkins, numAnimations, defaultSceneIndex, isSkinned;
     s32 totalIndices, totalVertices;
-    AFileRead(&version, sizeof(version), file, 1);
-    AFileRead(reserved, sizeof(reserved), file, 1);
-    AFileRead(&scale, sizeof(scale), file, 1);
-    AFileRead(&numMeshes, sizeof(numMeshes), file, 1);
-    AFileRead(&numNodes, sizeof(numNodes), file, 1);
-    AFileRead(&numMaterials, sizeof(numMaterials), file, 1);
-    AFileRead(&numTextures, sizeof(numTextures), file, 1);
-    AFileRead(&numImages, sizeof(numImages), file, 1);
-    AFileRead(&numSamplers, sizeof(numSamplers), file, 1);
-    AFileRead(&numCameras, sizeof(numCameras), file, 1);
-    AFileRead(&numScenes, sizeof(numScenes), file, 1);
-    AFileRead(&numSkins, sizeof(numSkins), file, 1);
-    AFileRead(&numAnimations, sizeof(numAnimations), file, 1);
+    AFileRead(&version          , sizeof(version)          , file, 1);
+    AFileRead(reserved          , sizeof(reserved)         , file, 1);
+    AFileRead(&scale            , sizeof(scale)            , file, 1);
+    AFileRead(&numMeshes        , sizeof(numMeshes)        , file, 1);
+    AFileRead(&numNodes         , sizeof(numNodes)         , file, 1);
+    AFileRead(&numMaterials     , sizeof(numMaterials)     , file, 1);
+    AFileRead(&numTextures      , sizeof(numTextures)      , file, 1);
+    AFileRead(&numImages        , sizeof(numImages)        , file, 1);
+    AFileRead(&numSamplers      , sizeof(numSamplers)      , file, 1);
+    AFileRead(&numCameras       , sizeof(numCameras)       , file, 1);
+    AFileRead(&numScenes        , sizeof(numScenes)        , file, 1);
+    AFileRead(&numSkins         , sizeof(numSkins)         , file, 1);
+    AFileRead(&numAnimations    , sizeof(numAnimations)    , file, 1);
     AFileRead(&defaultSceneIndex, sizeof(defaultSceneIndex), file, 1);
-    AFileRead(&isSkinned, sizeof(isSkinned), file, 1);
-    AFileRead(&totalIndices, sizeof(totalIndices), file, 1);
-    AFileRead(&totalVertices, sizeof(totalVertices), file, 1);
+    AFileRead(&isSkinned        , sizeof(isSkinned)        , file, 1);
+    AFileRead(&totalIndices     , sizeof(totalIndices)     , file, 1);
+    AFileRead(&totalVertices    , sizeof(totalVertices)    , file, 1);
     AFileClose(file);
 
     (void)version;
@@ -315,10 +336,12 @@ static bool EditorReadBundleInfoFromGLTF(const char* path, ImportDetailInfo* inf
 {
     SceneBundle bundle;
     bool loaded = false;
-    if (FileHasExtension(path, StringLength(path), ".fbx"))
-        loaded = LoadFBX(path, &bundle, 1.0f) != 0;
-    else
+    int pathLen = StringLength(path);
+    if (FileHasExtension(path, pathLen, ".glb") || FileHasExtension(path, pathLen, ".gltf"))
         loaded = ParseGLTF(path, &bundle, 1.0f) != 0;
+    else
+        loaded = LoadFBX(path, &bundle, 1.0f) != 0;
+    
     if (!loaded) return false;
     *info = (ImportDetailInfo){
         .meshes     = (u32)bundle.numMeshes,
@@ -349,6 +372,7 @@ static bool EditorImportNeedsDetailWarning(const char* normalizedPath)
     return info.animBoundsWarning;
 }
 
+// todo remove this
 static bool EditorParseScaleText(const char* text, f32* outScale)
 {
     if (!text || !outScale) return false;
@@ -527,14 +551,6 @@ static void SceneImportDetailPopup(void)
     UIEndWindow();
 }
 
-void EditorOpenScene(const char* path)
-{
-    Scene* scene = Scene_OpenActive(path);
-    if (!scene) return;
-    EditorSceneResetState();
-    EditorSettingsSetLastScene(Scene_GetActivePath());
-    TerrainEditorSceneChanged(false);
-}
 
 // click picking: ray casts the scene through the bundle blas data, logs the hit and
 // outlines it. runs once per left click outside the ui
@@ -1588,6 +1604,18 @@ void DrawSceneWindow(bool* open)
             UIPopFloat(UIFloat_TextScale);
         }
 
+        extern SceneAsyncRequest* sceneAsyncRequest;
+        if (sceneAsyncRequest)
+        {
+            const char* asyncText = "Spawning bundle...";
+            if (sceneAsyncRequest->op == SceneAsyncOp_OpenScene) asyncText = "Opening scene...";
+            else if (sceneAsyncRequest->op == SceneAsyncOp_ImportMesh) asyncText = "Importing mesh...";
+            CLAY_TEXT(UIStr(asyncText), CLAY_TEXT_CONFIG({
+                .fontSize = 13,
+                .textColor = UIGetClayColor(UIColor_SubText)
+            }));
+        }
+
         CLAY(CLAY_ID("SceneFilesPanel"), UIScrollPanelDeclaration(140.0f, 2u)) {
             SceneFilesUI();
         }
@@ -1698,7 +1726,7 @@ static void TexturePageBlitPreview(const TexturePageClass* cls)
     blit.destination.w = TEX_PREVIEW_SIZE;
     blit.destination.h = TEX_PREVIEW_SIZE;
     blit.load_op = SDL_GPU_LOADOP_DONT_CARE;
-    blit.filter = SDL_GPU_FILTER_LINEAR;
+    blit.filter  = SDL_GPU_FILTER_LINEAR;
     SDL_BlitGPUTexture(cmd, &blit);
     SDL_SubmitGPUCommandBuffer(cmd);
 }

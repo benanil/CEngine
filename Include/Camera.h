@@ -46,10 +46,10 @@ static inline f32 Camera_SanitizeF32(f32 value, f32 fallback)
 static inline void Camera_SanitizeConfig(Camera* camera)
 {
     camera->verticalFOV = MCLAMP(Camera_SanitizeF32(camera->verticalFOV, 65.0f), 1.0f, 179.0f);
-    camera->nearClip = MMAX(Camera_SanitizeF32(camera->nearClip, 0.1f), 0.001f);
-    camera->farClip = Camera_SanitizeF32(camera->farClip, 30000.0f);
+    camera->nearClip    = MMAX(Camera_SanitizeF32(camera->nearClip, 0.1f), 0.001f);
+    camera->farClip     = Camera_SanitizeF32(camera->farClip, 30000.0f);
     if (camera->farClip <= camera->nearClip + 0.001f) camera->farClip = camera->nearClip + 1.0f;
-    camera->speed = MMAX(Camera_SanitizeF32(camera->speed, 1.0f), 0.0f);
+    camera->speed      = MMAX(Camera_SanitizeF32(camera->speed, 1.0f), 0.0f);
     camera->senstivity = MMAX(Camera_SanitizeF32(camera->senstivity, 15.0f), 0.0f);
 }
 

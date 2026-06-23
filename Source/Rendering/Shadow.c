@@ -316,7 +316,7 @@ static void UploadPointShadowMatrixBuffer(const ShadowData* data)
     mat4x4 gpuMatrices[POINT_SHADOW_LAYER_COUNT];
     for (u32 layer = 0; layer < layerCount; layer++)
         gpuMatrices[layer] = M44Transpose(data->lightViewProj[layer]);
-    UpdateGPUBuffer(g_RenderState.pointShadowMatrixBuffer, gpuMatrices, sizeof(mat4x4) * layerCount, 0);
+    UpdateGPUBufferCycle(g_RenderState.pointShadowMatrixBuffer, gpuMatrices, sizeof(mat4x4) * layerCount, 0, true);
 }
 
 static void BuildSpotShadowData(ShadowData* data)
@@ -349,7 +349,7 @@ static void UploadSpotShadowMatrixBuffer(const ShadowData* data)
     mat4x4 gpuMatrices[SPOT_SHADOW_MAX_LIGHTS];
     for (u32 i = 0; i < data->count; i++)
         gpuMatrices[i] = M44Transpose(data->lightViewProj[i]);
-    UpdateGPUBuffer(g_RenderState.spotShadowMatrixBuffer, gpuMatrices, sizeof(mat4x4) * data->count, 0);
+    UpdateGPUBufferCycle(g_RenderState.spotShadowMatrixBuffer, gpuMatrices, sizeof(mat4x4) * data->count, 0, true);
 }
 
 
