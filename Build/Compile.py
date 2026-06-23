@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import List, Optional
 
 print = functools.partial(print, flush=True)
 
@@ -41,7 +42,7 @@ def run_cmd(args: list[str], error_msg: str, env=None, quiet: bool = False):
         sys.exit(result.returncode)
 
 
-def find_program(names: list[str]) -> str | None:
+def find_program(names: List[str]) -> Optional[str]:
     for name in names:
         path = shutil.which(name)
         if path:
