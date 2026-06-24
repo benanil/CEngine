@@ -131,8 +131,10 @@ GBufferOutput frag(VSOutput input)
                          tangentNormal.y * normalize(float3(input.bitangent)) +
                          tangentNormal.z * normalize(float3(input.normal)));
 
-    float metallic = float(mr.x);
-    float roughness = float(mr.y);
+    float metallicFactor  = float((material.metallicRoughnessFactor >> 16u) & 0xFFFFu) * (1.0f / 65535.0f);
+    float roughnessFactor = float(material.metallicRoughnessFactor & 0xFFFFu) * (1.0f / 65535.0f);
+    float metallic = float(mr.x) * metallicFactor;
+    float roughness = float(mr.y) * roughnessFactor;
 
     uint cascadeIndex = input.viewDepth > input.cascadeSplits.x ? 1u : 0u;
     cascadeIndex = input.viewDepth > input.cascadeSplits.y ? 2u : cascadeIndex;

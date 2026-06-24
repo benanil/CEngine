@@ -821,7 +821,7 @@ bool UIDropdown(Clay_ElementId id, Clay_String label, const char** options, u32 
     Clay_ElementId listId = Clay_GetElementIdWithIndex(CLAY_STRING("UIDropdownList"), id.id);
 
     // close on escape or a click outside the box and the list, last frame's layout
-    if (open && (GetMousePressed(MouseButton_Left) || GetKeyPressed(27)))
+    if (open && (GetMousePressed(MouseButton_Left) || GetKeyPressed(SDLK_ESCAPE)))
     {
         Clay_ElementData box  = Clay_GetElementData(boxId);
         Clay_ElementData list = Clay_GetElementData(listId);
@@ -829,7 +829,7 @@ bool UIDropdown(Clay_ElementId id, Clay_String label, const char** options, u32 
                                                            (float2){ box.boundingBox.width, box.boundingBox.height }, g_UI.mouse) != 0u;
         bool insideList = list.found && RectPointIntersect((float2){ list.boundingBox.x, list.boundingBox.y },
                                                            (float2){ list.boundingBox.width, list.boundingBox.height }, g_UI.mouse) != 0u;
-        if (GetKeyPressed(27) || (!insideBox && !insideList))
+        if (GetKeyPressed(SDLK_ESCAPE) || (!insideBox && !insideList))
         {
             g_UIDropdownOpenId = 0u;
             open = false;
@@ -932,6 +932,136 @@ bool UIDropdown(Clay_ElementId id, Clay_String label, const char** options, u32 
         }
     }
     return changed;
+}
+
+static u64 g_UIMenuOpenId; // only one menu button list is open at a time
+
+bool UIMenuButtonIsOpen(Clay_ElementId id)
+{
+    return g_UIMenuOpenId == (u64)id.id;
+}
+
+// a tab-bar style button that drops a checklist menu of items. unlike UIDropdown it has no
+// persistent selection: each click toggles an item and the menu stays open so several entries
+// can be toggled in a row. returns the index clicked this frame, or -1. the caller flips its
+// own state and updates item->checked for the highlight shown next frame.
+s32 UIMenuButton(Clay_ElementId id, Clay_String label, Clay_Dimensions size, const UIMenuItem* items, u32 count)
+{
+    s32 clickedIndex = -1;
+    bool open = g_UIMenuOpenId == (u64)id.id;
+
+    Clay_ElementId listId = Clay_GetElementIdWithIndex(CLAY_STRING("UIMenuList"), id.id);
+
+    // close on escape or a click outside the button and the list, last frame's layout
+    if (open && (GetMousePressed(MouseButton_Left) || GetKeyPressed(SDLK_ESCAPE)))
+    {
+        Clay_ElementData box  = Clay_GetElementData(id);
+        Clay_ElementData list = Clay_GetElementData(listId);
+        bool insideBox  = box.found  && RectPointIntersect((float2){ box.boundingBox.x, box.boundingBox.y },
+                                                           (float2){ box.boundingBox.width, box.boundingBox.height }, g_UI.mouse) != 0u;
+        bool insideList = list.found && RectPointIntersect((float2){ list.boundingBox.x, list.boundingBox.y },
+                                                           (float2){ list.boundingBox.width, list.boundingBox.height }, g_UI.mouse) != 0u;
+        if (GetKeyPressed(SDLK_ESCAPE) || (!insideBox && !insideList))
+        {
+            g_UIMenuOpenId = 0u;
+            open = false;
+        }
+    }
+
+    // position the list under the button in root space. attaching to the parent would make
+    // the list inherit the (short) tab-bar clip rect, which scissors the rows' text away while
+    // the background quad (drawn with a full scissor) still shows. clamp it onto the screen too.
+    float2 menuPos = { 0.0f, size.height };
+    {
+        Clay_ElementData box = Clay_GetElementData(id);
+        if (box.found) menuPos = (float2){ box.boundingBox.x, box.boundingBox.y + box.boundingBox.height };
+        f32 menuW = 168.0f;
+        f32 menuH = 8.0f + (f32)count * 26.0f;
+        if (menuPos.x + menuW > g_UI.screenSize.x) menuPos.x = g_UI.screenSize.x - menuW;
+        if (menuPos.y + menuH > g_UI.screenSize.y) menuPos.y = g_UI.screenSize.y - menuH;
+        if (menuPos.x < 0.0f) menuPos.x = 0.0f;
+        if (menuPos.y < 0.0f) menuPos.y = 0.0f;
+    }
+
+    float radius = UIFloatStackZero(UIFloat_CornerRadius) ? size.height * 0.5f : UIGetFloat(UIFloat_CornerRadius);
+    CLAY(id, {
+        .layout = {
+            .sizing = { CLAY_SIZING_FIXED(size.width), CLAY_SIZING_FIXED(size.height) },
+            .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER }
+        },
+        .backgroundColor = UIButtonColor(Clay_Hovered(), open),
+        .cornerRadius = CLAY_CORNER_RADIUS(radius),
+        .border = { .color = UIGetClayColor(UIColor_Border), .width = CLAY_BORDER_ALL(UIGetFloat(UIFloat_BorderWidth)) }
+    }) {
+        if (UIClicked())
+        {
+            open = !open;
+            g_UIMenuOpenId = open ? (u64)id.id : 0u;
+        }
+        CLAY_TEXT(label, CLAY_TEXT_CONFIG({
+            .fontSize = (u16)Maxu32((u32)(17.0f * UIGetFloat(UIFloat_TextScale)), 1u),
+            .textColor = UIGetClayColor(UIColor_Text)
+        }));
+
+        if (open && items && count != 0u)
+        {
+            CLAY(listId, {
+                .layout = {
+                    .sizing = { CLAY_SIZING_FIT(160.0f), CLAY_SIZING_FIT(0) },
+                    .padding = { 4, 4, 4, 4 },
+                    .childGap = 2,
+                    .layoutDirection = CLAY_TOP_TO_BOTTOM
+                },
+                .backgroundColor = UIColorToClay(UIGetColor(UIColor_Quad) | 0xFF000000u),
+                .cornerRadius = CLAY_CORNER_RADIUS(6.0f),
+                .border = { .color = UIGetClayColor(UIColor_Border), .width = CLAY_BORDER_OUTSIDE(1) },
+                .floating = {
+                    .offset = { menuPos.x, menuPos.y },
+                    .zIndex = 125,
+                    .attachTo = CLAY_ATTACH_TO_ROOT
+                }
+            }) {
+                for (u32 i = 0u; i < count; i++)
+                {
+                    Clay_ElementId rowId = Clay_GetElementIdWithIndex(CLAY_STRING("UIMenuRow"), id.id + i + 1u);
+                    bool checked = items[i].checked;
+                    CLAY(rowId, {
+                        .layout = {
+                            .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(24.0f) },
+                            .padding = { 8, 8, 0, 0 },
+                            .childGap = 6,
+                            .childAlignment = { .y = CLAY_ALIGN_Y_CENTER }
+                        },
+                        .backgroundColor = Clay_Hovered() ? UIGetClayColor(UIColor_Hovered)
+                                         : (checked ? UIColorToClay((UIGetColor(UIColor_SelectedBorder) & 0x00FFFFFFu) | 0x48000000u) : (Clay_Color){ 0 }),
+                        .cornerRadius = CLAY_CORNER_RADIUS(3.0f)
+                    }) {
+                        if (UIClicked()) clickedIndex = (s32)i;
+                        // fixed-width check slot. never draw a space-only glyph here: whitespace
+                        // text produces no vertices but still consumes the slug batch's "force new
+                        // batch" flag, which makes the following label merge into the previous
+                        // (lower z) text batch and render underneath this menu's panel.
+                        CLAY(Clay_GetElementIdWithIndex(CLAY_STRING("UIMenuCheck"), id.id + i + 1u), {
+                            .layout = { .sizing = { CLAY_SIZING_FIXED(14.0f), CLAY_SIZING_GROW(0) },
+                                        .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER } }
+                        }) {
+                            if (checked)
+                                CLAY_TEXT(CLAY_STRING("\xE2\x9C\x93"), CLAY_TEXT_CONFIG({
+                                    .fontSize = 14,
+                                    .textColor = UIGetClayColor(UIColor_SelectedBorder)
+                                }));
+                        }
+                        CLAY_TEXT(UIStr(items[i].label), CLAY_TEXT_CONFIG({
+                            .fontSize = 14,
+                            .textColor = UIGetClayColor(UIColor_Text),
+                            .wrapMode = CLAY_TEXT_WRAP_NONE
+                        }));
+                    }
+                }
+            }
+        }
+    }
+    return clickedIndex;
 }
 
 bool UISliderFloat(Clay_ElementId id, Clay_String label, f32* value, f32 minValue, f32 maxValue)
@@ -1563,7 +1693,7 @@ bool UIColorEdit3(Clay_ElementId id, Clay_String label, f32* rgb)
     Clay_ElementId pickId   = Clay_GetElementIdWithIndex(CLAY_STRING("UIColorPick"), id.id);
 
     // close on escape or a click outside the swatch and the panel, last frame's layout
-    if (open && (GetMousePressed(MouseButton_Left) || GetKeyPressed(27)))
+    if (open && (GetMousePressed(MouseButton_Left) || GetKeyPressed(SDLK_ESCAPE)))
     {
         Clay_ElementData swatch = Clay_GetElementData(swatchId);
         Clay_ElementData panel  = Clay_GetElementData(panelId);
@@ -1571,7 +1701,7 @@ bool UIColorEdit3(Clay_ElementId id, Clay_String label, f32* rgb)
                                                                (float2){ swatch.boundingBox.width, swatch.boundingBox.height }, g_UI.mouse) != 0u;
         bool insidePanel  = panel.found && RectPointIntersect((float2){ panel.boundingBox.x, panel.boundingBox.y },
                                                               (float2){ panel.boundingBox.width, panel.boundingBox.height }, g_UI.mouse) != 0u;
-        if (GetKeyPressed(27) || (!insideSwatch && !insidePanel))
+        if (GetKeyPressed(SDLK_ESCAPE) || (!insideSwatch && !insidePanel))
         {
             g_UIColorEditOpenId = 0u;
             open = false;

@@ -198,6 +198,14 @@ bool UICollapsingHeader(Clay_ElementId id, Clay_String label, bool open);
 // out: true when the selection changed
 bool UIDropdown(Clay_ElementId id, Clay_String label, const char** options, u32 numOptions, u32* selectedIndex);
 
+typedef struct UIMenuItem_ { const char* label; bool checked; } UIMenuItem;
+
+// a button that drops a checklist menu. each click toggles an item and the menu stays open
+// (only one menu button is open at a time). returns the index clicked this frame, or -1; the
+// caller updates its own state and item->checked for the highlight shown next frame.
+s32  UIMenuButton(Clay_ElementId id, Clay_String label, Clay_Dimensions size, const UIMenuItem* items, u32 count);
+bool UIMenuButtonIsOpen(Clay_ElementId id);
+
 u64 UIAutoID(const void* ptr);
 
 static inline Clay_Color UIColorToClay(u32 color)

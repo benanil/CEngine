@@ -179,6 +179,39 @@ static void ShowFps(void)
     SlugAppendText2DN(NULL, msText, msLen + 3, (float2){w - msSize.x, 68.0f }, 32.0f, 0xFFCCCCFF);
 }
 
+// renders a few UTF-8 strings across scripts to eyeball glyph coverage and multi-byte
+// decoding. strings are stored as raw utf-8 byte escapes (\xHH) so the source stays ascii
+// and the compiler's charset handling can't mangle them; the comment shows the intent.
+static void WindowTestTextUnicode(void)
+{
+    static const char* lines[] = {
+        "\x4C\x61\x74\x69\x6E\x3A\x20\x63\x61\x66\xC3\xA9\x20\x6E\x61\xC3\xAF\x76\x65\x20\x5A\xC3\xBC\x72\x69\x63\x68\x20\xC5\x92\x75\x76\x72\x65\x20\xC3\x9F\x20\xC3\xA0", // Latin: café naïve Zürich Œuvre ß à
+        "\x47\x72\x65\x65\x6B\x3A\x20\xCE\xB1\xCE\xB2\xCE\xB3\x20\xCE\x95\xCE\xBB\xCE\xBB\xCE\xB7\xCE\xBD\xCE\xB9\xCE\xBA\xCE\xAC\x20\xCF\x80\x20\xCE\xA9", // Greek: αβγ Ελληνικά π Ω
+        "\x43\x79\x72\x69\x6C\x6C\x69\x63\x3A\x20\xD0\x9F\xD1\x80\xD0\xB8\xD0\xB2\xD0\xB5\xD1\x82\x20\xD0\xBC\xD0\xB8\xD1\x80", // Cyrillic: Привет мир
+        "\x53\x79\x6D\x62\x6F\x6C\x73\x3A\x20\xE2\x86\x92\x20\xE2\x89\x88\x20\xE2\x89\xA4\x20\xE2\x89\xA5\x20\xE2\x88\x91\x20\xE2\x88\x9A\x20\xE2\x9C\x93\x20\xE2\x9C\x97\x20\xE2\x98\x85\x20\xE2\x82\xAC\x20\xE2\x80\x94\x20\xC2\xB0", // Symbols: → ≈ ≤ ≥ ∑ √ ✓ ✗ ★ € — °
+        "\x4D\x69\x73\x63\x54\x65\x63\x68\x3A\x20\xE2\x8C\x80\x20\xE2\x8C\x82\x20\xE2\x8C\x83\x20\xE2\x8C\x84\x20\xE2\x8C\x98\x20\xE2\x8C\xA5\x20\xE2\x8C\xAB\x20\xE2\x8C\xA6\x20\xE2\x8E\x87\x20\xE2\x8F\x8E\x20\xE2\x8F\x8F\x20\xE2\x8C\xA8\x20\xE2\x8C\x9A\x20\xE2\x8C\x9B\x20\xE2\x8F\xB0\x20\xE2\x8F\xB3\x20\xE2\x8F\xA9\x20\xE2\x8F\xB8\x20\xE2\x8F\xAF\x20\xE2\x8E\x88", // MiscTech: ⌀ ⌂ ⌃ ⌄ ⌘ ⌥ ⌫ ⌦ ⎇ ⏎ ⏏ ⌨ ⌚ ⌛ ⏰ ⏳ ⏩ ⏸ ⏯ ⎈
+        "\x41\x72\x72\x6F\x77\x73\x3A\x20\xE2\x86\x90\x20\xE2\x86\x91\x20\xE2\x86\x92\x20\xE2\x86\x93\x20\xE2\x86\x94\x20\xE2\x86\x95\x20\xE2\x86\xA9\x20\xE2\x86\xAA\x20\xE2\x86\xBA\x20\xE2\x86\xBB\x20\xE2\x87\x90\x20\xE2\x87\x92\x20\xE2\x87\x94\x20\xE2\x87\xA6\x20\xE2\x87\xA8\x20\xE2\xAC\x85\x20\xE2\xAC\x86", // Arrows: ← ↑ → ↓ ↔ ↕ ↩ ↪ ↺ ↻ ⇐ ⇒ ⇔ ⇦ ⇨ ⬅ ⬆
+        "\x4D\x61\x74\x68\x3A\x20\xE2\x88\x80\x20\xE2\x88\x82\x20\xE2\x88\x83\x20\xE2\x88\x85\x20\xE2\x88\x87\x20\xE2\x88\x88\x20\xE2\x88\x89\x20\xE2\x88\x8F\x20\xE2\x88\x91\x20\xE2\x88\x9A\x20\xE2\x88\x9E\x20\xE2\x88\xA7\x20\xE2\x88\xA8\x20\xE2\x88\xA9\x20\xE2\x88\xAA\x20\xE2\x88\xAB\x20\xE2\x89\x88\x20\xE2\x89\xA0\x20\xE2\x89\xA1\x20\xE2\x89\xA4\x20\xE2\x89\xA5\x20\xE2\x8A\x95\x20\xE2\x8A\x97", // Math: ∀ ∂ ∃ ∅ ∇ ∈ ∉ ∏ ∑ √ ∞ ∧ ∨ ∩ ∪ ∫ ≈ ≠ ≡ ≤ ≥ ⊕ ⊗
+        "\x4C\x65\x74\x74\x65\x72\x6C\x69\x6B\x65\x3A\x20\xE2\x84\x82\x20\xE2\x84\x85\x20\xE2\x84\x8F\x20\xE2\x84\x93\x20\xE2\x84\x96\x20\xE2\x84\xA2\x20\xE2\x84\xA6\x20\xE2\x84\xAB\x20\xE2\x84\xAE\x20\xE2\x85\x88\x20\xE2\x85\x93\x20\xE2\x85\x9B", // Letterlike: ℂ ℅ ℏ ℓ № ™ Ω Å ℮ ⅈ ⅓ ⅛
+        "\x43\x75\x72\x72\x65\x6E\x63\x79\x3A\x20\xE2\x82\xA0\x20\xE2\x82\xA3\x20\xE2\x82\xA4\x20\xE2\x82\xA6\x20\xE2\x82\xA8\x20\xE2\x82\xA9\x20\xE2\x82\xAA\x20\xE2\x82\xAB\x20\xE2\x82\xAC\x20\xE2\x82\xB9\x20\xE2\x82\xBD\x20\xE2\x82\xBF", // Currency: ₠ ₣ ₤ ₦ ₨ ₩ ₪ ₫ € ₹ ₽ ₿
+        "\x42\x6F\x78\x44\x72\x61\x77\x3A\x20\xE2\x94\x80\x20\xE2\x94\x82\x20\xE2\x94\x8C\x20\xE2\x94\x90\x20\xE2\x94\x94\x20\xE2\x94\x98\x20\xE2\x94\x9C\x20\xE2\x94\xA4\x20\xE2\x94\xAC\x20\xE2\x94\xB4\x20\xE2\x94\xBC\x20\xE2\x95\x90\x20\xE2\x95\x91\x20\xE2\x95\x94\x20\xE2\x95\x97\x20\xE2\x95\x9A\x20\xE2\x95\x9D", // BoxDraw: ─ │ ┌ ┐ └ ┘ ├ ┤ ┬ ┴ ┼ ═ ║ ╔ ╗ ╚ ╝
+        "\x42\x6C\x6F\x63\x6B\x73\x3A\x20\xE2\x96\x80\x20\xE2\x96\x84\x20\xE2\x96\x88\x20\xE2\x96\x8C\x20\xE2\x96\x90\x20\xE2\x96\x91\x20\xE2\x96\x92\x20\xE2\x96\x93\x20\xE2\x96\xA0\x20\xE2\x96\xA1\x20\xE2\x96\xB2\x20\xE2\x96\xBC\x20\xE2\x97\x86\x20\xE2\x97\x8B\x20\xE2\x97\x8F\x20\xE2\x97\x90", // Blocks: ▀ ▄ █ ▌ ▐ ░ ▒ ▓ ■ □ ▲ ▼ ◆ ○ ● ◐
+        "\x4D\x69\x73\x63\x53\x79\x6D\x3A\x20\xE2\x98\x80\x20\xE2\x98\x81\x20\xE2\x98\x82\x20\xE2\x98\x83\x20\xE2\x98\x85\x20\xE2\x98\x86\x20\xE2\x98\x8E\x20\xE2\x98\x91\x20\xE2\x99\xA0\x20\xE2\x99\xA3\x20\xE2\x99\xA5\x20\xE2\x99\xA6\x20\xE2\x99\xAA\x20\xE2\x99\xAB\x20\xE2\x9A\x90\x20\xE2\x9A\x98\x20\xE2\x9A\xA0\x20\xE2\x9A\xA1\x20\xE2\x9A\xBD\x20\xE2\x9A\x93", // MiscSym: ☀ ☁ ☂ ☃ ★ ☆ ☎ ☑ ♠ ♣ ♥ ♦ ♪ ♫ ⚐ ⚘ ⚠ ⚡ ⚽ ⚓
+        "\x44\x69\x6E\x67\x62\x61\x74\x73\x3A\x20\xE2\x9C\x81\x20\xE2\x9C\x82\x20\xE2\x9C\x88\x20\xE2\x9C\x89\x20\xE2\x9C\x8C\x20\xE2\x9C\x8F\x20\xE2\x9C\x94\x20\xE2\x9C\x96\x20\xE2\x9C\xA8\x20\xE2\x9C\xB4\x20\xE2\x9D\x84\x20\xE2\x9D\xA4\x20\xE2\x9D\xB6\x20\xE2\x9E\x9C\x20\xE2\x9E\xA1", // Dingbats: ✁ ✂ ✈ ✉ ✌ ✏ ✔ ✖ ✨ ✴ ❄ ❤ ❶ ➜ ➡
+        "\x53\x75\x70\x53\x75\x62\x3A\x20\xE2\x81\xB0\x20\xC2\xB9\x20\xC2\xB2\x20\xC2\xB3\x20\xE2\x81\xB4\x20\xE2\x81\xB5\x20\xE2\x81\xB9\x20\xE2\x81\xBA\x20\xE2\x81\xBB\x20\xE2\x82\x80\x20\xE2\x82\x81\x20\xE2\x82\x82\x20\xE2\x82\x93\x20\xE2\x82\x8A", // SupSub: ⁰ ¹ ² ³ ⁴ ⁵ ⁹ ⁺ ⁻ ₀ ₁ ₂ ₓ ₊
+        "\x43\x4A\x4B\x3A\x20\xE6\x97\xA5\xE6\x9C\xAC\xE8\xAA\x9E\x20\xE4\xB8\xAD\xE6\x96\x87\x20\xED\x95\x9C\xEA\xB8\x80", // CJK: 日本語 中文 한글
+    };
+
+    for (u32 i = 0u; i < ARRAY_SIZE(lines); i++)
+    {
+        CLAY_TEXT(UIStr(lines[i]), CLAY_TEXT_CONFIG({
+            .fontSize = 24,
+            .textColor = UIGetClayColor(UIColor_Text),
+            .wrapMode = CLAY_TEXT_WRAP_NONE
+        }));
+    }
+}
+
 static void WindowTestUI(void)
 {
     static bool enabled = true;
@@ -199,6 +232,8 @@ static void WindowTestUI(void)
 
     Clay_ElementData windowElement = Clay_GetElementData(CLAY_ID("Window Test"));
     UIDivider(CLAY_ID("WindowTestDivider0"));
+    WindowTestTextUnicode();
+    UIDivider(CLAY_ID("WindowTestDivider1"));
     UICheckbox(CLAY_ID("WindowTestEnabled"), CLAY_STRING("Enable test option"), &enabled);
     UISliderFloatValue(CLAY_ID("WindowTestSlider"), CLAY_STRING("Window value"), &testValue, 0.0f, 1.0f, 2);
     UISliderFloatValue(CLAY_ID("WindowTestExposure"), CLAY_STRING("Local exposure"), &exposure, 0.1f, 4.0f, 2);
@@ -314,22 +349,6 @@ static void DrawGraphicsWindow()
     Clay_ElementId windowID = (Clay_ElementId) { .id = StringToHash("Graphics Editor", 5381u) };
     if (UIBeginWindowId(windowID,"Graphics Editor", (float2){ 18.0f, 18.0f }, (float2){ 500.0f, 760.0f }, &editorOpen, 0u))
     {
-        CLAY(CLAY_ID("GraphicsEditorHeader"), {
-            .layout = {
-                .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0) },
-                .childGap = 4,
-                .layoutDirection = CLAY_TOP_TO_BOTTOM
-            }
-        }) {
-            CLAY_TEXT(CLAY_STRING("Graphics Editor"), CLAY_TEXT_CONFIG({
-                .fontSize = 24,
-                .textColor = UIGetClayColor(UIColor_Text)
-            }));
-            CLAY_TEXT(CLAY_STRING("Runtime render controls."), CLAY_TEXT_CONFIG({
-                .fontSize = 14,
-                .textColor = UIGetClayColor(UIColor_SubText)
-            }));
-        }
         //UISpacing(CLAY_ID("GraphicsEditorDivider0"), 6.0f);
         // reserve the buttons row (38) plus the content child gap (12)
         CLAY(CLAY_ID("GraphicsEditorScroll"), UIScrollPanelDeclaration(UIWindowRemainingHeight(windowID, CLAY_ID("GraphicsEditorScroll"), 50.0f), 12u)) {
@@ -632,6 +651,18 @@ static bool EditorTabBarIconButton(Clay_ElementId id, UIImageData* image, Clay_D
     return clicked;
 }
 
+// a tab-bar dropdown that toggles a group of window-open flags. `names[i]` labels the row,
+// `flags[i]` points at the bool the row toggles. clicking a row flips that window open/closed.
+static void EditorWindowMenu(Clay_ElementId id, Clay_String label, const char* const* names, bool* const* flags, u32 count)
+{
+    UIMenuItem items[16];
+    if (count > ARRAY_SIZE(items)) count = ARRAY_SIZE(items);
+    for (u32 i = 0u; i < count; i++) { items[i].label = names[i]; items[i].checked = *flags[i]; }
+
+    s32 clicked = UIMenuButton(id, label, (Clay_Dimensions){ UIGetFloat(UIFloat_ButtonSize), 25.0f }, items, count);
+    if (clicked >= 0) *flags[clicked] ^= true;
+}
+
 static Texture EditorCreateWindowIconTexture(const u64 rows[64], u32 pixels[64 * 64], const char* label)
 {
     for (u32 y = 0; y < 64u; y++)
@@ -759,15 +790,16 @@ static void GraphicsEditorUI(void)
                     if (UIClicked()) AX_LOG("C Engine logo clicked. The C is for chaos.");
                 }
             }
-            editorOpen     ^= UIButton(CLAY_ID("Graphics"), CLAY_STRING("Graphics"), (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
-            sceneOpen      ^= UIButton(CLAY_ID("Scene")   , CLAY_STRING("Scene")   , (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
-            texturesOpen   ^= UIButton(CLAY_ID("Textures"), CLAY_STRING("Textures"), (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
-            settingsOpen   ^= UIButton(CLAY_ID("Settings"), CLAY_STRING("Settings"), (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
-            assetsOpen     ^= UIButton(CLAY_ID("Assets")  , CLAY_STRING("Assets")  , (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
-            terrainOpen    ^= UIButton(CLAY_ID("Terrain") , CLAY_STRING("Terrain") , (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
-            consoleOpen    ^= UIButton(CLAY_ID("Console") , CLAY_STRING("Console") , (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
-            testOpen       ^= UIButton(CLAY_ID("Test")    , CLAY_STRING("Test")    , (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
-            sceneViewOpen  ^= UIButton(CLAY_ID("View")    , CLAY_STRING("View")    , (Clay_Dimensions){UIGetFloat(UIFloat_ButtonSize), 25.0f}, false);
+            // tab-bar dropdowns, grouped by purpose. add another button by copying a block
+            // with a fresh CLAY_ID/label and its own names/flags, then cache its box below.
+            EditorWindowMenu(CLAY_ID("Scene"), CLAY_STRING("Scene"),
+                (const char*[]){ "Scene", "Textures", "Terrain" },
+                (bool*[]){ &sceneOpen, &texturesOpen, &terrainOpen }, 3u);
+
+            EditorWindowMenu(CLAY_ID("Windows"), CLAY_STRING("Windows"),
+                (const char*[]){ "Graphics", "Settings", "Assets", "Console", "Test", "View" },
+                (bool*[]){ &editorOpen, &settingsOpen, &assetsOpen, &consoleOpen, &testOpen, &sceneViewOpen }, 6u);
+
             UIPopFloat(UIFloat_CornerRadius);
             UIPopFloat(UIFloat_TextScale);
         }
@@ -808,16 +840,8 @@ static void GraphicsEditorUI(void)
     }
 
     editorTabBarButtonBoxCount = 0u;
-    EditorCacheTabBarButtonBox(CLAY_ID("Graphics"));
     EditorCacheTabBarButtonBox(CLAY_ID("Scene"));
-    EditorCacheTabBarButtonBox(CLAY_ID("Textures"));
-    EditorCacheTabBarButtonBox(CLAY_ID("Settings"));
-    EditorCacheTabBarButtonBox(CLAY_ID("Assets"));
-    EditorCacheTabBarButtonBox(CLAY_ID("Terrain"));
-    EditorCacheTabBarButtonBox(CLAY_ID("ImportDbg"));
-    EditorCacheTabBarButtonBox(CLAY_ID("Console"));
-    EditorCacheTabBarButtonBox(CLAY_ID("Test"));
-    EditorCacheTabBarButtonBox(CLAY_ID("View"));
+    EditorCacheTabBarButtonBox(CLAY_ID("Windows"));
     EditorCacheTabBarButtonBox(CLAY_ID("TabBarMinimizeProgram"));
     EditorCacheTabBarButtonBox(CLAY_ID("TabBarMaximizeProgram"));
     EditorCacheTabBarButtonBox(CLAY_ID("TabBarExitProgram"));

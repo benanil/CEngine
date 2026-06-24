@@ -361,6 +361,9 @@ static const char* g_SlugFallbackFontPaths[] = {
     "Assets/Fonts/simsun.ttc",
     "Assets/Fonts/YuGothR.ttc",
     "Assets/Fonts/NotoSansArabic-Regular.ttf",
+    // monochrome outline emoji (NOT "Noto Color Emoji" - that is a CBDT/COLR color font
+    // stb_truetype can't read). renders emoji as single-color shapes. missing file is skipped.
+    "Assets/Fonts/NotoEmoji-Regular.ttf",
     "Assets/Fonts/Quivira.otf"
 };
 
@@ -544,7 +547,7 @@ bool SlugLoadFont(SlugFont* font, const char* path)
     stbtt_GetFontVMetrics(&info, &ascent, &descent, &lineGap);
     font->ascent = (f32)ascent * emScale;
     font->descent = (f32)descent * emScale;
-    // SlugLoadFallbackFonts(font);
+    SlugLoadFallbackFonts(font); // pull glyphs the primary font lacks (CJK from simsun/YuGothic, Arabic, etc.)
 
     for (u32 codePoint = 0; codePoint < SLUG_MAX_GLYPHS; codePoint++)
     {

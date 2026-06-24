@@ -53,7 +53,7 @@ static void MainLoopTick(void)
 
     SetPressedAndReleasedKeys();
     PlatformUpdate();
-    CameraUpdate(&g_Camera, PlatformCtx.DeltaTime);
+    CameraUpdate(&g_Camera, PlatformCtx.DeltaTime, EditorSceneInteractAllowed());
     Terrain_Update(&g_Camera);
     DemoScene_Update(PlatformCtx.DeltaTime);
     Scene_SubmitLights();
@@ -80,7 +80,7 @@ static SDL_AppResult SDLCALL MainAppInit(void** appstate, int argc, char* argv[]
 
     s32 msaa = 1;
     done = 0;
-
+	
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO))
         return SDL_APP_FAILURE;
 

@@ -31,7 +31,8 @@ typedef struct Camera_
     f32 speed;
 
     u8 wasPressing;
- 
+    u8 captured; // owns the active right-drag; only set when the press began over the 3d scene
+
     FrustumPlanes frustumPlanes;
 
     mat4x4 inverseProjection;
@@ -155,7 +156,7 @@ static inline float2 InfiniteMouse(float2 point)
     return point;
 }
 
-static inline void CameraUpdate(Camera* camera, f32 dt)
+static inline void CameraUpdate(Camera* camera, f32 dt, bool canCapture)
 {
     if (!camera) return;
     Camera_SanitizeConfig(camera);
@@ -163,15 +164,31 @@ static inline void CameraUpdate(Camera* camera, f32 dt)
 
     bool pressing = GetMouseDown(MouseButton_Right);
     f32 speed = dt * (1.0f + GetKeyDown(SDLK_LSHIFT) * 6.0f) * camera->speed;
-    
+
     if (!pressing)
     {
         wSetCursor(wCursor_Default);
         GetMousePos(&camera->mouseOld.x, &camera->mouseOld.y);
         camera->wasPressing = false;
+        camera->captured = false;
         return;
     }
-        
+
+    // a right-drag may only begin while the cursor is over the 3d scene, never over an
+    // editor panel (that press belongs to the context menu). once the camera owns the
+    // drag it keeps it until release, so sweeping over a panel mid-rotation still works.
+    // gating here also stops InfiniteMouse from warping the cursor on a ui right-click.
+    if (!camera->captured)
+    {
+        if (!canCapture)
+        {
+            GetMousePos(&camera->mouseOld.x, &camera->mouseOld.y);
+            camera->wasPressing = false;
+            return;
+        }
+        camera->captured = true;
+    }
+
     float2 mousePos;
     GetMousePos(&mousePos.x, &mousePos.y);
     float2 diff = F2Sub(mousePos, camera->mouseOld);

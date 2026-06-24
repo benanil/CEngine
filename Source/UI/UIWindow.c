@@ -876,6 +876,19 @@ static void UIWindowDrawRightClickMenu(UIWindow* window)
         return;
     }
 
+    // keep the menu fully on screen: estimate its size (measured once laid out, otherwise
+    // derived from the row count) and shift the anchor up/left so it never spills off the edge
+    u32 rowCount = 0u;
+    for (u32 i = 0u; i < g_UIRightClickEventCount; i++)
+        if (g_UIRightClickEvents[i].windowHash == window->hash) rowCount++;
+    f32 menuW = menuData.found ? menuData.boundingBox.width  : 158.0f;
+    f32 menuH = menuData.found ? menuData.boundingBox.height : (8.0f + rowCount * 26.0f);
+    float2 menuPos = g_UIRightClickMenuPos;
+    if (menuPos.x + menuW > g_UI.screenSize.x) menuPos.x = g_UI.screenSize.x - menuW;
+    if (menuPos.y + menuH > g_UI.screenSize.y) menuPos.y = g_UI.screenSize.y - menuH;
+    if (menuPos.x < 0.0f) menuPos.x = 0.0f;
+    if (menuPos.y < 0.0f) menuPos.y = 0.0f;
+
     CLAY(menuId, {
         .layout = {
             .sizing = { CLAY_SIZING_FIT(150.0f), CLAY_SIZING_FIT(0) },
@@ -886,7 +899,7 @@ static void UIWindowDrawRightClickMenu(UIWindow* window)
         .backgroundColor = UIColorToClay(UIGetColor(UIColor_Quad) | 0xFF000000u),
         .cornerRadius = CLAY_CORNER_RADIUS(6.0f),
         .border = { .color = UIGetClayColor(UIColor_Border), .width = CLAY_BORDER_OUTSIDE(1) },
-        .floating = { .offset = { g_UIRightClickMenuPos.x, g_UIRightClickMenuPos.y }, .zIndex = 126, .attachTo = CLAY_ATTACH_TO_ROOT }
+        .floating = { .offset = { menuPos.x, menuPos.y }, .zIndex = 126, .attachTo = CLAY_ATTACH_TO_ROOT }
     }) {
         for (u32 i = 0u; i < g_UIRightClickEventCount; i++)
         {

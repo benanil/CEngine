@@ -156,8 +156,8 @@ GBufferOutput frag(VSOutput input)
     float3 N = normalize(tangentNormal.x * normalize(float3(input.tangent)) +
                          tangentNormal.y * normalize(float3(input.bitangent)) +
                          tangentNormal.z * normalize(float3(input.normal)));
-    float metallicFactor  = 1.0f;//float((material.metallicRoughnessFactor >> 16u) & 0xFFFFu) * (1.0f / 65535.0f);
-    float roughnessFactor = 1.0f;//float(material.metallicRoughnessFactor & 0xFFFFu) * (1.0f / 65535.0f);
+    float metallicFactor  = float((material.metallicRoughnessFactor >> 16u) & 0xFFFFu) * (1.0f / 65535.0f);
+    float roughnessFactor = float(material.metallicRoughnessFactor & 0xFFFFu) * (1.0f / 65535.0f);
     float metallic  = float(mr.x) * metallicFactor;
     float roughness = float(mr.y) * roughnessFactor;
     
