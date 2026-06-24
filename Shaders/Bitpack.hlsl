@@ -73,6 +73,12 @@ float4 UnpackUnorm16x4(uint2 p) {
     return float4(u) * (1.0 / 65534.0);
 }
 
+// inverse of UnpackUnorm16x4. fp32 input so meter-scale values keep full 16-bit precision.
+uint2 PackUnorm16x4(float4 v) {
+    uint4 u = uint4(round(saturate(v) * 65534.0)) & 0xFFFFu;
+    return uint2(u.x | (u.y << 16), u.z | (u.w << 16));
+}
+
 f16_3 UnpackVec3XY11Z10Unorm(uint packed) {
     const f16 scale11 = f16(1.0 / 2047.0);
     const f16 scale10 = f16(1.0 / 1023.0);
@@ -212,6 +218,16 @@ uint PackXY11Z10SnormToU32(f16_3 v)
     return x | (y << 11) | (z << 22);
 }
 
+// inverse of UnpackVec3XY11Z10Unorm (11/11/10 unorm)
+uint PackXY11Z10UnormToU32(f16_3 v)
+{
+    v = saturate(v);
+    uint x = uint(round(float(v.x) * 2047.0)) & 0x7FFu;
+    uint y = uint(round(float(v.y) * 2047.0)) & 0x7FFu;
+    uint z = uint(round(float(v.z) * 1023.0)) & 0x3FFu;
+    return x | (y << 11) | (z << 22);
+}
+
 uint PackNormalTangent(f16_3 normal, f16_4 tangent)
 {
     normal = normalize(normal);
@@ -241,30 +257,7 @@ void UnpackTangentSpace25(uint packed, out f16_3 normal, out f16_3 tangent, out 
     handedness = (packed & 0x1000000u) != 0u ? f16(-1.0) : f16(1.0);
 }
 
-// max animation bounds is ANIMATION_MAX_METERS
-uint2 PackAnimatedVertex(f16_3 position, f16_3 normal, f16_3 tangent, f16 handedness)
-{
-    int3 u = clamp(int3(round(float3(position) * (1.0 / ANIMATION_PRECISION))), -4096, 4095) & 0x1FFFu;
-    uint tangentSpace = PackTangentSpace25(normal, tangent, handedness);
-    return uint2(u.x | (u.y << 13) | ((u.z & 0x3Fu) << 26),
-                 (u.z >> 6) | (tangentSpace << 7));
-}
-
-f16_3 UnpackAnimatedPosition(uint2 packed)
-{
-    uint z = ((packed.x >> 26) & 0x3Fu) | ((packed.y & 0x7Fu) << 6);
-    return f16_3(float3(
-        f32(int((packed.x         & 0x1FFFu) << 19u) >> 19),
-        f32(int(((packed.x >> 13) & 0x1FFFu) << 19u) >> 19),
-        f32(int(z                            << 19u) >> 19)
-    ) * ANIMATION_PRECISION);
-}
-
-void UnpackAnimatedTangentSpace(uint2 packed, out f16_3 normal, out f16_3 tangent, out f16 handedness)
-{
-    UnpackTangentSpace25(packed.y >> 7, normal, tangent, handedness);
-}
-
+// bone matrices are stored fp16 (12 halves / 6 u32); see WriteBone in AnimationCompute.hlsl.
 f16_3x4 LoadBone(StructuredBuffer<uint> boneMtx, uint idx)
 {
     uint base = idx * MatrixNumInt32;

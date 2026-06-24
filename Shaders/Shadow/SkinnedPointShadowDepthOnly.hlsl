@@ -2,6 +2,7 @@
 #include "../CommonStructs.hlsl"
 #include "../Bitpack.hlsl"
 #include "../Math.hlsl"
+#include "../AnimatedTransform.hlsl"
 #include "Shadow.hlsl"
 
 StructuredBuffer<Entity>              sEntities          : register(t0);
@@ -61,8 +62,10 @@ VSOutput vert(VSInput input,
     uint animatedVertex   = sparse * uint(MAX_SKINNED_VERTEX_PER_ANIM_INSTANCE) + group.lodAnimatedVertexOffset[lod] + localVertex;
     AnimatedVert animated = sAnimatedVert[animatedVertex];
     Entity entity  = sEntities[denseIdx];
-    f16_3 localPos = UnpackAnimatedPosition(uint2(animated.packed0, animated.packed1));
-    float3 finalWorldPos = float3(localPos) + entity.position.xyz;
+    f16_4 insRot = normalize(UnpackRGBA16Snorm(entity.rotation[0], entity.rotation[1]));
+    f16_3 insScale = UnpackRGBA16Unorm(entity.scale).xyz * f16(10.0);
+    float3 modelPos = UnpackAnimatedModelPos(uint2(animated.packed0, animated.packed1), group.aabbMin.xyz, group.aabbMax.xyz);
+    float3 finalWorldPos = AnimatedWorldPos(modelPos, float4(insRot), float3(insScale), entity.position.xyz);
     float4 clip = MulPointShadowSide(sPointShadowSides[uShadowSideIndex + face], float4(finalWorldPos, 1.0));
     return MakeAtlasOutput(clip, face);
 }

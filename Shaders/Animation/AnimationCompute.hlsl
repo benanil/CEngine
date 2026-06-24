@@ -50,6 +50,10 @@ cbuffer params : register(b0, space2)
     int   numInstances;
 };
 
+// Bone matrices are stored fp16 (12 halves / 6 u32) to keep the skinning gather at half bandwidth
+// and fp16-friendly registers. The metre-scale translation column quantizes to ~1 mm; to keep that
+// from showing as swim, bake the bounds center into the translation before packing (needs the
+// per-instance center plumbed in) - it is currently subtracted later in AnimateVertices.
 void WriteBone(f16_3x4 bone, int idx)
 {
     int base = MatrixNumInt32 * idx;
@@ -64,6 +68,12 @@ void WriteBone(f16_3x4 bone, int idx)
 f16_4 GetHalf4(StructuredBuffer<uint> buffer, uint idx)
 {
     return VecCombine(UnpackHalf2(buffer[idx]), UnpackHalf2(buffer[idx + 1]));
+}
+
+float4 GetFloat4(StructuredBuffer<uint> buffer, uint idx)
+{
+    return float4(asfloat(buffer[idx + 0]), asfloat(buffer[idx + 1]),
+                  asfloat(buffer[idx + 2]), asfloat(buffer[idx + 3]));
 }
 
 f16_2x4 LoadPose(int i, int frameOffset, int frame)
@@ -87,15 +97,16 @@ AnimNode GetAnimNode(int idx, uint hierarchyOffset)
 
 u16 GetParentIndex(u16 idx, uint hierarchyOffset) { return (u16)(animHierarchy[hierarchyOffset + idx] & 0xFFFF); }
 
+// inverse-bind matrices are stored fp32 (16 floats / 4x4) - large bind-pose translations bias every
+// bone, so half precision here is a constant positional error fed into every vertex.
 f16_4x4 LoadMatrix(int idx, uint invBindOffset)
 {
-    const int MatrixSize = 8;
-    int mtx = int(invBindOffset + idx) * MatrixSize;
+    int mtx = int(invBindOffset + idx) * ANIM_MATRIX_NUM_INT32;
     f16_4x4 result;
-    result[0] = GetHalf4(inverseBindMatrices, mtx + 0);
-    result[1] = GetHalf4(inverseBindMatrices, mtx + 2);
-    result[2] = GetHalf4(inverseBindMatrices, mtx + 4);
-    result[3] = GetHalf4(inverseBindMatrices, mtx + 6);
+    result[0] = f16_4(GetFloat4(inverseBindMatrices, mtx + 0));
+    result[1] = f16_4(GetFloat4(inverseBindMatrices, mtx + 4));
+    result[2] = f16_4(GetFloat4(inverseBindMatrices, mtx + 8));
+    result[3] = f16_4(GetFloat4(inverseBindMatrices, mtx + 12));
     return result;
 }
 

@@ -293,6 +293,8 @@ static void UploadDirtyGeometry(void)
 
 void InitBuffers(void)
 {
+    // AnimatedVert is position-only, 16/16/16 unorm in 2x u32 -> 512 MB at full provisioning.
+    // (Lever 2 / compaction by visible animated-vertex count reclaims this later.)
     const size_t animatedVertexSize = sizeof(u32) * 2 * MAX_ANIMATED_VERTEX;
     g_RenderState.skinned.vertexBuffer = CreateBuffer(NULL, MAX_SKINNED_SOURCE_VERTEX * sizeof(ASkinedVertex), BVertexBit | BReadCompute, "CPSkinnedVertexBuffer");
     g_RenderState.surface.vertexBuffer = CreateBuffer(NULL, MAX_VERTEX * sizeof(AVertex), BVertexBit, "CPSurfaceVertexBuffer");

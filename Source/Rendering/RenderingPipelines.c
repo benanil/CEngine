@@ -662,7 +662,7 @@ static void InitUIImagePipeline(void)
 static void InitSkinedPipeline(void)
 {
     SDL_GPUShaderFormat shaderformat = AX_GPU_SHADER_FORMAT;
-    SDL_GPUShader* vertex_shader   = PIPELINE_VERT_DEF(Shaders_SkinnedVert_spv), .num_uniform_buffers = 1, .num_storage_buffers = 5 });                           CHECK_CREATE(vertex_shader, "Vertex Shader")
+    SDL_GPUShader* vertex_shader   = PIPELINE_VERT_DEF(Shaders_SkinnedVert_spv), .num_uniform_buffers = 1, .num_storage_buffers = 6 });                           CHECK_CREATE(vertex_shader, "Vertex Shader")
     SDL_GPUShader* fragment_shader = PIPELINE_FRAG_DEF(Shaders_SkinnedFrag_spv), .num_uniform_buffers = 1, .num_samplers        = 4, .num_storage_buffers = 2 }); CHECK_CREATE(fragment_shader, "Fragment Shader")
 
     const SDL_GPUVertexAttribute vertex_attributes[5] = {

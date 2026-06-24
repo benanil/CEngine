@@ -64,10 +64,10 @@ typedef struct PrimitiveGroup_
     uint4 lodAnimatedVertexOffset;
 } PrimitiveGroup;
 
-// Animated vertex cache format, 8 bytes per vertex. 
-// packed0/packed1: 39-bit signed fixed-point local position at ANIMATION_PRECISION unit precision
-// max animation bounds is ANIMATION_MAX_METERS
-// plus 25-bit tangent space packed as 9/9 oct, 6-bit diamond tangent, 1-bit handedness.
+// Animated vertex cache format, 8 bytes per vertex (position only - the tangent frame is no
+// longer cached; the GBuffer pass re-skins it).
+// packed0/packed1: bounds-normalized model-space skinned position, 16/16/16 unorm against the
+// primitive group's (whole-skin) AABB. Entity rotation/scale are applied per vertex shader.
 typedef struct AnimatedVert_
 {
     uint packed0;

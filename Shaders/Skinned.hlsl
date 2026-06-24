@@ -3,6 +3,7 @@
 #include "PBR.hlsl"
 #include "Bitpack.hlsl"
 #include "Math.hlsl"
+#include "AnimatedTransform.hlsl"
 #include "Shadow/Shadow.hlsl"
 
 #define CSM_DEBUG_CASCADES 0
@@ -26,6 +27,7 @@ StructuredBuffer<PrimitiveGroup> sPrimitiveGroups     : register(t1);
 StructuredBuffer<uint>           sDrawSparseIndices   : register(t2);
 StructuredBuffer<AnimatedVert>   sAnimatedVert        : register(t3);
 StructuredBuffer<ShadowCascadeBuffer> sShadowCascades : register(t4);
+StructuredBuffer<uint>           sBoneMtx             : register(t5); // re-skin the tangent frame here
 // frag
 Texture2DArray<float4> AlbedoPages            : register(t0, space2);
 Texture2DArray<float2> NormalPages            : register(t1, space2);
@@ -82,13 +84,36 @@ VSOutput vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("Dra
     uint animatedVertex = sparse * uint(MAX_SKINNED_VERTEX_PER_ANIM_INSTANCE) + group.lodAnimatedVertexOffset[lod] + localVertex;
     AnimatedVert animated = sAnimatedVert[animatedVertex];
     Entity entity = sEntities[denseIdx];
-    uint2 packedAnimated = uint2(animated.packed0, animated.packed1);
-    f16_3 localPos = UnpackAnimatedPosition(packedAnimated);
-    float3 finalWorldPos = float3(localPos) + entity.position.xyz;
+    f16_4 insRot = normalize(UnpackRGBA16Snorm(entity.rotation[0], entity.rotation[1]));
+    f16_3 insScale = UnpackRGBA16Unorm(entity.scale).xyz * f16(10.0);
+    // reconstruct position in fp32 (meter-scale model pos would jitter if cast through fp16)
+    float3 modelPos = UnpackAnimatedModelPos(uint2(animated.packed0, animated.packed1), group.aabbMin.xyz, group.aabbMax.xyz);
+    float3 finalWorldPos = AnimatedWorldPos(modelPos, float4(insRot), float3(insScale), entity.position.xyz);
+
+    // The tangent frame is no longer cached in sAnimatedVert (so depth/shadow passes share a
+    // position-only buffer). Re-skin it here from the source vertex + bone matrices.
+    uint boneStart = sparse * MAX_BONES;
+    f16_4 weights;
+    weights.xyz = UnpackVec3XY11Z10Unorm(input.aWeights);
+    weights.w   = saturate(f16(1.0) - weights.x - weights.y - weights.z);
+
+    f16_3x4 animMat = (f16_3x4)0;
+    [unroll]
+    for (int i = 0; i < 4; i++)
+    {
+        f16_3x4 bone = LoadBone(sBoneMtx, boneStart + input.aJoints[i]);
+        animMat[0] = mad(weights[i], bone[0], animMat[0]);
+        animMat[1] = mad(weights[i], bone[1], animMat[1]);
+        animMat[2] = mad(weights[i], bone[2], animMat[2]);
+    }
+
+    f16_3 restNormal, restTangent;
+    UnpackNormalTangent(input.aTangentSpace, restNormal, restTangent);
+    f16 tangentHandedness = UnpackTangentHandedness(input.aTangentSpace);
 
     f16_3x3 tbn;
-    f16 tangentHandedness;
-    UnpackAnimatedTangentSpace(packedAnimated, tbn[2], tbn[1], tangentHandedness);
+    tbn[2] = normalize(QMulVec3(insRot, mul(animMat, f16_4(restNormal,  f16(0.0)))));
+    tbn[1] = normalize(Orthonormalize(QMulVec3(insRot, mul(animMat, f16_4(restTangent, f16(0.0)))), tbn[2]));
 
     VSOutput o;
     o.position  = mul(uViewProj, float4(finalWorldPos, 1.0));

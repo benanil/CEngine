@@ -203,6 +203,37 @@ u32 RenderSet_AddSceneBundle(RenderSet* set, const SceneBundle* sceneBundle, u32
         vertexBase = (u32)((const ASkinedVertex*)sceneBundle->allVertices - gGFX.SkinnedVertexBuffer);
     else
         vertexBase = (u32)((const AVertex*)sceneBundle->allVertices - gGFX.SurfaceVertexBuffer);
+    // Skinned primitives deform far outside their bind-pose AABB when they are rigidly bound
+    // to a moving bone (a sword in the hand, a helmet on the head, ...). The animation shaders
+    // normalize each vertex against PrimitiveGroup.aabbMin/aabbMax, so a per-primitive bind AABB
+    // collapses such accessories to a blob once the bone leaves bind pose. Share one skin-wide
+    // bound (the union of every primitive) across all groups so accessories normalize against the
+    // whole-character reach, matching how the old absolute ANIMATION_MAX_METERS range behaved.
+    v128f skinnedMin = VecSet1(FLT_MAX);
+    v128f skinnedMax = VecSet1(-FLT_MAX);
+    if (set->skinned)
+    {
+        for (u32 m = 0; m < (u32)sceneBundle->numMeshes; m++)
+        {
+            const AMesh* mesh = sceneBundle->meshes + m;
+            for (u32 p = 0; p < (u32)mesh->numPrimitives; p++)
+            {
+                const APrimitive* primitive = mesh->primitives + p;
+                skinnedMin = VecMin(skinnedMin, VecLoad(primitive->min));
+                skinnedMax = VecMax(skinnedMax, VecLoad(primitive->max));
+            }
+        }
+
+        // Bind-pose bounds do not cover poses that reach past the bind silhouette (an overhead
+        // swing, a kick). Inflate symmetrically so those poses stay inside [-1, 1] and avoid
+        // clamping; the 13-bit per-axis precision has ample headroom for the slack.
+        v128f boundsMargin = VecSetR(2.5f, 1.5f, 2.5f, 0.0f);
+        v128f center = VecMulf(VecAdd(skinnedMin, skinnedMax), 0.5f);
+        v128f extent = VecMul(VecSub(skinnedMax, skinnedMin), boundsMargin);
+        skinnedMin = VecSub(center, extent);
+        skinnedMax = VecAdd(center, extent);
+    }
+
     s32 totalPrimitives = 0;
     for (u32 m = 0; m < (u32)sceneBundle->numMeshes; m++)
     {
@@ -222,8 +253,10 @@ u32 RenderSet_AddSceneBundle(RenderSet* set, const SceneBundle* sceneBundle, u32
             group->materialIndex  = materialOffset + (u32)primitive->material;
             group->numVertices    = (u32)primitive->numVertices;
             group->entityOffset   = set->numEntities;
-            group->aabbMin = VecLoad(primitive->min);
-            group->aabbMax = VecLoad(primitive->max);
+            
+            group->aabbMin = set->skinned ? skinnedMin : VecLoad(primitive->min);
+            group->aabbMax = set->skinned ? skinnedMax : VecLoad(primitive->max);
+            
             for (u32 lod = 0; lod < MESH_LOD_COUNT; lod++)
             {
                 group->lodIndexOffset[lod] = (u32)primitive->lodIndexOffset[lod];

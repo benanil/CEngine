@@ -30,6 +30,12 @@ static void StoreHalf4(u32* dst, v128f src)
     Float4ToHalf4V((u64*)dst, src);
 }
 
+// fp32 store for bone / inverse-bind matrices (poses stay half via StoreHalf4)
+static void StoreFloat4(u32* dst, v128f src)
+{
+    VecStore((f32*)dst, src);
+}
+
 static u32 AnimationBundleFrameCount(const SceneBundle* bundle)
 {
     u32 frameCount = 0u;
@@ -60,7 +66,8 @@ void AnimationSystem_Destroy(AnimationSystem* anims)
 static void AnimationSystem_EnsureBuffers(AnimationSystem* anims)
 {
     if (anims->poseBuffer) return;
-    const size_t maxBoneMatrices = sizeof(half3x4) * MAX_BONES * MAX_ANIM_INSTANCES;
+    // bone matrices are fp16 (MatrixNumInt32 u32 each) -> ~2.4 MB
+    const size_t maxBoneMatrices = (size_t)MatrixNumInt32 * sizeof(u32) * MAX_BONES * MAX_ANIM_INSTANCES;
     const size_t poseBytes       = (size_t)MAX_BONES * MAX_GPU_ANIM_FRAMES * ANIM_POSE_NUM_INT32 * sizeof(u32);
     const size_t hierarchyBytes  = (size_t)MAX_SKIN_COUNT * ANIM_NODE_COUNT * sizeof(u32);
     const size_t jointBytes      = (size_t)MAX_BONES * MAX_SKIN_COUNT * sizeof(u32);
@@ -148,10 +155,10 @@ static bool StoreBundleSkinGPUData(AnimationSystem* anims, const SceneBundle* bu
     for (int i = 0; i < skin->numJoints; i++)
     {
         u32* outMtx = invBind + (i * ANIM_MATRIX_NUM_INT32);
-        StoreHalf4(outMtx + 0, inv[i].r[0]);
-        StoreHalf4(outMtx + 2, inv[i].r[1]);
-        StoreHalf4(outMtx + 4, inv[i].r[2]);
-        StoreHalf4(outMtx + 6, inv[i].r[3]);
+        StoreFloat4(outMtx + 0,  inv[i].r[0]);
+        StoreFloat4(outMtx + 4,  inv[i].r[1]);
+        StoreFloat4(outMtx + 8,  inv[i].r[2]);
+        StoreFloat4(outMtx + 12, inv[i].r[3]);
     }
 
     if (bundle->numNodes > 0)

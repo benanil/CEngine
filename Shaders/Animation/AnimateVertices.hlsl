@@ -4,6 +4,8 @@
 #include "../CommonStructs.hlsl"
 #include "../Bitpack.hlsl"
 #include "../Math.hlsl"
+#include "../LOD.hlsl"
+#include "../AnimatedTransform.hlsl"
 
 struct SkinnedVertex
 {
@@ -75,8 +77,12 @@ void main(uint3 globalID : SV_DispatchThreadID, uint3 groupID : SV_GroupID, uint
     uint sourceVertexBase = group.lodVertexOffset[lod];
 
     uint boneStart = sparse * MAX_BONES;
-    f16_4 insRot = normalize(UnpackRGBA16Snorm(entity.rotation[0], entity.rotation[1]));
-    f16_3 insScale = UnpackRGBA16Unorm(entity.scale).xyz * f16(10.0);
+
+    // Skin in model space (entity rotation/scale are applied per vertex shader) and accumulate in a
+    // bounds-local frame: the bone translation is shifted by the bounds center so skinned positions
+    // stay near 0, where fp16 keeps full precision. Result is packed as 11/11/10 unorm.
+    float3 boundsCenter = AnimatedBoundsCenter(group.aabbMin.xyz, group.aabbMax.xyz);
+    float3 boundsExtent = AnimatedBoundsExtent(group.aabbMin.xyz, group.aabbMax.xyz);
 
     [loop]
     for (uint vertexOffset = 0; vertexOffset < 32u; vertexOffset++)
@@ -102,7 +108,7 @@ void main(uint3 globalID : SV_DispatchThreadID, uint3 groupID : SV_GroupID, uint
 
         f16_3x4 animMat = (f16_3x4)0;
         uint joints = input.joints;
-        
+
         [unroll]
         for (int i = 0; i < 4; i++)
         {
@@ -113,21 +119,20 @@ void main(uint3 globalID : SV_DispatchThreadID, uint3 groupID : SV_GroupID, uint
             animMat[2] = mad(weights[i], bone[2], animMat[2]);
         }
 
+        // shift the blended translation by the bounds center so mul() yields the skinned position
+        // relative to the center (bounds-local accumulation). Tangent frame is no longer cached here.
+        animMat[0][3] -= f16(boundsCenter.x);
+        animMat[1][3] -= f16(boundsCenter.y);
+        animMat[2][3] -= f16(boundsCenter.z);
+
         // mul(Vector, Transpose(Matrix)) is equivalent to mul(Matrix, Vector) in HLSL.
-        f16_3 localPos = insScale * QMulVec3(insRot, mul(animMat, inputPos));
-
-        f16_3x3 tbn;
-        UnpackNormalTangent(input.tangentSpace, tbn[2], tbn[1]);
-        f16 tangentHandedness = UnpackTangentHandedness(input.tangentSpace);
-
-        tbn[2] = QMulVec3(insRot, mul(animMat, f16_4(tbn[2], f16(0.0))));
-        tbn[1] = QMulVec3(insRot, mul(animMat, f16_4(tbn[1], f16(0.0))));
-        tbn[0] = Orthonormalize(tbn[1], tbn[2]);
+        // FLOAT16_SUPPORTED is 0 here, so this skinning math is fp32.
+        float3 centerRelPos = mul(animMat, inputPos);
 
         AnimatedVert o;
-        uint2 packedAnimated = PackAnimatedVertex(localPos, tbn[2], tbn[1], tangentHandedness);
-        o.packed0 = packedAnimated.x;
-        o.packed1 = packedAnimated.y;
+        uint2 packed = PackAnimatedCenterRel(centerRelPos, boundsExtent);
+        o.packed0 = packed.x;
+        o.packed1 = packed.y;
         sAnimatedVert[outVertex] = o;
     }
 }

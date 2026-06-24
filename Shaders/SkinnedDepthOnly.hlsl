@@ -2,6 +2,7 @@
 #include "TextureSampling.hlsl"
 #include "Bitpack.hlsl"
 #include "Math.hlsl"
+#include "AnimatedTransform.hlsl"
 
 cbuffer vs_params : register(b0, space1)
 {
@@ -48,8 +49,10 @@ VSOutput vert(VSInput input, uint instanceID : SV_InstanceID,
     uint animatedVertex = sparse * uint(MAX_SKINNED_VERTEX_PER_ANIM_INSTANCE) + group.lodAnimatedVertexOffset[lod] + localVertex;
     AnimatedVert animated = sAnimatedVert[animatedVertex];
     Entity entity = sEntities[denseIdx];
-    f16_3 localPos = UnpackAnimatedPosition(uint2(animated.packed0, animated.packed1));
-    float3 finalWorldPos = float3(localPos) + entity.position.xyz;
+    f16_4 insRot = normalize(UnpackRGBA16Snorm(entity.rotation[0], entity.rotation[1]));
+    f16_3 insScale = UnpackRGBA16Unorm(entity.scale).xyz * f16(10.0);
+    float3 modelPos = UnpackAnimatedModelPos(uint2(animated.packed0, animated.packed1), group.aabbMin.xyz, group.aabbMax.xyz);
+    float3 finalWorldPos = AnimatedWorldPos(modelPos, float4(insRot), float3(insScale), entity.position.xyz);
 
     VSOutput o;
     o.position = mul(uViewProj, float4(finalWorldPos, 1.0));

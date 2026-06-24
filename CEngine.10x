@@ -521,6 +521,9 @@
 					<File>
 						<Path>Shaders/SurfaceDepthOnly.hlsl</Path>
 					</File>
+					<File>
+						<Path>Shaders/AnimatedTransform.hlsl</Path>
+					</File>
 				</Children>
 			</Folder>
 			<Folder>

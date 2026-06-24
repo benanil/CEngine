@@ -89,7 +89,8 @@ ShadowCascadeData CascadedShadowmaps(SDL_GPUCommandBuffer* cmd)
     static ShadowCascadeData cachedShadowCascades;
     static u32 shadowFrameIndex = 0;
     static bool shadowCacheValid = false;
-    static const u8 cascadeCadance[] = { 0x5D, 0x22, 0x44 }; // 01011101, 00100010, 01000100
+    // static const u8 cascadeCadance[] = { 0x5D, 0x22, 0x44 }; // 01011101, 00100010, 01000100
+    static const u8 cascadeCadance[] = { 0xFF, 0xFF, 0xFF };
     ShadowCascadeData shadowCascades = GetShadowCascades();
     bool updateCascades[SHADOW_CASCADE_COUNT];
     u32 shadowFrame = (shadowFrameIndex++) & 7;

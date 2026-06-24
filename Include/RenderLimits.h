@@ -27,7 +27,7 @@
 #define SPOT_SHADOW_MAX_LIGHTS     16u
 #define SPOT_SHADOW_NEAR_PLANE     0.05f
 
-#define MatrixNumInt32          6
+#define MatrixNumInt32          6 /* fp16 3x4 bone matrix (12 halves / 6 u32) */
 #define MAX_BONES               96
 #define MaxBoneDepth            32
 // 1024 animation is 512mb memory on gpu
@@ -37,7 +37,7 @@
 #define MAX_ANIM_COUNT          128
 #define MAX_SKIN_COUNT          128
 #define ANIM_POSE_NUM_INT32     4
-#define ANIM_MATRIX_NUM_INT32   8
+#define ANIM_MATRIX_NUM_INT32   16 /* fp32 4x4 inverse-bind matrix (16 floats) */
 #define MAX_GPU_ANIM_FRAMES     (ANIM_NUM_FRAMES * MAX_ANIM_DURATION * MAX_ANIM_COUNT)
 #define ANIM_NODE_COUNT         (MAX_BONES * 2)
 #define ANIM_CHILD_PACKED_COUNT ((ANIM_NODE_COUNT + 3) / 4)

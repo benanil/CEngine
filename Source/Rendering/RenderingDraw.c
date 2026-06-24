@@ -98,14 +98,16 @@ static void DrawRenderBufferScene(SDL_GPUCommandBuffer* cmd, SDL_GPURenderPass* 
     SDL_BindGPUIndexBuffer(pass, &index_binding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
 
     // skinned meshes bind animated vertices ahead of the shadow cascades, so the cascade
-    // buffer lands one slot later than the surface layout
-    SDL_GPUBuffer* storageBuffers[5];
+    // buffer lands one slot later than the surface layout. The GBuffer pass also needs the bone
+    // matrices (t5) because it re-skins the tangent frame (not cached in the position-only buffer).
+    SDL_GPUBuffer* storageBuffers[6];
     u32 count = 0;
     storageBuffers[count++] = buffers->entity;
     storageBuffers[count++] = buffers->primitiveGroup;
     storageBuffers[count++] = buffers->drawSparseIndices;
     if (isSkinned) storageBuffers[count++] = g_RenderState.skinned.animatedVertices;
     storageBuffers[count++] = g_RenderState.shadowCascadeBuffer;
+    if (isSkinned) storageBuffers[count++] = scene->animSystem.boneBuffer;
     SDL_BindGPUVertexStorageBuffers(pass, 0, storageBuffers, count);
 
     SDL_BindGPUFragmentSamplers(pass, 0, pageSamplers, 4);
