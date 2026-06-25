@@ -24,6 +24,12 @@ typedef struct RenderSettings_
     f32 gamma;
     f32 godRayIntensity;
     f32 godRaySamples;    // ray march steps, 0 disables
+    bool enableHeightFog;
+    f32 fogColor[3];      // fog tint (linear rgb)
+    f32 fogDensity;       // overall opacity scale
+    f32 fogHeight;        // world-Y base height of the fog layer
+    f32 fogFalloff;       // height falloff rate, larger = thins faster with altitude
+    f32 fogSunScatter;    // 0..1 sun-direction tint strength
     f32 hbaoDirections;   // horizon sample directions
     f32 lodDistanceModifier;
     f32 renderScale;      // scene resolution multiplier, ui stays native. < 1 cuts gpu memory and shading cost

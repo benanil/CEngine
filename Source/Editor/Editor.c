@@ -412,6 +412,15 @@ static void DrawGraphicsWindow()
                 UISliderFloatValue(CLAY_ID("EditorGodRays")      , CLAY_STRING("God rays")      , &settings->godRayIntensity, 0.00f, 8.00f, 2);
                 UIEditInt(CLAY_ID("EditorGodRaySamples"), CLAY_STRING("God ray samples"), &settings->godRaySamples, 0, 128);
             }
+            CLAY(CLAY_ID("GraphicsEditorFogBox"), EditorPanelBoxDeclaration) {
+                UISectionHeader("Height fog");
+                UICheckbox(CLAY_ID("EditorEnableHeightFog"), CLAY_STRING("Enable height fog"), &settings->enableHeightFog);
+                UISliderFloatValue(CLAY_ID("EditorFogDensity")   , CLAY_STRING("Density")    , &settings->fogDensity   , 0.00f,  1.00f, 2);
+                UISliderFloatValue(CLAY_ID("EditorFogHeight")    , CLAY_STRING("Base height") , &settings->fogHeight    , -50.0f, 50.00f, 1);
+                UISliderFloatValue(CLAY_ID("EditorFogFalloff")   , CLAY_STRING("Falloff")    , &settings->fogFalloff   , 0.001f, 0.50f, 3);
+                UISliderFloatValue(CLAY_ID("EditorFogSunScatter"), CLAY_STRING("Sun scatter"), &settings->fogSunScatter, 0.00f,  1.00f, 2);
+                UIColorEdit3(CLAY_ID("EditorFogColor"), CLAY_STRING("Color"), settings->fogColor);
+            }
         }
         CLAY(CLAY_ID("GraphicsEditorButtons"), {
             .layout = {
@@ -441,6 +450,12 @@ static void DrawGraphicsWindow()
                     .gamma = 2.2f,
                     .godRayIntensity = 2.5f,
                     .godRaySamples = 64.0f,
+                    .enableHeightFog = true,
+                    .fogColor = { 0.62f, 0.70f, 0.80f },
+                    .fogDensity = 0.1f,
+                    .fogHeight = 0.0f,
+                    .fogFalloff = 0.04f,
+                    .fogSunScatter = 0.6f,
                     .hbaoDirections = 8.0f,
                     .lodDistanceModifier = 1.0f,
                     .renderScale = 1.0f,

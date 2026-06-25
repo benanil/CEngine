@@ -12,6 +12,8 @@ cbuffer TonemapParams : register(b0, space2)
     float4x4 invViewProj;
     float4 cameraPosition;
     float4 sunDirection;
+    float4 fogColorDensity;   // rgb = fog color, w = overall density scale
+    float4 fogParams;         // x = base height, y = height falloff, z = sun scatter amt, w = enable (0/1)
 };
 
 Texture2D<float4> SourceTexture : register(t0, space0);
@@ -64,6 +66,47 @@ float3 TonemapACES(float3 color)
     return saturate(v);
 }
 
+float3 ReconstructWorldPosition(float2 uv, float depth)
+{
+    float4 clip = float4(uv.x * 2.0f - 1.0f, 1.0f - uv.y * 2.0f, depth, 1.0f);
+    float4 world = mul(invViewProj, clip);
+    return world.xyz / max(abs(world.w), 0.00001f);
+}
+
+// warm tint applied to fog when looking toward the sun
+float3 FogSunTint(float3 fogCol, float3 rayDir)
+{
+    // sunDirection points toward the sun (same convention as SunDisk in Sky.hlsl)
+    float sun = saturate(dot(rayDir, normalize(sunDirection.xyz)));
+    return lerp(fogCol, fogCol * float3(1.35f, 1.08f, 0.72f), pow(sun, 3.0f) * fogParams.z);
+}
+
+// analytic exponential height fog integrated along the view ray
+float3 ApplyHeightFog(float3 color, float3 rayDir, float rayLen)
+{
+    // slider density (0..1) is a coarse knob; the geometry extinction coefficient
+    // it maps to must be tiny because the integral divides by falloff and accumulates
+    // over hundreds of meters. 0.01 keeps even high slider values gentle.
+    float density = fogColorDensity.w * 0.01f;
+    float baseH   = fogParams.x;
+    float falloff = max(fogParams.y, 1e-4f);
+    float camRel  = cameraPosition.y - baseH;
+    float fogInt;
+    if (abs(rayDir.y) < 1e-4f)
+    {
+        // near-horizontal ray: constant density slab
+        fogInt = density * rayLen * exp(-falloff * camRel);
+    }
+    else
+    {
+        fogInt = density * exp(-falloff * camRel)
+               * (1.0f - exp(-rayLen * rayDir.y * falloff)) / (rayDir.y * falloff);
+    }
+    float fogAmt = saturate(fogInt);
+    float3 fogCol = FogSunTint(fogColorDensity.rgb, rayDir);
+    return lerp(color, fogCol, fogAmt);
+}
+
 float Vignette(float2 uv)
 {
     uv *=  1.0 - uv.yx;   //vec2(1.0)- uv.yx; -> 1.-u.yx; Thanks FabriceNeyret !
@@ -79,9 +122,27 @@ void main(uint3 tid : SV_DispatchThreadID)
     float2 uv = (float2(tid.xy) + 0.5f) / float2(outputSize);
     float3 color = SourceTexture.SampleLevel(SourceSampler, uv, 0.0f).rgb;
     float depth = DepthTexture.SampleLevel(DepthSampler, uv, 0.0f);
+    bool fogEnabled = fogParams.w > 0.5f;
     if (depth >= 0.9999f)
     {
-        color = ComputeSky(SkyRayDirection(uv));
+        float3 skyDir = SkyRayDirection(uv);
+        color = ComputeSky(skyDir);
+        if (fogEnabled)
+        {
+            // fade the sky toward fog color near the horizon
+            float horizon = saturate(1.0f - skyDir.y); // 1 at/below horizon, 0 at zenith
+            horizon *= horizon;                        // concentrate the haze near the horizon
+            float3 fogCol = FogSunTint(fogColorDensity.rgb, skyDir);
+            color = lerp(color, fogCol, saturate(horizon * fogColorDensity.w));
+        }
+    }
+    else if (fogEnabled)
+    {
+        float3 worldPos = ReconstructWorldPosition(uv, depth);
+        float3 rayDir = worldPos - cameraPosition.xyz;
+        float rayLen = length(rayDir);
+        rayDir /= max(rayLen, 1e-5f);
+        color = ApplyHeightFog(color, rayDir, rayLen);
     }
     float godRays = ComputeGodRays(uv);
     color += godRays * float3(1.35f, 1.08f, 0.72f);

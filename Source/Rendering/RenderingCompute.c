@@ -450,6 +450,8 @@ void DispatchTonemapCompute(SDL_GPUCommandBuffer* cmd, u32 width, u32 height, ma
         mat4x4 invViewProj;
         f32 cameraPosition[4];
         f32 sunDirection[4];
+        f32 fogColorDensity[4];
+        f32 fogParams[4];
     } params = {0};
     float3 sunDir = GetRenderSunDirection();
     params.outputSize[0] = width;
@@ -469,7 +471,14 @@ void DispatchTonemapCompute(SDL_GPUCommandBuffer* cmd, u32 width, u32 height, ma
     params.sunDirection[0] = sunDir.x;
     params.sunDirection[1] = sunDir.y;
     params.sunDirection[2] = sunDir.z;
-    params.sunDirection[2] = FModf(params.time, MATH_TwoPI);
+    params.fogColorDensity[0] = g_RenderSettings.fogColor[0];
+    params.fogColorDensity[1] = g_RenderSettings.fogColor[1];
+    params.fogColorDensity[2] = g_RenderSettings.fogColor[2];
+    params.fogColorDensity[3] = g_RenderSettings.fogDensity;
+    params.fogParams[0] = g_RenderSettings.fogHeight;
+    params.fogParams[1] = g_RenderSettings.fogFalloff;
+    params.fogParams[2] = g_RenderSettings.fogSunScatter;
+    params.fogParams[3] = g_RenderSettings.enableHeightFog ? 1.0f : 0.0f;
     SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
     SDL_DispatchGPUCompute(pass, (width + 7u) / 8u, (height + 7u) / 8u, 1);
     SDL_EndGPUComputePass(pass);
