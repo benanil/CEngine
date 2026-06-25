@@ -48,7 +48,7 @@
 #define MAX_LIGHT_COUNT 1024u
 #define LIGHT_TILE_SIZE 16u
 #define MAX_LIGHT_TILES 131072u
-#define MAX_LIGHTS_PER_TILE 64u
+#define MAX_LIGHTS_PER_TILE 16u
 
 // max animation bounds is ANIMATION_MAX_METERS because we use ANIMATION_PRECISION bit precision
 #define MAX_SURFACE_VERTEX                   10000000ull /* 160 megabytes */
