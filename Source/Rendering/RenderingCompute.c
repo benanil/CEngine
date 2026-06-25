@@ -1,4 +1,5 @@
 #include "RenderingInternal.h"
+#include "Include/TextureSystem.h"
 #include <SDL3/SDL_timer.h>
 #include <SDL3/SDL_time.h>
 
@@ -369,6 +370,162 @@ void DispatchDeferredLightingCompute(SDL_GPUCommandBuffer* cmd, u32 width, u32 h
     params.cameraPosition[0] = g_Camera.position.x;
     params.cameraPosition[1] = g_Camera.position.y;
     params.cameraPosition[2] = g_Camera.position.z;
+    params.sunDirection[0] = sunDirection.x;
+    params.sunDirection[1] = sunDirection.y;
+    params.sunDirection[2] = sunDirection.z;
+    SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
+    SDL_DispatchGPUCompute(pass, (width + 7u) / 8u, (height + 7u) / 8u, 1);
+    SDL_EndGPUComputePass(pass);
+}
+
+// Vis-buffer materialize (Phase A): reconstruct surface attributes from the visibility buffer and
+// write the three G-buffer textures. Reads the prepass depth (tex_hiz_depth) to skip sky, and the
+// 0xFFFFFFFF visbuffer sentinel to skip skinned/terrain pixels.
+void DispatchVisBufferMaterialize(SDL_GPUCommandBuffer* cmd, u32 width, u32 height, mat4x4 viewProj)
+{
+    WindowState* winstate = &g_WindowState;
+    Scene* scene = g_ActiveScene;
+    if (!scene || !winstate->tex_visbuffer || !winstate->tex_gbuffer_tangent ||
+        !winstate->tex_gbuffer_albedo_metallic || !winstate->tex_gbuffer_shadow_roughness ||
+        !winstate->tex_hiz_depth)
+    {
+        AX_WARN("DispatchVisBufferMaterialize: required textures are not ready");
+        return;
+    }
+    CHECK_CREATE(g_VisBufferMaterializePipeline, "VisBuffer Materialize Compute Pipeline");
+
+    // cycle=false: the gbuffer pass (terrain) and the skinned materialize write the same textures;
+    // each pass only writes its own pixels and must preserve the others'.
+    SDL_GPUStorageTextureReadWriteBinding outputs[3] = {
+        { .texture = winstate->tex_gbuffer_tangent,          .mip_level = 0, .layer = 0, .cycle = false },
+        { .texture = winstate->tex_gbuffer_albedo_metallic,  .mip_level = 0, .layer = 0, .cycle = false },
+        { .texture = winstate->tex_gbuffer_shadow_roughness, .mip_level = 0, .layer = 0, .cycle = false }
+    };
+    SDL_GPUComputePass* pass = SDL_BeginGPUComputePass(cmd, outputs, 3, NULL, 0);
+    SDL_BindGPUComputePipeline(pass, g_VisBufferMaterializePipeline);
+
+    SDL_GPUTextureSamplerBinding samplers[5] = {
+        { .texture = scene->textureSystem.classes[TextureClass_Albedo].pages.handle,            .sampler = g_RenderState.sampler },
+        { .texture = scene->textureSystem.classes[TextureClass_Normal].pages.handle,            .sampler = g_RenderState.sampler },
+        { .texture = scene->textureSystem.classes[TextureClass_MetallicRoughness].pages.handle, .sampler = g_RenderState.sampler },
+        { .texture = winstate->tex_shadow_color,                                                .sampler = g_RenderState.shadowSampler },
+        { .texture = winstate->tex_hiz_depth,                                                   .sampler = g_RenderState.hiZSampler }
+    };
+    SDL_BindGPUComputeSamplers(pass, 0, samplers, 5);
+
+    SDL_GPUTexture* visTexture = winstate->tex_visbuffer;
+    SDL_BindGPUComputeStorageTextures(pass, 0, &visTexture, 1);
+
+    SDL_GPUBuffer* storageBuffers[8] = {
+        scene->surfaceBuffers.entity,
+        scene->surfaceBuffers.primitiveGroup,
+        scene->surfaceBuffers.drawSparseIndices,
+        g_RenderState.surface.vertexBuffer,
+        g_RenderState.indexBuffer,
+        scene->textureSystem.materialBuffer,
+        scene->textureSystem.descriptorBuffer,
+        g_RenderState.shadowCascadeBuffer
+    };
+    SDL_BindGPUComputeStorageBuffers(pass, 0, storageBuffers, 8);
+
+    float3 sunDirection = GetRenderSunDirection();
+    struct {
+        u32 outputSize[2];
+        f32 padding0[2];
+        mat4x4 viewProj;
+        f32 cameraPosition[4];
+        f32 cameraForward[4];
+        f32 sunDirection[4];
+    } params = {0};
+    params.outputSize[0] = width;
+    params.outputSize[1] = height;
+    params.viewProj = viewProj;
+    params.cameraPosition[0] = g_Camera.position.x;
+    params.cameraPosition[1] = g_Camera.position.y;
+    params.cameraPosition[2] = g_Camera.position.z;
+    params.cameraForward[0] = g_Camera.Front.x;
+    params.cameraForward[1] = g_Camera.Front.y;
+    params.cameraForward[2] = g_Camera.Front.z;
+    params.sunDirection[0] = sunDirection.x;
+    params.sunDirection[1] = sunDirection.y;
+    params.sunDirection[2] = sunDirection.z;
+    SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
+    SDL_DispatchGPUCompute(pass, (width + 7u) / 8u, (height + 7u) / 8u, 1);
+    SDL_EndGPUComputePass(pass);
+}
+
+// Skinned counterpart of DispatchVisBufferMaterialize: reconstructs skinned triangles (animated
+// positions + bone-reskinned tangent frame) and writes the gbuffer for skinned pixels.
+void DispatchVisBufferMaterializeSkinned(SDL_GPUCommandBuffer* cmd, u32 width, u32 height, mat4x4 viewProj)
+{
+    WindowState* winstate = &g_WindowState;
+    Scene* scene = g_ActiveScene;
+    if (!scene || scene->skinnedSet.numGroups == 0u || !winstate->tex_visbuffer ||
+        !winstate->tex_gbuffer_tangent || !winstate->tex_gbuffer_albedo_metallic ||
+        !winstate->tex_gbuffer_shadow_roughness || !winstate->tex_hiz_depth)
+    {
+        if (scene && scene->skinnedSet.numGroups != 0u)
+            AX_WARN("DispatchVisBufferMaterializeSkinned: required textures are not ready");
+        return;
+    }
+    CHECK_CREATE(g_VisBufferMaterializeSkinnedPipeline, "VisBuffer Materialize Skinned Compute Pipeline");
+
+    SDL_GPUStorageTextureReadWriteBinding outputs[3] = {
+        { .texture = winstate->tex_gbuffer_tangent,          .mip_level = 0, .layer = 0, .cycle = false },
+        { .texture = winstate->tex_gbuffer_albedo_metallic,  .mip_level = 0, .layer = 0, .cycle = false },
+        { .texture = winstate->tex_gbuffer_shadow_roughness, .mip_level = 0, .layer = 0, .cycle = false }
+    };
+    // animatedVertices + boneBuffer are read-only in the shader but bound as RW storage buffers to
+    // stay within SDL's 8 readonly-storage-buffer compute limit.
+    SDL_GPUStorageBufferReadWriteBinding rwBuffers[2] = {
+        { .buffer = g_RenderState.skinned.animatedVertices, .cycle = false },
+        { .buffer = scene->animSystem.boneBuffer,           .cycle = false }
+    };
+    SDL_GPUComputePass* pass = SDL_BeginGPUComputePass(cmd, outputs, 3, rwBuffers, 2);
+    SDL_BindGPUComputePipeline(pass, g_VisBufferMaterializeSkinnedPipeline);
+
+    SDL_GPUTextureSamplerBinding samplers[5] = {
+        { .texture = scene->textureSystem.classes[TextureClass_Albedo].pages.handle,            .sampler = g_RenderState.sampler },
+        { .texture = scene->textureSystem.classes[TextureClass_Normal].pages.handle,            .sampler = g_RenderState.sampler },
+        { .texture = scene->textureSystem.classes[TextureClass_MetallicRoughness].pages.handle, .sampler = g_RenderState.sampler },
+        { .texture = winstate->tex_shadow_color,                                                .sampler = g_RenderState.shadowSampler },
+        { .texture = winstate->tex_hiz_depth,                                                   .sampler = g_RenderState.hiZSampler }
+    };
+    SDL_BindGPUComputeSamplers(pass, 0, samplers, 5);
+
+    SDL_GPUTexture* visTexture = winstate->tex_visbuffer;
+    SDL_BindGPUComputeStorageTextures(pass, 0, &visTexture, 1);
+
+    SDL_GPUBuffer* storageBuffers[8] = {
+        scene->skinnedBuffers.entity,
+        scene->skinnedBuffers.primitiveGroup,
+        scene->skinnedBuffers.drawSparseIndices,
+        g_RenderState.indexBuffer,
+        g_RenderState.skinned.vertexBuffer,
+        scene->textureSystem.materialBuffer,
+        scene->textureSystem.descriptorBuffer,
+        g_RenderState.shadowCascadeBuffer
+    };
+    SDL_BindGPUComputeStorageBuffers(pass, 0, storageBuffers, 8);
+
+    float3 sunDirection = GetRenderSunDirection();
+    struct {
+        u32 outputSize[2];
+        f32 padding0[2];
+        mat4x4 viewProj;
+        f32 cameraPosition[4];
+        f32 cameraForward[4];
+        f32 sunDirection[4];
+    } params = {0};
+    params.outputSize[0] = width;
+    params.outputSize[1] = height;
+    params.viewProj = viewProj;
+    params.cameraPosition[0] = g_Camera.position.x;
+    params.cameraPosition[1] = g_Camera.position.y;
+    params.cameraPosition[2] = g_Camera.position.z;
+    params.cameraForward[0] = g_Camera.Front.x;
+    params.cameraForward[1] = g_Camera.Front.y;
+    params.cameraForward[2] = g_Camera.Front.z;
     params.sunDirection[0] = sunDirection.x;
     params.sunDirection[1] = sunDirection.y;
     params.sunDirection[2] = sunDirection.z;

@@ -1,0 +1,86 @@
+// Visibility-buffer raster for the SKINNED set (Phase A).
+//
+// Same role as VisBuffer.hlsl but for skinned meshes: positions come from the animated vertex
+// buffer (mirrors SkinnedDepthOnly.vert) and the spare byte's bit7 is set so the materialize pass
+// routes these pixels to the skinned reconstruction. Depth-equal against the prepass.
+#include "../Include/RenderLimits.h"
+#include "TextureSampling.hlsl"
+#include "Bitpack.hlsl"
+#include "Math.hlsl"
+#include "AnimatedTransform.hlsl"
+
+cbuffer vs_params : register(b0, space1)
+{
+    float4x4 uViewProj;
+};
+
+StructuredBuffer<Entity>         sEntities          : register(t0);
+StructuredBuffer<PrimitiveGroup> sPrimitiveGroups   : register(t1);
+StructuredBuffer<uint>           sDrawSparseIndices : register(t2);
+StructuredBuffer<AnimatedVert>   sAnimatedVert      : register(t3);
+// frag (alpha clip only)
+StructuredBuffer<MaterialGPU>       sMaterials          : register(t1, space2);
+StructuredBuffer<TextureDescriptor> sTextureDescriptors : register(t2, space2);
+Texture2DArray<float4> AlbedoPages : register(t0, space2);
+SamplerState Sampler               : register(s0, space2);
+
+struct VSInput
+{
+    f16_4_io aPos          : POSITION0;
+    uint     aTangentSpace : TANGENT0;
+    f16_2_io aTexCoords    : TEXCOORD0;
+    uint4    aJoints       : BLENDINDICES0;
+    uint     aWeights      : BLENDWEIGHT0;
+};
+
+struct VSOutput
+{
+    float4   position   : SV_Position;
+    f16_2_io texCoords  : TEXCOORD0;
+    nointerpolation uint materialIndex : TEXCOORD1;
+    nointerpolation uint drawID        : TEXCOORD2;
+    nointerpolation uint instanceID    : TEXCOORD3;
+};
+
+VSOutput vert(VSInput input, uint instanceID : SV_InstanceID,
+              [[vk::builtin("DrawIndex")]] uint drawID : DRAWINDEX, uint vertexID : SV_VertexID)
+{
+    uint primitiveIdx = drawID / MESH_LOD_COUNT;
+    uint lod = drawID - primitiveIdx * MESH_LOD_COUNT;
+    PrimitiveGroup group = sPrimitiveGroups[primitiveIdx];
+    uint denseIdx = sDrawSparseIndices[lod * uint(MAX_ANIM_INSTANCES) + group.entityOffset + instanceID];
+    uint localVertex = vertexID - group.lodVertexOffset[lod];
+    uint sparse = sEntities[denseIdx].sparse;
+    uint animatedVertex = sparse * uint(MAX_SKINNED_VERTEX_PER_ANIM_INSTANCE) + group.lodAnimatedVertexOffset[lod] + localVertex;
+    AnimatedVert animated = sAnimatedVert[animatedVertex];
+    Entity entity = sEntities[denseIdx];
+    f16_4 insRot = normalize(UnpackRGBA16Snorm(entity.rotation[0], entity.rotation[1]));
+    f16_3 insScale = UnpackRGBA16Unorm(entity.scale).xyz * f16(10.0);
+    float3 modelPos = UnpackAnimatedModelPos(uint2(animated.packed0, animated.packed1), group.aabbMin.xyz, group.aabbMax.xyz);
+    float3 finalWorldPos = AnimatedWorldPos(modelPos, float4(insRot), float3(insScale), entity.position.xyz);
+
+    VSOutput o;
+    o.position      = mul(uViewProj, float4(finalWorldPos, 1.0));
+    o.texCoords     = input.aTexCoords;
+    o.materialIndex = group.materialIndex;
+    o.drawID        = drawID;
+    o.instanceID    = instanceID;
+    return o;
+}
+
+uint2 frag(VSOutput input, uint primitiveID : SV_PrimitiveID) : SV_Target0
+{
+    MaterialGPU material = sMaterials[input.materialIndex];
+    if (MaterialIsAlphaMasked(material.flags))
+    {
+        TextureDescriptor albedo = sTextureDescriptors[material.albedoDescriptor];
+        f16_4 albedoSample = SampleTexturePageRGBA(AlbedoPages, Sampler, albedo, float2(input.texCoords));
+        AlphaClipMaterial(material, float(albedoSample.a));
+    }
+    // bit7 of the spare byte marks this as a skinned pixel (see VisBufferMaterializeSkinned)
+    uint primitiveIdx = input.drawID / MESH_LOD_COUNT;
+    uint lod = input.drawID - primitiveIdx * MESH_LOD_COUNT;
+    uint x = (primitiveIdx << 16) | (input.instanceID & 0xFFFFu);
+    uint y = ((primitiveID & 0xFFFFFFu) << 8) | 0x80u | (lod & 0x03u);
+    return uint2(x, y);
+}

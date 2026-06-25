@@ -9,7 +9,7 @@ extern "C" {
 #endif
 
 #define SLUG_MAX_GLYPHS         128u
-#define SLUG_MAX_TEXT           8196u
+#define SLUG_MAX_TEXT           (8196u * 2u)
 #define SLUG_VERTS_PER_GLYPH    6u
 #define SLUG_MAX_FALLBACK_FONTS 8u
 #define SLUG_MAX_BATCHES        256u

@@ -14,6 +14,8 @@ BUILD_DIR = SHADER_DIR / "Build"
 
 GRAPHICS_SHADERS = [
     ("Surface", "vert", "frag"),
+    ("VisBuffer", "vert", "frag"),
+    ("VisBufferSkinned", "vert", "frag"),
     ("DeferredLightVolume", "vert", "frag"),
     ("SurfaceDepthOnly", "vert", "frag"),
     ("Skinned", "vert", "frag"),
@@ -43,6 +45,8 @@ COMPUTE_SHADERS = [
     ("TexturePageCopyRG", "main"),
     ("UI/ColorPickCompute", "main"),
     ("DeferredLighting", "main"),
+    ("VisBufferMaterialize", "main"),
+    ("VisBufferMaterializeSkinned", "main"),
     ("ExtractNormalCompute", "main"),
     ("Animation/AnimationCompute", "main"),
     ("Animation/AnimateVertices", "main"),

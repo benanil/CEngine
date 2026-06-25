@@ -15,6 +15,22 @@ extern Graphics gGFX;
 void RenderSet_InitSet(RenderSet* set, u32 maxEntities, u32 maxGroups, u32 maxBundles, bool skinned)
 {
     MemsetZero(set, sizeof(*set));
+    if (maxGroups > MAX_GROUP)
+    {
+        AX_WARN("RenderSet_InitSet: maxGroups %d exceeds visibility buffer limit %d", maxGroups, MAX_GROUP);
+        maxGroups = MAX_GROUP;
+    }
+    if (maxBundles > MAX_BUNDLES)
+    {
+        AX_WARN("RenderSet_InitSet: maxBundles %d exceeds limit %d", maxBundles, MAX_BUNDLES);
+        maxBundles = MAX_BUNDLES;
+    }
+
+	if (maxEntities > MAX_POSSIBLE_ENTITY)
+    {
+        AX_WARN("RenderSet_InitSet: maxEntities %d exceeds limit %d", maxEntities, MAX_POSSIBLE_ENTITY);
+        maxEntities = MAX_POSSIBLE_ENTITY;
+    }
     set->maxEntities = maxEntities;
     set->maxGroups   = maxGroups;
     set->maxBundles  = maxBundles;
@@ -315,7 +331,20 @@ static void SetSparseToDense(RenderSet* set, u32 sparseIdx, u32 denseIdx)
 
 static u32 LeaveSpaceForEntities(RenderSet* set, u32 primitiveIdx, u32 numAdded)
 {
+    if (numAdded == 0u)
+    {
+        AX_WARN("RenderSet_AddEntities: numAdded is zero");
+        return INVALID_ENTITY;
+    }
+
     PrimitiveGroup* group = &set->primitiveGroups[primitiveIdx];
+    if (group->numEntities + numAdded > MAX_INSTANCE_PER_GROUP)
+    {
+        AX_WARN("RenderSet_AddEntities: visibility buffer instance limit reached for group %d: %d + %d > %d",
+                primitiveIdx, group->numEntities, numAdded, MAX_INSTANCE_PER_GROUP);
+        return INVALID_ENTITY;
+    }
+
     const u32 entityStart = group->entityOffset + group->numEntities;
     if (set->numEntities + numAdded > set->maxEntities)
     {
@@ -346,7 +375,8 @@ u32 RenderSet_AddEntities(RenderSet* set, u32 primitiveIdx, u32 numAdded, const 
     u32 startIdx = LeaveSpaceForEntities(set, primitiveIdx, numAdded);
     if (startIdx == INVALID_ENTITY)
     {
-        FreeSparseIDRange(set, data[0].sparseIdx, numAdded);
+        if (data && numAdded > 0u)
+            FreeSparseIDRange(set, data[0].sparseIdx, numAdded);
         return INVALID_ENTITY;
     }
     PrimitiveGroup* group = &set->primitiveGroups[primitiveIdx];
@@ -451,6 +481,28 @@ u32 RenderSet_AddScene(RenderSet* set, u32 bundleIdx, v128f position, v128f rota
         return 0;
     }
 
+    if (set->numEntities + totalPrimAdded > set->maxEntities)
+    {
+        AX_WARN("RenderSet_AddScene: maximum entity reached: %d + %d > %d", set->numEntities, totalPrimAdded, set->maxEntities);
+        ArenaPopGlobal(((u32)numNodes + 1u) * sizeof(Entity));
+        ArenaPopGlobal(numPrimitives * sizeof(u32));
+        return INVALID_ENTITY;
+    }
+
+#if DEBUG
+    for (u32 p = 0; p < numPrimitives; p++)
+    {
+        PrimitiveGroup* group = &set->primitiveGroups[range.start + p];
+        if (group->numEntities + primitiveCounts[p] > MAX_INSTANCE_PER_GROUP)
+        {
+            AX_WARN("RenderSet_AddScene: visibility buffer instance limit reached for group %d: %d + %d > %d",
+                    range.start + p, group->numEntities, primitiveCounts[p], MAX_INSTANCE_PER_GROUP);
+            ArenaPopGlobal(((u32)numNodes + 1u) * sizeof(Entity));
+            ArenaPopGlobal(numPrimitives * sizeof(u32));
+            return INVALID_ENTITY;
+        }
+    }
+#endif
     u32 sparseCount = set->skinned ? meshNodeCount : totalPrimAdded;
     u32 sparseStart = RenderSet_AllocateSparseIDRange(set, sparseCount);
     if (sparseStart == INVALID_ENTITY)

@@ -21,10 +21,13 @@ float2 TexturePageRepeatUV_Aggressive(TextureDescriptor desc, float2 uv)
     return desc.uvBias + lerp(safePadding, desc.uvScale - safePadding, frac(uv));
 }
 
-f16_4 SampleTexturePageRGBA(Texture2DArray<float4> pages, SamplerState samplerState, TextureDescriptor desc, float2 uv)
+// Gradient-explicit variants. The vis-buffer materialize compute pass has no screen-space
+// derivatives, so it computes analytic uv gradients and passes them here. The ddx/ddy-based
+// wrappers below delegate to these so both paths share the exact same sampling math.
+f16_4 SampleTexturePageRGBAGrad(Texture2DArray<float4> pages, SamplerState samplerState, TextureDescriptor desc, float2 uv, float2 duvdx, float2 duvdy)
 {
-    float2 dx = ddx(uv);
-    float2 dy = ddy(uv);
+    float2 dx = duvdx;
+    float2 dy = duvdy;
     dx = dx - round(dx);
     dy = dy - round(dy);
     float2 atlasUV = TexturePageRepeatUV_Aggressive(desc, uv);
@@ -36,12 +39,22 @@ f16_4 SampleTexturePageRGBA(Texture2DArray<float4> pages, SamplerState samplerSt
     return f16_4(pages.SampleGrad(samplerState, float3(atlasUV, desc.pageIndex), atlasDdx, atlasDdy));
 }
 
-f16_2 SampleTexturePageRG(Texture2DArray<float2> pages, SamplerState samplerState, TextureDescriptor desc, float2 uv)
+f16_2 SampleTexturePageRGGrad(Texture2DArray<float2> pages, SamplerState samplerState, TextureDescriptor desc, float2 uv, float2 duvdx, float2 duvdy)
 {
     float2 atlasUV = TexturePageRepeatUV(desc, uv);
-    float2 atlasDdx = ddx(uv) * desc.uvScale;
-    float2 atlasDdy = ddy(uv) * desc.uvScale;
+    float2 atlasDdx = duvdx * desc.uvScale;
+    float2 atlasDdy = duvdy * desc.uvScale;
     return f16_2(pages.SampleGrad(samplerState, float3(atlasUV, desc.pageIndex), atlasDdx, atlasDdy));
+}
+
+f16_4 SampleTexturePageRGBA(Texture2DArray<float4> pages, SamplerState samplerState, TextureDescriptor desc, float2 uv)
+{
+    return SampleTexturePageRGBAGrad(pages, samplerState, desc, uv, ddx(uv), ddy(uv));
+}
+
+f16_2 SampleTexturePageRG(Texture2DArray<float2> pages, SamplerState samplerState, TextureDescriptor desc, float2 uv)
+{
+    return SampleTexturePageRGGrad(pages, samplerState, desc, uv, ddx(uv), ddy(uv));
 }
 
 f16_3 SRGBToLinear(f16_3 srgb)

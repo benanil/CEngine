@@ -72,7 +72,7 @@ static void AnimationSystem_EnsureBuffers(AnimationSystem* anims)
     const size_t hierarchyBytes  = (size_t)MAX_SKIN_COUNT * ANIM_NODE_COUNT * sizeof(u32);
     const size_t jointBytes      = (size_t)MAX_BONES * MAX_SKIN_COUNT * sizeof(u32);
     const size_t invBindBytes    = (size_t)MAX_BONES * MAX_SKIN_COUNT * ANIM_MATRIX_NUM_INT32 * sizeof(u32);
-    anims->boneBuffer      = CreateBuffer(NULL, maxBoneMatrices, BReadRasterBit | BWriteComputeBit, "CPJointMatrices");
+    anims->boneBuffer      = CreateBuffer(NULL, maxBoneMatrices, BReadRasterBit | BWriteComputeBit | BReadCompute, "CPJointMatrices");
     anims->poseBuffer      = CreateBuffer(NULL, poseBytes      , BReadCompute, "CPAnimPoses");
     anims->hierarchyBuffer = CreateBuffer(NULL, hierarchyBytes , BReadCompute, "CPAnimHierarchy");
     anims->dataBuffer      = CreateBuffer(NULL, sizeof(anims->animData), BReadCompute, "CPAnimationData");

@@ -524,6 +524,18 @@
 					<File>
 						<Path>Shaders/AnimatedTransform.hlsl</Path>
 					</File>
+					<File>
+						<Path>Shaders/VisBuffer.hlsl</Path>
+					</File>
+					<File>
+						<Path>Shaders/VisBufferMaterialize.hlsl</Path>
+					</File>
+					<File>
+						<Path>Shaders/VisBufferSkinned.hlsl</Path>
+					</File>
+					<File>
+						<Path>Shaders/VisBufferMaterializeSkinned.hlsl</Path>
+					</File>
 				</Children>
 			</Folder>
 			<Folder>

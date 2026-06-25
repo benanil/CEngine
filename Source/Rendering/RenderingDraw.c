@@ -160,15 +160,85 @@ void RenderScene(SDL_GPUCommandBuffer* cmd, const ScenePassContext* ctx)
         scene->textureSystem.descriptorBuffer
     };
 
-    const SDL_GPUBufferBinding skinnedVertex = { g_RenderState.skinned.vertexBuffer, 0 };
-    DrawRenderBufferScene(cmd, pass, true, scene, skinnedVertex, pageSamplers, fragmentBuffers,
-                          &vertexParams, sizeof(vertexParams), &fragmentParams, sizeof(fragmentParams));
+    if (!ctx->skipSkinned)
+    {
+        const SDL_GPUBufferBinding skinnedVertex = { g_RenderState.skinned.vertexBuffer, 0 };
+        DrawRenderBufferScene(cmd, pass, true, scene, skinnedVertex, pageSamplers, fragmentBuffers,
+                              &vertexParams, sizeof(vertexParams), &fragmentParams, sizeof(fragmentParams));
+    }
 
-    const SDL_GPUBufferBinding surfaceVertex = { g_RenderState.surface.vertexBuffer, 0 };
-    DrawRenderBufferScene(cmd, pass, false, scene, surfaceVertex, pageSamplers, fragmentBuffers,
-                          &vertexParams, sizeof(vertexParams), &fragmentParams, sizeof(fragmentParams));
+    if (!ctx->skipSurface)
+    {
+        const SDL_GPUBufferBinding surfaceVertex = { g_RenderState.surface.vertexBuffer, 0 };
+        DrawRenderBufferScene(cmd, pass, false, scene, surfaceVertex, pageSamplers, fragmentBuffers,
+                              &vertexParams, sizeof(vertexParams), &fragmentParams, sizeof(fragmentParams));
+    }
 
     Terrain_RenderGBuffer(cmd, pass, ctx->viewProj);
+
+    SDL_EndGPURenderPass(pass);
+}
+
+// Visibility-buffer raster (Phase A): draws the surface + skinned sets with the vis pipelines into
+// a single RG32_UINT target, clearing to the 0xFFFF.... sentinel first so the materialize passes
+// can tell surface vs skinned (spare-byte bit) vs terrain/sky (sentinel, owned by the gbuffer pass).
+void RenderVisBuffer(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* visTarget,
+                     SDL_GPUDepthStencilTargetInfo* depthTarget, mat4x4 viewProj)
+{
+    Scene* scene = g_ActiveScene;
+    if (!scene || !visTarget || !visTarget->texture || !depthTarget || !depthTarget->texture)
+    {
+        AX_WARN("RenderVisBuffer: missing scene or render targets");
+        return;
+    }
+    SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmd, visTarget, 1, depthTarget);
+
+    const SDL_GPUBufferBinding index_binding = { g_RenderState.indexBuffer, 0 };
+    SDL_GPUTextureSamplerBinding albedoSampler = {
+        .texture = scene->textureSystem.classes[TextureClass_Albedo].pages.handle,
+        .sampler = g_RenderState.sampler
+    };
+    SDL_GPUBuffer* fragmentBuffers[2] = {
+        scene->textureSystem.materialBuffer,
+        scene->textureSystem.descriptorBuffer
+    };
+
+    if (scene->surfaceSet.numGroups != 0u)
+    {
+        const SDL_GPUBufferBinding vertex_binding = { g_RenderState.surface.vertexBuffer, 0 };
+        SDL_BindGPUGraphicsPipeline(pass, g_RenderState.surface.visPipeline);
+        SDL_BindGPUVertexBuffers(pass, 0, &vertex_binding, 1);
+        SDL_BindGPUIndexBuffer(pass, &index_binding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
+        SDL_GPUBuffer* storageBuffers[3] = {
+            scene->surfaceBuffers.entity,
+            scene->surfaceBuffers.primitiveGroup,
+            scene->surfaceBuffers.drawSparseIndices
+        };
+        SDL_BindGPUVertexStorageBuffers(pass, 0, storageBuffers, 3);
+        SDL_BindGPUFragmentSamplers(pass, 0, &albedoSampler, 1);
+        SDL_BindGPUFragmentStorageBuffers(pass, 0, fragmentBuffers, 2);
+        SDL_PushGPUVertexUniformData(cmd, 0, &viewProj, sizeof(mat4x4));
+        SDL_DrawGPUIndexedPrimitivesIndirect(pass, scene->surfaceBuffers.drawArgs, 0, scene->surfaceSet.numGroups * MESH_LOD_COUNT);
+    }
+
+    if (scene->skinnedSet.numGroups != 0u)
+    {
+        const SDL_GPUBufferBinding vertex_binding = { g_RenderState.skinned.vertexBuffer, 0 };
+        SDL_BindGPUGraphicsPipeline(pass, g_RenderState.skinned.visPipeline);
+        SDL_BindGPUVertexBuffers(pass, 0, &vertex_binding, 1);
+        SDL_BindGPUIndexBuffer(pass, &index_binding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
+        SDL_GPUBuffer* storageBuffers[4] = {
+            scene->skinnedBuffers.entity,
+            scene->skinnedBuffers.primitiveGroup,
+            scene->skinnedBuffers.drawSparseIndices,
+            g_RenderState.skinned.animatedVertices
+        };
+        SDL_BindGPUVertexStorageBuffers(pass, 0, storageBuffers, 4);
+        SDL_BindGPUFragmentSamplers(pass, 0, &albedoSampler, 1);
+        SDL_BindGPUFragmentStorageBuffers(pass, 0, fragmentBuffers, 2);
+        SDL_PushGPUVertexUniformData(cmd, 0, &viewProj, sizeof(mat4x4));
+        SDL_DrawGPUIndexedPrimitivesIndirect(pass, scene->skinnedBuffers.drawArgs, 0, scene->skinnedSet.numGroups * MESH_LOD_COUNT);
+    }
 
     SDL_EndGPURenderPass(pass);
 }
@@ -178,16 +248,6 @@ void RenderDeferredLights(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* col
     WindowState* winstate = &g_WindowState;
     if (g_RenderState.numLights == 0u)
         return;
-    if (!g_RenderState.deferredLightPipeline || !g_RenderState.lightBuffer || !g_RenderState.lightDrawInfoBuffer ||
-        !g_RenderState.pointShadowMatrixBuffer ||
-        !g_RenderState.spotShadowMatrixBuffer ||
-        !g_RenderState.lightDrawArgsBuffer || !winstate->tex_gbuffer_tangent || !winstate->tex_gbuffer_albedo_metallic ||
-        !winstate->tex_gbuffer_shadow_roughness || !winstate->tex_hiz_depth || !winstate->tex_hbao_blur ||
-        !winstate->tex_point_shadow_color || !winstate->tex_spot_shadow_color)
-    {
-        AX_WARN("Deferred light rendering is not ready");
-        return;
-    }
 
     SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmd, colorTarget, 1, NULL);
     SDL_BindGPUGraphicsPipeline(pass, g_RenderState.deferredLightPipeline);

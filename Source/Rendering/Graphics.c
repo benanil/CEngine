@@ -174,7 +174,9 @@ void GraphicsInit(bool msaa)
     SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_DEBUGMODE_BOOLEAN, true);
     SDL_SetStringProperty(props, SDL_PROP_GPU_DEVICE_CREATE_NAME_STRING, "metal");
 #else
-    VkPhysicalDeviceFeatures vk10_features = { .shaderInt16 = VK_TRUE };
+    // geometryShader enables the SPIR-V Geometry capability that SV_PrimitiveID pulls in (used by
+    // the visibility-buffer fragment shaders to read the triangle ID). No geometry shaders are run.
+    VkPhysicalDeviceFeatures vk10_features = { .shaderInt16 = VK_TRUE, .geometryShader = VK_TRUE };
 
     VkPhysicalDeviceVulkan12Features vk12_features = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
@@ -280,9 +282,13 @@ void CreateWindowBuffers()
     winstate->tex_mlaa_edge_mask  = CreateTexture2D(width, height, TEX_FMT_R32_UINT, TEX_COMP_READ | TEX_COMP_WRITE, TEX_SMP_CNT1, 1, "MLAA Edge Mask Texture");
     winstate->tex_mlaa_edge_count = CreateTexture2D(width, height, TEX_FMT_D32_FLT2, TEX_COMP_READ | TEX_COMP_WRITE, TEX_SMP_CNT1, 1, "MLAA Edge Count Texture");
     winstate->tex_mlaa_output     = CreateTexture2D(width, height, TEX_FMT_8UNORM4 , TEX_SAMPLER | TEX_COLOR_TARGET | TEX_COMP_WRITE, TEX_SMP_CNT1, 1, "MLAA Output Texture");
-    winstate->tex_gbuffer_tangent = CreateTexture2D(width, height, TEX_FMT_R32_UINT, TEX_COLOR_TARGET | TEX_SAMPLER, TEX_SMP_CNT1, 1, "GBuffer Tangent Texture");
-    winstate->tex_gbuffer_albedo_metallic  = CreateTexture2D(width, height, TEX_FMT_8UNORM4, TEX_COLOR_TARGET | TEX_SAMPLER, TEX_SMP_CNT1, 1, "GBuffer Albedo Metallic Texture");
-    winstate->tex_gbuffer_shadow_roughness = CreateTexture2D(width, height, TEX_FMT_8UNORM2, TEX_COLOR_TARGET | TEX_SAMPLER, TEX_SMP_CNT1, 1, "GBuffer Shadow Roughness Texture");
+    // Visibility buffer: the geometry raster writes (drawID, instanceID, triangleID) here; the
+    // materialize compute reconstructs attributes and writes the gbuffer textures below.
+    winstate->tex_visbuffer       = CreateTexture2D(width, height, TEX_FMT_RG32_UINT, TEX_COLOR_TARGET | TEX_COMP_READ, TEX_SMP_CNT1, 1, "Visibility Buffer Texture");
+    // gbuffers gain COMP_WRITE so the materialize compute can write them as storage images.
+    winstate->tex_gbuffer_tangent = CreateTexture2D(width, height, TEX_FMT_R32_UINT, TEX_COLOR_TARGET | TEX_SAMPLER | TEX_COMP_WRITE, TEX_SMP_CNT1, 1, "GBuffer Tangent Texture");
+    winstate->tex_gbuffer_albedo_metallic  = CreateTexture2D(width, height, TEX_FMT_8UNORM4, TEX_COLOR_TARGET | TEX_SAMPLER | TEX_COMP_WRITE, TEX_SMP_CNT1, 1, "GBuffer Albedo Metallic Texture");
+    winstate->tex_gbuffer_shadow_roughness = CreateTexture2D(width, height, TEX_FMT_8UNORM2, TEX_COLOR_TARGET | TEX_SAMPLER | TEX_COMP_WRITE, TEX_SMP_CNT1, 1, "GBuffer Shadow Roughness Texture");
     winstate->tex_hiz_depth = CreateHiZDepthTexture(width, height);
     winstate->tex_hiz       = CreateHiZTexture(width, height, &winstate->hiz_mip_count);
     winstate->hiz_width     = width;
@@ -757,6 +763,7 @@ void GraphicsDestroy()
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_depth);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_hiz_depth);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_color);
+    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_visbuffer);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_gbuffer_tangent);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_gbuffer_albedo_metallic);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_gbuffer_shadow_roughness);

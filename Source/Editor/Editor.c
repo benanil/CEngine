@@ -329,6 +329,21 @@ static void EditorApplyQualityPreset(RenderSettings* settings, u32 quality)
     }
 }
 
+// AA tiers combine supersampling (renderScale) with MLAA. The visibility-buffer geometry pass is
+// cheap, so higher renderScale (SSAA) is affordable; it is the main AA lever now that hardware
+// MSAA is unavailable on this backend.
+static u32 editorAAIndex = 1u; // "MLAA" (renderScale 1.0 + MLAA) matches the startup defaults
+static void EditorApplyAAPreset(RenderSettings* settings, u32 aa)
+{
+    switch (aa)
+    {
+    case 0: settings->renderScale = 1.0f; settings->enableMLAA = false; break; // Off
+    case 1: settings->renderScale = 1.0f; settings->enableMLAA = true;  break; // MLAA
+    case 2: settings->renderScale = 1.5f; settings->enableMLAA = true;  break; // High: 1.5x SSAA + MLAA
+    case 3: settings->renderScale = 2.0f; settings->enableMLAA = true;  break; // Ultra: 2.0x SSAA + MLAA
+    }
+}
+
 static void DrawGraphicsWindow()
 {
     RenderSettings* settings = &g_RenderSettings;
@@ -406,6 +421,9 @@ static void DrawGraphicsWindow()
             }
             CLAY(CLAY_ID("GraphicsEditorPostBox"), EditorPanelBoxDeclaration) {
                 UISectionHeader("Post / AA");
+                static const char* aaOptions[] = { "Off", "MLAA", "SSAA 1.5x + MLAA", "SSAA 2.0x + MLAA" };
+                if (UIDropdown(CLAY_ID("EditorAAQuality"), CLAY_STRING("Anti-aliasing"), aaOptions, 4u, &editorAAIndex))
+                    EditorApplyAAPreset(settings, editorAAIndex);
                 UISliderFloatValue(CLAY_ID("EditorMLAAThreshold"), CLAY_STRING("MLAA threshold"), &settings->mlaaThreshold  , 0.01f, 0.25f, 3);
                 UISliderFloatValue(CLAY_ID("EditorExposure")     , CLAY_STRING("Exposure")      , &settings->exposure       , 0.10f, 4.00f, 2);
                 UISliderFloatValue(CLAY_ID("EditorGamma")        , CLAY_STRING("Gamma")         , &settings->gamma          , 1.00f, 3.20f, 2);

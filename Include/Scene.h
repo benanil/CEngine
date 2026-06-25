@@ -4,9 +4,10 @@
 #include "RenderSet.h"
 #include "TextureSystem.h"
 #include "Animation.h"
+#include "RenderLimits.h"
 #include <SDL3/SDL_atomic.h>
 
-#define MAX_SCENE_BUNDLES 1024u
+#define MAX_SCENE_BUNDLES MAX_BUNDLES
 #define MAX_SCENE_LIGHTS  256u
 
 // one bundle registered in a scene

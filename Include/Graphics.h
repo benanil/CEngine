@@ -45,6 +45,7 @@
 #define TEX_FMT_R32_FLT  SDL_GPU_TEXTUREFORMAT_R32_FLOAT
 #define TEX_FMT_HALF4      SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT
 #define TEX_FMT_R32_UINT   SDL_GPU_TEXTUREFORMAT_R32_UINT
+#define TEX_FMT_RG32_UINT  SDL_GPU_TEXTUREFORMAT_R32G32_UINT
 #define TEX_FMT_8UNORM4    SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM
 #define TEX_FMT_8UNORM2    SDL_GPU_TEXTUREFORMAT_R8G8_UNORM
 #define TEX_FMT_8UNORM1    SDL_GPU_TEXTUREFORMAT_R8_UNORM
@@ -207,6 +208,7 @@ typedef struct MaterialGPU_
 typedef struct WindowState
 {
     SDL_GPUTexture* tex_depth, *tex_hiz_depth, *tex_color, *tex_post, *tex_hiz;
+    SDL_GPUTexture* tex_visbuffer; // visibility buffer RG32_UINT: x=(primitiveIdx<<16|instanceID), y=(triangleID<<8|lod)
     SDL_GPUTexture* tex_gbuffer_tangent, *tex_gbuffer_albedo_metallic, *tex_gbuffer_shadow_roughness;
     SDL_GPUTexture* tex_hbao, *tex_hbao_blur, *tex_hbao_normal;
     SDL_GPUTexture* tex_mlaa_edge_mask, *tex_mlaa_edge_count, *tex_mlaa_output;
@@ -238,6 +240,7 @@ typedef struct RenderSetBuffers_
 typedef struct RenderSetShared_
 {
     SDL_GPUGraphicsPipeline* pipeline;
+    SDL_GPUGraphicsPipeline* visPipeline; // visibility-buffer raster (writes IDs, no shading)
     SDL_GPUGraphicsPipeline* depthPipeline;
     SDL_GPUGraphicsPipeline* shadowPipeline;
     SDL_GPUGraphicsPipeline* pointShadowPipeline;

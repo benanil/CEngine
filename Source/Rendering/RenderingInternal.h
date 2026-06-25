@@ -64,6 +64,8 @@ typedef struct ScenePassContext_
     SDL_GPUDepthStencilTargetInfo* depthTarget;
     ShadowCascadeData shadowCascades;
     mat4x4 viewProj;
+    bool skipSurface; // vis-buffer path draws the surface set separately; skip it in the gbuffer pass
+    bool skipSkinned; // vis-buffer path draws the skinned set separately too
 } ScenePassContext;
 
 extern WindowState    g_WindowState;
@@ -94,6 +96,8 @@ extern SDL_GPUComputePipeline* g_HBAOComputePipeline;
 extern SDL_GPUComputePipeline* g_HBAOBlurComputePipeline;
 extern SDL_GPUComputePipeline* g_ExtractNormalComputePipeline;
 extern SDL_GPUComputePipeline* g_DeferredLightingComputePipeline;
+extern SDL_GPUComputePipeline* g_VisBufferMaterializePipeline;
+extern SDL_GPUComputePipeline* g_VisBufferMaterializeSkinnedPipeline;
 extern SDL_GPUComputePipeline* g_MLAAEdgeMaskComputePipeline;
 extern SDL_GPUComputePipeline* g_MLAALineLengthComputePipeline;
 extern SDL_GPUComputePipeline* g_MLAABlendComputePipeline;
@@ -125,6 +129,8 @@ void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd,
 void DispatchHiZBuildCompute(SDL_GPUCommandBuffer* cmd);
 void DispatchHBAOCompute(SDL_GPUCommandBuffer* cmd, bool enabled, u32 width, u32 height);
 void DispatchDeferredLightingCompute(SDL_GPUCommandBuffer* cmd, u32 width, u32 height, mat4x4 viewProj);
+void DispatchVisBufferMaterialize(SDL_GPUCommandBuffer* cmd, u32 width, u32 height, mat4x4 viewProj);
+void DispatchVisBufferMaterializeSkinned(SDL_GPUCommandBuffer* cmd, u32 width, u32 height, mat4x4 viewProj);
 void DispatchCullLightsCompute(SDL_GPUCommandBuffer* cmd, FrustumPlanes frustumPlanes, mat4x4 viewProj, bool enableFrustum, bool enableHiZ, u32 width, u32 height);
 void DispatchTonemapCompute(SDL_GPUCommandBuffer* cmd, u32 width, u32 height, mat4x4 viewProj);
 void DispatchMLAACompute(SDL_GPUCommandBuffer* cmd, u32 width, u32 height, f32 threshold, bool showEdges);
@@ -134,6 +140,7 @@ void DispatchAnimateVerticesCompute(SDL_GPUCommandBuffer* cmd, RenderSet* render
 void RenderDepth(SDL_GPUCommandBuffer* cmd, const DepthPassContext* ctx);
 
 void RenderScene(SDL_GPUCommandBuffer* cmd, const ScenePassContext* ctx);
+void RenderVisBuffer(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* visTarget, SDL_GPUDepthStencilTargetInfo* depthTarget, mat4x4 viewProj);
 void RenderDeferredLights(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget, mat4x4 viewProj, u32 width, u32 height);
 void RenderShadows(SDL_GPUCommandBuffer* cmd);
 void RenderLines(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget, SDL_GPUDepthStencilTargetInfo* depthTarget, mat4x4 viewProj);
