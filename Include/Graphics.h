@@ -49,6 +49,7 @@
 #define TEX_FMT_8UNORM4    SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM
 #define TEX_FMT_8UNORM2    SDL_GPU_TEXTUREFORMAT_R8G8_UNORM
 #define TEX_FMT_8UNORM1    SDL_GPU_TEXTUREFORMAT_R8_UNORM
+#define TEX_FMT_R11G11B10  SDL_GPU_TEXTUREFORMAT_R11G11B10_UFLOAT
 
 
 #if defined(__cplusplus)
@@ -209,7 +210,6 @@ typedef struct WindowState
 {
     SDL_GPUTexture* tex_depth, *tex_hiz_depth, *tex_color, *tex_post, *tex_hiz;
     SDL_GPUTexture* tex_visbuffer; // visibility buffer RG32_UINT: x=(primitiveIdx<<16|instanceID), y=(triangleID<<8|lod)
-    SDL_GPUTexture* tex_gbuffer_tangent, *tex_gbuffer_albedo_metallic, *tex_gbuffer_shadow_roughness;
     SDL_GPUTexture* tex_hbao, *tex_hbao_blur, *tex_hbao_normal;
     SDL_GPUTexture* tex_mlaa_edge_mask, *tex_mlaa_edge_count, *tex_mlaa_output;
     SDL_GPUTexture* tex_shadow_depth, *tex_shadow_color;
@@ -239,7 +239,6 @@ typedef struct RenderSetBuffers_
 // shared per set type: pipelines and the vertex pools every scene draws from
 typedef struct RenderSetShared_
 {
-    SDL_GPUGraphicsPipeline* pipeline;
     SDL_GPUGraphicsPipeline* visPipeline; // visibility-buffer raster (writes IDs, no shading)
     SDL_GPUGraphicsPipeline* depthPipeline;
     SDL_GPUGraphicsPipeline* shadowPipeline;
@@ -252,7 +251,6 @@ typedef struct RenderSetShared_
 typedef struct RenderState
 {
     SDL_GPUGraphicsPipeline* linePipeline;
-    SDL_GPUGraphicsPipeline* deferredLightPipeline;
     SDL_GPUGraphicsPipeline* slugPipeline;
     SDL_GPUGraphicsPipeline* slug2DPipeline;
     SDL_GPUGraphicsPipeline* slugDepthPipeline;
@@ -271,6 +269,8 @@ typedef struct RenderState
     SDL_GPUBuffer*           lightDrawInfoBuffer;
     SDL_GPUBuffer*           lightDrawArgsBuffer;
     SDL_GPUBuffer*           lightVisibilityBuffer;
+    SDL_GPUBuffer*           lightTileCountBuffer;
+    SDL_GPUBuffer*           lightTileIndexBuffer;
     SDL_GPUBuffer*           uiShapeBuffer;
     SDL_GPUBuffer*           uiShapeDrawArgsBuffer;
     SDL_GPUBuffer*           shadowCascadeBuffer;

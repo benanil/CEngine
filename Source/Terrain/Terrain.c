@@ -155,7 +155,7 @@ typedef struct TerrainState_
     SDL_GPUBuffer*           vertexBuffer;
     SDL_GPUBuffer*           indexBuffer;
     SDL_GPUTransferBuffer*   transferBuffer;
-    SDL_GPUGraphicsPipeline* gbufferPipeline;
+    SDL_GPUGraphicsPipeline* colorPipeline;
     SDL_GPUGraphicsPipeline* depthPipeline;
     SDL_GPUGraphicsPipeline* wirePipeline;
     Texture albedoLayers;
@@ -885,12 +885,13 @@ void Terrain_RenderDepth(SDL_GPUCommandBuffer* cmd, SDL_GPURenderPass* pass, mat
     TerrainDrawChunks(cmd, pass, viewProj);
 }
 
-void Terrain_RenderGBuffer(SDL_GPUCommandBuffer* cmd, SDL_GPURenderPass* pass, mat4x4 viewProj)
+void Terrain_RenderColor(SDL_GPUCommandBuffer* cmd, SDL_GPURenderPass* pass, mat4x4 viewProj, u32 width, u32 height)
 {
     if (!Terrain_HasDraws()) return;
-    if (!g_WindowState.tex_shadow_color || !g_RenderState.shadowCascadeBuffer) return;
+    if (!g_WindowState.tex_shadow_color || !g_WindowState.tex_hbao_blur || !g_WindowState.tex_point_shadow_color ||
+        !g_WindowState.tex_spot_shadow_color || !g_RenderState.shadowCascadeBuffer) return;
 
-    SDL_BindGPUGraphicsPipeline(pass, g_Terrain.gbufferPipeline);
+    SDL_BindGPUGraphicsPipeline(pass, g_Terrain.colorPipeline);
     SDL_GPUBufferBinding vertexBinding = { g_Terrain.vertexBuffer, 0 };
     SDL_GPUBufferBinding indexBinding  = { g_Terrain.indexBuffer, 0 };
     SDL_BindGPUVertexBuffers(pass, 0, &vertexBinding, 1);
@@ -899,20 +900,53 @@ void Terrain_RenderGBuffer(SDL_GPUCommandBuffer* cmd, SDL_GPURenderPass* pass, m
     SDL_GPUBuffer* vertexStorage[1] = { g_RenderState.shadowCascadeBuffer };
     SDL_BindGPUVertexStorageBuffers(pass, 0, vertexStorage, 1);
 
-    SDL_GPUTextureSamplerBinding samplers[4] = {
+    SDL_GPUTextureSamplerBinding samplers[7] = {
         { .texture = g_Terrain.albedoLayers.handle, .sampler = g_RenderState.sampler },
         { .texture = g_Terrain.normalLayers.handle, .sampler = g_RenderState.sampler },
         { .texture = g_Terrain.armLayers.handle,    .sampler = g_RenderState.sampler },
-        { .texture = g_WindowState.tex_shadow_color, .sampler = g_RenderState.shadowSampler }
+        { .texture = g_WindowState.tex_shadow_color, .sampler = g_RenderState.shadowSampler },
+        { .texture = g_WindowState.tex_hbao_blur, .sampler = g_RenderState.sampler },
+        { .texture = g_WindowState.tex_point_shadow_color, .sampler = g_RenderState.shadowSampler },
+        { .texture = g_WindowState.tex_spot_shadow_color, .sampler = g_RenderState.shadowSampler }
     };
     SDL_BindGPUFragmentSamplers(pass, 0, samplers, SDL_arraysize(samplers));
 
-    float3 sunDirection = GetRenderSunDirection();
-    f32 fragmentParams[8] = {
-        sunDirection.x, sunDirection.y, sunDirection.z, 0.0f,
-        g_Terrain.brushPos.x, g_Terrain.brushPos.y, g_Terrain.brushPos.z, g_Terrain.brushRadius
+    SDL_GPUBuffer* fragmentStorage[5] = {
+        g_RenderState.lightBuffer,
+        g_RenderState.pointShadowMatrixBuffer,
+        g_RenderState.spotShadowMatrixBuffer,
+        g_RenderState.lightTileCountBuffer,
+        g_RenderState.lightTileIndexBuffer
     };
-    SDL_PushGPUFragmentUniformData(cmd, 0, fragmentParams, sizeof(fragmentParams));
+    SDL_BindGPUFragmentStorageBuffers(pass, 0, fragmentStorage, SDL_arraysize(fragmentStorage));
+
+    float3 sunDirection = GetRenderSunDirection();
+    struct {
+        u32 outputSize[2];
+        u32 tileCount[2];
+        f32 cameraPosition[4];
+        f32 sunDirection[4];
+        f32 brushPosRadius[4];
+        u32 enableLocalLights;
+        u32 padding0[3];
+    } fragmentParams = {0};
+    fragmentParams.outputSize[0] = width;
+    fragmentParams.outputSize[1] = height;
+    fragmentParams.tileCount[0] = (width + LIGHT_TILE_SIZE - 1u) / LIGHT_TILE_SIZE;
+    fragmentParams.tileCount[1] = (height + LIGHT_TILE_SIZE - 1u) / LIGHT_TILE_SIZE;
+    fragmentParams.cameraPosition[0] = g_Camera.position.x;
+    fragmentParams.cameraPosition[1] = g_Camera.position.y;
+    fragmentParams.cameraPosition[2] = g_Camera.position.z;
+    fragmentParams.sunDirection[0] = sunDirection.x;
+    fragmentParams.sunDirection[1] = sunDirection.y;
+    fragmentParams.sunDirection[2] = sunDirection.z;
+    fragmentParams.brushPosRadius[0] = g_Terrain.brushPos.x;
+    fragmentParams.brushPosRadius[1] = g_Terrain.brushPos.y;
+    fragmentParams.brushPosRadius[2] = g_Terrain.brushPos.z;
+    fragmentParams.brushPosRadius[3] = g_Terrain.brushRadius;
+    fragmentParams.enableLocalLights = (g_RenderSettings.enableLocalLights && g_RenderState.numLights > 0u &&
+                                        g_RenderState.lightTileCountBuffer && g_RenderState.lightTileIndexBuffer) ? 1u : 0u;
+    SDL_PushGPUFragmentUniformData(cmd, 0, &fragmentParams, sizeof(fragmentParams));
 
     g_Terrain.drawnLastFrame = TerrainDrawChunks(cmd, pass, viewProj);
 }
@@ -967,24 +1001,19 @@ static void TerrainInitPipelines(void)
         .num_vertex_attributes = 1
     };
 
-    // g-buffer pass, formats and depth state match InitSurfacePipeline
+    // color pass, depth-tested against the prepass
     {
         SDL_GPUShader* vert = TerrainCreateShader(Shaders_TerrainVert_spv, sizeof(Shaders_TerrainVert_spv),
-                                                  SDL_GPU_SHADERSTAGE_VERTEX, "vert", 1, 0, 1);
+                                                   SDL_GPU_SHADERSTAGE_VERTEX, "vert", 1, 0, 1);
         SDL_GPUShader* frag = TerrainCreateShader(Shaders_TerrainFrag_spv, sizeof(Shaders_TerrainFrag_spv),
-                                                  SDL_GPU_SHADERSTAGE_FRAGMENT, "frag", 1, 4, 0);
-        const SDL_GPUColorTargetDescription gbufferTargets[3] = {
-            { .format = SDL_GPU_TEXTUREFORMAT_R32_UINT       },
-            { .format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM },
-            { .format = SDL_GPU_TEXTUREFORMAT_R8G8_UNORM     }
-        };
-        g_Terrain.gbufferPipeline = SDL_CreateGPUGraphicsPipeline(g_GPUDevice, &(SDL_GPUGraphicsPipelineCreateInfo){
+                                                   SDL_GPU_SHADERSTAGE_FRAGMENT, "frag", 1, 7, 5);
+        g_Terrain.colorPipeline = SDL_CreateGPUGraphicsPipeline(g_GPUDevice, &(SDL_GPUGraphicsPipelineCreateInfo){
             .vertex_shader   = vert,
             .fragment_shader = frag,
             .primitive_type  = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
             .target_info     = (SDL_GPUGraphicsPipelineTargetInfo){
-                .num_color_targets         = 3,
-                .color_target_descriptions = gbufferTargets,
+                .num_color_targets         = 1,
+                .color_target_descriptions = &(SDL_GPUColorTargetDescription){ .format = SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT },
                 .depth_stencil_format      = SDL_GPU_TEXTUREFORMAT_D32_FLOAT,
                 .has_depth_stencil_target  = true
             },
@@ -996,7 +1025,7 @@ static void TerrainInitPipelines(void)
             .multisample_state  = (SDL_GPUMultisampleState){ .sample_count = SDL_GPU_SAMPLECOUNT_1 },
             .vertex_input_state = vertexInput
         });
-        CHECK_CREATE(g_Terrain.gbufferPipeline, "Terrain GBuffer Pipeline");
+        CHECK_CREATE(g_Terrain.colorPipeline, "Terrain Color Pipeline");
         SDL_ReleaseGPUShader(g_GPUDevice, vert);
         SDL_ReleaseGPUShader(g_GPUDevice, frag);
     }
@@ -1200,7 +1229,7 @@ void Terrain_Destroy(void)
         Transvoxel_MeshOutDestroy(&job->mesh);
     }
 
-    if (g_Terrain.gbufferPipeline) SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_Terrain.gbufferPipeline);
+    if (g_Terrain.colorPipeline)   SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_Terrain.colorPipeline);
     if (g_Terrain.depthPipeline)   SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_Terrain.depthPipeline);
     if (g_Terrain.wirePipeline)    SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_Terrain.wirePipeline);
     if (g_Terrain.vertexBuffer)    SDL_ReleaseGPUBuffer(g_GPUDevice, g_Terrain.vertexBuffer);

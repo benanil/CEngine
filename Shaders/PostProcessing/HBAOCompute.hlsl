@@ -56,7 +56,10 @@ float ComputeAOContribution(float3 p, float3 n, float3 s, float invRadiusSq)
     // Using an explicit early branch to kill execution weight for flat sections
     if (vv <= 0.000001f) return 0.0f;
     float invLen = rsqrt(vv);
-    float ndv = dot(n, v) * invLen;
+    // Depth-derived normals do not carry material/mesh sidedness. Use a two-sided normal term so
+    // inward-facing depth normal changes occlude like outward-facing changes instead of being
+    // rejected by the center surface hemisphere test.
+    float ndv = abs(dot(n, v) * invLen);
     // Replaced division with precomputed inverse multiplication
     float falloff = saturate(1.0f - vv * invRadiusSq);
     return saturate(ndv - bias) * falloff;
@@ -92,8 +95,7 @@ void main(uint3 tid : SV_DispatchThreadID)
     
     // OPTIMIZATION 3: Simplified normal math. 
     // Stripped nested normalizes. Transformed matrix math directly to avoid full float3x3 allocation.
-    float3 worldNormal = NormalTexture.Load(int3(p, 0)).xyz * 2.0f - 1.0f;
-    float3 normal = normalize(mul((float3x3)view, worldNormal));
+    float3 normal = normalize(NormalTexture.Load(int3(p, 0)).xyz * 2.0f - 1.0f);
 
     float viewZ = max(abs(viewPos.z), 0.01f);
     float radiusPixels = clamp(radius * projectionScale / viewZ * 0.5f, 2.0f, 48.0f);

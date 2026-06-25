@@ -57,17 +57,6 @@ typedef enum CullDrawFlags_
     CullDrawFlag_NoFrustum           = 1u << 5
 } CullDrawFlags;
 
-typedef struct ScenePassContext_
-{
-    SDL_GPUColorTargetInfo* colorTargets;
-    u32 numColorTargets;
-    SDL_GPUDepthStencilTargetInfo* depthTarget;
-    ShadowCascadeData shadowCascades;
-    mat4x4 viewProj;
-    bool skipSurface; // vis-buffer path draws the surface set separately; skip it in the gbuffer pass
-    bool skipSkinned; // vis-buffer path draws the skinned set separately too
-} ScenePassContext;
-
 extern WindowState    g_WindowState;
 extern RenderState    g_RenderState;
 extern SDL_GPUDevice* g_GPUDevice;
@@ -89,15 +78,15 @@ extern SDL_GPUComputePipeline* g_AnimComputePipeline;
 extern SDL_GPUComputePipeline* g_AnimVerticesPipeline;
 extern SDL_GPUComputePipeline* g_CullDrawArgsComputePipeline;
 extern SDL_GPUComputePipeline* g_CullLightsComputePipeline;
+extern SDL_GPUComputePipeline* g_BuildLightTilesComputePipeline;
 extern SDL_GPUComputePipeline* g_TonemapComputePipeline;
 extern SDL_GPUComputePipeline* g_HiZBuildComputePipeline;
 extern SDL_GPUComputePipeline* g_HiZDownscaleComputePipeline;
 extern SDL_GPUComputePipeline* g_HBAOComputePipeline;
 extern SDL_GPUComputePipeline* g_HBAOBlurComputePipeline;
 extern SDL_GPUComputePipeline* g_ExtractNormalComputePipeline;
-extern SDL_GPUComputePipeline* g_DeferredLightingComputePipeline;
-extern SDL_GPUComputePipeline* g_VisBufferMaterializePipeline;
-extern SDL_GPUComputePipeline* g_VisBufferMaterializeSkinnedPipeline;
+extern SDL_GPUComputePipeline* g_VisBufferShadePipeline;
+extern SDL_GPUComputePipeline* g_VisBufferShadeSkinnedPipeline;
 extern SDL_GPUComputePipeline* g_MLAAEdgeMaskComputePipeline;
 extern SDL_GPUComputePipeline* g_MLAALineLengthComputePipeline;
 extern SDL_GPUComputePipeline* g_MLAABlendComputePipeline;
@@ -128,10 +117,10 @@ void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd,
 
 void DispatchHiZBuildCompute(SDL_GPUCommandBuffer* cmd);
 void DispatchHBAOCompute(SDL_GPUCommandBuffer* cmd, bool enabled, u32 width, u32 height);
-void DispatchDeferredLightingCompute(SDL_GPUCommandBuffer* cmd, u32 width, u32 height, mat4x4 viewProj);
-void DispatchVisBufferMaterialize(SDL_GPUCommandBuffer* cmd, u32 width, u32 height, mat4x4 viewProj);
-void DispatchVisBufferMaterializeSkinned(SDL_GPUCommandBuffer* cmd, u32 width, u32 height, mat4x4 viewProj);
+void DispatchVisBufferShade(SDL_GPUCommandBuffer* cmd, u32 width, u32 height, mat4x4 viewProj);
+void DispatchVisBufferShadeSkinned(SDL_GPUCommandBuffer* cmd, u32 width, u32 height, mat4x4 viewProj);
 void DispatchCullLightsCompute(SDL_GPUCommandBuffer* cmd, FrustumPlanes frustumPlanes, mat4x4 viewProj, bool enableFrustum, bool enableHiZ, u32 width, u32 height);
+void DispatchBuildLightTilesCompute(SDL_GPUCommandBuffer* cmd, mat4x4 viewProj, u32 width, u32 height);
 void DispatchTonemapCompute(SDL_GPUCommandBuffer* cmd, u32 width, u32 height, mat4x4 viewProj);
 void DispatchMLAACompute(SDL_GPUCommandBuffer* cmd, u32 width, u32 height, f32 threshold, bool showEdges);
 void DispatchAnimationCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet, RenderSetBuffers* buffers, AnimationSystem* anims);
@@ -139,9 +128,7 @@ void DispatchAnimateVerticesCompute(SDL_GPUCommandBuffer* cmd, RenderSet* render
 
 void RenderDepth(SDL_GPUCommandBuffer* cmd, const DepthPassContext* ctx);
 
-void RenderScene(SDL_GPUCommandBuffer* cmd, const ScenePassContext* ctx);
 void RenderVisBuffer(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* visTarget, SDL_GPUDepthStencilTargetInfo* depthTarget, mat4x4 viewProj);
-void RenderDeferredLights(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget, mat4x4 viewProj, u32 width, u32 height);
 void RenderShadows(SDL_GPUCommandBuffer* cmd);
 void RenderLines(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget, SDL_GPUDepthStencilTargetInfo* depthTarget, mat4x4 viewProj);
 void RenderOutline(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget, SDL_GPUDepthStencilTargetInfo* depthTarget, mat4x4 viewProj);

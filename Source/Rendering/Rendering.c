@@ -9,21 +9,12 @@
 
 #define RESIZE_RELEASE_DELAY 4u
 
-// Phase A visibility-buffer path: surface set rasters IDs then a materialize compute writes the
-// G-buffer. Set to 0 to fall back to the original direct-gbuffer path for A/B validation.
-#ifndef VISBUFFER_PHASE_A
-#define VISBUFFER_PHASE_A 1
-#endif
-
 typedef struct FrameTextureSet_
 {
     SDL_GPUTexture* tex_depth;
     SDL_GPUTexture* tex_hiz_depth;
     SDL_GPUTexture* tex_color;
     SDL_GPUTexture* tex_visbuffer;
-    SDL_GPUTexture* tex_gbuffer_tangent;
-    SDL_GPUTexture* tex_gbuffer_albedo_metallic;
-    SDL_GPUTexture* tex_gbuffer_shadow_roughness;
     SDL_GPUTexture* tex_post;
     SDL_GPUTexture* tex_hiz;
     SDL_GPUTexture* tex_hbao;
@@ -115,9 +106,6 @@ static void ReleaseFrameTextureSet(FrameTextureSet* set)
     if (set->tex_hiz_depth)                SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_hiz_depth);
     if (set->tex_color)                    SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_color);
     if (set->tex_visbuffer)                SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_visbuffer);
-    if (set->tex_gbuffer_tangent)          SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_gbuffer_tangent);
-    if (set->tex_gbuffer_albedo_metallic)  SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_gbuffer_albedo_metallic);
-    if (set->tex_gbuffer_shadow_roughness) SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_gbuffer_shadow_roughness);
     if (set->tex_post)                     SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_post);
     if (set->tex_hiz)                      SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_hiz);
     if (set->tex_hbao)                     SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_hbao);
@@ -136,9 +124,6 @@ static void QueueWindowFrameTexturesForRelease(WindowState* winstate)
         .tex_hiz_depth                = winstate->tex_hiz_depth,
         .tex_color                    = winstate->tex_color,
         .tex_visbuffer                = winstate->tex_visbuffer,
-        .tex_gbuffer_tangent          = winstate->tex_gbuffer_tangent,
-        .tex_gbuffer_albedo_metallic  = winstate->tex_gbuffer_albedo_metallic,
-        .tex_gbuffer_shadow_roughness = winstate->tex_gbuffer_shadow_roughness,
         .tex_post                     = winstate->tex_post,
         .tex_hiz                      = winstate->tex_hiz,
         .tex_hbao                     = winstate->tex_hbao,
@@ -150,8 +135,6 @@ static void QueueWindowFrameTexturesForRelease(WindowState* winstate)
         .releaseFrame                 = g_RenderFrameIndex + RESIZE_RELEASE_DELAY
     };
     winstate->tex_depth = winstate->tex_hiz_depth = winstate->tex_color = winstate->tex_visbuffer
-                        = winstate->tex_gbuffer_tangent
-                        = winstate->tex_gbuffer_albedo_metallic = winstate->tex_gbuffer_shadow_roughness
                         = winstate->tex_post = winstate->tex_hiz = winstate->tex_hbao 
                         = winstate->tex_hbao_blur = winstate->tex_hbao_normal = winstate->tex_mlaa_edge_mask 
                         = winstate->tex_mlaa_edge_count = winstate->tex_mlaa_output = NULL;
@@ -313,17 +296,19 @@ void InitBuffers(void)
     // (Lever 2 / compaction by visible animated-vertex count reclaims this later.)
     const size_t animatedVertexSize = sizeof(u32) * 2 * MAX_ANIMATED_VERTEX;
     g_RenderState.skinned.vertexBuffer = CreateBuffer(NULL, MAX_SKINNED_SOURCE_VERTEX * sizeof(ASkinedVertex), BVertexBit | BReadCompute, "CPSkinnedVertexBuffer");
-    // surface vertex + index buffers also readable in compute so the vis-buffer materialize pass
-    // can re-fetch triangles by (index -> vertex) lookup.
+    // surface vertex + index buffers are readable in compute so vis-buffer shade can re-fetch
+    // triangles by (index -> vertex) lookup.
     g_RenderState.surface.vertexBuffer = CreateBuffer(NULL, MAX_VERTEX * sizeof(AVertex), BVertexBit | BReadCompute, "CPSurfaceVertexBuffer");
     g_RenderState.indexBuffer          = CreateBuffer(NULL, MAX_INDEX  * sizeof(int)    , SDL_GPU_BUFFERUSAGE_INDEX | BReadCompute, "CPIndexBuffer");
     g_RenderState.lineBuffer           = CreateBuffer(NULL, sizeof(ALineVertex) * MAX_LINE_COUNT   , BVertexBit     | BWriteComputeBit, "CPLineVertexBuffer");
     g_RenderState.lineDrawArgsBuffer   = CreateBuffer(NULL, sizeof(u32) * 8                        , BIndirectBit   | BWriteComputeBit, "CPLinedrawArgsBuffer");
     g_RenderState.gizmoLineBuffer      = CreateBuffer(NULL, sizeof(ALineVertex) * MAX_GIZMO_VERTICES, BVertexBit                      , "CPGizmoLineBuffer");
-    g_RenderState.lightBuffer          = CreateBuffer(NULL, sizeof(LightGPU) * MAX_LIGHT_COUNT     , BReadRasterBit | BReadCompute    , "CPLightBuffer");
-    g_RenderState.lightDrawInfoBuffer  = CreateBuffer(NULL, sizeof(LightDrawInfo) * MAX_LIGHT_COUNT, BReadRasterBit | BWriteComputeBit, "CPLightDrawInfoBuffer");
+    g_RenderState.lightBuffer          = CreateBuffer(NULL, sizeof(LightGPU) * MAX_LIGHT_COUNT     , BReadRasterBit | BReadCompute | BWriteComputeBit, "CPLightBuffer");
+    g_RenderState.lightDrawInfoBuffer  = CreateBuffer(NULL, sizeof(LightDrawInfo) * MAX_LIGHT_COUNT, BReadRasterBit | BReadCompute | BWriteComputeBit, "CPLightDrawInfoBuffer");
     g_RenderState.lightDrawArgsBuffer  = CreateBuffer(NULL, sizeof(SDL_GPUIndirectDrawCommand)     , BIndirectBit   | BWriteComputeBit, "CPLightDrawArgsBuffer");
-    g_RenderState.lightVisibilityBuffer = CreateBuffer(NULL, sizeof(u32) * MAX_LIGHT_COUNT          , BWriteComputeBit, "CPLightVisibilityBuffer");
+    g_RenderState.lightVisibilityBuffer = CreateBuffer(NULL, sizeof(u32) * MAX_LIGHT_COUNT          , BReadCompute | BWriteComputeBit, "CPLightVisibilityBuffer");
+    g_RenderState.lightTileCountBuffer  = CreateBuffer(NULL, sizeof(u32) * MAX_LIGHT_TILES          , BReadCompute | BWriteComputeBit, "CPLightTileCountBuffer");
+    g_RenderState.lightTileIndexBuffer  = CreateBuffer(NULL, sizeof(u32) * MAX_LIGHT_TILES * MAX_LIGHTS_PER_TILE, BReadCompute | BWriteComputeBit, "CPLightTileIndexBuffer");
 
     g_LightVisTransfer = SDL_CreateGPUTransferBuffer(g_GPUDevice, &(SDL_GPUTransferBufferCreateInfo){
         .usage = SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD,
@@ -400,23 +385,6 @@ static SDL_GPUColorTargetInfo MakeLoadedTextureTarget(SDL_GPUTexture* texture)
     target.texture  = texture;
     target.cycle    = false;
     return target;
-}
-
-static void MakeGBufferTargets(WindowState* winstate, SDL_GPUColorTargetInfo targets[3])
-{
-    for (u32 i = 0; i < 3u; i++)
-    {
-        SDL_zero(targets[i]);
-        targets[i].load_op = SDL_GPU_LOADOP_CLEAR;
-        targets[i].store_op = SDL_GPU_STOREOP_STORE;
-        targets[i].cycle = true;
-    }
-    targets[0].texture = winstate->tex_gbuffer_tangent;
-    targets[1].texture = winstate->tex_gbuffer_albedo_metallic;
-    targets[2].texture = winstate->tex_gbuffer_shadow_roughness;
-    targets[1].clear_color.a = 0.0f;
-    targets[2].clear_color.r = 1.0f;
-    targets[2].clear_color.g = 1.0f;
 }
 
 SDL_GPUDepthStencilTargetInfo MakeDepthTarget(SDL_GPUTexture* texture, SDL_GPULoadOp loadOp, bool cycle)
@@ -549,8 +517,6 @@ void Render(void)
     SDL_GPUDepthStencilTargetInfo depth_target      = MakeDepthTarget(winstate->tex_depth, SDL_GPU_LOADOP_CLEAR, true);
     SDL_GPUDepthStencilTargetInfo main_depth_target = MakeDepthTarget(winstate->tex_depth, SDL_GPU_LOADOP_LOAD, false);
     SDL_GPUColorTargetInfo        hiz_depth_target  = MakeHiZDepthTarget(winstate);
-    SDL_GPUColorTargetInfo        gbuffer_targets[3];
-    MakeGBufferTargets(winstate, gbuffer_targets);
     UploadDirtyGeometry();
     Terrain_GPUFlush(cmd);
     
@@ -618,19 +584,8 @@ void Render(void)
             .cascadeIndex      = 0,
             .flags             = DepthPassFlag_AlphaClip | DepthPassFlag_EnableLOD
         });
-#if VISBUFFER_PHASE_A
-        // Surface + skinned sets go through the visibility buffer + materialize; only terrain still
-        // uses the direct gbuffer pass (its pixels carry the 0xFFFF.... sentinel so materialize
-        // skips them). The gbuffer pass still clears, so sky/surface/skinned areas start clean.
-        RenderScene(cmd, &(ScenePassContext){
-            .colorTargets    = gbuffer_targets,
-            .numColorTargets = SDL_arraysize(gbuffer_targets),
-            .depthTarget     = &main_depth_target,
-            .shadowCascades  = shadowCascades,
-            .viewProj        = viewProj,
-            .skipSurface     = true,
-            .skipSkinned     = true
-        });
+        // Surface + skinned raster IDs are shaded directly to color by compute. Terrain
+        // shades directly in its raster pass after HBAO and local light tiles are ready.
         union { u32 u; f32 f; } visSentinel; visSentinel.u = 0xFFFFFFFFu;
         SDL_GPUColorTargetInfo vis_target;
         SDL_zero(vis_target);
@@ -639,19 +594,7 @@ void Render(void)
         vis_target.store_op    = SDL_GPU_STOREOP_STORE;
         vis_target.clear_color = (SDL_FColor){ visSentinel.f, visSentinel.f, visSentinel.f, visSentinel.f };
         RenderVisBuffer(cmd, &vis_target, &main_depth_target, viewProj);
-        DispatchVisBufferMaterialize(cmd, renderW, renderH, viewProj);
-        DispatchVisBufferMaterializeSkinned(cmd, renderW, renderH, viewProj);
-#else
-        RenderScene(cmd, &(ScenePassContext){
-            .colorTargets    = gbuffer_targets,
-            .numColorTargets = SDL_arraysize(gbuffer_targets),
-            .depthTarget     = &main_depth_target,
-            .shadowCascades  = shadowCascades,
-            .viewProj        = viewProj
-        });
-#endif
         DispatchHBAOCompute(cmd, g_RenderSettings.enableHBAO, renderW, renderH);
-        DispatchDeferredLightingCompute(cmd, renderW, renderH, viewProj);
         DispatchHiZBuildCompute(cmd);
         if (g_RenderSettings.enableLocalLights)
         {
@@ -659,7 +602,7 @@ void Render(void)
                                       g_RenderSettings.enableLightFrustumCulling,
                                       g_RenderSettings.enableOcclusion && g_RenderSettings.enableLightOcclusionCulling,
                                       renderW, renderH);
-            RenderDeferredLights(cmd, &color_load_target, viewProj, renderW, renderH);
+            DispatchBuildLightTilesCompute(cmd, viewProj, renderW, renderH);
 
             // Queue a non-blocking readback of this frame's per-light visibility
             // so next frame's shadow assignment can skip occluded lights. Only
@@ -675,6 +618,13 @@ void Render(void)
                 submitLightVisReadback = true;
             }
         }
+        {
+            SDL_GPURenderPass* terrainPass = SDL_BeginGPURenderPass(cmd, &color_target, 1, &main_depth_target);
+            Terrain_RenderColor(cmd, terrainPass, viewProj, renderW, renderH);
+            SDL_EndGPURenderPass(terrainPass);
+        }
+        DispatchVisBufferShade(cmd, renderW, renderH, viewProj);
+        DispatchVisBufferShadeSkinned(cmd, renderW, renderH, viewProj);
         Terrain_RenderWireframe(cmd, &color_load_target, &main_depth_target, viewProj);
 
         winstate->hiz_view_proj = viewProj;
@@ -779,6 +729,8 @@ void DestroyPipeline(void)
     if (g_RenderState.lightDrawInfoBuffer)      SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lightDrawInfoBuffer);
     if (g_RenderState.lightDrawArgsBuffer)      SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lightDrawArgsBuffer);
     if (g_RenderState.lightVisibilityBuffer)    SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lightVisibilityBuffer);
+    if (g_RenderState.lightTileCountBuffer)     SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lightTileCountBuffer);
+    if (g_RenderState.lightTileIndexBuffer)     SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lightTileIndexBuffer);
     if (g_LightVisFence)                        SDL_ReleaseGPUFence(g_GPUDevice, g_LightVisFence);
     if (g_LightVisTransfer)                     SDL_ReleaseGPUTransferBuffer(g_GPUDevice, g_LightVisTransfer);
     if (g_RenderState.uiShapeBuffer)            SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.uiShapeBuffer);

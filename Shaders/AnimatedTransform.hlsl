@@ -12,7 +12,7 @@
 // and every vertex shader applies the entity rotation + scale on read. Keeping the stored value in
 // model space makes the bounds normalization exact (no rotation mixing axes -> no clamping) and
 // lets all depth/shadow passes share one position-only buffer. The tangent frame is no longer
-// cached; the GBuffer pass re-skins it from the source vertex + bones.
+// cached; shade passes re-skin it from the source vertex + bones.
 //
 // Everything on the read side stays fp32: the model position is meter-scale, so casting it to fp16
 // would re-introduce ~1-2 mm of frame-to-frame jitter. PackAnimatedCenterRel (compute) and

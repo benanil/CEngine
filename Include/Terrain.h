@@ -65,7 +65,7 @@ typedef struct TerrainStats_
     u32 emptyChunks;    // chunks with no surface crossing
     u32 queuedChunks;   // waiting for a worker
     u32 jobsInFlight;
-    u32 drawnChunks;    // after frustum culling, last g-buffer pass
+    u32 drawnChunks;    // after frustum culling, last color pass
     u32 numVertices;    // resident in the terrain vertex heap
     u32 numIndices;
 } TerrainStats;
@@ -102,7 +102,7 @@ TerrainStats Terrain_GetStats(void);
 // must run before any render pass uses the terrain buffers
 void Terrain_GPUFlush(SDL_GPUCommandBuffer* cmd);
 void Terrain_RenderDepth(SDL_GPUCommandBuffer* cmd, SDL_GPURenderPass* pass, mat4x4 viewProj);
-void Terrain_RenderGBuffer(SDL_GPUCommandBuffer* cmd, SDL_GPURenderPass* pass, mat4x4 viewProj);
+void Terrain_RenderColor(SDL_GPUCommandBuffer* cmd, SDL_GPURenderPass* pass, mat4x4 viewProj, u32 width, u32 height);
 // line overlay over the lit scene, enabled by g_RenderSettings.terrainWireframe
 void Terrain_RenderWireframe(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget,
                              SDL_GPUDepthStencilTargetInfo* depthTarget, mat4x4 viewProj);

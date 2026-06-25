@@ -1,12 +1,11 @@
-// Visibility-buffer raster pass (Phase A).
+// Visibility-buffer raster pass.
 //
-// Replaces the fat G-buffer geometry pass: instead of shading and writing material
-// attributes, this writes only per-pixel IDs (drawID, instanceID, triangleID). The
-// VisBufferMaterialize compute pass later reconstructs attributes from these IDs and
-// writes the real G-buffer textures. The vertex transform here is identical to
+// Replaces the fat G-buffer geometry pass for surface pixels: instead of shading and
+// writing material attributes, this writes only per-pixel IDs. VisBufferShade later
+// reconstructs attributes from these IDs and writes lit color. The vertex transform here is identical to
 // SurfaceDepthOnly.vert / Surface.vert so depth-equal against the prepass is exact.
 //
-// NOTE: keep the vertex transform and the alpha-clip in sync with Surface.hlsl.
+// NOTE: keep the vertex transform and alpha-clip in sync with the surface depth/shadow passes.
 #include "TextureSampling.hlsl"
 #include "Bitpack.hlsl"
 #include "Math.hlsl"

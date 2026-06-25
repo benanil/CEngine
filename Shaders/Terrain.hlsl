@@ -1,10 +1,11 @@
-// terrain g-buffer pass: decodes the compact 16 byte chunk relative vertex, shades with
+// terrain color pass: decodes the compact 16 byte chunk relative vertex, shades with
 // triplanar mapping from three material layers (grass/leaves, rocky slope, high rock)
-// blended by slope and altitude. outputs match Surface.hlsl's g-buffer layout
+// blended by slope and altitude, and writes lit HDR color directly.
 #include "TextureSampling.hlsl"
 #include "Bitpack.hlsl"
 #include "Math.hlsl"
 #include "PBR.hlsl"
+#include "CommonStructs.hlsl"
 #include "Shadow/Shadow.hlsl"
 
 #define TERRAIN_UV_SCALE     (1.0 / 6.0)  // one texture tile every 6 meters
@@ -20,8 +21,13 @@ cbuffer vs_params : register(b0, space1)
 
 cbuffer ps_params : register(b0, space3)
 {
+    uint2  uOutputSize;
+    uint2  uTileCount;
+    float4 uCameraPositionPS;
     float4 uSunDirection;
     float4 uBrushPosRadius; // xyz editor brush hit point, w radius (0 = inactive)
+    uint   uEnableLocalLights;
+    uint3  uPadding0;
 };
 
 StructuredBuffer<ShadowCascadeBuffer> sShadowCascades : register(t0);
@@ -30,8 +36,21 @@ Texture2DArray<float4> AlbedoLayers : register(t0, space2); // 0 grass, 1 rocky 
 Texture2DArray<float4> NormalLayers : register(t1, space2);
 Texture2DArray<float4> ArmLayers    : register(t2, space2); // ao, roughness, metallic
 Texture2D<float>       ShadowMap    : register(t3, space2);
+Texture2D<float>       AmbientOcclusion   : register(t4, space2);
+Texture2DArray<float>  PointShadowTexture : register(t5, space2);
+Texture2DArray<float>  SpotShadowTexture  : register(t6, space2);
 SamplerState           Sampler      : register(s0, space2);
 SamplerState           ShadowSampler : register(s3, space2);
+SamplerState           PointShadowSampler : register(s5, space2);
+SamplerState           SpotShadowSampler  : register(s6, space2);
+
+StructuredBuffer<LightGPU> lights : register(t7, space2);
+StructuredBuffer<PointShadowMatrix> PointShadowMatrices : register(t8, space2);
+StructuredBuffer<PointShadowMatrix> SpotShadowMatrices  : register(t9, space2);
+StructuredBuffer<uint> tileCounts : register(t10, space2);
+StructuredBuffer<uint> tileLightIndices : register(t11, space2);
+
+#include "LocalLights.hlsl"
 
 struct VSInput
 {
@@ -52,13 +71,6 @@ struct VSOutput
     // index 0 is the procedural slope/height result
     nointerpolation uint2 matIndices : TEXCOORD6;
     float2 matWeights : TEXCOORD7;
-};
-
-struct GBufferOutput
-{
-    uint     tangentFrame    : SV_Target0;
-    f16_4_io albedoMetallic  : SV_Target1;
-    f16_2_io shadowRoughness : SV_Target2;
 };
 
 // 3 x 21 bit fixed point, 32768 steps per cell over a 16 cell chunk -> 524288 max
@@ -125,7 +137,7 @@ float3 SampleTriplanarNormal(float layer, float3 wpos, float3 blend, float3 N)
     return normalize(lerp(N, normalize(n), 0.8));
 }
 
-GBufferOutput frag(VSOutput input)
+float4 frag(VSOutput input) : SV_Target0
 {
     float3 N = normalize(input.normal);
     float3 blend = pow(abs(N), 4.0);
@@ -170,9 +182,24 @@ GBufferOutput frag(VSOutput input)
     float3 T = normalize(abs(shadingN.y) < 0.9 ? cross(float3(0.0, 1.0, 0.0), shadingN)
                                                : cross(float3(1.0, 0.0, 0.0), shadingN));
 
-    GBufferOutput output;
-    output.tangentFrame    = PackNormalTangent(f16_3(shadingN), f16_4(f16_3(T), f16(1.0)));
-    output.albedoMetallic  = f16_4_io(float4(float3(baseColor), metallic));
-    output.shadowRoughness = f16_2_io(float2(saturate(shadow), roughness));
-    return output;
+    float2 screenUV = input.position.xy / float2(max(uOutputSize, 1u));
+    float ao = AmbientOcclusion.SampleLevel(Sampler, screenUV, 0.0f);
+    float3 viewDir = uCameraPositionPS.xyz - input.worldPos;
+    float3 color = ApplyPBR(float3(baseColor), shadingN, viewDir, metallic, roughness, saturate(shadow), ao, uSunDirection.xyz);
+
+    if (uEnableLocalLights != 0u && uTileCount.x != 0u && uTileCount.y != 0u)
+    {
+        uint2 pixel = uint2(input.position.xy);
+        uint2 tile = min(pixel / LIGHT_TILE_SIZE, uTileCount - 1u);
+        uint tileIdx = tile.y * uTileCount.x + tile.x;
+        uint count = min(tileCounts[tileIdx], MAX_LIGHTS_PER_TILE);
+        [loop]
+        for (uint i = 0u; i < count; i++)
+        {
+            uint lightIndex = tileLightIndices[tileIdx * MAX_LIGHTS_PER_TILE + i];
+            color += ApplyLocalLight(float3(baseColor), shadingN, viewDir, metallic, roughness, lights[lightIndex], input.worldPos, ao);
+        }
+    }
+
+    return float4(color, 1.0f);
 }

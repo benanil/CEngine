@@ -13,12 +13,9 @@ MSL_DIR = SHADER_DIR / "msl"
 BUILD_DIR = SHADER_DIR / "Build"
 
 GRAPHICS_SHADERS = [
-    ("Surface", "vert", "frag"),
     ("VisBuffer", "vert", "frag"),
     ("VisBufferSkinned", "vert", "frag"),
-    ("DeferredLightVolume", "vert", "frag"),
     ("SurfaceDepthOnly", "vert", "frag"),
-    ("Skinned", "vert", "frag"),
     ("SkinnedDepthOnly", "vert", "frag"),
     ("LineDebug", "vert", "frag"),
     ("Outline", "vert", "frag"),
@@ -44,14 +41,14 @@ COMPUTE_SHADERS = [
     ("TexturePageCopyRGBA", "main"),
     ("TexturePageCopyRG", "main"),
     ("UI/ColorPickCompute", "main"),
-    ("DeferredLighting", "main"),
-    ("VisBufferMaterialize", "main"),
-    ("VisBufferMaterializeSkinned", "main"),
+    ("VisBufferShade", "main"),
+    ("VisBufferShadeSkinned", "main"),
     ("ExtractNormalCompute", "main"),
     ("Animation/AnimationCompute", "main"),
     ("Animation/AnimateVertices", "main"),
     ("PreProcessing/CullDrawArgsCompute", "main"),
     ("PreProcessing/CullLightsCompute", "main"),
+    ("PreProcessing/BuildLightTilesCompute", "main"),
     ("PreProcessing/HiZBuildCompute", "main"),
     ("PreProcessing/HiZDownscaleCompute", "main"),
     ("PostProcessing/TonemapCompute", "main"),
@@ -68,10 +65,6 @@ MSL_FIXUPS = {
     ],
     "TerrainFrag": [
         ("NormalLayers [[texture(0)]]", "NormalLayers [[texture(1)]]"),
-    ],
-    "DeferredLightVolumeFrag": [
-        ("AlbedoMetallicTexture [[texture(0)]]", "AlbedoMetallicTexture [[texture(1)]]"),
-        ("ShadowRoughnessTexture [[texture(1)]]", "ShadowRoughnessTexture [[texture(2)]]"),
     ],
     "Animation/AnimateVertices": [
         ("sSparseToDense [[buffer(7)]]", "sSparseToDense [[buffer(6)]]"),

@@ -77,7 +77,7 @@ uint2 frag(VSOutput input, uint primitiveID : SV_PrimitiveID) : SV_Target0
         f16_4 albedoSample = SampleTexturePageRGBA(AlbedoPages, Sampler, albedo, float2(input.texCoords));
         AlphaClipMaterial(material, float(albedoSample.a));
     }
-    // bit7 of the spare byte marks this as a skinned pixel (see VisBufferMaterializeSkinned)
+    // bit7 of the spare byte marks this as a skinned pixel (see VisBufferShadeSkinned)
     uint primitiveIdx = input.drawID / MESH_LOD_COUNT;
     uint lod = input.drawID - primitiveIdx * MESH_LOD_COUNT;
     uint x = (primitiveIdx << 16) | (input.instanceID & 0xFFFFu);

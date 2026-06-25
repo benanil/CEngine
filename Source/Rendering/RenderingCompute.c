@@ -230,10 +230,80 @@ void DispatchCullLightsCompute(SDL_GPUCommandBuffer* cmd, FrustumPlanes frustumP
     }
 }
 
+void DispatchBuildLightTilesCompute(SDL_GPUCommandBuffer* cmd, mat4x4 viewProj, u32 width, u32 height)
+{
+    if (g_RenderState.numLights == 0u) return;
+    if (!g_RenderState.lightBuffer || !g_RenderState.lightVisibilityBuffer ||
+        !g_RenderState.lightTileCountBuffer || !g_RenderState.lightTileIndexBuffer)
+    {
+        AX_WARN("Light tile buffers are not ready");
+        return;
+    }
+    CHECK_CREATE(g_BuildLightTilesComputePipeline, "Build Light Tiles Compute Pipeline");
+
+    u32 tileCountX = (width + LIGHT_TILE_SIZE - 1u) / LIGHT_TILE_SIZE;
+    u32 tileCountY = (height + LIGHT_TILE_SIZE - 1u) / LIGHT_TILE_SIZE;
+    u32 tileCount = tileCountX * tileCountY;
+    if (tileCount > MAX_LIGHT_TILES)
+    {
+        AX_WARN("BuildLightTiles: tile count %d exceeds limit %d", tileCount, MAX_LIGHT_TILES);
+        return;
+    }
+
+    struct {
+        u32 outputSize[2];
+        u32 tileCount[2];
+        u32 numLights;
+        u32 mode;
+        u32 padding[2];
+        mat4x4 viewProjection;
+        f32 cameraPosition[4];
+        f32 cameraRight[4];
+        f32 cameraUp[4];
+    } params = {0};
+    params.outputSize[0] = width;
+    params.outputSize[1] = height;
+    params.tileCount[0] = tileCountX;
+    params.tileCount[1] = tileCountY;
+    params.numLights = g_RenderState.numLights;
+    params.viewProjection = viewProj;
+    params.cameraPosition[0] = g_Camera.position.x;
+    params.cameraPosition[1] = g_Camera.position.y;
+    params.cameraPosition[2] = g_Camera.position.z;
+    params.cameraRight[0] = g_Camera.Right.x;
+    params.cameraRight[1] = g_Camera.Right.y;
+    params.cameraRight[2] = g_Camera.Right.z;
+    params.cameraUp[0] = g_Camera.Up.x;
+    params.cameraUp[1] = g_Camera.Up.y;
+    params.cameraUp[2] = g_Camera.Up.z;
+
+    SDL_GPUBuffer* ro_buffers[2] = {
+        g_RenderState.lightBuffer,
+        g_RenderState.lightVisibilityBuffer
+    };
+    SDL_GPUStorageBufferReadWriteBinding rw_bindings[2] = {
+        { g_RenderState.lightTileCountBuffer },
+        { g_RenderState.lightTileIndexBuffer }
+    };
+
+    SDL_GPUComputePass* pass = SDL_BeginGPUComputePass(cmd, NULL, 0, rw_bindings, SDL_arraysize(rw_bindings));
+    SDL_BindGPUComputePipeline(pass, g_BuildLightTilesComputePipeline);
+    SDL_BindGPUComputeStorageBuffers(pass, 0, ro_buffers, SDL_arraysize(ro_buffers));
+
+    params.mode = 0u;
+    SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
+    SDL_DispatchGPUCompute(pass, (tileCount + 63u) / 64u, 1, 1);
+
+    params.mode = 1u;
+    SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
+    SDL_DispatchGPUCompute(pass, (g_RenderState.numLights + 63u) / 64u, 1, 1);
+    SDL_EndGPUComputePass(pass);
+}
+
 void DispatchHBAOCompute(SDL_GPUCommandBuffer* cmd, bool enabled, u32 width, u32 height)
 {
     WindowState* winstate = &g_WindowState;
-    if (!winstate->tex_hiz_depth || !winstate->tex_gbuffer_tangent || !winstate->tex_hbao ||
+    if (!winstate->tex_hiz_depth || !winstate->tex_hbao ||
         !winstate->tex_hbao_blur || !winstate->tex_hbao_normal) return;
     if (enabled) CHECK_CREATE(g_ExtractNormalComputePipeline, "Extract Normal Compute Pipeline");
     CHECK_CREATE(g_HBAOComputePipeline, "HBAO Compute Pipeline");
@@ -284,9 +354,10 @@ void DispatchHBAOCompute(SDL_GPUCommandBuffer* cmd, bool enabled, u32 width, u32
         pass = SDL_BeginGPUComputePass(cmd, &normalOutput, 1, NULL, 0);
         SDL_BindGPUComputePipeline(pass, g_ExtractNormalComputePipeline);
         SDL_BindGPUComputeSamplers(pass, 0, &(SDL_GPUTextureSamplerBinding){
-            .texture = winstate->tex_gbuffer_tangent,
+            .texture = winstate->tex_hiz_depth,
             .sampler = g_RenderState.hiZSampler
         }, 1);
+        SDL_PushGPUComputeUniformData(cmd, 0, &params.invProjection, sizeof(params.invProjection));
         SDL_DispatchGPUCompute(pass, (aoWidth + 7u) / 8u, (aoHeight + 7u) / 8u, 1);
         SDL_EndGPUComputePass(pass);
     }
@@ -326,92 +397,47 @@ void DispatchHBAOCompute(SDL_GPUCommandBuffer* cmd, bool enabled, u32 width, u32
     SDL_EndGPUComputePass(pass);
 }
 
-void DispatchDeferredLightingCompute(SDL_GPUCommandBuffer* cmd, u32 width, u32 height, mat4x4 viewProj)
+void DispatchVisBufferShade(SDL_GPUCommandBuffer* cmd, u32 width, u32 height, mat4x4 viewProj)
 {
     WindowState* winstate = &g_WindowState;
-    if (!winstate->tex_gbuffer_tangent || !winstate->tex_gbuffer_albedo_metallic ||
-        !winstate->tex_gbuffer_shadow_roughness || !winstate->tex_hiz_depth ||
-        !winstate->tex_hbao_blur || !winstate->tex_color)
+    Scene* scene = g_ActiveScene;
+    if (!scene || scene->surfaceSet.numGroups == 0u || !winstate->tex_visbuffer || !winstate->tex_color ||
+        !winstate->tex_hiz_depth || !winstate->tex_hbao_blur || !winstate->tex_shadow_color ||
+        !winstate->tex_point_shadow_color || !winstate->tex_spot_shadow_color)
     {
-        AX_LOG("Deferred lighting is not ready yet");
+        if (scene && scene->surfaceSet.numGroups != 0u)
+            AX_WARN("DispatchVisBufferShade: required textures are not ready");
         return;
     }
-    CHECK_CREATE(g_DeferredLightingComputePipeline, "Deferred Lighting Compute Pipeline");
+    CHECK_CREATE(g_VisBufferShadePipeline, "VisBuffer Shade Compute Pipeline");
 
     SDL_GPUStorageTextureReadWriteBinding output = {
         .texture = winstate->tex_color,
         .mip_level = 0,
         .layer = 0,
-        .cycle = true
+        .cycle = false
     };
-    SDL_GPUComputePass* pass = SDL_BeginGPUComputePass(cmd, &output, 1, NULL, 0);
-    SDL_BindGPUComputePipeline(pass, g_DeferredLightingComputePipeline);
-
-    SDL_GPUTextureSamplerBinding inputs[5] = {
-        { .texture = winstate->tex_gbuffer_tangent, .sampler = g_RenderState.hiZSampler },
-        { .texture = winstate->tex_gbuffer_albedo_metallic, .sampler = g_RenderState.hiZSampler },
-        { .texture = winstate->tex_gbuffer_shadow_roughness, .sampler = g_RenderState.hiZSampler },
-        { .texture = winstate->tex_hiz_depth, .sampler = g_RenderState.hiZSampler },
-        { .texture = winstate->tex_hbao_blur, .sampler = g_RenderState.sampler }
+    SDL_GPUStorageBufferReadWriteBinding rwBuffers[5] = {
+        { .buffer = g_RenderState.lightBuffer,           .cycle = false },
+        { .buffer = g_RenderState.pointShadowMatrixBuffer, .cycle = false },
+        { .buffer = g_RenderState.spotShadowMatrixBuffer,  .cycle = false },
+        { .buffer = g_RenderState.lightTileCountBuffer,    .cycle = false },
+        { .buffer = g_RenderState.lightTileIndexBuffer,    .cycle = false }
     };
-    SDL_BindGPUComputeSamplers(pass, 0, inputs, SDL_arraysize(inputs));
+    SDL_GPUComputePass* pass = SDL_BeginGPUComputePass(cmd, &output, 1, rwBuffers, SDL_arraysize(rwBuffers));
+    SDL_BindGPUComputePipeline(pass, g_VisBufferShadePipeline);
 
-    float3 sunDirection = GetRenderSunDirection();
-    struct {
-        u32 outputSize[2];
-        f32 padding0[2];
-        mat4x4 invViewProj;
-        f32 cameraPosition[4];
-        f32 sunDirection[4];
-    } params = {0};
-    params.outputSize[0] = width;
-    params.outputSize[1] = height;
-    params.invViewProj = M44Inverse(viewProj);
-    params.cameraPosition[0] = g_Camera.position.x;
-    params.cameraPosition[1] = g_Camera.position.y;
-    params.cameraPosition[2] = g_Camera.position.z;
-    params.sunDirection[0] = sunDirection.x;
-    params.sunDirection[1] = sunDirection.y;
-    params.sunDirection[2] = sunDirection.z;
-    SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
-    SDL_DispatchGPUCompute(pass, (width + 7u) / 8u, (height + 7u) / 8u, 1);
-    SDL_EndGPUComputePass(pass);
-}
-
-// Vis-buffer materialize (Phase A): reconstruct surface attributes from the visibility buffer and
-// write the three G-buffer textures. Reads the prepass depth (tex_hiz_depth) to skip sky, and the
-// 0xFFFFFFFF visbuffer sentinel to skip skinned/terrain pixels.
-void DispatchVisBufferMaterialize(SDL_GPUCommandBuffer* cmd, u32 width, u32 height, mat4x4 viewProj)
-{
-    WindowState* winstate = &g_WindowState;
-    Scene* scene = g_ActiveScene;
-    if (!scene || !winstate->tex_visbuffer || !winstate->tex_gbuffer_tangent ||
-        !winstate->tex_gbuffer_albedo_metallic || !winstate->tex_gbuffer_shadow_roughness ||
-        !winstate->tex_hiz_depth)
-    {
-        AX_WARN("DispatchVisBufferMaterialize: required textures are not ready");
-        return;
-    }
-    CHECK_CREATE(g_VisBufferMaterializePipeline, "VisBuffer Materialize Compute Pipeline");
-
-    // cycle=false: the gbuffer pass (terrain) and the skinned materialize write the same textures;
-    // each pass only writes its own pixels and must preserve the others'.
-    SDL_GPUStorageTextureReadWriteBinding outputs[3] = {
-        { .texture = winstate->tex_gbuffer_tangent,          .mip_level = 0, .layer = 0, .cycle = false },
-        { .texture = winstate->tex_gbuffer_albedo_metallic,  .mip_level = 0, .layer = 0, .cycle = false },
-        { .texture = winstate->tex_gbuffer_shadow_roughness, .mip_level = 0, .layer = 0, .cycle = false }
-    };
-    SDL_GPUComputePass* pass = SDL_BeginGPUComputePass(cmd, outputs, 3, NULL, 0);
-    SDL_BindGPUComputePipeline(pass, g_VisBufferMaterializePipeline);
-
-    SDL_GPUTextureSamplerBinding samplers[5] = {
+    SDL_GPUTextureSamplerBinding samplers[8] = {
         { .texture = scene->textureSystem.classes[TextureClass_Albedo].pages.handle,            .sampler = g_RenderState.sampler },
         { .texture = scene->textureSystem.classes[TextureClass_Normal].pages.handle,            .sampler = g_RenderState.sampler },
         { .texture = scene->textureSystem.classes[TextureClass_MetallicRoughness].pages.handle, .sampler = g_RenderState.sampler },
         { .texture = winstate->tex_shadow_color,                                                .sampler = g_RenderState.shadowSampler },
-        { .texture = winstate->tex_hiz_depth,                                                   .sampler = g_RenderState.hiZSampler }
+        { .texture = winstate->tex_hiz_depth,                                                   .sampler = g_RenderState.hiZSampler },
+        { .texture = winstate->tex_hbao_blur,                                                   .sampler = g_RenderState.sampler },
+        { .texture = winstate->tex_point_shadow_color,                                          .sampler = g_RenderState.shadowSampler },
+        { .texture = winstate->tex_spot_shadow_color,                                           .sampler = g_RenderState.shadowSampler }
     };
-    SDL_BindGPUComputeSamplers(pass, 0, samplers, 5);
+    SDL_BindGPUComputeSamplers(pass, 0, samplers, SDL_arraysize(samplers));
 
     SDL_GPUTexture* visTexture = winstate->tex_visbuffer;
     SDL_BindGPUComputeStorageTextures(pass, 0, &visTexture, 1);
@@ -426,7 +452,7 @@ void DispatchVisBufferMaterialize(SDL_GPUCommandBuffer* cmd, u32 width, u32 heig
         scene->textureSystem.descriptorBuffer,
         g_RenderState.shadowCascadeBuffer
     };
-    SDL_BindGPUComputeStorageBuffers(pass, 0, storageBuffers, 8);
+    SDL_BindGPUComputeStorageBuffers(pass, 0, storageBuffers, SDL_arraysize(storageBuffers));
 
     float3 sunDirection = GetRenderSunDirection();
     struct {
@@ -436,6 +462,9 @@ void DispatchVisBufferMaterialize(SDL_GPUCommandBuffer* cmd, u32 width, u32 heig
         f32 cameraPosition[4];
         f32 cameraForward[4];
         f32 sunDirection[4];
+        u32 tileCount[2];
+        u32 enableLocalLights;
+        u32 padding1;
     } params = {0};
     params.outputSize[0] = width;
     params.outputSize[1] = height;
@@ -449,49 +478,59 @@ void DispatchVisBufferMaterialize(SDL_GPUCommandBuffer* cmd, u32 width, u32 heig
     params.sunDirection[0] = sunDirection.x;
     params.sunDirection[1] = sunDirection.y;
     params.sunDirection[2] = sunDirection.z;
+    params.tileCount[0] = (width + LIGHT_TILE_SIZE - 1u) / LIGHT_TILE_SIZE;
+    params.tileCount[1] = (height + LIGHT_TILE_SIZE - 1u) / LIGHT_TILE_SIZE;
+    params.enableLocalLights = (g_RenderSettings.enableLocalLights && g_RenderState.numLights > 0u &&
+                                g_RenderState.lightTileCountBuffer && g_RenderState.lightTileIndexBuffer) ? 1u : 0u;
     SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
     SDL_DispatchGPUCompute(pass, (width + 7u) / 8u, (height + 7u) / 8u, 1);
     SDL_EndGPUComputePass(pass);
 }
 
-// Skinned counterpart of DispatchVisBufferMaterialize: reconstructs skinned triangles (animated
-// positions + bone-reskinned tangent frame) and writes the gbuffer for skinned pixels.
-void DispatchVisBufferMaterializeSkinned(SDL_GPUCommandBuffer* cmd, u32 width, u32 height, mat4x4 viewProj)
+void DispatchVisBufferShadeSkinned(SDL_GPUCommandBuffer* cmd, u32 width, u32 height, mat4x4 viewProj)
 {
     WindowState* winstate = &g_WindowState;
     Scene* scene = g_ActiveScene;
-    if (!scene || scene->skinnedSet.numGroups == 0u || !winstate->tex_visbuffer ||
-        !winstate->tex_gbuffer_tangent || !winstate->tex_gbuffer_albedo_metallic ||
-        !winstate->tex_gbuffer_shadow_roughness || !winstate->tex_hiz_depth)
+    if (!scene || scene->skinnedSet.numGroups == 0u || !winstate->tex_visbuffer || !winstate->tex_color ||
+        !winstate->tex_hiz_depth || !winstate->tex_hbao_blur || !winstate->tex_shadow_color ||
+        !winstate->tex_point_shadow_color || !winstate->tex_spot_shadow_color ||
+        !g_RenderState.skinned.animatedVertices || !scene->animSystem.boneBuffer)
     {
         if (scene && scene->skinnedSet.numGroups != 0u)
-            AX_WARN("DispatchVisBufferMaterializeSkinned: required textures are not ready");
+            AX_WARN("DispatchVisBufferShadeSkinned: required resources are not ready");
         return;
     }
-    CHECK_CREATE(g_VisBufferMaterializeSkinnedPipeline, "VisBuffer Materialize Skinned Compute Pipeline");
+    CHECK_CREATE(g_VisBufferShadeSkinnedPipeline, "VisBuffer Shade Skinned Compute Pipeline");
 
-    SDL_GPUStorageTextureReadWriteBinding outputs[3] = {
-        { .texture = winstate->tex_gbuffer_tangent,          .mip_level = 0, .layer = 0, .cycle = false },
-        { .texture = winstate->tex_gbuffer_albedo_metallic,  .mip_level = 0, .layer = 0, .cycle = false },
-        { .texture = winstate->tex_gbuffer_shadow_roughness, .mip_level = 0, .layer = 0, .cycle = false }
+    SDL_GPUStorageTextureReadWriteBinding output = {
+        .texture = winstate->tex_color,
+        .mip_level = 0,
+        .layer = 0,
+        .cycle = false
     };
-    // animatedVertices + boneBuffer are read-only in the shader but bound as RW storage buffers to
-    // stay within SDL's 8 readonly-storage-buffer compute limit.
-    SDL_GPUStorageBufferReadWriteBinding rwBuffers[2] = {
+    SDL_GPUStorageBufferReadWriteBinding rwBuffers[7] = {
         { .buffer = g_RenderState.skinned.animatedVertices, .cycle = false },
-        { .buffer = scene->animSystem.boneBuffer,           .cycle = false }
+        { .buffer = scene->animSystem.boneBuffer,           .cycle = false },
+        { .buffer = g_RenderState.lightBuffer,              .cycle = false },
+        { .buffer = g_RenderState.pointShadowMatrixBuffer,  .cycle = false },
+        { .buffer = g_RenderState.spotShadowMatrixBuffer,   .cycle = false },
+        { .buffer = g_RenderState.lightTileCountBuffer,     .cycle = false },
+        { .buffer = g_RenderState.lightTileIndexBuffer,     .cycle = false }
     };
-    SDL_GPUComputePass* pass = SDL_BeginGPUComputePass(cmd, outputs, 3, rwBuffers, 2);
-    SDL_BindGPUComputePipeline(pass, g_VisBufferMaterializeSkinnedPipeline);
+    SDL_GPUComputePass* pass = SDL_BeginGPUComputePass(cmd, &output, 1, rwBuffers, SDL_arraysize(rwBuffers));
+    SDL_BindGPUComputePipeline(pass, g_VisBufferShadeSkinnedPipeline);
 
-    SDL_GPUTextureSamplerBinding samplers[5] = {
+    SDL_GPUTextureSamplerBinding samplers[8] = {
         { .texture = scene->textureSystem.classes[TextureClass_Albedo].pages.handle,            .sampler = g_RenderState.sampler },
         { .texture = scene->textureSystem.classes[TextureClass_Normal].pages.handle,            .sampler = g_RenderState.sampler },
         { .texture = scene->textureSystem.classes[TextureClass_MetallicRoughness].pages.handle, .sampler = g_RenderState.sampler },
         { .texture = winstate->tex_shadow_color,                                                .sampler = g_RenderState.shadowSampler },
-        { .texture = winstate->tex_hiz_depth,                                                   .sampler = g_RenderState.hiZSampler }
+        { .texture = winstate->tex_hiz_depth,                                                   .sampler = g_RenderState.hiZSampler },
+        { .texture = winstate->tex_hbao_blur,                                                   .sampler = g_RenderState.sampler },
+        { .texture = winstate->tex_point_shadow_color,                                          .sampler = g_RenderState.shadowSampler },
+        { .texture = winstate->tex_spot_shadow_color,                                           .sampler = g_RenderState.shadowSampler }
     };
-    SDL_BindGPUComputeSamplers(pass, 0, samplers, 5);
+    SDL_BindGPUComputeSamplers(pass, 0, samplers, SDL_arraysize(samplers));
 
     SDL_GPUTexture* visTexture = winstate->tex_visbuffer;
     SDL_BindGPUComputeStorageTextures(pass, 0, &visTexture, 1);
@@ -506,7 +545,7 @@ void DispatchVisBufferMaterializeSkinned(SDL_GPUCommandBuffer* cmd, u32 width, u
         scene->textureSystem.descriptorBuffer,
         g_RenderState.shadowCascadeBuffer
     };
-    SDL_BindGPUComputeStorageBuffers(pass, 0, storageBuffers, 8);
+    SDL_BindGPUComputeStorageBuffers(pass, 0, storageBuffers, SDL_arraysize(storageBuffers));
 
     float3 sunDirection = GetRenderSunDirection();
     struct {
@@ -516,6 +555,9 @@ void DispatchVisBufferMaterializeSkinned(SDL_GPUCommandBuffer* cmd, u32 width, u
         f32 cameraPosition[4];
         f32 cameraForward[4];
         f32 sunDirection[4];
+        u32 tileCount[2];
+        u32 enableLocalLights;
+        u32 padding1;
     } params = {0};
     params.outputSize[0] = width;
     params.outputSize[1] = height;
@@ -529,6 +571,10 @@ void DispatchVisBufferMaterializeSkinned(SDL_GPUCommandBuffer* cmd, u32 width, u
     params.sunDirection[0] = sunDirection.x;
     params.sunDirection[1] = sunDirection.y;
     params.sunDirection[2] = sunDirection.z;
+    params.tileCount[0] = (width + LIGHT_TILE_SIZE - 1u) / LIGHT_TILE_SIZE;
+    params.tileCount[1] = (height + LIGHT_TILE_SIZE - 1u) / LIGHT_TILE_SIZE;
+    params.enableLocalLights = (g_RenderSettings.enableLocalLights && g_RenderState.numLights > 0u &&
+                                g_RenderState.lightTileCountBuffer && g_RenderState.lightTileIndexBuffer) ? 1u : 0u;
     SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
     SDL_DispatchGPUCompute(pass, (width + 7u) / 8u, (height + 7u) / 8u, 1);
     SDL_EndGPUComputePass(pass);
