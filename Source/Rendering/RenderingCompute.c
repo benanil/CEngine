@@ -442,10 +442,9 @@ void DispatchVisBufferShade(SDL_GPUCommandBuffer* cmd, u32 width, u32 height, ma
     SDL_GPUTexture* visTexture = winstate->tex_visbuffer;
     SDL_BindGPUComputeStorageTextures(pass, 0, &visTexture, 1);
 
-    SDL_GPUBuffer* storageBuffers[8] = {
+    SDL_GPUBuffer* storageBuffers[7] = {
         scene->surfaceBuffers.entity,
         scene->surfaceBuffers.primitiveGroup,
-        scene->surfaceBuffers.drawSparseIndices,
         g_RenderState.surface.vertexBuffer,
         g_RenderState.indexBuffer,
         scene->textureSystem.materialBuffer,
@@ -535,10 +534,9 @@ void DispatchVisBufferShadeSkinned(SDL_GPUCommandBuffer* cmd, u32 width, u32 hei
     SDL_GPUTexture* visTexture = winstate->tex_visbuffer;
     SDL_BindGPUComputeStorageTextures(pass, 0, &visTexture, 1);
 
-    SDL_GPUBuffer* storageBuffers[8] = {
+    SDL_GPUBuffer* storageBuffers[7] = {
         scene->skinnedBuffers.entity,
         scene->skinnedBuffers.primitiveGroup,
-        scene->skinnedBuffers.drawSparseIndices,
         g_RenderState.indexBuffer,
         g_RenderState.skinned.vertexBuffer,
         scene->textureSystem.materialBuffer,

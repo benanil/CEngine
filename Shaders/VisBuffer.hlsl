@@ -37,7 +37,7 @@ struct VSOutput
     f16_2_io texCoords  : TEXCOORD0;
     nointerpolation uint materialIndex : TEXCOORD1;
     nointerpolation uint drawID        : TEXCOORD2;
-    nointerpolation uint instanceID    : TEXCOORD3;
+    nointerpolation uint denseIdx      : TEXCOORD3;
 };
 
 VSOutput vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("DrawIndex")]] uint drawID : DRAWINDEX)
@@ -59,7 +59,7 @@ VSOutput vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("Dra
     o.texCoords    = input.aTexCoords;
     o.materialIndex = group.materialIndex;
     o.drawID       = drawID;
-    o.instanceID   = instanceID;
+    o.denseIdx     = denseIdx;
     return o;
 }
 
@@ -73,11 +73,11 @@ uint2 frag(VSOutput input, uint primitiveID : SV_PrimitiveID) : SV_Target0
         AlphaClipMaterial(material, float(albedoSample.a));
     }
     // 8-byte RG32_UINT visibility buffer:
-    //   x = (primitiveIdx:16 << 16) | instanceID:16   (MAX_GROUP=65535, <=65535 instances/group)
-    //   y = (triangleID:24    <<  8) | lod:8           (lod 0..2; 0xFF in the spare byte = cleared)
+    //   x = dense entity index; 0xFFFFFFFF means cleared/empty
+    //   y = (triangleID:24 << 8) | lod:8
     uint primitiveIdx = input.drawID / MESH_LOD_COUNT;
     uint lod = input.drawID - primitiveIdx * MESH_LOD_COUNT;
-    uint x = (primitiveIdx << 16) | (input.instanceID & 0xFFFFu);
+    uint x = input.denseIdx;
     uint y = ((primitiveID & 0xFFFFFFu) << 8) | (lod & 0xFFu);
     return uint2(x, y);
 }

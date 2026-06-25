@@ -1,11 +1,8 @@
 #ifndef RENDER_LIMITS_H
 #define RENDER_LIMITS_H
 
-#define MAX_GROUP               65534u /* visibility buffer reserves primitiveIdx 0xFFFF as sentinel */
-#define MAX_INSTANCE_PER_GROUP  65534u /* packed into 16 bits; leave 0xFFFF invalid */
 #define MAX_BUNDLES             65534u
 #define MAX_ENTITY              131070u /* practical resident entity storage */
-#define MAX_POSSIBLE_ENTITY     (MAX_GROUP * MAX_INSTANCE_PER_GROUP)
 #define MESH_LOD_COUNT          3u
 
 #define SHADOW_MAP_SIZE            (1024u * 3u)

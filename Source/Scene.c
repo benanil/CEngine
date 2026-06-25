@@ -487,10 +487,10 @@ static s32 Scene_EnsureBundleCapacity(Scene* scene, u32 needed)
 void Scene_Init(Scene* scene)
 {
     MemsetZero(scene, sizeof(*scene));
-    RenderSet_InitSet(&scene->skinnedSet, MAX_ANIM_INSTANCES, MAX_GROUP, MAX_BUNDLES, true);
-    RenderSet_InitSet(&scene->surfaceSet, MAX_ENTITY, MAX_GROUP, MAX_BUNDLES, false);
-    CreateRenderSetBuffers(&scene->skinnedBuffers, MAX_ANIM_INSTANCES, MAX_GROUP);
-    CreateRenderSetBuffers(&scene->surfaceBuffers, MAX_ENTITY, MAX_GROUP);
+    RenderSet_InitSet(&scene->skinnedSet, MAX_ANIM_INSTANCES, MAX_ENTITY, MAX_BUNDLES, true);
+    RenderSet_InitSet(&scene->surfaceSet, MAX_ENTITY, MAX_ENTITY, MAX_BUNDLES, false);
+    CreateRenderSetBuffers(&scene->skinnedBuffers, MAX_ANIM_INSTANCES, MAX_ENTITY);
+    CreateRenderSetBuffers(&scene->surfaceBuffers, MAX_ENTITY, MAX_ENTITY);
     TextureSystem_Init(&scene->textureSystem);
     AnimationSystem_Init(&scene->animSystem);
     scene->lights = (LightGPU*)AllocZeroTLSFGlobal(MAX_SCENE_LIGHTS, sizeof(LightGPU));

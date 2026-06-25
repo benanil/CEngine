@@ -209,7 +209,7 @@ typedef struct MaterialGPU_
 typedef struct WindowState
 {
     SDL_GPUTexture* tex_depth, *tex_hiz_depth, *tex_color, *tex_post, *tex_hiz;
-    SDL_GPUTexture* tex_visbuffer; // visibility buffer RG32_UINT: x=(primitiveIdx<<16|instanceID), y=(triangleID<<8|lod)
+    SDL_GPUTexture* tex_visbuffer; // visibility buffer RG32_UINT: x=dense entity index, y=(triangleID<<8|lod/type)
     SDL_GPUTexture* tex_hbao, *tex_hbao_blur, *tex_hbao_normal;
     SDL_GPUTexture* tex_mlaa_edge_mask, *tex_mlaa_edge_count, *tex_mlaa_output;
     SDL_GPUTexture* tex_shadow_depth, *tex_shadow_color;

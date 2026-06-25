@@ -15,21 +15,16 @@ extern Graphics gGFX;
 void RenderSet_InitSet(RenderSet* set, u32 maxEntities, u32 maxGroups, u32 maxBundles, bool skinned)
 {
     MemsetZero(set, sizeof(*set));
-    if (maxGroups > MAX_GROUP)
-    {
-        AX_WARN("RenderSet_InitSet: maxGroups %d exceeds visibility buffer limit %d", maxGroups, MAX_GROUP);
-        maxGroups = MAX_GROUP;
-    }
     if (maxBundles > MAX_BUNDLES)
     {
         AX_WARN("RenderSet_InitSet: maxBundles %d exceeds limit %d", maxBundles, MAX_BUNDLES);
         maxBundles = MAX_BUNDLES;
     }
 
-	if (maxEntities > MAX_POSSIBLE_ENTITY)
+    if (maxEntities > MAX_ENTITY)
     {
-        AX_WARN("RenderSet_InitSet: maxEntities %d exceeds limit %d", maxEntities, MAX_POSSIBLE_ENTITY);
-        maxEntities = MAX_POSSIBLE_ENTITY;
+        AX_WARN("RenderSet_InitSet: maxEntities %d exceeds limit %d", maxEntities, MAX_ENTITY);
+        maxEntities = MAX_ENTITY;
     }
     set->maxEntities = maxEntities;
     set->maxGroups   = maxGroups;
@@ -338,13 +333,6 @@ static u32 LeaveSpaceForEntities(RenderSet* set, u32 primitiveIdx, u32 numAdded)
     }
 
     PrimitiveGroup* group = &set->primitiveGroups[primitiveIdx];
-    if (group->numEntities + numAdded > MAX_INSTANCE_PER_GROUP)
-    {
-        AX_WARN("RenderSet_AddEntities: visibility buffer instance limit reached for group %d: %d + %d > %d",
-                primitiveIdx, group->numEntities, numAdded, MAX_INSTANCE_PER_GROUP);
-        return INVALID_ENTITY;
-    }
-
     const u32 entityStart = group->entityOffset + group->numEntities;
     if (set->numEntities + numAdded > set->maxEntities)
     {
@@ -489,20 +477,6 @@ u32 RenderSet_AddScene(RenderSet* set, u32 bundleIdx, v128f position, v128f rota
         return INVALID_ENTITY;
     }
 
-#if DEBUG
-    for (u32 p = 0; p < numPrimitives; p++)
-    {
-        PrimitiveGroup* group = &set->primitiveGroups[range.start + p];
-        if (group->numEntities + primitiveCounts[p] > MAX_INSTANCE_PER_GROUP)
-        {
-            AX_WARN("RenderSet_AddScene: visibility buffer instance limit reached for group %d: %d + %d > %d",
-                    range.start + p, group->numEntities, primitiveCounts[p], MAX_INSTANCE_PER_GROUP);
-            ArenaPopGlobal(((u32)numNodes + 1u) * sizeof(Entity));
-            ArenaPopGlobal(numPrimitives * sizeof(u32));
-            return INVALID_ENTITY;
-        }
-    }
-#endif
     u32 sparseCount = set->skinned ? meshNodeCount : totalPrimAdded;
     u32 sparseStart = RenderSet_AllocateSparseIDRange(set, sparseCount);
     if (sparseStart == INVALID_ENTITY)

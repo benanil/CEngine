@@ -39,7 +39,7 @@ struct VSOutput
     f16_2_io texCoords  : TEXCOORD0;
     nointerpolation uint materialIndex : TEXCOORD1;
     nointerpolation uint drawID        : TEXCOORD2;
-    nointerpolation uint instanceID    : TEXCOORD3;
+    nointerpolation uint denseIdx      : TEXCOORD3;
 };
 
 VSOutput vert(VSInput input, uint instanceID : SV_InstanceID,
@@ -64,7 +64,7 @@ VSOutput vert(VSInput input, uint instanceID : SV_InstanceID,
     o.texCoords     = input.aTexCoords;
     o.materialIndex = group.materialIndex;
     o.drawID        = drawID;
-    o.instanceID    = instanceID;
+    o.denseIdx      = denseIdx;
     return o;
 }
 
@@ -80,7 +80,7 @@ uint2 frag(VSOutput input, uint primitiveID : SV_PrimitiveID) : SV_Target0
     // bit7 of the spare byte marks this as a skinned pixel (see VisBufferShadeSkinned)
     uint primitiveIdx = input.drawID / MESH_LOD_COUNT;
     uint lod = input.drawID - primitiveIdx * MESH_LOD_COUNT;
-    uint x = (primitiveIdx << 16) | (input.instanceID & 0xFFFFu);
+    uint x = input.denseIdx;
     uint y = ((primitiveID & 0xFFFFFFu) << 8) | 0x80u | (lod & 0x03u);
     return uint2(x, y);
 }

@@ -293,13 +293,13 @@ static void InitComputePipelines(void)
     }); CHECK_CREATE(g_HBAOBlurComputePipeline, "HBAO Blur Compute Pipeline");
 
     g_VisBufferShadePipeline = COMPUTE_DEF(Shaders_VisBufferShade_spv),
-        .num_samplers = 8, .num_readonly_storage_textures = 1, .num_readonly_storage_buffers = 8,
+        .num_samplers = 8, .num_readonly_storage_textures = 1, .num_readonly_storage_buffers = 7,
         .num_readwrite_storage_textures = 1, .num_readwrite_storage_buffers = 5, .num_uniform_buffers = 1,
         THREAD_COUNT_XYZ(8, 8, 1)
     }); CHECK_CREATE(g_VisBufferShadePipeline, "VisBuffer Shade Compute Pipeline");
 
     g_VisBufferShadeSkinnedPipeline = COMPUTE_DEF(Shaders_VisBufferShadeSkinned_spv),
-        .num_samplers = 8, .num_readonly_storage_textures = 1, .num_readonly_storage_buffers = 8,
+        .num_samplers = 8, .num_readonly_storage_textures = 1, .num_readonly_storage_buffers = 7,
         .num_readwrite_storage_textures = 1, .num_readwrite_storage_buffers = 7, .num_uniform_buffers = 1,
         THREAD_COUNT_XYZ(8, 8, 1)
     }); CHECK_CREATE(g_VisBufferShadeSkinnedPipeline, "VisBuffer Shade Skinned Compute Pipeline");
@@ -641,7 +641,7 @@ static void InitUIImagePipeline(void)
 }
 
 // Visibility-buffer raster for the surface set: same transform as the old surface pass but
-// a single RGBA32_UINT target carrying (drawID, instanceID, triangleID). Depth-equal against the
+// a single RG32_UINT target carrying (dense entity, triangleID, lod/type). Depth-equal against the
 // prepass so only the frontmost triangle writes IDs.
 static void InitVisBufferPipeline(void)
 {

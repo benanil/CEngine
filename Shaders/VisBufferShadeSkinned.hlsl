@@ -47,12 +47,11 @@ SamplerState           SpotShadowSampler      : register(s7, space0);
 Texture2D<uint2>       VisBuffer              : register(t8, space0);
 StructuredBuffer<Entity>              sEntities           : register(t9, space0);
 StructuredBuffer<PrimitiveGroup>      sPrimitiveGroups    : register(t10, space0);
-StructuredBuffer<uint>                sDrawSparseIndices  : register(t11, space0);
-StructuredBuffer<uint>                sIndexBuffer        : register(t12, space0);
-StructuredBuffer<SkinnedVertex>       sSkinnedVertex      : register(t13, space0);
-StructuredBuffer<MaterialGPU>         sMaterials          : register(t14, space0);
-StructuredBuffer<TextureDescriptor>   sTextureDescriptors : register(t15, space0);
-StructuredBuffer<ShadowCascadeBuffer> sShadowCascades     : register(t16, space0);
+StructuredBuffer<uint>                sIndexBuffer        : register(t11, space0);
+StructuredBuffer<SkinnedVertex>       sSkinnedVertex      : register(t12, space0);
+StructuredBuffer<MaterialGPU>         sMaterials          : register(t13, space0);
+StructuredBuffer<TextureDescriptor>   sTextureDescriptors : register(t14, space0);
+StructuredBuffer<ShadowCascadeBuffer> sShadowCascades     : register(t15, space0);
 
 [[vk::image_format("rgba16f")]] RWTexture2D<float4> OutputTexture : register(u0, space1);
 RWStructuredBuffer<AnimatedVert>      sAnimatedVert       : register(u1, space1);
@@ -140,16 +139,15 @@ void main(uint3 tid : SV_DispatchThreadID)
     if (depth >= 0.9999f) return;
 
     uint2 ids = VisBuffer.Load(int3(pixel, 0));
-    if ((ids.x >> 16) == 0xFFFFu) return;
+    if (ids.x == 0xFFFFFFFFu) return;
     if ((ids.y & 0x80u) == 0u) return;
 
-    uint primitiveIdx = ids.x >> 16;
-    uint instanceID = ids.x & 0xFFFFu;
+    uint denseIdx = ids.x;
     uint triangleID = ids.y >> 8;
     uint lod = ids.y & 0x03u;
-    PrimitiveGroup group = sPrimitiveGroups[primitiveIdx];
-    uint denseIdx = sDrawSparseIndices[lod * uint(MAX_ANIM_INSTANCES) + group.entityOffset + instanceID];
     Entity entity = sEntities[denseIdx];
+    uint primitiveIdx = entity.primitiveIdx;
+    PrimitiveGroup group = sPrimitiveGroups[primitiveIdx];
     uint sparse = entity.sparse;
 
     f16_4 insRot = normalize(UnpackRGBA16Snorm(entity.rotation[0], entity.rotation[1]));
