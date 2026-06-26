@@ -123,12 +123,19 @@ s32 SceneSerializer_Save(Scene* scene, const char* path)
         WEnd(file, line, p);
     }
 
+    // bundle indices are stable handles and may contain holes; persist only the live bundles,
+    // a reload re-adds them sequentially into a hole-free scene.
+    u32 liveBundles = 0;
+    for (u32 b = 0; b < scene->numBundles; b++)
+        liveBundles += scene->bundleRefs[b].bundle != NULL;
+
     p = WStr(line, "bundles");
-    p = WInt(p, (s64)scene->numBundles);
+    p = WInt(p, (s64)liveBundles);
     WEnd(file, line, p);
     for (u32 b = 0; b < scene->numBundles; b++)
     {
         const SceneBundleRef* ref = &scene->bundleRefs[b];
+        if (!ref->bundle) continue;
         p = WStr(line, "bundle");
         p = WInt(p, ref->skinned != 0);
         p = WInt(p, (s64)ref->materialOffset);

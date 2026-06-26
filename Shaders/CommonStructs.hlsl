@@ -53,7 +53,7 @@ typedef struct PrimitiveGroup_
     uint meshIndex;
     uint primitiveIndex;
     uint materialIndex;
-    uint valid;
+    uint bundleIdx; // cpu-only owning bundle slot, unused on the gpu
     uint numVertices;
     float4 aabbMin;
     float4 aabbMax;

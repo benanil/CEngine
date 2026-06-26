@@ -52,9 +52,10 @@ typedef struct Scene_
     TextureSystem    textureSystem;
     AnimationSystem  animSystem;
 
-    SceneBundleRef* bundleRefs;     // tlsf, doubles on demand up to MAX_SCENE_BUNDLES
-    u32             numBundles;
-    u32             bundleCapacity;
+    SceneBundleRef* bundleRefs;     // fixed MAX_SCENE_BUNDLES allocation. bundle indices are stable
+                                     // handles, removing one never shifts the others
+    u64*            bundleSlots;     // MAX_SCENE_BUNDLES bits, 1 means occupied
+    u32             numBundles;      // watermark: highest used bundle slot + 1, slots below may be empty
     u64*            materialSlots;   // MAX_GPU_MATERIALS bits, 1 means occupied
 
     LightGPU* lights;    // tlsf, MAX_SCENE_LIGHTS, authored lights pushed by Scene_SubmitLights
@@ -166,7 +167,7 @@ Scene* Scene_GetActive(void);
 // Copies the resident cache entry for a scene render bundle into *out (looked up by key under the
 // cache lock). out: false when the bundle is not resident. The copied bvhNodes/bvhTris pointers stay
 // valid while the bundle is referenced; never hold the entry pointer itself, the map relocates it.
-bool FindCacheForRenderBundle(const Scene* scene, bool skinned, u32 renderIdx, BundleCacheEntry* out);
+bool FindCacheForSceneBundle(const Scene* scene, u32 bundleIdx, BundleCacheEntry* out);
 
 // ASYNC
 

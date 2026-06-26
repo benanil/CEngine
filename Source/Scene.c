@@ -457,31 +457,38 @@ static void BundleCacheRelease(const char* path)
     BundleCacheReleaseKey(StringToHash64(path));
 }
 
-// doubles the tlsf backed bundle ref array, bundle lists are usually small but can
-// fragment heavily between scenes. out: 0 on allocation failure or hard cap
-static s32 Scene_EnsureBundleCapacity(Scene* scene, u32 needed)
+// reserves the lowest free bundle slot so indices stay stable across removals. the ref array is a
+// fixed MAX_SCENE_BUNDLES allocation. out: bundle slot index, INVALID_BUNDLE when full
+static u32 Scene_AllocBundleSlot(Scene* scene)
 {
-    if (needed <= scene->bundleCapacity) return 1;
-    if (needed > MAX_SCENE_BUNDLES)
+    s32 slot = BitsetFindFirstEmpty(scene->bundleSlots, (s32)MAX_SCENE_BUNDLES);
+    if (slot < 0)
     {
         AX_WARN("maximum scene bundle count reached: %d", MAX_SCENE_BUNDLES);
-        return 0;
+        return INVALID_BUNDLE;
     }
+    BitsetSet(scene->bundleSlots, slot);
+    if ((u32)slot + 1u > scene->numBundles) scene->numBundles = (u32)slot + 1u;
+    return (u32)slot;
+}
 
-    u32 newCapacity = scene->bundleCapacity ? scene->bundleCapacity * 2u : 16u;
-    while (newCapacity < needed) newCapacity += newCapacity >> 1;
-    if (newCapacity > MAX_SCENE_BUNDLES) newCapacity = MAX_SCENE_BUNDLES;
+// frees a bundle slot and pulls the watermark back over any trailing empty slots
+static void Scene_FreeBundleSlot(Scene* scene, u32 bundleIdx)
+{
+    BitsetReset(scene->bundleSlots, (s32)bundleIdx);
+    MemsetZero(&scene->bundleRefs[bundleIdx], sizeof(SceneBundleRef));
+    while (scene->numBundles > 0 && !BitsetGet(scene->bundleSlots, (s32)(scene->numBundles - 1u)))
+        scene->numBundles--;
+}
 
-    SceneBundleRef* refs = (SceneBundleRef*)AllocateTLSFGlobal(newCapacity * sizeof(SceneBundleRef));
-    if (!refs) return 0;
-    if (scene->bundleRefs)
-    {
-        MemCopy(refs, scene->bundleRefs, scene->numBundles * sizeof(SceneBundleRef));
-        DeAllocateTLSFGlobal(scene->bundleRefs);
-    }
-    scene->bundleRefs = refs;
-    scene->bundleCapacity = newCapacity;
-    return 1;
+// stamps every primitive group of a render bundle with its owning scene bundle index. both indices
+// are stable handles, so the group keeps pointing at the right bundle even after group compaction,
+// giving O(1) render-group -> scene-bundle without a reverse map.
+static void Scene_StampGroupBundle(RenderSet* set, u32 renderIdx, u32 sceneIdx)
+{
+    Range range = set->bundlePrimitiveRange[renderIdx];
+    for (u32 g = 0; g < range.count; g++)
+        set->primitiveGroups[range.start + g].bundleIdx = sceneIdx;
 }
 
 void Scene_Init(Scene* scene)
@@ -495,13 +502,16 @@ void Scene_Init(Scene* scene)
     AnimationSystem_Init(&scene->animSystem);
     scene->lights = (LightGPU*)AllocZeroTLSFGlobal(MAX_SCENE_LIGHTS, sizeof(LightGPU));
     scene->materialSlots = (u64*)AllocZeroTLSFGlobal((MAX_GPU_MATERIALS + 63u) >> 6, sizeof(u64));
+    scene->bundleSlots   = (u64*)AllocZeroTLSFGlobal((MAX_SCENE_BUNDLES + 63u) >> 6, sizeof(u64));
+    scene->bundleRefs    = (SceneBundleRef*)AllocZeroTLSFGlobal(MAX_SCENE_BUNDLES, sizeof(SceneBundleRef));
 }
 
 void Scene_Destroy(Scene* scene)
 {
     Scene_Deactivate(scene);
     for (u32 i = 0; i < scene->numBundles; i++)
-        BundleCacheRelease(scene->bundleRefs[i].path);
+        if (scene->bundleRefs[i].bundle)
+            BundleCacheRelease(scene->bundleRefs[i].path);
     DestroyRenderSetBuffers(&scene->skinnedBuffers);
     DestroyRenderSetBuffers(&scene->surfaceBuffers);
     TextureSystem_Destroy(&scene->textureSystem);
@@ -509,10 +519,11 @@ void Scene_Destroy(Scene* scene)
     if (scene->bundleRefs) DeAllocateTLSFGlobal(scene->bundleRefs);
     if (scene->lights) DeAllocateTLSFGlobal(scene->lights);
     if (scene->materialSlots) DeAllocateTLSFGlobal(scene->materialSlots);
+    if (scene->bundleSlots) DeAllocateTLSFGlobal(scene->bundleSlots);
     scene->bundleRefs = NULL;
-    scene->bundleCapacity = 0;
     scene->lights = NULL;
     scene->materialSlots = NULL;
+    scene->bundleSlots = NULL;
     if (scene == &g_OwnedActiveScene)
     {
         g_OwnedActiveSceneInit = false;
@@ -612,7 +623,7 @@ static s32 LoadBundleImagesFromCache(const char* gltfPath, Texture* staging, s32
 static u32 Scene_FindBundle(const Scene* scene, const char* path)
 {
     for (u32 i = 0; i < scene->numBundles; i++)
-        if (StringEqual(scene->bundleRefs[i].path, path, StringLength(path) + 1))
+        if (scene->bundleRefs[i].bundle && StringEqual(scene->bundleRefs[i].path, path, StringLength(path) + 1))
             return i;
     return INVALID_BUNDLE;
 }
@@ -664,8 +675,11 @@ u32 Scene_AddBundle(Scene* scene, const char* path, bool skinned)
     u32 existing = Scene_FindBundle(scene, path);
     if (existing != INVALID_BUNDLE)
         return existing;
-    if (!Scene_EnsureBundleCapacity(scene, scene->numBundles + 1))
+    if (BitsetFindFirstEmpty(scene->bundleSlots, (s32)MAX_SCENE_BUNDLES) < 0)
+    {
+        AX_WARN("maximum scene bundle count reached: %d", MAX_SCENE_BUNDLES);
         return INVALID_BUNDLE;
+    }
     if (scene->texturesBaked && !Scene_RepackTextures(scene))
         return INVALID_BUNDLE;
 
@@ -713,7 +727,12 @@ u32 Scene_AddBundle(Scene* scene, const char* path, bool skinned)
     u32 renderIdx   = RenderSet_AddSceneBundle(set, bundle, materialOffset);
     if (renderIdx == INVALID_BUNDLE) goto err_textures;
 
-    u32 bundleIdx           = scene->numBundles++;
+    u32 bundleIdx           = Scene_AllocBundleSlot(scene);
+    if (bundleIdx == INVALID_BUNDLE)
+    {
+        RenderSet_RemoveSceneBundle(set, renderIdx);
+        goto err_textures;
+    }
     SceneBundleRef* ref     = &scene->bundleRefs[bundleIdx];
     ref->path               = storedPath;
     ref->bundle             = bundle;
@@ -723,6 +742,7 @@ u32 Scene_AddBundle(Scene* scene, const char* path, bool skinned)
     ref->animAlloc          = animAlloc;
     ref->skinned            = skinned;
     ref->cacheKey           = StringToHash64(storedPath);
+    Scene_StampGroupBundle(set, renderIdx, bundleIdx);
 
     if (materialOffset + (u32)bundle->numMaterials > scene->numMaterials)
         scene->numMaterials = materialOffset + (u32)bundle->numMaterials;
@@ -751,23 +771,19 @@ const SceneBundle* Scene_AcquireBundlePeek(const char* path)
     return entry ? entry->bundle : NULL;
 }
 
-bool FindCacheForRenderBundle(const Scene* scene, bool skinned, u32 renderIdx, BundleCacheEntry* out)
+bool FindCacheForSceneBundle(const Scene* scene, u32 bundleIdx, BundleCacheEntry* out)
 {
-    for (u32 i = 0; i < scene->numBundles; i++)
-    {
-        const SceneBundleRef* ref = &scene->bundleRefs[i];
-        if ((ref->skinned != 0) != skinned || ref->renderIdx != renderIdx) continue;
+    if (bundleIdx >= scene->numBundles || !scene->bundleRefs[bundleIdx].bundle) return false;
+    const SceneBundleRef* ref = &scene->bundleRefs[bundleIdx];
 
-        // Copy the entry out under the lock, addressed by key: gBundleCache relocates entries on grow
-        // and on swap-with-last erase, so a stored/returned pointer could dangle. The copied
-        // bvhNodes/bvhTris are stable heap allocations that live while the bundle is referenced.
-        SDL_LockSpinlock(&g_BundleCacheLock);
-        const BundleCacheEntry* entry = (const BundleCacheEntry*)HMFind(&gBundleCache, ref->cacheKey);
-        if (entry) *out = *entry;
-        SDL_UnlockSpinlock(&g_BundleCacheLock);
-        return entry != NULL;
-    }
-    return false;
+    // Copy the entry out under the lock, addressed by key: gBundleCache relocates entries on grow
+    // and on swap-with-last erase, so a stored/returned pointer could dangle. The copied
+    // bvhNodes/bvhTris are stable heap allocations that live while the bundle is referenced.
+    SDL_LockSpinlock(&g_BundleCacheLock);
+    const BundleCacheEntry* entry = (const BundleCacheEntry*)HMFind(&gBundleCache, ref->cacheKey);
+    if (entry) *out = *entry;
+    SDL_UnlockSpinlock(&g_BundleCacheLock);
+    return entry != NULL;
 }
 
 u32 Scene_DefaultAnimation(const Scene* scene, u32 bundleIdx)
@@ -782,17 +798,12 @@ u32 Scene_DefaultAnimation(const Scene* scene, u32 bundleIdx)
 u32 Scene_FindBundleForRenderGroup(const Scene* scene, bool skinned, u32 groupIdx)
 {
     if (!scene) return INVALID_BUNDLE;
-    for (u32 i = 0; i < scene->numBundles; i++)
-    {
-        const SceneBundleRef* ref = &scene->bundleRefs[i];
-        if ((ref->skinned != 0) != skinned) continue;
+    const RenderSet* set = skinned ? &scene->skinnedSet : &scene->surfaceSet;
+    if (groupIdx >= set->numGroups) return INVALID_BUNDLE;
 
-        const RenderSet* set = skinned ? &scene->skinnedSet : &scene->surfaceSet;
-        Range range = set->bundlePrimitiveRange[ref->renderIdx];
-        if (groupIdx >= range.start && groupIdx < range.start + range.count)
-            return i;
-    }
-    return INVALID_BUNDLE;
+    // each group stores its owning scene bundle index directly. it is a stable handle and rides
+    // along through group compaction, so this is a plain O(1) field read.
+    return set->primitiveGroups[groupIdx].bundleIdx;
 }
 
 void Scene_ReleaseBundlePeek(const char* path)
@@ -817,8 +828,11 @@ u32 Scene_AddBundleAuto(Scene* scene, const char* path)
 
 u32 Scene_AddBundleBaked(Scene* scene, const char* path, u32 materialOffset)
 {
-    if (!Scene_EnsureBundleCapacity(scene, scene->numBundles + 1))
+    if (BitsetFindFirstEmpty(scene->bundleSlots, (s32)MAX_SCENE_BUNDLES) < 0)
+    {
+        AX_WARN("maximum scene bundle count reached: %d", MAX_SCENE_BUNDLES);
         return INVALID_BUNDLE;
+    }
 
     BundleCacheEntry* entry = BundleCacheAcquire(path);
     if (!entry) {
@@ -853,7 +867,12 @@ u32 Scene_AddBundleBaked(Scene* scene, const char* path, u32 materialOffset)
         goto err_bundle;
     }
 
-    u32 bundleIdx = scene->numBundles++;
+    u32 bundleIdx = Scene_AllocBundleSlot(scene);
+    if (bundleIdx == INVALID_BUNDLE)
+    {
+        RenderSet_RemoveSceneBundle(set, renderIdx);
+        goto err_bundle;
+    }
     SceneBundleRef* ref = &scene->bundleRefs[bundleIdx];
     ref->path           = storedPath;
     ref->bundle         = bundle;
@@ -863,6 +882,7 @@ u32 Scene_AddBundleBaked(Scene* scene, const char* path, u32 materialOffset)
     ref->animAlloc      = animAlloc;
     ref->skinned        = skinned;
     ref->cacheKey       = StringToHash64(storedPath);
+    Scene_StampGroupBundle(set, renderIdx, bundleIdx);
     if (materialOffset + (u32)bundle->numMaterials > scene->numMaterials)
         scene->numMaterials = materialOffset + (u32)bundle->numMaterials;
     scene->renderDataDirty = 1;
@@ -876,7 +896,7 @@ err_bundle:
 
 u32 Scene_RemoveBundle(Scene* scene, u32 bundleIdx)
 {
-    if (bundleIdx >= scene->numBundles) return 0;
+    if (bundleIdx >= scene->numBundles || !scene->bundleRefs[bundleIdx].bundle) return 0;
 
     SceneBundleRef* ref = &scene->bundleRefs[bundleIdx];
     bool skinned = ref->skinned != 0;
@@ -890,17 +910,9 @@ u32 Scene_RemoveBundle(Scene* scene, u32 bundleIdx)
     if (skinned) AnimationSystem_RemoveBundle(&scene->animSystem, ref->animAlloc);
     BundleCacheRelease(ref->path);
 
-    // the render set compacts its bundle list, later indices of the same set shift down
-    for (u32 i = 0; i < scene->numBundles; i++)
-    {
-        if (i == bundleIdx) continue;
-        if ((scene->bundleRefs[i].skinned != 0) == skinned && scene->bundleRefs[i].renderIdx > removedRenderIdx)
-            scene->bundleRefs[i].renderIdx--;
-    }
-
-    for (u32 i = bundleIdx + 1; i < scene->numBundles; i++)
-        scene->bundleRefs[i - 1] = scene->bundleRefs[i];
-    scene->numBundles--;
+    // both the render set and the scene keep stable slot handles now, so removing this bundle
+    // leaves every other bundle's index (and its renderIdx) untouched. just free the slot.
+    Scene_FreeBundleSlot(scene, bundleIdx);
     scene->renderDataDirty = 1;
     return removedEntities;
 }
@@ -914,7 +926,7 @@ s32 Scene_RepackTextures(Scene* scene)
     for (u32 b = 0; b < scene->numBundles; b++)
     {
         SceneBundle* bundle = scene->bundleRefs[b].bundle;
-        if (bundle->numImages <= 0 && bundle->numMaterials <= 0) continue;
+        if (!bundle || (bundle->numImages <= 0 && bundle->numMaterials <= 0)) continue;
 
         ArenaMark mark = ArenaSave(&GlobalArena);
         Texture* staging = (Texture*)ArenaAllocZero(&GlobalArena, MAX_SCENE_TEXTURES * sizeof(Texture));
@@ -936,7 +948,7 @@ s32 Scene_RepackTextures(Scene* scene)
 
 u32 Scene_Spawn(Scene* scene, u32 bundleIdx, v128f position, v128f rotation, v128f scale)
 {
-    if (bundleIdx >= scene->numBundles) return 0;
+    if (bundleIdx >= scene->numBundles || !scene->bundleRefs[bundleIdx].bundle) return 0;
 
     bool skinned = scene->bundleRefs[bundleIdx].skinned != 0;
     RenderSet* set = skinned ? &scene->skinnedSet : &scene->surfaceSet;

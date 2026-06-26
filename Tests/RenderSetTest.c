@@ -750,18 +750,24 @@ static void TestRemoveSceneBundleMiddleWithEntities(void)
     u32 removed = RenderSet_RemoveSceneBundle(&set, 1);
     CHECK(removed != INVALID_BUNDLE, "RemoveSceneBundle failed");
 
-    CHECK(set.numBundles == 2, "numBundles=%u", set.numBundles);
+    // bundle slots are stable handles: removing B (slot 1) leaves a hole, C keeps slot 2 and
+    // numBundles stays the watermark (highest used slot + 1).
+    CHECK(set.numBundles == 3, "numBundles=%u", set.numBundles);
     CHECK(set.numGroups == 4, "numGroups=%u", set.numGroups);
     CHECK(set.numEntities == 5, "numEntities=%u", set.numEntities);
 
     CHECK(set.bundles[0] == &bundleA, "bundle 0 should be A");
-    CHECK(set.bundles[1] == &bundleC, "bundle 1 should be C");
+    CHECK(set.bundles[1] == NULL, "bundle 1 slot should be empty");
+    CHECK(set.bundles[2] == &bundleC, "bundle 2 should be C");
 
     CHECK(set.bundlePrimitiveRange[0].start == 0 && set.bundlePrimitiveRange[0].count == 2,
           "bundle A range %u+%u", set.bundlePrimitiveRange[0].start, set.bundlePrimitiveRange[0].count);
 
-    CHECK(set.bundlePrimitiveRange[1].start == 2 && set.bundlePrimitiveRange[1].count == 2,
-          "bundle C range %u+%u", set.bundlePrimitiveRange[1].start, set.bundlePrimitiveRange[1].count);
+    CHECK(set.bundlePrimitiveRange[1].start == 0 && set.bundlePrimitiveRange[1].count == 0,
+          "freed slot range %u+%u", set.bundlePrimitiveRange[1].start, set.bundlePrimitiveRange[1].count);
+
+    CHECK(set.bundlePrimitiveRange[2].start == 2 && set.bundlePrimitiveRange[2].count == 2,
+          "bundle C range %u+%u", set.bundlePrimitiveRange[2].start, set.bundlePrimitiveRange[2].count);
 
     CHECK(set.primitiveGroups[0].materialIndex == 10, "group0 material=%u", set.primitiveGroups[0].materialIndex);
     CHECK(set.primitiveGroups[1].materialIndex == 11, "group1 material=%u", set.primitiveGroups[1].materialIndex);

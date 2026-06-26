@@ -42,13 +42,14 @@ typedef struct RenderSet_
     PrimitiveGroup*     primitiveGroups;
     Range*              bundlePrimitiveRange;
     const SceneBundle** bundles;
-    
+    u64*                bundleSlots; // bitset for used bundle slots, 1 means occupied
+
     u32 maxEntities;
     u32 maxGroups;
     u32 maxBundles;
     u32 numEntities;
     u32 numGroups;
-    u32 numBundles;
+    u32 numBundles; // watermark: highest used bundle slot + 1, slots below may be empty
     u32 skinned;
 } RenderSet;
 
@@ -64,7 +65,7 @@ struct PrimitiveGroup_
     u32 meshIndex;
     u32 primitiveIndex;
     u32 materialIndex;
-    u32 unused;
+    u32 bundleIdx; // owner-assigned bundle handle (scene bundle index), enables O(1) group -> bundle lookup
     u32 numVertices;
     v128f aabbMin;
     v128f aabbMax;

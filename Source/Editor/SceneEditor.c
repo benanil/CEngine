@@ -282,7 +282,7 @@ static bool EditorReadBundleInfoFromScene(const char* path, ImportDetailInfo* in
     u32 pathLen = (u32)StringLength(path) + 1u;
     for (u32 i = 0; i < scene->numBundles; i++)
     {
-        if (StringEqual(scene->bundleRefs[i].path, path, pathLen))
+        if (scene->bundleRefs[i].bundle && StringEqual(scene->bundleRefs[i].path, path, pathLen))
         {
             const SceneBundle* bundle = scene->bundleRefs[i].bundle;
             *info = (ImportDetailInfo){
@@ -810,7 +810,7 @@ static Clay_String SceneNodeLabel(const ANode* node, s32 nodeIdx)
 // every descendant mesh node of the same spawned instance become gizmo targets
 static void SceneSelectNodeInViewport(const Scene* scene, u32 bundleIdx, s32 nodeIdx)
 {
-    if (bundleIdx >= scene->numBundles) return;
+    if (bundleIdx >= scene->numBundles || !scene->bundleRefs[bundleIdx].bundle) return;
     const SceneBundleRef* ref = &scene->bundleRefs[bundleIdx];
     const SceneBundle* bundle = ref->bundle;
     if (nodeIdx < 0 || nodeIdx >= bundle->numNodes) return;
@@ -972,7 +972,7 @@ static void SceneEventDuplicateBundle(void* unused)
 {
     (void)unused;
     Scene* scene = Scene_GetActive();
-    if (!scene || sceneSelectedBundle >= scene->numBundles) return;
+    if (!scene || sceneSelectedBundle >= scene->numBundles || !scene->bundleRefs[sceneSelectedBundle].bundle) return;
 
     const SceneBundleRef* ref = &scene->bundleRefs[sceneSelectedBundle];
     const RenderSet* set = ref->skinned ? &scene->skinnedSet : &scene->surfaceSet;
@@ -1041,7 +1041,8 @@ static void SceneEventDeleteNode(void* unused)
 {
     (void)unused;
     Scene* scene = Scene_GetActive();
-    if (!scene || sceneSelectedBundle >= scene->numBundles || sceneSelectedNode < 0) return;
+    if (!scene || sceneSelectedBundle >= scene->numBundles || sceneSelectedNode < 0
+        || !scene->bundleRefs[sceneSelectedBundle].bundle) return;
 
     const SceneBundleRef* ref = &scene->bundleRefs[sceneSelectedBundle];
     const SceneBundle* bundle = ref->bundle;
@@ -1690,7 +1691,8 @@ void DrawSceneWindow(bool* open)
             sceneTreeRowBudget = SCENE_TREE_MAX_NODES;
             CLAY(CLAY_ID("SceneWindowTree"), UIScrollPanelDeclaration(UIWindowRemainingHeight(windowID, CLAY_ID("SceneWindowTree"), 0.0f), 2u)) {
                 for (u32 b = 0u; b < scene->numBundles; b++)
-                    SceneBundleTree(scene, b);
+                    if (scene->bundleRefs[b].bundle)
+                        SceneBundleTree(scene, b);
                 if (sceneTreeRowBudget == 0u)
                 {
                     CLAY_TEXT(CLAY_STRING("... node limit reached, collapse some rows"), CLAY_TEXT_CONFIG({

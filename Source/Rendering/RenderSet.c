@@ -26,6 +26,7 @@ void RenderSet_InitSet(RenderSet* set, u32 maxEntities, u32 maxGroups, u32 maxBu
     set->primitiveGroups  = (PrimitiveGroup*)AllocZeroTLSFGlobal(maxGroups, sizeof(PrimitiveGroup));
     set->bundlePrimitiveRange = (Range*)AllocZeroTLSFGlobal(maxBundles, sizeof(Range));
     set->bundles          = (const SceneBundle**)AllocZeroTLSFGlobal(maxBundles, sizeof(SceneBundle*));
+    set->bundleSlots      = (u64*)AllocZeroTLSFGlobal((maxBundles + 63u) >> 6, sizeof(u64));
     MemSet(set->sparseID, 0xFF, maxEntities * sizeof(u32));
 }
 
@@ -181,12 +182,6 @@ static s32 GetNumPrimitivesOfSceneBundle(const SceneBundle* sceneBundle)
 
 u32 RenderSet_AddSceneBundle(RenderSet* set, const SceneBundle* sceneBundle, u32 materialOffset)
 {
-    if (set->numBundles >= set->maxBundles)
-    {
-        AX_WARN("maximum render bundle count reached: %d", set->maxBundles);
-        return INVALID_BUNDLE;
-    }
-
     u32 numNewGroups = GetNumPrimitivesOfSceneBundle(sceneBundle);
     if (set->numGroups + numNewGroups > set->maxGroups)
     {
@@ -194,7 +189,18 @@ u32 RenderSet_AddSceneBundle(RenderSet* set, const SceneBundle* sceneBundle, u32
         return INVALID_BUNDLE;
     }
 
-    u32 bundleIdx = set->numBundles++;
+    // bundle slots are stable handles, the lowest free slot is reused so removing a bundle
+    // never shifts the indices of the others. numBundles tracks the highest used slot + 1.
+    s32 slot = BitsetFindFirstEmpty(set->bundleSlots, (s32)set->maxBundles);
+    if (slot < 0)
+    {
+        AX_WARN("maximum render bundle count reached: %d", set->maxBundles);
+        return INVALID_BUNDLE;
+    }
+
+    u32 bundleIdx = (u32)slot;
+    BitsetSet(set->bundleSlots, slot);
+    if (bundleIdx + 1u > set->numBundles) set->numBundles = bundleIdx + 1u;
     set->bundles[bundleIdx] = sceneBundle;
     u32 primitiveStart = set->numGroups;
     u32 vertexBase = 0;
@@ -251,6 +257,7 @@ u32 RenderSet_AddSceneBundle(RenderSet* set, const SceneBundle* sceneBundle, u32
             group->meshIndex      = m;
             group->primitiveIndex = p;
             group->materialIndex  = materialOffset + (u32)primitive->material;
+            group->bundleIdx      = INVALID_BUNDLE; // owner-assigned bundle handle, stamped by the caller
             group->numVertices    = (u32)primitive->numVertices;
             group->entityOffset   = set->numEntities;
             
@@ -628,6 +635,7 @@ void RenderSet_Clear(RenderSet* set)
     MemsetZero(set->primitiveGroups, set->maxGroups * sizeof(PrimitiveGroup));
     MemsetZero(set->bundlePrimitiveRange, set->maxBundles * sizeof(Range));
     MemsetZero(set->bundles, set->maxBundles * sizeof(SceneBundle*));
+    MemsetZero(set->bundleSlots, ((set->maxBundles + 63u) >> 6) * sizeof(u64));
 }
 
 static void ShiftEntitiesLeft(RenderSet* set, u32 firstRemoved, u32 count)
@@ -739,16 +747,21 @@ u32 RenderSet_RemoveSceneBundle(RenderSet* set, u32 bundleIdx)
     u32 zeroedGroups = Minu32(groupCount, set->maxGroups - groupCount);
     MemSet(&set->primitiveGroups[set->numGroups], 0, zeroedGroups * sizeof(PrimitiveGroup));
 
-    for (u32 i = bundleIdx + 1; i < set->numBundles; i++)
+    // free the slot without shifting the others; the primitive groups compacted above, so any
+    // live bundle whose range started after the removed one slides down by groupCount.
+    BitsetReset(set->bundleSlots, (s32)bundleIdx);
+    set->bundles[bundleIdx] = NULL;
+    set->bundlePrimitiveRange[bundleIdx] = (Range){0};
+
+    for (u32 i = 0; i < set->numBundles; i++)
     {
-        set->bundles[i - 1] = set->bundles[i];
-        set->bundlePrimitiveRange[i - 1] = set->bundlePrimitiveRange[i];
-        if (set->bundlePrimitiveRange[i - 1].start > firstGroup)
-            set->bundlePrimitiveRange[i - 1].start -= groupCount;
+        if (i == bundleIdx || set->bundles[i] == NULL) continue;
+        if (set->bundlePrimitiveRange[i].start > firstGroup)
+            set->bundlePrimitiveRange[i].start -= groupCount;
     }
-    set->numBundles--;
-    set->bundles[set->numBundles] = NULL;
-    set->bundlePrimitiveRange[set->numBundles] = (Range){0};
+
+    while (set->numBundles > 0 && !BitsetGet(set->bundleSlots, (s32)(set->numBundles - 1u)))
+        set->numBundles--;
 
     return entityCount + noMeshRemoved;
 }
@@ -763,6 +776,7 @@ bool RenderSet_Validate(const RenderSet* set, const char* label)
 
     for (u32 b = 0; b < set->numBundles; b++)
     {
+        if (set->bundles[b] == NULL) continue;
         Range range = set->bundlePrimitiveRange[b];
         if (range.start + range.count > set->numGroups)
         {

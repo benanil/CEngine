@@ -393,11 +393,16 @@ static s32 BVH_RaycastSet(const Scene* scene, const RenderSet* set, bool skinned
     for (u32 b = 0; b < set->numBundles; b++)
     {
         const SceneBundle* bundle = set->bundles[b];
-        BundleCacheEntry bundleCacheCopy;
-        if (!bundle || !FindCacheForRenderBundle(scene, skinned, b, &bundleCacheCopy) || !bundleCacheCopy.bvhNodes) continue;
-        const BundleCacheEntry* bundleCache = &bundleCacheCopy;
+        if (!bundle) continue;
 
         Range range = set->bundlePrimitiveRange[b];
+        if (range.count == 0) continue;
+
+        // every group of the bundle carries the same owning scene bundle index
+        u32 sceneBundleIdx = set->primitiveGroups[range.start].bundleIdx;
+        BundleCacheEntry bundleCacheCopy;
+        if (!FindCacheForSceneBundle(scene, sceneBundleIdx, &bundleCacheCopy) || !bundleCacheCopy.bvhNodes) continue;
+        const BundleCacheEntry* bundleCache = &bundleCacheCopy;
         for (u32 g = range.start; g < range.start + range.count; g++)
         {
             const PrimitiveGroup* group = &set->primitiveGroups[g];
@@ -445,23 +450,9 @@ s32 BVH_RaycastScene(const Scene* scene, v128f origin, v128f dir, BVHHit* hit)
     anyHit |= BVH_RaycastSet(scene, &scene->skinnedSet, true, origin, dir, hit);
     if (!anyHit) return 0;
 
-    // resolve the render set bundle back to the scene bundle for reporting
-    const RenderSet* set = hit->skinnedSet ? &scene->skinnedSet : &scene->surfaceSet;
-    u32 renderBundle = ~0u;
-    for (u32 b = 0; b < set->numBundles; b++)
-    {
-        Range range = set->bundlePrimitiveRange[b];
-        if (hit->groupIdx >= range.start && hit->groupIdx < range.start + range.count) { renderBundle = b; break; }
-    }
-    hit->bundleIdx = ~0u;
-    for (u32 i = 0; i < scene->numBundles; i++)
-    {
-        if ((scene->bundleRefs[i].skinned != 0) == (hit->skinnedSet != 0) && scene->bundleRefs[i].renderIdx == renderBundle)
-        {
-            hit->bundleIdx = i;
-            break;
-        }
-    }
+    // resolve the render group back to the scene bundle for reporting. the group carries its
+    // owning render bundle slot and the scene keeps a reverse map, so this is O(1).
+    hit->bundleIdx = Scene_FindBundleForRenderGroup(scene, hit->skinnedSet != 0, hit->groupIdx);
 
     return 1;
 }
