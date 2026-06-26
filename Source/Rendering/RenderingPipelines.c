@@ -2,10 +2,6 @@
 #include "Include/Slug.h"
 
 #if defined(PLATFORM_MACOSX)
-#include "Shaders/msl/SkinnedFrag.msl.h"
-#include "Shaders/msl/SkinnedVert.msl.h"
-#include "Shaders/msl/SurfaceFrag.msl.h"
-#include "Shaders/msl/SurfaceVert.msl.h"
 #include "Shaders/msl/SurfaceForwardFrag.msl.h"
 #include "Shaders/msl/SurfaceForwardVert.msl.h"
 #include "Shaders/msl/SkinnedForwardFrag.msl.h"
@@ -16,7 +12,6 @@
 #include "Shaders/msl/DeferredLightVolumeVert.msl.h"
 #include "Shaders/msl/DeferredLighting.msl.h"
 #include "Shaders/msl/PreProcessing/CullDrawArgsCompute.msl.h"
-#include "Shaders/msl/PreProcessing/CullLightsCompute.msl.h"
 #include "Shaders/msl/Animation/AnimationCompute.msl.h"
 #include "Shaders/msl/Animation/AnimateVertices.msl.h"
 #include "Shaders/msl/LineDebugVert.msl.h"
@@ -35,7 +30,6 @@
 #include "Shaders/msl/PreProcessing/HiZDownscaleCompute.msl.h"
 #include "Shaders/msl/PostProcessing/HBAOCompute.msl.h"
 #include "Shaders/msl/PostProcessing/HBAOBlurCompute.msl.h"
-#include "Shaders/msl/ExtractNormalCompute.msl.h"
 #include "Shaders/msl/PostProcessing/MLAAEdgeMaskCompute.msl.h"
 #include "Shaders/msl/PostProcessing/MLAALineLengthCompute.msl.h"
 #include "Shaders/msl/PostProcessing/MLAABlendCompute.msl.h"
@@ -54,24 +48,18 @@
 #include "Shaders/msl/Shadow/SurfaceSpotShadowDepthOnlyVert.msl.h"
 #include "Shaders/msl/Shadow/SkinnedSpotShadowDepthOnlyVert.msl.h"
 
-#define Shaders_SkinnedFrag_spv Shaders_SkinnedFrag_msl
-#define Shaders_SkinnedVert_spv Shaders_SkinnedVert_msl
-#define Shaders_SurfaceFrag_spv Shaders_SurfaceFrag_msl
-#define Shaders_SurfaceVert_spv Shaders_SurfaceVert_msl
 #define Shaders_DeferredLightVolumeFrag_spv Shaders_DeferredLightVolumeFrag_msl
 #define Shaders_DeferredLightVolumeVert_spv Shaders_DeferredLightVolumeVert_msl
 #define Shaders_DeferredLighting_spv Shaders_DeferredLighting_msl
 #define Shaders_AnimationCompute_spv Shaders_Animation_AnimationCompute_msl
 #define Shaders_AnimateVertices_spv Shaders_Animation_AnimateVertices_msl
 #define Shaders_CullDrawArgsCompute_spv Shaders_PreProcessing_CullDrawArgsCompute_msl
-#define Shaders_CullLightsCompute_spv Shaders_PreProcessing_CullLightsCompute_msl
 #define Shaders_BuildLightGridCompute_spv Shaders_PreProcessing_BuildLightGridCompute_msl
 #define Shaders_TonemapCompute_spv Shaders_PostProcessing_TonemapCompute_msl
 #define Shaders_HiZBuildCompute_spv Shaders_PreProcessing_HiZBuildCompute_msl
 #define Shaders_HiZDownscaleCompute_spv Shaders_PreProcessing_HiZDownscaleCompute_msl
 #define Shaders_HBAOCompute_spv Shaders_PostProcessing_HBAOCompute_msl
 #define Shaders_HBAOBlurCompute_spv Shaders_PostProcessing_HBAOBlurCompute_msl
-#define Shaders_ExtractNormalCompute_spv Shaders_ExtractNormalCompute_msl
 #define Shaders_MLAAEdgeMaskCompute_spv Shaders_PostProcessing_MLAAEdgeMaskCompute_msl
 #define Shaders_MLAALineLengthCompute_spv Shaders_PostProcessing_MLAALineLengthCompute_msl
 #define Shaders_MLAABlendCompute_spv Shaders_PostProcessing_MLAABlendCompute_msl
@@ -101,10 +89,6 @@
 #define Shaders_Shadow_SurfaceSpotShadowDepthOnlyVert_spv Shaders_Shadow_SurfaceSpotShadowDepthOnlyVert_msl
 #define Shaders_Shadow_SkinnedSpotShadowDepthOnlyVert_spv Shaders_Shadow_SkinnedSpotShadowDepthOnlyVert_msl
 #elif defined(PLATFORM_WINDOWS)
-#include "Shaders/spv/SkinnedFrag.spv.h"
-#include "Shaders/spv/SkinnedVert.spv.h"
-#include "Shaders/spv/SurfaceFrag.spv.h"
-#include "Shaders/spv/SurfaceVert.spv.h"
 #include "Shaders/spv/SurfaceForwardFrag.spv.h"
 #include "Shaders/spv/SurfaceForwardVert.spv.h"
 #include "Shaders/spv/SkinnedForwardFrag.spv.h"
@@ -115,7 +99,6 @@
 #include "Shaders/spv/DeferredLightVolumeVert.spv.h"
 #include "Shaders/spv/DeferredLighting.spv.h"
 #include "Shaders/spv/PreProcessing/CullDrawArgsCompute.spv.h"
-#include "Shaders/spv/PreProcessing/CullLightsCompute.spv.h"
 #include "Shaders/spv/Animation/AnimationCompute.spv.h"
 #include "Shaders/spv/Animation/AnimateVertices.spv.h"
 #include "Shaders/spv/LineDebugVert.spv.h"
@@ -134,7 +117,6 @@
 #include "Shaders/spv/PreProcessing/HiZDownscaleCompute.spv.h"
 #include "Shaders/spv/PostProcessing/HBAOCompute.spv.h"
 #include "Shaders/spv/PostProcessing/HBAOBlurCompute.spv.h"
-#include "Shaders/spv/ExtractNormalCompute.spv.h"
 #include "Shaders/spv/PostProcessing/MLAAEdgeMaskCompute.spv.h"
 #include "Shaders/spv/PostProcessing/MLAALineLengthCompute.spv.h"
 #include "Shaders/spv/PostProcessing/MLAABlendCompute.spv.h"
@@ -158,8 +140,6 @@
 #define Shaders_AnimateVertices_spv_size Shaders_Animation_AnimateVertices_spv_size
 #define Shaders_CullDrawArgsCompute_spv Shaders_PreProcessing_CullDrawArgsCompute_spv
 #define Shaders_CullDrawArgsCompute_spv_size Shaders_PreProcessing_CullDrawArgsCompute_spv_size
-#define Shaders_CullLightsCompute_spv Shaders_PreProcessing_CullLightsCompute_spv
-#define Shaders_CullLightsCompute_spv_size Shaders_PreProcessing_CullLightsCompute_spv_size
 #define Shaders_BuildLightGridCompute_spv Shaders_PreProcessing_BuildLightGridCompute_spv
 #define Shaders_BuildLightGridCompute_spv_size Shaders_PreProcessing_BuildLightGridCompute_spv_size
 #define Shaders_TonemapCompute_spv Shaders_PostProcessing_TonemapCompute_spv
@@ -233,7 +213,6 @@ SDL_CreateGPUShader(g_GPUDevice, &(SDL_GPUShaderCreateInfo){\
 SDL_GPUComputePipeline* g_AnimComputePipeline            = NULL;
 SDL_GPUComputePipeline* g_AnimVerticesPipeline           = NULL;
 SDL_GPUComputePipeline* g_CullDrawArgsComputePipeline    = NULL;
-SDL_GPUComputePipeline* g_CullLightsComputePipeline      = NULL;
 SDL_GPUComputePipeline* g_BuildLightGridComputePipeline  = NULL;
 SDL_GPUComputePipeline* g_ReconstructNormalComputePipeline = NULL;
 SDL_GPUComputePipeline* g_TonemapComputePipeline         = NULL;
@@ -241,7 +220,6 @@ SDL_GPUComputePipeline* g_HiZBuildComputePipeline        = NULL;
 SDL_GPUComputePipeline* g_HiZDownscaleComputePipeline    = NULL;
 SDL_GPUComputePipeline* g_HBAOComputePipeline            = NULL;
 SDL_GPUComputePipeline* g_HBAOBlurComputePipeline        = NULL;
-SDL_GPUComputePipeline* g_ExtractNormalComputePipeline   = NULL;
 SDL_GPUComputePipeline* g_DeferredLightingComputePipeline= NULL;
 SDL_GPUComputePipeline* g_MLAAEdgeMaskComputePipeline    = NULL;
 SDL_GPUComputePipeline* g_MLAALineLengthComputePipeline  = NULL;
@@ -264,11 +242,6 @@ static void InitComputePipelines(void)
         .num_readonly_storage_textures = 1, .num_uniform_buffers = 1, .num_readonly_storage_buffers  = 2, .num_readwrite_storage_buffers = 8,
         THREAD_COUNT_XYZ(64, 1, 1)
     }); CHECK_CREATE(g_CullDrawArgsComputePipeline, "Cull Draw Args Compute Pipeline");
-
-    g_CullLightsComputePipeline = COMPUTE_DEF(Shaders_CullLightsCompute_spv),
-        .num_readonly_storage_textures = 1, .num_uniform_buffers = 1, .num_readonly_storage_buffers  = 1, .num_readwrite_storage_buffers = 5,
-        THREAD_COUNT_XYZ(64, 1, 1)
-    }); CHECK_CREATE(g_CullLightsComputePipeline, "Cull Lights Compute Pipeline");
 
     // Forward+ tiled light culling: 1 sampled depth + light buffer in, grid/index/counter/visibility out.
     g_BuildLightGridComputePipeline = COMPUTE_DEF(Shaders_BuildLightGridCompute_spv),
@@ -301,11 +274,6 @@ static void InitComputePipelines(void)
         .num_samplers = 2, .num_readwrite_storage_textures = 1, .num_uniform_buffers = 1,
         THREAD_COUNT_XYZ(8, 8, 1)
     }); CHECK_CREATE(g_HBAOComputePipeline, "HBAO Compute Pipeline");
-
-    g_ExtractNormalComputePipeline = COMPUTE_DEF(Shaders_ExtractNormalCompute_spv),
-        .num_samplers = 1, .num_readwrite_storage_textures = 1,
-        THREAD_COUNT_XYZ(8, 8, 1)
-    }); CHECK_CREATE(g_ExtractNormalComputePipeline, "Extract Normal Compute Pipeline");
 
     g_HBAOBlurComputePipeline = COMPUTE_DEF(Shaders_HBAOBlurCompute_spv),
         .num_samplers = 2, .num_readwrite_storage_textures = 1, .num_uniform_buffers = 1,
@@ -503,41 +471,6 @@ static void InitOutlinePipeline(void)
     SDL_ReleaseGPUShader(g_GPUDevice, fragment_shader);
 }
 
-static void InitDeferredLightPipeline(void)
-{
-    SDL_GPUShaderFormat shaderformat = AX_GPU_SHADER_FORMAT;
-    SDL_GPUShader* vertex_shader   = PIPELINE_VERT_DEF(Shaders_DeferredLightVolumeVert_spv), .num_storage_buffers = 1 });                                              CHECK_CREATE(vertex_shader, "Deferred Light Vertex Shader")
-    SDL_GPUShader* fragment_shader = PIPELINE_FRAG_DEF(Shaders_DeferredLightVolumeFrag_spv), .num_uniform_buffers = 1, .num_samplers = 7, .num_storage_buffers = 4 }); CHECK_CREATE(fragment_shader, "Deferred Light Fragment Shader")
-
-    SDL_GPUColorTargetDescription colorTarget = {
-        .format = SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT,
-        .blend_state = {
-            .enable_blend = true,
-            .color_write_mask = 0xF,
-            .color_blend_op = SDL_GPU_BLENDOP_ADD,
-            .alpha_blend_op = SDL_GPU_BLENDOP_ADD,
-            .src_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE,
-            .dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE,
-            .src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE,
-            .dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE
-        }
-    };
-
-    g_RenderState.deferredLightPipeline = SDL_CreateGPUGraphicsPipeline(g_GPUDevice, &(SDL_GPUGraphicsPipelineCreateInfo){
-        .vertex_shader   = vertex_shader,
-        .fragment_shader = fragment_shader,
-        .primitive_type  = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
-        .target_info     = (SDL_GPUGraphicsPipelineTargetInfo){
-            .num_color_targets         = 1,
-            .color_target_descriptions = &colorTarget
-        },
-        .multisample_state = (SDL_GPUMultisampleState){ .sample_count = SDL_GPU_SAMPLECOUNT_1 }
-    });
-    CHECK_CREATE(g_RenderState.deferredLightPipeline, "Deferred Light Pipeline")
-    SDL_ReleaseGPUShader(g_GPUDevice, vertex_shader);
-    SDL_ReleaseGPUShader(g_GPUDevice, fragment_shader);
-}
-
 static void InitSlugPipeline(void)
 {
     SDL_GPUShaderFormat shaderformat = AX_GPU_SHADER_FORMAT;
@@ -684,107 +617,6 @@ static void InitUIImagePipeline(void)
         .multisample_state = (SDL_GPUMultisampleState){ .sample_count = SDL_GPU_SAMPLECOUNT_1 }
     });
     CHECK_CREATE(g_RenderState.uiImagePipeline, "UI Image Render Pipeline")
-    SDL_ReleaseGPUShader(g_GPUDevice, vertex_shader);
-    SDL_ReleaseGPUShader(g_GPUDevice, fragment_shader);
-}
-
-static void InitSkinedPipeline(void)
-{
-    SDL_GPUShaderFormat shaderformat = AX_GPU_SHADER_FORMAT;
-    SDL_GPUShader* vertex_shader   = PIPELINE_VERT_DEF(Shaders_SkinnedVert_spv), .num_uniform_buffers = 1, .num_storage_buffers = 6 });                           CHECK_CREATE(vertex_shader, "Vertex Shader")
-    SDL_GPUShader* fragment_shader = PIPELINE_FRAG_DEF(Shaders_SkinnedFrag_spv), .num_uniform_buffers = 1, .num_samplers        = 4, .num_storage_buffers = 2 }); CHECK_CREATE(fragment_shader, "Fragment Shader")
-
-    const SDL_GPUVertexAttribute vertex_attributes[5] = {
-        { .location = 0, .buffer_slot = 0, .format = VFORMAT_HALF4,  .offset = 0 },
-        { .location = 1, .buffer_slot = 0, .format = VFORMAT_UINT,   .offset = offsetof(ASkinedVertex, octTbn) },
-        { .location = 2, .buffer_slot = 0, .format = VFORMAT_HALF2,  .offset = offsetof(ASkinedVertex, texCoord) },
-        { .location = 3, .buffer_slot = 0, .format = VFORMAT_UBYTE4, .offset = offsetof(ASkinedVertex, joints) },
-        { .location = 4, .buffer_slot = 0, .format = VFORMAT_UINT,   .offset = offsetof(ASkinedVertex, weights) }
-    };
-
-    const SDL_GPUColorTargetDescription gbufferTargets[3] = {
-        { .format = SDL_GPU_TEXTUREFORMAT_R32_UINT       },
-        { .format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM },
-        { .format = SDL_GPU_TEXTUREFORMAT_R8G8_UNORM     }
-    };
-    SDL_GPUGraphicsPipelineCreateInfo pipelinedesc = {
-        .vertex_shader   = vertex_shader,
-        .fragment_shader = fragment_shader,
-        .primitive_type  = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
-        .target_info     = (SDL_GPUGraphicsPipelineTargetInfo){
-            .num_color_targets         = 3,
-            .color_target_descriptions = gbufferTargets,
-            .depth_stencil_format      = SDL_GPU_TEXTUREFORMAT_D32_FLOAT,
-            .has_depth_stencil_target  = true
-        },
-        .depth_stencil_state = (SDL_GPUDepthStencilState){
-            .enable_depth_test  = true,
-            .enable_depth_write = false,
-            .compare_op         = SDL_GPU_COMPAREOP_LESS_OR_EQUAL
-        },
-        .multisample_state  = (SDL_GPUMultisampleState){ .sample_count = SDL_GPU_SAMPLECOUNT_1 },
-        .vertex_input_state = (SDL_GPUVertexInputState){
-            .vertex_buffer_descriptions = &(SDL_GPUVertexBufferDescription){
-                0, sizeof(ASkinedVertex), SDL_GPU_VERTEXINPUTRATE_VERTEX, 0
-            },
-            .num_vertex_buffers    = 1,
-            .vertex_attributes     = vertex_attributes,
-            .num_vertex_attributes = ARRAY_SIZE(vertex_attributes)
-        }
-    };
-
-    g_RenderState.skinned.pipeline = SDL_CreateGPUGraphicsPipeline(g_GPUDevice, &pipelinedesc);
-    CHECK_CREATE(g_RenderState.skinned.pipeline, "Render Pipeline")
-    SDL_ReleaseGPUShader(g_GPUDevice, vertex_shader);
-    SDL_ReleaseGPUShader(g_GPUDevice, fragment_shader);
-}
-
-static void InitSurfacePipeline(void)
-{
-    SDL_GPUShaderFormat shaderformat = AX_GPU_SHADER_FORMAT;
-    SDL_GPUShader* vertex_shader   = PIPELINE_VERT_DEF(Shaders_SurfaceVert_spv), .num_uniform_buffers = 1, .num_storage_buffers = 4 }); CHECK_CREATE(vertex_shader  , "Surface Vertex Shader")
-    SDL_GPUShader* fragment_shader = PIPELINE_FRAG_DEF(Shaders_SurfaceFrag_spv), .num_uniform_buffers = 1, .num_samplers        = 4, .num_storage_buffers = 2 }); CHECK_CREATE(fragment_shader, "Surface Fragment Shader")
-
-    const SDL_GPUVertexAttribute vertex_attributes[3] = {
-        { .location = 0, .buffer_slot = 0, .format = SDL_GPU_VERTEXELEMENTFORMAT_UINT2,  .offset = offsetof(AVertex, position) },
-        { .location = 1, .buffer_slot = 0, .format = SDL_GPU_VERTEXELEMENTFORMAT_UINT,   .offset = offsetof(AVertex, octTbn) },
-        { .location = 2, .buffer_slot = 0, .format = SDL_GPU_VERTEXELEMENTFORMAT_HALF2,  .offset = offsetof(AVertex, texCoord) }
-    };
-
-    const SDL_GPUColorTargetDescription gbufferTargets[3] = {
-        { .format = SDL_GPU_TEXTUREFORMAT_R32_UINT       },
-        { .format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM },
-        { .format = SDL_GPU_TEXTUREFORMAT_R8G8_UNORM     }
-    };
-
-    SDL_GPUGraphicsPipelineCreateInfo pipelinedesc = {
-        .vertex_shader   = vertex_shader,
-        .fragment_shader = fragment_shader,
-        .primitive_type  = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
-        .target_info     = (SDL_GPUGraphicsPipelineTargetInfo){
-            .num_color_targets         = 3,
-            .color_target_descriptions = gbufferTargets,
-            .depth_stencil_format      = SDL_GPU_TEXTUREFORMAT_D32_FLOAT,
-            .has_depth_stencil_target  = true
-        },
-        .depth_stencil_state = (SDL_GPUDepthStencilState){
-            .enable_depth_test  = true,
-            .enable_depth_write = false,
-            .compare_op         = SDL_GPU_COMPAREOP_LESS_OR_EQUAL
-        },
-        .multisample_state  = (SDL_GPUMultisampleState){ .sample_count = SDL_GPU_SAMPLECOUNT_1 },
-        .vertex_input_state = (SDL_GPUVertexInputState){
-            .vertex_buffer_descriptions = &(SDL_GPUVertexBufferDescription){
-                0, sizeof(AVertex), SDL_GPU_VERTEXINPUTRATE_VERTEX, 0
-            },
-            .num_vertex_buffers    = 1,
-            .vertex_attributes     = vertex_attributes,
-            .num_vertex_attributes = ARRAY_SIZE(vertex_attributes)
-        }
-    };
-
-    g_RenderState.surface.pipeline = SDL_CreateGPUGraphicsPipeline(g_GPUDevice, &pipelinedesc);
-    CHECK_CREATE(g_RenderState.surface.pipeline, "Surface Render Pipeline")
     SDL_ReleaseGPUShader(g_GPUDevice, vertex_shader);
     SDL_ReleaseGPUShader(g_GPUDevice, fragment_shader);
 }
@@ -949,15 +781,12 @@ extern void InitShadows();
 void InitRenderPipelines(void)
 {
     InitSamplers();
-    InitSkinedPipeline();
-    InitSurfacePipeline();
     InitForwardPipelines();
     InitDepthOnlyPipelines();
     InitShadows();
     InitLinePipeline();
     InitGizmoLinePipeline();
     InitOutlinePipeline();
-    InitDeferredLightPipeline();
     InitSlugPipeline();
     InitUIShapePipeline();
     InitUIImagePipeline();
@@ -968,7 +797,6 @@ extern void DestroyShadows();
 
 static void DestroyRenderSetBufferPipelines(RenderSetShared buffer)
 {
-    if (buffer.pipeline)            SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, buffer.pipeline);
     if (buffer.forwardPipeline)     SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, buffer.forwardPipeline);
     if (buffer.shadowPipeline)      SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, buffer.shadowPipeline);
     if (buffer.depthPipeline)       SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, buffer.depthPipeline);
@@ -985,7 +813,6 @@ void DestroyRenderPipelines(void)
     if (g_RenderState.linePipeline)          SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.linePipeline);
     if (g_OutlinePipeline)                   SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_OutlinePipeline);
     if (g_GizmoLinePipeline)                 SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_GizmoLinePipeline);
-    if (g_RenderState.deferredLightPipeline) SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.deferredLightPipeline);
     if (g_RenderState.slugPipeline)          SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.slugPipeline);
     if (g_RenderState.slugDepthPipeline)     SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.slugDepthPipeline);
     if (g_RenderState.uiShapePipeline)       SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.uiShapePipeline);
@@ -994,7 +821,6 @@ void DestroyRenderPipelines(void)
     if (g_AnimComputePipeline)             SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_AnimComputePipeline);
     if (g_AnimVerticesPipeline)            SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_AnimVerticesPipeline);
     if (g_CullDrawArgsComputePipeline)     SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_CullDrawArgsComputePipeline);
-    if (g_CullLightsComputePipeline)       SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_CullLightsComputePipeline);
     if (g_BuildLightGridComputePipeline)   SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_BuildLightGridComputePipeline);
     if (g_ReconstructNormalComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_ReconstructNormalComputePipeline);
     if (g_TonemapComputePipeline)          SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_TonemapComputePipeline);
@@ -1002,7 +828,6 @@ void DestroyRenderPipelines(void)
     if (g_HiZDownscaleComputePipeline)     SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_HiZDownscaleComputePipeline);
     if (g_HBAOComputePipeline)             SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_HBAOComputePipeline);
     if (g_HBAOBlurComputePipeline)         SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_HBAOBlurComputePipeline);
-    if (g_ExtractNormalComputePipeline)    SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_ExtractNormalComputePipeline);
     if (g_DeferredLightingComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_DeferredLightingComputePipeline);
     if (g_MLAAEdgeMaskComputePipeline)     SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_MLAAEdgeMaskComputePipeline);
     if (g_MLAALineLengthComputePipeline)   SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_MLAALineLengthComputePipeline);

@@ -237,7 +237,6 @@ typedef struct RenderSetBuffers_
 // shared per set type: pipelines and the vertex pools every scene draws from
 typedef struct RenderSetShared_
 {
-    SDL_GPUGraphicsPipeline* pipeline;
     SDL_GPUGraphicsPipeline* forwardPipeline; // Forward+ opaque pass (gated by FORWARD_PLUS)
     SDL_GPUGraphicsPipeline* depthPipeline;
     SDL_GPUGraphicsPipeline* shadowPipeline;
@@ -250,7 +249,6 @@ typedef struct RenderSetShared_
 typedef struct RenderState
 {
     SDL_GPUGraphicsPipeline* linePipeline;
-    SDL_GPUGraphicsPipeline* deferredLightPipeline;
     SDL_GPUGraphicsPipeline* slugPipeline;
     SDL_GPUGraphicsPipeline* slug2DPipeline;
     SDL_GPUGraphicsPipeline* slugDepthPipeline;
@@ -266,8 +264,6 @@ typedef struct RenderState
     SDL_GPUBuffer*           lightBuffer;
     SDL_GPUBuffer*           pointShadowMatrixBuffer;
     SDL_GPUBuffer*           spotShadowMatrixBuffer;
-    SDL_GPUBuffer*           lightDrawInfoBuffer;
-    SDL_GPUBuffer*           lightDrawArgsBuffer;
     SDL_GPUBuffer*           lightVisibilityBuffer;
     SDL_GPUBuffer*           lightGridBuffer;     // Forward+: per-tile {offset,count}
     SDL_GPUBuffer*           lightIndexBuffer;    // Forward+: flat per-tile light index list

@@ -390,7 +390,35 @@
 						<Recursive>true</Recursive>
 						<ShowEmptyFolders>true</ShowEmptyFolders>
 						<IncludeFilesWithoutExt>false</IncludeFilesWithoutExt>
-						<Children></Children>
+						<Children>
+							<File>
+								<Path>Shaders/PostProcessing/GodRays.hlsl</Path>
+							</File>
+							<File>
+								<Path>Shaders/PostProcessing/HBAOBlurCompute.hlsl</Path>
+							</File>
+							<File>
+								<Path>Shaders/PostProcessing/HBAOCompute.hlsl</Path>
+							</File>
+							<File>
+								<Path>Shaders/PostProcessing/MLAABlendCompute.hlsl</Path>
+							</File>
+							<File>
+								<Path>Shaders/PostProcessing/MLAAEdgeMaskCompute.hlsl</Path>
+							</File>
+							<File>
+								<Path>Shaders/PostProcessing/MLAACommon.hlsl</Path>
+							</File>
+							<File>
+								<Path>Shaders/PostProcessing/MLAALineLengthCompute.hlsl</Path>
+							</File>
+							<File>
+								<Path>Shaders/PostProcessing/Sky.hlsl</Path>
+							</File>
+							<File>
+								<Path>Shaders/PostProcessing/TonemapCompute.hlsl</Path>
+							</File>
+						</Children>
 					</Folder>
 					<Folder>
 						<Path>Shaders/PreProcessing</Path>
@@ -483,9 +511,6 @@
 						<Path>Shaders/NoiseHash.hlsl</Path>
 					</File>
 					<File>
-						<Path>Shaders/ExtractNormalCompute.hlsl</Path>
-					</File>
-					<File>
 						<Path>Shaders/Outline.hlsl</Path>
 					</File>
 					<File>
@@ -511,18 +536,6 @@
 					</File>
 					<File>
 						<Path>Shaders/AnimatedTransform.hlsl</Path>
-					</File>
-					<File>
-						<Path>Shaders/DeferredLighting.hlsl</Path>
-					</File>
-					<File>
-						<Path>Shaders/DeferredLightVolume.hlsl</Path>
-					</File>
-					<File>
-						<Path>Shaders/Skinned.hlsl</Path>
-					</File>
-					<File>
-						<Path>Shaders/Surface.hlsl</Path>
 					</File>
 					<File>
 						<Path>Shaders/LocalLights.hlsl</Path>

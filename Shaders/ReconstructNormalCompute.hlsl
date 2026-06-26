@@ -14,6 +14,10 @@ cbuffer Params : register(b0, space2)
     uint2    aoSize;
 };
 
+// A 9x9 grid holds exactly enough data for an 8x8 thread group to 
+// compute forward-differencing normals without re-fetching neighbors.
+groupshared float3 sharedPos[81]; 
+
 float3 ReconstructWorld(uint2 fp)
 {
     fp = min(fp, fullSize - 1u);
@@ -25,14 +29,45 @@ float3 ReconstructWorld(uint2 fp)
 }
 
 [numthreads(8, 8, 1)]
-void main(uint3 tid : SV_DispatchThreadID)
+void main(
+		uint3 tid : SV_DispatchThreadID, 
+		uint3 gid : SV_GroupID, 
+		uint3 gtid : SV_GroupThreadID, 
+		uint gidx : SV_GroupIndex)
 {
+    // Calculate the base AO-resolution coordinate for this 8x8 group
+    uint2 groupBase = gid.xy * 8u;
+
+    // --- PHASE 1: Populate LDS ---
+    // All 64 threads fetch 1 position...
+    uint2 offset0 = uint2(gidx % 9u, gidx / 9u);
+    uint2 fp0 = (groupBase + offset0) * 2u + 1u;
+    sharedPos[gidx] = ReconstructWorld(fp0);
+
+    // ...and the first 17 threads fetch a second position to cover the full 9x9 (81) grid.
+    if (gidx < 17u)
+    {
+        uint idx1 = gidx + 64u;
+        uint2 offset1 = uint2(idx1 % 9u, idx1 / 9u);
+        uint2 fp1 = (groupBase + offset1) * 2u + 1u;
+        sharedPos[idx1] = ReconstructWorld(fp1);
+    }
+
+    // Wait for all threads to finish projecting & writing to LDS
+    GroupMemoryBarrierWithGroupSync();
+
+    // --- PHASE 2: Compute Normals ---
+    // IMPORTANT: Early-out bounds checking MUST happen AFTER the barrier, 
+    // otherwise edge thread groups will deadlock or leave LDS uninitialized.
     if (tid.x >= aoSize.x || tid.y >= aoSize.y) return;
 
-    uint2 center = tid.xy * 2u + 1u;
-    float3 p  = ReconstructWorld(center);
-    float3 px = ReconstructWorld(center + uint2(2u, 0u));
-    float3 py = ReconstructWorld(center + uint2(0u, 2u));
+    // Calculate our thread's index within the local 9x9 LDS array
+    uint localIdx = gtid.y * 9u + gtid.x;
+
+    // Read the center, right, and bottom reconstructed positions directly from LDS
+    float3 p  = sharedPos[localIdx];       // center
+    float3 px = sharedPos[localIdx + 1u];  // center + x
+    float3 py = sharedPos[localIdx + 9u];  // center + y
 
     float3 normal = normalize(cross(px - p, py - p));
     if (dot(normal, cameraPosition.xyz - p) < 0.0f) normal = -normal;
