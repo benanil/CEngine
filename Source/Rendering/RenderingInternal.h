@@ -87,6 +87,8 @@ extern SDL_GPUComputePipeline* g_AnimComputePipeline;
 extern SDL_GPUComputePipeline* g_AnimVerticesPipeline;
 extern SDL_GPUComputePipeline* g_CullDrawArgsComputePipeline;
 extern SDL_GPUComputePipeline* g_CullLightsComputePipeline;
+extern SDL_GPUComputePipeline* g_BuildLightGridComputePipeline;
+extern SDL_GPUComputePipeline* g_ReconstructNormalComputePipeline;
 extern SDL_GPUComputePipeline* g_TonemapComputePipeline;
 extern SDL_GPUComputePipeline* g_HiZBuildComputePipeline;
 extern SDL_GPUComputePipeline* g_HiZDownscaleComputePipeline;
@@ -123,7 +125,11 @@ void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd,
                                  const f32           cullSphere[4]);
 
 void DispatchHiZBuildCompute(SDL_GPUCommandBuffer* cmd);
-void DispatchHBAOCompute(SDL_GPUCommandBuffer* cmd, bool enabled, u32 width, u32 height);
+// extractFromGBuffer: deferred path unpacks normals from the G-buffer tangent target;
+// the forward path passes false (it fills tex_hbao_normal via DispatchReconstructNormalCompute).
+void DispatchHBAOCompute(SDL_GPUCommandBuffer* cmd, bool enabled, u32 width, u32 height, bool extractFromGBuffer);
+void DispatchReconstructNormalCompute(SDL_GPUCommandBuffer* cmd, mat4x4 viewProj, u32 width, u32 height);
+void DispatchBuildLightGridCompute(SDL_GPUCommandBuffer* cmd, u32 width, u32 height, u32 tilesX, u32 tilesY);
 void DispatchDeferredLightingCompute(SDL_GPUCommandBuffer* cmd, u32 width, u32 height, mat4x4 viewProj);
 void DispatchCullLightsCompute(SDL_GPUCommandBuffer* cmd, FrustumPlanes frustumPlanes, mat4x4 viewProj, bool enableFrustum, bool enableHiZ, u32 width, u32 height);
 void DispatchTonemapCompute(SDL_GPUCommandBuffer* cmd, u32 width, u32 height, mat4x4 viewProj);
@@ -134,6 +140,7 @@ void DispatchAnimateVerticesCompute(SDL_GPUCommandBuffer* cmd, RenderSet* render
 void RenderDepth(SDL_GPUCommandBuffer* cmd, const DepthPassContext* ctx);
 
 void RenderScene(SDL_GPUCommandBuffer* cmd, const ScenePassContext* ctx);
+void RenderSceneForward(SDL_GPUCommandBuffer* cmd, const ScenePassContext* ctx, u32 width, u32 height, u32 tilesX, bool localLightsEnabled);
 void RenderDeferredLights(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget, mat4x4 viewProj, u32 width, u32 height);
 void RenderShadows(SDL_GPUCommandBuffer* cmd);
 void RenderLines(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget, SDL_GPUDepthStencilTargetInfo* depthTarget, mat4x4 viewProj);

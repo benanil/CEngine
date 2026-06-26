@@ -11,7 +11,7 @@
 #define CHECK_CREATE(var, thing) { if (!(var)) { AX_ERROR("Failed to create %s: %s", thing, SDL_GetError()); /*Quit(2);*/ } }
 
 #define TEXTURE_PAGE_SIZE       4096
-#define TEXTURE_PAGE_LAYERS     16
+#define TEXTURE_PAGE_LAYERS     32
 #define MAX_SCENE_TEXTURES      1024
 #define MAX_TEXTURE_DESCRIPTORS 2048
 #define MAX_GPU_MATERIALS       2048
@@ -238,6 +238,7 @@ typedef struct RenderSetBuffers_
 typedef struct RenderSetShared_
 {
     SDL_GPUGraphicsPipeline* pipeline;
+    SDL_GPUGraphicsPipeline* forwardPipeline; // Forward+ opaque pass (gated by FORWARD_PLUS)
     SDL_GPUGraphicsPipeline* depthPipeline;
     SDL_GPUGraphicsPipeline* shadowPipeline;
     SDL_GPUGraphicsPipeline* pointShadowPipeline;
@@ -268,6 +269,9 @@ typedef struct RenderState
     SDL_GPUBuffer*           lightDrawInfoBuffer;
     SDL_GPUBuffer*           lightDrawArgsBuffer;
     SDL_GPUBuffer*           lightVisibilityBuffer;
+    SDL_GPUBuffer*           lightGridBuffer;     // Forward+: per-tile {offset,count}
+    SDL_GPUBuffer*           lightIndexBuffer;    // Forward+: flat per-tile light index list
+    SDL_GPUBuffer*           lightIndexCounter;   // Forward+: global allocator for lightIndexBuffer
     SDL_GPUBuffer*           uiShapeBuffer;
     SDL_GPUBuffer*           uiShapeDrawArgsBuffer;
     SDL_GPUBuffer*           shadowCascadeBuffer;

@@ -14,6 +14,8 @@ BUILD_DIR = SHADER_DIR / "Build"
 
 GRAPHICS_SHADERS = [
     ("Surface", "vert", "frag"),
+    ("SurfaceForward", "vert", "frag"),
+    ("SkinnedForward", "vert", "frag"),
     ("DeferredLightVolume", "vert", "frag"),
     ("SurfaceDepthOnly", "vert", "frag"),
     ("Skinned", "vert", "frag"),
@@ -44,6 +46,8 @@ COMPUTE_SHADERS = [
     ("UI/ColorPickCompute", "main"),
     ("DeferredLighting", "main"),
     ("ExtractNormalCompute", "main"),
+    ("ReconstructNormalCompute", "main"),
+    ("PreProcessing/BuildLightGridCompute", "main"),
     ("Animation/AnimationCompute", "main"),
     ("Animation/AnimateVertices", "main"),
     ("PreProcessing/CullDrawArgsCompute", "main"),

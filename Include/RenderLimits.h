@@ -48,6 +48,16 @@
 #define MAX_LINE_COUNT (MAX_ENTITY * 100)
 #define MAX_LIGHT_COUNT 1024u
 
+// Tiled Forward+ light culling. One screen tile is FORWARD_TILE_SIZE pixels square;
+// each tile keeps up to MAX_LIGHTS_PER_TILE local light indices. The grid/index buffers
+// are sized for FORWARD_MAX_TILES (covers up to 4096x2560 render resolution); larger
+// resolutions are clamped on the CPU side.
+#define FORWARD_TILE_SIZE     16u
+#define MAX_LIGHTS_PER_TILE   32u
+#define FORWARD_MAX_TILES_X   256u
+#define FORWARD_MAX_TILES_Y   160u
+#define FORWARD_MAX_TILES     (FORWARD_MAX_TILES_X * FORWARD_MAX_TILES_Y)
+
 // max animation bounds is ANIMATION_MAX_METERS because we use ANIMATION_PRECISION bit precision
 #define MAX_SURFACE_VERTEX                   10000000ull /* 160 megabytes */
 #define MAX_SKINNED_SOURCE_VERTEX            262144ull

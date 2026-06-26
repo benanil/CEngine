@@ -483,13 +483,7 @@
 						<Path>Shaders/NoiseHash.hlsl</Path>
 					</File>
 					<File>
-						<Path>Shaders/DeferredLighting.hlsl</Path>
-					</File>
-					<File>
 						<Path>Shaders/ExtractNormalCompute.hlsl</Path>
-					</File>
-					<File>
-						<Path>Shaders/DeferredLightVolume.hlsl</Path>
 					</File>
 					<File>
 						<Path>Shaders/Outline.hlsl</Path>
@@ -510,19 +504,37 @@
 						<Path>Shaders/LOD.hlsl</Path>
 					</File>
 					<File>
-						<Path>Shaders/Skinned.hlsl</Path>
-					</File>
-					<File>
 						<Path>Shaders/SkinnedDepthOnly.hlsl</Path>
-					</File>
-					<File>
-						<Path>Shaders/Surface.hlsl</Path>
 					</File>
 					<File>
 						<Path>Shaders/SurfaceDepthOnly.hlsl</Path>
 					</File>
 					<File>
 						<Path>Shaders/AnimatedTransform.hlsl</Path>
+					</File>
+					<File>
+						<Path>Shaders/DeferredLighting.hlsl</Path>
+					</File>
+					<File>
+						<Path>Shaders/DeferredLightVolume.hlsl</Path>
+					</File>
+					<File>
+						<Path>Shaders/Skinned.hlsl</Path>
+					</File>
+					<File>
+						<Path>Shaders/Surface.hlsl</Path>
+					</File>
+					<File>
+						<Path>Shaders/LocalLights.hlsl</Path>
+					</File>
+					<File>
+						<Path>Shaders/ReconstructNormalCompute.hlsl</Path>
+					</File>
+					<File>
+						<Path>Shaders/SkinnedForward.hlsl</Path>
+					</File>
+					<File>
+						<Path>Shaders/SurfaceForward.hlsl</Path>
 					</File>
 				</Children>
 			</Folder>

@@ -173,6 +173,118 @@ void RenderScene(SDL_GPUCommandBuffer* cmd, const ScenePassContext* ctx)
     SDL_EndGPURenderPass(pass);
 }
 
+// Forward+ opaque draw: same geometry/instancing as RenderScene, but binds the forward
+// pipeline (single HDR target, depth test only) and the extra fragment resources the
+// forward shader needs (shadow atlases, AO, light buffer + tile grid/index).
+static void DrawRenderBufferForward(SDL_GPUCommandBuffer* cmd, SDL_GPURenderPass* pass, bool isSkinned, Scene* scene,
+                                    const SDL_GPUBufferBinding vertex_binding,
+                                    const SDL_GPUTextureSamplerBinding fragmentSamplers[7],
+                                    SDL_GPUBuffer* const fragmentBuffers[7],
+                                    const void* vertexParams, u32 vertexParamsSize,
+                                    const void* fragmentParams, u32 fragmentParamsSize)
+{
+    const SDL_GPUBufferBinding index_binding = { g_RenderState.indexBuffer, 0 };
+    const RenderSetBuffers*  buffers   = isSkinned ? &scene->skinnedBuffers : &scene->surfaceBuffers;
+    const RenderSet*         renderSet = isSkinned ? &scene->skinnedSet     : &scene->surfaceSet;
+    SDL_GPUGraphicsPipeline* pipeline  = isSkinned ? g_RenderState.skinned.forwardPipeline : g_RenderState.surface.forwardPipeline;
+    if (renderSet->numGroups == 0 || !pipeline) return;
+    SDL_BindGPUGraphicsPipeline(pass, pipeline);
+    SDL_BindGPUVertexBuffers(pass, 0, &vertex_binding, 1);
+    SDL_BindGPUIndexBuffer(pass, &index_binding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
+
+    SDL_GPUBuffer* storageBuffers[6];
+    u32 count = 0;
+    storageBuffers[count++] = buffers->entity;
+    storageBuffers[count++] = buffers->primitiveGroup;
+    storageBuffers[count++] = buffers->drawSparseIndices;
+    if (isSkinned) storageBuffers[count++] = g_RenderState.skinned.animatedVertices;
+    storageBuffers[count++] = g_RenderState.shadowCascadeBuffer;
+    if (isSkinned) storageBuffers[count++] = scene->animSystem.boneBuffer;
+    SDL_BindGPUVertexStorageBuffers(pass, 0, storageBuffers, count);
+
+    SDL_BindGPUFragmentSamplers(pass, 0, fragmentSamplers, 7);
+    SDL_BindGPUFragmentStorageBuffers(pass, 0, fragmentBuffers, 7);
+    SDL_PushGPUVertexUniformData(cmd, 0, vertexParams, vertexParamsSize);
+    SDL_PushGPUFragmentUniformData(cmd, 0, fragmentParams, fragmentParamsSize);
+    SDL_DrawGPUIndexedPrimitivesIndirect(pass, buffers->drawArgs, 0, renderSet->numGroups * MESH_LOD_COUNT);
+}
+
+void RenderSceneForward(SDL_GPUCommandBuffer* cmd, const ScenePassContext* ctx, u32 width, u32 height, u32 tilesX, bool localLightsEnabled)
+{
+    Scene* scene = g_ActiveScene;
+    u32 totalGroups = scene->skinnedSet.numGroups + scene->surfaceSet.numGroups;
+    if (totalGroups == 0)
+        return;
+
+    struct {
+        mat4x4 viewProj;
+        float cameraPosition[4];
+        float cameraForward[4];
+    } vertexParams;
+    vertexParams.viewProj = ctx->viewProj;
+    vertexParams.cameraPosition[0] = g_Camera.position.x;
+    vertexParams.cameraPosition[1] = g_Camera.position.y;
+    vertexParams.cameraPosition[2] = g_Camera.position.z;
+    vertexParams.cameraPosition[3] = 0.0f;
+    vertexParams.cameraForward[0] = g_Camera.Front.x;
+    vertexParams.cameraForward[1] = g_Camera.Front.y;
+    vertexParams.cameraForward[2] = g_Camera.Front.z;
+    vertexParams.cameraForward[3] = 0.0f;
+
+    float3 sunDirection = GetRenderSunDirection();
+    struct {
+        f32 sunDirection[4];
+        f32 cameraPosition[4];
+        u32 outputSize[2];
+        u32 tilesX;
+        u32 tileSize;
+        u32 localLightsEnabled;
+        u32 pad0[3];
+    } fragmentParams = {0};
+    fragmentParams.sunDirection[0] = sunDirection.x;
+    fragmentParams.sunDirection[1] = sunDirection.y;
+    fragmentParams.sunDirection[2] = sunDirection.z;
+    fragmentParams.cameraPosition[0] = g_Camera.position.x;
+    fragmentParams.cameraPosition[1] = g_Camera.position.y;
+    fragmentParams.cameraPosition[2] = g_Camera.position.z;
+    fragmentParams.outputSize[0] = width;
+    fragmentParams.outputSize[1] = height;
+    fragmentParams.tilesX = tilesX;
+    fragmentParams.tileSize = FORWARD_TILE_SIZE;
+    fragmentParams.localLightsEnabled = localLightsEnabled ? 1u : 0u;
+
+    SDL_GPUTextureSamplerBinding fragmentSamplers[7] = {
+        { .texture = scene->textureSystem.classes[TextureClass_Albedo].pages.handle, .sampler = g_RenderState.sampler },
+        { .texture = scene->textureSystem.classes[TextureClass_Normal].pages.handle, .sampler = g_RenderState.sampler },
+        { .texture = scene->textureSystem.classes[TextureClass_MetallicRoughness].pages.handle, .sampler = g_RenderState.sampler },
+        { .texture = g_WindowState.tex_shadow_color, .sampler = g_RenderState.shadowSampler },
+        { .texture = g_WindowState.tex_point_shadow_color, .sampler = g_RenderState.shadowSampler },
+        { .texture = g_WindowState.tex_spot_shadow_color, .sampler = g_RenderState.shadowSampler },
+        { .texture = g_WindowState.tex_hbao_blur, .sampler = g_RenderState.sampler }
+    };
+    SDL_GPUBuffer* fragmentBuffers[7] = {
+        scene->textureSystem.materialBuffer,
+        scene->textureSystem.descriptorBuffer,
+        g_RenderState.lightBuffer,
+        g_RenderState.lightGridBuffer,
+        g_RenderState.lightIndexBuffer,
+        g_RenderState.pointShadowMatrixBuffer,
+        g_RenderState.spotShadowMatrixBuffer
+    };
+
+    SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmd, ctx->colorTargets, ctx->numColorTargets, ctx->depthTarget);
+
+    const SDL_GPUBufferBinding skinnedVertex = { g_RenderState.skinned.vertexBuffer, 0 };
+    DrawRenderBufferForward(cmd, pass, true, scene, skinnedVertex, fragmentSamplers, fragmentBuffers,
+                            &vertexParams, sizeof(vertexParams), &fragmentParams, sizeof(fragmentParams));
+
+    const SDL_GPUBufferBinding surfaceVertex = { g_RenderState.surface.vertexBuffer, 0 };
+    DrawRenderBufferForward(cmd, pass, false, scene, surfaceVertex, fragmentSamplers, fragmentBuffers,
+                            &vertexParams, sizeof(vertexParams), &fragmentParams, sizeof(fragmentParams));
+
+    SDL_EndGPURenderPass(pass);
+}
+
 void RenderDeferredLights(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget, mat4x4 viewProj, u32 width, u32 height)
 {
     WindowState* winstate = &g_WindowState;

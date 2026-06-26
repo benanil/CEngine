@@ -1,6 +1,12 @@
 #include "RenderingInternal.h"
 #include "Include/Slug.h"
 #include "Include/UIRenderer.h"
+
+// Tiled Forward+ opaque path. Set to 0 to fall back to the deferred renderer (the two
+// paths both leave the lit HDR image in tex_color, so everything downstream is shared).
+#ifndef FORWARD_PLUS
+#define FORWARD_PLUS 1
+#endif
 #include "Include/Platform.h"
 #include "Include/Animation.h"
 #include "Include/Memory.h"
@@ -312,6 +318,11 @@ void InitBuffers(void)
     g_RenderState.lightDrawInfoBuffer  = CreateBuffer(NULL, sizeof(LightDrawInfo) * MAX_LIGHT_COUNT, BReadRasterBit | BWriteComputeBit, "CPLightDrawInfoBuffer");
     g_RenderState.lightDrawArgsBuffer  = CreateBuffer(NULL, sizeof(SDL_GPUIndirectDrawCommand)     , BIndirectBit   | BWriteComputeBit, "CPLightDrawArgsBuffer");
     g_RenderState.lightVisibilityBuffer = CreateBuffer(NULL, sizeof(u32) * MAX_LIGHT_COUNT          , BWriteComputeBit, "CPLightVisibilityBuffer");
+    // Forward+ tiled light grid. lightGrid holds a {offset,count} per tile; lightIndex is a
+    // flat list the forward shaders walk; lightIndexCounter is the global allocator.
+    g_RenderState.lightGridBuffer      = CreateBuffer(NULL, sizeof(u32) * 2u * FORWARD_MAX_TILES                  , BReadRasterBit | BWriteComputeBit, "CPLightGridBuffer");
+    g_RenderState.lightIndexBuffer     = CreateBuffer(NULL, sizeof(u32) * FORWARD_MAX_TILES * MAX_LIGHTS_PER_TILE , BReadRasterBit | BWriteComputeBit, "CPLightIndexBuffer");
+    g_RenderState.lightIndexCounter    = CreateBuffer(NULL, sizeof(u32)                                           , BWriteComputeBit, "CPLightIndexCounter");
 
     g_LightVisTransfer = SDL_CreateGPUTransferBuffer(g_GPUDevice, &(SDL_GPUTransferBufferCreateInfo){
         .usage = SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD,
@@ -606,6 +617,33 @@ void Render(void)
             .cascadeIndex      = 0,
             .flags             = DepthPassFlag_AlphaClip | DepthPassFlag_EnableLOD
         });
+#if FORWARD_PLUS
+        // Tiled Forward+: AO + light grid run off the prepass depth, then a single
+        // forward opaque pass shades everything into tex_color.
+        u32 tilesX = (renderW + FORWARD_TILE_SIZE - 1u) / FORWARD_TILE_SIZE;
+        u32 tilesY = (renderH + FORWARD_TILE_SIZE - 1u) / FORWARD_TILE_SIZE;
+        bool tilesFit = tilesX <= FORWARD_MAX_TILES_X && tilesY <= FORWARD_MAX_TILES_Y;
+        bool forwardLocalLights = g_RenderSettings.enableLocalLights && tilesFit;
+        static bool s_tileBudgetWarned = false;
+        if (!tilesFit && !s_tileBudgetWarned)
+        {
+            s_tileBudgetWarned = true;
+            AX_WARN("Forward+ render resolution exceeds the tile budget; local lights disabled");
+        }
+
+        DispatchReconstructNormalCompute(cmd, viewProj, renderW, renderH);
+        DispatchHBAOCompute(cmd, g_RenderSettings.enableHBAO, renderW, renderH, false);
+        if (forwardLocalLights)
+            DispatchBuildLightGridCompute(cmd, renderW, renderH, tilesX, tilesY);
+        RenderSceneForward(cmd, &(ScenePassContext){
+            .colorTargets    = &color_target,
+            .numColorTargets = 1u,
+            .depthTarget     = &main_depth_target,
+            .shadowCascades  = shadowCascades,
+            .viewProj        = viewProj
+        }, renderW, renderH, tilesX, forwardLocalLights);
+        DispatchHiZBuildCompute(cmd);
+#else
         RenderScene(cmd, &(ScenePassContext){
             .colorTargets    = gbuffer_targets,
             .numColorTargets = SDL_arraysize(gbuffer_targets),
@@ -613,7 +651,7 @@ void Render(void)
             .shadowCascades  = shadowCascades,
             .viewProj        = viewProj
         });
-        DispatchHBAOCompute(cmd, g_RenderSettings.enableHBAO, renderW, renderH);
+        DispatchHBAOCompute(cmd, g_RenderSettings.enableHBAO, renderW, renderH, true);
         DispatchDeferredLightingCompute(cmd, renderW, renderH, viewProj);
         DispatchHiZBuildCompute(cmd);
         if (g_RenderSettings.enableLocalLights)
@@ -623,20 +661,22 @@ void Render(void)
                                       g_RenderSettings.enableOcclusion && g_RenderSettings.enableLightOcclusionCulling,
                                       renderW, renderH);
             RenderDeferredLights(cmd, &color_load_target, viewProj, renderW, renderH);
+        }
+#endif
 
-            // Queue a non-blocking readback of this frame's per-light visibility
-            // so next frame's shadow assignment can skip occluded lights. Only
-            // issue when the previous readback has been consumed to avoid
-            // overwriting an in-flight transfer buffer.
-            if (!g_LightVisPending && g_RenderState.numLights > 0u && g_RenderState.lightVisibilityBuffer)
-            {
-                SDL_GPUCopyPass* copyPass = SDL_BeginGPUCopyPass(cmd);
-                SDL_DownloadFromGPUBuffer(copyPass,
-                    &(SDL_GPUBufferRegion){ .buffer = g_RenderState.lightVisibilityBuffer, .offset = 0, .size = sizeof(u32) * MAX_LIGHT_COUNT },
-                    &(SDL_GPUTransferBufferLocation){ .transfer_buffer = g_LightVisTransfer, .offset = 0 });
-                SDL_EndGPUCopyPass(copyPass);
-                submitLightVisReadback = true;
-            }
+        // Per-light visibility readback (one frame of latency) for shadow assignment.
+        // Both paths fill lightVisibilityBuffer: the forward grid build and the deferred
+        // light cull. Only issue when the previous readback has been consumed to avoid
+        // overwriting an in-flight transfer buffer.
+        if (g_RenderSettings.enableLocalLights && !g_LightVisPending &&
+            g_RenderState.numLights > 0u && g_RenderState.lightVisibilityBuffer)
+        {
+            SDL_GPUCopyPass* copyPass = SDL_BeginGPUCopyPass(cmd);
+            SDL_DownloadFromGPUBuffer(copyPass,
+                &(SDL_GPUBufferRegion){ .buffer = g_RenderState.lightVisibilityBuffer, .offset = 0, .size = sizeof(u32) * MAX_LIGHT_COUNT },
+                &(SDL_GPUTransferBufferLocation){ .transfer_buffer = g_LightVisTransfer, .offset = 0 });
+            SDL_EndGPUCopyPass(copyPass);
+            submitLightVisReadback = true;
         }
         Terrain_RenderWireframe(cmd, &color_load_target, &main_depth_target, viewProj);
 
@@ -742,6 +782,9 @@ void DestroyPipeline(void)
     if (g_RenderState.lightDrawInfoBuffer)      SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lightDrawInfoBuffer);
     if (g_RenderState.lightDrawArgsBuffer)      SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lightDrawArgsBuffer);
     if (g_RenderState.lightVisibilityBuffer)    SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lightVisibilityBuffer);
+    if (g_RenderState.lightGridBuffer)          SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lightGridBuffer);
+    if (g_RenderState.lightIndexBuffer)         SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lightIndexBuffer);
+    if (g_RenderState.lightIndexCounter)        SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lightIndexCounter);
     if (g_LightVisFence)                        SDL_ReleaseGPUFence(g_GPUDevice, g_LightVisFence);
     if (g_LightVisTransfer)                     SDL_ReleaseGPUTransferBuffer(g_GPUDevice, g_LightVisTransfer);
     if (g_RenderState.uiShapeBuffer)            SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.uiShapeBuffer);

@@ -229,12 +229,111 @@ void DispatchCullLightsCompute(SDL_GPUCommandBuffer* cmd, FrustumPlanes frustumP
     }
 }
 
-void DispatchHBAOCompute(SDL_GPUCommandBuffer* cmd, bool enabled, u32 width, u32 height)
+// Forward+ AO: reconstruct half-res world normals from the prepass depth into
+// tex_hbao_normal so the existing HBAO/blur passes can run without a G-buffer.
+void DispatchReconstructNormalCompute(SDL_GPUCommandBuffer* cmd, mat4x4 viewProj, u32 width, u32 height)
+{
+    WindowState* winstate = &g_WindowState;
+    if (!winstate->tex_hiz_depth || !winstate->tex_hbao_normal) return;
+    CHECK_CREATE(g_ReconstructNormalComputePipeline, "Reconstruct Normal Compute Pipeline");
+
+    u32 aoWidth = Maxu32(width / 2u, 1u);
+    u32 aoHeight = Maxu32(height / 2u, 1u);
+
+    struct {
+        mat4x4 invViewProj;
+        f32 cameraPosition[4];
+        u32 fullSize[2];
+        u32 aoSize[2];
+    } params = {0};
+    params.invViewProj = M44Inverse(viewProj);
+    params.cameraPosition[0] = g_Camera.position.x;
+    params.cameraPosition[1] = g_Camera.position.y;
+    params.cameraPosition[2] = g_Camera.position.z;
+    params.fullSize[0] = width;
+    params.fullSize[1] = height;
+    params.aoSize[0] = aoWidth;
+    params.aoSize[1] = aoHeight;
+
+    SDL_GPUStorageTextureReadWriteBinding output = {
+        .texture = winstate->tex_hbao_normal, .mip_level = 0, .layer = 0, .cycle = true
+    };
+    SDL_GPUComputePass* pass = SDL_BeginGPUComputePass(cmd, &output, 1, NULL, 0);
+    SDL_BindGPUComputePipeline(pass, g_ReconstructNormalComputePipeline);
+    SDL_BindGPUComputeSamplers(pass, 0, &(SDL_GPUTextureSamplerBinding){
+        .texture = winstate->tex_hiz_depth, .sampler = g_RenderState.hiZSampler }, 1);
+    SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
+    SDL_DispatchGPUCompute(pass, (aoWidth + 7u) / 8u, (aoHeight + 7u) / 8u, 1);
+    SDL_EndGPUComputePass(pass);
+}
+
+// Forward+ tiled light culling. First a tiny reset dispatch zeroes the global index
+// allocator and per-light visibility, then one group per 16x16 screen tile bins the
+// visible local lights into a flat per-tile index list.
+void DispatchBuildLightGridCompute(SDL_GPUCommandBuffer* cmd, u32 width, u32 height, u32 tilesX, u32 tilesY)
+{
+    WindowState* winstate = &g_WindowState;
+    if (!winstate->tex_hiz_depth || !g_RenderState.lightBuffer || !g_RenderState.lightGridBuffer ||
+        !g_RenderState.lightIndexBuffer || !g_RenderState.lightIndexCounter || !g_RenderState.lightVisibilityBuffer)
+        return;
+    CHECK_CREATE(g_BuildLightGridComputePipeline, "Build Light Grid Compute Pipeline");
+
+    struct {
+        mat4x4 invProjection;
+        mat4x4 view;
+        u32 screenSize[2];
+        u32 tileSize;
+        u32 tilesX;
+        u32 tilesY;
+        u32 numLights;
+        u32 resetMode;
+        u32 padding0;
+    } params = {0};
+    params.invProjection = g_Camera.inverseProjection;
+    params.view = g_Camera.view;
+    params.screenSize[0] = width;
+    params.screenSize[1] = height;
+    params.tileSize = FORWARD_TILE_SIZE;
+    params.tilesX = tilesX;
+    params.tilesY = tilesY;
+    params.numLights = g_RenderState.numLights;
+
+    SDL_GPUStorageBufferReadWriteBinding rw[4] = {
+        { g_RenderState.lightGridBuffer },
+        { g_RenderState.lightIndexBuffer },
+        { g_RenderState.lightIndexCounter },
+        { g_RenderState.lightVisibilityBuffer }
+    };
+    SDL_GPUTextureSamplerBinding depthBinding = { .texture = winstate->tex_hiz_depth, .sampler = g_RenderState.hiZSampler };
+    SDL_GPUBuffer* roBuffers[1] = { g_RenderState.lightBuffer };
+
+    // reset pass
+    params.resetMode = 1u;
+    SDL_GPUComputePass* pass = SDL_BeginGPUComputePass(cmd, NULL, 0, rw, SDL_arraysize(rw));
+    SDL_BindGPUComputePipeline(pass, g_BuildLightGridComputePipeline);
+    SDL_BindGPUComputeSamplers(pass, 0, &depthBinding, 1);
+    SDL_BindGPUComputeStorageBuffers(pass, 0, roBuffers, 1);
+    SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
+    SDL_DispatchGPUCompute(pass, Maxu32((g_RenderState.numLights + 255u) / 256u, 1u), 1, 1);
+    SDL_EndGPUComputePass(pass);
+
+    // main per-tile pass
+    params.resetMode = 0u;
+    pass = SDL_BeginGPUComputePass(cmd, NULL, 0, rw, SDL_arraysize(rw));
+    SDL_BindGPUComputePipeline(pass, g_BuildLightGridComputePipeline);
+    SDL_BindGPUComputeSamplers(pass, 0, &depthBinding, 1);
+    SDL_BindGPUComputeStorageBuffers(pass, 0, roBuffers, 1);
+    SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
+    SDL_DispatchGPUCompute(pass, tilesX, tilesY, 1);
+    SDL_EndGPUComputePass(pass);
+}
+
+void DispatchHBAOCompute(SDL_GPUCommandBuffer* cmd, bool enabled, u32 width, u32 height, bool extractFromGBuffer)
 {
     WindowState* winstate = &g_WindowState;
     if (!winstate->tex_hiz_depth || !winstate->tex_gbuffer_tangent || !winstate->tex_hbao ||
         !winstate->tex_hbao_blur || !winstate->tex_hbao_normal) return;
-    if (enabled) CHECK_CREATE(g_ExtractNormalComputePipeline, "Extract Normal Compute Pipeline");
+    if (enabled && extractFromGBuffer) CHECK_CREATE(g_ExtractNormalComputePipeline, "Extract Normal Compute Pipeline");
     CHECK_CREATE(g_HBAOComputePipeline, "HBAO Compute Pipeline");
     CHECK_CREATE(g_HBAOBlurComputePipeline, "HBAO Blur Compute Pipeline");
 
@@ -272,7 +371,7 @@ void DispatchHBAOCompute(SDL_GPUCommandBuffer* cmd, bool enabled, u32 width, u32
     params.numDirections = (u32)Clampf32(g_RenderSettings.hbaoDirections, 2.0f, 16.0f);
 
     SDL_GPUComputePass* pass;
-    if (enabled)
+    if (enabled && extractFromGBuffer)
     {
         SDL_GPUStorageTextureReadWriteBinding normalOutput = {
             .texture = winstate->tex_hbao_normal,

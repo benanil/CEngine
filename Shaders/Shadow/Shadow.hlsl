@@ -1,3 +1,5 @@
+#ifndef SHADOW_HLSL
+#define SHADOW_HLSL
 
 static const float2 ShadowKernel[32] =
 {
@@ -95,3 +97,5 @@ float SampleShadow(Texture2D<float> shadowMap, SamplerState samp,
     }
     return max(shadow / float(kernelSize), 0.2f);
 }
+
+#endif
