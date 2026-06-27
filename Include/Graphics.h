@@ -206,7 +206,7 @@ typedef struct MaterialGPU_
 
 typedef struct WindowState
 {
-    SDL_GPUTexture* tex_depth, *tex_hiz_depth, *tex_color, *tex_post, *tex_hiz;
+    SDL_GPUTexture* tex_depth, *tex_hiz_depth, *tex_color, *tex_color_msaa, *tex_depth_msaa, *tex_post, *tex_hiz;
     SDL_GPUTexture* tex_gbuffer_tangent, *tex_gbuffer_albedo_metallic, *tex_gbuffer_shadow_roughness;
     SDL_GPUTexture* tex_hbao, *tex_hbao_blur, *tex_hbao_normal;
     SDL_GPUTexture* tex_mlaa_edge_mask, *tex_mlaa_edge_count, *tex_mlaa_output;
@@ -274,6 +274,7 @@ typedef struct RenderState
     RenderSetShared          skinned;
     RenderSetShared          surface;
     SDL_GPUTexture*          skyNoise3D;
+    SDL_GPUSampleCount       sceneSampleCount;
     u32                      numLights;
 } RenderState;
 
@@ -332,6 +333,11 @@ void GeometryHeapFree(GeometryBufferKind kind, void* raw);
 void Rendering_QueueGeometryUpload(GeometryBufferKind kind, u32 begin, u32 end);
 
 void GraphicsInit(bool msaa);
+
+// Applies g_RenderSettings.msaaSamples to the scene raster targets. Returns true when
+// the active sample count changed and scene pipelines/textures must be recreated.
+bool GraphicsApplyMSAASettings(void);
+u32  GraphicsGetActiveMSAASamples(void);
 
 void CreateWindowBuffers();
 

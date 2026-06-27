@@ -14,8 +14,8 @@ StructuredBuffer<LightGPU> sLights      : register(t1, space0);
 // Read-write (space1).
 RWStructuredBuffer<uint2> sLightGrid        : register(u0, space1); // per tile {offset, count}
 RWStructuredBuffer<uint>  sLightIndex       : register(u1, space1); // flat light index list
-RWStructuredBuffer<uint>  sLightIndexCounter: register(u2, space1); // single global allocator
 RWStructuredBuffer<uint>  sLightVisibility  : register(u3, space1); // per-light, 1 if in any tile
+globallycoherent RWStructuredBuffer<uint>  sLightIndexCounter: register(u2, space1); // single global allocator
 
 cbuffer Params : register(b0, space2)
 {

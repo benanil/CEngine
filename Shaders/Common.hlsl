@@ -39,6 +39,7 @@
     #define in
     #define out
     #define inout
+	#define globallycoherent 
 #endif
 
 typedef float f32;

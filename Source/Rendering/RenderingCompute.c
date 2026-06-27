@@ -423,7 +423,7 @@ static f32 GetSkyPhaseTime(void)
     return (f32)(startupPhase * 0.01);
 }
 
-void DispatchTonemapCompute(SDL_GPUCommandBuffer* cmd, u32 width, u32 height, mat4x4 viewProj)
+void DispatchTonemapCompute(SDL_GPUCommandBuffer* cmd, u32 width, u32 height, mat4x4 viewProj, u32 tilesX, bool tileHeatEnabled)
 {
     WindowState* winstate       = &g_WindowState;
     SDL_GPUTexture* source      = winstate->tex_color; 
@@ -444,6 +444,8 @@ void DispatchTonemapCompute(SDL_GPUCommandBuffer* cmd, u32 width, u32 height, ma
         { .texture = g_RenderState.skyNoise3D, .sampler = g_RenderState.sampler }
     };
     SDL_BindGPUComputeSamplers(pass, 0, inputs, SDL_arraysize(inputs));
+    SDL_GPUBuffer* storageBuffers[1] = { g_RenderState.lightGridBuffer };
+    SDL_BindGPUComputeStorageBuffers(pass, 0, storageBuffers, SDL_arraysize(storageBuffers));
 
     float godRayIntensity = g_RenderSettings.godRayIntensity;
     float2 sunPos = GetGodRaySunPos(viewProj, &godRayIntensity);
@@ -456,7 +458,8 @@ void DispatchTonemapCompute(SDL_GPUCommandBuffer* cmd, u32 width, u32 height, ma
         f32 time;
         f32 cloudTime;
         f32 godRaySamples;
-        f32 padding[2];
+        u32 tilesX;
+        u32 tileHeatEnabled;
         mat4x4 invViewProj;
         f32 cameraPosition[4];
         f32 sunDirection[4];
@@ -472,6 +475,8 @@ void DispatchTonemapCompute(SDL_GPUCommandBuffer* cmd, u32 width, u32 height, ma
     params.sunPos[1] = sunPos.y;
     params.godRayIntensity = godRayIntensity;
     params.godRaySamples = Clampf32(g_RenderSettings.godRaySamples, 0.0f, 128.0f);
+    params.tilesX = tilesX;
+    params.tileHeatEnabled = tileHeatEnabled ? 1u : 0u;
     params.cloudTime = TimeSinceStartup();
     params.time = GetSkyPhaseTime() + params.cloudTime;
     params.invViewProj = M44Inverse(viewProj);

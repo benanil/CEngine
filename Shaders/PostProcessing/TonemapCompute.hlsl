@@ -1,3 +1,7 @@
+#include "../../Include/RenderLimits.h"
+
+#define TILE_HEAT_DEBUG 0
+
 cbuffer TonemapParams : register(b0, space2)
 {
     uint2 outputSize;
@@ -8,7 +12,8 @@ cbuffer TonemapParams : register(b0, space2)
     float time;
     float cloudTime;
     float godRaySamples;
-    float2 padding;
+    uint tilesX;
+    uint tileHeatEnabled;
     float4x4 invViewProj;
     float4 cameraPosition;
     float4 sunDirection;
@@ -19,6 +24,7 @@ cbuffer TonemapParams : register(b0, space2)
 Texture2D<float4> SourceTexture : register(t0, space0);
 Texture2D<float> DepthTexture   : register(t1, space0);
 Texture2DArray<float> Noise3DTexture : register(t2, space0);
+StructuredBuffer<uint2> sLightGrid : register(t3, space0);
 SamplerState SourceSampler      : register(s0, space0);
 SamplerState DepthSampler       : register(s1, space0);
 SamplerState NoiseSampler       : register(s2, space0);
@@ -114,6 +120,23 @@ float Vignette(float2 uv)
     return pow(vig, 0.2); // change pow for modifying the extend of the  vignette
 }
 
+float3 ApplyTileHeatDebug(float3 color, uint2 pixel)
+{
+#if TILE_HEAT_DEBUG
+    if (tileHeatEnabled == 0u || tilesX == 0u)
+        return color;
+
+    uint2 tile = pixel / FORWARD_TILE_SIZE;
+    uint lightCount = sLightGrid[tile.y * tilesX + tile.x].y;
+    if (lightCount == 0u)
+        return color;
+
+    float heat = sqrt(saturate(float(lightCount) / float(MAX_LIGHTS_PER_TILE)));
+    color = lerp(color, float3(1.0f, 0.0f, 0.0f), heat);
+#endif
+    return color;
+}
+
 [numthreads(8, 8, 1)]
 void main(uint3 tid : SV_DispatchThreadID)
 {
@@ -149,5 +172,6 @@ void main(uint3 tid : SV_DispatchThreadID)
     color = TonemapACES(color * exposure);
     color = pow(color, 1.0f / max(gamma, 0.001f));
     color *= max(Vignette(uv), 0.05);
+    color = ApplyTileHeatDebug(color, tid.xy);
     OutputTexture[tid.xy] = float4(color, 1.0f);
 }

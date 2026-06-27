@@ -20,4 +20,5 @@ Init at start, cleanup at end of functions
 
 #Notes
 Force recompile when editing shader helpers (commonstructs.hlsl, math.hlsl) — Python won't auto-detect changes
-leave visual confirmation to me, so don't use renderdoc output png's
+leave visual confirmation to me, so don't use renderdoc output png's.
+SDL StructuredBuffer limt is 8 RWStructuredBuffer limit is also 8

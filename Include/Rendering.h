@@ -8,6 +8,7 @@ typedef struct RenderSettings_
     bool enableOcclusion;
     bool enableHBAO;
     bool enableMLAA;
+    u32 msaaSamples;      // requested scene MSAA samples: 1, 2, 4, or 8. UI/post stay single-sample
     bool showMLAAEdges;
     bool enableLocalLights;
     bool enableLightFrustumCulling;

@@ -165,6 +165,54 @@ void GeometryHeapFree(GeometryBufferKind kind, void* raw)
     SDL_UnlockSpinlock(&g_GeometryHeapLock);
 }
 
+// samples must be 1, 2, 4, or 8
+static SDL_GPUSampleCount SampleCountFromValue(u32 samples)
+{
+    return (SDL_GPUSampleCount)TrailingZeroCount32(samples);
+}
+
+static u32 SampleCountValue(SDL_GPUSampleCount sampleCount)
+{
+    return 1u << (u32)sampleCount;
+}
+
+bool GraphicsApplyMSAASettings(void)
+{
+    u32 requested = g_RenderSettings.msaaSamples;
+    if      (requested >= 8u) requested = 8u;
+    else if (requested >= 4u) requested = 4u;
+    else if (requested >= 2u) requested = 2u;
+    else requested = 1u;
+
+    SDL_GPUSampleCount selected = SDL_GPU_SAMPLECOUNT_1;
+	for (u32 i = requested; i > 0u; i >>= 1)
+	{
+		SDL_GPUSampleCount candidate = SampleCountFromValue(i);
+
+		if (candidate == SDL_GPU_SAMPLECOUNT_1 ||
+			(SDL_GPUTextureSupportsSampleCount(g_GPUDevice, TEX_FMT_HALF4, candidate) &&
+				SDL_GPUTextureSupportsSampleCount(g_GPUDevice, TEX_FMT_D32_FLT, candidate)))
+		{
+			selected = candidate;
+			break;
+		}
+	}
+
+    u32 selectedSamples = SampleCountValue(selected);
+    if (selectedSamples != requested)
+        AX_WARN("Requested MSAA %ux unsupported, using %ux", requested, selectedSamples);
+    g_RenderSettings.msaaSamples = selectedSamples;
+
+    if (g_RenderState.sceneSampleCount == selected) return false;
+    g_RenderState.sceneSampleCount = selected;
+    return true;
+}
+
+u32 GraphicsGetActiveMSAASamples(void)
+{
+    return SampleCountValue(g_RenderState.sceneSampleCount);
+}
+
 void GraphicsInit(bool msaa)
 {
 #if defined(PLATFORM_MACOSX)
@@ -211,7 +259,8 @@ void GraphicsInit(bool msaa)
     }
     SDL_ClaimWindowForGPUDevice(g_GPUDevice, g_SDLWindow);
     
-    (void)msaa;
+    if (!msaa) g_RenderSettings.msaaSamples = 1u;
+    GraphicsApplyMSAASettings();
     CreateWindowBuffers();
     WindowState* winstate = &g_WindowState;
     winstate->tex_shadow_depth       = CreateTexture2D(SHADOW_MAP_SIZE  , SHADOW_MAP_SIZE  , TEX_FMT_D32_FLT, TEX_DEPTH_STENCIL, TEX_SMP_CNT1, SHADOW_CASCADE_COUNT, "Shadow Depth Texture");
@@ -271,7 +320,11 @@ void CreateWindowBuffers()
     winstate->render_height = height;
     u32 hbaoWidth  = Maxu32(width / 2u, 1u);
     u32 hbaoHeight = Maxu32(height / 2u, 1u);
+    SDL_GPUSampleCount sceneSampleCount = g_RenderState.sceneSampleCount ? g_RenderState.sceneSampleCount : SDL_GPU_SAMPLECOUNT_1;
+    bool msaa = sceneSampleCount != SDL_GPU_SAMPLECOUNT_1;
     winstate->tex_color           = CreateSceneColorTexture(width, height, SDL_GPU_SAMPLECOUNT_1);
+    winstate->tex_color_msaa      = msaa ? CreateSceneColorTexture(width, height, sceneSampleCount) : NULL;
+    winstate->tex_depth_msaa      = msaa ? CreateTexture2D(width, height, TEX_FMT_D32_FLT, TEX_DEPTH_STENCIL, sceneSampleCount, 1, "MSAA Depth Texture") : NULL;
     winstate->tex_depth           = CreateTexture2D(width, height, TEX_FMT_D32_FLT, TEX_DEPTH_STENCIL | TEX_SAMPLER, TEX_SMP_CNT1, 1, "Depth Texture");
     winstate->tex_post            = CreateTexture2D(width, height, TEX_FMT_8UNORM4, TEX_SAMPLER | TEX_COLOR_TARGET | TEX_COMP_WRITE, TEX_SMP_CNT1, 1, "Post Process Texture");
     winstate->tex_hbao            = CreateTexture2D(hbaoWidth, hbaoHeight, TEX_FMT_8UNORM1, TEX_SAMPLER | TEX_COMP_WRITE, TEX_SMP_CNT1, 1, "HBAO Texture");
@@ -479,8 +532,8 @@ SDL_GPUTexture* Create3DNoise3DTexture(u32 size)
 
 SDL_GPUTexture* CreateSceneColorTexture(u32 drawablew, u32 drawableh, SDL_GPUSampleCount sampleCount)
 {
-    SDL_GPUTextureUsageFlags usage = TEX_COLOR_TARGET | TEX_COMP_WRITE;
-    if (sampleCount == TEX_SMP_CNT1) usage |= TEX_SAMPLER;
+    SDL_GPUTextureUsageFlags usage = TEX_COLOR_TARGET;
+    if (sampleCount == TEX_SMP_CNT1) usage |= TEX_SAMPLER | TEX_COMP_WRITE;
     return CreateTexture2D(drawablew, drawableh, TEX_FMT_HALF4, usage, sampleCount, 1, "Scene Color Texture");
 }
 
@@ -757,6 +810,8 @@ void GraphicsDestroy()
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_depth);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_hiz_depth);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_color);
+    if (winstate->tex_color_msaa) SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_color_msaa);
+    if (winstate->tex_depth_msaa) SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_depth_msaa);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_gbuffer_tangent);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_gbuffer_albedo_metallic);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_gbuffer_shadow_roughness);

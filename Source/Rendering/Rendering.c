@@ -17,6 +17,8 @@ typedef struct FrameTextureSet_
     SDL_GPUTexture* tex_depth;
     SDL_GPUTexture* tex_hiz_depth;
     SDL_GPUTexture* tex_color;
+    SDL_GPUTexture* tex_color_msaa;
+    SDL_GPUTexture* tex_depth_msaa;
     SDL_GPUTexture* tex_gbuffer_tangent;
     SDL_GPUTexture* tex_gbuffer_albedo_metallic;
     SDL_GPUTexture* tex_gbuffer_shadow_roughness;
@@ -49,6 +51,7 @@ RenderSettings g_RenderSettings = {
     .enableOcclusion             = true,
     .enableHBAO                  = true,
     .enableMLAA                  = true,
+    .msaaSamples                 = 4u,
     .showMLAAEdges               = false,
     .enableLocalLights           = true,
     .enableLightFrustumCulling   = true,
@@ -110,6 +113,8 @@ static void ReleaseFrameTextureSet(FrameTextureSet* set)
     if (set->tex_depth)                    SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_depth);
     if (set->tex_hiz_depth)                SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_hiz_depth);
     if (set->tex_color)                    SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_color);
+    if (set->tex_color_msaa)               SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_color_msaa);
+    if (set->tex_depth_msaa)               SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_depth_msaa);
     if (set->tex_gbuffer_tangent)          SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_gbuffer_tangent);
     if (set->tex_gbuffer_albedo_metallic)  SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_gbuffer_albedo_metallic);
     if (set->tex_gbuffer_shadow_roughness) SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_gbuffer_shadow_roughness);
@@ -130,6 +135,8 @@ static void QueueWindowFrameTexturesForRelease(WindowState* winstate)
         .tex_depth                    = winstate->tex_depth,
         .tex_hiz_depth                = winstate->tex_hiz_depth,
         .tex_color                    = winstate->tex_color,
+        .tex_color_msaa               = winstate->tex_color_msaa,
+        .tex_depth_msaa               = winstate->tex_depth_msaa,
         .tex_gbuffer_tangent          = winstate->tex_gbuffer_tangent,
         .tex_gbuffer_albedo_metallic  = winstate->tex_gbuffer_albedo_metallic,
         .tex_gbuffer_shadow_roughness = winstate->tex_gbuffer_shadow_roughness,
@@ -143,7 +150,8 @@ static void QueueWindowFrameTexturesForRelease(WindowState* winstate)
         .tex_mlaa_output              = winstate->tex_mlaa_output,
         .releaseFrame                 = g_RenderFrameIndex + RESIZE_RELEASE_DELAY
     };
-    winstate->tex_depth = winstate->tex_hiz_depth = winstate->tex_color = winstate->tex_gbuffer_tangent 
+    winstate->tex_depth = winstate->tex_hiz_depth = winstate->tex_color = winstate->tex_color_msaa
+                        = winstate->tex_depth_msaa = winstate->tex_gbuffer_tangent
                         = winstate->tex_gbuffer_albedo_metallic = winstate->tex_gbuffer_shadow_roughness 
                         = winstate->tex_post = winstate->tex_hiz = winstate->tex_hbao 
                         = winstate->tex_hbao_blur = winstate->tex_hbao_normal = winstate->tex_mlaa_edge_mask 
@@ -315,7 +323,7 @@ void InitBuffers(void)
     g_RenderState.lightVisibilityBuffer = CreateBuffer(NULL, sizeof(u32) * MAX_LIGHT_COUNT          , BWriteComputeBit, "CPLightVisibilityBuffer");
     // Forward+ tiled light grid. lightGrid holds a {offset,count} per tile; lightIndex is a
     // flat list the forward shaders walk; lightIndexCounter is the global allocator.
-    g_RenderState.lightGridBuffer      = CreateBuffer(NULL, sizeof(u32) * 2u * FORWARD_MAX_TILES                  , BReadRasterBit | BWriteComputeBit, "CPLightGridBuffer");
+    g_RenderState.lightGridBuffer      = CreateBuffer(NULL, sizeof(u32) * 2u * FORWARD_MAX_TILES                  , BReadRasterBit | BReadCompute | BWriteComputeBit, "CPLightGridBuffer");
     g_RenderState.lightIndexBuffer     = CreateBuffer(NULL, sizeof(u32) * FORWARD_MAX_TILES * MAX_LIGHTS_PER_TILE , BReadRasterBit | BWriteComputeBit, "CPLightIndexBuffer");
     g_RenderState.lightIndexCounter    = CreateBuffer(NULL, sizeof(u32)                                           , BWriteComputeBit, "CPLightIndexCounter");
 
@@ -371,6 +379,13 @@ static SDL_GPUColorTargetInfo MakeMainColorTarget(WindowState* winstate)
     target.clear_color.a = 1.0f;
     target.texture  = winstate->tex_color;
     target.cycle    = true;
+    if (g_RenderState.sceneSampleCount != SDL_GPU_SAMPLECOUNT_1 && winstate->tex_color_msaa)
+    {
+        target.texture = winstate->tex_color_msaa;
+        target.store_op = SDL_GPU_STOREOP_RESOLVE;
+        target.resolve_texture = winstate->tex_color;
+        target.cycle_resolve_texture = true;
+    }
     return target;
 }
 
@@ -425,6 +440,29 @@ SDL_GPUDepthStencilTargetInfo MakeDepthTarget(SDL_GPUTexture* texture, SDL_GPULo
     target.texture          = texture;
     target.cycle            = cycle;
     return target;
+}
+
+static SDL_GPUDepthStencilTargetInfo MakeForwardDepthTarget(WindowState* winstate)
+{
+    if (g_RenderState.sceneSampleCount != SDL_GPU_SAMPLECOUNT_1 && winstate->tex_depth_msaa)
+    {
+        SDL_GPUDepthStencilTargetInfo target = MakeDepthTarget(winstate->tex_depth_msaa, SDL_GPU_LOADOP_CLEAR, true);
+        target.store_op = SDL_GPU_STOREOP_DONT_CARE;
+        return target;
+    }
+    return MakeDepthTarget(winstate->tex_depth, SDL_GPU_LOADOP_LOAD, false);
+}
+
+static void ApplyRuntimeGraphicsSettings(WindowState* winstate)
+{
+    if (!GraphicsApplyMSAASettings()) return;
+
+    SDL_WaitForGPUIdle(g_GPUDevice);
+    DestroyRenderPipelines();
+    InitRenderPipelines();
+    ReleaseQueuedResizeTextures(true);
+    QueueWindowFrameTexturesForRelease(winstate);
+    CreateWindowBuffers();
 }
 
 static SDL_GPUColorTargetInfo MakeHiZDepthTarget(WindowState* winstate)
@@ -497,6 +535,8 @@ void Render(void)
 {
     g_RenderFrameIndex++;
     ReleaseQueuedResizeTextures(false);
+    WindowState* winstate = &g_WindowState;
+    ApplyRuntimeGraphicsSettings(winstate);
 
     SDL_GPUCommandBuffer* cmd = SDL_AcquireGPUCommandBuffer(g_GPUDevice);
     if (!cmd)
@@ -522,7 +562,6 @@ void Render(void)
         return;
     }
 
-    WindowState* winstate = &g_WindowState;
     // the camera projection and picking work in scene view coordinates while one is open
     u32 viewW = screenW, viewH = screenH;
     bool sceneViewActive = GetSceneViewSize(&viewW, &viewH);
@@ -542,6 +581,7 @@ void Render(void)
     SDL_GPUColorTargetInfo        color_load_target = MakeLoadedSceneColorTarget(winstate);
     SDL_GPUDepthStencilTargetInfo depth_target      = MakeDepthTarget(winstate->tex_depth, SDL_GPU_LOADOP_CLEAR, true);
     SDL_GPUDepthStencilTargetInfo main_depth_target = MakeDepthTarget(winstate->tex_depth, SDL_GPU_LOADOP_LOAD, false);
+    SDL_GPUDepthStencilTargetInfo forward_depth_target = MakeForwardDepthTarget(winstate);
     SDL_GPUColorTargetInfo        hiz_depth_target  = MakeHiZDepthTarget(winstate);
     SDL_GPUColorTargetInfo        gbuffer_targets[3];
     MakeGBufferTargets(winstate, gbuffer_targets);
@@ -555,6 +595,8 @@ void Render(void)
     SDL_GPUTexture* finalTexture = winstate->tex_post;
     SDL_GPUColorTargetInfo final_load_target = MakeLoadedTextureTarget(finalTexture);
     bool submitLightVisReadback = false;
+    u32 tonemapTilesX = 0u;
+    bool tonemapTileHeat = false;
     
     if (g_ActiveScene)
     {
@@ -618,6 +660,8 @@ void Render(void)
         u32 tilesY = (renderH + FORWARD_TILE_SIZE - 1u) / FORWARD_TILE_SIZE;
         bool tilesFit = tilesX <= FORWARD_MAX_TILES_X && tilesY <= FORWARD_MAX_TILES_Y;
         bool forwardLocalLights = g_RenderSettings.enableLocalLights && tilesFit;
+        tonemapTilesX = tilesX;
+        tonemapTileHeat = forwardLocalLights;
         static bool s_tileBudgetWarned = false;
         if (!tilesFit && !s_tileBudgetWarned)
         {
@@ -632,7 +676,7 @@ void Render(void)
         RenderSceneForward(cmd, &(ScenePassContext){
             .colorTargets    = &color_target,
             .numColorTargets = 1u,
-            .depthTarget     = &main_depth_target,
+            .depthTarget     = &forward_depth_target,
             .shadowCascades  = shadowCascades,
             .viewProj        = viewProj
         }, renderW, renderH, tilesX, forwardLocalLights);
@@ -660,7 +704,7 @@ void Render(void)
     }
 
     RenderLines(cmd, &color_load_target, &main_depth_target, viewProj);
-    DispatchTonemapCompute(cmd, renderW, renderH, viewProj);
+    DispatchTonemapCompute(cmd, renderW, renderH, viewProj, tonemapTilesX, tonemapTileHeat);
 
     if (g_RenderSettings.enableMLAA && winstate->tex_mlaa_output)
     {
@@ -751,8 +795,6 @@ void DestroyPipeline(void)
     if (g_RenderState.lineBuffer)               SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lineBuffer);
     if (g_RenderState.lineDrawArgsBuffer)       SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lineDrawArgsBuffer);
     if (g_RenderState.lightBuffer)              SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lightBuffer);
-    if (g_RenderState.pointShadowMatrixBuffer)  SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.pointShadowMatrixBuffer);
-    if (g_RenderState.spotShadowMatrixBuffer)   SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.spotShadowMatrixBuffer);
     if (g_RenderState.lightVisibilityBuffer)    SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lightVisibilityBuffer);
     if (g_RenderState.lightGridBuffer)          SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lightGridBuffer);
     if (g_RenderState.lightIndexBuffer)         SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lightIndexBuffer);

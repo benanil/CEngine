@@ -479,5 +479,10 @@ ShadowCascadeData GetShadowCascades(void)
 
 void DestroyShadows()
 {
-
+    if (g_RenderState.shadowCascadeBuffer)     SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.shadowCascadeBuffer);
+    if (g_RenderState.pointShadowMatrixBuffer) SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.pointShadowMatrixBuffer);
+    if (g_RenderState.spotShadowMatrixBuffer)  SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.spotShadowMatrixBuffer);
+    g_RenderState.shadowCascadeBuffer = NULL;
+    g_RenderState.pointShadowMatrixBuffer = NULL;
+    g_RenderState.spotShadowMatrixBuffer = NULL;
 }

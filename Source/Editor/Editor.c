@@ -285,6 +285,7 @@ static void EditorApplyQualityPreset(RenderSettings* settings, u32 quality)
     case 0: // Low
         settings->enableHBAO            = false;
         settings->enableMLAA            = false;
+        settings->msaaSamples           = 1u;
         settings->enableLocalLights     = false;
         settings->lodDistanceModifier   = 0.5f;
         settings->godRaySamples         = 16.0f;
@@ -296,6 +297,7 @@ static void EditorApplyQualityPreset(RenderSettings* settings, u32 quality)
     case 1: // Medium
         settings->enableHBAO            = true;
         settings->enableMLAA            = true;
+        settings->msaaSamples           = 2u;
         settings->enableLocalLights     = true;
         settings->lodDistanceModifier   = 0.75f;
         settings->godRaySamples         = 32.0f;
@@ -307,6 +309,7 @@ static void EditorApplyQualityPreset(RenderSettings* settings, u32 quality)
     case 2: // High, matches the startup defaults
         settings->enableHBAO            = true;
         settings->enableMLAA            = true;
+        settings->msaaSamples           = 4u;
         settings->enableLocalLights     = true;
         settings->lodDistanceModifier   = 1.0f;
         settings->godRaySamples         = 48.0f;
@@ -318,6 +321,7 @@ static void EditorApplyQualityPreset(RenderSettings* settings, u32 quality)
     case 3: // Ultra
         settings->enableHBAO            = true;
         settings->enableMLAA            = true;
+        settings->msaaSamples           = 4u;
         settings->enableLocalLights     = true;
         settings->lodDistanceModifier   = 1.5f;
         settings->godRaySamples         = 64.0f;
@@ -361,6 +365,12 @@ static void DrawGraphicsWindow()
                 UICheckbox(CLAY_ID("EditorEnableOcclusion"), CLAY_STRING("Hi-Z occlusion culling"), &settings->enableOcclusion);
                 UICheckbox(CLAY_ID("EditorEnableHBAO")     , CLAY_STRING("HBAO ambient occlusion"), &settings->enableHBAO);
                 UICheckbox(CLAY_ID("EditorEnableMLAA")     , CLAY_STRING("Anti-aliasing (MLAA)"), &settings->enableMLAA);
+                static const char* msaaOptions[] = { "Off", "2x", "4x", "8x" };
+				u32 msaaIndex = TrailingZeroCount32(settings->msaaSamples);
+                if (UIDropdown(CLAY_ID("EditorMSAA"), CLAY_STRING("MSAA"), msaaOptions, 4u, &msaaIndex))
+                {
+                    settings->msaaSamples = msaaValues[1 << msaaIndex];
+                }
                 UICheckbox(CLAY_ID("EditorShowMLAAEdges")  , CLAY_STRING("Show MLAA edge mask"), &settings->showMLAAEdges);
                 UICheckbox(CLAY_ID("EditorTerrainWireframe"), CLAY_STRING("Terrain wireframe"), &settings->terrainWireframe);
                 UISliderFloatValue(CLAY_ID("EditorTerrainLodFactor"), CLAY_STRING("Terrain LOD factor"), &settings->terrainLodFactor, 0.5f, 2.0f, 2);
@@ -436,6 +446,7 @@ static void DrawGraphicsWindow()
                     .enableOcclusion = true,
                     .enableHBAO = true,
                     .enableMLAA = true,
+                    .msaaSamples = 4u,
                     .showMLAAEdges = false,
                     .enableLocalLights = true,
                     .enableLightFrustumCulling = true,

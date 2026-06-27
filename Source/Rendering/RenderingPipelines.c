@@ -266,7 +266,7 @@ static void InitComputePipelines(void)
     }); CHECK_CREATE(g_HiZDownscaleComputePipeline, "Hi-Z Downscale Compute Pipeline");
 
     g_TonemapComputePipeline = COMPUTE_DEF(Shaders_TonemapCompute_spv),
-        .num_samplers = 3, .num_readwrite_storage_textures = 1, .num_uniform_buffers = 1,
+        .num_samplers = 3, .num_readonly_storage_buffers = 1, .num_readwrite_storage_textures = 1, .num_uniform_buffers = 1,
         THREAD_COUNT_XYZ(8, 8, 1)
     }); CHECK_CREATE(g_TonemapComputePipeline, "Tonemap Compute Pipeline");
 
@@ -656,10 +656,10 @@ static void InitForwardPipelines(void)
         },
         .depth_stencil_state = (SDL_GPUDepthStencilState){
             .enable_depth_test  = true,
-            .enable_depth_write = false,
+            .enable_depth_write = g_RenderState.sceneSampleCount != SDL_GPU_SAMPLECOUNT_1,
             .compare_op         = SDL_GPU_COMPAREOP_LESS_OR_EQUAL
         },
-        .multisample_state  = (SDL_GPUMultisampleState){ .sample_count = SDL_GPU_SAMPLECOUNT_1 },
+        .multisample_state  = (SDL_GPUMultisampleState){ .sample_count = g_RenderState.sceneSampleCount },
         .vertex_input_state = (SDL_GPUVertexInputState){
             .vertex_buffer_descriptions = &(SDL_GPUVertexBufferDescription){ 0, sizeof(AVertex), SDL_GPU_VERTEXINPUTRATE_VERTEX, 0 },
             .num_vertex_buffers    = 1,
@@ -814,6 +814,7 @@ void DestroyRenderPipelines(void)
     if (g_OutlinePipeline)                   SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_OutlinePipeline);
     if (g_GizmoLinePipeline)                 SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_GizmoLinePipeline);
     if (g_RenderState.slugPipeline)          SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.slugPipeline);
+    if (g_RenderState.slug2DPipeline)        SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.slug2DPipeline);
     if (g_RenderState.slugDepthPipeline)     SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.slugDepthPipeline);
     if (g_RenderState.uiShapePipeline)       SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.uiShapePipeline);
     if (g_RenderState.uiImagePipeline)       SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.uiImagePipeline);
