@@ -4,8 +4,8 @@
 #include "Math.hlsl"
 #include "Bitpack.hlsl"
 
-// The animated vertex cache (sAnimatedVert) stores ONLY a bounds-normalized skinned position,
-// packed as 16/16/16 unorm in 2x u32 (see PackUnorm16x4 / UnpackUnorm16x4).
+// The animated vertex cache stores ONLY a bounds-normalized skinned position,
+// packed as 16/16/16 unorm in one uint2 (see PackUnorm16x4 / UnpackUnorm16x4).
 //
 // Unlike the old format, neither entity rotation nor scale is baked in: the compute pass writes
 // the skinned position in *model space* (exactly like a static mesh quantizes against its AABB),
