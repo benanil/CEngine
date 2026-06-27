@@ -68,6 +68,41 @@ static u16 GetFBXTexture(const ufbx_material* umaterial, const ufbx_scene* uscen
     return -1;
 }
 
+// ufbx folds the legacy FBX TransparencyFactor/Color into pbr.opacity, so relying on the
+// normalized pbr value avoids double counting. Default opacity is 1.0 (fully opaque).
+static f32 GetUFBXOpacity(const ufbx_material* material)
+{
+    f32 opacity = 1.0f;
+    if (material->pbr.opacity.has_value || material->pbr.opacity.value_components >= 1)
+        opacity = (f32)material->pbr.opacity.value_real;
+    return Saturatef32(opacity);
+}
+
+static u32 PackUFBXBaseColorFactor(const ufbx_material* material, f32 opacity)
+{
+    ufbx_vec3 color = { 1.0f, 1.0f, 1.0f };
+    f32 factor = 1.0f;
+
+    // Only override the white/1.0 defaults when the material actually defines the value.
+    // ufbx always fills value_vec3/value_real with a fallback (often 0) even when the
+    // property is unset, so gating on value_components would tint everything black.
+    if (material->features.pbr.enabled)
+    {
+        if (material->pbr.base_color.has_value)         color  = material->pbr.base_color.value_vec3;
+        else if (material->fbx.diffuse_color.has_value) color = material->fbx.diffuse_color.value_vec3;
+
+        if (material->pbr.base_factor.has_value)       factor = (f32)material->pbr.base_factor.value_real;
+    }
+    else
+    {
+        if (material->fbx.diffuse_color.has_value)     color  = material->fbx.diffuse_color.value_vec3;
+        else if (material->pbr.base_color.has_value)   color  = material->pbr.base_color.value_vec3;
+
+        if (material->fbx.diffuse_factor.has_value)    factor = (f32)material->fbx.diffuse_factor.value_real;
+    }
+	return PackColor3PtrToUint(&color.x);
+}
+
 static char* GetNameFromFBX(ufbx_string ustr, FixedPow2Allocator* stringAllocator)
 {
     if (ustr.length == 0) return NULL;
@@ -270,6 +305,7 @@ s32 LoadFBX(const char* path, SceneBundle* fbxScene, f32 scale)
 
         bool hasUV     = umesh->vertex_uv.exists;
         bool hasNormal = umesh->vertex_normal.exists;
+        bool hasColor  = umesh->vertex_color.exists;
         if (!hasUV)
             AX_WARN("fbx mesh %d (%s) has no UVs", i, amesh->name ? amesh->name : "<unnamed>");
 
@@ -280,6 +316,7 @@ s32 LoadFBX(const char* path, SceneBundle* fbxScene, f32 scale)
         float3* cornerPos = (float3*)ArenaPushGlobal((u64)cornerCapacity * sizeof(float3));
         float2* cornerUV  = hasUV     ? (float2*)ArenaPushGlobal((u64)cornerCapacity * sizeof(float2)) : NULL;
         float3* cornerNrm = hasNormal ? (float3*)ArenaPushGlobal((u64)cornerCapacity * sizeof(float3)) : NULL;
+        v128f* cornerColor = hasColor ? (v128f*)ArenaPushGlobal((u64)cornerCapacity * sizeof(v128f)) : NULL;
 
         u32 triIndices[64];
         s32 corner = 0;
@@ -304,16 +341,22 @@ s32 LoadFBX(const char* path, SceneBundle* fbxScene, f32 scale)
                     ufbx_vec3 n = ufbx_get_vertex_vec3(&umesh->vertex_normal, ci);
                     cornerNrm[corner] = (float3){ n.x, n.y, n.z };
                 }
+                if (hasColor)
+                {
+                    ufbx_vec4 color = ufbx_get_vertex_vec4(&umesh->vertex_color, ci);
+                    cornerColor[corner] = VecSetR((f32)color.x, (f32)color.y, (f32)color.z, (f32)color.w);
+                }
             }
         }
         s32 numCorners = corner;
 
         // Collapse binary-equal corners into unique vertices + a real index buffer.
-        struct meshopt_Stream streams[3];
+        struct meshopt_Stream streams[4];
         size_t streamCount = 0;
         streams[streamCount++] = (struct meshopt_Stream){ cornerPos, sizeof(float3), sizeof(float3) };
         if (hasUV)     streams[streamCount++] = (struct meshopt_Stream){ cornerUV,  sizeof(float2), sizeof(float2) };
         if (hasNormal) streams[streamCount++] = (struct meshopt_Stream){ cornerNrm, sizeof(float3), sizeof(float3) };
+        if (hasColor)  streams[streamCount++] = (struct meshopt_Stream){ cornerColor, sizeof(v128f), sizeof(v128f) };
 
         u32* remap = (u32*)ArenaPushGlobal((u64)numCorners * sizeof(u32));
         size_t uniqueCount = meshopt_generateVertexRemapMulti(remap, NULL, (size_t)numCorners, (size_t)numCorners, streams, streamCount);
@@ -339,6 +382,16 @@ s32 LoadFBX(const char* path, SceneBundle* fbxScene, f32 scale)
             primitive->vertexAttribs[AAttribIdx_NORMAL] = finalNrm;
             primitive->attributes |= AAttribType_NORMAL;
         }
+        if (hasColor)
+        {
+            v128f* finalColor = (v128f*)FixedPow2Allocator_Allocate(allocator, uniqueCount * sizeof(v128f));
+            meshopt_remapVertexBuffer(finalColor, cornerColor, (size_t)numCorners, sizeof(v128f), remap);
+            primitive->vertexAttribs[AAttribIdx_COLOR_0] = finalColor;
+            primitive->attributes |= AAttribType_COLOR_0;
+            primitive->colorType = AComponentType_FLOAT;
+            primitive->colorCount = 4;
+            primitive->colorStride = sizeof(v128f);
+        }
 
         u32* finalIdx = (u32*)FixedPow2Allocator_Allocate(allocator, (u64)numCorners * sizeof(u32));
         meshopt_remapIndexBuffer(finalIdx, NULL, (size_t)numCorners, remap);
@@ -348,6 +401,7 @@ s32 LoadFBX(const char* path, SceneBundle* fbxScene, f32 scale)
         primitive->indices     = finalIdx;
 
         ArenaPopGlobal((u64)numCorners * sizeof(u32));
+        if (hasColor)  ArenaPopGlobal((u64)cornerCapacity * sizeof(v128f));
         if (hasNormal) ArenaPopGlobal((u64)cornerCapacity * sizeof(float3));
         if (hasUV)     ArenaPopGlobal((u64)cornerCapacity * sizeof(float2));
         ArenaPopGlobal((u64)cornerCapacity * sizeof(float3));
@@ -425,8 +479,11 @@ s32 LoadFBX(const char* path, SceneBundle* fbxScene, f32 scale)
     u16 numMaterials = (u16)uscene->materials.count;
     fbxScene->numMaterials = numMaterials;
     
+    // Zero-init so unset AMaterial fields get clean defaults. alphaMode/alphaCutoff are
+    // consumed by PackMaterialFlags and the opaque/transparent render-set split; leaving them
+    // as garbage pulls meshes into the blended pass or alpha-clips them away (renders black).
     if (numMaterials) {
-        fbxScene->materials = AllocateTLSFGlobal(sizeof(AMaterial) * numMaterials);
+        fbxScene->materials = AllocZeroTLSFGlobal(numMaterials, sizeof(AMaterial));
     }
 
     for (u16 i = 0; i < numMaterials; i++)
@@ -442,10 +499,8 @@ s32 LoadFBX(const char* path, SceneBundle* fbxScene, f32 scale)
         if (!normalTexture && umaterial->fbx.normal_map.has_value)
             normalTexture = umaterial->fbx.normal_map.texture;
         
-        if (normalTexture)
-        {
-            amaterial->textures[0].index = (u16)normalTexture->typed_id;
-        }
+        // index defaults to UINT16_MAX (no texture); 0 would alias bundle texture slot 0.
+        amaterial->textures[0].index = normalTexture ? (u16)normalTexture->typed_id : UINT16_MAX;
         
         amaterial->textures[1].index = GetFBXTexture(umaterial, uscene, UFBX_MATERIAL_FEATURE_AMBIENT_OCCLUSION,
                                                                         UFBX_MATERIAL_PBR_AMBIENT_OCCLUSION,
@@ -472,9 +527,18 @@ s32 LoadFBX(const char* path, SceneBundle* fbxScene, f32 scale)
                                                                                     UFBX_MATERIAL_PBR_ROUGHNESS,
                                                                                     UFBX_MATERIAL_FBX_VECTOR_DISPLACEMENT_FACTOR);
         
-        amaterial->metallicFactor   = MakeFloat16(umaterial->pbr.metalness.value_real);
-        amaterial->roughnessFactor  = MakeFloat16(umaterial->pbr.roughness.value_real);
-        amaterial->baseColorFactor  = MakeRGBGrayScale((u8)(Saturatef32(umaterial->pbr.base_factor.value_real) * 255.0f));
+        f32 opacity = GetUFBXOpacity(umaterial);
+        // metallicFactor/roughnessFactor are unorm16 (value * UINT16_MAX), like the GLTF path.
+        // MakeFloat16 (value * 400) would land roughness=1.0 at 400/65535 ~= 0.006 (a mirror),
+        // which with only a sun and no IBL renders nearly black. Default to dielectric/matte
+        // (0 / 1) when the material does not define them, matching the engine's reset material.
+        f32 metalness = umaterial->pbr.metalness.has_value ? (f32)umaterial->pbr.metalness.value_real : 0.0f;
+        f32 roughness = umaterial->pbr.roughness.has_value ? (f32)umaterial->pbr.roughness.value_real : 1.0f;
+        amaterial->metallicFactor   = PackUnorm16(Saturatef32(metalness));
+        amaterial->roughnessFactor  = PackUnorm16(Saturatef32(roughness));
+        amaterial->baseColorFactor  = PackUFBXBaseColorFactor(umaterial, opacity);
+        amaterial->alphaCutoff      = 0.5f;
+        amaterial->alphaMode        = opacity < 0.999f ? AMaterialAlphaMode_Blend : AMaterialAlphaMode_Opaque;
         
         amaterial->specularFactor   = umaterial->features.pbr.enabled ? MakeFloat16(umaterial->pbr.specular_factor.value_real)
                                                                      : MakeFloat16(umaterial->fbx.specular_factor.value_real);

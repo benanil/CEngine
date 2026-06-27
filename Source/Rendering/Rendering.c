@@ -488,6 +488,7 @@ void CullScene(SDL_GPUCommandBuffer* cmd, FrustumPlanes planes, mat4x4 viewProj,
     Scene* scene = g_ActiveScene;
     DispatchCullDrawArgsCompute(cmd, &scene->skinnedSet, &scene->skinnedBuffers, planes, viewProj, flags, forcedLOD, 1u, NULL);
     DispatchCullDrawArgsCompute(cmd, &scene->surfaceSet, &scene->surfaceBuffers, planes, viewProj, flags, forcedLOD, 1u, NULL);
+    DispatchCullDrawArgsCompute(cmd, &scene->transparentSurfaceSet, &scene->transparentSurfaceBuffers, planes, viewProj, flags, forcedLOD, 1u, NULL);
 }
 
 static void GatherSkinnedAnimationVisibility(SDL_GPUCommandBuffer* cmd, RenderSet* skinnedSet, RenderSetBuffers* skinnedBuffers,
@@ -605,10 +606,12 @@ void Render(void)
         {
             UploadRenderSetStatics(&scene->skinnedSet, &scene->skinnedBuffers);
             UploadRenderSetStatics(&scene->surfaceSet, &scene->surfaceBuffers);
+            UploadRenderSetStatics(&scene->transparentSurfaceSet, &scene->transparentSurfaceBuffers);
             scene->renderDataDirty = 0;
         }
         UploadRenderSetEntities(&scene->skinnedSet, &scene->skinnedBuffers);
         UploadRenderSetEntities(&scene->surfaceSet, &scene->surfaceBuffers);
+        UploadRenderSetEntities(&scene->transparentSurfaceSet, &scene->transparentSurfaceBuffers);
 
         // Consume the previous frame's light-visibility readback if the GPU has
         // finished it (non-blocking: if not ready, keep last frame's data). This

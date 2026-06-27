@@ -18,7 +18,8 @@ enum AAttribType_
     AAttribType_TEXCOORD_1 = 1 << 4,
     AAttribType_JOINTS     = 1 << 5,
     AAttribType_WEIGHTS    = 1 << 6,
-    AAttribType_Count      = 7 ,
+    AAttribType_COLOR_0    = 1 << 7,
+    AAttribType_Count      = 8 ,
     AAttribType_MAKE32BIT  = 1 << 31
 };
 typedef int AAttribType;
@@ -32,7 +33,8 @@ enum AAttribIdx_
     AAttribIdx_TEXCOORD_1 = 4,
     AAttribIdx_JOINTS     = 5,
     AAttribIdx_WEIGHTS    = 6,
-    AAttribIdx_Count      = 7,
+    AAttribIdx_COLOR_0    = 7,
+    AAttribIdx_Count      = 8,
 };
 typedef int AAttribIdx;
 
@@ -178,6 +180,10 @@ typedef struct APrimitive_
     // weight count is equal to joint count
     short weightType;   // GraphicType_UnsignedInt, GraphicType_UnsignedShort.. 
     short weightStride; // lets say index data is rgba16u  [r, g, b, a, .......] stride might be bigger than joint
+
+    short colorType;
+    short colorCount;
+    short colorStride;
     
     // internal use only. after parsing this is useless
     unsigned short indiceIndex; // indice index to accessor

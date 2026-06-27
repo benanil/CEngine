@@ -98,7 +98,7 @@ typedef s32 GraphicType;
 // https://www.yosoygames.com.ar/wp/2018/03/vertex-formats-part-1-compression/
 typedef struct AVertex_
 {
-    // xyz unorm16 normalized to the primitive AABB (w unused), packed via PackUnorm16x4
+    // xyz unorm16 normalized to the primitive AABB, w stores RGBA5551 vertex color
     u64 position; 
     u32 octTbn;
     u32 texCoord; // half2
@@ -238,6 +238,7 @@ typedef struct RenderSetBuffers_
 typedef struct RenderSetShared_
 {
     SDL_GPUGraphicsPipeline* forwardPipeline; // Forward+ opaque pass (gated by FORWARD_PLUS)
+    SDL_GPUGraphicsPipeline* transparentForwardPipeline;
     SDL_GPUGraphicsPipeline* depthPipeline;
     SDL_GPUGraphicsPipeline* shadowPipeline;
     SDL_GPUGraphicsPipeline* pointShadowPipeline;

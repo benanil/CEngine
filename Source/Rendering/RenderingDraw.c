@@ -177,6 +177,8 @@ void RenderScene(SDL_GPUCommandBuffer* cmd, const ScenePassContext* ctx)
 // pipeline (single HDR target, depth test only) and the extra fragment resources the
 // forward shader needs (shadow atlases, AO, light buffer + tile grid/index).
 static void DrawRenderBufferForward(SDL_GPUCommandBuffer* cmd, SDL_GPURenderPass* pass, bool isSkinned, Scene* scene,
+                                    const RenderSet* renderSet, const RenderSetBuffers* buffers,
+                                    SDL_GPUGraphicsPipeline* pipeline,
                                     const SDL_GPUBufferBinding vertex_binding,
                                     const SDL_GPUTextureSamplerBinding fragmentSamplers[7],
                                     SDL_GPUBuffer* const fragmentBuffers[7],
@@ -184,9 +186,6 @@ static void DrawRenderBufferForward(SDL_GPUCommandBuffer* cmd, SDL_GPURenderPass
                                     const void* fragmentParams, u32 fragmentParamsSize)
 {
     const SDL_GPUBufferBinding index_binding = { g_RenderState.indexBuffer, 0 };
-    const RenderSetBuffers*  buffers   = isSkinned ? &scene->skinnedBuffers : &scene->surfaceBuffers;
-    const RenderSet*         renderSet = isSkinned ? &scene->skinnedSet     : &scene->surfaceSet;
-    SDL_GPUGraphicsPipeline* pipeline  = isSkinned ? g_RenderState.skinned.forwardPipeline : g_RenderState.surface.forwardPipeline;
     if (renderSet->numGroups == 0 || !pipeline) return;
     SDL_BindGPUGraphicsPipeline(pass, pipeline);
     SDL_BindGPUVertexBuffers(pass, 0, &vertex_binding, 1);
@@ -212,7 +211,7 @@ static void DrawRenderBufferForward(SDL_GPUCommandBuffer* cmd, SDL_GPURenderPass
 void RenderSceneForward(SDL_GPUCommandBuffer* cmd, const ScenePassContext* ctx, u32 width, u32 height, u32 tilesX, bool localLightsEnabled)
 {
     Scene* scene = g_ActiveScene;
-    u32 totalGroups = scene->skinnedSet.numGroups + scene->surfaceSet.numGroups;
+    u32 totalGroups = scene->skinnedSet.numGroups + scene->surfaceSet.numGroups + scene->transparentSurfaceSet.numGroups;
     if (totalGroups == 0)
         return;
 
@@ -275,11 +274,17 @@ void RenderSceneForward(SDL_GPUCommandBuffer* cmd, const ScenePassContext* ctx, 
     SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmd, ctx->colorTargets, ctx->numColorTargets, ctx->depthTarget);
 
     const SDL_GPUBufferBinding skinnedVertex = { g_RenderState.skinned.vertexBuffer, 0 };
-    DrawRenderBufferForward(cmd, pass, true, scene, skinnedVertex, fragmentSamplers, fragmentBuffers,
+    DrawRenderBufferForward(cmd, pass, true, scene, &scene->skinnedSet, &scene->skinnedBuffers,
+                            g_RenderState.skinned.forwardPipeline, skinnedVertex, fragmentSamplers, fragmentBuffers,
                             &vertexParams, sizeof(vertexParams), &fragmentParams, sizeof(fragmentParams));
 
     const SDL_GPUBufferBinding surfaceVertex = { g_RenderState.surface.vertexBuffer, 0 };
-    DrawRenderBufferForward(cmd, pass, false, scene, surfaceVertex, fragmentSamplers, fragmentBuffers,
+    DrawRenderBufferForward(cmd, pass, false, scene, &scene->surfaceSet, &scene->surfaceBuffers,
+                            g_RenderState.surface.forwardPipeline, surfaceVertex, fragmentSamplers, fragmentBuffers,
+                            &vertexParams, sizeof(vertexParams), &fragmentParams, sizeof(fragmentParams));
+
+    DrawRenderBufferForward(cmd, pass, false, scene, &scene->transparentSurfaceSet, &scene->transparentSurfaceBuffers,
+                            g_RenderState.surface.transparentForwardPipeline, surfaceVertex, fragmentSamplers, fragmentBuffers,
                             &vertexParams, sizeof(vertexParams), &fragmentParams, sizeof(fragmentParams));
 
     SDL_EndGPURenderPass(pass);

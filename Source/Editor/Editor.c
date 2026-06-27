@@ -369,7 +369,7 @@ static void DrawGraphicsWindow()
 				u32 msaaIndex = TrailingZeroCount32(settings->msaaSamples);
                 if (UIDropdown(CLAY_ID("EditorMSAA"), CLAY_STRING("MSAA"), msaaOptions, 4u, &msaaIndex))
                 {
-                    settings->msaaSamples = msaaValues[1 << msaaIndex];
+                    settings->msaaSamples = 1 << msaaIndex;
                 }
                 UICheckbox(CLAY_ID("EditorShowMLAAEdges")  , CLAY_STRING("Show MLAA edge mask"), &settings->showMLAAEdges);
                 UICheckbox(CLAY_ID("EditorTerrainWireframe"), CLAY_STRING("Terrain wireframe"), &settings->terrainWireframe);

@@ -98,6 +98,21 @@ float4 UnpackColor4Uint(uint color)
         float((color >> 24u) & 0xFFu)) * (1.0f / 255.0f);
 }
 
+f16_4 UnpackColorRGBA5551(uint color)
+{
+	f16 w = f16(color >> 15) * f16(0.5) + f16(0.5);
+    return f16_4(
+        f16((color >> 0u)  & 0x1Fu),
+        f16((color >> 5u)  & 0x1Fu),
+        f16((color >> 10u) & 0x1Fu),
+        w * f16(31.0)) * f16(1.0f / 31.0f);
+}
+
+f16_4 UnpackAVertexColor(uint2 packedPosition)
+{
+    return UnpackColorRGBA5551(packedPosition.y >> 16u);
+}
+
 f16_4 UnpackColor4UintF16(uint color)
 {
     return f16_4(

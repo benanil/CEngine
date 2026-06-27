@@ -33,6 +33,13 @@ typedef struct Range_
 
 typedef struct PrimitiveGroup_ PrimitiveGroup;
 
+typedef enum RenderSetMaterialFilter_
+{
+    RenderSetMaterialFilter_All = 0,
+    RenderSetMaterialFilter_Opaque,
+    RenderSetMaterialFilter_Transparent
+} RenderSetMaterialFilter;
+
 typedef struct RenderSet_
 {
     Entity*             entities;
@@ -51,6 +58,7 @@ typedef struct RenderSet_
     u32 numGroups;
     u32 numBundles; // watermark: highest used bundle slot + 1, slots below may be empty
     u32 skinned;
+    u32 materialFilter;
 } RenderSet;
 
 struct PrimitiveGroup_
@@ -103,6 +111,7 @@ u32   RenderSet_CountTriangles(const RenderSet* set);
 bool  RenderSet_Validate(const RenderSet* set, const char* label);
 
 void  RenderSet_InitSet(RenderSet* set, u32 maxEntities, u32 maxGroups, u32 maxBundles, bool skinned);
+void  RenderSet_SetMaterialFilter(RenderSet* set, RenderSetMaterialFilter filter);
 
 // materialOffset is the scene's gpu material slot base of the bundle.
 // out: groupIdx, ~0u outherwise

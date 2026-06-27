@@ -70,6 +70,7 @@ struct VSOutput
     f16_3_io normal     : NORMAL;
     f16_3_io tangent    : TANGENT0;
     f16_3_io bitangent  : TEXCOORD1;
+    f16_4_io vertexColor : COLOR0;
     float4   shadowPos0 : TEXCOORD3;
     float4   shadowPos1 : TEXCOORD4;
     float4   shadowPos2 : TEXCOORD5;
@@ -109,6 +110,7 @@ VSOutput vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("Dra
     o.normal    = normalize(tbn[2]);
     o.tangent   = tbn[1];
     o.bitangent = tbn[0];
+    o.vertexColor = f16_4_io(UnpackAVertexColor(input.aPos));
     o.worldPos  = finalWorldPos;
     ShadowCascadeBuffer cascades = sShadowCascades[0];
     o.shadowPos0 = MulShadowCascade(cascades, 0u, float4(finalWorldPos, 1.0));
@@ -128,13 +130,18 @@ float4 frag(VSOutput input) : SV_Target0
     TextureDescriptor normalDesc = sTextureDescriptors[material.normalDescriptor];
     TextureDescriptor mrDesc     = sTextureDescriptors[material.metallicRoughnessDescriptor];
 
-    f16_4 albedoSample = SampleTexturePageRGBA(AlbedoPages, Sampler, albedo, float2(input.texCoords));
+    // Untextured materials keep the built-in fallback descriptors, whose atlas pages hold no
+    // real data. Substitute neutral values so shading falls back to the material factors:
+    // white albedo (baseColor == baseFactor), flat tangent normal, and pass-through metal/rough.
+    f16_4 albedoSample = SampleTexturePageRGBA(AlbedoPages, Sampler, albedo, float2(input.texCoords), f16_4(1.0, 1.0, 1.0, 1.0));
     f16_4 baseFactor = UnpackColor4UintF16(material.baseColorFactor);
-    AlphaClipMaterial(material, float(albedoSample.a));
-    f16_3 baseColor = SRGBToLinear(albedoSample.rgb) * f16_3(baseFactor.rgb);
+    f16_4 vertexColor = f16_4(input.vertexColor);
+    AlphaClipMaterial(material, float(albedoSample.a * vertexColor.a));
+    f16_3 baseColor = SRGBToLinear(albedoSample.rgb) * f16_3(baseFactor.rgb) * f16_3(vertexColor.rgb);
+    float alpha = float(albedoSample.a * baseFactor.a * vertexColor.a);
 
-    float3 tangentNormal = DecodeNormalRG(float2(SampleTexturePageRG(NormalPages, Sampler, normalDesc, float2(input.texCoords))));
-    f16_2 mr = SampleTexturePageRG(MetallicRoughnessPages, Sampler, mrDesc, float2(input.texCoords));
+	float3 tangentNormal = DecodeNormalRG(float2(SampleTexturePageRG(NormalPages, Sampler, normalDesc, float2(input.texCoords), f16_2(0.5f, 0.5f))));
+    f16_2 mr = SampleTexturePageRG(MetallicRoughnessPages, Sampler, mrDesc, float2(input.texCoords), f16_2(1.0, 1.0));
 
     float3 N = normalize(tangentNormal.x * normalize(float3(input.tangent)) +
                          tangentNormal.y * normalize(float3(input.bitangent)) +
@@ -142,7 +149,7 @@ float4 frag(VSOutput input) : SV_Target0
 
     float metallicFactor  = float((material.metallicRoughnessFactor >> 16u) & 0xFFFFu) * (1.0f / 65535.0f);
     float roughnessFactor = float(material.metallicRoughnessFactor & 0xFFFFu) * (1.0f / 65535.0f);
-    float metallic = float(mr.x) * metallicFactor;
+    float metallic  = float(mr.x) * metallicFactor;
     float roughness = float(mr.y) * roughnessFactor;
 
     uint cascadeIndex = input.viewDepth > input.cascadeSplits.x ? 1u : 0u;
@@ -162,5 +169,5 @@ float4 frag(VSOutput input) : SV_Target0
     if (uLocalLightsEnabled != 0u)
         color += AccumulateTileLights(float3(baseColor), N, viewDir, saturate(metallic), saturate(roughness),
                                       worldPos, ao, uint2(input.position.xy), uTilesX, uTileSize);
-    return float4(color, 1.0f);
+	return float4(color, alpha);
 }

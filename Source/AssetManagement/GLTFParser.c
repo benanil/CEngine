@@ -447,6 +447,7 @@ static void ParseAttributes(GLTFParseContext* ctx, sj_Value sjAttributes, APrimi
         else if (StrCMP16(key.start, "TEXCOORD_1")) { primitive->attributes |= AAttribType_TEXCOORD_1; }
         else if (StrCMP16(key.start, "JOINTS_0"))   { primitive->attributes |= AAttribType_JOINTS;     }
         else if (StrCMP16(key.start, "WEIGHTS_0"))  { primitive->attributes |= AAttribType_WEIGHTS;    }
+        else if (StrCMP16(key.start, "COLOR_0"))    { primitive->attributes |= AAttribType_COLOR_0;    }
         else if (StrCMP16(key.start, "TEXCOORD_"))  { continue; } // < NO more than two texture coords
         else if (StrCMP16(key.start, "COLOR_"))     { continue; }
         else if (StrCMP16(key.start, "_"))          { continue; }
@@ -1298,6 +1299,12 @@ int ParseGLTF(const char* path, SceneBundle* result, float scale)
                     continue;
                 }
                 primitive->vertexAttribs[j] = packedPtr;
+                if (j == AAttribIdx_COLOR_0)
+                {
+                    primitive->colorType = (short)accessor.componentType;
+                    primitive->colorCount = (short)accessor.type;
+                    primitive->colorStride = (short)elementSize;
+                }
             }
         }
     }

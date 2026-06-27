@@ -19,6 +19,7 @@ void RenderSet_InitSet(RenderSet* set, u32 maxEntities, u32 maxGroups, u32 maxBu
     set->maxGroups   = maxGroups;
     set->maxBundles  = maxBundles;
     set->skinned     = skinned ? 1u : 0u;
+    set->materialFilter = RenderSetMaterialFilter_All;
 
     set->entities         = (Entity*)AllocZeroTLSFGlobal(maxEntities, sizeof(Entity));
     set->sparseID         = (u32*)AllocateTLSFGlobal(maxEntities * sizeof(u32));
@@ -28,6 +29,24 @@ void RenderSet_InitSet(RenderSet* set, u32 maxEntities, u32 maxGroups, u32 maxBu
     set->bundles          = (const SceneBundle**)AllocZeroTLSFGlobal(maxBundles, sizeof(SceneBundle*));
     set->bundleSlots      = (u64*)AllocZeroTLSFGlobal((maxBundles + 63u) >> 6, sizeof(u64));
     MemSet(set->sparseID, 0xFF, maxEntities * sizeof(u32));
+}
+
+void RenderSet_SetMaterialFilter(RenderSet* set, RenderSetMaterialFilter filter)
+{
+    set->materialFilter = (u32)filter;
+}
+
+static bool PrimitiveMatchesMaterialFilter(const RenderSet* set, const SceneBundle* bundle, const APrimitive* primitive)
+{
+    if (set->materialFilter == RenderSetMaterialFilter_All) return true;
+
+    AMaterialAlphaMode alphaMode = AMaterialAlphaMode_Opaque;
+    if (primitive->material < (u32)bundle->numMaterials)
+        alphaMode = bundle->materials[primitive->material].alphaMode;
+
+    bool transparent = alphaMode == AMaterialAlphaMode_Blend;
+    if (set->materialFilter == RenderSetMaterialFilter_Transparent) return transparent;
+    return !transparent;
 }
 
 v128f EntityUnpackRotation(u64 packed)
@@ -446,6 +465,9 @@ u32 RenderSet_AddScene(RenderSet* set, u32 bundleIdx, v128f position, v128f rota
         nodeEntities[m + 1u].primitiveIdx = firstGroupIdx;
         for (u32 p = 0; p < (u32)mesh->numPrimitives; p++)
         {
+            const APrimitive* primitive = mesh->primitives + p;
+            if (!PrimitiveMatchesMaterialFilter(set, bundle, primitive)) continue;
+
             primitiveCounts[firstGroupIdx + p - range.start]++;
             totalPrimAdded++;
         }
@@ -522,6 +544,9 @@ u32 RenderSet_AddScene(RenderSet* set, u32 bundleIdx, v128f position, v128f rota
 
         for (u32 p = 0; p < (u32)mesh->numPrimitives; p++)
         {
+            const APrimitive* primitive = mesh->primitives + p;
+            if (!PrimitiveMatchesMaterialFilter(set, bundle, primitive)) continue;
+
             Entity added = nodeEntities[n + 1u];
             added.primitiveIdx = firstGroupIdx + p;
             added.sparseIdx = set->skinned ? nodeSparseIdx : sparseStart + sparseCursor++;

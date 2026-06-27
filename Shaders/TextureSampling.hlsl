@@ -21,8 +21,17 @@ float2 TexturePageRepeatUV_Aggressive(TextureDescriptor desc, float2 uv)
     return desc.uvBias + lerp(safePadding, desc.uvScale - safePadding, frac(uv));
 }
 
-f16_4 SampleTexturePageRGBA(Texture2DArray<float4> pages, SamplerState samplerState, TextureDescriptor desc, float2 uv)
+// Real atlas descriptors are written with flags == 0 (AddDescriptor); the built-in
+// fallback descriptors (no texture bound on the material) carry a non-zero class flag.
+// Callers use this to substitute a neutral value instead of sampling the empty page.
+bool DescriptorBound(TextureDescriptor desc)
 {
+    return desc.flags == 0u;
+}
+
+f16_4 SampleTexturePageRGBA(Texture2DArray<float4> pages, SamplerState samplerState, TextureDescriptor desc, float2 uv, f16_4 fallback)
+{
+	if (!DescriptorBound(desc)) return fallback;
     float2 dx = ddx(uv);
     float2 dy = ddy(uv);
     dx = dx - round(dx);
@@ -36,8 +45,9 @@ f16_4 SampleTexturePageRGBA(Texture2DArray<float4> pages, SamplerState samplerSt
     return f16_4(pages.SampleGrad(samplerState, float3(atlasUV, desc.pageIndex), atlasDdx, atlasDdy));
 }
 
-f16_2 SampleTexturePageRG(Texture2DArray<float2> pages, SamplerState samplerState, TextureDescriptor desc, float2 uv)
+f16_2 SampleTexturePageRG(Texture2DArray<float2> pages, SamplerState samplerState, TextureDescriptor desc, float2 uv, f16_2 fallback)
 {
+	if (!DescriptorBound(desc)) return fallback;
     float2 atlasUV = TexturePageRepeatUV(desc, uv);
     float2 atlasDdx = ddx(uv) * desc.uvScale;
     float2 atlasDdy = ddy(uv) * desc.uvScale;

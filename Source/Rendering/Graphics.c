@@ -191,7 +191,7 @@ bool GraphicsApplyMSAASettings(void)
 
 		if (candidate == SDL_GPU_SAMPLECOUNT_1 ||
 			(SDL_GPUTextureSupportsSampleCount(g_GPUDevice, TEX_FMT_HALF4, candidate) &&
-				SDL_GPUTextureSupportsSampleCount(g_GPUDevice, TEX_FMT_D32_FLT, candidate)))
+			 SDL_GPUTextureSupportsSampleCount(g_GPUDevice, TEX_FMT_D32_FLT, candidate)))
 		{
 			selected = candidate;
 			break;

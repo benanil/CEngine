@@ -1675,9 +1675,10 @@ void DrawSceneWindow(bool* open)
                     UITextU32("Bundles", scene->numBundles);
                     UITextU32("Materials", scene->numMaterials);
                     UITextU32("Static entities", scene->surfaceSet.numEntities);
+                    UITextU32("Transparent entities", scene->transparentSurfaceSet.numEntities);
                     UITextU32("Skinned entities", scene->skinnedSet.numEntities);
-                    UITextU32("Primitive groups", scene->surfaceSet.numGroups + scene->skinnedSet.numGroups);
-                    UITextU32("Triangles", RenderSet_CountTriangles(&scene->surfaceSet) + RenderSet_CountTriangles(&scene->skinnedSet));
+                    UITextU32("Primitive groups", scene->surfaceSet.numGroups + scene->transparentSurfaceSet.numGroups + scene->skinnedSet.numGroups);
+                    UITextU32("Triangles", RenderSet_CountTriangles(&scene->surfaceSet) + RenderSet_CountTriangles(&scene->transparentSurfaceSet) + RenderSet_CountTriangles(&scene->skinnedSet));
                 }
             }
             UIDivider(CLAY_ID("SceneWindowDivider"));

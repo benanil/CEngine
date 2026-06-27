@@ -145,13 +145,13 @@ float4 frag(VSOutput input) : SV_Target0
     TextureDescriptor normalDesc = sTextureDescriptors[material.normalDescriptor];
     TextureDescriptor mrDesc = sTextureDescriptors[material.metallicRoughnessDescriptor];
 
-    f16_4 albedoSample = SampleTexturePageRGBA(AlbedoPages, Sampler, albedo, float2(input.texCoords));
+    f16_4 albedoSample = SampleTexturePageRGBA(AlbedoPages, Sampler, albedo, float2(input.texCoords), f16_4(1.0, 1.0, 1.0, 1.0));
     float4 baseFactor = UnpackColor4Uint(material.baseColorFactor);
     AlphaClipMaterial(material, float(albedoSample.a));
     f16_3 baseColor = SRGBToLinear(albedoSample.rgb) * f16_3(baseFactor.rgb);
 
-    float3 tangentNormal = DecodeNormalRG(float2(SampleTexturePageRG(NormalPages, Sampler, normalDesc, float2(input.texCoords))));
-    f16_2 mr = SampleTexturePageRG(MetallicRoughnessPages, Sampler, mrDesc, float2(input.texCoords));
+    float3 tangentNormal = DecodeNormalRG(float2(SampleTexturePageRG(NormalPages, Sampler, normalDesc, float2(input.texCoords), f16_2(0.5, 0.5))));
+    f16_2 mr = SampleTexturePageRG(MetallicRoughnessPages, Sampler, mrDesc, float2(input.texCoords), f16_2(1.0, 1.0));
 
     float3 N = normalize(tangentNormal.x * normalize(float3(input.tangent)) +
                          tangentNormal.y * normalize(float3(input.bitangent)) +

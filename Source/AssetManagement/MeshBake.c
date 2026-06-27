@@ -134,6 +134,40 @@ static void VerticesForPrimitive(APrimitive* primitive, ASkinedVertex* currVerte
     }
 }
 
+static f32 ReadColorChannel(const u8* src, s32 type)
+{
+    switch (type)
+    {
+        case AComponentType_BYTE:           return Saturatef32(((f32)(*(const s8*)src) / 127.0f) * 0.5f + 0.5f);
+        case AComponentType_UNSIGNED_BYTE:  return (f32)(*(const u8*)src) * (1.0f / 255.0f);
+        case AComponentType_SHORT:          return Saturatef32(((f32)(*(const s16*)src) / 32767.0f) * 0.5f + 0.5f);
+        case AComponentType_UNSIGNED_SHORT: return (f32)(*(const u16*)src) * (1.0f / 65535.0f);
+        case AComponentType_FLOAT:          return Saturatef32(*(const f32*)src);
+        default:                            return 1.0f;
+    }
+}
+
+static u16 PackVertexColorRGBA4444(const APrimitive* primitive, s32 vertexIndex)
+{
+    const u8* colors = (const u8*)primitive->vertexAttribs[AAttribIdx_COLOR_0];
+    if (!colors || primitive->colorCount < 3) return 0xFFFFu;
+
+    s32 colorType = primitive->colorType;
+    s32 componentSize = GraphicsTypeToSize(colorType);
+    s32 colorStride = primitive->colorStride ? primitive->colorStride : componentSize * primitive->colorCount;
+    const u8* src = colors + (size_t)vertexIndex * (size_t)colorStride;
+
+    u32 rgba[4] = { 31u, 31u, 31u, 1u };
+    for (s32 c = 0; c < primitive->colorCount && c < 3; c++)
+    {
+        f32 channel = ReadColorChannel(src + (size_t)c * (size_t)componentSize, colorType);
+        rgba[c] = (u32)(channel * 31.0f + 0.5f) & 0x1Fu;
+    }
+	// 0:1= 0 -> 0.5 alpha, 1 -> 1.0 alpha
+	u16 opacity = primitive->colorCount >= 4 && ReadColorChannel(src + (size_t)3 * (size_t)componentSize, colorType) > 0.5f;
+    return (u16)(rgba[0] | (rgba[1] << 5u) | (rgba[2] << 10u) | (opacity << 15u));
+}
+
 // Requires primitive->min/max to be set first (BoundsForPrimitive). Positions are quantized
 // to xyz unorm16 relative to the primitive AABB; the vertex/depth/shadow shaders and the BVH
 // de-quantize with the same AABB (PrimitiveGroup.aabbMin/aabbMax == primitive->min/max).
@@ -152,15 +186,25 @@ static void SurfaceVerticesForPrimitive(APrimitive* primitive, AVertex* currVert
 
     for (s32 v = 0; v < primitive->numVertices; v++)
     {
-        v128f tangent = tangents ? tangents[v] : VecZero();
+        v128f tangent   = tangents ? tangents[v] : VecZero();
         float2 texCoord = texCoords ? texCoords[v] : (float2){0.0f, 0.0f};
-        float3 normal = normals ? normals[v] : (float3){0.5f, 0.5f, 0.0f};
+        float3 normal   = normals ? normals[v] : (float3){0.5f, 0.5f, 0.0f};
 
         v128f unorm = VecMul(VecSub(VecLoad(&positions[v].x), aabbMin), invExtent);
-        currVertex[v].position = PackUnorm16x4(unorm); // PackUnorm16x4 clamps to [0,1]
+        u64 packedPosition = PackUnorm16x4(unorm); // PackUnorm16x4 clamps to [0,1]
+        currVertex[v].position = packedPosition | ~0x0000FFFFFFFFFFFFull; // make vertex color white
         currVertex[v].texCoord = Float2ToHalf2(&texCoord.x);
         currVertex[v].octTbn = PackNormalTangent(Vec3Load(&normal.x), tangent);
     }
+	
+	const u8* colors = (const u8*)primitive->vertexAttribs[AAttribIdx_COLOR_0];
+    if (!colors || primitive->colorCount < 3) return;
+
+	for (s32 v = 0; v < primitive->numVertices; v++)
+	{
+        currVertex[v].position &= 0x0000FFFFFFFFFFFFull; // clear vertex color
+		currVertex[v].position |= (u64)PackVertexColorRGBA4444(primitive, v) << 48u;
+	}
 }
 
 static void BoundsForPrimitive(APrimitive* primitive)

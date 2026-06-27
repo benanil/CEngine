@@ -67,7 +67,7 @@ float frag(VSOutput input) : SV_Target0
     if (MaterialIsAlphaMasked(material.flags))
     {
         TextureDescriptor albedo = sTextureDescriptors[material.albedoDescriptor];
-        f16_4 albedoSample = SampleTexturePageRGBA(AlbedoPages, Sampler, albedo, float2(input.texCoords));
+        f16_4 albedoSample = SampleTexturePageRGBA(AlbedoPages, Sampler, albedo, float2(input.texCoords), f16_4(1.0, 1.0, 1.0, 1.0));
         AlphaClipMaterial(material, float(albedoSample.a));
     }
     return input.position.z;

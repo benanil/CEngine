@@ -27,6 +27,7 @@ struct VSOutput
 {
     float4 position : SV_Position;
     f16_2_io texCoords : TEXCOORD0;
+    f16_4_io vertexColor : COLOR0;
     nointerpolation uint materialIndex : TEXCOORD1;
 };
 
@@ -47,6 +48,7 @@ VSOutput vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("Dra
     VSOutput o;
     o.position = mul(uViewProj, float4(finalWorldPos, 1.0));
     o.texCoords = input.aTexCoords;
+    o.vertexColor = f16_4_io(UnpackAVertexColor(input.aPos));
     o.materialIndex = group.materialIndex;
     return o;
 }
@@ -57,8 +59,8 @@ float frag(VSOutput input) : SV_Target0
     if (MaterialIsAlphaMasked(material.flags))
     {
         TextureDescriptor albedo = sTextureDescriptors[material.albedoDescriptor];
-        f16_4 albedoSample = SampleTexturePageRGBA(AlbedoPages, Sampler, albedo, float2(input.texCoords));
-        AlphaClipMaterial(material, float(albedoSample.a));
+        f16_4 albedoSample = SampleTexturePageRGBA(AlbedoPages, Sampler, albedo, float2(input.texCoords), f16_4(1.0, 1.0, 1.0, 1.0));
+        AlphaClipMaterial(material, float(albedoSample.a * f16_4(input.vertexColor).a));
     }
     return input.position.z;
 }

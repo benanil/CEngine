@@ -15,6 +15,7 @@ typedef struct SceneBundleRef_
     const char*  path;           // bundle cache owned string
     SceneBundle* bundle;
     u32          renderIdx;      // bundle index inside its render set
+    u32          transparentRenderIdx; // non-skinned BLEND primitives live in transparentSurfaceSet
     u32          materialOffset; // gpu material slot base of the bundle in this scene
     u32          animOffset;     // first animation of the bundle inside the scene's animation system
     u32          skinned;
@@ -47,8 +48,10 @@ typedef struct Scene_
 {
     RenderSet        skinnedSet;
     RenderSet        surfaceSet;
+    RenderSet        transparentSurfaceSet;
     RenderSetBuffers skinnedBuffers;
     RenderSetBuffers surfaceBuffers;
+    RenderSetBuffers transparentSurfaceBuffers;
     TextureSystem    textureSystem;
     AnimationSystem  animSystem;
 

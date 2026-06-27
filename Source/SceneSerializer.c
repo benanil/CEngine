@@ -12,7 +12,7 @@
 #include "Include/Bitset.h"
 #include "Math/Bitpack.h"
 
-#define SCENE_FILE_VERSION 2
+#define SCENE_FILE_VERSION 3
 
 // first descriptors of a texture system are the built in defaults (TextureSystem.c)
 enum { SceneSer_DefaultDescriptors = 4 };
@@ -194,9 +194,9 @@ s32 SceneSerializer_Save(Scene* scene, const char* path)
 
     // raw render set entities in (group, local) order, the dense layout reproduces on load.
     // rotation and scale stay in their packed forms so the round trip is exact
-    for (u32 s = 0; s < 2u; s++)
+    for (u32 s = 0; s < 3u; s++)
     {
-        const RenderSet* set = s == 0u ? &scene->surfaceSet : &scene->skinnedSet;
+        const RenderSet* set = s == 0u ? &scene->surfaceSet : (s == 1u ? &scene->skinnedSet : &scene->transparentSurfaceSet);
         p = WStr(line, "entities");
         p = WInt(p, (s64)s);
         p = WInt(p, (s64)set->numEntities);
@@ -227,7 +227,7 @@ s32 SceneSerializer_Save(Scene* scene, const char* path)
     RemoveFile(path);
     RenameFile(tmpPath, path);
     AX_LOG("scene saved: %s bundles=%d entities=%d lights=%d %.2fs",
-           path, scene->numBundles, scene->surfaceSet.numEntities + scene->skinnedSet.numEntities,
+           path, scene->numBundles, scene->surfaceSet.numEntities + scene->skinnedSet.numEntities + scene->transparentSurfaceSet.numEntities,
            scene->numLights, TimeSinceStartup() - startTime);
     return 1;
 }
@@ -266,8 +266,8 @@ typedef struct SceneFileData_
     LightGPU* lights;
     u32 numLights;
 
-    SceneEntRecord* entities[2]; // 0 surface, 1 skinned
-    u32 numEntities[2];
+    SceneEntRecord* entities[3]; // 0 surface, 1 skinned, 2 transparent surface
+    u32 numEntities[3];
 } SceneFileData;
 
 // reads one line and checks it starts with the expected keyword. the line keeps its
@@ -317,7 +317,7 @@ static s32 ParseSceneFile(const char* path, SceneFileData* data)
         p = line + 3 + 7;
     }
     RU32(p, &version);
-    if (version > 2)
+    if (version > SCENE_FILE_VERSION)
     {
         AX_ERROR("scene file version %d not supported: %s", version, path);
         AFileClose(file);
@@ -422,13 +422,14 @@ static s32 ParseSceneFile(const char* path, SceneFileData* data)
         light->padding = 0u;
     }
 
-    for (u32 s = 0; s < 2u; s++)
+    u32 serializedSets = version >= 3u ? 3u : 2u;
+    for (u32 s = 0; s < serializedSets; s++)
     {
         u32 setIdx = 0;
         if (!(p = ReadRecord(file, line, sizeof(line), "entities"))) goto fail;
         p = RU32(p, &setIdx);
         RU32(p, &data->numEntities[s]);
-        if (setIdx != s || data->numEntities[s] > (s == 0u ? MAX_ENTITY : MAX_ANIM_INSTANCES)) goto fail;
+        if (setIdx != s || data->numEntities[s] > (s == 1u ? MAX_ANIM_INSTANCES : MAX_ENTITY)) goto fail;
         data->entities[s] = (SceneEntRecord*)ArenaAllocZero(&GlobalArena, Maxu32(data->numEntities[s], 1u) * sizeof(SceneEntRecord));
         for (u32 i = 0; i < data->numEntities[s]; i++)
         {
@@ -536,10 +537,10 @@ s32 SceneSerializer_Load(Scene* scene, const char* path)
 
     // entities restore straight into the render sets, records are in (group, local) order
     // so the dense layout and sparse ids come back exactly as saved
-    for (u32 s = 0; s < 2u; s++)
+    for (u32 s = 0; s < 3u; s++)
     {
         bool isSkinned = s == 1u;
-        RenderSet* set = isSkinned ? &scene->skinnedSet : &scene->surfaceSet;
+        RenderSet* set = s == 0u ? &scene->surfaceSet : (s == 1u ? &scene->skinnedSet : &scene->transparentSurfaceSet);
 
         u32* primitiveCounts = (u32*)ArenaAllocGlobal(set->numGroups * sizeof(u32));
         MemSet(primitiveCounts, 0, set->numGroups * sizeof(u32));
@@ -611,7 +612,7 @@ s32 SceneSerializer_Load(Scene* scene, const char* path)
                 }
             }
         }
-        RenderSet_Validate(set, isSkinned ? "load skinned" : "load surface" );
+        RenderSet_Validate(set, isSkinned ? "load skinned" : (s == 2u ? "load transparent surface" : "load surface"));
     }
 
     if (data.numLights > 0)
@@ -624,7 +625,7 @@ s32 SceneSerializer_Load(Scene* scene, const char* path)
 
     ArenaRestore(&GlobalArena, mark);
     AX_LOG("scene loaded: %s bundles=%d entities=%d lights=%d baked=%d %.2fs",
-           path, scene->numBundles, scene->surfaceSet.numEntities + scene->skinnedSet.numEntities,
+           path, scene->numBundles, scene->surfaceSet.numEntities + scene->skinnedSet.numEntities + scene->transparentSurfaceSet.numEntities,
            scene->numLights, scene->texturesBaked, TimeSinceStartup() - startTime);
     return 1;
 }

@@ -673,8 +673,28 @@ static void InitForwardPipelines(void)
     g_RenderState.surface.forwardPipeline = SDL_CreateGPUGraphicsPipeline(g_GPUDevice, &desc);
     CHECK_CREATE(g_RenderState.surface.forwardPipeline, "Surface Forward Pipeline")
 
+    SDL_GPUColorTargetDescription transparentColorTarget = {
+        .format = SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT,
+        .blend_state = {
+            .enable_blend = true,
+            .color_write_mask = 0xF,
+            .color_blend_op = SDL_GPU_BLENDOP_ADD,
+            .alpha_blend_op = SDL_GPU_BLENDOP_ADD,
+            .src_color_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA,
+            .dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+            .src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE,
+            .dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA
+        }
+    };
+    desc.target_info.color_target_descriptions = &transparentColorTarget;
+    desc.depth_stencil_state.enable_depth_write = false;
+    g_RenderState.surface.transparentForwardPipeline = SDL_CreateGPUGraphicsPipeline(g_GPUDevice, &desc);
+    CHECK_CREATE(g_RenderState.surface.transparentForwardPipeline, "Transparent Surface Forward Pipeline")
+
     desc.vertex_shader   = ski_vert;
     desc.fragment_shader = ski_frag;
+    desc.target_info.color_target_descriptions = &(SDL_GPUColorTargetDescription){ .format = SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT };
+    desc.depth_stencil_state.enable_depth_write = g_RenderState.sceneSampleCount != SDL_GPU_SAMPLECOUNT_1;
     desc.vertex_input_state = (SDL_GPUVertexInputState){
         .vertex_buffer_descriptions = &(SDL_GPUVertexBufferDescription){ 0, sizeof(ASkinedVertex), SDL_GPU_VERTEXINPUTRATE_VERTEX, 0 },
         .num_vertex_buffers    = 1,
@@ -798,6 +818,7 @@ extern void DestroyShadows();
 static void DestroyRenderSetBufferPipelines(RenderSetShared buffer)
 {
     if (buffer.forwardPipeline)     SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, buffer.forwardPipeline);
+    if (buffer.transparentForwardPipeline) SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, buffer.transparentForwardPipeline);
     if (buffer.shadowPipeline)      SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, buffer.shadowPipeline);
     if (buffer.depthPipeline)       SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, buffer.depthPipeline);
     if (buffer.pointShadowPipeline) SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, buffer.pointShadowPipeline);
