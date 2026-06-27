@@ -64,15 +64,10 @@ typedef struct PrimitiveGroup_
     uint4 lodAnimatedVertexOffset;
 } PrimitiveGroup;
 
-// Animated vertex cache format, 8 bytes per vertex (position only - the tangent frame is no
-// longer cached; the GBuffer pass re-skins it).
-// packed0/packed1: bounds-normalized model-space skinned position, 16/16/16 unorm against the
-// primitive group's (whole-skin) AABB. Entity rotation/scale are applied per vertex shader.
-typedef struct AnimatedVert_
-{
-    uint packed0;
-    uint packed1;
-} AnimatedVert;
+// Animated vertex cache format. The compute pass writes raw uint2 values into the
+// animated vertex buffer:
+//   x/y/z: bounds-normalized model-space skinned position packed as 16/16/16 unorm.
+// No tangent frame, extent, or other per-vertex data is cached here.
 
 typedef struct TextureDescriptor_
 {
