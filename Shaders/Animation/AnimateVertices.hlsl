@@ -35,7 +35,7 @@ StructuredBuffer<SkinnedVertex>  sVertexBuffer      : register(t4);
 StructuredBuffer<uint>           sSparseToDense     : register(t5);
 StructuredBuffer<uint>           sVisibleCount      : register(t6);
 
-RWStructuredBuffer<uint2> sAnimatedPosition : register(u0, space1);
+RWStructuredBuffer<uint> sAnimatedPosition : register(u0, space1);
 
 [numthreads(1, 32, 1)]
 void main(uint3 globalID : SV_DispatchThreadID, uint3 groupID : SV_GroupID, uint3 groupThreadID : SV_GroupThreadID)
@@ -80,7 +80,7 @@ void main(uint3 globalID : SV_DispatchThreadID, uint3 groupID : SV_GroupID, uint
 
     // Skin in model space (entity rotation/scale are applied per vertex shader) and accumulate in a
     // bounds-local frame: the bone translation is shifted by the bounds center so skinned positions
-    // stay near 0, where fp16 keeps full precision. Result is packed as 16/16/16 unorm in one uint2.
+    // stay near 0. Result is packed as xy11z10 unorm in one uint.
     float3 boundsCenter = AnimatedBoundsCenter(group.aabbMin.xyz, group.aabbMax.xyz);
     float3 boundsExtent = AnimatedBoundsExtent(group.aabbMin.xyz, group.aabbMax.xyz);
 
