@@ -64,10 +64,15 @@ typedef struct PrimitiveGroup_
     uint4 lodAnimatedVertexOffset;
 } PrimitiveGroup;
 
-// Animated vertex cache format. The compute pass writes raw uint2 values into the
-// animated vertex buffer:
+// Animated vertex cache format, 8 bytes per vertex. The compute pass writes raw uint2 values:
 //   x/y/z: bounds-normalized model-space skinned position packed as 16/16/16 unorm.
 // No tangent frame, extent, or other per-vertex data is cached here.
+// Kept as a named two-uint struct for older reader shaders that have not been moved to uint2.
+typedef struct AnimatedVert_
+{
+    uint packed0;
+    uint packed1;
+} AnimatedVert;
 
 typedef struct TextureDescriptor_
 {
