@@ -235,8 +235,18 @@ int FloatToString(char* ptr, float f, int afterpoint)
     numChars += IntToString(ptr + numChars, iPart, 0);
     float fPart = f - (float)iPart;
     ptr[numChars++] = '.';
-    int power = afterpoint == 0 ? 0 : Pow10Table64(afterpoint); 
-    return numChars + IntToString(ptr + numChars, (int)(fPart * power), afterpoint-(iPart != 0));
+    int power = afterpoint == 0 ? 0 : Pow10Table64(afterpoint);
+    int frac = (int)(fPart * power);
+    // emit exactly afterpoint zero-padded fractional digits. IntToString pads a non-zero
+    // value to the requested width, but writes an extra digit for zero, so a leading-zero
+    // fraction like 0.067 would otherwise drop its zero (".67") 
+    if (frac == 0)
+    {
+        for (int i = 0; i < afterpoint; i++) ptr[numChars++] = '0';
+        ptr[numChars] = '\0';
+        return numChars;
+    }
+    return numChars + IntToString(ptr + numChars, frac, afterpoint);
 }
 
 // return index if found, -1 otherwise

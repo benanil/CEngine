@@ -447,7 +447,7 @@ static s32 ParseSceneFile(const char* path, SceneFileData* data)
                 p = RU32(p, &legacyScale);
                 record->scale = EntityPackWorldScale(VecMulf(SceneUnpackLegacyScaleXY11Z10(legacyScale), 10.0f));
             }
-            if (version == 2)
+            if (version >= 2)
                 p = RU64(p, &record->scale);
 
             RU32(p, &record->sparseIdx);
