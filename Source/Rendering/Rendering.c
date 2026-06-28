@@ -364,8 +364,6 @@ static void UploadLightBuffer(void)
     g_LightDebugInfo.submittedLights = g_RenderState.numLights;
 }
 
-
-
 static void ReleaseQueuedResizeTextures(bool force)
 {
     for (u32 i = 0; i < RESIZE_RELEASE_DELAY; i++)
@@ -509,7 +507,8 @@ static void GatherSkinnedAnimationVisibility(SDL_GPUCommandBuffer* cmd, RenderSe
                                              const ShadowData* pointShadows, const ShadowData* spotShadows)
 {
 
-    u32 flags = CullDrawFlag_EnableHiZ | CullDrawFlag_VisibilityOutput | CullDrawFlag_ResetVisibility | CullDrawFlag_EnableLODSelection;
+    u32 flags = CullDrawFlag_VisibilityOutput | CullDrawFlag_ResetVisibility | CullDrawFlag_EnableLODSelection;
+    if (enableHiZ) flags |= CullDrawFlag_EnableHiZ; // only test occlusion when the Hi-Z (matrix+depth) pair is valid
     DispatchCullDrawArgsCompute(cmd, skinnedSet, skinnedBuffers, cameraFrustum, cameraViewProj, flags, ~0u, 1u, NULL);
 
     ShadowCascadeData cascades = GetShadowCascades();
@@ -659,7 +658,13 @@ void Render(void)
 
         ShadowCascadeData shadowCascades = CascadedShadowmaps(cmd);
         UploadShadowCascadeBuffer(&shadowCascades);
-        CullScene(cmd, cameraFrustum, hiZViewProj, CullDrawFlag_EnableHiZ | CullDrawFlag_EnableLODSelection, ~0u);
+        // Only enable the Hi-Z occlusion test when the Hi-Z pair is valid: hiZViewProj is the
+        // matrix the depth pyramid was rendered with (last frame). With occlusion off, hiZViewProj
+        // falls back to the *current* viewProj, which would not match last frame's depth texture and
+        // would produce flicker, so the flag must be gated on enableHiZ rather than hardcoded on.
+        CullDrawFlags cullFlags = CullDrawFlag_EnableLODSelection;
+        if (enableHiZ) cullFlags |= CullDrawFlag_EnableHiZ;
+        CullScene(cmd, cameraFrustum, hiZViewProj, cullFlags, ~0u);
 
         RenderDepth(cmd, &(DepthPassContext){
             .colorTarget       = &hiz_depth_target,

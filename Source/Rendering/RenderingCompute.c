@@ -71,24 +71,37 @@ void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet
         { buffers->dispatchArgs }
     };
 
+    // The reset (mode 0) and cull (mode 1) dispatches share RW buffers: mode 0 plain-writes
+    // drawArgs[].numInstances/visibilityMask/visibleCount/dispatchArgs to zero, while mode 1
+    // atomically accumulates into the same locations. SDL_GPU does NOT synchronize dispatches
+    // within a single compute pass (see SDL_DispatchGPUCompute docs), so running them in one
+    // pass lets the reset's zeroing store land after mode 1's atomics, clobbering a group's
+    // instance count to 0 for the frame -> intermittent flicker (worst for high-LOD draw slots,
+    // i.e. small/thin/distant objects). End the reset pass before beginning the cull pass.
+    u32 resetCount = renderSet->numGroups * params.lodCount;
+    if ((flags & CullDrawFlag_VisibilityOutput) != 0u && renderSet->numEntities > resetCount) resetCount = renderSet->numEntities;
+
     SDL_GPUComputePass* pass = SDL_BeginGPUComputePass(cmd, NULL, 0, rw_bindings, SDL_arraysize(rw_bindings));
     SDL_BindGPUComputePipeline(pass, g_CullDrawArgsComputePipeline);
     SDL_BindGPUComputeStorageBuffers(pass, 0, ro_buffers, SDL_arraysize(ro_buffers));
     if (hiZTexture)
         SDL_BindGPUComputeStorageTextures(pass, 0, &hiZTexture, 1);
     SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
-
-    u32 resetCount = renderSet->numGroups * params.lodCount;
-    if ((flags & CullDrawFlag_VisibilityOutput) != 0u && renderSet->numEntities > resetCount) resetCount = renderSet->numEntities;
     SDL_DispatchGPUCompute(pass, (resetCount + 63) / 64, 1, 1);
+    SDL_EndGPUComputePass(pass);
 
     if (renderSet->numEntities > 0)
     {
         params.mode = 1;
+        pass = SDL_BeginGPUComputePass(cmd, NULL, 0, rw_bindings, SDL_arraysize(rw_bindings));
+        SDL_BindGPUComputePipeline(pass, g_CullDrawArgsComputePipeline);
+        SDL_BindGPUComputeStorageBuffers(pass, 0, ro_buffers, SDL_arraysize(ro_buffers));
+        if (hiZTexture)
+            SDL_BindGPUComputeStorageTextures(pass, 0, &hiZTexture, 1);
         SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
         SDL_DispatchGPUCompute(pass, (renderSet->numEntities + 63) / 64, 1, 1);
+        SDL_EndGPUComputePass(pass);
     }
-    SDL_EndGPUComputePass(pass);
 }
 
 void DispatchHiZBuildCompute(SDL_GPUCommandBuffer* cmd)
