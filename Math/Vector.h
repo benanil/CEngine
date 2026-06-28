@@ -69,6 +69,8 @@ purefn float3 F3Down()                 { return (float3){ 0.0f, -1.0f,  0.0f}; }
 purefn float3 F3Right()                { return (float3){ 1.0f,  0.0f,  0.0f}; }
 purefn float3 F3Forward()              { return (float3){ 0.0f,  0.0f,  1.0f}; }
 purefn float3 F3Backward()             { return (float3){ 0.0f,  0.0f, -1.0f}; }
+purefn float2 F2Zero()                 { return (float2){ 0.0f,  0.0f }; }
+purefn float2 F2One()                  { return (float2){ 1.0f,  1.0f }; }
 
 purefn float3 VCALL Vec3Get(f4 v)             { return (float3) { VecGetX(v), VecGetY(v), VecGetZ(v) }; }
 purefn f32    F3Dot     (float3 a, float3 b)  { return VecDotf(Vec3Load(&a.x), Vec3Load(&b.x));  }

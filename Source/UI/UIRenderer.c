@@ -428,7 +428,9 @@ void UIEndFrame(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget)
 {
     UIWindowEndFrame();
     UIRender(cmd, colorTarget);
-    SlugRender2D(cmd, colorTarget, SlugGetDemoFont());
+    SlugFont* font = SlugGetDemoFont();
+    SlugRender2DBatches(cmd, colorTarget, font, 0u, font->numBatches, true);
+    SlugClear(font);
     g_UI.mouseOld = g_UI.mouse;
     ArenaReset(&g_UIFrameStringArena);
 }
@@ -2069,8 +2071,6 @@ void UIRender(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget)
     }
 
     if (pass) SDL_EndGPURenderPass(pass);
-
-    if (hasText) SlugClear(font);
 
     UIClear();
 }

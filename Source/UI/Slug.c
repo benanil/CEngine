@@ -1061,6 +1061,19 @@ void SlugRender(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget, 
         return;
     }
     if (font->numVertices == 0u) return;
+    if (font->numBatches > 0u)
+    {
+        bool hasDrawableBatch = false;
+        for (u32 i = 0u; i < font->numBatches; i++)
+        {
+			hasDrawableBatch |= font->batches[i].vertexCount > 0u;
+        }
+        if (!hasDrawableBatch)
+        {
+            SlugClear(font);
+            return;
+        }
+    }
 
     if (!SlugUploadGlyphBuffers(cmd, font))
     {

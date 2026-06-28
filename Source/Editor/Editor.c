@@ -26,6 +26,7 @@ static bool testOpen      = false;
 static bool sceneViewOpen = false; // closed = the scene fills the whole window like before
 static bool terrainOpen   = false;
 static bool importTestOpen = false;
+static bool showFps = false;
 
 // scene view content rect from last frame's layout, the renderer sizes the scene to it
 static bool   sceneViewVisible;
@@ -156,27 +157,37 @@ static void ShowFps(void)
 {
     static char fpsText[32] = "fps:0";
     static char msText[128] = "ms:0";
-    static double lastUpdateTime = 0.0;
-    static int fpsLen = 0, msLen = 0;
-    double currentTime = TimeSinceStartup();
+    static f32 accumulatedTime = 0.0f;
+    static u32 accumulatedFrames = 0u;
+    static bool initialized = false;
+    static int fpsLen = 1, msLen = 1;
+    f32 dt = GetDeltaTime();
 
-    if (currentTime - lastUpdateTime >= 0.25)
+    if (dt > 0.0f)
     {
-        lastUpdateTime = currentTime;
-        f32 dt = GetDeltaTime();
-        int fps = (dt > 1.0e-6f) ? (int)(1.0f / dt) : 0;
-        f32 ms = dt * 1000.0f;
+        accumulatedTime += dt;
+        accumulatedFrames++;
+    }
+
+    if (!initialized || accumulatedTime >= 0.25f)
+    {
+        f32 averageDt = (accumulatedFrames > 0u) ? accumulatedTime / (f32)accumulatedFrames : dt;
+        int fps = (averageDt > 1.0e-6f) ? (int)((1.0f / averageDt) + 0.5f) : 0;
+        f32 ms = averageDt * 1000.0f;
         fpsLen = IntToString(fpsText + 4, (int64_t)fps, 0);
         fpsText[4 + fpsLen] = '\0';
-        msLen = IntToString(msText + 3, (int64_t)ms, 0);
+        msLen = FloatToString(msText + 3, ms, 2);
         msText[3 + msLen] = '\0';
+        accumulatedTime = 0.0f;
+        accumulatedFrames = 0u;
+        initialized = true;
     }
 
     u32 w = g_WindowState.prev_width;
     float2 fpsSize = SlugCalcTextSizeN(NULL, fpsText, fpsLen + 4, 32.0f);
     float2 msSize = SlugCalcTextSizeN(NULL, msText, msLen + 3, 32.0f);
-    SlugAppendText2DN(NULL, fpsText, fpsLen + 4, (float2){w - fpsSize.x, 32.0f }, 32.0f, 0xFFCCCCFF);
-    SlugAppendText2DN(NULL, msText, msLen + 3, (float2){w - msSize.x, 68.0f }, 32.0f, 0xFFCCCCFF);
+    SlugAppendText2DN(NULL, fpsText, fpsLen + 4, (float2){ w - fpsSize.x - 12.0f, 52.0f }, 32.0f, 0xFFCCCCFF);
+    SlugAppendText2DN(NULL, msText, msLen + 3, (float2){ w - msSize.x - 12.0f, 88.0f }, 32.0f, 0xFFCCCCFF);
 }
 
 // renders a few UTF-8 strings across scripts to eyeball glyph coverage and multi-byte
@@ -265,7 +276,10 @@ static void WindowTestUI(void)
             testValue = 0.35f;
             exposure = 1.0f;
         }
-        UIButton(CLAY_ID("WindowTestButton"), CLAY_STRING("Button"), (Clay_Dimensions){ 96.0f, 34.0f }, false);
+		if (UIButton(CLAY_ID("ToggleClayTest"), CLAY_STRING("ClayTest"), (Clay_Dimensions) { 96.0f, 34.0f }, false))
+		{
+			Clay_SetDebugModeEnabled(!Clay_IsDebugModeEnabled());
+		}
     }
 
     UIEndWindow();
@@ -881,7 +895,7 @@ static void GraphicsEditorUI(void)
         }
     }) {
 
-        ShowFps();
+        if (showFps) ShowFps();
         bool sceneViewWasVisible = sceneViewVisible;
         if (!sceneViewWasVisible) DrawSceneLightGizmos(&g_Camera);
         DrawSceneViewWindow();
@@ -923,9 +937,7 @@ void UIRenderCallback(void)
     // static char textArea[512] = "Text area 中文测试 日本語テスト\nArabic: العربية\nGreek: Ελληνικά";
     // UIText("SDF + Slug Immediate UI", (float2){ 56.0f, 56.0f });
     // UITextArea("Text Area", (float2){ 56.0f, 292.0f }, textArea, (u32)sizeof(textArea), (float2){ 520.0f, 160.0f });
-    if (GetKeyPressed('c'))
-    {
-        Clay_SetDebugModeEnabled(!Clay_IsDebugModeEnabled());
-    }
+      
+    if (GetKeyPressed(SDLK_F7)) showFps = !showFps;
     GraphicsEditorUI();
 }

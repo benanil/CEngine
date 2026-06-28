@@ -59,11 +59,11 @@
 #define FORWARD_MAX_TILES     (FORWARD_MAX_TILES_X * FORWARD_MAX_TILES_Y)
 
 // max animation bounds is ANIMATION_MAX_METERS because we use ANIMATION_PRECISION bit precision
-#define MAX_SURFACE_VERTEX                   10000000ull /* 160 megabytes */
+#define MAX_SURFACE_VERTEX                   16000000ull /* 256 megabytes */
 #define MAX_SKINNED_SOURCE_VERTEX            262144ull
 #define MAX_SKINNED_VERTEX_PER_ANIM_INSTANCE 65536ull
 #define MAX_ANIMATED_VERTEX (MAX_ANIM_INSTANCES * MAX_SKINNED_VERTEX_PER_ANIM_INSTANCE)
 #define MAX_VERTEX MAX_SURFACE_VERTEX
-#define MAX_INDEX  32000000ull /* 128 megabytes */
+#define MAX_INDEX  48000000ull /* 196 megabytes */
 
 #endif
