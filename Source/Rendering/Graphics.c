@@ -308,6 +308,8 @@ void GetRenderResolution(u32 windowW, u32 windowH, u32* outW, u32* outH)
     *outH = Maxu32((u32)((f32)windowH * scale + 0.5f), 1u);
 }
 
+static u32 GetMipCount(u32 width, u32 height);
+
 void CreateWindowBuffers()
 {
     WindowState* winstate = &g_WindowState;
@@ -320,6 +322,9 @@ void CreateWindowBuffers()
     winstate->render_height = height;
     u32 hbaoWidth  = Maxu32(width / 2u, 1u);
     u32 hbaoHeight = Maxu32(height / 2u, 1u);
+    u32 bloomWidth  = Maxu32(width / 2u, 1u);
+    u32 bloomHeight = Maxu32(height / 2u, 1u);
+    u32 bloomMipCount = GetMipCount(bloomWidth, bloomHeight);
     SDL_GPUSampleCount sceneSampleCount = g_RenderState.sceneSampleCount ? g_RenderState.sceneSampleCount : SDL_GPU_SAMPLECOUNT_1;
     bool msaa = sceneSampleCount != SDL_GPU_SAMPLECOUNT_1;
     winstate->tex_color           = CreateSceneColorTexture(width, height, SDL_GPU_SAMPLECOUNT_1);
@@ -330,6 +335,8 @@ void CreateWindowBuffers()
     winstate->tex_hbao            = CreateTexture2D(hbaoWidth, hbaoHeight, TEX_FMT_8UNORM1, TEX_SAMPLER | TEX_COMP_WRITE, TEX_SMP_CNT1, 1, "HBAO Texture");
     winstate->tex_hbao_blur       = CreateTexture2D(hbaoWidth, hbaoHeight, TEX_FMT_8UNORM1, TEX_SAMPLER | TEX_COMP_WRITE, TEX_SMP_CNT1, 1, "HBAO Texture");
     winstate->tex_hbao_normal     = CreateTexture2D(hbaoWidth, hbaoHeight, TEX_FMT_8UNORM4, TEX_SAMPLER | TEX_COMP_WRITE, TEX_SMP_CNT1, 1, "HBAO Normal Texture");
+    winstate->tex_bloom_ping      = CreateTexture2D(bloomWidth, bloomHeight, TEX_FMT_HALF4, TEX_SAMPLER | TEX_COMP_WRITE, TEX_SMP_CNT1, bloomMipCount, "Bloom Ping Texture");
+    winstate->tex_bloom_pong      = CreateTexture2D(bloomWidth, bloomHeight, TEX_FMT_HALF4, TEX_SAMPLER | TEX_COMP_WRITE, TEX_SMP_CNT1, bloomMipCount, "Bloom Pong Texture");
     winstate->tex_mlaa_edge_mask  = CreateTexture2D(width, height, TEX_FMT_R32_UINT, TEX_COMP_READ | TEX_COMP_WRITE, TEX_SMP_CNT1, 1, "MLAA Edge Mask Texture");
     winstate->tex_mlaa_edge_count = CreateTexture2D(width, height, TEX_FMT_D32_FLT2, TEX_COMP_READ | TEX_COMP_WRITE, TEX_SMP_CNT1, 1, "MLAA Edge Count Texture");
     winstate->tex_mlaa_output     = CreateTexture2D(width, height, TEX_FMT_8UNORM4 , TEX_SAMPLER | TEX_COLOR_TARGET | TEX_COMP_WRITE, TEX_SMP_CNT1, 1, "MLAA Output Texture");
@@ -341,6 +348,9 @@ void CreateWindowBuffers()
     winstate->hiz_width     = width;
     winstate->hiz_height    = height;
     winstate->hiz_valid     = false;
+    winstate->bloom_width   = bloomWidth;
+    winstate->bloom_height  = bloomHeight;
+    winstate->bloom_mip_count = bloomMipCount;
 }
 
 SDL_GPUBuffer* CreateBuffer(

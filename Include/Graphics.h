@@ -209,12 +209,14 @@ typedef struct WindowState
     SDL_GPUTexture* tex_depth, *tex_hiz_depth, *tex_color, *tex_color_msaa, *tex_depth_msaa, *tex_post, *tex_hiz;
     SDL_GPUTexture* tex_gbuffer_tangent, *tex_gbuffer_albedo_metallic, *tex_gbuffer_shadow_roughness;
     SDL_GPUTexture* tex_hbao, *tex_hbao_blur, *tex_hbao_normal;
+    SDL_GPUTexture* tex_bloom_ping, *tex_bloom_pong;
     SDL_GPUTexture* tex_mlaa_edge_mask, *tex_mlaa_edge_count, *tex_mlaa_output;
     SDL_GPUTexture* tex_shadow_depth, *tex_shadow_color;
     SDL_GPUTexture* tex_point_shadow_depth, *tex_point_shadow_color;
     SDL_GPUTexture* tex_spot_shadow_depth, *tex_spot_shadow_color;
     u32 prev_width, prev_height;     // swapchain size, the ui renders at this resolution
     u32 render_width, render_height; // scene texture size, prev_* scaled by renderScale
+    u32 bloom_width, bloom_height, bloom_mip_count;
     u32 hiz_width, hiz_height, hiz_mip_count;
     mat4x4 hiz_view_proj;
     bool hiz_valid;

@@ -12,8 +12,11 @@ cbuffer TonemapParams : register(b0, space2)
     float time;
     float cloudTime;
     float godRaySamples;
+    float bloomIntensity;
+    uint bloomEnabled;
     uint tilesX;
     uint tileHeatEnabled;
+    uint2 bloomPadding;
     float4x4 invViewProj;
     float4 cameraPosition;
     float4 sunDirection;
@@ -24,10 +27,12 @@ cbuffer TonemapParams : register(b0, space2)
 Texture2D<float4> SourceTexture : register(t0, space0);
 Texture2D<float> DepthTexture   : register(t1, space0);
 Texture2DArray<float> Noise3DTexture : register(t2, space0);
-StructuredBuffer<uint2> sLightGrid : register(t3, space0);
+Texture2D<float4> BloomTexture : register(t3, space0);
+StructuredBuffer<uint2> sLightGrid : register(t4, space0);
 SamplerState SourceSampler      : register(s0, space0);
 SamplerState DepthSampler       : register(s1, space0);
 SamplerState NoiseSampler       : register(s2, space0);
+SamplerState BloomSampler       : register(s3, space0);
 [[vk::image_format("rgba8")]] RWTexture2D<float4> OutputTexture : register(u0, space1);
 
 #include "Sky.hlsl" // ComputeSky(float3 rd)
@@ -145,6 +150,9 @@ void main(uint3 tid : SV_DispatchThreadID)
     float2 uv = (float2(tid.xy) + 0.5f) / float2(outputSize);
     float3 color = SourceTexture.SampleLevel(SourceSampler, uv, 0.0f).rgb;
     float depth = DepthTexture.SampleLevel(DepthSampler, uv, 0.0f);
+    if (bloomEnabled != 0u)
+        color += BloomTexture.SampleLevel(BloomSampler, uv, 0.0f).rgb * bloomIntensity;
+
     bool fogEnabled = fogParams.w > 0.5f;
     if (depth >= 0.9999f)
     {

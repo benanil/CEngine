@@ -423,11 +423,128 @@ static f32 GetSkyPhaseTime(void)
     return (f32)(startupPhase * 0.01);
 }
 
+static u32 BloomMipSize(u32 size, u32 mip)
+{
+    return Maxu32(size >> mip, 1u);
+}
+
+void DispatchBloomCompute(SDL_GPUCommandBuffer* cmd, u32 width, u32 height)
+{
+    WindowState* winstate = &g_WindowState;
+    if (!g_RenderSettings.enableBloom) return;
+    if (!winstate->tex_color || !winstate->tex_bloom_ping || !winstate->tex_bloom_pong || winstate->bloom_mip_count == 0u)
+    {
+        AX_WARN("Bloom resources are not ready");
+        return;
+    }
+    CHECK_CREATE(g_BloomPrefilterDownsampleComputePipeline, "Bloom Prefilter Downsample Compute Pipeline");
+    CHECK_CREATE(g_BloomUpsampleComputePipeline, "Bloom Upsample Compute Pipeline");
+
+    struct {
+        u32 outputSize[2];
+        f32 sourceTexelSize[2];
+        u32 sourceMip;
+        u32 prefilter;
+        f32 threshold;
+        f32 knee;
+        f32 clampValue;
+        f32 padding0;
+    } downParams = {0};
+
+    downParams.outputSize[0] = winstate->bloom_width;
+    downParams.outputSize[1] = winstate->bloom_height;
+    downParams.sourceTexelSize[0] = 1.0f / Maxf32((f32)width, 1.0f);
+    downParams.sourceTexelSize[1] = 1.0f / Maxf32((f32)height, 1.0f);
+    downParams.sourceMip = 0u;
+    downParams.prefilter = 1u;
+    downParams.threshold = Maxf32(g_RenderSettings.bloomThreshold, 0.0f);
+    downParams.knee = Maxf32(g_RenderSettings.bloomKnee, 0.0001f);
+    downParams.clampValue = Maxf32(g_RenderSettings.bloomClamp, 1.0f);
+
+    SDL_GPUStorageTextureReadWriteBinding output = {
+        .texture = winstate->tex_bloom_ping,
+        .mip_level = 0,
+        .layer = 0,
+        .cycle = true
+    };
+    SDL_GPUTextureSamplerBinding sourceBinding = { .texture = winstate->tex_color, .sampler = g_RenderState.sampler };
+    SDL_GPUComputePass* pass = SDL_BeginGPUComputePass(cmd, &output, 1, NULL, 0);
+    SDL_BindGPUComputePipeline(pass, g_BloomPrefilterDownsampleComputePipeline);
+    SDL_BindGPUComputeSamplers(pass, 0, &sourceBinding, 1);
+    SDL_PushGPUComputeUniformData(cmd, 0, &downParams, sizeof(downParams));
+    SDL_DispatchGPUCompute(pass, (downParams.outputSize[0] + 7u) / 8u, (downParams.outputSize[1] + 7u) / 8u, 1);
+    SDL_EndGPUComputePass(pass);
+
+    for (u32 mip = 1u; mip < winstate->bloom_mip_count; mip++)
+    {
+        u32 sourceWidth  = BloomMipSize(winstate->bloom_width, mip - 1u);
+        u32 sourceHeight = BloomMipSize(winstate->bloom_height, mip - 1u);
+        downParams.outputSize[0] = BloomMipSize(winstate->bloom_width, mip);
+        downParams.outputSize[1] = BloomMipSize(winstate->bloom_height, mip);
+        downParams.sourceTexelSize[0] = 1.0f / (f32)sourceWidth;
+        downParams.sourceTexelSize[1] = 1.0f / (f32)sourceHeight;
+        downParams.sourceMip = mip - 1u;
+        downParams.prefilter = 0u;
+
+        output.mip_level = mip;
+        output.cycle = false;
+        sourceBinding.texture = winstate->tex_bloom_ping;
+        pass = SDL_BeginGPUComputePass(cmd, &output, 1, NULL, 0);
+        SDL_BindGPUComputePipeline(pass, g_BloomPrefilterDownsampleComputePipeline);
+        SDL_BindGPUComputeSamplers(pass, 0, &sourceBinding, 1);
+        SDL_PushGPUComputeUniformData(cmd, 0, &downParams, sizeof(downParams));
+        SDL_DispatchGPUCompute(pass, (downParams.outputSize[0] + 7u) / 8u, (downParams.outputSize[1] + 7u) / 8u, 1);
+        SDL_EndGPUComputePass(pass);
+    }
+
+    if (winstate->bloom_mip_count <= 1u) return;
+
+    struct {
+        u32 outputSize[2];
+        f32 lowTexelSize[2];
+        u32 lowMip;
+        u32 highMip;
+        f32 sampleScale;
+        f32 padding0;
+    } upParams = {0};
+
+    upParams.sampleScale = Clampf32(g_RenderSettings.bloomRadius, 0.25f, 4.0f);
+    for (u32 mip = winstate->bloom_mip_count - 1u; mip > 0u; mip--)
+    {
+        u32 outMip = mip - 1u;
+        u32 lowWidth  = BloomMipSize(winstate->bloom_width, mip);
+        u32 lowHeight = BloomMipSize(winstate->bloom_height, mip);
+        upParams.outputSize[0] = BloomMipSize(winstate->bloom_width, outMip);
+        upParams.outputSize[1] = BloomMipSize(winstate->bloom_height, outMip);
+        upParams.lowTexelSize[0] = 1.0f / (f32)lowWidth;
+        upParams.lowTexelSize[1] = 1.0f / (f32)lowHeight;
+        upParams.lowMip = mip;
+        upParams.highMip = outMip;
+
+        output.texture = winstate->tex_bloom_pong;
+        output.mip_level = outMip;
+        output.cycle = false;
+        SDL_GPUTextureSamplerBinding inputs[2] = {
+            { .texture = (mip == winstate->bloom_mip_count - 1u) ? winstate->tex_bloom_ping : winstate->tex_bloom_pong, .sampler = g_RenderState.sampler },
+            { .texture = winstate->tex_bloom_ping, .sampler = g_RenderState.sampler }
+        };
+        pass = SDL_BeginGPUComputePass(cmd, &output, 1, NULL, 0);
+        SDL_BindGPUComputePipeline(pass, g_BloomUpsampleComputePipeline);
+        SDL_BindGPUComputeSamplers(pass, 0, inputs, SDL_arraysize(inputs));
+        SDL_PushGPUComputeUniformData(cmd, 0, &upParams, sizeof(upParams));
+        SDL_DispatchGPUCompute(pass, (upParams.outputSize[0] + 7u) / 8u, (upParams.outputSize[1] + 7u) / 8u, 1);
+        SDL_EndGPUComputePass(pass);
+    }
+}
+
 void DispatchTonemapCompute(SDL_GPUCommandBuffer* cmd, u32 width, u32 height, mat4x4 viewProj, u32 tilesX, bool tileHeatEnabled)
 {
     WindowState* winstate       = &g_WindowState;
     SDL_GPUTexture* source      = winstate->tex_color; 
     SDL_GPUTexture* depth       = winstate->tex_hiz_depth; 
+    SDL_GPUTexture* bloom       = (winstate->bloom_mip_count > 1u) ? winstate->tex_bloom_pong : winstate->tex_bloom_ping;
+    bool bloomReady             = bloom != NULL;
+    if (!bloom) bloom = source;
     SDL_GPUTexture* destination = winstate->tex_post;
     CHECK_CREATE(g_TonemapComputePipeline, "Tonemap Compute Pipeline");
     SDL_GPUStorageTextureReadWriteBinding rwTexture = {
@@ -438,10 +555,11 @@ void DispatchTonemapCompute(SDL_GPUCommandBuffer* cmd, u32 width, u32 height, ma
     };
     SDL_GPUComputePass* pass = SDL_BeginGPUComputePass(cmd, &rwTexture, 1, NULL, 0);
     SDL_BindGPUComputePipeline(pass, g_TonemapComputePipeline);
-    SDL_GPUTextureSamplerBinding inputs[3] = {
+    SDL_GPUTextureSamplerBinding inputs[4] = {
         { .texture = source, .sampler = g_RenderState.sampler },
         { .texture = depth, .sampler = g_RenderState.hiZSampler },
-        { .texture = g_RenderState.skyNoise3D, .sampler = g_RenderState.sampler }
+        { .texture = g_RenderState.skyNoise3D, .sampler = g_RenderState.sampler },
+        { .texture = bloom, .sampler = g_RenderState.sampler }
     };
     SDL_BindGPUComputeSamplers(pass, 0, inputs, SDL_arraysize(inputs));
     SDL_GPUBuffer* storageBuffers[1] = { g_RenderState.lightGridBuffer };
@@ -458,8 +576,11 @@ void DispatchTonemapCompute(SDL_GPUCommandBuffer* cmd, u32 width, u32 height, ma
         f32 time;
         f32 cloudTime;
         f32 godRaySamples;
+        f32 bloomIntensity;
+        u32 bloomEnabled;
         u32 tilesX;
         u32 tileHeatEnabled;
+        u32 bloomPadding[2];
         mat4x4 invViewProj;
         f32 cameraPosition[4];
         f32 sunDirection[4];
@@ -475,6 +596,8 @@ void DispatchTonemapCompute(SDL_GPUCommandBuffer* cmd, u32 width, u32 height, ma
     params.sunPos[1] = sunPos.y;
     params.godRayIntensity = godRayIntensity;
     params.godRaySamples = Clampf32(g_RenderSettings.godRaySamples, 0.0f, 128.0f);
+    params.bloomIntensity = g_RenderSettings.bloomIntensity;
+    params.bloomEnabled = (g_RenderSettings.enableBloom && bloomReady) ? 1u : 0u;
     params.tilesX = tilesX;
     params.tileHeatEnabled = tileHeatEnabled ? 1u : 0u;
     params.cloudTime = TimeSinceStartup();

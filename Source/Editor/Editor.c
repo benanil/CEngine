@@ -299,6 +299,7 @@ static void EditorApplyQualityPreset(RenderSettings* settings, u32 quality)
     case 0: // Low
         settings->enableHBAO            = false;
         settings->enableMLAA            = false;
+        settings->enableBloom           = false;
         settings->msaaSamples           = 1u;
         settings->enableLocalLights     = false;
         settings->lodDistanceModifier   = 0.5f;
@@ -311,6 +312,7 @@ static void EditorApplyQualityPreset(RenderSettings* settings, u32 quality)
     case 1: // Medium
         settings->enableHBAO            = true;
         settings->enableMLAA            = true;
+        settings->enableBloom           = true;
         settings->msaaSamples           = 2u;
         settings->enableLocalLights     = true;
         settings->lodDistanceModifier   = 0.75f;
@@ -323,6 +325,7 @@ static void EditorApplyQualityPreset(RenderSettings* settings, u32 quality)
     case 2: // High, matches the startup defaults
         settings->enableHBAO            = true;
         settings->enableMLAA            = true;
+        settings->enableBloom           = true;
         settings->msaaSamples           = 4u;
         settings->enableLocalLights     = true;
         settings->lodDistanceModifier   = 1.0f;
@@ -335,6 +338,7 @@ static void EditorApplyQualityPreset(RenderSettings* settings, u32 quality)
     case 3: // Ultra
         settings->enableHBAO            = true;
         settings->enableMLAA            = true;
+        settings->enableBloom           = true;
         settings->msaaSamples           = 4u;
         settings->enableLocalLights     = true;
         settings->lodDistanceModifier   = 1.5f;
@@ -379,6 +383,7 @@ static void DrawGraphicsWindow()
                 UICheckbox(CLAY_ID("EditorEnableOcclusion"), CLAY_STRING("Hi-Z occlusion culling"), &settings->enableOcclusion);
                 UICheckbox(CLAY_ID("EditorEnableHBAO")     , CLAY_STRING("HBAO ambient occlusion"), &settings->enableHBAO);
                 UICheckbox(CLAY_ID("EditorEnableMLAA")     , CLAY_STRING("Anti-aliasing (MLAA)"), &settings->enableMLAA);
+                UICheckbox(CLAY_ID("EditorEnableBloom")    , CLAY_STRING("Bloom"), &settings->enableBloom);
                 static const char* msaaOptions[] = { "Off", "2x", "4x", "8x" };
 				u32 msaaIndex = TrailingZeroCount32(settings->msaaSamples);
                 if (UIDropdown(CLAY_ID("EditorMSAA"), CLAY_STRING("MSAA"), msaaOptions, 4u, &msaaIndex))
@@ -431,6 +436,11 @@ static void DrawGraphicsWindow()
             CLAY(CLAY_ID("GraphicsEditorPostBox"), EditorPanelBoxDeclaration) {
                 UISectionHeader("Post / AA");
                 UISliderFloatValue(CLAY_ID("EditorMLAAThreshold"), CLAY_STRING("MLAA threshold"), &settings->mlaaThreshold  , 0.01f, 0.25f, 3);
+                UISliderFloatValue(CLAY_ID("EditorBloomThreshold"), CLAY_STRING("Bloom threshold"), &settings->bloomThreshold, 0.00f, 8.00f, 2);
+                UISliderFloatValue(CLAY_ID("EditorBloomKnee")     , CLAY_STRING("Bloom knee")     , &settings->bloomKnee     , 0.01f, 4.00f, 2);
+                UISliderFloatValue(CLAY_ID("EditorBloomClamp")    , CLAY_STRING("Bloom clamp")    , &settings->bloomClamp    , 1.00f, 128.0f, 1);
+                UISliderFloatValue(CLAY_ID("EditorBloomIntensity"), CLAY_STRING("Bloom intensity"), &settings->bloomIntensity, 0.00f, 1.00f, 3);
+                UISliderFloatValue(CLAY_ID("EditorBloomRadius")   , CLAY_STRING("Bloom radius")   , &settings->bloomRadius   , 0.25f, 4.00f, 2);
                 UISliderFloatValue(CLAY_ID("EditorExposure")     , CLAY_STRING("Exposure")      , &settings->exposure       , 0.10f, 4.00f, 2);
                 UISliderFloatValue(CLAY_ID("EditorGamma")        , CLAY_STRING("Gamma")         , &settings->gamma          , 1.00f, 3.20f, 2);
                 UISliderFloatValue(CLAY_ID("EditorGodRays")      , CLAY_STRING("God rays")      , &settings->godRayIntensity, 0.00f, 8.00f, 2);
@@ -460,6 +470,7 @@ static void DrawGraphicsWindow()
                     .enableOcclusion = true,
                     .enableHBAO = true,
                     .enableMLAA = true,
+                    .enableBloom = true,
                     .msaaSamples = 4u,
                     .showMLAAEdges = false,
                     .enableLocalLights = true,
@@ -471,6 +482,11 @@ static void DrawGraphicsWindow()
                     .hbaoIntensity = 2.0f,
                     .hbaoPower = 2.0f,
                     .mlaaThreshold = 0.08f,
+                    .bloomThreshold = 1.0f,
+                    .bloomKnee = 0.5f,
+                    .bloomClamp = 64.0f,
+                    .bloomIntensity = 0.08f,
+                    .bloomRadius = 1.0f,
                     .exposure = 1.0f,
                     .gamma = 2.2f,
                     .godRayIntensity = 2.5f,

@@ -17,7 +17,7 @@ set EXTRA_GRAPHICS_SHADERS=UI\Slug:Slug2DVert:vert2d:vs_6_6 TerrainDepthOnly:Ter
 
 rem One HLSL file per compute pass:
 rem FileName:ComputeEntry
-set COMPUTE_SHADERS=TexturePageCopyRGBA:main TexturePageCopyRG:main UI\ColorPickCompute:main DeferredLighting:main Animation\AnimationCompute:main Animation\AnimateVertices:main PreProcessing\CullDrawArgsCompute:main PreProcessing\HiZBuildCompute:main PreProcessing\HiZDownscaleCompute:main PostProcessing\TonemapCompute:main PostProcessing\HBAOCompute:main PostProcessing\HBAOBlurCompute:main PostProcessing\MLAAEdgeMaskCompute:main PostProcessing\MLAALineLengthCompute:main PostProcessing\MLAABlendCompute:main
+set COMPUTE_SHADERS=TexturePageCopyRGBA:main TexturePageCopyRG:main UI\ColorPickCompute:main DeferredLighting:main Animation\AnimationCompute:main Animation\AnimateVertices:main PreProcessing\CullDrawArgsCompute:main PreProcessing\HiZBuildCompute:main PreProcessing\HiZDownscaleCompute:main PostProcessing\TonemapCompute:main PostProcessing\BloomPrefilterDownsampleCompute:main PostProcessing\BloomUpsampleCompute:main PostProcessing\HBAOCompute:main PostProcessing\HBAOBlurCompute:main PostProcessing\MLAAEdgeMaskCompute:main PostProcessing\MLAALineLengthCompute:main PostProcessing\MLAABlendCompute:main
 
 if not exist %SPV_DIR% mkdir %SPV_DIR%
 if not exist %SPV_DIR%\UI mkdir %SPV_DIR%\UI

@@ -27,6 +27,8 @@ typedef struct FrameTextureSet_
     SDL_GPUTexture* tex_hbao;
     SDL_GPUTexture* tex_hbao_blur;
     SDL_GPUTexture* tex_hbao_normal;
+    SDL_GPUTexture* tex_bloom_ping;
+    SDL_GPUTexture* tex_bloom_pong;
     SDL_GPUTexture* tex_mlaa_edge_mask;
     SDL_GPUTexture* tex_mlaa_edge_count;
     SDL_GPUTexture* tex_mlaa_output;
@@ -51,6 +53,7 @@ RenderSettings g_RenderSettings = {
     .enableOcclusion             = true,
     .enableHBAO                  = true,
     .enableMLAA                  = true,
+    .enableBloom                 = true,
     .msaaSamples                 = 4u,
     .showMLAAEdges               = false,
     .enableLocalLights           = true,
@@ -64,6 +67,11 @@ RenderSettings g_RenderSettings = {
     .hbaoIntensity               = 2.0f,
     .hbaoPower                   = 2.0f,
     .mlaaThreshold               = 0.08f,
+    .bloomThreshold              = 0.9f,
+    .bloomKnee                   = 0.5f,
+    .bloomClamp                  = 64.0f,
+    .bloomIntensity              = 0.2f,
+    .bloomRadius                 = 2.0f,
     .exposure                    = 1.0f,
     .gamma                       = 2.2f,
     .godRayIntensity             = 2.5f,
@@ -123,6 +131,8 @@ static void ReleaseFrameTextureSet(FrameTextureSet* set)
     if (set->tex_hbao)                     SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_hbao);
     if (set->tex_hbao_blur)                SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_hbao_blur);
     if (set->tex_hbao_normal)              SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_hbao_normal);
+    if (set->tex_bloom_ping)               SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_bloom_ping);
+    if (set->tex_bloom_pong)               SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_bloom_pong);
     if (set->tex_mlaa_edge_mask)           SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_mlaa_edge_mask);
     if (set->tex_mlaa_edge_count)          SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_mlaa_edge_count);
     if (set->tex_mlaa_output)              SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_mlaa_output);
@@ -145,6 +155,8 @@ static void QueueWindowFrameTexturesForRelease(WindowState* winstate)
         .tex_hbao                     = winstate->tex_hbao,
         .tex_hbao_blur                = winstate->tex_hbao_blur,
         .tex_hbao_normal              = winstate->tex_hbao_normal,
+        .tex_bloom_ping               = winstate->tex_bloom_ping,
+        .tex_bloom_pong               = winstate->tex_bloom_pong,
         .tex_mlaa_edge_mask           = winstate->tex_mlaa_edge_mask,
         .tex_mlaa_edge_count          = winstate->tex_mlaa_edge_count,
         .tex_mlaa_output              = winstate->tex_mlaa_output,
@@ -154,7 +166,8 @@ static void QueueWindowFrameTexturesForRelease(WindowState* winstate)
                         = winstate->tex_depth_msaa = winstate->tex_gbuffer_tangent
                         = winstate->tex_gbuffer_albedo_metallic = winstate->tex_gbuffer_shadow_roughness 
                         = winstate->tex_post = winstate->tex_hiz = winstate->tex_hbao 
-                        = winstate->tex_hbao_blur = winstate->tex_hbao_normal = winstate->tex_mlaa_edge_mask 
+                        = winstate->tex_hbao_blur = winstate->tex_hbao_normal = winstate->tex_bloom_ping
+                        = winstate->tex_bloom_pong = winstate->tex_mlaa_edge_mask 
                         = winstate->tex_mlaa_edge_count = winstate->tex_mlaa_output = NULL;
     
     u32 slot = (u32)(g_RenderFrameIndex % RESIZE_RELEASE_DELAY);
@@ -707,6 +720,7 @@ void Render(void)
     }
 
     RenderLines(cmd, &color_load_target, &main_depth_target, viewProj);
+    DispatchBloomCompute(cmd, renderW, renderH);
     DispatchTonemapCompute(cmd, renderW, renderH, viewProj, tonemapTilesX, tonemapTileHeat);
 
     if (g_RenderSettings.enableMLAA && winstate->tex_mlaa_output)

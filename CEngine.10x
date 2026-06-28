@@ -418,6 +418,12 @@
 							<File>
 								<Path>Shaders/PostProcessing/TonemapCompute.hlsl</Path>
 							</File>
+							<File>
+								<Path>Shaders/PostProcessing/BloomPrefilterDownsampleCompute.hlsl</Path>
+							</File>
+							<File>
+								<Path>Shaders/PostProcessing/BloomUpsampleCompute.hlsl</Path>
+							</File>
 						</Children>
 					</Folder>
 					<Folder>

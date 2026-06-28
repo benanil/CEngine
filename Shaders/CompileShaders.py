@@ -49,6 +49,8 @@ COMPUTE_SHADERS = [
     ("PreProcessing/HiZBuildCompute", "main"),
     ("PreProcessing/HiZDownscaleCompute", "main"),
     ("PostProcessing/TonemapCompute", "main"),
+    ("PostProcessing/BloomPrefilterDownsampleCompute", "main"),
+    ("PostProcessing/BloomUpsampleCompute", "main"),
     ("PostProcessing/HBAOCompute", "main"),
     ("PostProcessing/HBAOBlurCompute", "main"),
     ("PostProcessing/MLAAEdgeMaskCompute", "main"),

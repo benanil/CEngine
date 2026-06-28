@@ -8,6 +8,7 @@ typedef struct RenderSettings_
     bool enableOcclusion;
     bool enableHBAO;
     bool enableMLAA;
+    bool enableBloom;
     u32 msaaSamples;      // requested scene MSAA samples: 1, 2, 4, or 8. UI/post stay single-sample
     bool showMLAAEdges;
     bool enableLocalLights;
@@ -21,6 +22,11 @@ typedef struct RenderSettings_
     f32 hbaoIntensity;
     f32 hbaoPower;
     f32 mlaaThreshold;
+    f32 bloomThreshold;
+    f32 bloomKnee;
+    f32 bloomClamp;
+    f32 bloomIntensity;
+    f32 bloomRadius;
     f32 exposure;
     f32 gamma;
     f32 godRayIntensity;
