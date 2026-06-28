@@ -138,7 +138,6 @@ void DispatchAnimateVerticesCompute(SDL_GPUCommandBuffer* cmd, RenderSet* render
 
 void RenderDepth(SDL_GPUCommandBuffer* cmd, const DepthPassContext* ctx);
 
-void RenderScene(SDL_GPUCommandBuffer* cmd, const ScenePassContext* ctx);
 void RenderSceneForward(SDL_GPUCommandBuffer* cmd, const ScenePassContext* ctx, u32 width, u32 height, u32 tilesX, bool localLightsEnabled);
 void RenderShadows(SDL_GPUCommandBuffer* cmd);
 void RenderLines(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget, SDL_GPUDepthStencilTargetInfo* depthTarget, mat4x4 viewProj);

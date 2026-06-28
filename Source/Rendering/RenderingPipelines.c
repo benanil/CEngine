@@ -643,8 +643,8 @@ static void InitUIImagePipeline(void)
     SDL_ReleaseGPUShader(g_GPUDevice, fragment_shader);
 }
 
-// Forward+ opaque pipelines (gated by FORWARD_PLUS in Render()). Single HDR color target,
-// depth LESS_OR_EQUAL with no write (the prepass already laid down depth). The fragment
+// Forward+ opaque pipelines. Single HDR color target,
+// depth EQUAL for prepass reuse, or LESS_OR_EQUAL when MSAA uses a separate depth target. The fragment
 // stage binds 7 sampled textures (material pages + shadow atlases + AO) and 7 storage
 // buffers (materials, descriptors, lights, light grid/index, point/spot shadow matrices).
 static void InitForwardPipelines(void)
@@ -668,6 +668,9 @@ static void InitForwardPipelines(void)
         { .location = 4, .buffer_slot = 0, .format = VFORMAT_UINT,   .offset = offsetof(ASkinedVertex, weights)  }
     };
 
+    SDL_GPUCompareOp opaqueCompareOp = g_RenderState.sceneSampleCount == SDL_GPU_SAMPLECOUNT_1 ?
+                                      SDL_GPU_COMPAREOP_EQUAL : SDL_GPU_COMPAREOP_LESS_OR_EQUAL;
+
     SDL_GPUGraphicsPipelineCreateInfo desc = {
         .primitive_type  = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
         .target_info     = (SDL_GPUGraphicsPipelineTargetInfo){
@@ -679,7 +682,7 @@ static void InitForwardPipelines(void)
         .depth_stencil_state = (SDL_GPUDepthStencilState){
             .enable_depth_test  = true,
             .enable_depth_write = g_RenderState.sceneSampleCount != SDL_GPU_SAMPLECOUNT_1,
-            .compare_op         = SDL_GPU_COMPAREOP_LESS_OR_EQUAL
+            .compare_op         = opaqueCompareOp
         },
         .multisample_state  = (SDL_GPUMultisampleState){ .sample_count = g_RenderState.sceneSampleCount },
         .vertex_input_state = (SDL_GPUVertexInputState){
@@ -710,6 +713,7 @@ static void InitForwardPipelines(void)
     };
     desc.target_info.color_target_descriptions = &transparentColorTarget;
     desc.depth_stencil_state.enable_depth_write = false;
+    desc.depth_stencil_state.compare_op = SDL_GPU_COMPAREOP_LESS_OR_EQUAL;
     g_RenderState.surface.transparentForwardPipeline = SDL_CreateGPUGraphicsPipeline(g_GPUDevice, &desc);
     CHECK_CREATE(g_RenderState.surface.transparentForwardPipeline, "Transparent Surface Forward Pipeline")
 
@@ -717,6 +721,7 @@ static void InitForwardPipelines(void)
     desc.fragment_shader = ski_frag;
     desc.target_info.color_target_descriptions = &(SDL_GPUColorTargetDescription){ .format = SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT };
     desc.depth_stencil_state.enable_depth_write = g_RenderState.sceneSampleCount != SDL_GPU_SAMPLECOUNT_1;
+    desc.depth_stencil_state.compare_op = opaqueCompareOp;
     desc.vertex_input_state = (SDL_GPUVertexInputState){
         .vertex_buffer_descriptions = &(SDL_GPUVertexBufferDescription){ 0, sizeof(ASkinedVertex), SDL_GPU_VERTEXINPUTRATE_VERTEX, 0 },
         .num_vertex_buffers    = 1,

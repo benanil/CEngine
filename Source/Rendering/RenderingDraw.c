@@ -117,63 +117,7 @@ static void DrawRenderBufferScene(SDL_GPUCommandBuffer* cmd, SDL_GPURenderPass* 
     SDL_DrawGPUIndexedPrimitivesIndirect(pass, buffers->drawArgs, 0, renderSet->numGroups * MESH_LOD_COUNT);
 }
 
-void RenderScene(SDL_GPUCommandBuffer* cmd, const ScenePassContext* ctx)
-{
-    struct {
-        mat4x4 viewProj;
-        float cameraPosition[4];
-        float cameraForward[4];
-    } vertexParams;
-    
-    u32 totalGroups = g_ActiveScene->skinnedSet.numGroups + g_ActiveScene->surfaceSet.numGroups;
-    if (totalGroups == 0 && !Terrain_HasDraws())
-    {
-        return;
-    }
-    vertexParams.viewProj = ctx->viewProj;
-    vertexParams.cameraPosition[0] = g_Camera.position.x;
-    vertexParams.cameraPosition[1] = g_Camera.position.y;
-    vertexParams.cameraPosition[2] = g_Camera.position.z;
-    vertexParams.cameraPosition[3] = 0.0f;
-    vertexParams.cameraForward[0] = g_Camera.Front.x;
-    vertexParams.cameraForward[1] = g_Camera.Front.y;
-    vertexParams.cameraForward[2] = g_Camera.Front.z;
-    vertexParams.cameraForward[3] = 0.0f;
-
-    float3 sunDirection = GetRenderSunDirection();
-    struct { f32 viewportSize[4]; f32 sunDirection[4]; } fragmentParams = {
-        { (f32)Maxs32(g_Camera.viewportSize.x, 1), (f32)Maxs32(g_Camera.viewportSize.y, 1), 0.0f, 0.0f },
-        { sunDirection.x, sunDirection.y, sunDirection.z, 0.0f }
-    };
-
-    SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmd, ctx->colorTargets, ctx->numColorTargets, ctx->depthTarget);
-
-    Scene* scene = g_ActiveScene;
-    SDL_GPUTextureSamplerBinding pageSamplers[4] = {
-        { .texture = scene->textureSystem.classes[TextureClass_Albedo].pages.handle, .sampler = g_RenderState.sampler },
-        { .texture = scene->textureSystem.classes[TextureClass_Normal].pages.handle, .sampler = g_RenderState.sampler },
-        { .texture = scene->textureSystem.classes[TextureClass_MetallicRoughness].pages.handle, .sampler = g_RenderState.sampler },
-        { .texture = g_WindowState.tex_shadow_color, .sampler = g_RenderState.shadowSampler }
-    };
-    SDL_GPUBuffer* fragmentBuffers[2] = {
-        scene->textureSystem.materialBuffer,
-        scene->textureSystem.descriptorBuffer
-    };
-
-    const SDL_GPUBufferBinding skinnedVertex = { g_RenderState.skinned.vertexBuffer, 0 };
-    DrawRenderBufferScene(cmd, pass, true, scene, skinnedVertex, pageSamplers, fragmentBuffers,
-                          &vertexParams, sizeof(vertexParams), &fragmentParams, sizeof(fragmentParams));
-
-    const SDL_GPUBufferBinding surfaceVertex = { g_RenderState.surface.vertexBuffer, 0 };
-    DrawRenderBufferScene(cmd, pass, false, scene, surfaceVertex, pageSamplers, fragmentBuffers,
-                          &vertexParams, sizeof(vertexParams), &fragmentParams, sizeof(fragmentParams));
-
-    Terrain_RenderGBuffer(cmd, pass, ctx->viewProj);
-
-    SDL_EndGPURenderPass(pass);
-}
-
-// Forward+ opaque draw: same geometry/instancing as RenderScene, but binds the forward
+// Forward+ opaque draw: same geometry/instancing, binds the forward
 // pipeline (single HDR target, depth test only) and the extra fragment resources the
 // forward shader needs (shadow atlases, AO, light buffer + tile grid/index).
 static void DrawRenderBufferForward(SDL_GPUCommandBuffer* cmd, SDL_GPURenderPass* pass, bool isSkinned, Scene* scene,
