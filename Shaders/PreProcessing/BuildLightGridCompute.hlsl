@@ -76,7 +76,7 @@ void main(uint3 groupId : SV_GroupID, uint3 gtid : SV_GroupThreadID, uint groupI
     if (pixel.x < screenSize.x && pixel.y < screenSize.y)
     {
         float depth = DepthTexture.Load(int3(pixel, 0));
-        if (depth < 1.0f) // ignore sky / cleared depth
+        if (depth > 0.0f) // reversed-Z: ignore sky / cleared depth (far plane = 0)
         {
             float2 uv = (float2(pixel) + 0.5f) / float2(screenSize);
             float ld = ViewLinearDepth(uv, depth);

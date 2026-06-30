@@ -8,7 +8,7 @@
 #define SMALL_OBJECT_CULL_ENABLED   1
 
 #define SMALL_CULL_PIXEL_DIAMETER   1.0f
-#define SMALL_CULL_DEPTH_THRESHOLD  0.98f
+#define SMALL_CULL_DEPTH_THRESHOLD  0.02f // reversed-Z: far ~= 0
 
 #define HIZ_RECT_PADDING_PIXELS     1.0f
 
@@ -151,7 +151,7 @@ bool AABBTooSmallAndFar(in ProjectedAABB proj)
         return false;
 
     return proj.screenDiameterPixels < SMALL_CULL_PIXEL_DIAMETER &&
-           proj.nearestDepth >= SMALL_CULL_DEPTH_THRESHOLD;
+           proj.nearestDepth <= SMALL_CULL_DEPTH_THRESHOLD;
     #else
     return false;
     #endif
@@ -168,7 +168,7 @@ bool AABBOccludedHiZ(in ProjectedAABB proj)
     if (ProjectedRectOutside(proj))
         return false;
 
-    if (proj.nearestDepth >= 1.0f)
+    if (proj.nearestDepth <= 0.0f) // reversed-Z: at/behind the far plane, nothing to occlude
         return false;
 
     float2 rectMin = proj.uvMin;
@@ -207,26 +207,34 @@ bool AABBOccludedHiZ(in ProjectedAABB proj)
     if (sampleDims.x > 8u || sampleDims.y > 8u)
         return false;
 
-    float maxOccluderDepth = 0.0f;
+    // reversed-Z: the Hi-Z stores the farthest occluder as the minimum depth value
+    float minOccluderDepth = 1.0f;
 
     for (uint sy = p0.y; sy <= p1.y; sy++)
     {
         for (uint sx = p0.x; sx <= p1.x; sx++)
         {
-            maxOccluderDepth = max(maxOccluderDepth, hiZTexture.Load(int3(sx, sy, selectedMip)));
+            minOccluderDepth = min(minOccluderDepth, hiZTexture.Load(int3(sx, sy, selectedMip)));
         }
     }
 
-    return maxOccluderDepth + hiZDepthBias < proj.nearestDepth;
+    // occluded when the object's nearest point is still behind (smaller depth than) the
+    // farthest occluder; the bias keeps it conservative (under-cull) like the original test
+    return proj.nearestDepth + hiZDepthBias < minOccluderDepth;
 }
 
-uint SelectLOD(in ProjectedAABB proj)
+uint SelectLOD(in ProjectedAABB proj, float indexCountModifier)
 {
     if (lodCount <= 1u)
         return 0u;
 
     if (forcedLOD < lodCount)
-        return forcedLOD;
+    {
+        // forced LOD (shadows): bias by triangle density. Dense meshes drop detail
+        // (positive offset), cheap low-poly meshes keep more detail (negative offset, toward LOD0).
+        int lodOffset = int(floor(indexCountModifier * 3.0)) - 1; // [0..1] -> [-1..2]
+        return (uint)clamp(int(forcedLOD) + lodOffset, 0, int(lodCount) - 1);
+    }
 
     if ((flags & CULL_DRAW_FLAG_ENABLE_LOD) == 0u)
         return 0u;
@@ -234,7 +242,11 @@ uint SelectLOD(in ProjectedAABB proj)
     if (proj.anyFront == 0u)
         return 0u;
 
-    return SelectLODFromScreenDiameter(proj.screenDiameterPixels * lodDistanceModifier, lodCount);
+    // >1 keeps high detail longer for cheap (low-poly) meshes, <1 swaps sooner for dense ones.
+    // Hits exactly lodDistanceModifier at mid density and 0.25x at max density.
+    float polyScale = 1.0 + (0.5 - indexCountModifier) * 1.5; // [0..1] -> [1.75..0.25]
+    float lodModifier = lodDistanceModifier * polyScale;
+    return SelectLODFromScreenDiameter(proj.screenDiameterPixels * lodModifier, lodCount);
 }
 
 void Initialize(uint idx)
@@ -351,7 +363,9 @@ void main(uint3 tid : SV_DispatchThreadID)
         if (forcedLOD >= lodCount && !needProjection)
             ProjectAABB(proj, worldMin, worldMax, viewProjection, hiZSize);
 
-        lod = SelectLOD(proj);
+		// objects that has more index will swap lod earlier
+		float indexCountModifier = saturate(float(group.numIndices) / 100000.0);
+		lod = SelectLOD(proj, indexCountModifier);
     }
 
     uint drawIdx = primitiveIdx * lodCount + lod;

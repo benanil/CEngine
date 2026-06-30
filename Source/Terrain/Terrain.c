@@ -853,7 +853,7 @@ static void TerrainFillVSParams(TerrainVSParams* params, const TerrainChunk* chu
 
 static u32 TerrainDrawChunks(SDL_GPUCommandBuffer* cmd, SDL_GPURenderPass* pass, mat4x4 viewProj)
 {
-    FrustumPlanes frustum = CreateFrustumPlanes(viewProj);
+    FrustumPlanes frustum = CreateFrustumPlanesRevZ(viewProj);
     u32 drawn = 0;
     for (u32 i = 0; i < TERRAIN_MAX_CHUNKS; i++)
     {
@@ -991,7 +991,7 @@ static void TerrainInitPipelines(void)
             .depth_stencil_state = (SDL_GPUDepthStencilState){
                 .enable_depth_test  = true,
                 .enable_depth_write = false,
-                .compare_op         = SDL_GPU_COMPAREOP_LESS_OR_EQUAL
+                .compare_op         = SDL_GPU_COMPAREOP_GREATER_OR_EQUAL
             },
             .multisample_state  = (SDL_GPUMultisampleState){ .sample_count = SDL_GPU_SAMPLECOUNT_1 },
             .vertex_input_state = vertexInput
@@ -1020,7 +1020,7 @@ static void TerrainInitPipelines(void)
             .depth_stencil_state = (SDL_GPUDepthStencilState){
                 .enable_depth_test  = true,
                 .enable_depth_write = true,
-                .compare_op         = SDL_GPU_COMPAREOP_LESS_OR_EQUAL
+                .compare_op         = SDL_GPU_COMPAREOP_GREATER_OR_EQUAL
             },
             .multisample_state  = (SDL_GPUMultisampleState){ .sample_count = SDL_GPU_SAMPLECOUNT_1 },
             .vertex_input_state = vertexInput
@@ -1056,7 +1056,7 @@ static void TerrainInitPipelines(void)
             .depth_stencil_state = (SDL_GPUDepthStencilState){
                 .enable_depth_test  = true,
                 .enable_depth_write = false,
-                .compare_op         = SDL_GPU_COMPAREOP_LESS_OR_EQUAL
+                .compare_op         = SDL_GPU_COMPAREOP_GREATER_OR_EQUAL
             },
             .multisample_state  = (SDL_GPUMultisampleState){ .sample_count = SDL_GPU_SAMPLECOUNT_1 },
             .vertex_input_state = vertexInput
@@ -1229,7 +1229,7 @@ void Terrain_Update(const Camera* camera)
 {
     if (!g_Terrain.initialized || !g_Terrain.enabled) return;
 
-    g_Terrain.cameraFrustum = CreateFrustumPlanes(M44Multiply(camera->view, camera->projection));
+    g_Terrain.cameraFrustum = CreateFrustumPlanesRevZ(M44Multiply(camera->view, camera->projection));
     g_Terrain.frustumValid = true;
 
     if (g_Terrain.genParams.fixedArea && !g_Terrain.fixedCenterValid)

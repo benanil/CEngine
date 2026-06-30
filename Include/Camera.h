@@ -61,7 +61,7 @@ static inline void Camera_RecalculateProjection(Camera* camera, s32 width, s32 h
     width = MMAX(width, 1);
     height = MMAX(height, 1);
     camera->viewportSize.x = width; camera->viewportSize.y = height;
-    camera->projection = PerspectiveFovRH(camera->verticalFOV * MATH_DegToRad, (f32)width, (f32)height, camera->nearClip, camera->farClip);
+    camera->projection = PerspectiveFovRH_ReverseZ(camera->verticalFOV * MATH_DegToRad, (f32)width, (f32)height, camera->nearClip, camera->farClip);
     camera->inverseProjection = M44Inverse(camera->projection);
 }
 

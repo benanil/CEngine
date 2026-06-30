@@ -154,7 +154,7 @@ void main(uint3 tid : SV_DispatchThreadID)
         color += BloomTexture.SampleLevel(BloomSampler, uv, 0.0f).rgb * bloomIntensity;
 
     bool fogEnabled = fogParams.w > 0.5f;
-    if (depth >= 0.9999f)
+    if (depth <= 0.0001f) // reversed-Z: sky / cleared depth is at the far plane (0)
     {
         float3 skyDir = SkyRayDirection(uv);
         color = ComputeSky(skyDir);

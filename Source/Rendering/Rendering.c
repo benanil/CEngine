@@ -451,7 +451,7 @@ SDL_GPUDepthStencilTargetInfo MakeDepthTarget(SDL_GPUTexture* texture, SDL_GPULo
 {
     SDL_GPUDepthStencilTargetInfo target;
     SDL_zero(target);
-    target.clear_depth      = 1.0f;
+    target.clear_depth      = 1.0f; // standard-Z default (shadow maps); camera overrides to 0 (reversed-Z)
     target.load_op          = loadOp;
     target.store_op         = SDL_GPU_STOREOP_STORE;
     target.stencil_load_op  = SDL_GPU_LOADOP_DONT_CARE;
@@ -467,6 +467,7 @@ static SDL_GPUDepthStencilTargetInfo MakeForwardDepthTarget(WindowState* winstat
     {
         SDL_GPUDepthStencilTargetInfo target = MakeDepthTarget(winstate->tex_depth_msaa, SDL_GPU_LOADOP_CLEAR, true);
         target.store_op = SDL_GPU_STOREOP_DONT_CARE;
+        target.clear_depth = 0.0f; // reversed-Z camera depth: far plane = 0
         return target;
     }
     return MakeDepthTarget(winstate->tex_depth, SDL_GPU_LOADOP_LOAD, false);
@@ -490,7 +491,7 @@ static SDL_GPUColorTargetInfo MakeHiZDepthTarget(WindowState* winstate)
     SDL_zero(target);
     target.load_op  = SDL_GPU_LOADOP_CLEAR;
     target.store_op = SDL_GPU_STOREOP_STORE;
-    target.clear_color.r = 1.0f;
+    target.clear_color.r = 0.0f; // reversed-Z: empty/far depth = 0 (sky, HBAO and light-grid read this)
     target.texture = winstate->tex_hiz_depth;
     target.cycle = true;
     return target;
@@ -601,6 +602,7 @@ void Render(void)
     SDL_GPUColorTargetInfo        color_target      = MakeMainColorTarget(winstate);
     SDL_GPUColorTargetInfo        color_load_target = MakeLoadedSceneColorTarget(winstate);
     SDL_GPUDepthStencilTargetInfo depth_target      = MakeDepthTarget(winstate->tex_depth, SDL_GPU_LOADOP_CLEAR, true);
+    depth_target.clear_depth = 0.0f; // reversed-Z camera depth: far plane = 0
     SDL_GPUDepthStencilTargetInfo main_depth_target = MakeDepthTarget(winstate->tex_depth, SDL_GPU_LOADOP_LOAD, false);
     SDL_GPUDepthStencilTargetInfo forward_depth_target = MakeForwardDepthTarget(winstate);
     SDL_GPUColorTargetInfo        hiz_depth_target  = MakeHiZDepthTarget(winstate);
@@ -612,7 +614,7 @@ void Render(void)
     mat4x4 viewProj = M44Multiply(g_Camera.view, g_Camera.projection);
     bool enableHiZ  = g_RenderSettings.enableOcclusion && winstate->hiz_valid;
     mat4x4 hiZViewProj = enableHiZ ? winstate->hiz_view_proj : viewProj;
-    FrustumPlanes cameraFrustum = CreateFrustumPlanes(viewProj);
+    FrustumPlanes cameraFrustum = CreateFrustumPlanesRevZ(viewProj);
     SDL_GPUTexture* finalTexture = winstate->tex_post;
     SDL_GPUColorTargetInfo final_load_target = MakeLoadedTextureTarget(finalTexture);
     bool submitLightVisReadback = false;

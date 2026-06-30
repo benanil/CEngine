@@ -409,6 +409,26 @@ purefn mat4x4 PerspectiveFovRH(f32 fov, f32 width, f32 height, f32 zNear, f32 zF
     return M;
 }
 
+// Reversed-Z perspective in the D3D/Vulkan 0..1 clip-z convention: the near plane
+// maps to ndc z = 1 and the far plane to ndc z = 0. Pairs with a 0.0 depth clear and a
+// GREATER_OR_EQUAL depth test to give vastly better depth precision than the GL-style
+// PerspectiveFovRH above. Used only by the main camera; shadows keep PerspectiveFovRH.
+purefn mat4x4 PerspectiveFovRH_ReverseZ(f32 fov, f32 width, f32 height, f32 zNear, f32 zFar)
+{
+    f32 rad = Sin0pi(0.5f * fov);
+    AX_ASSUME(rad > 0.01f);
+    f32 h = Sqrtf(1.0f - (rad * rad)) / rad;
+    f32 w = h * height / width;
+    mat4x4 M = {0};
+    M.m[0][0] = w;
+    M.m[1][1] = h;
+    M.m[2][2] = zNear / (zFar - zNear);
+    M.m[2][3] = -1.0f;
+    M.m[3][2] = (zFar * zNear) / (zFar - zNear);
+    M.m[3][3] = 0.0f;
+    return M;
+}
+
 purefn mat4x4 VCALL M44Transpose(mat4x4 M)
 {
     mat4x4 mResult;
@@ -642,6 +662,23 @@ purefn FrustumPlanes VCALL CreateFrustumPlanes(mat4x4 viewProjection)
     // the projection is gl style (-w..w clip z), so the near plane is r3 + r2.
     // bare C.r[2] is the d3d 0..1 convention and over-culls between near and ~2x near
     result.planes[5] = VecAdd(C.r[3], C.r[2]); // m_near_plane
+    return result;
+}
+
+// Same as CreateFrustumPlanes but for a D3D/Vulkan 0..1 clip-z projection (the reversed-Z
+// camera matrix). The only difference is the near plane: in the 0..1 convention it is the
+// bare C.r[2] row (z_clip >= 0) rather than r3 + r2. Reversed-Z swaps the near/far labels of
+// the two z-planes, but {C.r[2], C.r[3]-C.r[2]} still bounds the frustum inward-oriented.
+purefn FrustumPlanes VCALL CreateFrustumPlanesRevZ(mat4x4 viewProjection)
+{
+    FrustumPlanes result;
+    mat4x4 C = M44Transpose(viewProjection);
+    result.planes[0] = VecAdd(C.r[3], C.r[0]); // m_left_plane
+    result.planes[1] = VecSub(C.r[3], C.r[0]); // m_right_plane
+    result.planes[2] = VecAdd(C.r[3], C.r[1]); // m_bottom_plane
+    result.planes[3] = VecSub(C.r[3], C.r[1]); // m_top_plane
+    result.planes[4] = VecSub(C.r[3], C.r[2]); // m_far_plane
+    result.planes[5] = C.r[2];                 // m_near_plane (d3d 0..1)
     return result;
 }
 

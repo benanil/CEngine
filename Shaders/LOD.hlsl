@@ -66,7 +66,8 @@ void ProjectCorner(float3 p, float4x4 viewProjection, inout ProjectedAABB proj)
     float3 ndc = clip.xyz / clip.w;
     proj.ndcMin = min(proj.ndcMin, ndc.xy);
     proj.ndcMax = max(proj.ndcMax, ndc.xy);
-    proj.nearestDepth = min(proj.nearestDepth, saturate(ndc.z * 0.5f + 0.5f));
+    // reversed-Z, D3D 0..1 clip-z: the camera-nearest point has the largest depth value
+    proj.nearestDepth = max(proj.nearestDepth, saturate(ndc.z));
     proj.anyFront = 1u;
 }
 
@@ -76,7 +77,7 @@ void ProjectAABB(out ProjectedAABB proj, float3 mn, float3 mx, float4x4 viewProj
     proj.ndcMax = float2(-1e30f, -1e30f);
     proj.uvMin = 0.0f;
     proj.uvMax = 0.0f;
-    proj.nearestDepth = 1.0f;
+    proj.nearestDepth = 0.0f; // reversed-Z: accumulate the max (nearest) depth
     proj.screenDiameterNDC = 0.0f;
     proj.screenDiameterPixels = 0.0f;
     proj.anyFront = 0u;

@@ -385,7 +385,7 @@ static void InitLinePipeline(void)
         .depth_stencil_state = (SDL_GPUDepthStencilState){
             .enable_depth_test  = true,
             .enable_depth_write = true,
-            .compare_op         = SDL_GPU_COMPAREOP_LESS_OR_EQUAL
+            .compare_op         = SDL_GPU_COMPAREOP_GREATER_OR_EQUAL
         },
         .vertex_input_state = (SDL_GPUVertexInputState){
             .vertex_buffer_descriptions = &(SDL_GPUVertexBufferDescription){
@@ -477,7 +477,7 @@ static void InitOutlinePipeline(void)
         .depth_stencil_state = (SDL_GPUDepthStencilState){
             .enable_depth_test  = true,
             .enable_depth_write = false,
-            .compare_op         = SDL_GPU_COMPAREOP_LESS_OR_EQUAL
+            .compare_op         = SDL_GPU_COMPAREOP_GREATER_OR_EQUAL
         },
         .vertex_input_state = (SDL_GPUVertexInputState){
             .vertex_buffer_descriptions = &(SDL_GPUVertexBufferDescription){
@@ -562,7 +562,7 @@ static void InitSlugPipeline(void)
     pipelinedesc.depth_stencil_state = (SDL_GPUDepthStencilState){
         .enable_depth_test  = true,
         .enable_depth_write = false,
-        .compare_op         = SDL_GPU_COMPAREOP_LESS_OR_EQUAL
+        .compare_op         = SDL_GPU_COMPAREOP_GREATER_OR_EQUAL
     };
     g_RenderState.slugDepthPipeline = SDL_CreateGPUGraphicsPipeline(g_GPUDevice, &pipelinedesc);
     CHECK_CREATE(g_RenderState.slugDepthPipeline, "Slug Depth Render Pipeline")
@@ -669,7 +669,7 @@ static void InitForwardPipelines(void)
     };
 
     SDL_GPUCompareOp opaqueCompareOp = g_RenderState.sceneSampleCount == SDL_GPU_SAMPLECOUNT_1 ?
-                                      SDL_GPU_COMPAREOP_EQUAL : SDL_GPU_COMPAREOP_LESS_OR_EQUAL;
+                                      SDL_GPU_COMPAREOP_EQUAL : SDL_GPU_COMPAREOP_GREATER_OR_EQUAL;
 
     SDL_GPUGraphicsPipelineCreateInfo desc = {
         .primitive_type  = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
@@ -713,7 +713,7 @@ static void InitForwardPipelines(void)
     };
     desc.target_info.color_target_descriptions = &transparentColorTarget;
     desc.depth_stencil_state.enable_depth_write = false;
-    desc.depth_stencil_state.compare_op = SDL_GPU_COMPAREOP_LESS_OR_EQUAL;
+    desc.depth_stencil_state.compare_op = SDL_GPU_COMPAREOP_GREATER_OR_EQUAL;
     g_RenderState.surface.transparentForwardPipeline = SDL_CreateGPUGraphicsPipeline(g_GPUDevice, &desc);
     CHECK_CREATE(g_RenderState.surface.transparentForwardPipeline, "Transparent Surface Forward Pipeline")
 
@@ -741,8 +741,12 @@ static void CreatePipelineWithDesc(RenderSetShared* buffers, SDL_GPUGraphicsPipe
                                    SDL_GPUShader* pointShadowVertex, SDL_GPUShader* pointShadowFragment,
                                    SDL_GPUShader* spotShadowVertex, SDL_GPUShader* spotShadowFragment)
 {
+    // The camera depth pre-pass uses reversed-Z (GREATER_OR_EQUAL); the shadow passes below
+    // render to standard-Z shadow maps and keep LESS_OR_EQUAL (the desc's incoming value).
     desc->vertex_shader     = vertexDepth; desc->fragment_shader = fragmentDepth;
+    desc->depth_stencil_state.compare_op = SDL_GPU_COMPAREOP_GREATER_OR_EQUAL;
     buffers->depthPipeline  = SDL_CreateGPUGraphicsPipeline(g_GPUDevice, desc);
+    desc->depth_stencil_state.compare_op = SDL_GPU_COMPAREOP_LESS_OR_EQUAL;
     desc->vertex_shader     = vertexShadow; desc->fragment_shader = fragmentShadow;
     buffers->shadowPipeline = SDL_CreateGPUGraphicsPipeline(g_GPUDevice, desc);
     desc->vertex_shader     = pointShadowVertex; desc->fragment_shader = pointShadowFragment;

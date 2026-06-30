@@ -21,9 +21,10 @@ void main(uint3 tid : SV_DispatchThreadID)
 {
     if (tid.x >= outputSize.x || tid.y >= outputSize.y) return;
     uint2 src = tid.xy * 2u;
-    float maxDepth = LoadSource(src);
-    maxDepth = max(maxDepth, LoadSource(src + uint2(1u, 0u)));
-    maxDepth = max(maxDepth, LoadSource(src + uint2(0u, 1u)));
-    maxDepth = max(maxDepth, LoadSource(src + uint2(1u, 1u)));
-    OutputTexture[tid.xy] = maxDepth;
+    // reversed-Z: the farthest occluder has the smallest depth, so reduce with min
+    float minDepth = LoadSource(src);
+    minDepth = min(minDepth, LoadSource(src + uint2(1u, 0u)));
+    minDepth = min(minDepth, LoadSource(src + uint2(0u, 1u)));
+    minDepth = min(minDepth, LoadSource(src + uint2(1u, 1u)));
+    OutputTexture[tid.xy] = minDepth;
 }

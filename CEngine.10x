@@ -535,10 +535,10 @@
 						<Path>Shaders/LOD.hlsl</Path>
 					</File>
 					<File>
-						<Path>Shaders/SkinnedDepthOnly.hlsl</Path>
+						<Path>Shaders/SurfaceDepthOnly.hlsl</Path>
 					</File>
 					<File>
-						<Path>Shaders/SurfaceDepthOnly.hlsl</Path>
+						<Path>Shaders/SkinnedDepthOnly.hlsl</Path>
 					</File>
 					<File>
 						<Path>Shaders/AnimatedTransform.hlsl</Path>

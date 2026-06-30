@@ -208,7 +208,7 @@ static bool LightIntersectsCameraFrustum(const LightGPU* light)
         return true;
 
     mat4x4 viewProj = M44Multiply(g_Camera.view, g_Camera.projection);
-    FrustumPlanes frustum = CreateFrustumPlanes(viewProj);
+    FrustumPlanes frustum = CreateFrustumPlanesRevZ(viewProj);
     v128f center = VecLoad(light->positionRadius);
     f32 radius = Maxf32(light->positionRadius[3], 0.001f);
 

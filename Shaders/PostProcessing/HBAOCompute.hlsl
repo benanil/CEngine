@@ -78,7 +78,7 @@ void main(uint3 tid : SV_DispatchThreadID)
     uint2 fullP = min(p * 2u + 1u, fullSize - 1u);
     
     float centerDepth = DepthTexture.Load(int3(fullP, 0));
-    if (centerDepth >= 0.99999f)
+    if (centerDepth <= 0.00001f) // reversed-Z: sky / cleared depth is at the far plane (0)
     {
         OutputAO[p] = 1.0f;
         return;
