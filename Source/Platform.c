@@ -34,6 +34,21 @@ static ALIGNAS(SIMD_NUM_BYTES) u64 ReleasedKeys[8];
 static SDL_Cursor* g_Cursors[wCursor_Count];
 static wCursor g_CurrentCursor = wCursor_Count;
 
+static void PlatformClearInputState(void)
+{
+    MemsetZero(DownKeys, sizeof(DownKeys));
+    MemsetZero(LastKeys, sizeof(LastKeys));
+    MemsetZero(PressedKeys, sizeof(PressedKeys));
+    MemsetZero(ReleasedKeys, sizeof(ReleasedKeys));
+    PlatformCtx.MouseDown = 0;
+    PlatformCtx.MouseLast = 0;
+    PlatformCtx.MousePressed = 0;
+    PlatformCtx.MouseReleased = 0;
+    PlatformCtx.TextInputLength = 0u;
+    PlatformCtx.TextInput[0] = 0;
+    PlatformCtx.TextKeyEventCount = 0u;
+}
+
 #ifdef PLATFORM_WINDOWS
 #include <DbgHelp.h>
 #include <dwmapi.h>
@@ -232,6 +247,15 @@ void EventCallback(const SDL_Event* event)
         case SDL_EVENT_WINDOW_LEAVE_FULLSCREEN:
             wApplyWindowShape();
             break;
+        case SDL_EVENT_WINDOW_FOCUS_GAINED:
+            PlatformCtx.WindowFocused = true;
+            break;
+        case SDL_EVENT_WINDOW_FOCUS_LOST:
+        case SDL_EVENT_WINDOW_MINIMIZED:
+        case SDL_EVENT_WINDOW_HIDDEN:
+            PlatformCtx.WindowFocused = false;
+            PlatformClearInputState();
+            break;
         case SDL_EVENT_WINDOW_MOVED:
             PlatformCtx.WindowPosX = event->window.data1;
             PlatformCtx.WindowPosY = event->window.data2;
@@ -427,6 +451,7 @@ void PlatformInit()
     PlatformCtx.StartupTime           = SDL_GetPerformanceCounter();
     PlatformCtx.LastTime              = PlatformCtx.StartupTime;
     PlatformCtx.FrameCount            = 0;
+    PlatformCtx.WindowFocused         = true;
     wApplyWindowShape();
 }
 

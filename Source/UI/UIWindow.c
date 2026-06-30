@@ -36,6 +36,7 @@ static float2 g_UIWindowWorkPosOld;
 static float2 g_UIWindowWorkSizeOld;
 static bool g_UIWindowLayoutChanged;
 static bool g_UIWindowContentOpen;
+static bool g_UIWindowHadFocus = true;
 
 // placement loaded from a layout file, applied when its window is next built
 typedef struct UIWindowPlacement_
@@ -141,6 +142,11 @@ static float2 UIWindowWorkSize(void)
     return (float2){ Maxf32(g_UI.screenSize.x, 1.0f), Maxf32(g_UI.screenSize.y - pos.y, 1.0f) };
 }
 
+static bool UIWindowWorkAreaUsable(float2 workSize)
+{
+    return workSize.x >= 320.0f && workSize.y >= 180.0f;
+}
+
 void UIWindowSetTopInset(f32 inset)
 {
     g_UIWindowTopInset = Maxf32(inset, 0.0f);
@@ -149,6 +155,7 @@ void UIWindowSetTopInset(f32 inset)
 static float2 UIWindowClampScale(UIWindow* window, float2 scale)
 {
     scale = F2Max(scale, window->minScale);
+    if (!PlatformCtx.WindowFocused || !UIWindowWorkAreaUsable(UIWindowWorkSize())) return scale;
     return F2Min(scale, g_UI.screenSize);
 }
 
@@ -937,7 +944,19 @@ static void UIWindowRemapToWorkArea(void)
 {
     float2 workPos = UIWindowWorkPos();
     float2 workSize = UIWindowWorkSize();
+    if (PlatformCtx.WindowFocused != g_UIWindowHadFocus)
+    {
+        g_UIWindowHadFocus = PlatformCtx.WindowFocused;
+        if (PlatformCtx.WindowFocused && UIWindowWorkAreaUsable(workSize))
+        {
+            g_UIWindowWorkPosOld = workPos;
+            g_UIWindowWorkSizeOld = workSize;
+        }
+        return;
+    }
+    if (!PlatformCtx.WindowFocused || !UIWindowWorkAreaUsable(workSize)) return;
     if (g_UIWindowWorkSizeOld.x <= 0.0f || g_UIWindowWorkSizeOld.y <= 0.0f) return;
+    if (!UIWindowWorkAreaUsable(g_UIWindowWorkSizeOld)) return;
     bool changed = workPos.x != g_UIWindowWorkPosOld.x || workPos.y != g_UIWindowWorkPosOld.y ||
                    workSize.x != g_UIWindowWorkSizeOld.x || workSize.y != g_UIWindowWorkSizeOld.y;
     if (!changed) return;
@@ -963,6 +982,17 @@ void UIWindowBeginFrame(void)
     g_UIWindowContentOpen = false;
     g_UIWindowCursorRequested = false;
     g_UIRightClickEventCount = 0u;
+    if (!PlatformCtx.WindowFocused)
+    {
+        g_UIWindowState = UIWindowState_None;
+        g_UIWindowSnapMask = 0u;
+        g_UIWindowDockTarget = -1;
+        g_UIWindowDockMask = 0u;
+        g_UIWindowTabTarget = -1;
+        g_UIWindowTabDragHash = 0u;
+        g_UIWindowResizeHorizontalNeighbor = -1;
+        g_UIWindowResizeVerticalNeighbor = -1;
+    }
     if (!GetMouseDown(MouseButton_Left))
     {
         if (g_UIWindowState == UIWindowState_Move_TabBar)
@@ -1045,8 +1075,12 @@ void UIWindowEndFrame(void)
 
     // captured at frame end so the top inset set while building this frame is included,
     // UIWindowBeginFrame compares against it to remap windows after a resize
-    g_UIWindowWorkPosOld = UIWindowWorkPos();
-    g_UIWindowWorkSizeOld = UIWindowWorkSize();
+    float2 workSize = UIWindowWorkSize();
+    if (PlatformCtx.WindowFocused && UIWindowWorkAreaUsable(workSize))
+    {
+        g_UIWindowWorkPosOld = UIWindowWorkPos();
+        g_UIWindowWorkSizeOld = workSize;
+    }
 }
 
 void UIWindowMarkLayoutChanged(void)

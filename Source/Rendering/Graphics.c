@@ -335,8 +335,8 @@ void CreateWindowBuffers()
     winstate->tex_hbao            = CreateTexture2D(hbaoWidth, hbaoHeight, TEX_FMT_8UNORM1, TEX_SAMPLER | TEX_COMP_WRITE, TEX_SMP_CNT1, 1, "HBAO Texture");
     winstate->tex_hbao_blur       = CreateTexture2D(hbaoWidth, hbaoHeight, TEX_FMT_8UNORM1, TEX_SAMPLER | TEX_COMP_WRITE, TEX_SMP_CNT1, 1, "HBAO Texture");
     winstate->tex_hbao_normal     = CreateTexture2D(hbaoWidth, hbaoHeight, TEX_FMT_8UNORM4, TEX_SAMPLER | TEX_COMP_WRITE, TEX_SMP_CNT1, 1, "HBAO Normal Texture");
-    winstate->tex_bloom_ping      = CreateTexture2D(bloomWidth, bloomHeight, TEX_FMT_HALF4, TEX_SAMPLER | TEX_COMP_WRITE, TEX_SMP_CNT1, bloomMipCount, "Bloom Ping Texture");
-    winstate->tex_bloom_pong      = CreateTexture2D(bloomWidth, bloomHeight, TEX_FMT_HALF4, TEX_SAMPLER | TEX_COMP_WRITE, TEX_SMP_CNT1, bloomMipCount, "Bloom Pong Texture");
+    winstate->tex_bloom_ping      = CreateTexture2D(bloomWidth, bloomHeight, TEX_FMT_HALF4, TEX_SAMPLER | TEX_COMP_READ | TEX_COMP_WRITE, TEX_SMP_CNT1, bloomMipCount, "Bloom Ping Texture");
+    winstate->tex_bloom_pong      = CreateTexture2D(bloomWidth, bloomHeight, TEX_FMT_HALF4, TEX_SAMPLER | TEX_COMP_READ | TEX_COMP_WRITE, TEX_SMP_CNT1, bloomMipCount, "Bloom Pong Texture");
     winstate->tex_mlaa_edge_mask  = CreateTexture2D(width, height, TEX_FMT_R32_UINT, TEX_COMP_READ | TEX_COMP_WRITE, TEX_SMP_CNT1, 1, "MLAA Edge Mask Texture");
     winstate->tex_mlaa_edge_count = CreateTexture2D(width, height, TEX_FMT_D32_FLT2, TEX_COMP_READ | TEX_COMP_WRITE, TEX_SMP_CNT1, 1, "MLAA Edge Count Texture");
     winstate->tex_mlaa_output     = CreateTexture2D(width, height, TEX_FMT_8UNORM4 , TEX_SAMPLER | TEX_COLOR_TARGET | TEX_COMP_WRITE, TEX_SMP_CNT1, 1, "MLAA Output Texture");

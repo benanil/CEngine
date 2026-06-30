@@ -61,6 +61,7 @@ typedef struct PlatformContext_
     // Window state
     s32 WindowWidth, WindowHeight;
     s32 WindowPosX, WindowPosY;
+    bool WindowFocused;
     
     s32 MouseDown, MouseLast, MousePressed, MouseReleased;
     char TextInput[256];

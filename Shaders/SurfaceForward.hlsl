@@ -1,13 +1,14 @@
 // Forward+ opaque surface pass. Vertex stage matches Surface.hlsl (the deferred G-buffer
 // shader); the fragment stage shades fully: sun PBR + cascade shadow + ambient/AO, then
 // accumulates the local lights binned into this pixel's screen tile. Output is a single
-// HDR color (no G-buffer). Runs after the depth prepass with depth-test LESS_OR_EQUAL and
-// depth-write off.
+// HDR color (no G-buffer). Runs after the depth prepass with depth-test LESS_OR_EQUAL and depth-write off.
 #include "TextureSampling.hlsl"
 #include "PBR.hlsl"
 #include "Bitpack.hlsl"
 #include "Math.hlsl"
 #include "Shadow/Shadow.hlsl"
+
+#define LOD_VISUALIZE 0
 
 cbuffer vs_params : register(b0, space1)
 {
@@ -79,6 +80,9 @@ struct VSOutput
     nointerpolation float3 cascadeSplits : TEXCOORD7;
     nointerpolation uint materialIndex : TEXCOORD8;
     nointerpolation float handedness : TEXCOORD9;
+	#if LOD_VISUALIZE == 1
+	nointerpolation uint lod : TEXCOORD10;
+    #endif
 };
 
 VSOutput vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("DrawIndex")]] uint drawID : DRAWINDEX)
@@ -112,6 +116,9 @@ VSOutput vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("Dra
     o.bitangent = tbn[0];
     o.vertexColor = f16_4_io(UnpackAVertexColor(input.aPos));
     o.worldPos  = finalWorldPos;
+	#if LOD_VISUALIZE == 1
+	o.lod = lod;
+	#endif
     ShadowCascadeBuffer cascades = sShadowCascades[0];
     o.shadowPos0 = MulShadowCascade(cascades, 0u, float4(finalWorldPos, 1.0));
     o.shadowPos1 = MulShadowCascade(cascades, 1u, float4(finalWorldPos, 1.0));
@@ -169,5 +176,8 @@ float4 frag(VSOutput input) : SV_Target0
     if (uLocalLightsEnabled != 0u)
         color += AccumulateTileLights(float3(baseColor), N, viewDir, saturate(metallic), saturate(roughness),
                                       worldPos, ao, uint2(input.position.xy), uTilesX, uTileSize);
+	#if LOD_VISUALIZE == 1
+	color[min(input.lod, 3)] += .2;
+	#endif
 	return float4(color, alpha);
 }
