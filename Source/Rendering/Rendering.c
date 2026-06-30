@@ -27,8 +27,8 @@ typedef struct FrameTextureSet_
     SDL_GPUTexture* tex_hbao;
     SDL_GPUTexture* tex_hbao_blur;
     SDL_GPUTexture* tex_hbao_normal;
-    SDL_GPUTexture* tex_bloom_ping;
-    SDL_GPUTexture* tex_bloom_pong;
+    SDL_GPUTexture* tex_bloom_downsample[BLOOM_MAX_MIPS];
+    SDL_GPUTexture* tex_bloom_upsample[BLOOM_MAX_MIPS];
     SDL_GPUTexture* tex_mlaa_edge_mask;
     SDL_GPUTexture* tex_mlaa_edge_count;
     SDL_GPUTexture* tex_mlaa_output;
@@ -131,8 +131,11 @@ static void ReleaseFrameTextureSet(FrameTextureSet* set)
     if (set->tex_hbao)                     SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_hbao);
     if (set->tex_hbao_blur)                SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_hbao_blur);
     if (set->tex_hbao_normal)              SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_hbao_normal);
-    if (set->tex_bloom_ping)               SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_bloom_ping);
-    if (set->tex_bloom_pong)               SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_bloom_pong);
+    for (u32 i = 0; i < BLOOM_MAX_MIPS; i++)
+    {
+        if (set->tex_bloom_downsample[i]) SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_bloom_downsample[i]);
+        if (set->tex_bloom_upsample[i])   SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_bloom_upsample[i]);
+    }
     if (set->tex_mlaa_edge_mask)           SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_mlaa_edge_mask);
     if (set->tex_mlaa_edge_count)          SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_mlaa_edge_count);
     if (set->tex_mlaa_output)              SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_mlaa_output);
@@ -155,13 +158,18 @@ static void QueueWindowFrameTexturesForRelease(WindowState* winstate)
         .tex_hbao                     = winstate->tex_hbao,
         .tex_hbao_blur                = winstate->tex_hbao_blur,
         .tex_hbao_normal              = winstate->tex_hbao_normal,
-        .tex_bloom_ping               = winstate->tex_bloom_ping,
-        .tex_bloom_pong               = winstate->tex_bloom_pong,
         .tex_mlaa_edge_mask           = winstate->tex_mlaa_edge_mask,
         .tex_mlaa_edge_count          = winstate->tex_mlaa_edge_count,
         .tex_mlaa_output              = winstate->tex_mlaa_output,
         .releaseFrame                 = g_RenderFrameIndex + RESIZE_RELEASE_DELAY
     };
+    for (u32 i = 0; i < BLOOM_MAX_MIPS; i++)
+    {
+        old.tex_bloom_downsample[i] = winstate->tex_bloom_downsample[i];
+        old.tex_bloom_upsample[i] = winstate->tex_bloom_upsample[i];
+        winstate->tex_bloom_downsample[i] = NULL;
+        winstate->tex_bloom_upsample[i] = NULL;
+    }
     winstate->tex_depth = winstate->tex_hiz_depth = winstate->tex_color = winstate->tex_color_msaa
                         = winstate->tex_depth_msaa = winstate->tex_gbuffer_tangent
                         = winstate->tex_gbuffer_albedo_metallic = winstate->tex_gbuffer_shadow_roughness 

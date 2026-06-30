@@ -15,6 +15,7 @@
 #define MAX_SCENE_TEXTURES      1024
 #define MAX_TEXTURE_DESCRIPTORS 2048
 #define MAX_GPU_MATERIALS       2048
+#define BLOOM_MAX_MIPS          16
 
 #define BReadRasterBit   SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ
 #define BWriteComputeBit SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE
@@ -210,6 +211,8 @@ typedef struct WindowState
     SDL_GPUTexture* tex_gbuffer_tangent, *tex_gbuffer_albedo_metallic, *tex_gbuffer_shadow_roughness;
     SDL_GPUTexture* tex_hbao, *tex_hbao_blur, *tex_hbao_normal;
     SDL_GPUTexture* tex_bloom_ping, *tex_bloom_pong;
+    SDL_GPUTexture* tex_bloom_downsample[BLOOM_MAX_MIPS];
+    SDL_GPUTexture* tex_bloom_upsample[BLOOM_MAX_MIPS];
     SDL_GPUTexture* tex_mlaa_edge_mask, *tex_mlaa_edge_count, *tex_mlaa_output;
     SDL_GPUTexture* tex_shadow_depth, *tex_shadow_color;
     SDL_GPUTexture* tex_point_shadow_depth, *tex_point_shadow_color;

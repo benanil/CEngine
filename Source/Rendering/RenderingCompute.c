@@ -441,11 +441,21 @@ static u32 BloomMipSize(u32 size, u32 mip)
     return Maxu32(size >> mip, 1u);
 }
 
+static SDL_GPUTexture* BloomDownsampleTexture(WindowState* winstate, u32 mip)
+{
+    return (mip < winstate->bloom_mip_count && mip < BLOOM_MAX_MIPS) ? winstate->tex_bloom_downsample[mip] : NULL;
+}
+
+static SDL_GPUTexture* BloomUpsampleTexture(WindowState* winstate, u32 mip)
+{
+    return (mip < winstate->bloom_mip_count && mip < BLOOM_MAX_MIPS) ? winstate->tex_bloom_upsample[mip] : NULL;
+}
+
 void DispatchBloomCompute(SDL_GPUCommandBuffer* cmd, u32 width, u32 height)
 {
     WindowState* winstate = &g_WindowState;
     if (!g_RenderSettings.enableBloom) return;
-    if (!winstate->tex_color || !winstate->tex_bloom_ping || !winstate->tex_bloom_pong || winstate->bloom_mip_count == 0u)
+    if (!winstate->tex_color || !BloomDownsampleTexture(winstate, 0u) || winstate->bloom_mip_count == 0u)
     {
         AX_WARN("Bloom resources are not ready");
         return;
@@ -475,7 +485,7 @@ void DispatchBloomCompute(SDL_GPUCommandBuffer* cmd, u32 width, u32 height)
     downParams.clampValue = Maxf32(g_RenderSettings.bloomClamp, 1.0f);
 
     SDL_GPUStorageTextureReadWriteBinding output = {
-        .texture = winstate->tex_bloom_ping,
+        .texture = BloomDownsampleTexture(winstate, 0u),
         .mip_level = 0,
         .layer = 0,
         .cycle = true
@@ -496,12 +506,23 @@ void DispatchBloomCompute(SDL_GPUCommandBuffer* cmd, u32 width, u32 height)
         downParams.outputSize[1] = BloomMipSize(winstate->bloom_height, mip);
         downParams.sourceTexelSize[0] = 1.0f / (f32)sourceWidth;
         downParams.sourceTexelSize[1] = 1.0f / (f32)sourceHeight;
-        downParams.sourceMip = mip - 1u;
+        downParams.sourceMip = 0u;
         downParams.prefilter = 0u;
 
-        output.mip_level = mip;
+        output.texture = BloomDownsampleTexture(winstate, mip);
+        if (!output.texture)
+        {
+            AX_WARN("Bloom downsample mip texture is not ready");
+            return;
+        }
+        output.mip_level = 0;
         output.cycle = false;
-        sourceBinding.texture = winstate->tex_bloom_ping;
+        sourceBinding.texture = BloomDownsampleTexture(winstate, mip - 1u);
+        if (!sourceBinding.texture)
+        {
+            AX_WARN("Bloom downsample source texture is not ready");
+            return;
+        }
         pass = SDL_BeginGPUComputePass(cmd, &output, 1, NULL, 0);
         SDL_BindGPUComputePipeline(pass, g_BloomPrefilterDownsampleComputePipeline);
         SDL_BindGPUComputeSamplers(pass, 0, &sourceBinding, 1);
@@ -531,16 +552,26 @@ void DispatchBloomCompute(SDL_GPUCommandBuffer* cmd, u32 width, u32 height)
         upParams.outputSize[1] = BloomMipSize(winstate->bloom_height, outMip);
         upParams.lowTexelSize[0] = 1.0f / (f32)lowWidth;
         upParams.lowTexelSize[1] = 1.0f / (f32)lowHeight;
-        upParams.lowMip = mip;
-        upParams.highMip = outMip;
+        upParams.lowMip = 0u;
+        upParams.highMip = 0u;
 
-        output.texture = winstate->tex_bloom_pong;
-        output.mip_level = outMip;
+        output.texture = BloomUpsampleTexture(winstate, outMip);
+        if (!output.texture)
+        {
+            AX_WARN("Bloom upsample mip texture is not ready");
+            return;
+        }
+        output.mip_level = 0;
         output.cycle = false;
         SDL_GPUTextureSamplerBinding inputs[2] = {
-            { .texture = (mip == winstate->bloom_mip_count - 1u) ? winstate->tex_bloom_ping : winstate->tex_bloom_pong, .sampler = g_RenderState.sampler },
-            { .texture = winstate->tex_bloom_ping, .sampler = g_RenderState.sampler }
+            { .texture = (mip == winstate->bloom_mip_count - 1u) ? BloomDownsampleTexture(winstate, mip) : BloomUpsampleTexture(winstate, mip), .sampler = g_RenderState.sampler },
+            { .texture = BloomDownsampleTexture(winstate, outMip), .sampler = g_RenderState.sampler }
         };
+        if (!inputs[0].texture || !inputs[1].texture)
+        {
+            AX_WARN("Bloom upsample source texture is not ready");
+            return;
+        }
         pass = SDL_BeginGPUComputePass(cmd, &output, 1, NULL, 0);
         SDL_BindGPUComputePipeline(pass, g_BloomUpsampleComputePipeline);
         SDL_BindGPUComputeSamplers(pass, 0, inputs, SDL_arraysize(inputs));

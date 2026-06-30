@@ -309,6 +309,7 @@ void GetRenderResolution(u32 windowW, u32 windowH, u32* outW, u32* outH)
 }
 
 static u32 GetMipCount(u32 width, u32 height);
+static u32 GetBloomMipSize(u32 size, u32 mip);
 
 void CreateWindowBuffers()
 {
@@ -324,7 +325,7 @@ void CreateWindowBuffers()
     u32 hbaoHeight = Maxu32(height / 2u, 1u);
     u32 bloomWidth  = Maxu32(width / 2u, 1u);
     u32 bloomHeight = Maxu32(height / 2u, 1u);
-    u32 bloomMipCount = GetMipCount(bloomWidth, bloomHeight);
+    u32 bloomMipCount = Minu32(GetMipCount(bloomWidth, bloomHeight), BLOOM_MAX_MIPS);
     SDL_GPUSampleCount sceneSampleCount = g_RenderState.sceneSampleCount ? g_RenderState.sceneSampleCount : SDL_GPU_SAMPLECOUNT_1;
     bool msaa = sceneSampleCount != SDL_GPU_SAMPLECOUNT_1;
     winstate->tex_color           = CreateSceneColorTexture(width, height, SDL_GPU_SAMPLECOUNT_1);
@@ -335,8 +336,16 @@ void CreateWindowBuffers()
     winstate->tex_hbao            = CreateTexture2D(hbaoWidth, hbaoHeight, TEX_FMT_8UNORM1, TEX_SAMPLER | TEX_COMP_WRITE, TEX_SMP_CNT1, 1, "HBAO Texture");
     winstate->tex_hbao_blur       = CreateTexture2D(hbaoWidth, hbaoHeight, TEX_FMT_8UNORM1, TEX_SAMPLER | TEX_COMP_WRITE, TEX_SMP_CNT1, 1, "HBAO Texture");
     winstate->tex_hbao_normal     = CreateTexture2D(hbaoWidth, hbaoHeight, TEX_FMT_8UNORM4, TEX_SAMPLER | TEX_COMP_WRITE, TEX_SMP_CNT1, 1, "HBAO Normal Texture");
-    winstate->tex_bloom_ping      = CreateTexture2D(bloomWidth, bloomHeight, TEX_FMT_HALF4, TEX_SAMPLER | TEX_COMP_READ | TEX_COMP_WRITE, TEX_SMP_CNT1, bloomMipCount, "Bloom Ping Texture");
-    winstate->tex_bloom_pong      = CreateTexture2D(bloomWidth, bloomHeight, TEX_FMT_HALF4, TEX_SAMPLER | TEX_COMP_READ | TEX_COMP_WRITE, TEX_SMP_CNT1, bloomMipCount, "Bloom Pong Texture");
+    for (u32 mip = 0; mip < bloomMipCount; mip++)
+    {
+        u32 mipWidth = GetBloomMipSize(bloomWidth, mip);
+        u32 mipHeight = GetBloomMipSize(bloomHeight, mip);
+        winstate->tex_bloom_downsample[mip] = CreateTexture2D(mipWidth, mipHeight, TEX_FMT_HALF4, TEX_SAMPLER | TEX_COMP_WRITE, TEX_SMP_CNT1, 1, "Bloom Downsample Texture");
+        if (mip + 1u < bloomMipCount)
+            winstate->tex_bloom_upsample[mip] = CreateTexture2D(mipWidth, mipHeight, TEX_FMT_HALF4, TEX_SAMPLER | TEX_COMP_WRITE, TEX_SMP_CNT1, 1, "Bloom Upsample Texture");
+    }
+    winstate->tex_bloom_ping      = winstate->tex_bloom_downsample[0];
+    winstate->tex_bloom_pong      = (bloomMipCount > 1u) ? winstate->tex_bloom_upsample[0] : winstate->tex_bloom_downsample[0];
     winstate->tex_mlaa_edge_mask  = CreateTexture2D(width, height, TEX_FMT_R32_UINT, TEX_COMP_READ | TEX_COMP_WRITE, TEX_SMP_CNT1, 1, "MLAA Edge Mask Texture");
     winstate->tex_mlaa_edge_count = CreateTexture2D(width, height, TEX_FMT_D32_FLT2, TEX_COMP_READ | TEX_COMP_WRITE, TEX_SMP_CNT1, 1, "MLAA Edge Count Texture");
     winstate->tex_mlaa_output     = CreateTexture2D(width, height, TEX_FMT_8UNORM4 , TEX_SAMPLER | TEX_COLOR_TARGET | TEX_COMP_WRITE, TEX_SMP_CNT1, 1, "MLAA Output Texture");
@@ -449,6 +458,11 @@ static u32 GetMipCount(u32 width, u32 height)
         levels++;
     }
     return levels;
+}
+
+static u32 GetBloomMipSize(u32 size, u32 mip)
+{
+    return Maxu32(size >> mip, 1u);
 }
 
 SDL_GPUTexture* CreateTexture2D(u32 width, u32 height, SDL_GPUTextureFormat format, SDL_GPUTextureUsageFlags usage,
@@ -830,6 +844,11 @@ void GraphicsDestroy()
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_hbao);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_hbao_blur);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_hbao_normal);
+    for (u32 i = 0; i < BLOOM_MAX_MIPS; i++)
+    {
+        if (winstate->tex_bloom_downsample[i]) SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_bloom_downsample[i]);
+        if (winstate->tex_bloom_upsample[i])   SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_bloom_upsample[i]);
+    }
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_mlaa_edge_mask);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_mlaa_edge_count);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_mlaa_output);
