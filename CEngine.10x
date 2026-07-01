@@ -216,12 +216,6 @@
 						<Path>Extern/tlsf.h</Path>
 					</File>
 					<File>
-						<Path>Extern/BasisCompressWrapper.cpp</Path>
-					</File>
-					<File>
-						<Path>Extern/BasisCompressWrapper.h</Path>
-					</File>
-					<File>
 						<Path>Extern/sdefl.h</Path>
 					</File>
 				</Children>
@@ -340,6 +334,15 @@
 					</File>
 					<File>
 						<Path>Include/Editor.h</Path>
+					</File>
+					<File>
+						<Path>Include/BasisCompressWrapper.h</Path>
+					</File>
+					<File>
+						<Path>Include/ParallelFor.h</Path>
+					</File>
+					<File>
+						<Path>Include/JobSystem.h</Path>
 					</File>
 				</Children>
 			</Folder>
@@ -602,39 +605,6 @@
 						<IncludeFilesWithoutExt>false</IncludeFilesWithoutExt>
 						<Children></Children>
 					</Folder>
-					<File>
-						<Path>Source/FileSystem.c</Path>
-					</File>
-					<File>
-						<Path>Source/Main.c</Path>
-					</File>
-					<File>
-						<Path>Source/Memory.c</Path>
-					</File>
-					<File>
-						<Path>Source/Platform.c</Path>
-					</File>
-					<File>
-						<Path>Source/RedBlackTree.c</Path>
-					</File>
-					<File>
-						<Path>Source/Animation.c</Path>
-					</File>
-					<File>
-						<Path>Source/AnimationBake.c</Path>
-					</File>
-					<File>
-						<Path>Source/Scene.c</Path>
-					</File>
-					<File>
-						<Path>Source/DemoScene.c</Path>
-					</File>
-					<File>
-						<Path>Source/Async.c</Path>
-					</File>
-					<File>
-						<Path>Source/BVH.c</Path>
-					</File>
 					<Folder>
 						<Path>Source/Editor</Path>
 						<IncludeFilter>*.c,*.cc,*.cpp,*.c++,*.cp,*.cxx,*.h,*.hh,*.hpp,*.h++,*.hp,*.hxx,*.inl,*.cs,*.rs,*.java,*.jav,*.js,*.jsc,*.jsx,*.json,*.cls,*.py,*.rpy,*.php,*.php3,*.phl,*.phtml,*.rhtml,*.tpl,*.phps,*.lua,*.html,*.html5,*.htm,*.xml,*.xaml,*.css,*.ssi,*.haml,*.yaml,*.bat,*.wbf,*.wbt,*.txt,*.cmake,*.make,*.makefile,*.mak,*.mk,*.sh,*.bash,*.csv,*.asp,*.pl,*.mac,*.ws,*.vbs,*.perl,*.src,*.rss,*.inc,*.f,*.go,*.prl,*.plx,*.rb,*.lsp,*.lpx,*.ps1,*.command,*.cbl,*.cob,*.qs,*.wxs,*.ph,*.msc,*.glsl,*.hlsl,*.fx,*.vert,*.tesc,*.tese,*.geom,*.frag,*.comp,*.pssl,*.scons,*.cu,*.jai,</IncludeFilter>
@@ -666,10 +636,52 @@
 						<Children></Children>
 					</Folder>
 					<File>
+						<Path>Source/FileSystem.c</Path>
+					</File>
+					<File>
+						<Path>Source/Main.c</Path>
+					</File>
+					<File>
+						<Path>Source/Memory.c</Path>
+					</File>
+					<File>
+						<Path>Source/Platform.c</Path>
+					</File>
+					<File>
+						<Path>Source/RedBlackTree.c</Path>
+					</File>
+					<File>
+						<Path>Source/Animation.c</Path>
+					</File>
+					<File>
+						<Path>Source/AnimationBake.c</Path>
+					</File>
+					<File>
+						<Path>Source/Scene.c</Path>
+					</File>
+					<File>
+						<Path>Source/DemoScene.c</Path>
+					</File>
+					<File>
+						<Path>Source/Async.c</Path>
+					</File>
+					<File>
+						<Path>Source/ParallelFor.c</Path>
+					</File>
+					<File>
+						<Path>Source/BVH.c</Path>
+					</File>
+					<File>
 						<Path>Source/SceneSerializer.c</Path>
 					</File>
 					<File>
 						<Path>Source/Algorithm.c</Path>
+					</File>
+					<File>
+						<Path>Source/BasisCompressWrapper.cpp</Path>
+					</File>
+					<File>
+						<Path>Source/JobSystem.c</Path>
 					</File>
 				</Children>
 			</Folder>

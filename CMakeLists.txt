@@ -64,7 +64,7 @@ set(BASIS_ENCODER_SOURCES
     Extern/basis_universal/encoder/jpgd.cpp
     Extern/basis_universal/encoder/pvpngreader.cpp
     Extern/basis_universal/encoder/basisu_opencl.cpp
-    Extern/BasisCompressWrapper.cpp
+    Source/BasisCompressWrapper.cpp
     Extern/basis_universal/transcoder/basisu_transcoder.cpp
     Extern/basis_universal/encoder/3rdparty/android_astc_decomp.cpp
     Extern/ufbx.c
@@ -104,6 +104,8 @@ target_sources(${EXECUTABLE_NAME} PRIVATE
     Source/Animation.c
     Source/Algorithm.c
     Source/Async.c
+    Source/JobSystem.c
+    Source/ParallelFor.c
     Source/Memory.c
     Source/FileSystem.c
     Source/Platform.c

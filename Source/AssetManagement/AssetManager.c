@@ -35,7 +35,7 @@
 #include "Extern/sinfl.h"
 #include "Extern/dynarray.h"
 
-#include "Extern/BasisCompressWrapper.h"
+#include "Include/BasisCompressWrapper.h"
 
 extern Graphics gGFX;
 

@@ -1,20 +1,46 @@
-#include "BasisCompressWrapper.h"
+#include "Include/BasisCompressWrapper.h"
 
-#include "basis_universal/encoder/basisu_comp.h"          // Main BasisU encoder API
-#include "basis_universal/encoder/basisu_enc.h"         // For load_image()
-#include "basis_universal/encoder/basisu_gpu_texture.h"
-#include "basis_universal/transcoder/basisu_file_headers.h"  // For basis_tex_format
+#include "Extern/basis_universal/encoder/basisu_comp.h"          // Main BasisU encoder API
+#include "Extern/basis_universal/encoder/basisu_enc.h"         // For load_image()
+#include "Extern/basis_universal/encoder/basisu_gpu_texture.h"
+#include "Extern/basis_universal/transcoder/basisu_file_headers.h"  // For basis_tex_format
+#include "Include/ParallelFor.h"
 
-#include <cstdio>
-#include <cstdlib>
-#include <string>
-#include <thread>
-#include <vector>
-
-#include "stb/stb_image.h"
-#include "basis_universal/encoder/3rdparty/tinydds.h"
+#include <SDL3/SDL_cpuinfo.h>
+#include <SDL3/SDL_iostream.h>
+#include <SDL3/SDL_log.h>
+#include <SDL3/SDL_stdinc.h>
+#include "Extern/stb/stb_image.h"
+#include "Extern/basis_universal/encoder/3rdparty/tinydds.h"
 
 using namespace basisu;
+
+typedef enum DDSBlockDecodeFormat_ {
+    DDS_BLOCK_DECODE_BC1,
+    DDS_BLOCK_DECODE_BC3,
+    DDS_BLOCK_DECODE_BC4,
+    DDS_BLOCK_DECODE_BC5,
+} DDSBlockDecodeFormat;
+
+typedef struct DDSUncompressedDecodeTask_
+{
+    TinyDDS_Format format;
+    const uint8_t* src;
+    image* img;
+    uint32_t width;
+    uint32_t bytesPerPixel;
+} DDSUncompressedDecodeTask;
+
+typedef struct DDSCompressedDecodeTask_
+{
+    DDSBlockDecodeFormat decodeFormat;
+    const uint8_t* src;
+    image* img;
+    uint32_t width;
+    uint32_t height;
+    uint32_t blockBytes;
+    uint32_t rowPitch;
+} DDSCompressedDecodeTask;
 
 // -----------------------------------------------------------------------------
 // Internal helpers
@@ -70,38 +96,60 @@ static bool is_dds_compressed(TinyDDS_Format format) {
     return is_dds_bc1(format) || is_dds_bc3(format) || is_dds_bc4(format) || is_dds_bc5(format);
 }
 
-template <typename Fn>
-static void parallel_for_range(uint32_t item_count, uint32_t min_items_per_worker, const Fn& fn) {
-    if (!item_count) return;
+static void decode_dds_uncompressed_range(uint32_t begin_y, uint32_t end_y, void* userData)
+{
+    DDSUncompressedDecodeTask* task = (DDSUncompressedDecodeTask*)userData;
 
-    uint32_t worker_count = std::thread::hardware_concurrency();
-    if (worker_count < 2 || item_count < min_items_per_worker * 2) {
-        fn(0, item_count);
-        return;
-    }
+    for (uint32_t y = begin_y; y < end_y; ++y) {
+        const uint8_t* in = task->src + (size_t)y * task->width * task->bytesPerPixel;
+        color_rgba* out = task->img->get_ptr() + (size_t)y * task->width;
 
-    const uint32_t max_workers_for_work = item_count / min_items_per_worker;
-    if (worker_count > max_workers_for_work) worker_count = max_workers_for_work;
-    if (worker_count < 2) {
-        fn(0, item_count);
-        return;
-    }
+        switch (task->format) {
+            case TDDS_R8G8B8A8_UNORM:
+            case TDDS_R8G8B8A8_SRGB:
+                memcpy(out, in, (size_t)task->width * 4);
+                break;
 
-    const uint32_t items_per_worker = (item_count + worker_count - 1) / worker_count;
-    std::vector<std::thread> threads;
-    threads.reserve(worker_count - 1);
+            case TDDS_B8G8R8A8_UNORM:
+            case TDDS_B8G8R8A8_SRGB:
+                for (uint32_t x = 0; x < task->width; ++x) {
+                    out[x].r = in[x * 4 + 2];
+                    out[x].g = in[x * 4 + 1];
+                    out[x].b = in[x * 4 + 0];
+                    out[x].a = in[x * 4 + 3];
+                }
+                break;
 
-    uint32_t begin = items_per_worker;
-    while (begin < item_count) {
-        const uint32_t end = (begin + items_per_worker < item_count) ? begin + items_per_worker : item_count;
-        threads.emplace_back([&fn, begin, end]() { fn(begin, end); });
-        begin = end;
-    }
+            case TDDS_B8G8R8X8_UNORM:
+                for (uint32_t x = 0; x < task->width; ++x) {
+                    out[x].r = in[x * 4 + 2];
+                    out[x].g = in[x * 4 + 1];
+                    out[x].b = in[x * 4 + 0];
+                    out[x].a = 255;
+                }
+                break;
 
-    fn(0, (items_per_worker < item_count) ? items_per_worker : item_count);
+            case TDDS_R8_UNORM:
+                for (uint32_t x = 0; x < task->width; ++x) {
+                    out[x].r = in[x];
+                    out[x].g = in[x];
+                    out[x].b = in[x];
+                    out[x].a = 255;
+                }
+                break;
 
-    for (std::thread& thread : threads) {
-        thread.join();
+            case TDDS_R8G8_UNORM:
+                for (uint32_t x = 0; x < task->width; ++x) {
+                    out[x].r = in[x * 2 + 0];
+                    out[x].g = in[x * 2 + 1];
+                    out[x].b = 0;
+                    out[x].a = 255;
+                }
+                break;
+
+            default:
+                break;
+        }
     }
 }
 
@@ -127,69 +175,66 @@ static bool decode_dds_uncompressed(TinyDDS_Format format, const uint8_t* src, u
 
     if (size < (uint64_t)width * height * bytes_per_pixel) return false;
 
-    parallel_for_range(height, 128, [&](uint32_t begin_y, uint32_t end_y) {
-        for (uint32_t y = begin_y; y < end_y; ++y) {
-            const uint8_t* in = src + (size_t)y * width * bytes_per_pixel;
-            color_rgba* out = img.get_ptr() + (size_t)y * width;
-
-            switch (format) {
-                case TDDS_R8G8B8A8_UNORM:
-                case TDDS_R8G8B8A8_SRGB:
-                    memcpy(out, in, (size_t)width * 4);
-                    break;
-
-                case TDDS_B8G8R8A8_UNORM:
-                case TDDS_B8G8R8A8_SRGB:
-                    for (uint32_t x = 0; x < width; ++x) {
-                        out[x].r = in[x * 4 + 2];
-                        out[x].g = in[x * 4 + 1];
-                        out[x].b = in[x * 4 + 0];
-                        out[x].a = in[x * 4 + 3];
-                    }
-                    break;
-
-                case TDDS_B8G8R8X8_UNORM:
-                    for (uint32_t x = 0; x < width; ++x) {
-                        out[x].r = in[x * 4 + 2];
-                        out[x].g = in[x * 4 + 1];
-                        out[x].b = in[x * 4 + 0];
-                        out[x].a = 255;
-                    }
-                    break;
-
-                case TDDS_R8_UNORM:
-                    for (uint32_t x = 0; x < width; ++x) {
-                        out[x].r = in[x];
-                        out[x].g = in[x];
-                        out[x].b = in[x];
-                        out[x].a = 255;
-                    }
-                    break;
-
-                case TDDS_R8G8_UNORM:
-                    for (uint32_t x = 0; x < width; ++x) {
-                        out[x].r = in[x * 2 + 0];
-                        out[x].g = in[x * 2 + 1];
-                        out[x].b = 0;
-                        out[x].a = 255;
-                    }
-                    break;
-
-                default:
-                    break;
-            }
-        }
-    });
+    DDSUncompressedDecodeTask task;
+    task.format = format;
+    task.src = src;
+    task.img = &img;
+    task.width = width;
+    task.bytesPerPixel = bytes_per_pixel;
+    ParallelFor(height, 128, decode_dds_uncompressed_range, &task);
 
     return true;
 }
 
-typedef enum DDSBlockDecodeFormat_ {
-    DDS_BLOCK_DECODE_BC1,
-    DDS_BLOCK_DECODE_BC3,
-    DDS_BLOCK_DECODE_BC4,
-    DDS_BLOCK_DECODE_BC5,
-} DDSBlockDecodeFormat;
+static void decode_dds_compressed_range(uint32_t begin_by, uint32_t end_by, void* userData)
+{
+    DDSCompressedDecodeTask* task = (DDSCompressedDecodeTask*)userData;
+
+    for (uint32_t by = begin_by; by < end_by; ++by) {
+        for (uint32_t bx = 0; bx < task->rowPitch / task->blockBytes; ++bx) {
+            const uint8_t* block = task->src + (size_t)by * task->rowPitch + (size_t)bx * task->blockBytes;
+            color_rgba pixels[16];
+
+            switch (task->decodeFormat) {
+                case DDS_BLOCK_DECODE_BC1:
+                    unpack_bc1(block, pixels, true);
+                    break;
+
+                case DDS_BLOCK_DECODE_BC3:
+                    unpack_bc3(block, pixels);
+                    break;
+
+                case DDS_BLOCK_DECODE_BC4:
+                    unpack_bc4(block, &pixels[0].r, sizeof(color_rgba));
+                    for (uint32_t i = 0; i < 16; ++i) {
+                        pixels[i].g = pixels[i].r;
+                        pixels[i].b = pixels[i].r;
+                        pixels[i].a = 255;
+                    }
+                    break;
+
+                case DDS_BLOCK_DECODE_BC5:
+                    unpack_bc5(block, pixels);
+                    for (uint32_t i = 0; i < 16; ++i) {
+                        pixels[i].b = 0;
+                        pixels[i].a = 255;
+                    }
+                    break;
+            }
+
+            for (uint32_t py = 0; py < 4; ++py) {
+                const uint32_t y = by * 4 + py;
+                if (y >= task->height) break;
+
+                for (uint32_t px = 0; px < 4; ++px) {
+                    const uint32_t x = bx * 4 + px;
+                    if (x >= task->width) break;
+                    (*task->img)(x, y) = pixels[py * 4 + px];
+                }
+            }
+        }
+    }
+}
 
 static bool decode_dds_compressed(TinyDDS_Format format, const uint8_t* src, uint32_t width, uint32_t height, uint32_t size, image& img) {
     const uint32_t block_bytes = (is_dds_bc1(format) || is_dds_bc4(format)) ? 8 : 16;
@@ -206,95 +251,50 @@ static bool decode_dds_compressed(TinyDDS_Format format, const uint8_t* src, uin
     else  return false;
     
 
-    parallel_for_range(blocks_y, 16, [&](uint32_t begin_by, uint32_t end_by) {
-        for (uint32_t by = begin_by; by < end_by; ++by) {
-            for (uint32_t bx = 0; bx < blocks_x; ++bx) {
-                const uint8_t* block = src + (size_t)by * row_pitch + (size_t)bx * block_bytes;
-                color_rgba pixels[16];
-
-                switch (decode_format) {
-                    case DDS_BLOCK_DECODE_BC1:
-                        unpack_bc1(block, pixels, true);
-                        break;
-
-                    case DDS_BLOCK_DECODE_BC3:
-                        unpack_bc3(block, pixels);
-                        break;
-
-                    case DDS_BLOCK_DECODE_BC4:
-                        unpack_bc4(block, &pixels[0].r, sizeof(color_rgba));
-                        for (uint32_t i = 0; i < 16; ++i) {
-                            pixels[i].g = pixels[i].r;
-                            pixels[i].b = pixels[i].r;
-                            pixels[i].a = 255;
-                        }
-                        break;
-
-                    case DDS_BLOCK_DECODE_BC5:
-                        unpack_bc5(block, pixels);
-                        for (uint32_t i = 0; i < 16; ++i) {
-                            pixels[i].b = 0;
-                            pixels[i].a = 255;
-                        }
-                        break;
-                }
-
-                for (uint32_t py = 0; py < 4; ++py) {
-                    const uint32_t y = by * 4 + py;
-                    if (y >= height) break;
-
-                    for (uint32_t px = 0; px < 4; ++px) {
-                        const uint32_t x = bx * 4 + px;
-                        if (x >= width) break;
-                        img(x, y) = pixels[py * 4 + px];
-                    }
-                }
-            }
-        }
-    });
+    DDSCompressedDecodeTask task;
+    task.decodeFormat = decode_format;
+    task.src = src;
+    task.img = &img;
+    task.width = width;
+    task.height = height;
+    task.blockBytes = block_bytes;
+    task.rowPitch = row_pitch;
+    ParallelFor(blocks_y, 16, decode_dds_compressed_range, &task);
 
     return true;
 }
 
 static void tinydds_error_callback(void* user, char const* msg) {
     BASISU_NOTE_UNUSED(user);
-    fprintf(stderr, "tinydds: %s\n", msg);
+    SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "tinydds: %s", msg);
 }
 
 static void* tinydds_alloc_callback(void* user, size_t size) {
     BASISU_NOTE_UNUSED(user);
-    return malloc(size);
+    return SDL_malloc(size);
 }
 
 static void tinydds_free_callback(void* user, void* memory) {
     BASISU_NOTE_UNUSED(user);
-    free(memory);
+    SDL_free(memory);
 }
 
 static size_t tinydds_read_callback(void* user, void* buffer, size_t byte_count) {
-    return fread(buffer, 1, byte_count, (FILE*)user);
+    return SDL_ReadIO((SDL_IOStream*)user, buffer, byte_count);
 }
 
 static bool tinydds_seek_callback(void* user, int64_t offset) {
-#ifdef _MSC_VER
-    return _fseeki64((FILE*)user, offset, SEEK_SET) == 0;
-#else
-    return fseek((FILE*)user, (long)offset, SEEK_SET) == 0;
-#endif
+    return SDL_SeekIO((SDL_IOStream*)user, offset, SDL_IO_SEEK_SET) >= 0;
 }
 
 static int64_t tinydds_tell_callback(void* user) {
-#ifdef _MSC_VER
-    return _ftelli64((FILE*)user);
-#else
-    return (int64_t)ftell((FILE*)user);
-#endif
+    return SDL_TellIO((SDL_IOStream*)user);
 }
 
 static bool load_dds_image(const char* input_filename, image& img) {
-    FILE* file = fopen(input_filename, "rb");
+    SDL_IOStream* file = SDL_IOFromFile(input_filename, "rb");
     if (!file) {
-        fprintf(stderr, "Can't open DDS file %s\n", input_filename);
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Can't open DDS file %s", input_filename);
         return false;
     }
 
@@ -308,21 +308,21 @@ static bool load_dds_image(const char* input_filename, image& img) {
 
     TinyDDS_ContextHandle dds = TinyDDS_CreateContext(&callbacks, file);
     if (!dds) {
-        fclose(file);
+        SDL_CloseIO(file);
         return false;
     }
 
     if (!TinyDDS_ReadHeader(dds)) {
-        fprintf(stderr, "Failed parsing DDS header in file %s\n", input_filename);
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed parsing DDS header in file %s", input_filename);
         TinyDDS_DestroyContext(dds);
-        fclose(file);
+        SDL_CloseIO(file);
         return false;
     }
 
     if (!TinyDDS_Is2D(dds) || TinyDDS_ArraySlices(dds) > 1 || TinyDDS_IsCubemap(dds)) {
-        fprintf(stderr, "DDS arrays, cubemaps, and 3D textures are not supported for Basis compression: %s\n", input_filename);
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "DDS arrays, cubemaps, and 3D textures are not supported for Basis compression: %s", input_filename);
         TinyDDS_DestroyContext(dds);
-        fclose(file);
+        SDL_CloseIO(file);
         return false;
     }
 
@@ -332,9 +332,9 @@ static bool load_dds_image(const char* input_filename, image& img) {
     const uint32_t size = TinyDDS_ImageSize(dds, 0);
     const TinyDDS_Format format = TinyDDS_GetFormat(dds);
     if (!width || !height || !src || !size) {
-        fprintf(stderr, "DDS has no usable base image: %s\n", input_filename);
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "DDS has no usable base image: %s", input_filename);
         TinyDDS_DestroyContext(dds);
-        fclose(file);
+        SDL_CloseIO(file);
         return false;
     }
 
@@ -347,15 +347,15 @@ static bool load_dds_image(const char* input_filename, image& img) {
     }
 
     if (!ok) {
-        fprintf(stderr, "Unsupported DDS format %d for Basis compression: %s\n", (int)format, input_filename);
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Unsupported DDS format %d for Basis compression: %s", (int)format, input_filename);
         TinyDDS_DestroyContext(dds);
-        fclose(file);
+        SDL_CloseIO(file);
         return false;
     }
 
     img = decoded;
     TinyDDS_DestroyContext(dds);
-    fclose(file);
+    SDL_CloseIO(file);
     return true;
 }
 
@@ -367,7 +367,7 @@ static bool load_input_image(const char* input_filename, image& img) {
     int w, h, ch;
     unsigned char* data = stbi_load(input_filename, &w, &h, &ch, 4);
     if (!data) {
-        fprintf(stderr, "stbi_load failed: %s\n", stbi_failure_reason());
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "stbi_load failed: %s", stbi_failure_reason());
         return false;
     }
 
@@ -377,6 +377,12 @@ static bool load_input_image(const char* input_filename, image& img) {
 
     img = decoded;
     return true;
+}
+
+static uint32_t get_worker_count(void) {
+    int cores = SDL_GetNumLogicalCPUCores();
+    if (cores < 1) cores = 1;
+    return (uint32_t)cores;
 }
 
 int basis_encoder_init(void) {
@@ -400,7 +406,7 @@ static bool setup_format_params(basis_compressor_params& params,
     }
 
     if (use_etc1s && use_uastc) {
-        fprintf(stderr, "Error: Cannot specify both ETC1S and UASTC.\n");
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Error: Cannot specify both ETC1S and UASTC.");
         return false;
     }
 
@@ -546,7 +552,7 @@ int basis_compress_file(const char* input_filename,
     }
     if (input_filename == NULL)
     {
-        fprintf(stderr, "Compression failed for %s input_filename null", output_filename);
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Compression failed for %s input_filename null", output_filename);
         return 0;
     }
     // Check if this is a metallic/roughness texture (bit 1 set)
@@ -570,18 +576,18 @@ int basis_compress_file(const char* input_filename,
     }
 
     // Create a job pool for threading (optional but recommended)
-    job_pool jpool(params.m_multithreading ? std::thread::hardware_concurrency() : 1);
+    job_pool jpool(params.m_multithreading ? get_worker_count() : 1);
     params.m_pJob_pool = &jpool;
 
     basis_compressor compressor;
     if (!compressor.init(params)) {
-        fprintf(stderr, "Compressor init failed for %s\n", input_filename);
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Compressor init failed for %s", input_filename);
         return -2;
     }
 
     basis_compressor::error_code err = compressor.process();
     if (err != basis_compressor::cECSuccess) {
-        fprintf(stderr, "Compression failed for %s with error %d\n", input_filename, (int)err);
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Compression failed for %s with error %d", input_filename, (int)err);
         return -3;
     }
 
@@ -604,7 +610,7 @@ int basis_compress_array_memory(const unsigned char* const* layer_mips,
         }
     }
     if (!layer_mips || num_layers < 1 || num_mips < 1 || width < 1 || height < 1 || !output_filename) {
-        fprintf(stderr, "basis_compress_array_memory: invalid arguments for %s\n",
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "basis_compress_array_memory: invalid arguments for %s",
                 output_filename ? output_filename : "(null)");
         return -1;
     }
@@ -633,7 +639,7 @@ int basis_compress_array_memory(const unsigned char* const* layer_mips,
     for (int layer = 0; layer < num_layers; layer++) {
         const unsigned char* mip0 = layer_mips[(size_t)layer * num_mips];
         if (!mip0) {
-            fprintf(stderr, "basis_compress_array_memory: layer %d mip 0 is null\n", layer);
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "basis_compress_array_memory: layer %d mip 0 is null", layer);
             return -1;
         }
         image img(width, height);
@@ -646,7 +652,7 @@ int basis_compress_array_memory(const unsigned char* const* layer_mips,
             int mw = width >> m;  if (mw < 1) mw = 1;
             int mh = height >> m; if (mh < 1) mh = 1;
             if (!data) {
-                fprintf(stderr, "basis_compress_array_memory: layer %d mip %d is null\n", layer, m);
+                SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "basis_compress_array_memory: layer %d mip %d is null", layer, m);
                 return -1;
             }
             image mip(mw, mh);
@@ -661,18 +667,18 @@ int basis_compress_array_memory(const unsigned char* const* layer_mips,
     params.m_status_output = true;
     params.m_print_stats = false;
 
-    job_pool jpool(std::thread::hardware_concurrency());
+    job_pool jpool(get_worker_count());
     params.m_pJob_pool = &jpool;
 
     basis_compressor compressor;
     if (!compressor.init(params)) {
-        fprintf(stderr, "Compressor init failed for %s\n", output_filename);
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Compressor init failed for %s", output_filename);
         return -2;
     }
 
     basis_compressor::error_code err = compressor.process();
     if (err != basis_compressor::cECSuccess) {
-        fprintf(stderr, "Compression failed for %s with error %d\n", output_filename, (int)err);
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Compression failed for %s with error %d", output_filename, (int)err);
         return -3;
     }
 
