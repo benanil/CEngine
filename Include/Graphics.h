@@ -209,7 +209,7 @@ typedef struct WindowState
 {
     SDL_GPUTexture* tex_depth, *tex_hiz_depth, *tex_color, *tex_color_msaa, *tex_depth_msaa, *tex_post, *tex_hiz;
     SDL_GPUTexture* tex_gbuffer_tangent, *tex_gbuffer_albedo_metallic, *tex_gbuffer_shadow_roughness;
-    SDL_GPUTexture* tex_hbao, *tex_hbao_blur, *tex_hbao_normal;
+    SDL_GPUTexture* tex_hbao, *tex_hbao_blur, *tex_hbao_normal, *tex_contact_shadow;
     SDL_GPUTexture* tex_bloom_ping, *tex_bloom_pong;
     SDL_GPUTexture* tex_bloom_downsample[BLOOM_MAX_MIPS];
     SDL_GPUTexture* tex_bloom_upsample[BLOOM_MAX_MIPS];

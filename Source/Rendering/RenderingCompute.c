@@ -1,4 +1,5 @@
 #include "RenderingInternal.h"
+#include "bend_sss_cpu.h"
 #include <SDL3/SDL_timer.h>
 #include <SDL3/SDL_time.h>
 
@@ -345,6 +346,91 @@ void DispatchHBAOCompute(SDL_GPUCommandBuffer* cmd, bool enabled, u32 width, u32
     SDL_BindGPUComputeSamplers(pass, 0, blurInputs, SDL_arraysize(blurInputs));
     SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
     SDL_DispatchGPUCompute(pass, (aoWidth + 7u) / 8u, (aoHeight + 7u) / 8u, 1);
+    SDL_EndGPUComputePass(pass);
+}
+
+void DispatchContactShadowsCompute(SDL_GPUCommandBuffer* cmd, bool enabled, mat4x4 viewProj, u32 width, u32 height)
+{
+    WindowState* winstate = &g_WindowState;
+    if (!winstate->tex_hiz_depth || !winstate->tex_contact_shadow) return;
+    CHECK_CREATE(g_ContactShadowsComputePipeline, "Contact Shadows Compute Pipeline");
+
+    u32 shadowWidth = Maxu32(width / 2u, 1u);
+    u32 shadowHeight = Maxu32(height / 2u, 1u);
+    float3 sunDirection = GetRenderSunDirection();
+
+    struct {
+        f32 lightCoordinate[4];
+        s32 waveOffset[2];
+        u32 fullSize[2];
+        u32 shadowSize[2];
+        f32 surfaceThickness;
+        f32 bilinearThreshold;
+        f32 shadowContrast;
+        f32 intensity;
+        u32 enabled;
+        u32 padding;
+    } params = {0};
+
+    params.fullSize[0] = width;
+    params.fullSize[1] = height;
+    params.shadowSize[0] = shadowWidth;
+    params.shadowSize[1] = shadowHeight;
+    params.surfaceThickness = Maxf32(g_RenderSettings.SSSThickness, 0.0001f);
+    params.bilinearThreshold = Maxf32(g_RenderSettings.SSSBilinearThreshold, 0.0001f);
+    params.shadowContrast = Maxf32(g_RenderSettings.SSSContrast, 1.0f);
+    params.intensity = Saturatef32(g_RenderSettings.SSSIntensity);
+
+    SDL_GPUStorageTextureReadWriteBinding output = {
+        .texture = winstate->tex_contact_shadow,
+        .mip_level = 0,
+        .layer = 0,
+        .cycle = true
+    };
+    SDL_GPUComputePass* pass = SDL_BeginGPUComputePass(cmd, &output, 1, NULL, 0);
+    SDL_BindGPUComputePipeline(pass, g_ContactShadowsComputePipeline);
+    SDL_BindGPUComputeSamplers(pass, 0, &(SDL_GPUTextureSamplerBinding){
+        .texture = winstate->tex_hiz_depth, .sampler = g_RenderState.hiZSampler }, 1);
+
+    if (!enabled)
+    {
+        params.enabled = 0u;
+        SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
+        SDL_DispatchGPUCompute(pass, (shadowWidth + 63u) / 64u, shadowHeight, 1u);
+        SDL_EndGPUComputePass(pass);
+        return;
+    }
+
+    v128f lightClip = Vec4Transform(VecSetR(sunDirection.x, sunDirection.y, sunDirection.z, 0.0f), viewProj.r);
+	f32 lightProjection[4]; 
+	VecStore(lightProjection, lightClip);
+    
+	s32 viewportSize[2] = { (s32)shadowWidth, (s32)shadowHeight };
+    s32 minBounds[2] = { 0, 0 };
+    s32 maxBounds[2] = { (s32)shadowWidth, (s32)shadowHeight };
+    BendDispatchList list = SSSBuildDispatchList(lightProjection, viewportSize, minBounds, maxBounds, false, 64);
+    MemCopy(params.lightCoordinate, list.LightCoordinate_Shader, sizeof(params.lightCoordinate));
+    params.enabled = 1u;
+
+    if (list.DispatchCount <= 0)
+    {
+        params.enabled = 0u;
+        SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
+        SDL_DispatchGPUCompute(pass, (shadowWidth + 63u) / 64u, shadowHeight, 1u);
+        SDL_EndGPUComputePass(pass);
+        return;
+    }
+
+    for (s32 i = 0; i < list.DispatchCount; i++)
+    {
+        params.waveOffset[0] = list.Dispatch[i].WaveOffset_Shader[0];
+        params.waveOffset[1] = list.Dispatch[i].WaveOffset_Shader[1];
+        SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
+        SDL_DispatchGPUCompute(pass,
+                               (u32)Maxs32(list.Dispatch[i].WaveCount[0], 1),
+                               (u32)Maxs32(list.Dispatch[i].WaveCount[1], 1),
+                               (u32)Maxs32(list.Dispatch[i].WaveCount[2], 1));
+    }
     SDL_EndGPUComputePass(pass);
 }
 

@@ -7,6 +7,7 @@ typedef struct RenderSettings_
 {
     bool enableOcclusion;
     bool enableHBAO;
+    bool enableContactShadows;
     bool enableMLAA;
     bool enableBloom;
     u32 msaaSamples;      // requested scene MSAA samples: 1, 2, 4, or 8. UI/post stay single-sample
@@ -21,6 +22,10 @@ typedef struct RenderSettings_
     f32 hbaoBias;
     f32 hbaoIntensity;
     f32 hbaoPower;
+    f32 SSSBilinearThreshold;
+    f32 SSSThickness;
+    f32 SSSIntensity;
+    f32 SSSContrast;
     f32 mlaaThreshold;
     f32 bloomThreshold;
     f32 bloomKnee;

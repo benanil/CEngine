@@ -298,6 +298,7 @@ static void EditorApplyQualityPreset(RenderSettings* settings, u32 quality)
     {
     case 0: // Low
         settings->enableHBAO            = false;
+        settings->enableContactShadows  = false;
         settings->enableMLAA            = false;
         settings->enableBloom           = false;
         settings->msaaSamples           = 1u;
@@ -311,6 +312,7 @@ static void EditorApplyQualityPreset(RenderSettings* settings, u32 quality)
         break;
     case 1: // Medium
         settings->enableHBAO            = true;
+        settings->enableContactShadows  = true;
         settings->enableMLAA            = true;
         settings->enableBloom           = true;
         settings->msaaSamples           = 2u;
@@ -324,6 +326,7 @@ static void EditorApplyQualityPreset(RenderSettings* settings, u32 quality)
         break;
     case 2: // High, matches the startup defaults
         settings->enableHBAO            = true;
+        settings->enableContactShadows  = true;
         settings->enableMLAA            = true;
         settings->enableBloom           = true;
         settings->msaaSamples           = 4u;
@@ -337,6 +340,7 @@ static void EditorApplyQualityPreset(RenderSettings* settings, u32 quality)
         break;
     case 3: // Ultra
         settings->enableHBAO            = true;
+        settings->enableContactShadows  = true;
         settings->enableMLAA            = true;
         settings->enableBloom           = true;
         settings->msaaSamples           = 4u;
@@ -382,6 +386,7 @@ static void DrawGraphicsWindow()
                     EditorApplyQualityPreset(settings, editorQualityIndex);
                 UICheckbox(CLAY_ID("EditorEnableOcclusion"), CLAY_STRING("Hi-Z occlusion culling"), &settings->enableOcclusion);
                 UICheckbox(CLAY_ID("EditorEnableHBAO")     , CLAY_STRING("HBAO ambient occlusion"), &settings->enableHBAO);
+                UICheckbox(CLAY_ID("EditorEnableContactShadows"), CLAY_STRING("Contact shadows"), &settings->enableContactShadows);
                 UICheckbox(CLAY_ID("EditorEnableMLAA")     , CLAY_STRING("Anti-aliasing (MLAA)"), &settings->enableMLAA);
                 UICheckbox(CLAY_ID("EditorEnableBloom")    , CLAY_STRING("Bloom"), &settings->enableBloom);
                 static const char* msaaOptions[] = { "Off", "2x", "4x", "8x" };
@@ -424,6 +429,10 @@ static void DrawGraphicsWindow()
                 UISliderFloatValue(CLAY_ID("EditorShadowCascadeOverlap"), CLAY_STRING("Cascade overlap"), &settings->shadowCascadeOverlap   ,  0.0f,   80.0f, 1);
                 UISliderFloatValue(CLAY_ID("EditorShadowSplitNear")     , CLAY_STRING("Split near")     , &settings->shadowSplitNearDistance,  1.0f,   80.0f, 1);
                 UISliderFloatValue(CLAY_ID("EditorShadowPSSM")          , CLAY_STRING("PSSM lambda")    , &settings->shadowPSSMLambda       ,  0.0f,    1.0f, 2);
+                UISliderFloatValue(CLAY_ID("EditorContactShadowThickness"), CLAY_STRING("Contact thickness"), &settings->SSSThickness, 0.001f, 0.04f, 3);
+                UISliderFloatValue(CLAY_ID("EditorContactShadowBilinear"), CLAY_STRING("Contact edge threshold"), &settings->SSSBilinearThreshold, 0.001f, 0.08f, 3);
+                UISliderFloatValue(CLAY_ID("EditorContactShadowContrast"), CLAY_STRING("Contact contrast"), &settings->SSSContrast, 1.0f, 8.0f, 2);
+                UISliderFloatValue(CLAY_ID("EditorContactShadowIntensity"), CLAY_STRING("Contact intensity"), &settings->SSSIntensity, 0.0f, 1.0f, 2);
             }
             CLAY(CLAY_ID("GraphicsEditorHBAOBox"), EditorPanelBoxDeclaration) {
                 UISectionHeader("HBAO");
@@ -469,6 +478,7 @@ static void DrawGraphicsWindow()
                 *settings = (RenderSettings){
                     .enableOcclusion = true,
                     .enableHBAO = true,
+                    .enableContactShadows = true,
                     .enableMLAA = true,
                     .enableBloom = true,
                     .msaaSamples = 4u,
@@ -481,6 +491,10 @@ static void DrawGraphicsWindow()
                     .hbaoBias = 0.5f,
                     .hbaoIntensity = 2.0f,
                     .hbaoPower = 2.0f,
+                    .SSSBilinearThreshold = 0.025f,
+                    .SSSThickness = 0.005f,
+                    .SSSIntensity = 0.75f,
+                    .SSSContrast  = 4.0f,
                     .mlaaThreshold = 0.08f,
                     .bloomThreshold = 1.0f,
                     .bloomKnee = 0.5f,
@@ -502,14 +516,14 @@ static void DrawGraphicsWindow()
                     .renderScale = 1.0f,
                     .sunYaw = 116.565f,
                     .sunPitch = 63.435f,
-                    .shadowMaxDistance = SHADOW_MAX_DISTANCE,
-                    .shadowCameraDistance = SHADOW_CAMERA_DISTANCE,
+                    .shadowMaxDistance       = SHADOW_MAX_DISTANCE,
+                    .shadowCameraDistance    = SHADOW_CAMERA_DISTANCE,
                     .shadowCasterDepthMargin = SHADOW_CASTER_DEPTH_MARGIN,
-                    .shadowCascadeOverlap = SHADOW_CASCADE_OVERLAP,
+                    .shadowCascadeOverlap    = SHADOW_CASCADE_OVERLAP,
                     .shadowSplitNearDistance = SHADOW_SPLIT_NEAR_DISTANCE,
-                    .shadowPSSMLambda = SHADOW_PSSM_LAMBDA,
-                    .maxVisiblePointShadows = (f32)POINT_SHADOW_MAX_LIGHTS,
-                    .maxVisibleSpotShadows = (f32)SPOT_SHADOW_MAX_LIGHTS
+                    .shadowPSSMLambda        = SHADOW_PSSM_LAMBDA,
+                    .maxVisiblePointShadows  = (f32)POINT_SHADOW_MAX_LIGHTS,
+                    .maxVisibleSpotShadows   = (f32)SPOT_SHADOW_MAX_LIGHTS
                 };
             }
         }

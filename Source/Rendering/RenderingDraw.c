@@ -124,7 +124,7 @@ static void DrawRenderBufferForward(SDL_GPUCommandBuffer* cmd, SDL_GPURenderPass
                                     const RenderSet* renderSet, const RenderSetBuffers* buffers,
                                     SDL_GPUGraphicsPipeline* pipeline,
                                     const SDL_GPUBufferBinding vertex_binding,
-                                    const SDL_GPUTextureSamplerBinding fragmentSamplers[7],
+                                    const SDL_GPUTextureSamplerBinding fragmentSamplers[8],
                                     SDL_GPUBuffer* const fragmentBuffers[7],
                                     const void* vertexParams, u32 vertexParamsSize,
                                     const void* fragmentParams, u32 fragmentParamsSize)
@@ -145,7 +145,7 @@ static void DrawRenderBufferForward(SDL_GPUCommandBuffer* cmd, SDL_GPURenderPass
     if (isSkinned) storageBuffers[count++] = scene->animSystem.boneBuffer;
     SDL_BindGPUVertexStorageBuffers(pass, 0, storageBuffers, count);
 
-    SDL_BindGPUFragmentSamplers(pass, 0, fragmentSamplers, 7);
+    SDL_BindGPUFragmentSamplers(pass, 0, fragmentSamplers, 8);
     SDL_BindGPUFragmentStorageBuffers(pass, 0, fragmentBuffers, 7);
     SDL_PushGPUVertexUniformData(cmd, 0, vertexParams, vertexParamsSize);
     SDL_PushGPUFragmentUniformData(cmd, 0, fragmentParams, fragmentParamsSize);
@@ -196,14 +196,15 @@ void RenderSceneForward(SDL_GPUCommandBuffer* cmd, const ScenePassContext* ctx, 
     fragmentParams.tileSize = FORWARD_TILE_SIZE;
     fragmentParams.localLightsEnabled = localLightsEnabled ? 1u : 0u;
 
-    SDL_GPUTextureSamplerBinding fragmentSamplers[7] = {
+    SDL_GPUTextureSamplerBinding fragmentSamplers[8] = {
         { .texture = scene->textureSystem.classes[TextureClass_Albedo].pages.handle, .sampler = g_RenderState.sampler },
         { .texture = scene->textureSystem.classes[TextureClass_Normal].pages.handle, .sampler = g_RenderState.sampler },
         { .texture = scene->textureSystem.classes[TextureClass_MetallicRoughness].pages.handle, .sampler = g_RenderState.sampler },
         { .texture = g_WindowState.tex_shadow_color, .sampler = g_RenderState.shadowSampler },
         { .texture = g_WindowState.tex_point_shadow_color, .sampler = g_RenderState.shadowSampler },
         { .texture = g_WindowState.tex_spot_shadow_color, .sampler = g_RenderState.shadowSampler },
-        { .texture = g_WindowState.tex_hbao_blur, .sampler = g_RenderState.sampler }
+        { .texture = g_WindowState.tex_hbao_blur, .sampler = g_RenderState.sampler },
+        { .texture = g_WindowState.tex_contact_shadow, .sampler = g_RenderState.sampler }
     };
     SDL_GPUBuffer* fragmentBuffers[7] = {
         scene->textureSystem.materialBuffer,

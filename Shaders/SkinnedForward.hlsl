@@ -40,18 +40,19 @@ Texture2D<float>       ShadowMap              : register(t3, space2);
 Texture2DArray<float>  PointShadowTexture     : register(t4, space2);
 Texture2DArray<float>  SpotShadowTexture      : register(t5, space2);
 Texture2D<float>       AmbientOcclusion       : register(t6, space2);
+Texture2D<float>       ContactShadow          : register(t7, space2);
 SamplerState           Sampler                : register(s0, space2);
 SamplerState           ShadowSampler          : register(s3, space2);
 SamplerState           PointShadowSampler     : register(s4, space2);
 SamplerState           SpotShadowSampler      : register(s5, space2);
 
-StructuredBuffer<MaterialGPU>        sMaterials          : register(t7, space2);
-StructuredBuffer<TextureDescriptor>  sTextureDescriptors : register(t8, space2);
-StructuredBuffer<LightGPU>           sLights             : register(t9, space2);
-StructuredBuffer<uint2>              sLightGrid          : register(t10, space2);
-StructuredBuffer<uint>               sLightIndex         : register(t11, space2);
-StructuredBuffer<PointShadowMatrix>  PointShadowMatrices : register(t12, space2);
-StructuredBuffer<PointShadowMatrix>  SpotShadowMatrices  : register(t13, space2);
+StructuredBuffer<MaterialGPU>        sMaterials          : register(t8, space2);
+StructuredBuffer<TextureDescriptor>  sTextureDescriptors : register(t9, space2);
+StructuredBuffer<LightGPU>           sLights             : register(t10, space2);
+StructuredBuffer<uint2>              sLightGrid          : register(t11, space2);
+StructuredBuffer<uint>               sLightIndex         : register(t12, space2);
+StructuredBuffer<PointShadowMatrix>  PointShadowMatrices : register(t13, space2);
+StructuredBuffer<PointShadowMatrix>  SpotShadowMatrices  : register(t14, space2);
 
 #include "LocalLights.hlsl"
 
@@ -172,6 +173,7 @@ float4 frag(VSOutput input) : SV_Target0
     float3 viewDir = uCameraPositionPS.xyz - worldPos;
     float2 uv = (input.position.xy) / float2(uOutputSize);
     float ao = AmbientOcclusion.SampleLevel(Sampler, uv, 0.0f);
+    shadow *= ContactShadow.SampleLevel(Sampler, uv, 0.0f);
 
     float3 color = ApplyPBR(float3(baseColor), N, viewDir, saturate(metallic), saturate(roughness),
                             saturate(shadow), ao, uSunDirection.xyz);

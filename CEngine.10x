@@ -224,6 +224,9 @@
 					<File>
 						<Path>Extern/sdefl.h</Path>
 					</File>
+					<File>
+						<Path>Extern/tinyddsloader_c99.h</Path>
+					</File>
 				</Children>
 			</Folder>
 			<Folder>
@@ -423,6 +426,12 @@
 							</File>
 							<File>
 								<Path>Shaders/PostProcessing/BloomUpsampleCompute.hlsl</Path>
+							</File>
+							<File>
+								<Path>Shaders/PostProcessing/ContactShadowsCompute.hlsl</Path>
+							</File>
+							<File>
+								<Path>Shaders/PostProcessing/bend_sss_gpu.h</Path>
 							</File>
 						</Children>
 					</Folder>

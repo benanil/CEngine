@@ -336,6 +336,7 @@ void CreateWindowBuffers()
     winstate->tex_hbao            = CreateTexture2D(hbaoWidth, hbaoHeight, TEX_FMT_8UNORM1, TEX_SAMPLER | TEX_COMP_WRITE, TEX_SMP_CNT1, 1, "HBAO Texture");
     winstate->tex_hbao_blur       = CreateTexture2D(hbaoWidth, hbaoHeight, TEX_FMT_8UNORM1, TEX_SAMPLER | TEX_COMP_WRITE, TEX_SMP_CNT1, 1, "HBAO Texture");
     winstate->tex_hbao_normal     = CreateTexture2D(hbaoWidth, hbaoHeight, TEX_FMT_8UNORM4, TEX_SAMPLER | TEX_COMP_WRITE, TEX_SMP_CNT1, 1, "HBAO Normal Texture");
+    winstate->tex_contact_shadow  = CreateTexture2D(hbaoWidth, hbaoHeight, TEX_FMT_8UNORM1, TEX_SAMPLER | TEX_COMP_WRITE, TEX_SMP_CNT1, 1, "Contact Shadow Texture");
     for (u32 mip = 0; mip < bloomMipCount; mip++)
     {
         u32 mipWidth = GetBloomMipSize(bloomWidth, mip);
@@ -844,6 +845,7 @@ void GraphicsDestroy()
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_hbao);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_hbao_blur);
     SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_hbao_normal);
+    SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_contact_shadow);
     for (u32 i = 0; i < BLOOM_MAX_MIPS; i++)
     {
         if (winstate->tex_bloom_downsample[i]) SDL_ReleaseGPUTexture(g_GPUDevice, winstate->tex_bloom_downsample[i]);

@@ -27,6 +27,7 @@ typedef struct FrameTextureSet_
     SDL_GPUTexture* tex_hbao;
     SDL_GPUTexture* tex_hbao_blur;
     SDL_GPUTexture* tex_hbao_normal;
+    SDL_GPUTexture* tex_contact_shadow;
     SDL_GPUTexture* tex_bloom_downsample[BLOOM_MAX_MIPS];
     SDL_GPUTexture* tex_bloom_upsample[BLOOM_MAX_MIPS];
     SDL_GPUTexture* tex_mlaa_edge_mask;
@@ -52,6 +53,7 @@ static bool                   g_LightVisHasData  = false;
 RenderSettings g_RenderSettings = {
     .enableOcclusion             = true,
     .enableHBAO                  = true,
+    .enableContactShadows        = true,
     .enableMLAA                  = true,
     .enableBloom                 = true,
     .msaaSamples                 = 4u,
@@ -66,6 +68,10 @@ RenderSettings g_RenderSettings = {
     .hbaoBias                    = 0.5f,
     .hbaoIntensity               = 2.0f,
     .hbaoPower                   = 2.0f,
+    .SSSBilinearThreshold        = 0.025f,
+    .SSSThickness                = 0.005f,
+    .SSSIntensity                = 0.75f,
+    .SSSContrast                 = 4.0f,
     .mlaaThreshold               = 0.08f,
     .bloomThreshold              = 0.9f,
     .bloomKnee                   = 0.5f,
@@ -131,6 +137,7 @@ static void ReleaseFrameTextureSet(FrameTextureSet* set)
     if (set->tex_hbao)                     SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_hbao);
     if (set->tex_hbao_blur)                SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_hbao_blur);
     if (set->tex_hbao_normal)              SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_hbao_normal);
+    if (set->tex_contact_shadow)           SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_contact_shadow);
     for (u32 i = 0; i < BLOOM_MAX_MIPS; i++)
     {
         if (set->tex_bloom_downsample[i]) SDL_ReleaseGPUTexture(g_GPUDevice, set->tex_bloom_downsample[i]);
@@ -158,6 +165,7 @@ static void QueueWindowFrameTexturesForRelease(WindowState* winstate)
         .tex_hbao                     = winstate->tex_hbao,
         .tex_hbao_blur                = winstate->tex_hbao_blur,
         .tex_hbao_normal              = winstate->tex_hbao_normal,
+        .tex_contact_shadow           = winstate->tex_contact_shadow,
         .tex_mlaa_edge_mask           = winstate->tex_mlaa_edge_mask,
         .tex_mlaa_edge_count          = winstate->tex_mlaa_edge_count,
         .tex_mlaa_output              = winstate->tex_mlaa_output,
@@ -175,7 +183,7 @@ static void QueueWindowFrameTexturesForRelease(WindowState* winstate)
                         = winstate->tex_gbuffer_albedo_metallic = winstate->tex_gbuffer_shadow_roughness 
                         = winstate->tex_post = winstate->tex_hiz = winstate->tex_hbao 
                         = winstate->tex_hbao_blur = winstate->tex_hbao_normal = winstate->tex_bloom_ping
-                        = winstate->tex_bloom_pong = winstate->tex_mlaa_edge_mask 
+                        = winstate->tex_contact_shadow = winstate->tex_bloom_pong = winstate->tex_mlaa_edge_mask 
                         = winstate->tex_mlaa_edge_count = winstate->tex_mlaa_output = NULL;
     
     u32 slot = (u32)(g_RenderFrameIndex % RESIZE_RELEASE_DELAY);
@@ -702,6 +710,7 @@ void Render(void)
 
         DispatchReconstructNormalCompute(cmd, viewProj, renderW, renderH);
         DispatchHBAOCompute(cmd, g_RenderSettings.enableHBAO, renderW, renderH, false);
+        DispatchContactShadowsCompute(cmd, g_RenderSettings.enableContactShadows, viewProj, renderW, renderH);
         if (forwardLocalLights)
             DispatchBuildLightGridCompute(cmd, renderW, renderH, tilesX, tilesY);
         RenderSceneForward(cmd, &(ScenePassContext){

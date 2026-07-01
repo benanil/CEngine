@@ -32,6 +32,7 @@
 #include "Shaders/msl/PreProcessing/HiZDownscaleCompute.msl.h"
 #include "Shaders/msl/PostProcessing/HBAOCompute.msl.h"
 #include "Shaders/msl/PostProcessing/HBAOBlurCompute.msl.h"
+#include "Shaders/msl/PostProcessing/ContactShadowsCompute.msl.h"
 #include "Shaders/msl/PostProcessing/MLAAEdgeMaskCompute.msl.h"
 #include "Shaders/msl/PostProcessing/MLAALineLengthCompute.msl.h"
 #include "Shaders/msl/PostProcessing/MLAABlendCompute.msl.h"
@@ -64,6 +65,7 @@
 #define Shaders_HiZDownscaleCompute_spv Shaders_PreProcessing_HiZDownscaleCompute_msl
 #define Shaders_HBAOCompute_spv Shaders_PostProcessing_HBAOCompute_msl
 #define Shaders_HBAOBlurCompute_spv Shaders_PostProcessing_HBAOBlurCompute_msl
+#define Shaders_ContactShadowsCompute_spv Shaders_PostProcessing_ContactShadowsCompute_msl
 #define Shaders_MLAAEdgeMaskCompute_spv Shaders_PostProcessing_MLAAEdgeMaskCompute_msl
 #define Shaders_MLAALineLengthCompute_spv Shaders_PostProcessing_MLAALineLengthCompute_msl
 #define Shaders_MLAABlendCompute_spv Shaders_PostProcessing_MLAABlendCompute_msl
@@ -123,6 +125,7 @@
 #include "Shaders/spv/PreProcessing/HiZDownscaleCompute.spv.h"
 #include "Shaders/spv/PostProcessing/HBAOCompute.spv.h"
 #include "Shaders/spv/PostProcessing/HBAOBlurCompute.spv.h"
+#include "Shaders/spv/PostProcessing/ContactShadowsCompute.spv.h"
 #include "Shaders/spv/PostProcessing/MLAAEdgeMaskCompute.spv.h"
 #include "Shaders/spv/PostProcessing/MLAALineLengthCompute.spv.h"
 #include "Shaders/spv/PostProcessing/MLAABlendCompute.spv.h"
@@ -162,6 +165,8 @@
 #define Shaders_HBAOCompute_spv_size Shaders_PostProcessing_HBAOCompute_spv_size
 #define Shaders_HBAOBlurCompute_spv Shaders_PostProcessing_HBAOBlurCompute_spv
 #define Shaders_HBAOBlurCompute_spv_size Shaders_PostProcessing_HBAOBlurCompute_spv_size
+#define Shaders_ContactShadowsCompute_spv Shaders_PostProcessing_ContactShadowsCompute_spv
+#define Shaders_ContactShadowsCompute_spv_size Shaders_PostProcessing_ContactShadowsCompute_spv_size
 #define Shaders_MLAAEdgeMaskCompute_spv Shaders_PostProcessing_MLAAEdgeMaskCompute_spv
 #define Shaders_MLAAEdgeMaskCompute_spv_size Shaders_PostProcessing_MLAAEdgeMaskCompute_spv_size
 #define Shaders_MLAALineLengthCompute_spv Shaders_PostProcessing_MLAALineLengthCompute_spv
@@ -232,6 +237,7 @@ SDL_GPUComputePipeline* g_HiZBuildComputePipeline        = NULL;
 SDL_GPUComputePipeline* g_HiZDownscaleComputePipeline    = NULL;
 SDL_GPUComputePipeline* g_HBAOComputePipeline            = NULL;
 SDL_GPUComputePipeline* g_HBAOBlurComputePipeline        = NULL;
+SDL_GPUComputePipeline* g_ContactShadowsComputePipeline  = NULL;
 SDL_GPUComputePipeline* g_DeferredLightingComputePipeline= NULL;
 SDL_GPUComputePipeline* g_MLAAEdgeMaskComputePipeline    = NULL;
 SDL_GPUComputePipeline* g_MLAALineLengthComputePipeline  = NULL;
@@ -301,6 +307,11 @@ static void InitComputePipelines(void)
         .num_samplers = 2, .num_readwrite_storage_textures = 1, .num_uniform_buffers = 1,
         THREAD_COUNT_XYZ(8, 8, 1)
     }); CHECK_CREATE(g_HBAOBlurComputePipeline, "HBAO Blur Compute Pipeline");
+
+    g_ContactShadowsComputePipeline = COMPUTE_DEF(Shaders_ContactShadowsCompute_spv),
+        .num_samplers = 1, .num_readwrite_storage_textures = 1, .num_uniform_buffers = 1,
+        THREAD_COUNT_XYZ(64, 1, 1)
+    }); CHECK_CREATE(g_ContactShadowsComputePipeline, "Contact Shadows Compute Pipeline");
 
     g_DeferredLightingComputePipeline = COMPUTE_DEF(Shaders_DeferredLighting_spv),
         .num_samplers = 5, .num_readwrite_storage_textures = 1, .num_uniform_buffers = 1,
@@ -645,15 +656,15 @@ static void InitUIImagePipeline(void)
 
 // Forward+ opaque pipelines. Single HDR color target,
 // depth EQUAL for prepass reuse, or LESS_OR_EQUAL when MSAA uses a separate depth target. The fragment
-// stage binds 7 sampled textures (material pages + shadow atlases + AO) and 7 storage
+// stage binds 8 sampled textures (material pages + shadow atlases + AO/contact) and 7 storage
 // buffers (materials, descriptors, lights, light grid/index, point/spot shadow matrices).
 static void InitForwardPipelines(void)
 {
     SDL_GPUShaderFormat shaderformat = AX_GPU_SHADER_FORMAT;
     SDL_GPUShader* sur_vert = PIPELINE_VERT_DEF(Shaders_SurfaceForwardVert_spv), .num_uniform_buffers = 1, .num_storage_buffers = 4 }); CHECK_CREATE(sur_vert, "Surface Forward Vertex Shader")
-    SDL_GPUShader* sur_frag = PIPELINE_FRAG_DEF(Shaders_SurfaceForwardFrag_spv), .num_uniform_buffers = 1, .num_samplers = 7, .num_storage_buffers = 7 }); CHECK_CREATE(sur_frag, "Surface Forward Fragment Shader")
+    SDL_GPUShader* sur_frag = PIPELINE_FRAG_DEF(Shaders_SurfaceForwardFrag_spv), .num_uniform_buffers = 1, .num_samplers = 8, .num_storage_buffers = 7 }); CHECK_CREATE(sur_frag, "Surface Forward Fragment Shader")
     SDL_GPUShader* ski_vert = PIPELINE_VERT_DEF(Shaders_SkinnedForwardVert_spv), .num_uniform_buffers = 1, .num_storage_buffers = 6 }); CHECK_CREATE(ski_vert, "Skinned Forward Vertex Shader")
-    SDL_GPUShader* ski_frag = PIPELINE_FRAG_DEF(Shaders_SkinnedForwardFrag_spv), .num_uniform_buffers = 1, .num_samplers = 7, .num_storage_buffers = 7 }); CHECK_CREATE(ski_frag, "Skinned Forward Fragment Shader")
+    SDL_GPUShader* ski_frag = PIPELINE_FRAG_DEF(Shaders_SkinnedForwardFrag_spv), .num_uniform_buffers = 1, .num_samplers = 8, .num_storage_buffers = 7 }); CHECK_CREATE(ski_frag, "Skinned Forward Fragment Shader")
 
     const SDL_GPUVertexAttribute sur_attributes[3] = {
         { .location = 0, .buffer_slot = 0, .format = SDL_GPU_VERTEXELEMENTFORMAT_UINT2, .offset = offsetof(AVertex, position) },
@@ -883,6 +894,7 @@ void DestroyRenderPipelines(void)
     if (g_HiZDownscaleComputePipeline)     SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_HiZDownscaleComputePipeline);
     if (g_HBAOComputePipeline)             SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_HBAOComputePipeline);
     if (g_HBAOBlurComputePipeline)         SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_HBAOBlurComputePipeline);
+    if (g_ContactShadowsComputePipeline)   SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_ContactShadowsComputePipeline);
     if (g_DeferredLightingComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_DeferredLightingComputePipeline);
     if (g_MLAAEdgeMaskComputePipeline)     SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_MLAAEdgeMaskComputePipeline);
     if (g_MLAALineLengthComputePipeline)   SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_MLAALineLengthComputePipeline);

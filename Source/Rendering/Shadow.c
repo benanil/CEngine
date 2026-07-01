@@ -333,7 +333,7 @@ static void BuildSpotShadowData(ShadowData* data)
         mat4x4 proj = PerspectiveFovRH(fov, 1.0f, 1.0f, SPOT_SHADOW_NEAR_PLANE, radius);
         v128f eye = VecLoad(light->positionRadius);
         v128f dir = VecLoad(light->directionCone);
-        dir  = VecNormEst(dir);
+        dir  = VecNorm(dir);
         v128f up = VecSetR(0.0f, 1.0f, 0.0f, 0.0f);
         if (Absf32(light->directionCone[1]) > 0.999f) up = VecSetR(0.0f, 0.0f, 1.0f, 0.0f);
         data->lightViewProj[shadowIndex] = M44Multiply(M44LookAtRHVec(eye, dir, up), proj);

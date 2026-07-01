@@ -38,13 +38,19 @@ float LocalLights_SamplePointShadow(LightGPU light, float3 worldPos, float3 norm
     if ((light.flags & LIGHT_FLAG_SHADOWED) == 0u || light.shadowIndex >= POINT_SHADOW_MAX_LIGHTS)
         return 1.0f;
 
-    float3 lightToWorld = worldPos - light.positionRadius.xyz;
+    float ndotl = saturate(dot(normal, lightDir));
+    float3 biasedWorldPos = worldPos + (normal * (0.03f * (1.0f - ndotl)));
+
+    // Use the new biasedWorldPos instead of the original worldPos for all matrix math
+    float3 lightToWorld = biasedWorldPos - light.positionRadius.xyz;
     uint face = LocalLights_PointShadowFace(lightToWorld);
     uint matrixIndex = light.shadowIndex * POINT_SHADOW_FACE_COUNT + face;
-    float4 shadowPos = MulPointShadowSide(PointShadowMatrices[matrixIndex], float4(worldPos, 1.0f));
+    float4 shadowPos = MulPointShadowSide(PointShadowMatrices[matrixIndex], float4(biasedWorldPos, 1.0f));
+    
     float3 proj = shadowPos.xyz / max(abs(shadowPos.w), 0.00001f);
     float2 uv = proj.xy * float2(0.5f, -0.5f) + 0.5f;
     float depth = proj.z;
+    
     if (shadowPos.w <= 0.0f || any(uv < 0.0f) || any(uv > 1.0f) || depth < 0.0f || depth > 1.0f)
         return 1.0f;
 
@@ -53,8 +59,7 @@ float LocalLights_SamplePointShadow(LightGPU light, float3 worldPos, float3 norm
     if (light.shadowIndex >= layers)
         return 1.0f;
 
-    float ndotl = saturate(dot(normal, lightDir));
-    float bias = max(0.0025f * (1.0f - ndotl), 0.0008f);
+    float bias = max(0.0035f * (1.0f - ndotl), 0.0008f);
     uint faceWidth = max(width / POINT_SHADOW_FACE_COUNT, 1u);
     float2 texel = 1.0f / float2(faceWidth, max(height, 1u));
     float shadow = 0.0f;
@@ -88,7 +93,7 @@ float LocalLights_SampleSpotShadow(LightGPU light, float3 worldPos, float3 norma
         return 1.0f;
 
     float ndotl = saturate(dot(normal, lightDir));
-    float bias = max(0.0015f * (1.0f - ndotl), 0.0005f);
+    float bias = max(0.003f * (1.0f - ndotl), 0.0005f);
     float2 texel = 1.0f / float2(max(width, 1u), max(height, 1u));
     float shadow = 0.0f;
 

@@ -53,6 +53,7 @@ COMPUTE_SHADERS = [
     ("PostProcessing/BloomUpsampleCompute", "main"),
     ("PostProcessing/HBAOCompute", "main"),
     ("PostProcessing/HBAOBlurCompute", "main"),
+    ("PostProcessing/ContactShadowsCompute", "main"),
     ("PostProcessing/MLAAEdgeMaskCompute", "main"),
     ("PostProcessing/MLAALineLengthCompute", "main"),
     ("PostProcessing/MLAABlendCompute", "main"),

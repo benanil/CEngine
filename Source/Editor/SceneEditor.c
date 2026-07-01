@@ -403,36 +403,6 @@ static bool EditorImportNeedsDetailWarning(const char* normalizedPath)
 }
 
 // todo remove this
-static bool EditorParseScaleText(const char* text, f32* outScale)
-{
-    if (!text || !outScale) return false;
-    f32 sign = 1.0f;
-    u32 i = 0u;
-    if (text[i] == '-') { sign = -1.0f; i++; }
-
-    bool hasDigits = false;
-    f32 value = 0.0f;
-    for (; text[i] >= '0' && text[i] <= '9'; i++)
-    {
-        hasDigits = true;
-        value = value * 10.0f + (f32)(text[i] - '0');
-    }
-    if (text[i] == '.')
-    {
-        f32 scale = 0.1f;
-        i++;
-        for (; text[i] >= '0' && text[i] <= '9'; i++)
-        {
-            hasDigits = true;
-            value += (f32)(text[i] - '0') * scale;
-            scale *= 0.1f;
-        }
-    }
-    if (text[i] || !hasDigits) return false;
-    *outScale = Clampf32(value * sign, 0.001f, 10.0f);
-    return true;
-}
-
 void EditorOpenImportDetail(const char* path)
 {
     char normalized[512];
@@ -511,13 +481,13 @@ static void SceneImportDetailPopup(void)
         if (text)
         {
             u32 len = 0u;
-            const char* a = "Warning: skinned animated vertices can only be packed up to ";
+            const char* a = "Warning: this object is bigger than usual ";
             u32 n = (u32)StringLength(a); MemCopy(text + len, a, n); len += n;
             len += (u32)FloatToString(text + len, ANIMATION_MAX_METERS, 3);
-            const char* b = "m.\nThis mesh reaches ";
+            const char* b = "m.\nit mesh reaches ";
             n = (u32)StringLength(b); MemCopy(text + len, b, n); len += n;
             len += (u32)FloatToString(text + len, importDetailInfo.maxSkinnedAnimMeters, 3);
-            const char* c = "m\nso animation output may clamp. Recommended import scale: ";
+            const char* c = "m\nRecommended import scale: ";
             n = (u32)StringLength(c); MemCopy(text + len, c, n); len += n;
             len += (u32)FloatToString(text + len, importDetailInfo.recommendedScale, 4);
             text[len] = '\0';
@@ -558,15 +528,15 @@ static void SceneImportDetailPopup(void)
     }) {
         if (UIButton(CLAY_ID("ImportDetailOk"), CLAY_STRING("Import"), (Clay_Dimensions){ 96.0f, 30.0f }, false))
         {
-            EditorParseScaleText(importDetailScaleText, &importDetailScale);
+            ParseFloat(importDetailScaleText, &importDetailScale);
             Scene* scene = Scene_GetActive();
             if (!scene) scene = EditorNewScene();
             u32 bundleIdx = Scene_AddBundleAuto(scene, importDetailPath);
             if (bundleIdx != INVALID_BUNDLE)
             {
                 v128f rotation = VecNorm(QFromEuler(importDetailEuler[0] * MATH_DegToRad,
-                                                   importDetailEuler[1] * MATH_DegToRad,
-                                                   importDetailEuler[2] * MATH_DegToRad));
+                                                    importDetailEuler[1] * MATH_DegToRad,
+                                                    importDetailEuler[2] * MATH_DegToRad));
                 EditorSpawnBundleAt(scene, bundleIdx, VecZero(), rotation, VecSet1(importDetailScale));
             }
             else

@@ -95,6 +95,7 @@ extern SDL_GPUComputePipeline* g_HiZBuildComputePipeline;
 extern SDL_GPUComputePipeline* g_HiZDownscaleComputePipeline;
 extern SDL_GPUComputePipeline* g_HBAOComputePipeline;
 extern SDL_GPUComputePipeline* g_HBAOBlurComputePipeline;
+extern SDL_GPUComputePipeline* g_ContactShadowsComputePipeline;
 extern SDL_GPUComputePipeline* g_DeferredLightingComputePipeline;
 extern SDL_GPUComputePipeline* g_MLAAEdgeMaskComputePipeline;
 extern SDL_GPUComputePipeline* g_MLAALineLengthComputePipeline;
@@ -128,6 +129,7 @@ void DispatchHiZBuildCompute(SDL_GPUCommandBuffer* cmd);
 // extractFromGBuffer: deferred path unpacks normals from the G-buffer tangent target;
 // the forward path passes false (it fills tex_hbao_normal via DispatchReconstructNormalCompute).
 void DispatchHBAOCompute(SDL_GPUCommandBuffer* cmd, bool enabled, u32 width, u32 height, bool extractFromGBuffer);
+void DispatchContactShadowsCompute(SDL_GPUCommandBuffer* cmd, bool enabled, mat4x4 viewProj, u32 width, u32 height);
 void DispatchReconstructNormalCompute(SDL_GPUCommandBuffer* cmd, mat4x4 viewProj, u32 width, u32 height);
 void DispatchBuildLightGridCompute(SDL_GPUCommandBuffer* cmd, u32 width, u32 height, u32 tilesX, u32 tilesY);
 void DispatchBloomCompute(SDL_GPUCommandBuffer* cmd, u32 width, u32 height);
