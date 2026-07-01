@@ -2,14 +2,17 @@
 
 #include "basis_universal/encoder/basisu_comp.h"          // Main BasisU encoder API
 #include "basis_universal/encoder/basisu_enc.h"         // For load_image()
+#include "basis_universal/encoder/basisu_gpu_texture.h"
 #include "basis_universal/transcoder/basisu_file_headers.h"  // For basis_tex_format
 
 #include <cstdio>
 #include <cstdlib>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "stb/stb_image.h"
+#include "basis_universal/encoder/3rdparty/tinydds.h"
 
 using namespace basisu;
 
@@ -17,6 +20,364 @@ using namespace basisu;
 // Internal helpers
 // -----------------------------------------------------------------------------
 static bool g_encoder_initialized = false;
+
+static bool has_extension(const char* filename, const char* ext) {
+    if (!filename || !ext) return false;
+
+    const char* dot = NULL;
+    for (const char* p = filename; *p; ++p) {
+        if (*p == '.') dot = p;
+    }
+    if (!dot) return false;
+
+    ++dot;
+    while (*dot && *ext) {
+        char a = *dot++;
+        char b = *ext++;
+        if (a >= 'A' && a <= 'Z') a = (char)(a - 'A' + 'a');
+        if (b >= 'A' && b <= 'Z') b = (char)(b - 'A' + 'a');
+        if (a != b) return false;
+    }
+
+    return *dot == '\0' && *ext == '\0';
+}
+
+static bool is_dds_bc1(TinyDDS_Format format) {
+    return format == TDDS_BC1_RGBA_UNORM_BLOCK ||
+           format == TDDS_BC1_RGBA_SRGB_BLOCK ||
+           (int)format == TIF_DXGI_FORMAT_BC1_TYPELESS;
+}
+
+static bool is_dds_bc3(TinyDDS_Format format) {
+    return format == TDDS_BC3_UNORM_BLOCK ||
+           format == TDDS_BC3_SRGB_BLOCK ||
+           (int)format == TIF_DXGI_FORMAT_BC3_TYPELESS;
+}
+
+static bool is_dds_bc4(TinyDDS_Format format) {
+    return format == TDDS_BC4_UNORM_BLOCK ||
+           format == TDDS_BC4_SNORM_BLOCK ||
+           (int)format == TIF_DXGI_FORMAT_BC4_TYPELESS;
+}
+
+static bool is_dds_bc5(TinyDDS_Format format) {
+    return format == TDDS_BC5_UNORM_BLOCK ||
+           format == TDDS_BC5_SNORM_BLOCK ||
+           (int)format == TIF_DXGI_FORMAT_BC5_TYPELESS;
+}
+
+static bool is_dds_compressed(TinyDDS_Format format) {
+    return is_dds_bc1(format) || is_dds_bc3(format) || is_dds_bc4(format) || is_dds_bc5(format);
+}
+
+template <typename Fn>
+static void parallel_for_range(uint32_t item_count, uint32_t min_items_per_worker, const Fn& fn) {
+    if (!item_count) return;
+
+    uint32_t worker_count = std::thread::hardware_concurrency();
+    if (worker_count < 2 || item_count < min_items_per_worker * 2) {
+        fn(0, item_count);
+        return;
+    }
+
+    const uint32_t max_workers_for_work = item_count / min_items_per_worker;
+    if (worker_count > max_workers_for_work) worker_count = max_workers_for_work;
+    if (worker_count < 2) {
+        fn(0, item_count);
+        return;
+    }
+
+    const uint32_t items_per_worker = (item_count + worker_count - 1) / worker_count;
+    std::vector<std::thread> threads;
+    threads.reserve(worker_count - 1);
+
+    uint32_t begin = items_per_worker;
+    while (begin < item_count) {
+        const uint32_t end = (begin + items_per_worker < item_count) ? begin + items_per_worker : item_count;
+        threads.emplace_back([&fn, begin, end]() { fn(begin, end); });
+        begin = end;
+    }
+
+    fn(0, (items_per_worker < item_count) ? items_per_worker : item_count);
+
+    for (std::thread& thread : threads) {
+        thread.join();
+    }
+}
+
+static bool decode_dds_uncompressed(TinyDDS_Format format, const uint8_t* src, uint32_t width, uint32_t height, uint32_t size, image& img) {
+    uint32_t bytes_per_pixel = 0;
+    switch (format) {
+        case TDDS_R8G8B8A8_UNORM:
+        case TDDS_R8G8B8A8_SRGB:
+        case TDDS_B8G8R8A8_UNORM:
+        case TDDS_B8G8R8A8_SRGB:
+        case TDDS_B8G8R8X8_UNORM:
+            bytes_per_pixel = 4;
+            break;
+        case TDDS_R8_UNORM:
+            bytes_per_pixel = 1;
+            break;
+        case TDDS_R8G8_UNORM:
+            bytes_per_pixel = 2;
+            break;
+        default:
+            return false;
+    }
+
+    if (size < (uint64_t)width * height * bytes_per_pixel) return false;
+
+    parallel_for_range(height, 128, [&](uint32_t begin_y, uint32_t end_y) {
+        for (uint32_t y = begin_y; y < end_y; ++y) {
+            const uint8_t* in = src + (size_t)y * width * bytes_per_pixel;
+            color_rgba* out = img.get_ptr() + (size_t)y * width;
+
+            switch (format) {
+                case TDDS_R8G8B8A8_UNORM:
+                case TDDS_R8G8B8A8_SRGB:
+                    memcpy(out, in, (size_t)width * 4);
+                    break;
+
+                case TDDS_B8G8R8A8_UNORM:
+                case TDDS_B8G8R8A8_SRGB:
+                    for (uint32_t x = 0; x < width; ++x) {
+                        out[x].r = in[x * 4 + 2];
+                        out[x].g = in[x * 4 + 1];
+                        out[x].b = in[x * 4 + 0];
+                        out[x].a = in[x * 4 + 3];
+                    }
+                    break;
+
+                case TDDS_B8G8R8X8_UNORM:
+                    for (uint32_t x = 0; x < width; ++x) {
+                        out[x].r = in[x * 4 + 2];
+                        out[x].g = in[x * 4 + 1];
+                        out[x].b = in[x * 4 + 0];
+                        out[x].a = 255;
+                    }
+                    break;
+
+                case TDDS_R8_UNORM:
+                    for (uint32_t x = 0; x < width; ++x) {
+                        out[x].r = in[x];
+                        out[x].g = in[x];
+                        out[x].b = in[x];
+                        out[x].a = 255;
+                    }
+                    break;
+
+                case TDDS_R8G8_UNORM:
+                    for (uint32_t x = 0; x < width; ++x) {
+                        out[x].r = in[x * 2 + 0];
+                        out[x].g = in[x * 2 + 1];
+                        out[x].b = 0;
+                        out[x].a = 255;
+                    }
+                    break;
+
+                default:
+                    break;
+            }
+        }
+    });
+
+    return true;
+}
+
+typedef enum DDSBlockDecodeFormat_ {
+    DDS_BLOCK_DECODE_BC1,
+    DDS_BLOCK_DECODE_BC3,
+    DDS_BLOCK_DECODE_BC4,
+    DDS_BLOCK_DECODE_BC5,
+} DDSBlockDecodeFormat;
+
+static bool decode_dds_compressed(TinyDDS_Format format, const uint8_t* src, uint32_t width, uint32_t height, uint32_t size, image& img) {
+    const uint32_t block_bytes = (is_dds_bc1(format) || is_dds_bc4(format)) ? 8 : 16;
+    const uint32_t blocks_x = (width + 3) >> 2;
+    const uint32_t blocks_y = (height + 3) >> 2;
+    const uint32_t row_pitch = blocks_x * block_bytes;
+    if (size < (uint64_t)row_pitch * blocks_y) return false;
+
+    DDSBlockDecodeFormat decode_format;
+    if (is_dds_bc1(format))      decode_format = DDS_BLOCK_DECODE_BC1;
+    else if (is_dds_bc3(format)) decode_format = DDS_BLOCK_DECODE_BC3;
+    else if (is_dds_bc4(format)) decode_format = DDS_BLOCK_DECODE_BC4;
+    else if (is_dds_bc5(format)) decode_format = DDS_BLOCK_DECODE_BC5;
+    else  return false;
+    
+
+    parallel_for_range(blocks_y, 16, [&](uint32_t begin_by, uint32_t end_by) {
+        for (uint32_t by = begin_by; by < end_by; ++by) {
+            for (uint32_t bx = 0; bx < blocks_x; ++bx) {
+                const uint8_t* block = src + (size_t)by * row_pitch + (size_t)bx * block_bytes;
+                color_rgba pixels[16];
+
+                switch (decode_format) {
+                    case DDS_BLOCK_DECODE_BC1:
+                        unpack_bc1(block, pixels, true);
+                        break;
+
+                    case DDS_BLOCK_DECODE_BC3:
+                        unpack_bc3(block, pixels);
+                        break;
+
+                    case DDS_BLOCK_DECODE_BC4:
+                        unpack_bc4(block, &pixels[0].r, sizeof(color_rgba));
+                        for (uint32_t i = 0; i < 16; ++i) {
+                            pixels[i].g = pixels[i].r;
+                            pixels[i].b = pixels[i].r;
+                            pixels[i].a = 255;
+                        }
+                        break;
+
+                    case DDS_BLOCK_DECODE_BC5:
+                        unpack_bc5(block, pixels);
+                        for (uint32_t i = 0; i < 16; ++i) {
+                            pixels[i].b = 0;
+                            pixels[i].a = 255;
+                        }
+                        break;
+                }
+
+                for (uint32_t py = 0; py < 4; ++py) {
+                    const uint32_t y = by * 4 + py;
+                    if (y >= height) break;
+
+                    for (uint32_t px = 0; px < 4; ++px) {
+                        const uint32_t x = bx * 4 + px;
+                        if (x >= width) break;
+                        img(x, y) = pixels[py * 4 + px];
+                    }
+                }
+            }
+        }
+    });
+
+    return true;
+}
+
+static void tinydds_error_callback(void* user, char const* msg) {
+    BASISU_NOTE_UNUSED(user);
+    fprintf(stderr, "tinydds: %s\n", msg);
+}
+
+static void* tinydds_alloc_callback(void* user, size_t size) {
+    BASISU_NOTE_UNUSED(user);
+    return malloc(size);
+}
+
+static void tinydds_free_callback(void* user, void* memory) {
+    BASISU_NOTE_UNUSED(user);
+    free(memory);
+}
+
+static size_t tinydds_read_callback(void* user, void* buffer, size_t byte_count) {
+    return fread(buffer, 1, byte_count, (FILE*)user);
+}
+
+static bool tinydds_seek_callback(void* user, int64_t offset) {
+#ifdef _MSC_VER
+    return _fseeki64((FILE*)user, offset, SEEK_SET) == 0;
+#else
+    return fseek((FILE*)user, (long)offset, SEEK_SET) == 0;
+#endif
+}
+
+static int64_t tinydds_tell_callback(void* user) {
+#ifdef _MSC_VER
+    return _ftelli64((FILE*)user);
+#else
+    return (int64_t)ftell((FILE*)user);
+#endif
+}
+
+static bool load_dds_image(const char* input_filename, image& img) {
+    FILE* file = fopen(input_filename, "rb");
+    if (!file) {
+        fprintf(stderr, "Can't open DDS file %s\n", input_filename);
+        return false;
+    }
+
+    TinyDDS_Callbacks callbacks;
+    callbacks.errorFn = tinydds_error_callback;
+    callbacks.allocFn = tinydds_alloc_callback;
+    callbacks.freeFn = tinydds_free_callback;
+    callbacks.readFn = tinydds_read_callback;
+    callbacks.seekFn = tinydds_seek_callback;
+    callbacks.tellFn = tinydds_tell_callback;
+
+    TinyDDS_ContextHandle dds = TinyDDS_CreateContext(&callbacks, file);
+    if (!dds) {
+        fclose(file);
+        return false;
+    }
+
+    if (!TinyDDS_ReadHeader(dds)) {
+        fprintf(stderr, "Failed parsing DDS header in file %s\n", input_filename);
+        TinyDDS_DestroyContext(dds);
+        fclose(file);
+        return false;
+    }
+
+    if (!TinyDDS_Is2D(dds) || TinyDDS_ArraySlices(dds) > 1 || TinyDDS_IsCubemap(dds)) {
+        fprintf(stderr, "DDS arrays, cubemaps, and 3D textures are not supported for Basis compression: %s\n", input_filename);
+        TinyDDS_DestroyContext(dds);
+        fclose(file);
+        return false;
+    }
+
+    const uint32_t width = TinyDDS_Width(dds);
+    const uint32_t height = TinyDDS_Height(dds);
+    const uint8_t* src = (const uint8_t*)TinyDDS_ImageRawData(dds, 0);
+    const uint32_t size = TinyDDS_ImageSize(dds, 0);
+    const TinyDDS_Format format = TinyDDS_GetFormat(dds);
+    if (!width || !height || !src || !size) {
+        fprintf(stderr, "DDS has no usable base image: %s\n", input_filename);
+        TinyDDS_DestroyContext(dds);
+        fclose(file);
+        return false;
+    }
+
+    image decoded(width, height);
+    bool ok = false;
+    if (is_dds_compressed(format)) {
+        ok = decode_dds_compressed(format, src, width, height, size, decoded);
+    } else {
+        ok = decode_dds_uncompressed(format, src, width, height, size, decoded);
+    }
+
+    if (!ok) {
+        fprintf(stderr, "Unsupported DDS format %d for Basis compression: %s\n", (int)format, input_filename);
+        TinyDDS_DestroyContext(dds);
+        fclose(file);
+        return false;
+    }
+
+    img = decoded;
+    TinyDDS_DestroyContext(dds);
+    fclose(file);
+    return true;
+}
+
+static bool load_input_image(const char* input_filename, image& img) {
+    if (has_extension(input_filename, "dds")) {
+        return load_dds_image(input_filename, img);
+    }
+
+    int w, h, ch;
+    unsigned char* data = stbi_load(input_filename, &w, &h, &ch, 4);
+    if (!data) {
+        fprintf(stderr, "stbi_load failed: %s\n", stbi_failure_reason());
+        return false;
+    }
+
+    image decoded(w, h);
+    memcpy(decoded.get_ptr(), data, (size_t)w * h * 4);
+    stbi_image_free(data);
+
+    img = decoded;
+    return true;
+}
 
 int basis_encoder_init(void) {
     if (!g_encoder_initialized) {
@@ -101,16 +462,10 @@ static bool setup_params(basis_compressor_params& params,
     params.m_write_output_basis_or_ktx2_files = true;  // let the compressor write directly
     params.m_create_ktx2_file = false;                 // we want .basis, not KTX2
 
-    int w, h, ch;
-    unsigned char* data = stbi_load(input_filename, &w, &h, &ch, 4);
-    if (!data) {
-        fprintf(stderr, "stbi_load failed: %s\n", stbi_failure_reason());
+    image img;
+    if (!load_input_image(input_filename, img)) {
         return false;
     }
-
-    image img(w, h);
-    memcpy(img.get_ptr(), data, w * h * 4);
-    stbi_image_free(data);
 
     if (flags & BASIS_FLAG_NORMAL_MAP) {
         for (uint32_t y = 0; y < img.get_height(); y++) {
