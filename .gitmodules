@@ -20,3 +20,6 @@
 [submodule "Extern/clay"]
 	path = Extern/clay
 	url = https://github.com/nicbarker/clay
+[submodule "Extern/box3d"]
+	path = Extern/box3d
+	url = https://github.com/erincatto/box3d
