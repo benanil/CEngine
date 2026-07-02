@@ -113,9 +113,12 @@ target_sources(${EXECUTABLE_NAME} PRIVATE
     Source/AnimationBake.c
     Source/BVH.c
     Source/Scene.c
+    Source/SceneBundleCache.c
     Source/SceneSerializer.c
     Source/DemoScene.c
-    Source/Terrain/Terrain.c
+    Source/Physics.c
+
+	Source/Terrain/Terrain.c
     Source/Terrain/TerrainDensity.c
     Source/Terrain/TerrainEdit.c
     Source/Terrain/TransvoxelMesher.c
@@ -204,6 +207,10 @@ if(WIN32)
 endif()
 
 target_link_libraries(${EXECUTABLE_NAME} PUBLIC SDL3::SDL3) # If using satelite libraries, SDL must be the last item in the list.
+
+add_subdirectory(Extern/box3d)
+
+target_link_libraries(${EXECUTABLE_NAME} PRIVATE box3d::box3d)
 
 set_property(TARGET ${EXECUTABLE_NAME} PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
 # on Visual Studio, set our app as the default project

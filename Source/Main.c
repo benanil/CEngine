@@ -5,6 +5,7 @@
 
 #include <SDL3/SDL_gpu.h>
 #include <SDL3/SDL_main.h>
+#include <box3d/box3d.h>
 
 #include "Include/Platform.h"
 #include "Include/Camera.h"
@@ -17,6 +18,7 @@
 #include "Include/DemoScene.h"
 #include "Include/Terrain.h"
 #include "Include/Editor.h"
+#include "Include/JobSystem.h"
 #include "Math/Quaternion.h"
 
 static s32 done = 0;
@@ -59,8 +61,8 @@ static void MainLoopTick(void)
     Scene_SubmitLights();
 
     EditorSceneHotkeys();
+	Scene_Update(PlatformCtx.DeltaTime);
 
-    SceneAsyncUpdate();
     if (!TerrainEditorUpdate(&g_Camera) && !EditorGizmoUpdate(&g_Camera) && !EditorLightGizmoUpdate(&g_Camera))
         EditorPickingUpdate(&g_Camera);
 
@@ -109,7 +111,7 @@ static SDL_AppResult SDLCALL MainAppInit(void** appstate, int argc, char* argv[]
     InitBuffers();
     Terrain_Init();
     EditorSceneStartup();
-
+	
     CameraInit(&g_Camera, 1920, 1080);
 
     return SDL_APP_CONTINUE;

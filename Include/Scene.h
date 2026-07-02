@@ -5,6 +5,7 @@
 #include "TextureSystem.h"
 #include "Animation.h"
 #include <SDL3/SDL_atomic.h>
+#include <box3d/id.h>
 
 #define MAX_SCENE_BUNDLES 1024u
 #define MAX_SCENE_LIGHTS  256u
@@ -67,6 +68,8 @@ typedef struct Scene_
     u32 numMaterials;    // material slot watermark, offsets stay stable while occupied
     u32 renderDataDirty; // static render set buffers need re-upload, consumed by Render
     u32 texturesBaked;   // pages came from a baked atlas, packer state is unusable until a repack
+
+	b3WorldId physicsWorldID;
 } Scene;
 
 typedef enum SceneAsyncOp_
@@ -119,6 +122,13 @@ const char* Scene_GetActivePath(void);
 s32 Scene_Activate(Scene* scene);
 
 void Scene_Deactivate(Scene* scene);
+
+void Scene_InitPhysics(Scene* scene);
+void Scene_PhysicsDestroy(Scene* scene);
+void Scene_PhysicsUpdate(Scene* scene, float deltaTime);
+
+// per-frame scene tick: pumps async loads and steps physics for the active scene
+void Scene_Update(float deltaTime);
 
 // loads a gltf bundle, packs its textures into the scene's texture system and registers
 // its primitives to the matching render set. bundles are shared through a global cache

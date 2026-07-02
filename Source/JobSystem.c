@@ -20,17 +20,11 @@ typedef enum JobSystemHandleState_
     JobSystemHandleState_Active = 2
 } JobSystemHandleState;
 
-typedef struct JobSystemHandleSlot_
-{
-    SDL_AtomicInt state;
-    SDL_AtomicU32 generation;
-} JobSystemHandleSlot;
-
 typedef struct JobSystemTask_
 {
     JobSystemFn fn;
-    void* userData;
-    JobHandle handle;
+    void*       userData;
+    JobHandle   handle;
 } JobSystemTask;
 
 typedef struct JobSystemQueue_
@@ -43,6 +37,12 @@ typedef struct JobSystemQueue_
     u32 count;
 } JobSystemQueue;
 
+typedef struct JobSystemHandleSlot_
+{
+    SDL_AtomicInt state;
+    SDL_AtomicU32 generation;
+} JobSystemHandleSlot;
+
 typedef struct JobSystemWorker_
 {
     struct JobSystem_* jobs;
@@ -51,22 +51,22 @@ typedef struct JobSystemWorker_
 
 struct JobSystem_
 {
-    SDL_Thread**     threads;
-    JobSystemWorker* workers;
-    JobSystemQueue*  queues;
-    SDL_Condition*   sleepingCondition;
-    SDL_Mutex*       sleepingMutex;
-    SDL_Condition*   waitingCondition;
-    SDL_Mutex*       waitingMutex;
+    SDL_Thread**         threads;
+    JobSystemWorker*     workers;
+    JobSystemQueue*      queues;
+    SDL_Condition*       sleepingCondition;
+    SDL_Mutex*           sleepingMutex;
+    SDL_Condition*       waitingCondition;
+    SDL_Mutex*           waitingMutex;
     JobSystemHandleSlot* handleSlots;
-    SDL_AtomicU32    nextQueue;
-    SDL_AtomicU32    nextHandleSlot;
-    SDL_AtomicU32    counter;
-    SDL_AtomicInt    queuedCount;
-    SDL_AtomicInt    alive;
-    u32              queueCount;
-    u32              workerThreadCount;
-    u32              handleSlotCount;
+    SDL_AtomicU32        nextQueue;
+    SDL_AtomicU32        nextHandleSlot;
+    SDL_AtomicU32        counter;
+    SDL_AtomicInt        queuedCount;
+    SDL_AtomicInt        alive;
+    u32                  queueCount;
+    u32                  workerThreadCount;
+    u32                  handleSlotCount;
 };
 
 static JobHandle JobSystem_MakeHandle(u32 slotIndex, u32 generation)

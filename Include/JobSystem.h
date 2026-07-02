@@ -7,9 +7,12 @@
 extern "C" {
 #endif
 
-typedef struct JobSystem_ JobSystem;
 typedef s32 JobHandle;
 typedef void (*JobSystemFn)(void* userData);
+
+// Opaque handle. The queue/worker/handle-slot internals live in JobSystem.c; callers only
+// ever hold a JobSystem* and go through the functions below.
+typedef struct JobSystem_ JobSystem;
 
 // threadCount 0 uses SDL_GetNumLogicalCPUCores(). queueCapacity 0 uses the default.
 JobSystem* JobSystem_Create(u32 threadCount, u32 queueCapacity);
