@@ -2,6 +2,7 @@
 
 #include "Include/Common.h"
 #include "Include/Algorithm.h"
+#include "Include/FileSystem.h"
 #include "Math/Math.h" // Log10_32
 
 #define XSWAP(type, x, y) do { \
@@ -249,6 +250,79 @@ int FloatToString(char* ptr, float f, int afterpoint)
     return numChars + IntToString(ptr + numChars, frac, afterpoint);
 }
 
+char* WStr(char* p, const char* s) {
+    u32 len = (u32)StringLength(s);
+    MemCopy(p, s, len);
+    return p + len;
+}
+
+char* WInt(char* p, s64 v) {
+    *p++ = ' '; 
+    return p + IntToString(p, v, 0); 
+}
+
+char* WFlt(char* p, float v) {
+    *p++ = ' '; 
+    return p + FloatToString(p, v, 6); 
+}
+
+void WEnd(AFile file, char* base, char* p) {
+    *p++ = '\n'; 
+    AFileWrite(base, (u64)(p - base), file, 1); 
+}
+
+const char* RU32(const char* p, u32* v) {
+    s64 value = 0;
+    p = ParseNumberI64(p, &value);
+    *v = (u32)value;
+    return p;
+}
+
+const char* RU64(const char* p, u64* v) {
+    s64 value = 0;
+    p = ParseNumberI64(p, &value);
+    *v = (u64)value;
+    return p;
+}
+
+const char* RFlt(const char* p, f32* v) {
+    return ParseFloat(p, v);
+}
+
+char* ParseWriteF32(char* p, const char* key, f32 value, int decimals) {
+    p = WStr(p, key);
+    *p++ = ' ';
+    p += FloatToString(p, value, decimals);
+    *p++ = '\n';
+    return p;
+}
+
+char* ParseWriteU32(char* p, const char* key, u32 value)
+{
+    p = WStr(p, key);
+    *p++ = ' ';
+    p += IntToString(p, (int64_t)value, 0);
+    *p++ = '\n';
+    return p;
+}
+
+char* ParseWriteBool(char* p, const char* key, bool value) {
+    p = WStr(p, key);
+    *p++ = ' ';
+    *p++ = value ? '1' : '0';
+    *p++ = '\n';
+    return p;
+}
+
+bool ParseKeyIs(const char* line, const char* key, const char** value) {
+    u32 len = (u32)StringLength(key);
+    for (u32 i = 0; i < len; i++)
+        if (line[i] != key[i]) return false;
+    if (line[len] != ' ') return false;
+    *value = line + len + 1;
+    return true;
+}
+
 // return index if found, -1 otherwise
 int aIndexOf(const void* arr, const void* val, int n, size_t elemSize, int (*cmp)(const void*, const void*))
 {
@@ -345,7 +419,7 @@ bool StringContains(const char* name, const char* search)
                 }
                 if (remaining == 0) return true;
             }
-        };
+        }
     }
 
     return false;
@@ -365,6 +439,11 @@ bool StringEqual(const char* RESTRICT a, const char* RESTRICT b, int n)
     return true;
 }
 
+void StringCopy(const char* path, char* dst, u32 dstSize) {
+    u32 len = Minu32((u32)StringLength(path), dstSize - 1u);
+    MemCopy(dst, path, len);
+    dst[len] = '\0';
+}
 
 #ifdef TEST_ALGO
 #define CHECK(x) printf("%s ", buf); if(!(x)) { printf("fail line %d\n", __LINE__); printf("failed\n"); } else printf("passed\n")

@@ -11,7 +11,7 @@
 #define LOD_MODE_DISTANCE   1
 
 #ifndef LOD_SELECT_MODE
-	#define LOD_SELECT_MODE LOD_MODE_DISTANCE // LOD selection: distance-to-cullSphere (cheap, no ProjectAABB) vs projected screen size
+    #define LOD_SELECT_MODE LOD_MODE_DISTANCE // LOD selection: distance-to-cullSphere (cheap, no ProjectAABB) vs projected screen size
 #endif
 
 #define LOD_NEAR_DISTANCE 5.0f // objects closer than this to cullSphere always LOD0
@@ -56,7 +56,7 @@ cbuffer params : register(b0, space2)
     uint   sparseIndexLODStride;
     float  lodDistanceModifier;
     uint   instanceMultiplier; // 8bit
-	uint2 padding;
+    uint2 padding;
 };
 
 uint WangHash(uint x) {
@@ -302,7 +302,7 @@ void main(uint3 tid : SV_DispatchThreadID)
 {
     uint idx = tid.x;
 
-	uint flags = modeAndFlags >> 8;
+    uint flags = modeAndFlags >> 8;
     if ((modeAndFlags & 0xF) == 0u) {
         Initialize(idx, flags);
         return;
@@ -334,7 +334,7 @@ void main(uint3 tid : SV_DispatchThreadID)
 
     if (needProjection)
     {
-		needProjection = false;
+        needProjection = false;
         ProjectAABB(proj, worldMin, worldMax, viewProjection, hiZSize);
         tooSmallFar = AABBTooSmallAndFar(proj, flags);
         if (!tooSmallFar)
@@ -342,14 +342,14 @@ void main(uint3 tid : SV_DispatchThreadID)
     }
 
     bool visible = frustumVisible && !tooSmallFar && !hiZOccluded;
-	const uint isShadow = (flags & CULL_DRAW_FLAG_SHADOW) != 0;
-	if (isShadow && frustumVisible)
-	{
-		bool playerVisible = AABBVisible(worldCenter, worldExtent, flags, cameraPlanes);
-		const float3 cameraPos = cullSphere.xyz;
-		if (!playerVisible)
-			visible &= distance(worldCenter, cameraPos) < max(20.0f, length(worldExtent) * 4.0f);
-	}
+    const uint isShadow = (flags & CULL_DRAW_FLAG_SHADOW) != 0;
+    if (isShadow && frustumVisible)
+    {
+        bool playerVisible = AABBVisible(worldCenter, worldExtent, flags, cameraPlanes);
+        const float3 cameraPos = cullSphere.xyz;
+        if (!playerVisible)
+            visible &= distance(worldCenter, cameraPos) < max(20.0f, length(worldExtent) * 4.0f);
+    }
 
 #if DEBUG_CULLED_AABBS
     if (!frustumVisible) AddAABBLineColored(worldMin, worldMax, 0xFF0000FFu);
@@ -361,21 +361,21 @@ void main(uint3 tid : SV_DispatchThreadID)
         return;
 
     uint lod = 0u;
-	// objects that has more index will swap lod earlier
-	float indexCountModifier = saturate(float(lodGroup.lodNumIndices[0]) / 100000.0);
+    // objects that has more index will swap lod earlier
+    float indexCountModifier = saturate(float(lodGroup.lodNumIndices[0]) / 100000.0);
 #if LOD_SELECT_MODE == LOD_MODE_DISTANCE
-	lod = SelectLODFromDistance(worldCenter, cullSphere.xyz, indexCountModifier);
+    lod = SelectLODFromDistance(worldCenter, cullSphere.xyz, indexCountModifier);
 #else
-	if ((flags & (CULL_DRAW_FLAG_SHADOW | CULL_DRAW_FLAG_CULL_SPHERE)) != 0u)
-	{
-		lod = SelectLODFromDistance(worldCenter, cullSphere.xyz, indexCountModifier);
-	}
-	else
-	{
-		if (needProjection)
-        	ProjectAABB(proj, worldMin, worldMax, viewProjection, hiZSize);
-		lod = SelectLOD(proj, indexCountModifier);
-	}
+    if ((flags & (CULL_DRAW_FLAG_SHADOW | CULL_DRAW_FLAG_CULL_SPHERE)) != 0u)
+    {
+        lod = SelectLODFromDistance(worldCenter, cullSphere.xyz, indexCountModifier);
+    }
+    else
+    {
+        if (needProjection)
+            ProjectAABB(proj, worldMin, worldMax, viewProjection, hiZSize);
+        lod = SelectLOD(proj, indexCountModifier);
+    }
 #endif
 
     uint drawIdx = primitiveIdx * MESH_LOD_COUNT + lod;

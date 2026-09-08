@@ -85,7 +85,7 @@ u32  Terrain_NumEditedRegions(void);
 bool Terrain_SaveEditChunks(const char* path);
 bool Terrain_LoadEditChunks(const char* path);
 bool Terrain_SaveWorld(const char* path);
-bool Terrain_LoadWorld(const char* path);
+void Terrain_LoadWorld(const char* path);
 
 typedef struct TerrainStats_
 {
@@ -105,13 +105,17 @@ typedef struct tFoliageParams_
     f32  density;      // meters between placement grid samples, smaller = denser
     f32  rarity;       // 0..1, higher = sparser (noise gate threshold)
     f32  size;         // uniform scale multiplier, 1.0 = native mesh size
-    bool enabled;
-    bool collider;      // spawn a static physics collider per instance
-    bool sizeVariance;  // +-30% random scale spread on top of size, when enabled
+    f32  groupIndex;   // we can group trees, ferns that'll look better instead of uniformly scattering
+    f32  frequency;    // default value is 1.0 cant be 0
+    s32 enabled;
+    s32 collider;      // spawn a static physics collider per instance
+    s32 sizeVariance;  // +-30% random scale spread on top of size, when enabled
 } tFoliageParams;
 
 void tFoliage_Init();
 void tFoliage_Destroy();
+void tFoliage_SetSeed(u32 seed);
+
 // the scene foliage entities render into (separate from g_ActiveScene, drawn by an
 // explicit extra pass in RenderDepth/RenderSceneForward). NULL only before tFoliage_Init
 struct Scene_* tFoliage_GetScene(void);
@@ -127,6 +131,9 @@ bool        tFoliage_GetParams(u32 index, tFoliageParams* out);
 void        tFoliage_SetParams(u32 index, const tFoliageParams* params);
 // randomizes density and rarity for every type while preserving all other settings
 void        tFoliage_RandomizeParams(void);
+
+void        tFoliage_Save(const char* path);
+void        tFoliage_Load(const char* path);
 
 void tUpdate(void);
 void tInvalidateAll(void);

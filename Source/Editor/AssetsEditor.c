@@ -229,8 +229,8 @@ static void AssetLoadIcons(void)
 static UIImageData* AssetIconForEntry(const AssetEntry* e)
 {
     if (e->isDir) return &assetIconImages[AssetIcon_Folder];
-	const char* path = e->path;
-	int pathLen = StringLength(path);
+    const char* path = e->path;
+    int pathLen = StringLength(path);
     if (FileHasExtension(path, pathLen, ".gltf") || FileHasExtension(path, pathLen, ".glb") || FileHasExtension(path, pathLen, ".fbx") || FileHasExtension(path, pathLen, ".obj") || FileHasExtension(path, pathLen, ".abm"))
         return &assetIconImages[AssetIcon_Mesh];
     if (FileHasExtension(path, pathLen, ".png") || FileHasExtension(path, pathLen, ".jpg") || FileHasExtension(path, pathLen, ".jpeg") || FileHasExtension(path, pathLen, ".dds") || FileHasExtension(path, pathLen, ".basis") || FileHasExtension(path, pathLen, ".ctex"))
@@ -372,7 +372,7 @@ static void AssetDrawGridItem(u32 entryIdx, u32 itemIdx)
             AssetSelect(e);
             if (doubleClicked)
             {
-				int pathLen = StringLength(e->path);
+                int pathLen = StringLength(e->path);
                 if (e->isDir) AssetSetCurrentFolder(e->path);
                 else if (FileHasExtension(e->path, pathLen, ".scene")) EditorOpenScene(e->path);
                 else AssetOpenWithOS(e->path);
@@ -667,14 +667,14 @@ void DrawAssetsWindow(bool* open)
         UIRightClickAddEvent("Open Folder", AssetEventOpenFolder, NULL);
         if (assetSelectedPath[0])
         {
-			int pathLen = StringLength(assetSelectedPath);
+            int pathLen = StringLength(assetSelectedPath);
             if (IsMeshPath(assetSelectedPath))
             {
                 UIRightClickAddEvent("Import to Scene", AssetEventImportToScene, NULL);
                 UIRightClickAddEvent("Import with Detail", AssetEventImportWithDetail, NULL);
             }
             if (FileHasExtension(assetSelectedPath, pathLen, ".scene"))
-				UIRightClickAddEvent("Open Scene", AssetEventOpenScene, NULL);
+                UIRightClickAddEvent("Open Scene", AssetEventOpenScene, NULL);
             UIRightClickAddEvent("Copy", AssetEventCopy, NULL);
             UIRightClickAddEvent("Delete", AssetEventDelete, NULL);
         }

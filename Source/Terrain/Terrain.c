@@ -108,6 +108,7 @@ void Terrain_ApplyGenParams(const TerrainGenParams* params) {
     if (!tp.initialized) tInit();
     tp.genParams = *params;
     tp.genParams.fixedWorldSize = (u32)Clamps32((s32)tp.genParams.fixedWorldSize, TERRAIN_FIXED_WORLD_MIN_SIZE, TERRAIN_FIXED_WORLD_MAX_SIZE);
+    tFoliage_SetSeed(tp.genParams.seed);
     TerrainDensity_SetParams(&tp.genParams);
     tInvalidateAll();
 }
@@ -223,85 +224,50 @@ bool Terrain_LoadEditChunks(const char* path) {
     return TerrainEdit_LoadChunks(path);
 }
 
-static char* TerrainWriteString(char* p, const char* s) {
-    u32 len = (u32)StringLength(s);
-    MemCopy(p, s, len);
-    return p + len;
-}
-
-static char* TerrainWriteF32(char* p, const char* key, f32 value, int decimals) {
-    p = TerrainWriteString(p, key);
-    *p++ = ' ';
-    p += FloatToString(p, value, decimals);
-    *p++ = '\n';
-    return p;
-}
-
-static char* TerrainWriteBool(char* p, const char* key, bool value) {
-    p = TerrainWriteString(p, key);
-    *p++ = ' ';
-    *p++ = value ? '1' : '0';
-    *p++ = '\n';
-    return p;
-}
-
-static bool TerrainKeyIs(const char* line, const char* key, const char** value) {
-    u32 len = (u32)StringLength(key);
-    for (u32 i = 0; i < len; i++)
-        if (line[i] != key[i]) return false;
-    if (line[len] != ' ') return false;
-    *value = line + len + 1;
-    return true;
-}
-
-static bool TerrainChunksPathFromWorld(const char* terrainPath, char* dst, u32 dstSize) {
-    u32 len = Minu32((u32)StringLength(terrainPath), dstSize - 1u);
-    MemCopy(dst, terrainPath, len);
-    dst[len] = '\0';
-    ChangeExtension(dst, (int)len, "chunks");
-    return true;
-}
-
 bool Terrain_SaveWorld(const char* path) {
     if (!path || !path[0] || !tGetEnabled()) return false;
     EnsurePath(path);
 
-    char* text = (char*)SDL_malloc(4096u);
+    char* text = (char*)AllocateTLSFGlobal(4096u);
     if (!text) return false;
 
     TerrainGenParams* params = &tp.genParams;
     TerrainAuthoring* authoring = &tp.authoring;
     char* p = text;
-    p = TerrainWriteString(p, "terrain 1\n");
-    p = TerrainWriteF32(p, "fixed_world_size", (f32)params->fixedWorldSize, 0);
-    p = TerrainWriteBool(p, "island", params->island);
-    p = TerrainWriteF32(p, "seed", (f32)params->seed, 0);
-    p = TerrainWriteF32(p, "sea_level", params->seaLevel, 3);
-    p = TerrainWriteF32(p, "base_height", params->baseHeight, 3);
-    p = TerrainWriteF32(p, "hill_amplitude", params->hillAmplitude, 3);
-    p = TerrainWriteF32(p, "hill_frequency", params->hillFrequency, 6);
-    p = TerrainWriteF32(p, "ridge_amplitude", params->ridgeAmplitude, 3);
-    p = TerrainWriteF32(p, "ridge_frequency", params->ridgeFrequency, 6);
-    p = TerrainWriteF32(p, "cave_amplitude", params->carveAmplitude, 3);
-    p = TerrainWriteF32(p, "cave_frequency", params->carveFrequency, 6);
-    p = TerrainWriteF32(p, "island_radius", params->islandRadius, 3);
-    p = TerrainWriteF32(p, "island_falloff", params->islandFalloff, 3);
+    p = WStr(p, "terrain 1\n");
+    p = ParseWriteF32(p, "fixed_world_size", (f32)params->fixedWorldSize, 0);
+    p = ParseWriteBool(p, "island", params->island);
+    p = ParseWriteF32(p, "seed", (f32)params->seed, 0);
+    p = ParseWriteF32(p, "sea_level", params->seaLevel, 3);
+    p = ParseWriteF32(p, "base_height"    , params->baseHeight, 3);
+    p = ParseWriteF32(p, "hill_amplitude" , params->hillAmplitude, 3);
+    p = ParseWriteF32(p, "hill_frequency" , params->hillFrequency, 6);
+    p = ParseWriteF32(p, "ridge_amplitude", params->ridgeAmplitude, 3);
+    p = ParseWriteF32(p, "ridge_frequency", params->ridgeFrequency, 6);
+    p = ParseWriteF32(p, "cave_amplitude" , params->carveAmplitude, 3);
+    p = ParseWriteF32(p, "cave_frequency" , params->carveFrequency, 6);
+    p = ParseWriteF32(p, "island_radius"  , params->islandRadius, 3);
+    p = ParseWriteF32(p, "island_falloff" , params->islandFalloff, 3);
 
     WriteAllBytes(path, text, (unsigned long)(p - text));
-    SDL_free(text);
+    DeAllocateTLSFGlobal(text);
 
     char chunksPath[512];
-    if (!TerrainChunksPathFromWorld(path, chunksPath, sizeof(chunksPath))) return false;
+    StringCopy(path, chunksPath, sizeof(chunksPath));
+    ChangeExtension(chunksPath, StringLength(chunksPath), "chunks");
     EnsurePath(chunksPath);
-    return FileExist(path) && Terrain_SaveEditChunks(chunksPath);
+    bool success = FileExist(path) && Terrain_SaveEditChunks(chunksPath);
+    ChangeExtension(chunksPath, StringLength(chunksPath), "foliage");
+    tFoliage_Save(chunksPath);
+    return success;
 }
 
-bool Terrain_LoadWorld(const char* path) {
-    if (!path || !path[0]) return false;
+void Terrain_LoadWorld(const char* path) {
+    if (!path || !path[0]) return;
     if (!tp.initialized) tInit();
 
     char* text = ReadAllFileAlloc(path);
-    if (!text) return false;
+    if (!text) return;
 
     TerrainGenParams params = Terrain_DefaultGenParams();
     TerrainAuthoringDefaults(&tp.authoring);
@@ -313,27 +279,28 @@ bool Terrain_LoadWorld(const char* path) {
         bool hadNewline = *next == '\n';
         *next = '\0';
 
-        if (TerrainKeyIs(line, "fixed_world_size", &value)) { f32 f; ParseFloat(value, &f); params.fixedWorldSize = (u32)Clamps32((s32)f, TERRAIN_FIXED_WORLD_MIN_SIZE, TERRAIN_FIXED_WORLD_MAX_SIZE); }
-        else if (TerrainKeyIs(line, "island", &value)) params.island = value[0] == '1';
-        else if (TerrainKeyIs(line, "seed", &value)) { f32 f; ParseFloat(value, &f); params.seed = (u32)f; }
-        else if (TerrainKeyIs(line, "sea_level", &value)) ParseFloat(value, &params.seaLevel);
-        else if (TerrainKeyIs(line, "base_height", &value)) ParseFloat(value, &params.baseHeight);
-        else if (TerrainKeyIs(line, "hill_amplitude", &value)) ParseFloat(value, &params.hillAmplitude);
-        else if (TerrainKeyIs(line, "hill_frequency", &value)) ParseFloat(value, &params.hillFrequency);
-        else if (TerrainKeyIs(line, "ridge_amplitude", &value)) ParseFloat(value, &params.ridgeAmplitude);
-        else if (TerrainKeyIs(line, "ridge_frequency", &value)) ParseFloat(value, &params.ridgeFrequency);
-        else if (TerrainKeyIs(line, "cave_amplitude", &value)) ParseFloat(value, &params.carveAmplitude);
-        else if (TerrainKeyIs(line, "cave_frequency", &value)) ParseFloat(value, &params.carveFrequency);
-        else if (TerrainKeyIs(line, "island_radius", &value)) ParseFloat(value, &params.islandRadius);
-        else if (TerrainKeyIs(line, "island_falloff", &value)) ParseFloat(value, &params.islandFalloff);
+        if      (ParseKeyIs(line, "fixed_world_size", &value)) { f32 f; ParseFloat(value, &f); params.fixedWorldSize = (u32)Clamps32((s32)f, TERRAIN_FIXED_WORLD_MIN_SIZE, TERRAIN_FIXED_WORLD_MAX_SIZE); }
+        else if (ParseKeyIs(line, "island"          , &value)) params.island = value[0] == '1';
+        else if (ParseKeyIs(line, "seed"            , &value)) { f32 f; ParseFloat(value, &f); params.seed = (u32)f; }
+        else if (ParseKeyIs(line, "sea_level"       , &value)) ParseFloat(value, &params.seaLevel);
+        else if (ParseKeyIs(line, "base_height"     , &value)) ParseFloat(value, &params.baseHeight);
+        else if (ParseKeyIs(line, "hill_amplitude"  , &value)) ParseFloat(value, &params.hillAmplitude);
+        else if (ParseKeyIs(line, "hill_frequency"  , &value)) ParseFloat(value, &params.hillFrequency);
+        else if (ParseKeyIs(line, "ridge_amplitude" , &value)) ParseFloat(value, &params.ridgeAmplitude);
+        else if (ParseKeyIs(line, "ridge_frequency" , &value)) ParseFloat(value, &params.ridgeFrequency);
+        else if (ParseKeyIs(line, "cave_amplitude"  , &value)) ParseFloat(value, &params.carveAmplitude);
+        else if (ParseKeyIs(line, "cave_frequency"  , &value)) ParseFloat(value, &params.carveFrequency);
+        else if (ParseKeyIs(line, "island_radius"   , &value)) ParseFloat(value, &params.islandRadius);
+        else if (ParseKeyIs(line, "island_falloff"  , &value)) ParseFloat(value, &params.islandFalloff);
 
         line = hadNewline ? next + 1 : NULL;
     }
     FreeAllText(text);
 
     char chunksPath[512];
-    if (!TerrainChunksPathFromWorld(path, chunksPath, sizeof(chunksPath))) return false;
-    if (FileExist(chunksPath) && !Terrain_LoadEditChunks(chunksPath)) return false;
+    StringCopy(path, chunksPath, sizeof(chunksPath));
+    Terrain_LoadEditChunks(chunksPath);
+    ChangeExtension(chunksPath, StringLength(chunksPath), "foliage");
+    tFoliage_Load(chunksPath);
     Terrain_CreateWorld(&params);
-    return true;
 }

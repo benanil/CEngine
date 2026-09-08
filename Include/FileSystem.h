@@ -64,6 +64,11 @@ void     AFileClose      (      AFile file);
 bool     AFileExist      (      AFile file);
 int      AFileReadLine   (      char* dst, int maxLen, AFile file);
 int      AFileReadI32    (      char* dst, int maxLen, AFile file);
+void     AFileWriteF32(f32 val, AFile file);
+void     AFileWriteI32(int val, AFile file);
+void     AFileWriteNamedF32(const char* name, f32 val, AFile file);
+void     AFileWriteNamedI32(const char* name, s32 val, AFile file);
+
 uint64_t AFileSize       (      AFile file);
 
 char*    ReadAllFile     (const char* file, char* buffer, uint64_t bufferSize);
@@ -85,6 +90,8 @@ void     RemoveFolder    (const char* path, void* unused);
 bool     CreateFolder    (const char* folderName);
 bool     IsFolder        (const char* path);
 void     EnsurePath      (const char* path);
+
+void WEnd(AFile file, char* base, char* p);
 
 #if defined(__cplusplus)
 }

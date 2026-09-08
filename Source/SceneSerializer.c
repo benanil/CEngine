@@ -13,7 +13,7 @@
 #include "Include/ParallelFor.h"
 #include "Math/Bitpack.h"
 
-#define SCENE_FILE_VERSION 4
+#define SCENE_FILE_VERSION 5
 
 // first descriptors of a texture system are the built in defaults (TextureSystem.c)
 enum { SceneSer_DefaultDescriptors = 4 };
@@ -24,46 +24,12 @@ static const char* const kAtlasSuffix[TextureClass_Count] = { "_albedo.ctex", "_
 /*                            Text Read / Write                             */
 /*//////////////////////////////////////////////////////////////////////////*/
 
-static char* WStr(char* p, const char* s)        { while (*s) *p++ = *s++; return p; }
-static char* WInt(char* p, s64 v)                { *p++ = ' '; return p + IntToString(p, v, 0); }
-static char* WFlt(char* p, float v)              { *p++ = ' '; return p + FloatToString(p, v, 6); }
-static void  WEnd(AFile file, char* base, char* p) { *p++ = '\n'; AFileWrite(base, (u64)(p - base), file, 1); }
-
-static const char* RU32(const char* p, u32* v)
-{
-    s64 value = 0;
-    while (*p == ' ') p++;
-    p = ParseNumberI64(p, &value);
-    *v = (u32)value;
-    return p;
-}
-
-static const char* RU64(const char* p, u64* v)
-{
-    s64 value = 0;
-    while (*p == ' ') p++;
-    p = ParseNumberI64(p, &value);
-    *v = (u64)value;
-    return p;
-}
-
-static const char* RFlt(const char* p, f32* v)
-{
-    while (*p == ' ') p++;
-    return ParseFloat(p, v);
-}
 
 static v128f SceneUnpackLegacyScaleXY11Z10(u32 packed)
 {
     v128u i = VeciSrl(VeciSet1(packed), VeciSetR(0, 11, 22, 31));
     i = VeciAnd(i, VeciSetR(0x7FF, 0x7FF, 0x3FF, 0));
     return VecMul(VecI32ToF32(i), VecSetR(1.0f / 2047.0f, 1.0f / 2047.0f, 1.0f / 1023.0f, 0.0f));
-}
-
-static const char* RSkipWord(const char* p)
-{
-    while (*p && *p != ' ') p++;
-    return p;
 }
 
 /*//////////////////////////////////////////////////////////////////////////*/
@@ -224,6 +190,7 @@ s32 SceneSerializer_Save(Scene* scene, const char* path)
                 p = WInt(p, (s64)(u32)(entity->rotation >> 32u));
                 p = WInt(p, (s64)entity->scale);
                 p = WInt(p, (s64)entity->sparseIdx);
+                p = WInt(p, (s64)entity->flags);
                 WEnd(file, line, p);
             }
         }
@@ -291,6 +258,7 @@ typedef struct SceneEntRecord_
     float position[3];
     u32   primGroupIdx;
     u32   sparseIdx;
+    u32   flags;
 } SceneEntRecord;
 
 typedef struct SceneFileData_
@@ -516,7 +484,10 @@ static s32 ParseSceneFile(const char* path, SceneFileData* data)
             if (version >= 2)
                 p = RU64(p, &record->scale);
 
-            RU32(p, &record->sparseIdx);
+            p = RU32(p, &record->sparseIdx);
+            record->flags = EntityFlags_ColliderEnabled;
+            if (version >= 5) 
+                p = RU32(p, &record->flags);
             record->rotation = (u64)rotLo | ((u64)rotHi << 32u);
         }
     }
@@ -556,9 +527,9 @@ fail:
 
 static void BuildColliderEndCallback(void* data, s32 result)
 {
-	Scene* scene = (Scene*)data;
-	Scene_PhysicsApplyPendingOverrides(scene); // no-op when nothing was persisted
-	scene->physicsReady = true;
+    Scene* scene = (Scene*)data;
+    Scene_PhysicsApplyPendingOverrides(scene); // no-op when nothing was persisted
+    scene->physicsReady = true;
 }
 
 typedef struct SceneStageRangeCtx_
@@ -620,7 +591,6 @@ s32 SceneSerializer_Load(Scene* scene, const char* path)
         ArenaRestore(&GlobalArena, mark);
         return 0;
     }
-
     // the fast path needs compressed pages, every referenced atlas on disk and the tables
     bool fast = scene->textureSystem.compressed != 0u && data.numDescriptors >= SceneSer_DefaultDescriptors;
     for (u32 c = 0; c < TextureClass_Count && fast; c++)
@@ -727,6 +697,7 @@ s32 SceneSerializer_Load(Scene* scene, const char* path)
             entity->scale     = record->scale;
             entity->primitiveIdx = groupIdx;
             entity->sparseIdx = record->sparseIdx;
+            entity->flags = record->flags;
 
             BitsetSet(set->sparseSlots, (s32)record->sparseIdx);
             if (set->sparseID[record->sparseIdx] == INVALID_ENTITY || denseIdx < set->sparseID[record->sparseIdx])
@@ -748,7 +719,7 @@ s32 SceneSerializer_Load(Scene* scene, const char* path)
         RenderSet_Validate(set, isSkinned ? "load skinned" : (s == 2u ? "load transparent surface" : "load surface"));
     }
 
-	if (data.numLights > 0)
+    if (data.numLights > 0)
         MemCopy(scene->lights, data.lights, data.numLights * sizeof(LightGPU));
     scene->numLights = data.numLights;
 
@@ -771,7 +742,7 @@ s32 SceneSerializer_Load(Scene* scene, const char* path)
     }
 
     ArenaRestore(&GlobalArena, mark);
-	scene->physicsReady = false;
+    scene->physicsReady = false;
     // every mesh instance is static for now: give each a static rigid body with a triangle collider
     Scene_BuildStaticCollidersAsync(scene, BuildColliderEndCallback);
 

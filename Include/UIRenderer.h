@@ -179,6 +179,7 @@ bool UIColorEdit3(Clay_ElementId id, Clay_String label, f32* rgb);
 Clay_String UIStr(const char* chars);
 
 void UISectionHeader(const char* title);
+void UIText(const char* text);
 void UITextU32(const char* label, u32 value);
 void UIDivider(Clay_ElementId id);
 void UISpacing(Clay_ElementId id, f32 pixels);

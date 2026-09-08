@@ -111,8 +111,7 @@ VSOutput vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("Dra
     float3 localPos = aabbMin + UnpackUnorm16x4(input.aPos).xyz * (aabbMax - aabbMin);
     f16_3 worldPos = QMulVec3(insRot, f16_3(localPos) * insScale);
     float3 finalWorldPos = float3(worldPos) + entity.position.xyz;
-	// entity.hiddenBitAndAmbient packs C's u16 material (low 16) then u16 hiddenBitAndAmbient (high 16).
-	f16 ambientBoost = (f16)(entity.hiddenBitAndAmbient >> 17) * 0.2f + 1.0f;
+	f16 ambientBoost = 1.0f;
     VSOutput o;
     o.position  = mul(uViewProj, float4(finalWorldPos, 1.0));
     o.texCoords = input.aTexCoords;

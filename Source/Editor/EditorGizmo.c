@@ -557,7 +557,7 @@ static void GizmoApplyMembers(Scene* scene, const v128f axes[3], f32 mouseY)
         }
 
         if (!member->skinned)
-            Scene_PhysicsSyncEntityBody(scene, false, member->groupIdx, entity);
+            Scene_PhysicsSyncEntityBody(scene, false, entity);
     }
 }
 

@@ -5,19 +5,7 @@
 #include "Include/FileSystem.h"
 #include "Include/Platform.h"
 
-#include <SDL3/SDL_stdinc.h>
 #include <SDL3/SDL_thread.h>
-
-typedef struct AsyncTask_
-{
-    s32 (*run)(struct AsyncTask_* task);
-    AsyncTaskFn   userFn;
-    AsyncCallback callback;
-    void*         userData;
-    const void*   data;
-    u64           size;
-    char          path[512];
-} AsyncTask;
 
 static int AsyncThreadMain(void* param)
 {
@@ -42,13 +30,13 @@ static AsyncTask* AsyncCreateTask(AsyncCallback callback, void* userData)
 static s32 AsyncStart(AsyncTask* task, const char* name)
 {
     SDL_Thread* thread = SDL_CreateThread(AsyncThreadMain, name, task);
+    task->thread = thread;
     if (!thread)
     {
         AX_ERROR("async thread creation failed: %s", SDL_GetError());
         SDL_free(task);
         return 0;
     }
-    SDL_DetachThread(thread);
     return 1;
 }
 
@@ -92,15 +80,22 @@ static s32 AsyncRunUserFn(AsyncTask* task)
     return task->userFn(task->userData);
 }
 
-void AsyncRun(const char* name, AsyncTaskFn fn, AsyncCallback callback, void* userData)
+AsyncTask* AsyncRun(const char* name, AsyncTaskFn fn, AsyncCallback callback, void* userData)
 {
     AsyncTask* task = AsyncCreateTask(callback, userData);
     task->run = AsyncRunUserFn;
     task->userFn = fn;
-	if (!AsyncStart(task, name ? name : "AsyncTask"))
-	{
-		s32 result = fn(userData);
-		if (callback) callback(userData, result);
-		AX_WARN("running on another thread failed! called sequentaly %s", name);
-	}
+    if (!AsyncStart(task, name ? name : "AsyncTask"))
+    {
+        s32 result = fn(userData);
+        if (callback) callback(userData, result);
+        AX_WARN("running on another thread failed! called sequentaly %s", name);
+    }
+    return task;
+}
+
+void AsyncWait(AsyncTask* task)
+{
+    SDL_WaitThread(task->thread, NULL);
+    task->thread = NULL;
 }

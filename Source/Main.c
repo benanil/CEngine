@@ -63,7 +63,7 @@ static void MainLoopTick(void)
     Scene_SubmitLights();
 
     EditorSceneHotkeys();
-	Scene_Update(PlatformCtx.DeltaTime);
+    Scene_Update(PlatformCtx.DeltaTime);
 
     if (!TerrainEditorUpdate(&g_Camera) && !EditorGizmoUpdate(&g_Camera) && !EditorLightGizmoUpdate(&g_Camera))
         EditorPickingUpdate(&g_Camera);
@@ -83,7 +83,7 @@ static SDL_AppResult SDLCALL MainAppInit(void** appstate, int argc, char* argv[]
     (void)appstate; (void)argc; (void)argv; 
     s32 msaa = 1;
     done = 0;
-	
+
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO))
         return SDL_APP_FAILURE;
 
@@ -110,10 +110,10 @@ static SDL_AppResult SDLCALL MainAppInit(void** appstate, int argc, char* argv[]
     InitBuffers();
     // if (DemoScene_Create()) if (!Scene_MakeActive(DemoScene_Get())) return SDL_APP_FAILURE;
     if (!Scene_NewActive()) return SDL_APP_FAILURE;
-	tFoliage_Init();
-	tInit();
+    tFoliage_Init();
+    tInit();
     // Keep the runnable Transvoxel example in the demo scene instead of reopening the last editor scene.
-	
+
     CameraInit(&g_Camera, 1920, 1080);
 
     return SDL_APP_CONTINUE;

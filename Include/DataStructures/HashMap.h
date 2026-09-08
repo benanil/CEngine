@@ -44,7 +44,6 @@
 
 #ifndef HMRealloc
     #include <stdlib.h>
-    #define HMAalloc(mem, size) malloc(mem, size)
     #define HMRealloc(mem, size) realloc(mem, size)
     #define HMFree(mem) free(mem)
 #endif

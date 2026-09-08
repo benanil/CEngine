@@ -206,7 +206,7 @@ static bool TerrainEditorLoad(void)
         AX_WARN("terrain load skipped: active scene has no saved .scene path");
         return false;
     }
-    if (!Terrain_LoadWorld(terrainUI.savePath)) return false;
+    Terrain_LoadWorld(terrainUI.savePath);;
 
     // Terrain_LoadWorld rebuilt the world from the file; mirror its params back into
     // the UI so the editor widgets show the loaded settings
@@ -382,6 +382,7 @@ static void TerrainFoliageUI(void)
                  (Clay_Dimensions){ 240.0f, 26.0f }, false))
         tFoliage_RandomizeParams();
 
+    bool anyEdited = false;
     for (u32 i = 0u; i < numTypes && i < (u32)(sizeof(foliageTypeOpen) / sizeof(foliageTypeOpen[0])); i++)
     {
         tFoliageParams params;
@@ -392,18 +393,23 @@ static void TerrainFoliageUI(void)
         if (!foliageTypeOpen[i]) continue;
 
         bool edited = false;
-        edited |= UICheckbox(Clay_GetElementIdWithIndex(CLAY_STRING("FoliageEnabled"), i), CLAY_STRING("Enabled"), &params.enabled);
-        edited |= UICheckbox(Clay_GetElementIdWithIndex(CLAY_STRING("FoliageCollider"), i), CLAY_STRING("Collider"), &params.collider);
-        edited |= UICheckbox(Clay_GetElementIdWithIndex(CLAY_STRING("FoliageSizeVariance"), i), CLAY_STRING("Size variance (+-20%)"), &params.sizeVariance);
+        edited |= UICheckboxS32(Clay_GetElementIdWithIndex(CLAY_STRING("FoliageEnabled"), i), CLAY_STRING("Enabled"), &params.enabled);
+        edited |= UICheckboxS32(Clay_GetElementIdWithIndex(CLAY_STRING("FoliageCollider"), i), CLAY_STRING("Collider"), &params.collider);
+        edited |= UICheckboxS32(Clay_GetElementIdWithIndex(CLAY_STRING("FoliageSizeVariance"), i), CLAY_STRING("Size variance (+-20%)"), &params.sizeVariance);
         edited |= UIEditFloat(Clay_GetElementIdWithIndex(CLAY_STRING("FoliageDensity"), i), CLAY_STRING("Density"), &params.density, 0.5f, 32.0f, 0.5f, 2);
         edited |= UIEditFloat(Clay_GetElementIdWithIndex(CLAY_STRING("FoliageRarity"), i), CLAY_STRING("Rarity"), &params.rarity, 0.0f, 1.0f, 0.05f, 2);
         edited |= UIEditFloat(Clay_GetElementIdWithIndex(CLAY_STRING("FoliageSize"), i), CLAY_STRING("Size"), &params.size, 0.05f, 10.0f, 0.05f, 2);
-
+        edited |= UIEditFloat(Clay_GetElementIdWithIndex(CLAY_STRING("FoliageFreq"), i), CLAY_STRING("Frequency"), &params.frequency, 0.05f, 4.0f, 0.01f, 2);
+        edited |= UIEditInt(Clay_GetElementIdWithIndex(CLAY_STRING("FoliageGroup"), i), CLAY_STRING("Group"), &params.groupIndex, 0, 63);
+        anyEdited |= edited;
         // params changed: bump this type's build generation so resident chunks rebuild
         // just their foliage instances, the terrain mesh itself is left alone
         if (edited)
             tFoliage_SetParams(i, &params);
     }
+
+    if (anyEdited)
+        tFoliage_Save(terrainUI.savePath);
 }
 
 static void TerrainStatsUI(void)

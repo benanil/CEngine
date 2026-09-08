@@ -14,6 +14,12 @@
 
 #define ENTITY_MAX_SCALE 10.0f
 
+typedef enum EntityFlags_
+{
+	EntityFlags_None            = 0,
+	EntityFlags_ColliderEnabled = 1 << 0
+} EntityFlags;
+
 typedef struct Entity_
 {
     v128f position;     // last 32bit unused
@@ -24,7 +30,8 @@ typedef struct Entity_
     // 24 bit parent sparseIdx, last byte ENTITY_FLAG
     u32   parentIdx;
     u16   material;
-    u16   hiddenBitAndAmbient;
+	// todo move ambient to scene
+    u16   flags;
 } Entity;
 
 typedef struct Range_

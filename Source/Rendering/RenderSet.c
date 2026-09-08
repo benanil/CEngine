@@ -28,21 +28,21 @@ void RenderSet_InitSet(RenderSet* set, u32 maxEntities, u32 maxGroups, u32 maxBu
     set->bundlePrimRange = (Range*)AllocZeroTLSFGlobal(maxBundles, sizeof(Range));
     set->bundles          = (const SceneBundle**)AllocZeroTLSFGlobal(maxBundles, sizeof(SceneBundle*));
     set->bundleSlots      = (u64*)AllocZeroTLSFGlobal((maxBundles + 63u) >> 6, sizeof(u64));
-	MemSet(set->entities, 0, maxEntities * sizeof(Entity));
-	MemSet(set->primitiveGroups, 0, maxGroups * sizeof(PrimitiveGroup));
-	MemSet(set->sparseID, 0xFF, maxEntities * sizeof(u32));
+    MemSet(set->entities, 0, maxEntities * sizeof(Entity));
+    MemSet(set->primitiveGroups, 0, maxGroups * sizeof(PrimitiveGroup));
+    MemSet(set->sparseID, 0xFF, maxEntities * sizeof(u32));
 }
 
 void RenderSet_Destroy(RenderSet* set)
 {
-	FreeAligned(set->entities);
+    FreeAligned(set->entities);
     FreeAligned(set->sparseID); 
     DeAllocateTLSFGlobal(set->sparseSlots);     
     FreeAligned(set->primitiveGroups);
-	DeAllocateTLSFGlobal(set->bundlePrimRange);
+    DeAllocateTLSFGlobal(set->bundlePrimRange);
     DeAllocateTLSFGlobal(set->bundles);
-	DeAllocateTLSFGlobal(set->bundleSlots);
-	MemsetZero(set, sizeof(RenderSet));
+    DeAllocateTLSFGlobal(set->bundleSlots);
+    MemsetZero(set, sizeof(RenderSet));
 }
 
 void RenderSet_SetMaterialFilter(RenderSet* set, RenderSetMaterialFilter filter)
@@ -146,7 +146,7 @@ u32 RenderSet_CountTriangles(const RenderSet* set)
 u32 RenderSet_AllocateSparseID(RenderSet* set)
 {
     s32 sparseIdx = BitsetFindFirstEmpty(set->sparseSlots, (s32)set->maxEntities);
-	if (sparseIdx < 0) {
+    if (sparseIdx < 0) {
         AX_WARN("maximum sparse id reached: %d", set->maxEntities);
         return INVALID_ENTITY;
     }
@@ -268,10 +268,10 @@ u32 RenderSet_AddSceneBundle(RenderSet* set, const SceneBundle* sceneBundle, u32
             
             for (u32 lod = 0; lod < MESH_LOD_COUNT; lod++)
             {
-                group->lodIndexOffset[lod] = (u32)primitive->lodIndexOffset[lod];
-                group->lodNumIndices[lod]  = (u32)primitive->lodNumIndices[lod];
+                group->lodIndexOffset[lod]  = (u32)primitive->lodIndexOffset[lod];
+                group->lodNumIndices[lod]   = (u32)primitive->lodNumIndices[lod];
                 group->lodVertexOffset[lod] = (u32)primitive->lodVertexOffset[lod];
-                group->lodNumVertices[lod] = (u32)primitive->lodNumVertices[lod];
+                group->lodNumVertices[lod]  = (u32)primitive->lodNumVertices[lod];
             }
         }
         totalPrimitives += mesh->numPrimitives;
@@ -423,13 +423,13 @@ u32 RenderSet_AddScene(RenderSet* set, u32 bundleIdx, v128f position, v128f rota
  
     u32* primitiveCounts = ArenaAllocGlobal(numPrimitives * sizeof(u32));
     MemSet(primitiveCounts, 0, numPrimitives * sizeof(u32));
-    // zeroed: hiddenBitAndAmbient is never set below, was left as garbage otherwise (shader
-    // reads its top bits as an ambient boost multiplier, blowing surfaces out to white)
+    // zeroed: flags is never set below, was left as garbage
     Entity* nodeEntities = ArenaAllocGlobal(((u32)numNodes + 1u) * sizeof(Entity));
     MemsetZero(nodeEntities, ((u32)numNodes + 1u) * sizeof(Entity));
 
     u32 meshNodeCount = 0;
     u32 totalPrimAdded = 0;
+    // count num nodesfor allocations
     for (u32 m = 0; m < (u32)numNodes; m++)
     {
         const ANode* node = nodes + m;
@@ -438,12 +438,12 @@ u32 RenderSet_AddScene(RenderSet* set, u32 bundleIdx, v128f position, v128f rota
             nodeEntities[m + 1u].primitiveIdx = range.start;
             continue;
         }
-
         const AMesh* mesh = bundle->meshes + node->index;
         u32 firstGroupIdx = range.start + (u32)mesh->primitiveOffset;
         meshNodeCount++;
 
         nodeEntities[m + 1u].primitiveIdx = firstGroupIdx;
+        nodeEntities[m + 1u].flags = EntityFlags_ColliderEnabled;
         for (u32 p = 0; p < (u32)mesh->numPrimitives; p++)
         {
             const APrimitive* primitive = mesh->primitives + p;
@@ -454,7 +454,7 @@ u32 RenderSet_AddScene(RenderSet* set, u32 bundleIdx, v128f position, v128f rota
         }
     }
 
-    if (totalPrimAdded == 0u) {
+    if (AX_UNLIKELY(totalPrimAdded == 0u)) {
         ArenaPopGlobal(((u32)numNodes + 1u) * sizeof(Entity));
         ArenaPopGlobal(numPrimitives * sizeof(u32));
         return 0;
@@ -462,14 +462,14 @@ u32 RenderSet_AddScene(RenderSet* set, u32 bundleIdx, v128f position, v128f rota
 
     u32 sparseCount = set->skinned ? meshNodeCount : totalPrimAdded;
     u32 sparseStart = RenderSet_AllocateSparseIDRange(set, sparseCount);
-    if (sparseStart == INVALID_ENTITY)
+    if (AX_UNLIKELY(sparseStart == INVALID_ENTITY))
     {
         AX_WARN("maximum entity reached: %d", set->maxEntities);
         ArenaPopGlobal(((u32)numNodes + 1u) * sizeof(Entity));
         ArenaPopGlobal(numPrimitives * sizeof(u32));
         return INVALID_ENTITY;
     }
-
+    // leave space for inserted entities
     u32 insertedBefore = totalPrimAdded;
     for (s32 g = (s32)set->numGroups - 1; g >= (s32)range.start; g--)
     {
@@ -500,13 +500,14 @@ u32 RenderSet_AddScene(RenderSet* set, u32 bundleIdx, v128f position, v128f rota
         set->primitiveGroups[range.start + p].capacity += primitiveCounts[p];
 
     set->numEntities += totalPrimAdded;
-
+    // dummy root node
     rotation = VecNorm(rotation);
     nodeEntities[0].position     = position;
     nodeEntities[0].rotation     = PackQuaternionS16NormRet(rotation);
     nodeEntities[0].scale        = EntityPackWorldScale(scale);
     nodeEntities[0].primitiveIdx = 0;
     nodeEntities[0].sparseIdx    = INVALID_ENTITY;
+    nodeEntities[0].flags        = 0;
     RendersetAddANodesAsEntities(set, bundle->nodes, bundle->numNodes, nodeEntities + 1, sparseStart);
 
     // insert entities

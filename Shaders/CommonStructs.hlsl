@@ -38,7 +38,7 @@ typedef struct Entity_
     uint   primitiveIdx; // primitive group
     uint   sparse;
     uint   parentIdx; // sparseIdx
-    uint   hiddenBitAndAmbient;
+    uint   flags;
 } Entity;
 
 typedef struct PrimitiveGroup_

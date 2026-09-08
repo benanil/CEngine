@@ -21,16 +21,16 @@
 typedef struct tMarchingTerrainState_
 {
     tDensityGenerator generator;
-	JobSystem* jobSystem;
+    JobSystem* jobSystem;
     tBuildJob  buildJobs[T_MAX_BUILD_JOBS];
     TerrainChunkDraw* chunkDraws; // per-frame heap ranges, one indirect multidraw
     tChunk  chunks[T_MAX_CHUNKS];
     HashMap chunkLookup; // key: tChunkKey, value: u32 index into chunks
-	const FrustumPlanes* frustum;
-	u64*    occupiedChunksBitset;
-	s8*     chunkDensity; // T_MAX_BUILD_JOBS * T_SAMPLES_TOTAL, one (T_CHUNK_CELLS+3)^3 slab per build-job slot
+    const FrustumPlanes* frustum;
+    u64*    occupiedChunksBitset;
+    s8*     chunkDensity; // T_MAX_BUILD_JOBS * T_SAMPLES_TOTAL, one (T_CHUNK_CELLS+3)^3 slab per build-job slot
     u32     numChunkDraws;
-	u32     chunkCount;
+    u32     chunkCount;
     u32     builtThisFrame; // jobs scheduled this frame, capped by T_MAX_BUILDS_PER_FRAME
     u32     cacheVertices;  // live + pending chunk vertices resident in GeometryBuffer_TerrainVertNew
     u32     cacheIndices;   // live + pending chunk indices resident in GeometryBuffer_TerrainIndex2
@@ -103,7 +103,7 @@ static v128f tUnpackNormal(u32 packed)
 // are shaded once instead of once per triangle, and the GPU draws indexed
 static void tAppendMeshSlotTriangles(tBuildJob* job)
 {
-	const tMeshData* mesh = &job->scratchMesh;
+    const tMeshData* mesh = &job->scratchMesh;
     if (!mesh || !mesh->vertices || !mesh->indices || !job->buildVertices || !job->buildIndices)
         return;
 
@@ -128,11 +128,11 @@ static void tAppendMeshSlotTriangles(tBuildJob* job)
         float3 n = Vec3Get(tUnpackNormal(mesh->vertices[v].normal));
         u32 materials, blend;
         tTerrainMaterial(world, n, &materials, &blend);
-		tVertex vertex = {0};
-		vertex.position  = mesh->vertices[v].position;
-		vertex.normal    = mesh->vertices[v].normal;
-		vertex.materials = materials | (blend << 16);
-		job->buildVertices[job->buildVertexCount++] = vertex;
+        tVertex vertex = {0};
+        vertex.position  = mesh->vertices[v].position;
+        vertex.normal    = mesh->vertices[v].normal;
+        vertex.materials = materials | (blend << 16);
+        job->buildVertices[job->buildVertexCount++] = vertex;
     }
 
     for (size_t i = 0; i + 2 < indexCount; i += 3)
@@ -202,8 +202,8 @@ static void tDestroyChunkPhysics(tChunk* chunk)
 
 static const char* tChunkStateName(ChunkBuildState state)
 {
-	const char* results[CHUNK_MAX_STATE] = { "UNBUILT", "QUEUED", "BUILDING", "PENDING", "READY", "FAILED"};
-	return results[state % CHUNK_MAX_STATE];
+    const char* results[CHUNK_MAX_STATE] = { "UNBUILT", "QUEUED", "BUILDING", "PENDING", "READY", "FAILED"};
+    return results[state % CHUNK_MAX_STATE];
 }
 
 static bool tChunkStateTransitionAllowed(ChunkBuildState oldState, ChunkBuildState newState)
@@ -330,7 +330,7 @@ static bool GenerateChunkMesh(tBuildJob* job)
         return false;
     }
     tAppendMeshSlotTriangles(job);
-	return true;
+    return true;
 }
 
 static bool BuildPhysicsMesh(tBuildJob* job, u32 vertexCount, u32 indexCount)
@@ -375,10 +375,10 @@ static bool UploadChunkMesh(tBuildJob* job)
     u32 idxFirst = GeometryHeapAlloc(GeometryBuffer_TerrainIndex, indexCount, &idxRaw);
     if (first == GEOMETRY_ALLOC_FAIL || idxFirst == GEOMETRY_ALLOC_FAIL)
     {
-		AX_WARN("heap alloc failed");
+        AX_WARN("heap alloc failed");
         if (first != GEOMETRY_ALLOC_FAIL) GeometryHeapFree(GeometryBuffer_TerrainVert, raw);
         if (idxFirst != GEOMETRY_ALLOC_FAIL) GeometryHeapFree(GeometryBuffer_TerrainIndex, idxRaw);
-		SDL_SetAtomicInt(&gMarchingTerrain.heapPressure, 1);
+        SDL_SetAtomicInt(&gMarchingTerrain.heapPressure, 1);
         return false;
     }
 
@@ -409,9 +409,9 @@ static void RunBuildJob(void* userData)
     tBuildJob* job = (tBuildJob*)userData;
     BeginBuildJob(job);
     bool failed = !PrepareBuildScratch(job) ||
-			      !GenerateChunkMesh(job) ||
-			      !UploadChunkMesh(job);
-	if (failed) FailBuildJob(job);
+                  !GenerateChunkMesh(job) ||
+                  !UploadChunkMesh(job);
+    if (failed) FailBuildJob(job);
    
     FinishBuildJob(job);
 }
@@ -636,7 +636,7 @@ static bool tFreeOldestChunkSlot(bool requireMesh, bool respectKeepFrames)
     {
         tChunk* chunk = &gMarchingTerrain.chunks[i];
         u32 next = chunk->lruNext;
-		bool chunkVisible = tAABBVisible(chunk->aabbMin, chunk->aabbMax, gMarchingTerrain.frustum);
+        bool chunkVisible = tAABBVisible(chunk->aabbMin, chunk->aabbMax, gMarchingTerrain.frustum);
         bool okMesh = !requireMesh || chunk->mesh.vertices.heapPtr || chunk->pendingMesh.vertices.heapPtr;
         bool okAge  = !respectKeepFrames || chunk->lastTouchedFrame + T_CACHE_KEEP_FRAMES < gMarchingTerrain.frameIndex;
         bool tooClose = tChunkWithinRadius(chunk, T_EVICT_PROTECT_RADIUS);
@@ -689,7 +689,7 @@ static u32 tAllocChunkSlot(void)
 
 static void tClearChunkCache(void)
 {
-	AX_LOG("marching terrain chunk cache reset");
+    AX_LOG("marching terrain chunk cache reset");
     tDrainBuildJobs();
     RendererSetTerrainChunkDraws(NULL, 0);
     for (u32 i = 0; i < gMarchingTerrain.chunkCount; i++)
@@ -714,13 +714,13 @@ static void tClearChunkCache(void)
 
 static void tPruneChunkCache(u32 targetVertices, u32 targetIndices, bool respectKeepFrames)
 {
-	int numFreed = 0;
-	while (numFreed < 8 && (gMarchingTerrain.cacheVertices > targetVertices || gMarchingTerrain.cacheIndices > targetIndices))
-	{
-		if (!tFreeOldestChunkSlot(true, respectKeepFrames))
+    int numFreed = 0;
+    while (numFreed < 8 && (gMarchingTerrain.cacheVertices > targetVertices || gMarchingTerrain.cacheIndices > targetIndices))
+    {
+        if (!tFreeOldestChunkSlot(true, respectKeepFrames))
             break;
-		numFreed++;
-	}
+        numFreed++;
+    }
 }
 
 static void tResolveHeapPressure(void)
@@ -797,7 +797,7 @@ static void tSyncDirtyPhysics(void)
             continue;
         }
 
-		tSyncChunkPhysics(chunk);
+        tSyncChunkPhysics(chunk);
         chunk->physicsDirty = false;
         synced++;
     }
@@ -829,9 +829,8 @@ static tChunk* GetOrCreateChunk(int3 min)
     };
     chunk->lastTouchedFrame = gMarchingTerrain.frameIndex;
     tLRUPushTail(index);
-    s32 worldSize = T_CHUNK_CELLS;
     chunk->aabbMin = ToFloat3(min);
-    chunk->aabbMax = F3AddF(chunk->aabbMin, (f32)worldSize);
+    chunk->aabbMax = F3AddF(chunk->aabbMin, (f32)T_CHUNK_CELLS);
     HMInsert(&gMarchingTerrain.chunkLookup, tChunkKey(min), &index);
     chunk->dirty = true;
     ScheduleChunkBuild(index, chunk);
@@ -845,25 +844,24 @@ static bool tDrawChunk(const tChunk* chunk)
 
     if (gMarchingTerrain.numChunkDraws >= MAX_TERRAIN_CHUNK_DRAWS)
         return false;
-    s32 step = T_CHUNK_CELLS;
-    s32 chunkX = chunk->min.x / step;
-    s32 chunkY = chunk->min.y / step;
-    s32 chunkZ = chunk->min.z / step;
+    s32 chunkX = chunk->min.x / T_CHUNK_CELLS;
+    s32 chunkY = chunk->min.y / T_CHUNK_CELLS;
+    s32 chunkZ = chunk->min.z / T_CHUNK_CELLS;
     if (chunkX < INT16_MIN || chunkX > INT16_MAX || chunkY < INT16_MIN || chunkY > INT16_MAX || chunkZ < INT16_MIN || chunkZ > INT16_MAX)
     {
         AX_WARN("terrain chunk draw skipped: chunk coord out of s16 range");
         return true;
     }
 
-	// Marching cubes emits an indexed mesh. Indirect commands address index heap
-	// ranges; using vertex ranges here made every draw fetch unrelated indices.
-	TerrainChunkDraw draw;
-	draw.firstIndex = chunk->mesh.indices.first;
-	draw.indexCount = chunk->mesh.indices.count;
-	draw.baseVertex = (s32)chunk->mesh.vertices.first;
+    // Marching cubes emits an indexed mesh. Indirect commands address index heap
+    // ranges; using vertex ranges here made every draw fetch unrelated indices.
+    TerrainChunkDraw draw;
+    draw.firstIndex = chunk->mesh.indices.first;
+    draw.indexCount = chunk->mesh.indices.count;
+    draw.baseVertex = (s32)chunk->mesh.vertices.first;
     draw.chunkXY    = (u32)(u16)(s16)chunkX | ((u32)(u16)(s16)chunkY << 16);
     draw.chunkZ  = (u32)(u16)(s16)chunkZ;
-	gMarchingTerrain.chunkDraws[gMarchingTerrain.numChunkDraws++] = draw;
+    gMarchingTerrain.chunkDraws[gMarchingTerrain.numChunkDraws++] = draw;
     return true;
 }
 
@@ -924,22 +922,20 @@ static bool tSubmitChunkColumn(s32 chunkX, s32 chunkZ, bool useFrustum)
 
 static void tSubmitTerrain(bool useFrustum)
 {
-    const s32 step = T_CHUNK_CELLS;
-	f32 drawDistance = T_MARCHING_DRAW_DISTANCE;
-    s32 centerX = (s32)Floorf32(g_Camera.position.x / (f32)step);
-    s32 centerZ = (s32)Floorf32(g_Camera.position.z / (f32)step);
-    s32 radius = (s32)(drawDistance / (f32)step) + 1;
+    s32 centerX = (s32)Floorf32(g_Camera.position.x / (f32)T_CHUNK_CELLS);
+    s32 centerZ = (s32)Floorf32(g_Camera.position.z / (f32)T_CHUNK_CELLS);
+    s32 radius = (s32)(T_MARCHING_DRAW_DISTANCE / (f32)T_CHUNK_CELLS) + 1;
 
     // Near shells first so the build budget fills terrain around the camera.
     for (s32 shell = 0; shell <= radius; shell++)
     for (s32 z = -shell; z <= shell; z++)
     for (s32 x = -shell; x <= shell; x++)
-	{
-		if (Maxs32(Abss32(x), Abss32(z)) != shell)
-			continue;
-		if (!tSubmitChunkColumn(centerX + x, centerZ + z, useFrustum))
-			return;
-	}
+    {
+        if (Maxs32(Abss32(x), Abss32(z)) != shell)
+            continue;
+        if (!tSubmitChunkColumn(centerX + x, centerZ + z, useFrustum))
+            return;
+    }
 }
 
 static void tLogStats(void)
@@ -996,8 +992,8 @@ bool tMarchingInit(void)
     // one scratch mesh container and bump arena per job slot so workers never share output
     for (u32 i = 0; i < T_MAX_BUILD_JOBS; i++)
     {
-		if (!tMeshDataInit(&gMarchingTerrain.buildJobs[i].scratchMesh)) { tDestroy(); return false; }
-		if (!ArenaScratchCreate(&gMarchingTerrain.buildJobs[i].scratchArena, T_BUILD_SCRATCH_SIZE, "terrainChunkBuild")) { tDestroy(); return false; }
+        if (!tMeshDataInit(&gMarchingTerrain.buildJobs[i].scratchMesh)) { tDestroy(); return false; }
+        if (!ArenaScratchCreate(&gMarchingTerrain.buildJobs[i].scratchArena, T_BUILD_SCRATCH_SIZE, "terrainChunkBuild")) { tDestroy(); return false; }
     }
 
     gMarchingTerrain.initialized = true;
@@ -1009,7 +1005,7 @@ bool tMarchingInit(void)
 
 void tUpdate(void)
 {
-    if (!tMarchingInit()) {
+    if (!tMarchingInit() || !tGetEnabled()) {
         RendererSetTerrainChunkDraws(NULL, 0);
         return;
     }
@@ -1030,7 +1026,7 @@ void tUpdate(void)
     BeginTerrainFrame();
     mat4x4 viewProj = M44Multiply(g_Camera.view, g_Camera.projection);
     FrustumPlanes frustum = CreateFrustumPlanesRevZ(viewProj);
-	gMarchingTerrain.frustum = &frustum;
+    gMarchingTerrain.frustum = &frustum;
 
     tSubmitTerrain(true);
     if (gMarchingTerrain.numChunkDraws == 0) {

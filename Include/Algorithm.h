@@ -22,6 +22,11 @@ purefn char ToUpper(char a)  { return IsLower(a) ? a - ('a' - 'A') : a; }
 // is alphabetical character?
 purefn bool IsChar(char a) { return IsUpper(a) || IsLower(a); };
 purefn bool IsWhitespace(char c) { return c <= ' '; }
+static inline const char* SkipWhiteSpace(const char* p) {
+    while (*p && IsWhitespace(*p))
+        p++;
+    return p;
+}
 
 void SwapMem(void* a, void* b, size_t elemSize);
 
@@ -56,6 +61,28 @@ int Pow10(int x);
 // @returns number of characters added
 int FloatToString(char* ptr, float f, int afterpoint);
 
+char* WStr(char* p, const char* s);
+
+char* ParseWriteF32(char* p, const char* key, f32 value, int decimals);
+
+char* ParseWriteU32(char* p, const char* key, u32 value);
+
+char* ParseWriteBool(char* p, const char* key, bool value);
+
+bool ParseKeyIs(const char* line, const char* key, const char** value);
+
+char* WStr(char* p, const char* s);
+
+char* WInt(char* p, s64 v);
+
+char* WFlt(char* p, float v);
+
+const char* RU32(const char* p, u32* v);
+
+const char* RU64(const char* p, u64* v);
+
+const char* RFlt(const char* p, f32* v);
+
 // return index if found, -1 otherwise
 int aIndexOf(const void* arr, const void* val, int n, size_t elemSize, int (*cmp)(const void*, const void*));
 
@@ -89,6 +116,8 @@ static inline bool StrCmp16Lower(const char* a, const char* b, uint64_t n)
 bool StringContains(const char* name, const char* search);
 
 bool StringEqual(const char* RESTRICT a, const char* RESTRICT b, int n);
+
+void StringCopy(const char* path, char* dst, u32 dstSize);
 
 static inline void CopyString(char* dst, u32 dstSize, const char* src)
 {

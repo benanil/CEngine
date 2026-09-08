@@ -114,8 +114,8 @@ static void SceneAsyncDone(void* userData, s32 result)
 {
     SceneAsyncRequest* request = (SceneAsyncRequest*)userData;
     request->result = result;
-	if (!result) AX_WARN("scene async request start failed: %s", request->path);
-	SDL_SetAtomicInt(&request->done, 1);
+    if (!result) AX_WARN("scene async request start failed: %s", request->path);
+    SDL_SetAtomicInt(&request->done, 1);
 }
 
 bool SceneAsyncBegin(SceneAsyncOp op, const char* path, const char* taskName, SceneAsyncRequestCallback callback)
@@ -144,7 +144,7 @@ bool SceneAsyncBegin(SceneAsyncOp op, const char* path, const char* taskName, Sc
     request->callback = callback;
     request->op = op;
     MemCopy(request->path, normalized, StringLength(normalized) + 1);
-	AsyncRun(taskName, SceneAsyncProbe, SceneAsyncDone, request);
+    AsyncRun(taskName, SceneAsyncProbe, SceneAsyncDone, request);
     sceneAsyncRequest = request;
     return true;
 }
@@ -157,12 +157,12 @@ void Scene_AsyncUpdate(void)
 
     if (!request->result)
     {
-		AX_ERROR("scene async request failed: %s", request->path);
+        AX_ERROR("scene async request failed: %s", request->path);
     }
-	else if (request->callback)
-	{
-		request->callback(request);
-	}
+    else if (request->callback)
+    {
+        request->callback(request);
+    }
 
     // The probe held one warming reference per bundle so the callback's scene/import load hit the
     // cache instead of re-baking. The scene took its own references in the callback, so drop the
@@ -233,7 +233,7 @@ static void BundleCacheQueueSave(const char* path, u64 key)
     ChangeExtension(task->abmPath, pathLen, "abm");
     task->cacheKey = key;
 
-	AsyncRun("Save Bundle Cache", SaveBundleCacheTask, SaveBundleCacheDone, task);
+    AsyncRun("Save Bundle Cache", SaveBundleCacheTask, SaveBundleCacheDone, task);
 }
 
 static void BVHCallback(void* data, s32 result)
@@ -327,7 +327,7 @@ BundleCacheEntry* BundleCacheAcquire(const char* path)
         BundleCacheQueueSave(path, key);
 
     // BVH builds asynchronously and addresses the entry by key, so it is safe across later inserts.
-	AsyncRun("Create BVH", CreateBVH, BVHCallback, (void*)(uintptr_t)key);
+    AsyncRun("Create BVH", CreateBVH, BVHCallback, (void*)(uintptr_t)key);
     return entry;
 }
 

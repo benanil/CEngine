@@ -340,18 +340,18 @@ AFile AFileOpen(const char* fileName, AOpenFlag flag)
     afile.file = fopen(fileName, modes[flag]);
     #endif
 
-    unsigned char bom[] = {0xEF, 0xBB, 0xBF};
-
-    #ifndef _MSC_VER
-    if (flag == AOpenFlag_WriteText && afile.file) {
-        fwrite(bom, 1, sizeof(bom), afile.file);
-    }
-    #else
-    if (flag == AOpenFlag_WriteText && afile.file) {
-        DWORD written;
-        WriteFile(afile.file, bom, sizeof(bom), &written, NULL);
-    }
-    #endif
+    // unsigned char bom[] = {0xEF, 0xBB, 0xBF};
+    // 
+    // #ifndef _MSC_VER
+    // if (flag == AOpenFlag_WriteText && afile.file) {
+    //     fwrite(bom, 1, sizeof(bom), afile.file);
+    // }
+    // #else
+    // if (flag == AOpenFlag_WriteText && afile.file) {
+    //     DWORD written;
+    //     WriteFile(afile.file, bom, sizeof(bom), &written, NULL);
+    // }
+    // #endif
 
     return afile;
 }
@@ -445,6 +445,32 @@ int AFileReadI32(char* dst, int maxLen, AFile file)
     return result;
 }
 
+void AFileWriteI32(int val, AFile file)
+{
+    char buffer[16];
+    int numDigits = IntToString(buffer, (int64_t)val, 0);
+    AFileWrite(buffer, numDigits, file, 1);
+}
+
+void AFileWriteF32(f32 val, AFile file)
+{
+    char buffer[32];
+    int numDigits = FloatToString(buffer, val, 3);
+    AFileWrite(buffer, numDigits, file, 1);
+}
+
+void AFileWriteNamedF32(const char* name, f32 val, AFile file)
+{
+    AFileWrite(name, StringLength(name), file, 1);
+    AFileWriteF32(val, file);
+}
+
+void AFileWriteNamedI32(const char* name, s32 val, AFile file)
+{
+    AFileWrite(name, StringLength(name), file, 1);
+    AFileWriteI32(val, file);
+}
+
 uint64_t AFileSize(AFile file)
 {
     #ifdef _WIN32
@@ -500,9 +526,10 @@ char* ReadAllFileAlloc(const char* fileName)
 // note: if you define it you are responsible of deleting the buffer
 char* ReadAllText(const char* fileName, char* buffer, uint64_t* numCharacters, const char* startText)
 {
-    if (buffer == NULL || fileName == NULL) {
+    if (fileName == NULL || !FileExist(fileName)) 
         return NULL; 
-    }
+    
+    if (buffer == NULL) { buffer = AllocZeroTLSFGlobal(1, FileSize(fileName)); }
 
     int startTextLen = startText ? StringLength(startText) : 0;
     AFile file = AFileOpen(fileName, AOpenFlag_ReadBinary);
@@ -543,7 +570,6 @@ char* ReadAllTextAlloc(const char* fileName, uint64_t* numCharacters, const char
     char* buffer = (char*)AllocZeroTLSFGlobal(FileSize(fileName) + 40 + startTextLen, 1); // +1 for null terminator
     return ReadAllText(fileName, buffer, numCharacters, startText);
 }
-
 
 void FreeAllText(char* text)
 {

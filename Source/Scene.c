@@ -31,6 +31,11 @@ static Scene g_OwnedActiveScene;
 static bool  g_OwnedActiveSceneInit;
 static char  g_ActiveScenePath[512];
 
+const char* GetActiveScenePath()
+{
+    return g_ActiveScenePath;
+}
+
 static void SceneTerrainPath(const char* scenePath, char* out, u32 outSize)
 {
     NormalizePath(scenePath, out, outSize);
@@ -98,8 +103,9 @@ void Scene_Init(Scene* scene)
     CreateRenderSetBuffers(&scene->transparentBuffers, MAX_ENTITY, MAX_GROUP);
     TextureSystem_Init(&scene->textureSystem);
     AnimationSystem_Init(&scene->animSystem);
-	Scene_InitPhysics(scene);
-	scene->lights = (LightGPU*)AllocZeroTLSFGlobal(MAX_SCENE_LIGHTS, sizeof(LightGPU));
+    Scene_InitPhysics(scene);
+    scene->ambientBoost = 1.0f;
+    scene->lights = (LightGPU*)AllocZeroTLSFGlobal(MAX_SCENE_LIGHTS, sizeof(LightGPU));
     scene->materialSlots = (u64*)AllocZeroTLSFGlobal((MAX_GPU_MATERIALS + 63u) >> 6, sizeof(u64));
     scene->bundleSlots   = (u64*)AllocZeroTLSFGlobal((MAX_SCENE_BUNDLES + 63u) >> 6, sizeof(u64));
     scene->bundleRefs    = (SceneBundleRef*)AllocZeroTLSFGlobal(MAX_SCENE_BUNDLES, sizeof(SceneBundleRef));
@@ -107,6 +113,7 @@ void Scene_Init(Scene* scene)
 
 void Scene_Destroy(Scene* scene)
 {
+    if (scene->physicsBuildTask) AsyncWait(scene->physicsBuildTask);
     Scene_Deactivate(scene);
     for (u32 i = 0; i < scene->numBundles; i++)
         if (scene->bundleRefs[i].bundle)
@@ -116,24 +123,20 @@ void Scene_Destroy(Scene* scene)
     DestroyRenderSetBuffers(&scene->transparentBuffers);
     TextureSystem_Destroy(&scene->textureSystem);
     AnimationSystem_Destroy(&scene->animSystem);
-	RenderSet_Destroy(&scene->skinnedSet);
-	RenderSet_Destroy(&scene->surfaceSet);
-	RenderSet_Destroy(&scene->transparentSet);
-	if (scene->bundleRefs)    DeAllocateTLSFGlobal(scene->bundleRefs);
+    RenderSet_Destroy(&scene->skinnedSet);
+    RenderSet_Destroy(&scene->surfaceSet);
+    RenderSet_Destroy(&scene->transparentSet);
+    if (scene->bundleRefs)    DeAllocateTLSFGlobal(scene->bundleRefs);
     if (scene->lights)        DeAllocateTLSFGlobal(scene->lights);
     if (scene->materialSlots) DeAllocateTLSFGlobal(scene->materialSlots);
     if (scene->bundleSlots)   DeAllocateTLSFGlobal(scene->bundleSlots);
-	Scene_PhysicsDestroy(scene);
-	scene->bundleRefs    = NULL;
-    scene->lights        = NULL;
-    scene->materialSlots = NULL;
-    scene->bundleSlots   = NULL;
-	scene->renderDataDirty = 0;
+    Scene_PhysicsDestroy(scene);
     if (scene == &g_OwnedActiveScene)
     {
         g_OwnedActiveSceneInit = false;
         g_ActiveScenePath[0] = '\0';
     }
+    MemsetZero(scene, sizeof(Scene));
     // render set cpu allocations stay, consistent with the rest of the engine teardown
 }
 
@@ -157,10 +160,10 @@ void Scene_Update(float deltaTime)
 {
     Scene_AsyncUpdate();
 
-	Scene* activeScene = Scene_GetActive();
-	if (activeScene == NULL) return;
-	
-	Scene_PhysicsUpdate(activeScene, deltaTime);
+    Scene* activeScene = Scene_GetActive();
+    if (activeScene == NULL) return;
+    
+    Scene_PhysicsUpdate(activeScene, deltaTime);
 }
 
 Scene* Scene_OpenActive(const char* path)
@@ -170,8 +173,7 @@ Scene* Scene_OpenActive(const char* path)
 
     Scene* scene = Scene_NewActive();
     if (!scene) return NULL;
-	RenderSet_Clear(&scene->surfaceSet);
-	if (!SceneSerializer_Load(scene, normalized))
+    if (!SceneSerializer_Load(scene, normalized))
     {
         AX_ERROR("scene load failed: %s", normalized);
         return NULL;
@@ -181,8 +183,7 @@ Scene* Scene_OpenActive(const char* path)
     Terrain_DeleteWorld();
     char terrainPath[512];
     SceneTerrainPath(normalized, terrainPath, sizeof(terrainPath));
-    if (FileExist(terrainPath))
-        Terrain_LoadWorld(terrainPath);
+    Terrain_LoadWorld(terrainPath);
     return scene;
 }
 
@@ -226,6 +227,13 @@ void Scene_Deactivate(Scene* scene)
 {
     if (g_ActiveScene != scene) return;
     g_ActiveScene = NULL;
+}
+
+bool Scene_IsEntityTransparent(const Scene* scene, const Entity* entity)
+{
+    Entity* t = scene->transparentSet.entities;
+    return ((u64)(uintptr_t)entity) >= ((u64)(uintptr_t)t) && 
+           ((u64)(uintptr_t)entity) <  ((u64)(uintptr_t)(t + scene->transparentSet.numEntities));
 }
 
 // out: scene bundle index of the path, INVALID_BUNDLE when not present

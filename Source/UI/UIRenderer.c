@@ -581,6 +581,14 @@ bool UIButton(Clay_ElementId id, Clay_String label, Clay_Dimensions size, bool s
     return UIButtonFlags(id, label, size, selected, UIButtonFlag_None);
 }
 
+bool UICheckboxS32(Clay_ElementId id, Clay_String label, s32* value)
+{
+    bool val = (bool)value;
+    bool changed = UICheckbox(id, label, &val);
+    *value = (s32)val;
+    return changed;
+}
+
 bool UICheckbox(Clay_ElementId id, Clay_String label, bool* value)
 {
     bool checked = value && *value;
@@ -677,22 +685,33 @@ void UISectionHeader(const char* title)
     }));
 }
 
+
+void UIText(const char* text)
+{
+    u32 len = (u32)StringLength(text);
+    char* buff = UIFrameStringAlloc(len + 16u);
+    if (!buff) return;
+    MemCopy(buff, text, len);
+    buff[len] = '\0';
+
+    Clay_String string = { .isStaticallyAllocated = false, .length = (s32)len, .chars = buff };
+    CLAY_TEXT(string, CLAY_TEXT_CONFIG({
+        .fontSize = 14,
+        .textColor = UIGetClayColor(UIColor_Text)
+    }));
+}
+
 void UITextU32(const char* label, u32 value)
 {
     u32 len = (u32)StringLength(label);
-    char* text = UIFrameStringAlloc(len + 16u);
+    char text[512] = {0};
     if (!text) return;
     MemCopy(text, label, len);
     text[len++] = ':';
     text[len++] = ' ';
     len += (u32)IntToString(text + len, (int64_t)value, 0);
     text[len] = '\0';
-
-    Clay_String string = { .isStaticallyAllocated = false, .length = (s32)len, .chars = text };
-    CLAY_TEXT(string, CLAY_TEXT_CONFIG({
-        .fontSize = 14,
-        .textColor = UIGetClayColor(UIColor_Text)
-    }));
+    UIText(text);
 }
 
 void UIDivider(Clay_ElementId id)
@@ -1183,7 +1202,7 @@ typedef struct UIEditSlot_
 
 static UIEditSlot* UIGetEditSlot(Clay_ElementId id)
 {
-    static UIEditSlot slots[64];
+    static UIEditSlot slots[128];
     UIEditSlot* empty = NULL;
     u64 editId = (u64)id.id;
 

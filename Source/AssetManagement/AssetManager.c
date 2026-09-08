@@ -21,8 +21,8 @@
 // #include "Scene.h"
 
 #if !AX_GAME_BUILD
-	#include "Extern/ufbx.h"
-	#include "Extern/meshoptimizer/src/meshoptimizer.h"
+    #include "Extern/ufbx.h"
+    #include "Extern/meshoptimizer/src/meshoptimizer.h"
 #endif
 
 #include "Math/Matrix.h"
@@ -104,7 +104,7 @@ static u32 PackUFBXBaseColorFactor(const ufbx_material* material, f32 opacity)
 
         if (material->fbx.diffuse_factor.has_value)    factor = (f32)material->fbx.diffuse_factor.value_real;
     }
-	return PackColor3PtrToUint(&color.x);
+    return PackColor3PtrToUint(&color.x);
 }
 
 static char* GetNameFromFBX(ufbx_string ustr, FixedPow2Allocator* stringAllocator)
@@ -621,9 +621,9 @@ s32 LoadFBX(const char* path, SceneBundle* fbxScene, f32 scale)
 }
 
 u8 IsMeshPath(const char* path) {
-	int pathLen = StringLength(path);
-	return FileHasExtension(path, pathLen, ".fbx") || FileHasExtension(path, pathLen, ".gltf") ||  
-		FileHasExtension(path, pathLen, ".obj") || FileHasExtension(path, pathLen, ".glb") || FileHasExtension(path, pathLen, ".abm");
+    int pathLen = StringLength(path);
+    return FileHasExtension(path, pathLen, ".fbx") || FileHasExtension(path, pathLen, ".gltf") ||  
+        FileHasExtension(path, pathLen, ".obj") || FileHasExtension(path, pathLen, ".glb") || FileHasExtension(path, pathLen, ".abm");
 }
 
 s32 LoadOBJ(const char* path, SceneBundle* objScene, f32 scale)
@@ -636,10 +636,10 @@ s32 ImportBundle(const char* path, SceneBundle* scene, f32 scale)
 {
     s32 pathLen = StringLength(path);
     if (FileHasExtension(path, pathLen, ".obj") || 
-		FileHasExtension(path, pathLen, ".fbx"))
+        FileHasExtension(path, pathLen, ".fbx"))
         return LoadFBX(path, scene, scale);
     else 
-		return ParseGLTF(path, scene, scale);
+        return ParseGLTF(path, scene, scale);
 }
 
 // one image's basis-compress job: resolved path/type up front (pass 1), compressed in
@@ -663,7 +663,7 @@ static SDL_Semaphore* GetImageCompressSlots(void)
 {
     SDL_LockSpinlock(&gImageCompressSlotsInitLock);
     if (!gImageCompressSlots) {
-		// each slot can hold tens of MB, stay  conservative
+        // each slot can hold tens of MB, stay  conservative
         u32 cap = Clampu32((u32)SDL_GetNumLogicalCPUCores(), 1u, 8u);
         gImageCompressSlots = SDL_CreateSemaphore(cap);
     }
@@ -860,7 +860,7 @@ void SaveSceneImagesAsync(SceneBundle* scene, const char* path, bool deleteRemai
         .savePath = savePath,
         .deleteRemaining = deleteRemaining
     };
-	AsyncRun("SaveSceneImages", SaveSceneImagesTask, callback, taskData);
+    AsyncRun("SaveSceneImages", SaveSceneImagesTask, callback, taskData);
 }
 
 // one resolved image ready for the slow part (basis file read + transcode + GPU upload).
@@ -1016,7 +1016,7 @@ s32 LoadBundleImagesFromCache(const char* gltfPath, SceneBundle* bundle, Texture
     int pathLen = StringLength(gltfPath);
     MemCopy(path, gltfPath, pathLen + 1);
     ChangeExtension(path, pathLen, "bdc");
-	if (!FileExist(path)) SaveSceneImages(bundle, path, false);
+    if (!FileExist(path)) SaveSceneImages(bundle, path, false);
     return LoadSceneImages(path, staging, bundle->numImages);
 }
 
@@ -1316,7 +1316,7 @@ s32 SaveGLTFBinary(const SceneBundle* gltf, const char* path)
     
     for (s32 i = 0; i < gltf->numSamplers; i++)
     {
-    	AFileWrite(&gltf->samplers[i], sizeof(ASampler), file, 1);
+        AFileWrite(&gltf->samplers[i], sizeof(ASampler), file, 1);
     }
     
     for (s32 i = 0; i < gltf->numCameras; i++)

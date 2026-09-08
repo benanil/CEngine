@@ -91,7 +91,7 @@ static u32 GeometryHeapStride(GeometryBufferKind kind)
         case GeometryBuffer_GrassInstance: return sizeof(GrassInstance);
         case GeometryBuffer_TerrainVert:   return sizeof(tVertex);
         case GeometryBuffer_TerrainIndex:  return sizeof(u16);
-		default:                           return sizeof(u32);
+        default:                           return sizeof(u32);
     }
 }
 
@@ -101,10 +101,10 @@ static void InitGeometryHeaps(void)
         sizeof(ASkinedVertex) * MAX_SKINNED_SOURCE_VERTEX,
         sizeof(AVertex)       * MAX_SURFACE_VERTEX,
         sizeof(u32)           * MAX_INDEX,
-    	sizeof(GrassInstance) * T_MAX_GRASS,
-		sizeof(tVertex)       * T_MAX_VERTICES,
+        sizeof(GrassInstance) * T_MAX_GRASS,
+        sizeof(tVertex)       * T_MAX_VERTICES,
         sizeof(u16)           * T_MAX_INDICES
-	};
+    };
 
     for (u32 kind = 0; kind < GeometryBuffer_Count; kind++)
     {
@@ -210,18 +210,18 @@ bool GraphicsApplyMSAASettings(void)
     else requested = 1u;
 
     SDL_GPUSampleCount selected = SDL_GPU_SAMPLECOUNT_1;
-	for (u32 i = requested; i > 0u; i >>= 1)
-	{
-		SDL_GPUSampleCount candidate = SampleCountFromValue(i);
+    for (u32 i = requested; i > 0u; i >>= 1)
+    {
+        SDL_GPUSampleCount candidate = SampleCountFromValue(i);
 
-		if (candidate == SDL_GPU_SAMPLECOUNT_1 ||
-			(SDL_GPUTextureSupportsSampleCount(g_GPUDevice, TEX_FMT_HALF4, candidate) &&
-			 SDL_GPUTextureSupportsSampleCount(g_GPUDevice, TEX_FMT_D32_FLT, candidate)))
-		{
-			selected = candidate;
-			break;
-		}
-	}
+        if (candidate == SDL_GPU_SAMPLECOUNT_1 ||
+            (SDL_GPUTextureSupportsSampleCount(g_GPUDevice, TEX_FMT_HALF4, candidate) &&
+             SDL_GPUTextureSupportsSampleCount(g_GPUDevice, TEX_FMT_D32_FLT, candidate)))
+        {
+            selected = candidate;
+            break;  
+        }
+    }
 
     u32 selectedSamples = SampleCountValue(selected);
     if (selectedSamples != requested)

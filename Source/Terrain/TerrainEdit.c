@@ -452,7 +452,7 @@ bool TerrainEdit_LoadChunks(const char* path)
         MemCopy(chunk->delta, record->delta, sizeof(record->delta));
         MemCopy(chunk->material, record->material, sizeof(record->material));
         int3 mn = (int3){ x * TERRAIN_EDIT_CELLS, y * TERRAIN_EDIT_CELLS, z * TERRAIN_EDIT_CELLS };
-		int3 mx = (int3){ x * TERRAIN_EDIT_CELLS + TERRAIN_EDIT_MASK, y * TERRAIN_EDIT_CELLS + TERRAIN_EDIT_MASK, z * TERRAIN_EDIT_CELLS + TERRAIN_EDIT_MASK };
+        int3 mx = (int3){ x * TERRAIN_EDIT_CELLS + TERRAIN_EDIT_MASK, y * TERRAIN_EDIT_CELLS + TERRAIN_EDIT_MASK, z * TERRAIN_EDIT_CELLS + TERRAIN_EDIT_MASK };
         TerrainEditGrowBounds(mn, mx);
     }
     SDL_UnlockMutex(g_TerrainEdit.lock);
