@@ -166,7 +166,7 @@ s32 SceneSerializer_Save(Scene* scene, const char* path)
 
     // raw render set entities in (group, local) order, the dense layout reproduces on load.
     // rotation and scale stay in their packed forms so the round trip is exact
-    for (u32 s = 0; s < 3u; s++)
+    for (u32 s = 0; s < 2u; s++)
     {
         const RenderSet* set = s == 0u ? &scene->surfaceSet : &scene->skinnedSet;
         p = WStr(line, "entities");
@@ -456,8 +456,7 @@ static s32 ParseSceneFile(const char* path, SceneFileData* data)
         light->shadowIndex = LIGHT_SHADOW_INDEX_INVALID;
     }
 
-    u32 serializedSets = version >= 3u ? 3u : 2u;
-    for (u32 s = 0; s < serializedSets; s++)
+    for (u32 s = 0; s < 2; s++)
     {
         u32 setIdx = 0;
         if (!(p = ReadRecord(file, line, sizeof(line), "entities"))) goto fail;
@@ -640,7 +639,7 @@ s32 SceneSerializer_Load(Scene* scene, const char* path)
 
     // entities restore straight into the render sets, records are in (group, local) order
     // so the dense layout and sparse ids come back exactly as saved
-    for (u32 s = 0; s < 3u; s++)
+    for (u32 s = 0; s < 2u; s++)
     {
         bool isSkinned = s == 1u;
         RenderSet* set = s == 0u ? &scene->surfaceSet : &scene->skinnedSet;

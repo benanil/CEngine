@@ -188,6 +188,7 @@ void Scene_PhysicsApplyWorldSettings(void);
 // scene's surface render sets. call once after a scene finishes loading.
 void Scene_BuildStaticCollidersAsync(Scene* scene, AsyncCallback callback);
 void Scene_BuildStaticColliders(Scene* scene);
+// after an entity moved call this to update its transformation in physics system
 void Scene_PhysicsSyncEntityBody(Scene* scene, const Entity* entity);
 void Scene_ToggleEntityPhysics(Scene* scene, Entity* entity, bool enabled);
 bool Scene_IsEntityPhysicsEnabled(Scene* scene, Entity* entity);

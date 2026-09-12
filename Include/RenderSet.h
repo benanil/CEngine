@@ -64,7 +64,6 @@ typedef struct RenderSet_
     u32 numGroups;
     u32 numBundles; // watermark: highest used bundle slot + 1, slots below may be empty
     u32 skinned;
-    u32 materialFilter;
     struct Scene_* hookScene;
 } RenderSet;
 
@@ -139,7 +138,8 @@ void  RenderSet_SetHookScene(RenderSet* set, struct Scene_* scene);
 // materialOffset is the scene's gpu material slot base of the bundle.
 // out: groupIdx, ~0u outherwise
 u32   RenderSet_AddSceneBundle(RenderSet* set, const SceneBundle* sceneBundle, u32 materialOffset);
-// out: entityBegin, entityCount
+// returns: root node, first entity sparseID that is added
+//    since we order entities from root to childrensmallest id is root node
 u32   RenderSet_AddScene(RenderSet* set, u32 bundleIdx, v128f position, v128f rotation, v128f scale, bool wantSkinned);
 
 u32   RenderSet_AddEntity(RenderSet* set, u32 primitiveIdx, const Entity* data);

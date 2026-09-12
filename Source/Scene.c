@@ -164,6 +164,7 @@ void Scene_Update(float deltaTime)
     {
         Entity* ball = &activeScene->surfaceSet.entities[ballEntity];
         ball->position = VecAdd(ball->position, VecSet1(0.001f));
+        Scene_PhysicsSyncEntityBody(activeScene, ball);
     }
     Scene_PhysicsUpdate(activeScene, deltaTime);
 }
@@ -183,9 +184,7 @@ Scene* Scene_OpenActive(const char* path)
     MemCopy(g_ActiveScenePath, normalized, StringLength(normalized) + 1);
 
     u32 bundle = Scene_AddBundle(scene, "Assets/Meshes/Sphere.gltf", false);
-    Scene_Spawn(scene, bundle, VecSetR(0.0f, 34.0f, 0.0f, 0.0f), QIdentity(), VecOne());
-    ballEntity = 
-    scene->surfaceSet.primitiveGroups[scene->surfaceSet.bundlePrimRange[bundle].start].entityOffset;
+    ballEntity = Scene_Spawn(scene, bundle, VecSetR(0.0f, 34.0f, 0.0f, 0.0f), QIdentity(), VecOne());
 
     Terrain_DeleteWorld();
     char terrainPath[512];
@@ -639,11 +638,10 @@ u32 Scene_Spawn(Scene* scene, u32 bundleIdx, v128f position, v128f rotation, v12
         for (u32 i = 0; i < range.count; i++)
             oldCounts[i] = set->primitiveGroups[range.start + i].numEntities;
     }
-    // todo use it
-    u32 rootNode = bundle->bundle->rootNode;
+
     u32 added = RenderSet_AddScene(set, scene->bundleRefs[bundleIdx].renderIdx, position, rotation, scale, skinned);
 
-    if (skinned && added && oldCounts)
+    if (skinned && added != INVALID_ENTITY && oldCounts)
     {
         GPUAnimationInstance instance = { .animIdx = Scene_DefaultAnimation(scene, bundleIdx), .timeOffset = 0.0f };
         for (u32 i = 0; i < range.count; i++)
@@ -658,7 +656,7 @@ u32 Scene_Spawn(Scene* scene, u32 bundleIdx, v128f position, v128f rotation, v12
     }
     if (oldCounts) ArenaPopGlobal(range.count * sizeof(u32));
 
-    if (added) scene->renderDataDirty = 1;
+    if (added != INVALID_ENTITY) scene->renderDataDirty = 1;
     return added;
 }
 

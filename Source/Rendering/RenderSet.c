@@ -397,7 +397,7 @@ u32 RenderSet_AddScene(RenderSet* set, u32 bundleIdx, v128f position, v128f rota
 {
     if (bundleIdx >= set->numBundles || set->bundles[bundleIdx] == NULL) {
         AX_WARN("add scene bundle bounds check failed!");
-        return 0;
+        return INVALID_ENTITY;
     }
 
     const Range range = set->bundlePrimRange[bundleIdx];
@@ -407,7 +407,7 @@ u32 RenderSet_AddScene(RenderSet* set, u32 bundleIdx, v128f position, v128f rota
     u32 numPrimitives = range.count;
     if (numNodes <= 0 || numPrimitives == 0u) {
         AX_WARN("no nodes in bundle to add!");
-        return 0;
+        return INVALID_ENTITY;
     }
  
     u32* primitiveCounts = ArenaAllocGlobal(numPrimitives * sizeof(u32));
@@ -444,7 +444,7 @@ u32 RenderSet_AddScene(RenderSet* set, u32 bundleIdx, v128f position, v128f rota
     if (AX_UNLIKELY(totalPrimAdded == 0u)) {
         ArenaPopGlobal(((u32)numNodes + 1u) * sizeof(Entity));
         ArenaPopGlobal(numPrimitives * sizeof(u32));
-        return 0;
+        return INVALID_ENTITY;
     }
 
     u32 sparseCount = set->skinned ? meshNodeCount : totalPrimAdded;
@@ -529,7 +529,7 @@ u32 RenderSet_AddScene(RenderSet* set, u32 bundleIdx, v128f position, v128f rota
 
     ArenaPopGlobal(((u32)numNodes + 1u) * sizeof(Entity));
     ArenaPopGlobal(numPrimitives * sizeof(u32));
-    return totalPrimAdded;
+    return sparseStart;
 }
 
 void RenderSet_CompactEntities(RenderSet* set)
