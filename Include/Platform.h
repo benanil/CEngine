@@ -102,19 +102,20 @@ void SetMouseWindowPos(f32 x, f32 y);
 f32  GetMouseWheelDelta();
 u8   GetDoubleClicked();
 u8   AnyMouseKeyDown();
-u8   GetMouseDown(s32 button);
-u8   GetMouseReleased(s32 button);
-u8   GetMousePressed(s32 button);
+u8   GetMouseDown(MouseButton button);
+u8   GetMouseReleased(MouseButton button);
+u8   GetMousePressed(MouseButton button);
 
 void wGetMouseWindowPos(f32* x, f32* y);
 void wGetMonitorSize(s32* width, s32* height);
 void wSetCursor(wCursor cursor);
 
 // Keyboard
+typedef s32 SDLK;
 u8   AnyKeyDown();
-u8   GetKeyDown(s32 c);
-u8   GetKeyReleased(s32 c);
-u8   GetKeyPressed(s32 c);
+u8   GetKeyDown(SDLK c);
+u8   GetKeyReleased(SDLK c);
+u8   GetKeyPressed(SDLK c);
 u32  PlatformConsumeTextInput(char* dst, u32 capacity);
 u32  PlatformConsumeTextKeyEvents(PlatformTextKeyEvent* dst, u32 capacity);
 

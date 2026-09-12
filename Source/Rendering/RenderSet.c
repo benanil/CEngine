@@ -19,7 +19,6 @@ void RenderSet_InitSet(RenderSet* set, u32 maxEntities, u32 maxGroups, u32 maxBu
     set->maxGroups   = maxGroups;
     set->maxBundles  = maxBundles;
     set->skinned     = skinned ? 1u : 0u;
-    set->materialFilter = RenderSetMaterialFilter_All;
 
     set->entities         = (Entity*)AllocAligned(maxEntities * sizeof(Entity), 16);
     set->sparseID         = (u32*)AllocAligned(maxEntities * sizeof(u32), 16);
@@ -45,27 +44,9 @@ void RenderSet_Destroy(RenderSet* set)
     MemsetZero(set, sizeof(RenderSet));
 }
 
-void RenderSet_SetMaterialFilter(RenderSet* set, RenderSetMaterialFilter filter)
-{
-    set->materialFilter = (u32)filter;
-}
-
 void RenderSet_SetHookScene(RenderSet* set, struct Scene_* scene)
 {
     set->hookScene = scene;
-}
-
-static bool PrimitiveMatchesMaterialFilter(const RenderSet* set, const SceneBundle* bundle, const APrimitive* primitive)
-{
-    if (set->materialFilter == RenderSetMaterialFilter_All) return true;
-
-    AMaterialAlphaMode alphaMode = AMaterialAlphaMode_Opaque;
-    if (primitive->material < (u32)bundle->numMaterials)
-        alphaMode = bundle->materials[primitive->material].alphaMode;
-
-    bool transparent = alphaMode == AMaterialAlphaMode_Blend;
-    if (set->materialFilter == RenderSetMaterialFilter_Transparent) return transparent;
-    return !transparent;
 }
 
 v128f EntityUnpackWorldScale(u64 packed) {
@@ -378,6 +359,14 @@ static bool ANodeIsMesh(const ANode* node, bool skinned)
     return !(node->type != 0 || node->index < 0 || (skinned && node->skin < 0));
 }
 
+static bool PrimitiveIsTransparent(const SceneBundle* bundle, const APrimitive* primitive)
+{
+    AMaterialAlphaMode alphaMode = AMaterialAlphaMode_Opaque;
+    if (primitive->material < (u32)bundle->numMaterials)
+        alphaMode = bundle->materials[primitive->material].alphaMode;
+    return alphaMode == AMaterialAlphaMode_Blend;
+}
+
 // world: staging entities -1 is root
 // rootTemp: temp rootNodeTransform. WARNING make SparseID = INVALID_ENTITY if empty
 void RendersetAddANodesAsEntities(RenderSet* rs, const ANode* nodes, s32 numNode, 
@@ -447,8 +436,6 @@ u32 RenderSet_AddScene(RenderSet* set, u32 bundleIdx, v128f position, v128f rota
         for (u32 p = 0; p < (u32)mesh->numPrimitives; p++)
         {
             const APrimitive* primitive = mesh->primitives + p;
-            if (!PrimitiveMatchesMaterialFilter(set, bundle, primitive)) continue;
-
             primitiveCounts[firstGroupIdx + p - range.start]++;
             totalPrimAdded++;
         }
@@ -526,11 +513,11 @@ u32 RenderSet_AddScene(RenderSet* set, u32 bundleIdx, v128f position, v128f rota
         for (u32 p = 0; p < (u32)mesh->numPrimitives; p++)
         {
             const APrimitive* primitive = mesh->primitives + p;
-            if (!PrimitiveMatchesMaterialFilter(set, bundle, primitive)) continue;
-
+            
             Entity added = nodeEntities[n + 1u];
             added.primitiveIdx = firstGroupIdx + p;
             added.sparseIdx = set->skinned ? nodeSparseIdx : sparseStart + sparseCursor++;
+            added.flags |= PrimitiveIsTransparent(bundle, primitive) * EntityFlags_Transparent;
             PrimitiveGroup* group = &set->primitiveGroups[added.primitiveIdx];
             u32 localIdx = group->numEntities++;
             u32 denseIdx = group->entityOffset + localIdx;

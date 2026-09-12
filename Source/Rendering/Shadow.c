@@ -19,7 +19,7 @@ static void CullFoliageShadowCasters(SDL_GPUCommandBuffer* cmd, FrustumPlanes pl
     if (!foliageScene || foliageScene->surfaceSet.numGroups == 0u)
         return;
 
-    DispatchCullDrawArgsCompute(cmd, &foliageScene->surfaceSet, &foliageScene->surfaceBuffers,
+    DispatchCullDrawArgsCompute(cmd, &foliageScene->surfaceSet, &foliageScene->surfaceBuffers, &foliageScene->surfaceBuffers.draw,
                                 planes, viewProj, flags, instanceMultiplier, cullSphere);
 }
 
@@ -128,7 +128,8 @@ ShadowCascadeData CascadedShadowmaps(SDL_GPUCommandBuffer* cmd)
         mat4x4 shadowViewProj = cachedShadowCascades.lightViewProj[cascade];
         FrustumPlanes shadowFrustum = CreateFrustumPlanes(shadowViewProj);
         // planes.planes[4] = planes.planes[5] = VecZero(); // disable near, far plane frustum check
-        CullScene(cmd, shadowFrustum, shadowViewProj, CullDrawFlag_Shadow);
+        // we don't want to draw transparent objects so light passes trough them so they don't cast shadow
+        CullScene(cmd, shadowFrustum, shadowViewProj, CullDrawFlag_Shadow | CullDrawFlag_ExcludeTransparent);
         CullFoliageShadowCasters(cmd, shadowFrustum, shadowViewProj, CullDrawFlag_Shadow, 1u, NULL);
 
         WindowState* winstate = &g_WindowState;
@@ -160,10 +161,10 @@ static void PointLightShadowMaps(SDL_GPUCommandBuffer* cmd)
         LightGPU* light = &g_RenderLights[pointShadows.lightIndices[shadow]];
         u32 baseLayer = light->shadowIndex * POINT_SHADOW_FACE_COUNT;
         f32 cullSphere[4] = { light->positionRadius[0], light->positionRadius[1], light->positionRadius[2], light->positionRadius[3] };
-        DispatchCullDrawArgsCompute(cmd, &g_ActiveScene->skinnedSet, &g_ActiveScene->skinnedBuffers,
+        DispatchCullDrawArgsCompute(cmd, &g_ActiveScene->skinnedSet, &g_ActiveScene->skinnedBuffers, &g_ActiveScene->skinnedBuffers.draw,
                                     (FrustumPlanes){0}, pointShadows.lightViewProj[baseLayer], CullDrawFlag_CullSphere,
                                     POINT_SHADOW_FACE_COUNT, cullSphere);
-        DispatchCullDrawArgsCompute(cmd, &g_ActiveScene->surfaceSet, &g_ActiveScene->surfaceBuffers,
+        DispatchCullDrawArgsCompute(cmd, &g_ActiveScene->surfaceSet, &g_ActiveScene->surfaceBuffers, &g_ActiveScene->surfaceBuffers.draw,
                                     (FrustumPlanes){0}, pointShadows.lightViewProj[baseLayer], CullDrawFlag_CullSphere,
                                     POINT_SHADOW_FACE_COUNT, cullSphere);
         CullFoliageShadowCasters(cmd, (FrustumPlanes){0}, pointShadows.lightViewProj[baseLayer],
@@ -195,9 +196,9 @@ static void SpotLightShadowMaps(SDL_GPUCommandBuffer* cmd)
         LightGPU* light = &g_RenderLights[spotShadows.lightIndices[shadow]];
         u32 layer = light->shadowIndex;
         mat4x4 shadowViewProj = spotShadows.lightViewProj[layer];
-        CullScene(cmd, CreateFrustumPlanes(shadowViewProj), shadowViewProj, CullDrawFlag_None);
-        CullFoliageShadowCasters(cmd, CreateFrustumPlanes(shadowViewProj), shadowViewProj,
-                                 CullDrawFlag_None, 1u, NULL);
+        const CullDrawFlags flags = CullDrawFlag_Shadow | CullDrawFlag_ExcludeTransparent;
+        CullScene(cmd, CreateFrustumPlanes(shadowViewProj), shadowViewProj, flags);
+        CullFoliageShadowCasters(cmd, CreateFrustumPlanes(shadowViewProj), shadowViewProj, flags, 1u, NULL);
 
         SDL_GPUColorTargetInfo shadow_color_target = MakeLocalShadowColorTarget(winstate->tex_spot_shadow_color, layer);
         SDL_GPUDepthStencilTargetInfo shadow_depth_target = MakeLocalShadowDepthTarget(winstate->tex_spot_shadow_depth);

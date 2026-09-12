@@ -874,9 +874,6 @@
 				<IncludeFilesWithoutExt>false</IncludeFilesWithoutExt>
 				<Children></Children>
 			</Folder>
-			<File>
-				<Path>crash.txt</Path>
-			</File>
 			<Folder>
 				<Path>.agents</Path>
 				<IncludeFilter>*.c,*.cc,*.cpp,*.c++,*.cp,*.cxx,*.h,*.hh,*.hpp,*.h++,*.hp,*.hxx,*.inl,*.cs,*.rs,*.java,*.jav,*.js,*.jsc,*.jsx,*.json,*.cls,*.py,*.rpy,*.php,*.php3,*.phl,*.phtml,*.rhtml,*.tpl,*.phps,*.lua,*.html,*.html5,*.htm,*.xml,*.xaml,*.css,*.ssi,*.haml,*.yaml,*.bat,*.wbf,*.wbt,*.txt,*.cmake,*.make,*.makefile,*.mak,*.mk,*.sh,*.bash,*.csv,*.asp,*.pl,*.mac,*.ws,*.vbs,*.perl,*.src,*.rss,*.inc,*.f,*.go,*.prl,*.plx,*.rb,*.lsp,*.lpx,*.ps1,*.command,*.cbl,*.cob,*.qs,*.wxs,*.ph,*.msc,*.glsl,*.hlsl,*.fx,*.vert,*.tesc,*.tese,*.geom,*.frag,*.comp,*.pssl,*.scons,*.cu,*.jai,</IncludeFilter>
@@ -907,6 +904,9 @@
 				<IncludeFilesWithoutExt>false</IncludeFilesWithoutExt>
 				<Children></Children>
 			</Folder>
+			<File>
+				<Path>crash.txt</Path>
+			</File>
 		</Children>
 	</Workspace>
 </N10X>

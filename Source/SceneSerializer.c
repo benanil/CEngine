@@ -168,7 +168,7 @@ s32 SceneSerializer_Save(Scene* scene, const char* path)
     // rotation and scale stay in their packed forms so the round trip is exact
     for (u32 s = 0; s < 3u; s++)
     {
-        const RenderSet* set = s == 0u ? &scene->surfaceSet : (s == 1u ? &scene->skinnedSet : &scene->transparentSet);
+        const RenderSet* set = s == 0u ? &scene->surfaceSet : &scene->skinnedSet;
         p = WStr(line, "entities");
         p = WInt(p, (s64)s);
         p = WInt(p, (s64)set->numEntities);
@@ -241,7 +241,7 @@ s32 SceneSerializer_Save(Scene* scene, const char* path)
     RemoveFile(path);
     RenameFile(tmpPath, path);
     AX_LOG("scene saved: %s bundles=%d entities=%d lights=%d %.2fs",
-           path, scene->numBundles, scene->surfaceSet.numEntities + scene->skinnedSet.numEntities + scene->transparentSet.numEntities,
+           path, scene->numBundles, scene->surfaceSet.numEntities + scene->skinnedSet.numEntities,
            scene->numLights, TimeSinceStartup() - startTime);
     return 1;
 }
@@ -281,8 +281,8 @@ typedef struct SceneFileData_
     LightGPU* lights;
     u32 numLights;
 
-    SceneEntRecord* entities[3]; // 0 surface, 1 skinned, 2 transparent surface
-    u32 numEntities[3];
+    SceneEntRecord* entities[2]; // 0 surface, 1 skinned
+    u32 numEntities[2];
 
     ScenePhysicsRecord* physics; // surface entities that override the default collider
     u32 numPhysics;
@@ -643,7 +643,7 @@ s32 SceneSerializer_Load(Scene* scene, const char* path)
     for (u32 s = 0; s < 3u; s++)
     {
         bool isSkinned = s == 1u;
-        RenderSet* set = s == 0u ? &scene->surfaceSet : (s == 1u ? &scene->skinnedSet : &scene->transparentSet);
+        RenderSet* set = s == 0u ? &scene->surfaceSet : &scene->skinnedSet;
 
         u32* primitiveCounts = (u32*)ArenaAllocGlobal(set->numGroups * sizeof(u32));
         MemSet(primitiveCounts, 0, set->numGroups * sizeof(u32));
@@ -716,7 +716,7 @@ s32 SceneSerializer_Load(Scene* scene, const char* path)
                 }
             }
         }
-        RenderSet_Validate(set, isSkinned ? "load skinned" : (s == 2u ? "load transparent surface" : "load surface"));
+        RenderSet_Validate(set, isSkinned ? "load skinned" : "load surface");
     }
 
     if (data.numLights > 0)
@@ -747,7 +747,7 @@ s32 SceneSerializer_Load(Scene* scene, const char* path)
     Scene_BuildStaticCollidersAsync(scene, BuildColliderEndCallback);
 
     AX_LOG("scene loaded: %s bundles=%d entities=%d lights=%d baked=%d %.2fs",
-           path, scene->numBundles, scene->surfaceSet.numEntities + scene->skinnedSet.numEntities + scene->transparentSet.numEntities,
+           path, scene->numBundles, scene->surfaceSet.numEntities + scene->skinnedSet.numEntities,
            scene->numLights, scene->texturesBaked, TimeSinceStartup() - startTime);
     return 1;
 }

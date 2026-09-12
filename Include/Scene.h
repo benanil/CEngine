@@ -20,7 +20,6 @@ typedef struct SceneBundleRef_
     const char*  path;           // bundle cache owned string
     SceneBundle* bundle;
     u32          renderIdx;      // bundle index inside its render set
-    u32          transparentRenderIdx; // non-skinned BLEND primitives live in transparentSurfaceSet
     u32          materialOffset; // gpu material slot base of the bundle in this scene
     u32          animOffset;     // first animation of the bundle inside the scene's animation system
     u32          skinned;
@@ -78,10 +77,10 @@ typedef struct Scene_
 {
     RenderSet        skinnedSet;
     RenderSet        surfaceSet;
-    RenderSet        transparentSet;
     RenderSetBuffers skinnedBuffers;
     RenderSetBuffers surfaceBuffers;
-    RenderSetBuffers transparentBuffers;
+    DrawBuffers      transparentDrawBuffers;
+
     TextureSystem    textureSystem;
     AnimationSystem  animSystem;
     float            ambientBoost; // default 1.0f, max 4.0f
@@ -102,10 +101,8 @@ typedef struct Scene_
     bool physicsReady;
     // static collision mesh handles, one per primitive group of each static render set. shapes
     // reference these (box3d does not copy mesh data), so they must outlive the world.
-    struct b3MeshData*   surfacePhysicsMeshes[MAX_GROUP];
-    struct b3MeshData*   transparentPhysicsMeshes[MAX_GROUP];
-    b3BodyId*            surfacePhysicsBodies;
-    b3BodyId*            transparentPhysicsBodies;
+    struct b3MeshData*   physicsMeshes[MAX_GROUP];
+    b3BodyId*            physicsBodies;
     SDL_AtomicInt        physicsColliderBuildRunning;
     SDL_AtomicInt        physicsColliderBuildDone;
     AsyncCallback        physicsColliderBuildCallback;
@@ -191,7 +188,7 @@ void Scene_PhysicsApplyWorldSettings(void);
 // scene's surface render sets. call once after a scene finishes loading.
 void Scene_BuildStaticCollidersAsync(Scene* scene, AsyncCallback callback);
 void Scene_BuildStaticColliders(Scene* scene);
-void Scene_PhysicsSyncEntityBody(Scene* scene, bool transparent, const Entity* entity);
+void Scene_PhysicsSyncEntityBody(Scene* scene, const Entity* entity);
 void Scene_ToggleEntityPhysics(Scene* scene, Entity* entity, bool enabled);
 bool Scene_IsEntityPhysicsEnabled(Scene* scene, Entity* entity);
 
@@ -205,7 +202,7 @@ void Scene_PhysicsDestroyTerrainChunk(u64* inOutBody, struct b3MeshData** inOutM
 // Swaps the collider shape of the entity's body in place. b3_meshShape restores the
 // original triangle collider; sphere/capsule/hull are derived from the primitive
 // bounds. Compound/height are unsupported and return false. Runtime-only.
-bool Scene_PhysicsSetEntityShape(Scene* scene, bool transparent, const Entity* entity, b3ShapeType type);
+bool Scene_PhysicsSetEntityShape(Scene* scene, const Entity* entity, b3ShapeType type);
 // Gives a dynamic body a default box mass from the shape AABB so it responds to gravity
 // (mesh shapes compute zero mass). Shared by the inspector and the scene loader.
 void Scene_PhysicsApplyDefaultDynamicMass(b3BodyId body, b3ShapeId shape);

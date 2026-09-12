@@ -82,8 +82,8 @@ struct VSOutput
     nointerpolation uint   materialIndex : TEXCOORD8;
     nointerpolation f16_io  handedness    : TEXCOORD9;
     nointerpolation f16_io  ambientBoost  : TEXCOORD12;
-	#if LOD_VISUALIZE == 1
-	nointerpolation uint lod : TEXCOORD10;
+    #if LOD_VISUALIZE == 1
+    nointerpolation uint lod : TEXCOORD10;
     #endif
 };
 
@@ -111,7 +111,7 @@ VSOutput vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("Dra
     float3 localPos = aabbMin + UnpackUnorm16x4(input.aPos).xyz * (aabbMax - aabbMin);
     f16_3 worldPos = QMulVec3(insRot, f16_3(localPos) * insScale);
     float3 finalWorldPos = float3(worldPos) + entity.position.xyz;
-	f16 ambientBoost = 1.0f;
+    f16 ambientBoost = 1.0f;
     VSOutput o;
     o.position  = mul(uViewProj, float4(finalWorldPos, 1.0));
     o.texCoords = input.aTexCoords;
@@ -121,9 +121,9 @@ VSOutput vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("Dra
     o.vertexColor = f16_4_io(UnpackAVertexColor(input.aPos));
     o.ambientBoost = ambientBoost;
     o.worldPos  = finalWorldPos;
-	#if LOD_VISUALIZE == 1
-	o.lod = lod;
-	#endif
+    #if LOD_VISUALIZE == 1
+    o.lod = lod;
+    #endif
     ShadowCascadeBuffer cascades = sShadowCascades[0];
     o.shadowPos0 = MulShadowCascade(cascades, 0u, float4(finalWorldPos, 1.0));
     o.shadowPos1 = MulShadowCascade(cascades, 1u, float4(finalWorldPos, 1.0));
@@ -138,7 +138,7 @@ VSOutput vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("Dra
 float4 frag(VSOutput input) : SV_Target0
 {
     MaterialGPU material = sMaterials[input.materialIndex];
-	TextureDescriptor albedo = sTextureDescriptors[material.AlbedoNormalDescriptor & 0xFFFF];
+    TextureDescriptor albedo = sTextureDescriptors[material.AlbedoNormalDescriptor & 0xFFFF];
     TextureDescriptor normalDesc = sTextureDescriptors[(material.AlbedoNormalDescriptor >> 16)];
     TextureDescriptor mrDesc = sTextureDescriptors[material.metallicRoughnessDescriptorAndFlags & 0xFFFF];
 
@@ -152,7 +152,7 @@ float4 frag(VSOutput input) : SV_Target0
     f16_3 baseColor = SRGBToLinear(albedoSample.rgb) * f16_3(baseFactor.rgb) * f16_3(vertexColor.rgb);
     float alpha = float(albedoSample.a * baseFactor.a * vertexColor.a);
 
-	float3 tangentNormal = DecodeNormalRG(float2(SampleTexturePageRG(NormalPages, Sampler, normalDesc, float2(input.texCoords), f16_2(0.5f, 0.5f))));
+    float3 tangentNormal = DecodeNormalRG(float2(SampleTexturePageRG(NormalPages, Sampler, normalDesc, float2(input.texCoords), f16_2(0.5f, 0.5f))));
     f16_2 mr = SampleTexturePageRG(MetallicRoughnessPages, Sampler, mrDesc, float2(input.texCoords), f16_2(1.0, 1.0));
 
     float3 N = normalize(tangentNormal.x * normalize(float3(input.tangent)) +
@@ -182,8 +182,8 @@ float4 frag(VSOutput input) : SV_Target0
     if (uLocalLightsEnabled != 0u)
         color += AccumulateTileLights(float3(baseColor), N, viewDir, saturate(metallic), saturate(roughness),
                                       worldPos, ao, uint2(input.position.xy), uTilesX, uTileSize);
-	#if LOD_VISUALIZE == 1
-	color[min(input.lod, 3)] += .2;
-	#endif
-	return float4(color, alpha);
+    #if LOD_VISUALIZE == 1
+    color[min(input.lod, 3)] += .2;
+    #endif
+    return float4(color, alpha);
 }

@@ -405,7 +405,7 @@ static bool EditorImportNeedsDetailWarning(const char* normalizedPath)
     return info.animBoundsWarning;
 }
 
-// todo remove this
+// todo(anil): remove this
 void EditorOpenImportDetail(const char* path)
 {
     char normalized[512];
@@ -1184,9 +1184,9 @@ static const char* UIPhysicsFmtV3(f32 x, f32 y, f32 z, int decimals)
 static void SceneInspectorPhysicsUI(Scene* scene, Entity* entity)
 {
     if (sceneObjectSelection.skinned) return;
-    if (!scene->surfacePhysicsBodies || entity->sparseIdx >= scene->surfaceSet.maxEntities) return;
+    if (!scene->physicsBodies || entity->sparseIdx >= scene->surfaceSet.maxEntities) return;
 
-    b3BodyId body = scene->surfacePhysicsBodies[entity->sparseIdx];
+    b3BodyId body = scene->physicsBodies[entity->sparseIdx];
     UIDivider(CLAY_ID("InspectorPhysicsDivider"));
     scenePhysicsOpen ^= UICollapsingHeader(CLAY_ID("InspectorPhysicsHeader"), CLAY_STRING("Physics Body"), scenePhysicsOpen);
     if (!scenePhysicsOpen) return;
@@ -1195,7 +1195,7 @@ static void SceneInspectorPhysicsUI(Scene* scene, Entity* entity)
     if (UICheckbox(CLAY_ID("ColliderEnabled"), CLAY_STRING("Enabled"), &isEnabled))
     {
         Scene_ToggleEntityPhysics(scene, entity, isEnabled);
-        body = scene->surfacePhysicsBodies[entity->sparseIdx];
+        body = scene->physicsBodies[entity->sparseIdx];
     }
 
     if (B3_IS_NULL(body)) return;
@@ -1224,7 +1224,7 @@ static void SceneInspectorPhysicsUI(Scene* scene, Entity* entity)
         if (shapeType >= ARRAY_SIZE(shapeTypes)) shapeType = 0u;
         if (UIDropdown(CLAY_ID("InspectorPhysicsShape"), CLAY_STRING("Shape"),
                        shapeTypes, ARRAY_SIZE(shapeTypes), &shapeType))
-            Scene_PhysicsSetEntityShape(scene, false, entity, (b3ShapeType)shapeType);
+            Scene_PhysicsSetEntityShape(scene, entity, (b3ShapeType)shapeType);
     }
 
     // Mass properties and velocities are simulation output -> read-only.
@@ -1334,7 +1334,7 @@ static void SceneInspectorUI(Scene* scene)
         entity->position = VecSetR(sceneInspectorCache.positionUi[0], sceneInspectorCache.positionUi[1], sceneInspectorCache.positionUi[2], 0.0f);
         sceneInspectorCache.position = entity->position;
         if (!sceneObjectSelection.skinned)
-            Scene_PhysicsSyncEntityBody(scene, false, entity);
+            Scene_PhysicsSyncEntityBody(scene, entity);
         scene->renderDataDirty = 1;
     }
 
@@ -1354,7 +1354,7 @@ static void SceneInspectorUI(Scene* scene)
         sceneInspectorCache.positionUi[2] = VecGetZ(entity->position);
         sceneInspectorCache.rotation = entity->rotation;
         if (!sceneObjectSelection.skinned)
-            Scene_PhysicsSyncEntityBody(scene, false, entity);
+            Scene_PhysicsSyncEntityBody(scene, entity);
         scene->renderDataDirty = 1;
     }
 
@@ -1372,7 +1372,7 @@ static void SceneInspectorUI(Scene* scene)
         sceneInspectorCache.positionUi[2] = VecGetZ(entity->position);
         sceneInspectorCache.scalePacked = entity->scale;
         if (!sceneObjectSelection.skinned)
-            Scene_PhysicsSyncEntityBody(scene, false, entity);
+            Scene_PhysicsSyncEntityBody(scene, entity);
         scene->renderDataDirty = 1;
     }
 
@@ -1856,10 +1856,10 @@ void DrawSceneWindow(bool* open)
                     UITextU32("Bundles", scene->numBundles);
                     UITextU32("Materials", scene->numMaterials);
                     UITextU32("Static entities", scene->surfaceSet.numEntities);
-                    UITextU32("Transparent entities", scene->transparentSet.numEntities);
+                    // UITextU32("Transparent entities", scene->transparentSet.numEntities);
                     UITextU32("Skinned entities", scene->skinnedSet.numEntities);
-                    UITextU32("Primitive groups", scene->surfaceSet.numGroups + scene->transparentSet.numGroups + scene->skinnedSet.numGroups);
-                    UITextU32("Triangles", RenderSet_CountTriangles(&scene->surfaceSet) + RenderSet_CountTriangles(&scene->transparentSet) + RenderSet_CountTriangles(&scene->skinnedSet));
+                    UITextU32("Primitive groups", scene->surfaceSet.numGroups + scene->skinnedSet.numGroups);
+                    UITextU32("Triangles", RenderSet_CountTriangles(&scene->surfaceSet) + RenderSet_CountTriangles(&scene->skinnedSet));
                 }
             }
             UIDivider(CLAY_ID("SceneWindowDivider"));

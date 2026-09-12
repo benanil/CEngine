@@ -148,13 +148,13 @@ typedef u32 LightType;
 typedef struct LightGPU_
 {
     f32 positionRadius[4];
-	f16 directionCone[4];
-	u8 colorR;
-	u8 colorG;
-	u8 colorB;
+    f16 directionCone[4];
+    u8 colorR;
+    u8 colorG;
+    u8 colorB;
     u8 shadowIndex;
     f16 intensity;
-	u8 type;
+    u8 type;
     u8 flags;
 } LightGPU;
 STATIC_ASSERT(sizeof(LightGPU) == 32, "LightGPU CPU/GPU stride mismatch");
@@ -262,19 +262,24 @@ typedef struct WindowState
     bool hiz_valid;
 } WindowState;
 
+typedef struct DrawBuffers_
+{
+    SDL_GPUBuffer* sparseIndices;
+    SDL_GPUBuffer* args;
+} DrawBuffers;
+
 // per scene gpu mirrors of one render set, owned by Scene
 typedef struct RenderSetBuffers_
 {
     SDL_GPUBuffer* primitiveGroup;
     SDL_GPUBuffer* primitiveGroupLOD;
-    SDL_GPUBuffer* drawSparseIndices;
-    SDL_GPUBuffer* drawArgs;
     SDL_GPUBuffer* sparseToDense;
     SDL_GPUBuffer* entity;
     SDL_GPUBuffer* visibleSparseIndices;
     SDL_GPUBuffer* visibilityMask;
     SDL_GPUBuffer* visibleCount;
     SDL_GPUBuffer* dispatchArgs;
+    DrawBuffers draw;
 } RenderSetBuffers;
 
 // shared per set type: pipelines and the vertex pools every scene draws from
@@ -297,7 +302,7 @@ typedef struct RenderState
     SDL_GPUGraphicsPipeline* slugDepthPipeline;
     SDL_GPUGraphicsPipeline* uiShapePipeline;
     SDL_GPUGraphicsPipeline* uiImagePipeline;
-	SDL_GPUGraphicsPipeline* transparentForwardPipeline;
+    SDL_GPUGraphicsPipeline* transparentForwardPipeline;
     SDL_GPUSampler*          sampler;
     SDL_GPUSampler*          hiZSampler;
     SDL_GPUSampler*          shadowSampler;
@@ -353,7 +358,9 @@ static inline s32 GetRootNodeIdx(SceneBundle* bundle)
 
 // per scene render set gpu buffers, implemented in Rendering.c
 void CreateRenderSetBuffers(RenderSetBuffers* buffers, u32 maxEntities, u32 maxGroups);
+void CreateDrawBuffers(DrawBuffers* draw, u32 maxEntities, u32 maxGroups);
 void DestroyRenderSetBuffers(RenderSetBuffers* buffers);
+void DestroyDrawBuffers(DrawBuffers* buffers);
 
 // sub allocation of the cpu/gpu mega buffers. tlsf runs directly over the cpu
 // mirrors, allocations are over sized and rounded up to the element stride.
@@ -417,7 +424,7 @@ SDL_GPUTexture* CreateTexture2DArray(u32 width, u32 height, u32 layers,
                                      const char* label);
 
 Texture LoadTextureArray(const char* const* paths, u32 count, s32 size, bool srgb,
-						 const char* label, const char* errorLabel);
+                         const char* label, const char* errorLabel);
 
 void rDeleteTexture(Texture texture);
 

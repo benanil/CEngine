@@ -6,6 +6,10 @@
 
 #define ENTITY_FLAG_NOMESH 1u
 
+#define EntityFlags_None            (0)
+#define EntityFlags_ColliderEnabled (1 << 0)
+#define EntityFlags_Transparent     (1 << 1)
+
 typedef struct IndexedDrawCommand_
 {
     uint numIndices;
@@ -38,7 +42,7 @@ typedef struct Entity_
     uint   primitiveIdx; // primitive group
     uint   sparse;
     uint   parentIdx; // sparseIdx
-    uint   flags;
+    uint   materialAndFlags;
 } Entity;
 
 typedef struct PrimitiveGroup_

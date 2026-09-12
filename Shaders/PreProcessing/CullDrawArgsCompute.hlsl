@@ -26,6 +26,7 @@
 #define CULL_DRAW_FLAG_RESET_VISIBILITY    (1u << 2u)
 #define CULL_DRAW_FLAG_CULL_SPHERE         (1u << 3u)
 #define CULL_DRAW_FLAG_SHADOW              (1u << 4u)
+#define CULL_DRAW_FLAG_TRANSPARENT         (1u << 5u)
 
 Texture2D<float>                 hiZTexture            : register(t0);
 StructuredBuffer<Entity>         entities              : register(t1);
@@ -37,9 +38,12 @@ RWStructuredBuffer<IndexedDrawCommand>  drawArgs             : register(u1, spac
 RWStructuredBuffer<LineVertex>          lineVertices         : register(u2, space1);
 RWStructuredBuffer<IndirectDrawCommand> lineDrawCommand      : register(u3, space1);
 RWStructuredBuffer<uint>                visibleSparseIndices : register(u4, space1);
-RWStructuredBuffer<uint>                visibilityMask       : register(u5, space1);
-RWStructuredBuffer<uint>                visibleCount         : register(u6, space1);
-RWStructuredBuffer<IndirectDispatchCommand> dispatchArgs     : register(u7, space1);
+RWStructuredBuffer<uint>                visibilityMask       : register(u5, space1); // 0 or 1 of sparse index
+RWStructuredBuffer<uint>                visibleCount         : register(u6, space1); // one value not an array
+// two dispatch args
+// numVisible / 32 = dispatchArgs[0].groupCountX = dispatchArgs[1].groupCountY
+// maxVertexOfAnyMesh / 32 = dispatchArgs[1].groupCountZ 
+RWStructuredBuffer<IndirectDispatchCommand> dispatchArgs     : register(u7, space1); //
 
 cbuffer params : register(b0, space2)
 {
@@ -136,12 +140,23 @@ bool AABBVisible(float3 center, float3 extent, uint flags, in float4 planes[6])
         float4 plane = planes[i];
         float d = dot(plane.xyz, center) + plane.w;
         float r = dot(abs(plane.xyz), extent);
-
         if (d + r < -0.001f)
             return false;
     }
-
     return true;
+}
+
+// negative means out of frustum
+float FrustumClosestPlaneDistance(float3 p, float4 planes[6])
+{
+    float dst = 9999.0f;
+    [unroll]
+    for (uint i = 0; i < 6; i++)
+    {
+        dst = min(dst, dot(planes[i].xyz, p) + planes[i].w);
+    }
+    
+    return dst;
 }
 
 bool AABBTooSmallAndFar(in ProjectedAABB proj, uint flags)
@@ -264,7 +279,7 @@ void Initialize(uint idx, uint flags)
         drawArgs[idx].vertexOffset  = 0;
         drawArgs[idx].firstInstance = 0;
     }
-
+    const uint visibilityOutReset = CULL_DRAW_FLAG_VISIBILITY_OUTPUT | CULL_DRAW_FLAG_RESET_VISIBILITY;
     if (idx == 0)
     {
         lineDrawCommand[0].numVertices   = 0;
@@ -277,7 +292,7 @@ void Initialize(uint idx, uint flags)
         lineDrawCommand[1].firstVertex   = 0;
         lineDrawCommand[1].firstInstance = 0;
 
-        if ((flags & (CULL_DRAW_FLAG_VISIBILITY_OUTPUT | CULL_DRAW_FLAG_RESET_VISIBILITY)) == (CULL_DRAW_FLAG_VISIBILITY_OUTPUT | CULL_DRAW_FLAG_RESET_VISIBILITY))
+        if ((flags & visibilityOutReset) == visibilityOutReset)
         {
             visibleCount[0] = 0;
 
@@ -291,7 +306,7 @@ void Initialize(uint idx, uint flags)
         }
     }
 
-    if ((flags & (CULL_DRAW_FLAG_VISIBILITY_OUTPUT | CULL_DRAW_FLAG_RESET_VISIBILITY)) == (CULL_DRAW_FLAG_VISIBILITY_OUTPUT | CULL_DRAW_FLAG_RESET_VISIBILITY) && idx < maxEntityID)
+    if ((flags & visibilityOutReset) == visibilityOutReset && idx < maxEntityID)
     {
         visibilityMask[idx] = 0;
     }
@@ -301,7 +316,6 @@ void Initialize(uint idx, uint flags)
 void main(uint3 tid : SV_DispatchThreadID)
 {
     uint idx = tid.x;
-
     uint flags = modeAndFlags >> 8;
     if ((modeAndFlags & 0xF) == 0u) {
         Initialize(idx, flags);
@@ -309,10 +323,13 @@ void main(uint3 tid : SV_DispatchThreadID)
     }
     if (idx >= maxEntityID)
         return;
-
-    uint sparse = idx;
-    Entity entity = entities[sparse];
-    if (((entity.parentIdx >> 24u) & ENTITY_FLAG_NOMESH) != 0u || entity.primitiveIdx == 0xffffffffu)
+    const bool onlyTransparent = (flags & CULL_DRAW_FLAG_TRANSPARENT) != 0;
+    
+    uint dense = idx;
+    Entity entity = entities[dense];
+    const bool entityTransparent = ((entity.materialAndFlags >> 16) & EntityFlags_Transparent) != 0;
+    
+    if (!(onlyTransparent == entityTransparent) || ((entity.parentIdx >> 24u) & ENTITY_FLAG_NOMESH) != 0u || entity.primitiveIdx == 0xffffffffu)
         return;
 
     uint primitiveIdx = entity.primitiveIdx;
@@ -345,10 +362,10 @@ void main(uint3 tid : SV_DispatchThreadID)
     const uint isShadow = (flags & CULL_DRAW_FLAG_SHADOW) != 0;
     if (isShadow && frustumVisible)
     {
-        bool playerVisible = AABBVisible(worldCenter, worldExtent, flags, cameraPlanes);
-        const float3 cameraPos = cullSphere.xyz;
-        if (!playerVisible)
-            visible &= distance(worldCenter, cameraPos) < max(20.0f, length(worldExtent) * 4.0f);
+        float playerVisibleDist = FrustumClosestPlaneDistance(worldCenter, cameraPlanes);
+        float shadowDistance = max(15.0f, length(worldExtent) * 4.0f);
+        // we are expanding player frustum and testing
+        visible &= playerVisibleDist + shadowDistance > 0.0f;
     }
 
 #if DEBUG_CULLED_AABBS
@@ -387,29 +404,23 @@ void main(uint3 tid : SV_DispatchThreadID)
     uint globalVisibleIdx;
     InterlockedAdd(lineDrawCommand[0].firstInstance, 1, globalVisibleIdx);
 
-    drawSparseIndices[lod * sparseIndexLODStride + PrimitiveGroup_EntityOffset(group) + localVisibleIdx] = sparse;
+    drawSparseIndices[lod * sparseIndexLODStride + PrimitiveGroup_EntityOffset(group) + localVisibleIdx] = dense;
 
     if ((flags & CULL_DRAW_FLAG_VISIBILITY_OUTPUT) != 0u)
     {
-        uint visibleSparse = entities[sparse].sparse;
-
+        uint visibleSparse = entities[dense].sparse;
         uint old;
         InterlockedCompareExchange(visibilityMask[visibleSparse], 0, 1, old);
-
         InterlockedMax(dispatchArgs[1].groupCountZ, (lodGroup.lodNumVertices[lod] + 31u) / 32u);
 
         if (old == 0u)
         {
             uint visibleSlot;
             InterlockedAdd(visibleCount[0], 1, visibleSlot);
-
+        
             visibleSparseIndices[visibleSlot] = visibleSparse;
             InterlockedMax(dispatchArgs[1].groupCountY, (visibleSlot + 32u) / 32u);
-
-            if ((visibleSlot & 31u) == 0u)
-            {
-                InterlockedAdd(dispatchArgs[0].groupCountX, 1);
-            }
+            dispatchArgs[0].groupCountX = dispatchArgs[1].groupCountY;
         }
     }
 }

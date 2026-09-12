@@ -16,9 +16,8 @@
 extern Graphics gGFX; // cpu mega buffers, declared per translation unit as elsewhere (BVH.c)
 
 // collision categories for static geometry. scene picking filters to surface only, matching the
-// old cpu-BVH picking (which never cast the transparent set). transparent still collides physically.
+// old cpu-BVH picking 
 #define PHYS_CAT_SURFACE     0x0001ull
-#define PHYS_CAT_TRANSPARENT 0x0002ull
 
 // finite segment length for picking rays; the ray dir is unit length so fraction*length is world t
 #define PHYS_PICK_MAX_DIST   1.0e5f
@@ -164,13 +163,12 @@ void Physics_Destroy(void)
 void Scene_InitPhysics(Scene* scene)
 {
     Physics_Init();
-    scene->surfacePhysicsBodies = (b3BodyId*)AllocZeroTLSFGlobal(scene->surfaceSet.maxEntities, sizeof(b3BodyId));
-    scene->transparentPhysicsBodies = (b3BodyId*)AllocZeroTLSFGlobal(scene->transparentSet.maxEntities, sizeof(b3BodyId));
-    if (!scene->surfacePhysicsBodies || !scene->transparentPhysicsBodies)
+    scene->physicsBodies = (b3BodyId*)AllocZeroTLSFGlobal(scene->surfaceSet.maxEntities, sizeof(b3BodyId));
+    if (!scene->physicsBodies)
         AX_WARN("physics: body slot allocation failed");
 }
 
-static void PhysicsDestroyMeshStorage(Scene* scene, bool transparent);
+static void PhysicsDestroyMeshStorage(Scene* scene);
 static void PhysicsDestroyLiveStaticColliders(Scene* scene);
 
 void Scene_PhysicsDestroy(Scene* scene)
@@ -189,11 +187,9 @@ void Scene_PhysicsDestroy(Scene* scene)
     // chunk lifecycle (tFreeChunkSlot/tClearChunkCache/tMarchingDestroy).
     PhysicsDestroyLiveStaticColliders(scene);
 
-    if (scene->surfacePhysicsBodies) DeAllocateTLSFGlobal(scene->surfacePhysicsBodies);
-    if (scene->transparentPhysicsBodies) DeAllocateTLSFGlobal(scene->transparentPhysicsBodies);
+    if (scene->physicsBodies) DeAllocateTLSFGlobal(scene->physicsBodies);
     if (scene->pendingPhysics) DeAllocateTLSFGlobal(scene->pendingPhysics);
-    scene->surfacePhysicsBodies = NULL;
-    scene->transparentPhysicsBodies = NULL;
+    scene->physicsBodies = NULL;
     scene->pendingPhysics = NULL;
     scene->numPendingPhysics = 0;
     SDL_SetAtomicInt(&scene->physicsColliderBuildRunning, 0);
@@ -219,40 +215,23 @@ b3Quat ToB3Quat(v128f q)
 v128f SceneB3PosToVec3(b3Pos p) { return VecSetR((f32)p.x, (f32)p.y, (f32)p.z, 0.0f); }
 u64 SceneB3QuatToEntityRotation(b3Quat q) { return PackQuaternionS16NormRet(VecSetR(q.v.x, q.v.y, q.v.z, q.s)); }
 
-static RenderSet* PhysicsSet(Scene* scene, bool transparent)
-{
-    return transparent ? &scene->transparentSet : &scene->surfaceSet;
-}
-
-static u32 PhysicsCountMeshes(Scene* scene, bool transparent);
-static void BuildCollidersForSet(Scene* scene, const RenderSet* set, bool transparent);
-
-static b3MeshData** PhysicsMeshes(Scene* scene, bool transparent)
-{
-    return transparent ? scene->transparentPhysicsMeshes : scene->surfacePhysicsMeshes;
-}
-
-static b3BodyId* PhysicsBodies(Scene* scene, bool transparent)
-{
-    return transparent ? scene->transparentPhysicsBodies : scene->surfacePhysicsBodies;
-}
+static u32 PhysicsCountMeshes(Scene* scene);
+static void BuildCollidersForScene(Scene* scene);
 
 // Resolves the body slot for an entity, or NULL when the entity/slot is out of
 // range. The slot's body may still be null (no body created yet).
-static b3BodyId* PhysicsEntitySlot(Scene* scene, bool transparent, const Entity* entity)
+static b3BodyId* PhysicsEntitySlot(Scene* scene, const Entity* entity)
 {
     if (!scene || !entity || entity->sparseIdx == INVALID_ENTITY) return NULL;
-    b3BodyId* bodies = PhysicsBodies(scene, transparent);
-    if (!bodies || entity->sparseIdx >= PhysicsSet(scene, transparent)->maxEntities) return NULL;
-    return &bodies[entity->sparseIdx];
+    return &scene->physicsBodies[entity->sparseIdx];
 }
 
-static uintptr_t PhysicsBodyUserData(u32 sparseIdx, bool transparent)
+static uintptr_t PhysicsBodyUserData(u32 sparseIdx)
 {
-    return ((uintptr_t)sparseIdx << 1u) | (transparent ? 1u : 0u);
+    return ((uintptr_t)sparseIdx << 1u);
 }
 
-// top bit tags a body as terrain (vs. the sparseIdx<<1|transparent encoding below). No
+// top bit tags a body as terrain (vs. the sparseIdx << 1 encoding below). No
 // chunk-specific payload anymore - chunks own their body/mesh handles directly instead of
 // indexing into a shared slot array, so there's no slot number left to stash here.
 #define PHYSICS_TERRAIN_USERDATA ((void*)((uintptr_t)1u << (sizeof(uintptr_t) * 8u - 1u)))
@@ -267,11 +246,6 @@ static u32 PhysicsUserDataSparse(void* userData)
     return (u32)((uintptr_t)userData >> 1u);
 }
 
-static bool PhysicsUserDataTransparent(void* userData)
-{
-    return (((uintptr_t)userData) & 1u) != 0u;
-}
-
 void Scene_PhysicsUpdate(Scene* scene, float deltaTime)
 {
     if (SDL_GetAtomicInt(&scene->physicsColliderBuildDone))
@@ -280,10 +254,9 @@ void Scene_PhysicsUpdate(Scene* scene, float deltaTime)
         SDL_SetAtomicInt(&scene->physicsColliderBuildRunning, 0);
         if (scene->physicsColliderBuildResult)
         {
-            BuildCollidersForSet(scene, &scene->surfaceSet, false);
-            BuildCollidersForSet(scene, &scene->transparentSet, true);
+            BuildCollidersForScene(scene);
             tInvalidatePhysics();
-            AX_LOG("physics: built %u static collider meshes\n", PhysicsCountMeshes(scene, false) + PhysicsCountMeshes(scene, true));
+            AX_LOG("physics: built %u static collider meshes\n", PhysicsCountMeshes(scene));
         }
 
         AsyncCallback callback = scene->physicsColliderBuildCallback;
@@ -296,12 +269,11 @@ void Scene_PhysicsUpdate(Scene* scene, float deltaTime)
     // Write moved bodies back onto their entities. Move events only report bodies
     // that actually changed this step (dynamic/kinematic), so we skip the static
     // majority instead of scanning every entity. userData encodes the sparse id
-    // and which set (surface/transparent) the body belongs to.
     b3BodyEvents events = b3World_GetBodyEvents(gPhysicsWorld);
     for (int i = 0; i < events.moveCount; i++)
     {
         const b3BodyMoveEvent* move = &events.moveEvents[i];
-        RenderSet* set = PhysicsSet(scene, PhysicsUserDataTransparent(move->userData));
+        RenderSet* set = &scene->surfaceSet;
         u32 sparseIdx = PhysicsUserDataSparse(move->userData);
         u32 dense = set->sparseID[sparseIdx];
         Entity* entity = &set->entities[dense];
@@ -322,44 +294,38 @@ static void PhysicsDestroyBodies(b3BodyId* bodies, u32 maxEntities)
     }
 }
 
-static void PhysicsDestroyMeshStorage(Scene* scene, bool transparent)
+static void PhysicsDestroyMeshStorage(Scene* scene)
 {
-    b3MeshData** meshes = PhysicsMeshes(scene, transparent);
-    RenderSet* set = PhysicsSet(scene, transparent);
-    for (u32 i = 0; i < set->maxGroups; i++)
+    for (u32 i = 0; i < scene->surfaceSet.maxGroups; i++)
     {
-        if (!meshes[i]) continue;
-        b3DestroyMesh(meshes[i]);
-        meshes[i] = NULL;
+        if (!scene->physicsMeshes[i]) continue;
+        b3DestroyMesh(scene->physicsMeshes[i]);
+        scene->physicsMeshes[i] = NULL;
     }
 }
 
 static void PhysicsDestroyLiveStaticColliders(Scene* scene)
 {
-    PhysicsDestroyBodies(scene->surfacePhysicsBodies, scene->surfaceSet.maxEntities);
-    PhysicsDestroyBodies(scene->transparentPhysicsBodies, scene->transparentSet.maxEntities);
-    PhysicsDestroyMeshStorage(scene, false);
-    PhysicsDestroyMeshStorage(scene, true);
+    PhysicsDestroyBodies(scene->physicsBodies, scene->surfaceSet.maxEntities);
+    PhysicsDestroyMeshStorage(scene);
 }
 
-static u32 PhysicsCountMeshes(Scene* scene, bool transparent)
+static u32 PhysicsCountMeshes(Scene* scene)
 {
-    b3MeshData** meshes = PhysicsMeshes(scene, transparent);
-    RenderSet* set = PhysicsSet(scene, transparent);
     u32 count = 0u;
-    for (u32 i = 0; i < set->maxGroups; i++)
-        if (meshes[i]) count++;
+    for (u32 i = 0; i < scene->surfaceSet.numGroups; i++)
+        if (scene->physicsMeshes[i]) count++;
     return count;
 }
 
-static b3MeshData* Scene_PhysicsEnsureGroupMesh(Scene* scene, bool transparent, u32 groupIdx)
+static b3MeshData* Scene_PhysicsEnsureGroupMesh(Scene* scene, u32 groupIdx)
 {
-    RenderSet* set = PhysicsSet(scene, transparent);
-    if (groupIdx >= set->numGroups) return NULL;
-    b3MeshData** meshes = PhysicsMeshes(scene, transparent);
+    RenderSet* renderset = &scene->surfaceSet;
+    if (groupIdx >= renderset->numGroups) return NULL;
+    b3MeshData** meshes = scene->physicsMeshes;
     if (meshes[groupIdx]) return meshes[groupIdx];
     
-    PrimitiveGroup* group = &set->primitiveGroups[groupIdx];
+    PrimitiveGroup* group = &renderset->primitiveGroups[groupIdx];
     if (group->lodNumIndices[0] < 3 || group->lodNumVertices[0] == 0) return NULL;
     if (group->bundleIdx >= scene->numBundles || !scene->bundleRefs[group->bundleIdx].bundle)
     {
@@ -424,15 +390,15 @@ static b3MeshData* Scene_PhysicsEnsureGroupMesh(Scene* scene, bool transparent, 
     return mesh;
 }
 
-static void Scene_PhysicsCreateEntityBody(Scene* scene, bool transparent, const Entity* entity)
+static void Scene_PhysicsCreateEntityBody(Scene* scene, const Entity* entity)
 {
     bool colliderEnabled = (entity->flags & EntityFlags_ColliderEnabled) != 0;
-    b3BodyId* slot = PhysicsEntitySlot(scene, transparent, entity);
+    b3BodyId* slot = PhysicsEntitySlot(scene, entity);
     if (!slot || B3_IS_NON_NULL(slot[0]) || !colliderEnabled) return;
     if ((entity->parentIdx >> 24) & ENTITY_FLAG_NOMESH) return;
-    if (entity->primitiveIdx >= PhysicsSet(scene, transparent)->numGroups) return;
+    if (entity->primitiveIdx >= scene->surfaceSet.numGroups) return;
     
-    b3MeshData* mesh = Scene_PhysicsEnsureGroupMesh(scene, transparent, entity->primitiveIdx);
+    b3MeshData* mesh = Scene_PhysicsEnsureGroupMesh(scene, entity->primitiveIdx);
     if (!mesh) return;
     
     b3BodyDef bd  = b3DefaultBodyDef();
@@ -442,10 +408,10 @@ static void Scene_PhysicsCreateEntityBody(Scene* scene, bool transparent, const 
     bd.type       = b3_staticBody;
     bd.position   = ToB3Vec3(entity->position);
     bd.rotation   = ToB3Quat(UnpackQuaternionS16Norm1(entity->rotation));
-    bd.userData   = (void*)PhysicsBodyUserData(entity->sparseIdx, transparent);
+    bd.userData   = (void*)PhysicsBodyUserData(entity->sparseIdx);
     b3BodyId body = b3CreateBody(gPhysicsWorld, &bd);
     b3ShapeDef sd = b3DefaultShapeDef();
-    sd.filter.categoryBits = transparent ? PHYS_CAT_TRANSPARENT : PHYS_CAT_SURFACE;
+    sd.filter.categoryBits = PHYS_CAT_SURFACE;
     b3ShapeId shape = b3CreateMeshShape(body, &sd, mesh, ToB3Vec3(EntityUnpackWorldScale(entity->scale)));
     if (B3_IS_NULL(shape))
     {
@@ -458,33 +424,32 @@ static void Scene_PhysicsCreateEntityBody(Scene* scene, bool transparent, const 
 
 bool Scene_IsEntityPhysicsEnabled(Scene* scene, Entity* entity)
 {
-    if (!scene->surfacePhysicsBodies || entity->sparseIdx >= scene->surfaceSet.maxEntities) return false;
-    b3BodyId body = scene->surfacePhysicsBodies[entity->sparseIdx];
+    if (!scene->physicsBodies || entity->sparseIdx >= scene->surfaceSet.maxEntities) return false;
+    b3BodyId body = scene->physicsBodies[entity->sparseIdx];
     return !B3_IS_NULL(body) && b3Body_IsEnabled(body);
 }
 
 void Scene_ToggleEntityPhysics(Scene* scene, Entity* entity, bool enabled)
 {
-    if (!scene->surfacePhysicsBodies || entity->sparseIdx >= scene->surfaceSet.maxEntities) return;
-    b3BodyId body = scene->surfacePhysicsBodies[entity->sparseIdx];
+    if (!scene->physicsBodies || entity->sparseIdx >= scene->surfaceSet.maxEntities) return;
+    b3BodyId body = scene->physicsBodies[entity->sparseIdx];
     bool isEnabled = !B3_IS_NULL(body) && b3Body_IsEnabled(body);
     if (B3_IS_NULL(body))
     {
-        bool transparent = Scene_IsEntityTransparent(scene, entity);
-        Scene_PhysicsCreateEntityBody(scene, transparent, entity);
-        body = scene->surfacePhysicsBodies[entity->sparseIdx];
+        Scene_PhysicsCreateEntityBody(scene, entity);
+        body = scene->physicsBodies[entity->sparseIdx];
     }
     if (isEnabled) b3Body_Enable(body); else b3Body_Disable(body);
     entity->flags &= ~EntityFlags_ColliderEnabled;
     entity->flags |= isEnabled * EntityFlags_ColliderEnabled;
 }
 
-void Scene_PhysicsSyncEntityBody(Scene* scene, bool transparent, const Entity* entity)
+void Scene_PhysicsSyncEntityBody(Scene* scene, const Entity* entity)
 {
-    b3BodyId* slot = PhysicsEntitySlot(scene, transparent, entity);
+    b3BodyId* slot = PhysicsEntitySlot(scene, entity);
     if (!slot || B3_IS_NULL(slot[0]))
     {
-        Scene_PhysicsCreateEntityBody(scene, transparent, entity);
+        Scene_PhysicsCreateEntityBody(scene, entity);
         return;
     }
     b3BodyId body = slot[0];
@@ -500,7 +465,7 @@ void Scene_PhysicsSyncEntityBody(Scene* scene, bool transparent, const Entity* e
         b3Vec3 curScale = b3Shape_GetMesh(shape).scale;
         if (newScale.x != curScale.x || newScale.y != curScale.y || newScale.z != curScale.z)
         {
-            b3MeshData* mesh = Scene_PhysicsEnsureGroupMesh(scene, transparent, entity->primitiveIdx);
+            b3MeshData* mesh = Scene_PhysicsEnsureGroupMesh(scene,   entity->primitiveIdx);
             if (mesh) b3Shape_SetMesh(shape, mesh, newScale);
         }
     }
@@ -574,10 +539,10 @@ bool Scene_PhysicsSyncTerrainChunkMesh(u64* inOutBody, struct b3MeshData** inOut
     return true;
 }
 
-bool Scene_PhysicsSetEntityShape(Scene* scene, bool transparent, const Entity* entity, b3ShapeType type)
+bool Scene_PhysicsSetEntityShape(Scene* scene,  const Entity* entity, b3ShapeType type)
 {
-    b3BodyId* slot = PhysicsEntitySlot(scene, transparent, entity);
-    RenderSet* set = PhysicsSet(scene, transparent);
+    b3BodyId* slot = PhysicsEntitySlot(scene, entity);
+    RenderSet* set = &scene->surfaceSet;
     u32 groupIdx = entity->primitiveIdx;
     if (!slot || B3_IS_NULL(slot[0]) || groupIdx >= set->numGroups) return false;
     
@@ -587,7 +552,7 @@ bool Scene_PhysicsSetEntityShape(Scene* scene, bool transparent, const Entity* e
     // Mesh restores the original triangle collider (rebuilt/cached per group).
     if (type == b3_meshShape)
     {
-        b3MeshData* mesh = Scene_PhysicsEnsureGroupMesh(scene, transparent, groupIdx);
+        b3MeshData* mesh = Scene_PhysicsEnsureGroupMesh(scene, groupIdx);
         if (!mesh) return false;
         b3Shape_SetMesh(shape, mesh, ToB3Vec3(EntityUnpackWorldScale(entity->scale)));
         return true;
@@ -662,8 +627,8 @@ void Scene_PhysicsApplyDefaultDynamicMass(b3BodyId body, b3ShapeId shape)
 
 bool Scene_PhysicsGetEntityOverride(const Scene* scene, u32 sparseIdx, ScenePhysicsRecord* out)
 {
-    if (!scene->surfacePhysicsBodies || sparseIdx >= scene->surfaceSet.maxEntities) return false;
-    b3BodyId body = scene->surfacePhysicsBodies[sparseIdx];
+    if (!scene->physicsBodies || sparseIdx >= scene->surfaceSet.maxEntities) return false;
+    b3BodyId body = scene->physicsBodies[sparseIdx];
     if (B3_IS_NULL(body)) return false;
     
     b3ShapeId shape;
@@ -699,13 +664,13 @@ void Scene_PhysicsApplyPendingOverrides(Scene* scene)
         u32 dense = set->sparseID[rec->sparseIdx];
         if (dense >= set->numEntities) continue;
         const Entity* entity = &set->entities[dense];
-        b3BodyId* slot = PhysicsEntitySlot(scene, false, entity);
+        b3BodyId* slot = PhysicsEntitySlot(scene, entity);
         if (!slot || B3_IS_NULL(slot[0])) continue;
         b3BodyId body = slot[0];
         
         // swap the shape first so the material/mass below act on the final shape
         if (rec->shapeType != (u32)b3_meshShape)
-            Scene_PhysicsSetEntityShape(scene, false, entity, (b3ShapeType)rec->shapeType);
+            Scene_PhysicsSetEntityShape(scene, entity, (b3ShapeType)rec->shapeType);
         
         b3ShapeId shape;
         bool hasShape = b3Body_GetShapes(body, &shape, 1) > 0;
@@ -741,35 +706,35 @@ void Scene_PhysicsApplyPendingOverrides(Scene* scene)
     scene->numPendingPhysics = 0;
 }
 
-static void Scene_PhysicsDestroyEntityBody(Scene* scene, bool transparent, u32 groupIdx, const Entity* entity)
+static void Scene_PhysicsDestroyEntityBody(Scene* scene, u32 groupIdx, const Entity* entity)
 {
     (void)groupIdx;
-    b3BodyId* slot = PhysicsEntitySlot(scene, transparent, entity);
+    b3BodyId* slot = PhysicsEntitySlot(scene, entity);
     if (!slot) return;
     if (B3_IS_NON_NULL(slot[0])) b3DestroyBody(slot[0]);
     slot[0] = b3_nullBodyId;
 }
 
-static void Scene_PhysicsDestroyBodiesInRange(Scene* scene, bool transparent, u32 firstGroup, u32 groupCount)
+static void Scene_PhysicsDestroyBodiesInRange(Scene* scene, u32 firstGroup, u32 groupCount)
 {
     if (!scene || groupCount == 0u) return;
-    RenderSet* set = PhysicsSet(scene, transparent);
+    RenderSet* set = &scene->surfaceSet;
     if (firstGroup >= set->numGroups) return;
     u32 lastGroup = Minu32(firstGroup + groupCount, set->numGroups);
     for (u32 g = firstGroup; g < lastGroup; g++)
     {
         PrimitiveGroup* group = &set->primitiveGroups[g];
         for (u32 e = 0; e < group->numEntities; e++)
-            Scene_PhysicsDestroyEntityBody(scene, transparent, g, &set->entities[group->entityOffset + e]);
+            Scene_PhysicsDestroyEntityBody(scene,   g, &set->entities[group->entityOffset + e]);
     }
 }
 
-static void Scene_PhysicsRemoveGroupMeshes(Scene* scene, bool transparent, u32 firstGroup, u32 groupCount)
+static void Scene_PhysicsRemoveGroupMeshes(Scene* scene, u32 firstGroup, u32 groupCount)
 {
     if (!scene || groupCount == 0u) return;
-    b3MeshData** meshes = PhysicsMeshes(scene, transparent);
+    b3MeshData** meshes = scene->physicsMeshes;
     if (!meshes) return;
-    RenderSet* set = PhysicsSet(scene, transparent);
+    RenderSet* set = &scene->surfaceSet;
     groupCount = Minu32(groupCount, set->maxGroups - firstGroup);
     u32 afterRemoved = firstGroup + groupCount;
     u32 last = Minu32(afterRemoved, set->maxGroups);
@@ -787,100 +752,71 @@ static void Scene_PhysicsRemoveGroupMeshes(Scene* scene, bool transparent, u32 f
         meshes[i] = NULL;
 }
 
-static bool RenderSetPhysicsKind(const RenderSet* set, bool* transparent)
-{
-    if (!set || set->skinned) return false;
-    *transparent = set->materialFilter == RenderSetMaterialFilter_Transparent;
-    return true;
-}
-
-// Shared prologue for the add/remove range callbacks: validates the set is a
-// hooked physics set, resolves the group, and clamps *count to it. Returns NULL
-// when the callback should be skipped.
-static PrimitiveGroup* PhysicsRangeGroup(RenderSet* set, u32 groupIdx, u32 localStartIdx, u32* count, bool* transparent)
-{
-    if (!RenderSetPhysicsKind(set, transparent) || !set->hookScene) return NULL;
-    if (groupIdx >= set->numGroups || *count == 0u) return NULL;
-    PrimitiveGroup* group = &set->primitiveGroups[groupIdx];
-    if (localStartIdx >= group->numEntities) return NULL;
-    if (localStartIdx + *count > group->numEntities)
-        *count = group->numEntities - localStartIdx;
-    return group;
-}
-
 void RenderSet_AddEntitiesCallback(RenderSet* set, u32 groupIdx, u32 localStartIdx, u32 count)
 {
-    bool transparent = false;
-    PrimitiveGroup* group = PhysicsRangeGroup(set, groupIdx, localStartIdx, &count, &transparent);
-    if (!group) return;
-    for (u32 i = 0; i < count; i++)
-        Scene_PhysicsCreateEntityBody(set->hookScene, transparent, &set->entities[group->entityOffset + localStartIdx + i]);
+    PrimitiveGroup* group = &set->primitiveGroups[groupIdx];
+    u32 cnt = group->numEntities - localStartIdx;
+    for (u32 i = 0; i < cnt; i++)
+        Scene_PhysicsCreateEntityBody(set->hookScene, &set->entities[group->entityOffset + localStartIdx + i]);
 }
 
 void RenderSet_RemoveRangeCallback(RenderSet* set, u32 groupIdx, u32 localStartIdx, u32 count)
 {
-    bool transparent = false;
-    PrimitiveGroup* group = PhysicsRangeGroup(set, groupIdx, localStartIdx, &count, &transparent);
-    if (!group) return;
-    for (u32 i = 0; i < count; i++)
-        Scene_PhysicsDestroyEntityBody(set->hookScene, transparent, groupIdx, &set->entities[group->entityOffset + localStartIdx + i]);
+    PrimitiveGroup* group = &set->primitiveGroups[groupIdx];
+    u32 cnt = group->numEntities - localStartIdx;
+    for (u32 i = 0; i < cnt; i++)
+        Scene_PhysicsDestroyEntityBody(set->hookScene, groupIdx, &set->entities[group->entityOffset + localStartIdx + i]);
 }
 
 void RenderSet_RemoveGroupsCallback(RenderSet* set, u32 firstGroup, u32 groupCount)
 {
-    bool transparent = false;
-    if (!RenderSetPhysicsKind(set, &transparent) || !set->hookScene) return;
-    Scene_PhysicsDestroyBodiesInRange(set->hookScene, transparent, firstGroup, groupCount);
-    Scene_PhysicsRemoveGroupMeshes(set->hookScene, transparent, firstGroup, groupCount);
+    Scene_PhysicsDestroyBodiesInRange(set->hookScene, firstGroup, groupCount);
+    Scene_PhysicsRemoveGroupMeshes(set->hookScene, firstGroup, groupCount);
 }
 
 void RenderSet_ClearEntitiesCallback(RenderSet* set)
 {
-    bool transparent = false;
-    if (!RenderSetPhysicsKind(set, &transparent) || !set->hookScene) return;
-    Scene_PhysicsDestroyBodiesInRange(set->hookScene, transparent, 0u, set->numGroups);
+    Scene_PhysicsDestroyBodiesInRange(set->hookScene, 0u, set->numGroups);
 }
 
 // Builds one triangle-mesh collider per primitive group. This can run on the loader thread because
 // it only creates mesh data, not world bodies.
-static void BuildColliderMeshesForSet(Scene* scene, const RenderSet* set, bool transparent)
+static void BuildColliderMeshesOfScene(Scene* scene)
 {
+    const RenderSet* set = &scene->surfaceSet;
     for (u32 b = 0; b < set->numBundles; b++)
     {
         const SceneBundle* bundle = set->bundles[b];
-        if (!bundle) continue;
-
         Range range = set->bundlePrimRange[b];
         for (u32 g = range.start; g < range.start + range.count; g++)
         {
             PrimitiveGroup* group = &set->primitiveGroups[g];
             if (group->numEntities == 0 || group->lodNumIndices[0] < 3 || group->lodNumVertices[0] == 0)
                 continue;
-            Scene_PhysicsEnsureGroupMesh(scene, transparent, g);
+            Scene_PhysicsEnsureGroupMesh(scene, g);
         }
     }
 }
 
 // Creates static bodies for built collider meshes. Must run on the main thread: Box3D asserts when
 // bodies are created while the world is locked or from async worker mutation paths.
-static void BuildCollidersForSet(Scene* scene, const RenderSet* set, bool transparent)
+static void BuildCollidersForScene(Scene* scene)
 {
+    const RenderSet* set = &scene->surfaceSet;
     for (u32 b = 0; b < set->numBundles; b++)
     {
         const SceneBundle* bundle = set->bundles[b];
-        if (!bundle) continue;
-
         Range range = set->bundlePrimRange[b];
         for (u32 g = range.start; g < range.start + range.count; g++)
         {
             PrimitiveGroup* group = &set->primitiveGroups[g];
             if (group->numEntities == 0 || group->lodNumIndices[0] < 3 || group->lodNumVertices[0] == 0)
                 continue;
-            if (!PhysicsMeshes(scene, transparent)[g]) continue;
+            if (!scene->physicsMeshes[g]) continue;
 
             Entity* ents = set->entities + group->entityOffset;
             for (u32 e = 0; e < group->numEntities; e++)
-                Scene_PhysicsCreateEntityBody(scene, transparent, &ents[e]);
+                Scene_PhysicsCreateEntityBody(scene, &ents[e]);
         }
     }
 }
@@ -888,26 +824,23 @@ static void BuildCollidersForSet(Scene* scene, const RenderSet* set, bool transp
 void Scene_BuildStaticColliders(Scene* scene)
 {
     PhysicsDestroyLiveStaticColliders(scene);
-    if (!scene->surfacePhysicsBodies || !scene->transparentPhysicsBodies) return;
+    if (!scene->physicsBodies) return;
 
-    u32 maxMeshes = scene->surfaceSet.numGroups + scene->transparentSet.numGroups;
+    u32 maxMeshes = scene->surfaceSet.numGroups + scene->surfaceSet.numGroups;
     if (maxMeshes == 0) return;
 
-    BuildColliderMeshesForSet(scene, &scene->surfaceSet, false);
-    BuildColliderMeshesForSet(scene, &scene->transparentSet, true);
-    BuildCollidersForSet(scene, &scene->surfaceSet, false);
-    BuildCollidersForSet(scene, &scene->transparentSet, true);
+    BuildColliderMeshesOfScene(scene);
+    BuildCollidersForScene(scene);
     // the wholesale destroy above also dropped every terrain chunk collider; tell the
     // terrain to re-create them on its next update (this can run on the async loader)
     tInvalidatePhysics();
-    AX_LOG("physics: built %u static collider meshes\n", PhysicsCountMeshes(scene, false) + PhysicsCountMeshes(scene, true));
+    AX_LOG("physics: built %u static collider meshes\n", PhysicsCountMeshes(scene));
 }
 
 static s32 BuildStaticColliderMeshesTask(void* data)
 {
     Scene* scene = (Scene*)data;
-    BuildColliderMeshesForSet(scene, &scene->surfaceSet, false);
-    BuildColliderMeshesForSet(scene, &scene->transparentSet, true);
+    BuildColliderMeshesOfScene(scene);
     scene->physicsColliderBuildResult = 1;
     SDL_SetAtomicInt(&scene->physicsColliderBuildDone, 1);
     scene->physicsBuildTask = NULL;
@@ -936,7 +869,7 @@ void Scene_BuildStaticCollidersAsync(Scene* scene, AsyncCallback callback)
 s32 Scene_PhysicsRaycastPick(const Scene* scene, v128f origin, v128f dir, BVHHit* hit)
 {
     b3QueryFilter filter = b3DefaultQueryFilter();
-    filter.maskBits = PHYS_CAT_SURFACE; // exclude transparent (and any future non-pickable) colliders
+    filter.maskBits = PHYS_CAT_SURFACE; 
 
     b3RayResult r = b3World_CastRayClosest(gPhysicsWorld, ToB3Vec3(origin),
                                            ToB3Vec3(VecMulf(dir, PHYS_PICK_MAX_DIST)), filter);
@@ -961,7 +894,7 @@ s32 Scene_PhysicsRaycastPick(const Scene* scene, v128f origin, v128f dir, BVHHit
     }
 
     u32 sparse = PhysicsUserDataSparse(userData);
-    const RenderSet* set = PhysicsUserDataTransparent(userData) ? &scene->transparentSet : &scene->surfaceSet;
+    const RenderSet* set = &scene->surfaceSet;
     if (sparse >= set->maxEntities) return 0;
     u32 dense = set->sparseID[sparse];
     if (dense == INVALID_ENTITY || dense >= set->numEntities) return 0;

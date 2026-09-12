@@ -40,7 +40,7 @@ static void DrawRenderBufferDepth(SDL_GPUCommandBuffer* cmd, SDL_GPURenderPass* 
     u32 count = 0;
     storageBuffers[count++] = buffers->entity;
     storageBuffers[count++] = buffers->primitiveGroup;
-    storageBuffers[count++] = buffers->drawSparseIndices;
+    storageBuffers[count++] = buffers->draw.sparseIndices;
     if (isSkinned) storageBuffers[count++] = g_RenderState.skinned.animatedVertices;
     if (useShadow) storageBuffers[count++] = ctx->shadowMatrixBuffer;
     if (isSkinned) storageBuffers[count++] = buffers->primitiveGroupLOD;
@@ -52,7 +52,7 @@ static void DrawRenderBufferDepth(SDL_GPUCommandBuffer* cmd, SDL_GPURenderPass* 
     }
     if (useShadow) SDL_PushGPUVertexUniformData(cmd, 0, &ctx->cascadeIndex, sizeof(u32));
     else SDL_PushGPUVertexUniformData(cmd, 0, &ctx->viewProj, sizeof(mat4x4));
-    SDL_DrawGPUIndexedPrimitivesIndirect(pass, buffers->drawArgs, 0, renderSet->numGroups * MESH_LOD_COUNT);
+    SDL_DrawGPUIndexedPrimitivesIndirect(pass, buffers->draw.args, 0, renderSet->numGroups * MESH_LOD_COUNT);
 }
 
 void RenderDepth(SDL_GPUCommandBuffer* cmd, const DepthPassContext* ctx)
@@ -99,48 +99,13 @@ void RenderDepth(SDL_GPUCommandBuffer* cmd, const DepthPassContext* ctx)
     SDL_EndGPURenderPass(pass);
 }
 
-static void DrawRenderBufferScene(SDL_GPUCommandBuffer* cmd, SDL_GPURenderPass* pass, bool isSkinned, Scene* scene,
-                                  const SDL_GPUBufferBinding vertex_binding,
-                                  const SDL_GPUTextureSamplerBinding pageSamplers[4],
-                                  SDL_GPUBuffer* const fragmentBuffers[2],
-                                  const void* vertexParams, u32 vertexParamsSize,
-                                  const void* fragmentParams, u32 fragmentParamsSize)
-{
-    const SDL_GPUBufferBinding index_binding = { g_RenderState.indexBuffer, 0 };
-    const RenderSetBuffers*  buffers   = isSkinned ? &scene->skinnedBuffers : &scene->surfaceBuffers;
-    const RenderSet*         renderSet = isSkinned ? &scene->skinnedSet     : &scene->surfaceSet;
-    SDL_GPUGraphicsPipeline* pipeline  = isSkinned ? g_RenderState.skinned.forwardPipeline : g_RenderState.surface.forwardPipeline;
-    if (renderSet->numGroups == 0) return;
-    SDL_BindGPUGraphicsPipeline(pass, pipeline);
-    SDL_BindGPUVertexBuffers(pass, 0, &vertex_binding, 1);
-    SDL_BindGPUIndexBuffer(pass, &index_binding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
-
-    // skinned meshes bind animated vertices ahead of the shadow cascades, so the cascade
-    // buffer lands one slot later than the surface layout. The forward pass also needs the bone
-    // matrices (t5) because it re-skins the tangent frame (not cached in the position-only buffer).
-    SDL_GPUBuffer* storageBuffers[7];
-    u32 count = 0;
-    storageBuffers[count++] = buffers->entity;
-    storageBuffers[count++] = buffers->primitiveGroup;
-    storageBuffers[count++] = buffers->drawSparseIndices;
-    if (isSkinned) storageBuffers[count++] = g_RenderState.skinned.animatedVertices;
-    storageBuffers[count++] = g_RenderState.shadowCascadeBuffer;
-    if (isSkinned) storageBuffers[count++] = scene->animSystem.boneBuffer;
-    if (isSkinned) storageBuffers[count++] = buffers->primitiveGroupLOD;
-    SDL_BindGPUVertexStorageBuffers(pass, 0, storageBuffers, count);
-
-    SDL_BindGPUFragmentSamplers(pass, 0, pageSamplers, 4);
-    SDL_BindGPUFragmentStorageBuffers(pass, 0, fragmentBuffers, 2);
-    SDL_PushGPUVertexUniformData(cmd, 0, vertexParams, vertexParamsSize);
-    SDL_PushGPUFragmentUniformData(cmd, 0, fragmentParams, fragmentParamsSize);
-    SDL_DrawGPUIndexedPrimitivesIndirect(pass, buffers->drawArgs, 0, renderSet->numGroups * MESH_LOD_COUNT);
-}
-
 // Forward+ opaque draw: same geometry/instancing, binds the forward
 // pipeline (single HDR target, depth test only) and the extra fragment resources the
 // forward shader needs (shadow atlases, AO, light buffer + tile grid/index).
 static void DrawRenderBufferForward(SDL_GPUCommandBuffer* cmd, SDL_GPURenderPass* pass, bool isSkinned, Scene* scene,
-                                    const RenderSet* renderSet, const RenderSetBuffers* buffers,
+                                    const RenderSet* renderSet, 
+                                    const RenderSetBuffers* buffers, 
+                                    const DrawBuffers* drawBuffers,
                                     SDL_GPUGraphicsPipeline* pipeline,
                                     const SDL_GPUBufferBinding vertex_binding,
                                     const SDL_GPUTextureSamplerBinding fragmentSamplers[8],
@@ -158,7 +123,7 @@ static void DrawRenderBufferForward(SDL_GPUCommandBuffer* cmd, SDL_GPURenderPass
     u32 count = 0;
     storageBuffers[count++] = buffers->entity;
     storageBuffers[count++] = buffers->primitiveGroup;
-    storageBuffers[count++] = buffers->drawSparseIndices;
+    storageBuffers[count++] = drawBuffers->sparseIndices;
     if (isSkinned) storageBuffers[count++] = g_RenderState.skinned.animatedVertices;
     storageBuffers[count++] = g_RenderState.shadowCascadeBuffer;
     if (isSkinned) storageBuffers[count++] = scene->animSystem.boneBuffer;
@@ -169,13 +134,13 @@ static void DrawRenderBufferForward(SDL_GPUCommandBuffer* cmd, SDL_GPURenderPass
     SDL_BindGPUFragmentStorageBuffers(pass, 0, fragmentBuffers, 7);
     SDL_PushGPUVertexUniformData(cmd, 0, vertexParams, vertexParamsSize);
     SDL_PushGPUFragmentUniformData(cmd, 0, fragmentParams, fragmentParamsSize);
-    SDL_DrawGPUIndexedPrimitivesIndirect(pass, buffers->drawArgs, 0, renderSet->numGroups * MESH_LOD_COUNT);
+    SDL_DrawGPUIndexedPrimitivesIndirect(pass, drawBuffers->args, 0, renderSet->numGroups * MESH_LOD_COUNT);
 }
 
 void RenderSceneForward(SDL_GPUCommandBuffer* cmd, const ScenePassContext* ctx, u32 width, u32 height, u32 tilesX, bool localLightsEnabled)
 {
     Scene* scene = g_ActiveScene;
-    u32 totalGroups = scene->skinnedSet.numGroups + scene->surfaceSet.numGroups + scene->transparentSet.numGroups;
+    u32 totalGroups = scene->skinnedSet.numGroups + scene->surfaceSet.numGroups;
     if (totalGroups == 0 && g_NumTerrainChunkDraws == 0)
         return;
 
@@ -239,12 +204,12 @@ void RenderSceneForward(SDL_GPUCommandBuffer* cmd, const ScenePassContext* ctx, 
     SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmd, ctx->colorTargets, ctx->numColorTargets, ctx->depthTarget);
 
     const SDL_GPUBufferBinding skinnedVertex = { g_RenderState.skinned.vertexBuffer, 0 };
-    DrawRenderBufferForward(cmd, pass, true, scene, &scene->skinnedSet, &scene->skinnedBuffers,
+    DrawRenderBufferForward(cmd, pass, true, scene, &scene->skinnedSet, &scene->skinnedBuffers, &scene->surfaceBuffers.draw,
                             g_RenderState.skinned.forwardPipeline, skinnedVertex, fragmentSamplers, fragmentBuffers,
                             &vertexParams, sizeof(vertexParams), &fragmentParams, sizeof(fragmentParams));
 
     const SDL_GPUBufferBinding surfaceVertex = { g_RenderState.surface.vertexBuffer, 0 };
-    DrawRenderBufferForward(cmd, pass, false, scene, &scene->surfaceSet, &scene->surfaceBuffers,
+    DrawRenderBufferForward(cmd, pass, false, scene, &scene->surfaceSet, &scene->surfaceBuffers, &scene->surfaceBuffers.draw,
                             g_RenderState.surface.forwardPipeline, surfaceVertex, fragmentSamplers, fragmentBuffers,
                             &vertexParams, sizeof(vertexParams), &fragmentParams, sizeof(fragmentParams));
 
@@ -264,7 +229,7 @@ void RenderSceneForward(SDL_GPUCommandBuffer* cmd, const ScenePassContext* ctx, 
         foliageFragmentBuffers[0] = foliageScene->textureSystem.materialBuffer;
         foliageFragmentBuffers[1] = foliageScene->textureSystem.descriptorBuffer;
 
-        DrawRenderBufferForward(cmd, pass, false, foliageScene, &foliageScene->surfaceSet, &foliageScene->surfaceBuffers,
+        DrawRenderBufferForward(cmd, pass, false, foliageScene, &foliageScene->surfaceSet, &foliageScene->surfaceBuffers, &scene->surfaceBuffers.draw,
                                 g_RenderState.surface.forwardPipeline, surfaceVertex, foliageFragmentSamplers, foliageFragmentBuffers,
                                 &vertexParams, sizeof(vertexParams), &fragmentParams, sizeof(fragmentParams));
     }
@@ -272,7 +237,7 @@ void RenderSceneForward(SDL_GPUCommandBuffer* cmd, const ScenePassContext* ctx, 
     RenderTerrain(cmd, pass, ctx->viewProj, width, height, tilesX, localLightsEnabled);
     tRenderGrass(cmd, pass);
 
-    DrawRenderBufferForward(cmd, pass, false, scene, &scene->transparentSet, &scene->transparentBuffers,
+    DrawRenderBufferForward(cmd, pass, false, scene, &scene->surfaceSet, &scene->surfaceBuffers, &scene->transparentDrawBuffers,
                             g_RenderState.transparentForwardPipeline, surfaceVertex, fragmentSamplers, fragmentBuffers,
                             &vertexParams, sizeof(vertexParams), &fragmentParams, sizeof(fragmentParams));
 

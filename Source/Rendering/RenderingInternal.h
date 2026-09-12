@@ -48,12 +48,16 @@ typedef struct DepthPassContext_
 
 typedef enum CullDrawFlags_
 {
-    CullDrawFlag_None                = 0,
-    CullDrawFlag_EnableHiZ           = 1u << 0,
-    CullDrawFlag_VisibilityOutput    = 1u << 1,
-    CullDrawFlag_ResetVisibility     = 1u << 2,
-    CullDrawFlag_CullSphere          = 1u << 3,
-    CullDrawFlag_Shadow              = 1u << 4
+    CullDrawFlag_None                = 0u,
+    CullDrawFlag_EnableHiZ           = 1u << 0u,
+    CullDrawFlag_VisibilityOutput    = 1u << 1u,
+    CullDrawFlag_ResetVisibility     = 1u << 2u,
+    CullDrawFlag_CullSphere          = 1u << 3u,
+    CullDrawFlag_Shadow              = 1u << 4u,
+    // writes to transparent buffers in gpu
+    CullDrawFlag_Transparent         = 1u << 5u,
+    // will not draw transparent objects
+    CullDrawFlag_ExcludeTransparent  = 1u << 6u // not used in gpu
 } CullDrawFlags;
 
 typedef struct ScenePassContext_
@@ -118,14 +122,14 @@ void DestroyRenderPipelines(void);
 ShadowCascadeData GetShadowCascades(void);
 float3 GetRenderSunDirection(void);
 
-void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd,
-                                 RenderSet*          renderSet,
-                                 RenderSetBuffers*   buffers,
-                                 FrustumPlanes       frustumPlanes,
-                                 mat4x4              viewProj,
-                                 CullDrawFlags       flags,
-                                 u32                 instanceMultiplier,
-                                 const f32           cullSphere[4]);
+void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet,
+                                 RenderSetBuffers* buffers,
+                                 DrawBuffers*      drawBuffers,
+                                 FrustumPlanes     frustumPlanes,
+                                 mat4x4            viewProj,
+                                 CullDrawFlags     flags,
+                                 u32               instanceMultiplier,
+                                 const f32         cullSphere[4]);
 
 void DispatchHiZBuildCompute(SDL_GPUCommandBuffer* cmd);
 void DispatchHBAOCompute(SDL_GPUCommandBuffer* cmd, bool enabled, u32 width, u32 height);

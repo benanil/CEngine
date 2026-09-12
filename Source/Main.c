@@ -46,38 +46,6 @@ void DestroyMain()
     done = 1;
 }
 
-static void MainLoopTick(void)
-{
-    if (g_MainLoopTicking) return;
-
-    g_MainLoopTicking = true;
-    MainSyncWindowSize();
-
-    SetPressedAndReleasedKeys();
-    PlatformUpdate();
-    CameraUpdate(&g_Camera, PlatformCtx.DeltaTime, EditorSceneInteractAllowed());
-    // builtin transvoxel terrain disabled while testing the transvoxel-unity port
-    // (tUpdate below); re-enable once the port replaces it for real
-    // Terrain_Update(&g_Camera);
-    DemoScene_Update(PlatformCtx.DeltaTime);
-    Scene_SubmitLights();
-
-    EditorSceneHotkeys();
-    Scene_Update(PlatformCtx.DeltaTime);
-
-    if (!TerrainEditorUpdate(&g_Camera) && !EditorGizmoUpdate(&g_Camera) && !EditorLightGizmoUpdate(&g_Camera))
-        EditorPickingUpdate(&g_Camera);
-
-    tUpdate();
-
-    if (!done) Render();
-    // else emscripten_cancel_main_loop();
-
-    RecordLastKeys();
-    PlatformCtx.FrameCount++;
-    g_MainLoopTicking = false;
-}
-
 static SDL_AppResult SDLCALL MainAppInit(void** appstate, int argc, char* argv[])
 {
     (void)appstate; (void)argc; (void)argv; 
@@ -117,6 +85,41 @@ static SDL_AppResult SDLCALL MainAppInit(void** appstate, int argc, char* argv[]
     CameraInit(&g_Camera, 1920, 1080);
 
     return SDL_APP_CONTINUE;
+}
+
+
+static void MainLoopTick(void)
+{
+    if (g_MainLoopTicking) return;
+
+    g_MainLoopTicking = true;
+    MainSyncWindowSize();
+
+    SetPressedAndReleasedKeys();
+    PlatformUpdate();
+    CameraUpdate(&g_Camera, PlatformCtx.DeltaTime, EditorSceneInteractAllowed());
+    // builtin transvoxel terrain disabled while testing the transvoxel-unity port
+    // (tUpdate below); re-enable once the port replaces it for real
+    // Terrain_Update(&g_Camera);
+
+    EditorSceneHotkeys();
+    
+    DemoScene_Update(PlatformCtx.DeltaTime);
+    Scene_Update(PlatformCtx.DeltaTime);
+    
+    Scene_SubmitLights();
+
+    if (!TerrainEditorUpdate(&g_Camera) && !EditorGizmoUpdate(&g_Camera) && !EditorLightGizmoUpdate(&g_Camera))
+        EditorPickingUpdate(&g_Camera);
+
+    tUpdate();
+
+    if (!done) Render();
+    // else emscripten_cancel_main_loop();
+
+    RecordLastKeys();
+    PlatformCtx.FrameCount++;
+    g_MainLoopTicking = false;
 }
 
 static SDL_AppResult SDLCALL MainAppEvent(void* appstate, SDL_Event* event)

@@ -16,8 +16,9 @@
 
 typedef enum EntityFlags_
 {
-	EntityFlags_None            = 0,
-	EntityFlags_ColliderEnabled = 1 << 0
+    EntityFlags_None            = 0,
+    EntityFlags_ColliderEnabled = 1 << 0,
+    EntityFlags_Transparent     = 1 << 1
 } EntityFlags;
 
 typedef struct Entity_
@@ -30,8 +31,7 @@ typedef struct Entity_
     // 24 bit parent sparseIdx, last byte ENTITY_FLAG
     u32   parentIdx;
     u16   material;
-	// todo move ambient to scene
-    u16   flags;
+    u16   flags; // EntityFlags
 } Entity;
 
 typedef struct Range_
@@ -43,13 +43,6 @@ typedef struct Range_
 typedef struct PrimitiveGroup_ PrimitiveGroup;
 typedef struct PrimitiveGroupGPU_ PrimitiveGroupGPU;
 typedef struct PrimitiveGroupLOD_ PrimitiveGroupLOD;
-
-typedef enum RenderSetMaterialFilter_
-{
-    RenderSetMaterialFilter_All = 0,
-    RenderSetMaterialFilter_Opaque,
-    RenderSetMaterialFilter_Transparent
-} RenderSetMaterialFilter;
 
 struct Scene_;
 
@@ -80,13 +73,13 @@ struct PrimitiveGroup_
     v128f aabbMin;
     v128f aabbMax;
     u32 lodIndexOffset[3];
-	u16 entityOffset, numEntities;
+    u16 entityOffset, numEntities;
     u32 lodNumIndices[3];
     u16 capacity, meshIndex;
     u32 lodVertexOffset[3];
     u16 primitiveIndex, materialIndex; 
-	u32 lodNumVertices[3];
-	u16 bundleIdx, padding0;
+    u32 lodNumVertices[3];
+    u16 bundleIdx, padding0;
 };
 
 STATIC_ASSERT(sizeof(PrimitiveGroup) == 96, "PrimitiveGroup CPU/GPU stride mismatch");
@@ -133,7 +126,7 @@ bool  RenderSet_FindNodeEntity(const RenderSet* set, Range range, u32 meshIndex,
 u32   RenderSet_AllocateSparseID(RenderSet* set);
 u32   RenderSet_AllocateSparseIDRange(RenderSet* set, int count);
 void  RenderSet_FreeSparseID(RenderSet* set, u32 sparseIdx);
-void RenderSet_FreeSparseIDRange(RenderSet* set, u32 sparseIdx, u32 count);
+void  RenderSet_FreeSparseIDRange(RenderSet* set, u32 sparseIdx, u32 count);
 u32   RenderSet_CountTriangles(const RenderSet* set);
 
 // debug validation for insertion/upload invariants. out: false when corruption is found.
@@ -141,7 +134,6 @@ bool  RenderSet_Validate(const RenderSet* set, const char* label);
 
 void  RenderSet_Destroy(RenderSet* set);
 void  RenderSet_InitSet(RenderSet* set, u32 maxEntities, u32 maxGroups, u32 maxBundles, bool skinned);
-void  RenderSet_SetMaterialFilter(RenderSet* set, RenderSetMaterialFilter filter);
 void  RenderSet_SetHookScene(RenderSet* set, struct Scene_* scene);
 
 // materialOffset is the scene's gpu material slot base of the bundle.
