@@ -397,7 +397,7 @@ static inline void M44FromQuaternion(float* mat, Quaternion quat)
 purefn Quaternion QFromLookRotation(float3 direction, float3 up)
 {
     const float3 matrix[3] = {
-        F3Cross(&up, &direction), up, direction 
+        F3Cross(up, direction), up, direction 
     };
     xyzw result;
     QuaternionFromMatrix(&result.x, &matrix[0].x, 3);

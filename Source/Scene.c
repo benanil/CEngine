@@ -126,7 +126,7 @@ void Scene_Destroy(Scene* scene)
     if (scene->lights)        DeAllocateTLSFGlobal(scene->lights);
     if (scene->materialSlots) DeAllocateTLSFGlobal(scene->materialSlots);
     if (scene->bundleSlots)   DeAllocateTLSFGlobal(scene->bundleSlots);
-    Scene_PhysicsDestroy(scene);
+    Scene_DestroyPhysics(scene);
     if (scene == &g_OwnedActiveScene)
     {
         g_OwnedActiveSceneInit = false;
@@ -152,7 +152,6 @@ Scene* Scene_NewActive(void)
     return &g_OwnedActiveScene;
 }
 
-static u32 ballEntity = 0;
 void Scene_Update(float deltaTime)
 {
     Scene_AsyncUpdate();
@@ -160,14 +159,10 @@ void Scene_Update(float deltaTime)
     Scene* activeScene = Scene_GetActive();
     if (activeScene == NULL) return;
     
-    if (ballEntity)
-    {
-        Entity* ball = &activeScene->surfaceSet.entities[ballEntity];
-        ball->position = VecAdd(ball->position, VecSet1(0.001f));
-        Scene_PhysicsSyncEntityBody(activeScene, ball);
-    }
-    Scene_PhysicsUpdate(activeScene, deltaTime);
+    Scene_UpdatePhysics(activeScene, deltaTime);
 }
+
+extern void OpenSceneCallback(const char* path);
 
 Scene* Scene_OpenActive(const char* path)
 {
@@ -182,9 +177,7 @@ Scene* Scene_OpenActive(const char* path)
         return NULL;
     }
     MemCopy(g_ActiveScenePath, normalized, StringLength(normalized) + 1);
-
-    u32 bundle = Scene_AddBundle(scene, "Assets/Meshes/Sphere.gltf", false);
-    ballEntity = Scene_Spawn(scene, bundle, VecSetR(0.0f, 34.0f, 0.0f, 0.0f), QIdentity(), VecOne());
+    OpenSceneCallback(path);
 
     Terrain_DeleteWorld();
     char terrainPath[512];
@@ -235,7 +228,7 @@ void Scene_Deactivate(Scene* scene)
     g_ActiveScene = NULL;
 }
 
-bool Scene_IsEntityTransparent(const Scene* scene, const Entity* entity)
+bool Entity_IsTransparent(const Entity* entity)
 {
     return !!(entity->flags & EntityFlags_Transparent);
 }

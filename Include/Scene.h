@@ -144,6 +144,24 @@ struct SceneAsyncRequest_
     u32    heldCap;
 };
 
+// One staged bundle load: mesh acquire (BundleCacheAcquire) plus cached-texture decode/GPU
+// upload (LoadBundleImagesFromCache). Touches only the bundle cache and this stage's own
+// buffer, so it's safe off the main thread (ParallelFor); Scene_AddBundleFinalize then
+// publishes it serially on the main thread (see tFoliage_Init, SceneSerializer_LoadBundles).
+// Shared by Scene_AddBundleStage (mesh+textures) and Scene_AddBundleBakedStage (mesh only,
+// materialOffset given directly) - skinned/staging unused on the baked path, materialOffset
+// unused on the normal path.
+typedef struct SceneBundleStage_
+{
+    SceneBundle* bundle;
+    const char*  storedPath; // bundle cache owned string, stable for the entry's lifetime
+    u64          cacheKey;
+    u32          materialOffset; // Scene_AddBundleBaked* path only
+    bool         skinned;        // Scene_AddBundle* path only
+    bool         loaded;         // false when the load failed; Finalize/Abort are still safe to call
+    Texture      staging[1024];  // Scene_AddBundle* path only
+} SceneBundleStage;
+
 // scenes the renderer draws each frame, in activation order
 extern Scene* g_ActiveScene;
 
@@ -165,57 +183,15 @@ s32 Scene_Activate(Scene* scene);
 
 void Scene_Deactivate(Scene* scene);
 
-bool Scene_IsEntityTransparent(const Scene* scene, const Entity* entity);
+// makes this the only rendered scene. out: 0 on failure
+s32 Scene_MakeActive(Scene* scene);
 
-// the box3d world is a single global, scene independent instance (Physics_Init creates
-// it lazily on first use) so bodies from different scenes - including gFoliage's private
-// scene - can physically interact. Scene_InitPhysics/Scene_PhysicsDestroy only manage the
-// scene's own body/mesh bookkeeping inside that shared world.
-void Physics_Init(void);
-void Physics_Destroy(void);
-b3WorldId Physics_GetWorld(void);
+// out: the first active scene, NULL when none
+Scene* Scene_GetActive(void);
 
-void Scene_InitPhysics(Scene* scene);
-void Scene_PhysicsDestroy(Scene* scene);
-void Scene_PhysicsUpdate(Scene* scene, float deltaTime);
-// loads/saves g_PhysicsSettings from PhysicsSettings.txt (load is one-shot, cached).
-void PhysicsSettings_Load(void);
-void PhysicsSettings_Save(void);
-// pushes g_PhysicsSettings (gravity/sleep/continuous) onto the shared physics world.
-void Scene_PhysicsApplyWorldSettings(void);
+const char* GetActiveScenePath();
 
-// builds a static rigid body with a triangle-mesh collider for every static mesh instance in the
-// scene's surface render sets. call once after a scene finishes loading.
-void Scene_BuildStaticCollidersAsync(Scene* scene, AsyncCallback callback);
-void Scene_BuildStaticColliders(Scene* scene);
-// after an entity moved call this to update its transformation in physics system
-void Scene_PhysicsSyncEntityBody(Scene* scene, const Entity* entity);
-void Scene_ToggleEntityPhysics(Scene* scene, Entity* entity, bool enabled);
-bool Scene_IsEntityPhysicsEnabled(Scene* scene, Entity* entity);
-
-// terrain colliders are owned per-chunk (u64 stored body id + mesh pointer live on tChunk),
-// not by the scene - no shared slot pool/cap, just the global physics world. inOutBody/
-// inOutMesh are read (0/NULL means "none yet") and written back by these calls.
-bool Scene_PhysicsSyncTerrainChunkMesh(u64* inOutBody, struct b3MeshData** inOutMesh,
-                                       b3Vec3* vertices, u32 vertexCount,
-                                       s32* indices, u32 indexCount);
-void Scene_PhysicsDestroyTerrainChunk(u64* inOutBody, struct b3MeshData** inOutMesh);
-// Swaps the collider shape of the entity's body in place. b3_meshShape restores the
-// original triangle collider; sphere/capsule/hull are derived from the primitive
-// bounds. Compound/height are unsupported and return false. Runtime-only.
-bool Scene_PhysicsSetEntityShape(Scene* scene, const Entity* entity, b3ShapeType type);
-// Gives a dynamic body a default box mass from the shape AABB so it responds to gravity
-// (mesh shapes compute zero mass). Shared by the inspector and the scene loader.
-void Scene_PhysicsApplyDefaultDynamicMass(b3BodyId body, b3ShapeId shape);
-// Reads the surface body at sparseIdx into *out; returns false when it matches the default
-// static-mesh collider (nothing to persist). Used by the serializer to save only overrides.
-bool Scene_PhysicsGetEntityOverride(const Scene* scene, u32 sparseIdx, ScenePhysicsRecord* out);
-// Applies scene->pendingPhysics onto the freshly built bodies, then frees the buffer.
-void Scene_PhysicsApplyPendingOverrides(Scene* scene);
-b3Vec3 ToB3Vec3(v128f v);
-b3Quat ToB3Quat(v128f q);
-v128f SceneB3PosToVec3(b3Pos p);
-u64   SceneB3QuatToEntityRotation(b3Quat q);
+bool Entity_IsTransparent(const Entity* entity);
 
 // per-frame scene tick: pumps async loads and steps physics for the active scene
 void Scene_Update(float deltaTime);
@@ -225,24 +201,6 @@ void Scene_Update(float deltaTime);
 // keyed by path, repeated adds of the same path reuse the resident mesh data.
 // out: scene bundle index, INVALID_BUNDLE otherwise
 u32 Scene_AddBundle(Scene* scene, const char* path, bool skinned);
-
-// One staged bundle load: mesh acquire (BundleCacheAcquire) plus cached-texture decode/GPU
-// upload (LoadBundleImagesFromCache). Touches only the bundle cache and this stage's own
-// buffer, so it's safe off the main thread (ParallelFor); Scene_AddBundleFinalize then
-// publishes it serially on the main thread (see tFoliage_Init, SceneSerializer_LoadBundles).
-// Shared by Scene_AddBundleStage (mesh+textures) and Scene_AddBundleBakedStage (mesh only,
-// materialOffset given directly) - skinned/staging unused on the baked path, materialOffset
-// unused on the normal path.
-typedef struct SceneBundleStage_
-{
-    SceneBundle* bundle;
-    const char*  storedPath; // bundle cache owned string, stable for the entry's lifetime
-    u64          cacheKey;
-    u32          materialOffset; // Scene_AddBundleBaked* path only
-    bool         skinned;        // Scene_AddBundle* path only
-    bool         loaded;         // false when the load failed; Finalize/Abort are still safe to call
-    Texture      staging[1024];  // Scene_AddBundle* path only
-} SceneBundleStage;
 
 // caller sets stage->storedPath (+ stage->skinned) before calling; result lands in
 // stage->loaded (false on failure, Finalize/Abort still safe to call then). void*, single
@@ -302,22 +260,73 @@ u32 Scene_Spawn(Scene* scene, u32 bundleIdx, v128f position, v128f rotation, v12
 
 void Scene_ClearEntities(Scene* scene);
 
-// makes this the only rendered scene. out: 0 on failure
-s32 Scene_MakeActive(Scene* scene);
-
-// out: the first active scene, NULL when none
-Scene* Scene_GetActive(void);
-
-const char* GetActiveScenePath();
-
 // Copies the resident cache entry for a scene render bundle into *out (looked up by key under the
 // cache lock). out: false when the bundle is not resident. The copied bvhNodes/bvhTris pointers stay
 // valid while the bundle is referenced; never hold the entry pointer itself, the map relocates it.
 bool FindCacheForSceneBundle(const Scene* scene, u32 bundleIdx, BundleCacheEntry* out);
 
-// ASYNC
-
 bool SceneAsyncBegin(SceneAsyncOp op, const char* path, const char* taskName, SceneAsyncRequestCallback callback);
 
+/////////////////////////////
+//         PHYSICS         //
+/////////////////////////////
+// the box3d world is a single global, scene independent instance (Physics_Init creates
+// it lazily on first use) so bodies from different scenes - including gFoliage's private
+// scene - can physically interact. Scene_InitPhysics/Scene_PhysicsDestroy only manage the
+// scene's own body/mesh bookkeeping inside that shared world.
+void Physics_Init(void);
+void Physics_Destroy(void);
+b3WorldId Physics_GetWorld(void);
+
+void Scene_InitPhysics(Scene* scene);
+void Scene_DestroyPhysics(Scene* scene);
+void Scene_UpdatePhysics(Scene* scene, float deltaTime);
+
+// loads/saves g_PhysicsSettings from PhysicsSettings.txt (load is one-shot, cached).
+void Physics_Settings_Load(void);
+void Physics_Settings_Save(void);
+// pushes g_PhysicsSettings (gravity/sleep/continuous) onto the shared physics world.
+void Physics_ApplyWorldSettings(void);
+
+// builds a static rigid body with a triangle-mesh collider for every static mesh instance in the
+// scene's surface render sets. call once after a scene finishes loading.
+void Scene_BuildStaticCollidersAsync(Scene* scene, AsyncCallback callback);
+void Scene_BuildStaticColliders(Scene* scene);
+
+b3BodyId Entity_GetPhysicsBody(Scene* scene, const Entity* entity);
+// after an entity moved call this to update its transformation in physics system
+void Entity_SyncPhysicsBody(Scene* scene, const Entity* entity);
+void Entity_TogglePhysics(Scene* scene, Entity* entity, bool enabled);
+bool Entity_IsPhysicsEnabled(Scene* scene, Entity* entity);
+// kinematic, dynamic, static
+void Entity_SetPhysicsBodyType(Scene* scene, Entity* entity, b3BodyType type);
+// sphere, box, hull, mesh
+bool Entity_SetPhysicsShape(Scene* scene, const Entity* entity, b3ShapeType type);
+
+// terrain colliders are owned per-chunk (u64 stored body id + mesh pointer live on tChunk),
+// not by the scene - no shared slot pool/cap, just the global physics world. inOutBody/
+// inOutMesh are read (0/NULL means "none yet") and written back by these calls.
+bool Physics_SyncTerrainChunkMesh(u64* inOutBody, struct b3MeshData** inOutMesh,
+                                  b3Vec3* vertices, u32 vertexCount,
+                                  s32* indices, u32 indexCount);
+void Physics_DestroyTerrainChunk(u64* inOutBody, struct b3MeshData** inOutMesh);
+
+// Gives a dynamic body a default box mass from the shape AABB so it responds to gravity
+// (mesh shapes compute zero mass). Shared by the inspector and the scene loader.
+void Physics_ApplyDefaultDynamicMass(b3BodyId body, b3ShapeId shape);
+// Reads the surface body at sparseIdx into *out; returns false when it matches the default
+// static-mesh collider (nothing to persist). Used by the serializer to save only overrides.
+bool Physics_GetEntityOverride(const Scene* scene, u32 sparseIdx, ScenePhysicsRecord* out);
+// Applies scene->pendingPhysics onto the freshly built bodies, then frees the buffer.
+void Physics_ApplyPendingOverrides(Scene* scene);
+
+b3Vec3 Float3ToB3Vec3(float3 v);
+float3 B3PosToFloat3(b3Pos p);
+
+b3Vec3 ToB3Vec3(v128f v);
+b3Quat ToB3Quat(v128f q);
+v128f  B3PosToVec3(b3Pos p);
+u64    B3QuatToEntityRotation(b3Quat q);
 
 #endif // SCENE_H
+

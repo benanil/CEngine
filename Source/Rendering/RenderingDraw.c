@@ -229,7 +229,7 @@ void RenderSceneForward(SDL_GPUCommandBuffer* cmd, const ScenePassContext* ctx, 
         foliageFragmentBuffers[0] = foliageScene->textureSystem.materialBuffer;
         foliageFragmentBuffers[1] = foliageScene->textureSystem.descriptorBuffer;
 
-        DrawRenderBufferForward(cmd, pass, false, foliageScene, &foliageScene->surfaceSet, &foliageScene->surfaceBuffers, &scene->surfaceBuffers.draw,
+        DrawRenderBufferForward(cmd, pass, false, foliageScene, &foliageScene->surfaceSet, &foliageScene->surfaceBuffers, &foliageScene->surfaceBuffers.draw,
                                 g_RenderState.surface.forwardPipeline, surfaceVertex, foliageFragmentSamplers, foliageFragmentBuffers,
                                 &vertexParams, sizeof(vertexParams), &fragmentParams, sizeof(fragmentParams));
     }

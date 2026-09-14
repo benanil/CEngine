@@ -8,8 +8,10 @@
 #include <box3d/box3d.h>
 
 #include "Include/Platform.h"
+#include "Include/Algorithm.h"
 #include "Include/Camera.h"
 #include "Include/Rendering.h"
+#include "Include/Slug.h"
 #include "Include/Graphics.h"
 #include "Include/Memory.h"
 #include "Include/Animation.h"
@@ -26,6 +28,8 @@ static bool g_MainLoopTicking;
 
 Camera       g_Camera;
 SDL_Window*  g_SDLWindow;
+static u32 ballEntity = INVALID_ENTITY;
+extern WindowState g_WindowState;
 
 static void MainSyncWindowSize(void)
 {
@@ -87,6 +91,67 @@ static SDL_AppResult SDLCALL MainAppInit(void** appstate, int argc, char* argv[]
     return SDL_APP_CONTINUE;
 }
 
+void OpenSceneCallback(const char* path)
+{
+    Scene* scene = Scene_GetActive();
+    u32 bundle = Scene_AddBundle(scene, "Assets/Meshes/Sphere.gltf", false);
+    ballEntity = Scene_Spawn(scene, bundle, VecSetR(0.0f, 34.0f, 0.0f, 0.0f), QIdentity(), VecOne());
+    Entity* ball = RenderSet_GetEntity(&scene->surfaceSet, ballEntity);
+    Entity_SetPhysicsShape(scene, ball, b3_sphereShape);
+    b3BodyId body = Entity_GetPhysicsBody(scene, ball);
+    b3Body_SetBullet(body, true);
+}
+
+static void UpdateBall()
+{
+    Scene* scene = Scene_GetActive();
+    static bool ballActive = false;
+    static float force = 300.0f;
+    if (ballEntity == INVALID_ENTITY) return;
+    force = Maxf32(0.0f, force + GetMouseWheelDelta());
+    Entity* ball = RenderSet_GetEntity(&scene->surfaceSet, ballEntity);
+    b3BodyId body = Entity_GetPhysicsBody(scene, ball);
+
+    if (GetKeyPressed(SDLK_J))
+    {
+        ballActive = !ballActive;
+        ball->position = VecZero();
+        Entity_SetPhysicsBodyType(scene, ball, ballActive ? b3_dynamicBody : b3_staticBody);
+    }
+    
+    if (GetKeyDown(SDLK_SPACE))
+    {
+        b3Body_ApplyLinearImpulseToCenter(body, (b3Vec3) { 0.0f, force * 5.0f, 0.0f }, false);
+    }
+
+    static char forceText[128] = {0};
+    static int forceLen = 1;
+    volatile float testForce = force;
+    forceLen = FloatToString(forceText, testForce, 2);
+    u32 w = g_WindowState.prev_width;
+    float2 msSize = SlugCalcTextSizeN(NULL, forceText, forceLen, 32.0f);
+    SlugAppendText2DN(NULL, forceText, forceLen, (float2){ w - msSize.x - 12.0f, 188.0f }, 32.0f, 0xFFCCCCFF);
+    if (ballActive)
+    {
+        float fwdButton = GetKeyDown(SDLK_W) ? 1.0f : GetKeyDown(SDLK_S) ? -1.0f : 0.0f;
+        float rgtButton = GetKeyDown(SDLK_D) ? 1.0f : GetKeyDown(SDLK_A) ? -1.0f : 0.0f;
+        // if no input slowly stop
+        if (Absf32(fwdButton) + Absf32(rgtButton) < MATH_Epsilon)
+        {
+            b3Vec3 vel = b3Body_GetLinearVelocity(body);
+            float slowDown = 1.0f - (float)GetDeltaTime();
+            b3Body_SetLinearVelocity(body, b3Mul(vel, (b3Vec3){slowDown, slowDown, slowDown}));
+        }
+        else
+        {
+            b3Vec3 forward = Float3ToB3Vec3(F3Proj(F3MulF(g_Camera.Front, fwdButton), F3Up()));
+            b3Vec3 right   = Float3ToB3Vec3(F3Proj(F3MulF(g_Camera.Right, rgtButton), F3Up()));
+            b3Vec3 direction = b3Normalize(b3Add(forward, right));
+            b3Body_ApplyLinearImpulseToCenter(body, b3Mul(direction, (b3Vec3){force, force, force}), true);
+        }
+    }
+    // Entity_SyncPhysicsBody(scene, ball);
+}
 
 static void MainLoopTick(void)
 {
@@ -113,12 +178,14 @@ static void MainLoopTick(void)
         EditorPickingUpdate(&g_Camera);
 
     tUpdate();
+    UpdateBall();
 
     if (!done) Render();
     // else emscripten_cancel_main_loop();
 
     RecordLastKeys();
     PlatformCtx.FrameCount++;
+    PlatformCtx.MouseWheelDelta = 0.0f;
     g_MainLoopTicking = false;
 }
 

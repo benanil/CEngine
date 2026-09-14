@@ -197,7 +197,7 @@ static void tFreePendingMesh(tChunk* chunk) {
 static void tDestroyChunkPhysics(tChunk* chunk)
 {
     if (!chunk) return;
-    Scene_PhysicsDestroyTerrainChunk(&chunk->physicsBody, &chunk->physicsMesh);
+    Physics_DestroyTerrainChunk(&chunk->physicsBody, &chunk->physicsMesh);
 }
 
 static const char* tChunkStateName(ChunkBuildState state)
@@ -279,7 +279,7 @@ static void tSyncChunkPhysics(tChunk* chunk)
 
     // owns its collider directly now (no shared slot pool/cap), so there's nothing to
     // acquire here - just create-or-update in place.
-    if (!Scene_PhysicsSyncTerrainChunkMesh(&chunk->physicsBody, &chunk->physicsMesh,
+    if (!Physics_SyncTerrainChunkMesh(&chunk->physicsBody, &chunk->physicsMesh,
                                            chunk->mesh.physics.vertices, chunk->mesh.physics.vertexCount,
                                            chunk->mesh.physics.indices, chunk->mesh.physics.indexCount))
         tDestroyChunkPhysics(chunk);

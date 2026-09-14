@@ -225,7 +225,7 @@ u8 GetKeyPressed(s32 c)  { return BitsetGet(PressedKeys , GetRealKey(c) & 511); 
 
 // Mouse
 f32 GetMouseWheelDelta()  { return PlatformCtx.MouseWheelDelta; }
-u8 GetDoubleClicked()    { return PlatformCtx.DoubleClicked; }
+u8 GetDoubleClicked()     { return PlatformCtx.DoubleClicked; }
 u8 AnyMouseKeyDown()            { return PlatformCtx.MouseDown > 0; }
 u8 GetMouseDown(s32 button)     { return !!(PlatformCtx.MouseDown     & button); }
 u8 GetMouseReleased(s32 button) { return !!(PlatformCtx.MouseReleased & button); }

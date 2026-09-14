@@ -31,7 +31,7 @@ PhysicsSettings g_PhysicsSettings = {
     .enableContinuous = true
 };
 
-void PhysicsSettings_Save(void)
+void Physics_Settings_Save(void)
 {
     const PhysicsSettings* s = &g_PhysicsSettings;
     char text[256];
@@ -42,7 +42,7 @@ void PhysicsSettings_Save(void)
     if (n > 0) WriteAllBytes(PHYSICS_SETTINGS_PATH, text, (unsigned long)n);
 }
 
-void PhysicsSettings_Load(void)
+void Physics_Settings_Load(void)
 {
     static bool loaded;
     if (loaded) return;
@@ -78,7 +78,7 @@ static JobSystem* gPhysicsJobSystem = NULL;
 
 b3WorldId Physics_GetWorld(void) { return gPhysicsWorld; }
 
-void Scene_PhysicsApplyWorldSettings(void)
+void Physics_ApplyWorldSettings(void)
 {
     if (B3_IS_NULL(gPhysicsWorld)) return;
     const PhysicsSettings* s = &g_PhysicsSettings;
@@ -137,7 +137,7 @@ void Physics_Init(void)
     b3SetLogFcn(PhysicsLogFn);
     b3Version version = b3GetVersion();
     AX_LOG("Box3D version %d.%d.%d\n", version.major, version.minor, version.revision);
-    PhysicsSettings_Load();
+    Physics_Settings_Load();
 
     gPhysicsJobSystem = JobSystem_Create(0, 0);
     b3WorldDef worldDef      = b3DefaultWorldDef();
@@ -147,7 +147,7 @@ void Physics_Init(void)
     worldDef.userTaskContext = gPhysicsJobSystem;
 
     gPhysicsWorld = b3CreateWorld(&worldDef);
-    Scene_PhysicsApplyWorldSettings();
+    Physics_ApplyWorldSettings();
 }
 
 void Physics_Destroy(void)
@@ -171,7 +171,7 @@ void Scene_InitPhysics(Scene* scene)
 static void PhysicsDestroyMeshStorage(Scene* scene);
 static void PhysicsDestroyLiveStaticColliders(Scene* scene);
 
-void Scene_PhysicsDestroy(Scene* scene)
+void Scene_DestroyPhysics(Scene* scene)
 {
     // Scene_BuildStaticCollidersAsync may still be running on a worker thread holding a raw
     // pointer to this Scene (e.g. new scene created right after load, before the build
@@ -199,6 +199,7 @@ void Scene_PhysicsDestroy(Scene* scene)
 }
 
 b3Vec3 ToB3Vec3(v128f v) { return (b3Vec3){ VecGetX(v), VecGetY(v), VecGetZ(v) }; }
+b3Vec3 Float3ToB3Vec3(float3 v) { return (b3Vec3){ v.x, v.y, v.z }; }
 
 b3Quat ToB3Quat(v128f q)
 {
@@ -212,8 +213,9 @@ b3Quat ToB3Quat(v128f q)
     return res;
 }
 
-v128f SceneB3PosToVec3(b3Pos p) { return VecSetR((f32)p.x, (f32)p.y, (f32)p.z, 0.0f); }
-u64 SceneB3QuatToEntityRotation(b3Quat q) { return PackQuaternionS16NormRet(VecSetR(q.v.x, q.v.y, q.v.z, q.s)); }
+float3 B3PosToFloat3(b3Pos p) { return (float3){p.x, p.y, p.z }; }
+v128f B3PosToVec3(b3Pos p) { return VecSetR(p.x, p.y, p.z, 0.0f); }
+u64 B3QuatToEntityRotation(b3Quat q) { return PackQuaternionS16NormRet(VecSetR(q.v.x, q.v.y, q.v.z, q.s)); }
 
 static u32 PhysicsCountMeshes(Scene* scene);
 static void BuildCollidersForScene(Scene* scene);
@@ -246,7 +248,7 @@ static u32 PhysicsUserDataSparse(void* userData)
     return (u32)((uintptr_t)userData >> 1u);
 }
 
-void Scene_PhysicsUpdate(Scene* scene, float deltaTime)
+void Scene_UpdatePhysics(Scene* scene, float deltaTime)
 {
     if (SDL_GetAtomicInt(&scene->physicsColliderBuildDone))
     {
@@ -277,8 +279,8 @@ void Scene_PhysicsUpdate(Scene* scene, float deltaTime)
         u32 sparseIdx = PhysicsUserDataSparse(move->userData);
         u32 dense = set->sparseID[sparseIdx];
         Entity* entity = &set->entities[dense];
-        entity->position = SceneB3PosToVec3(move->transform.p);
-        entity->rotation = SceneB3QuatToEntityRotation(move->transform.q);
+        entity->position = B3PosToVec3(move->transform.p);
+        entity->rotation = B3QuatToEntityRotation(move->transform.q);
     }
     scene->renderDataDirty |= events.moveCount > 0;
 }
@@ -422,14 +424,14 @@ static void Scene_PhysicsCreateEntityBody(Scene* scene, const Entity* entity)
     *slot = body;
 }
 
-bool Scene_IsEntityPhysicsEnabled(Scene* scene, Entity* entity)
+bool Entity_IsPhysicsEnabled(Scene* scene, Entity* entity)
 {
     if (!scene->physicsBodies || entity->sparseIdx >= scene->surfaceSet.maxEntities) return false;
     b3BodyId body = scene->physicsBodies[entity->sparseIdx];
     return !B3_IS_NULL(body) && b3Body_IsEnabled(body);
 }
 
-void Scene_ToggleEntityPhysics(Scene* scene, Entity* entity, bool enabled)
+void Entity_TogglePhysics(Scene* scene, Entity* entity, bool enabled)
 {
     if (!scene->physicsBodies || entity->sparseIdx >= scene->surfaceSet.maxEntities) return;
     b3BodyId body = scene->physicsBodies[entity->sparseIdx];
@@ -444,7 +446,7 @@ void Scene_ToggleEntityPhysics(Scene* scene, Entity* entity, bool enabled)
     entity->flags |= isEnabled * EntityFlags_ColliderEnabled;
 }
 
-void Scene_PhysicsSyncEntityBody(Scene* scene, const Entity* entity)
+void Entity_SyncPhysicsBody(Scene* scene, const Entity* entity)
 {
     b3BodyId* slot = PhysicsEntitySlot(scene, entity);
     if (!slot || B3_IS_NULL(slot[0]))
@@ -473,7 +475,7 @@ void Scene_PhysicsSyncEntityBody(Scene* scene, const Entity* entity)
     b3Body_SetTransform(body, ToB3Vec3(entity->position), ToB3Quat(UnpackQuaternionS16Norm1(entity->rotation)));
 }
 
-void Scene_PhysicsDestroyTerrainChunk(u64* inOutBody, struct b3MeshData** inOutMesh)
+void Physics_DestroyTerrainChunk(u64* inOutBody, struct b3MeshData** inOutMesh)
 {
     if (!inOutBody || !inOutMesh) return;
     b3BodyId body = b3LoadBodyId(*inOutBody);
@@ -486,7 +488,7 @@ void Scene_PhysicsDestroyTerrainChunk(u64* inOutBody, struct b3MeshData** inOutM
     }
 }
 
-bool Scene_PhysicsSyncTerrainChunkMesh(u64* inOutBody, struct b3MeshData** inOutMesh,
+bool Physics_SyncTerrainChunkMesh(u64* inOutBody, struct b3MeshData** inOutMesh,
                                        b3Vec3* vertices, u32 vertexCount,
                                        s32* indices, u32 indexCount)
 {
@@ -539,7 +541,22 @@ bool Scene_PhysicsSyncTerrainChunkMesh(u64* inOutBody, struct b3MeshData** inOut
     return true;
 }
 
-bool Scene_PhysicsSetEntityShape(Scene* scene,  const Entity* entity, b3ShapeType type)
+b3BodyId Entity_GetPhysicsBody(Scene* scene, const Entity* entity)
+{
+    return scene->physicsBodies[entity->sparseIdx];
+}
+
+void Entity_SetPhysicsBodyType(Scene* scene, Entity* entity, b3BodyType type)
+{
+    b3BodyId body = Entity_GetPhysicsBody(scene, entity);
+    b3ShapeId shapeId;
+    bool hasShape = b3Body_GetShapes(body, &shapeId, 1) > 0;
+    b3Body_SetType(body, type);
+    if (type == (u32)b3_dynamicBody && hasShape && b3Body_GetMass(body) <= 0.0f)
+        Physics_ApplyDefaultDynamicMass(body, shapeId);
+}
+
+bool Entity_SetPhysicsShape(Scene* scene,  const Entity* entity, b3ShapeType type)
 {
     b3BodyId* slot = PhysicsEntitySlot(scene, entity);
     RenderSet* set = &scene->surfaceSet;
@@ -606,7 +623,7 @@ bool Scene_PhysicsSetEntityShape(Scene* scene,  const Entity* entity, b3ShapeTyp
     }
 }
 
-void Scene_PhysicsApplyDefaultDynamicMass(b3BodyId body, b3ShapeId shape)
+void Physics_ApplyDefaultDynamicMass(b3BodyId body, b3ShapeId shape)
 {
     b3AABB aabb = b3Shape_GetAABB(shape);
     f32 w = Maxf32(aabb.upperBound.x - aabb.lowerBound.x, 0.01f);
@@ -625,7 +642,7 @@ void Scene_PhysicsApplyDefaultDynamicMass(b3BodyId body, b3ShapeId shape)
     b3Body_SetMassData(body, md);
 }
 
-bool Scene_PhysicsGetEntityOverride(const Scene* scene, u32 sparseIdx, ScenePhysicsRecord* out)
+bool Physics_GetEntityOverride(const Scene* scene, u32 sparseIdx, ScenePhysicsRecord* out)
 {
     if (!scene->physicsBodies || sparseIdx >= scene->surfaceSet.maxEntities) return false;
     b3BodyId body = scene->physicsBodies[sparseIdx];
@@ -654,7 +671,7 @@ bool Scene_PhysicsGetEntityOverride(const Scene* scene, u32 sparseIdx, ScenePhys
     return true;
 }
 
-void Scene_PhysicsApplyPendingOverrides(Scene* scene)
+void Physics_ApplyPendingOverrides(Scene* scene)
 {
     RenderSet* set = &scene->surfaceSet;
     for (u32 i = 0; i < scene->numPendingPhysics; i++)
@@ -670,7 +687,7 @@ void Scene_PhysicsApplyPendingOverrides(Scene* scene)
         
         // swap the shape first so the material/mass below act on the final shape
         if (rec->shapeType != (u32)b3_meshShape)
-            Scene_PhysicsSetEntityShape(scene, entity, (b3ShapeType)rec->shapeType);
+            Entity_SetPhysicsShape(scene, entity, (b3ShapeType)rec->shapeType);
         
         b3ShapeId shape;
         bool hasShape = b3Body_GetShapes(body, &shape, 1) > 0;
@@ -698,7 +715,7 @@ void Scene_PhysicsApplyPendingOverrides(Scene* scene)
         {
             b3Body_SetType(body, (b3BodyType)rec->bodyType);
             if (rec->bodyType == (u32)b3_dynamicBody && hasShape && b3Body_GetMass(body) <= 0.0f)
-                Scene_PhysicsApplyDefaultDynamicMass(body, shape);
+                Physics_ApplyDefaultDynamicMass(body, shape);
         }
     }
     if (scene->pendingPhysics) DeAllocateTLSFGlobal(scene->pendingPhysics);

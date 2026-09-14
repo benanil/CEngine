@@ -89,10 +89,10 @@ purefn f32    F3Angle   (cf3 a, cf3 b)        { return Vec3Angle(Vec3Load(&a->x)
 purefn f32    F3Dist    (cf3 a, cf3 b)        { return Vec3DistfV(Vec3Load(&a->x), Vec3Load(&b->x));              }
 purefn float3 F3Norm    (float3 a)            { return Vec3Get(Vec3NormV(Vec3Load(&a.x)));                        }
 purefn float3 F3NormEst (float3 a)            { return Vec3Get(Vec3NormEstV(Vec3Load(&a.x)));                     }
-purefn float3 F3Proj    (cf3 v, cf3 n)        { return Vec3Get(Vec3Proj   (Vec3Load(&v->x), Vec3Load(&n->x)));    }
-purefn float3 F3Reflect (cf3 i, cf3 n)        { return Vec3Get(Vec3Reflect(Vec3Load(&i->x), Vec3Load(&n->x)));    }
-purefn float3 F3Cross   (cf3 a, cf3 b)        { return Vec3Get(Vec3Cross  (Vec3Load(&a->x), Vec3Load(&b->x)));    }
-purefn float3 F3Lerp    (cf3 a, cf3 b, f32 t) { return Vec3Get(VecLerp    (Vec3Load(&a->x), Vec3Load(&b->x), t)); }
+purefn float3 F3Proj    (float3 v, float3 n)        { return Vec3Get(Vec3Proj   (Vec3Load(&v.x), Vec3Load(&n.x)));    }
+purefn float3 F3Reflect (float3 i, float3 n)        { return Vec3Get(Vec3Reflect(Vec3Load(&i.x), Vec3Load(&n.x)));    }
+purefn float3 F3Cross   (float3 a, float3 b)        { return Vec3Get(Vec3Cross  (Vec3Load(&a.x), Vec3Load(&b.x)));    }
+purefn float3 F3Lerp    (float3 a, float3 b, f32 t) { return Vec3Get(VecLerp    (Vec3Load(&a.x), Vec3Load(&b.x), t)); }
 purefn float2 F2Lerp    (float2 a, float2 b, f32 t) { return (float2) { a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t }; }
 purefn float3 F3Abs     (float3 a)            { return Vec3Get(VecFabs(Vec3Load(&a.x)));                        }
 purefn float3 F3Min     (float3 a, float3 b)  { return Vec3Get(VecMin(Vec3Load(&a.x), Vec3Load(&b.x))); }

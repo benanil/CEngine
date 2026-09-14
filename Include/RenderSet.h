@@ -1,3 +1,6 @@
+///////////////////////////////////////////////////////////
+//  sparse dense set optimized for rendering
+//  todo typedef for entity id's
 #ifndef RENDER_SET_H
 #define RENDER_SET_H
 
@@ -107,6 +110,10 @@ static inline void PrimitiveGroup_SetAABB(PrimitiveGroup* group, v128f aabbMin, 
     group->aabbMax = aabbMax;
 }
 
+static inline Entity* RenderSet_GetEntity(RenderSet* rs, u32 sparseIdx) {
+    return &rs->entities[rs->sparseID[sparseIdx]];
+}
+
 v128f EntityUnpackScale01(u64 packed);
 v128f EntityUnpackWorldScale(u64 packed);
 u64   EntityPackWorldScale(v128f scale);
@@ -139,7 +146,7 @@ void  RenderSet_SetHookScene(RenderSet* set, struct Scene_* scene);
 // out: groupIdx, ~0u outherwise
 u32   RenderSet_AddSceneBundle(RenderSet* set, const SceneBundle* sceneBundle, u32 materialOffset);
 // returns: root node, first entity sparseID that is added
-//    since we order entities from root to childrensmallest id is root node
+//    since always parentID < childID look at: SceneNormalize.c EmitRemappedNode
 u32   RenderSet_AddScene(RenderSet* set, u32 bundleIdx, v128f position, v128f rotation, v128f scale, bool wantSkinned);
 
 u32   RenderSet_AddEntity(RenderSet* set, u32 primitiveIdx, const Entity* data);

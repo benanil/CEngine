@@ -1186,15 +1186,15 @@ static void SceneInspectorPhysicsUI(Scene* scene, Entity* entity)
     if (sceneObjectSelection.skinned) return;
     if (!scene->physicsBodies || entity->sparseIdx >= scene->surfaceSet.maxEntities) return;
 
-    b3BodyId body = scene->physicsBodies[entity->sparseIdx];
+    b3BodyId body = Entity_GetPhysicsBody(scene, entity);
     UIDivider(CLAY_ID("InspectorPhysicsDivider"));
     scenePhysicsOpen ^= UICollapsingHeader(CLAY_ID("InspectorPhysicsHeader"), CLAY_STRING("Physics Body"), scenePhysicsOpen);
     if (!scenePhysicsOpen) return;
     
-    bool isEnabled = Scene_IsEntityPhysicsEnabled(scene, entity);
+    bool isEnabled = Entity_IsPhysicsEnabled(scene, entity);
     if (UICheckbox(CLAY_ID("ColliderEnabled"), CLAY_STRING("Enabled"), &isEnabled))
     {
-        Scene_ToggleEntityPhysics(scene, entity, isEnabled);
+        Entity_TogglePhysics(scene, entity, isEnabled);
         body = scene->physicsBodies[entity->sparseIdx];
     }
 
@@ -1212,7 +1212,7 @@ static void SceneInspectorPhysicsUI(Scene* scene, Entity* entity)
     {
         b3Body_SetType(body, (b3BodyType)bodyType);
         if (bodyType == (u32)b3_dynamicBody && hasShape && b3Body_GetMass(body) <= 0.0f)
-            Scene_PhysicsApplyDefaultDynamicMass(body, shapeId);
+            Physics_ApplyDefaultDynamicMass(body, shapeId);
     }
 
     // Shape type is editable. Order matches b3ShapeType so the index maps directly.
@@ -1224,7 +1224,7 @@ static void SceneInspectorPhysicsUI(Scene* scene, Entity* entity)
         if (shapeType >= ARRAY_SIZE(shapeTypes)) shapeType = 0u;
         if (UIDropdown(CLAY_ID("InspectorPhysicsShape"), CLAY_STRING("Shape"),
                        shapeTypes, ARRAY_SIZE(shapeTypes), &shapeType))
-            Scene_PhysicsSetEntityShape(scene, entity, (b3ShapeType)shapeType);
+            Entity_SetPhysicsShape(scene, entity, (b3ShapeType)shapeType);
     }
 
     // Mass properties and velocities are simulation output -> read-only.
@@ -1334,7 +1334,7 @@ static void SceneInspectorUI(Scene* scene)
         entity->position = VecSetR(sceneInspectorCache.positionUi[0], sceneInspectorCache.positionUi[1], sceneInspectorCache.positionUi[2], 0.0f);
         sceneInspectorCache.position = entity->position;
         if (!sceneObjectSelection.skinned)
-            Scene_PhysicsSyncEntityBody(scene, entity);
+            Entity_SyncPhysicsBody(scene, entity);
         scene->renderDataDirty = 1;
     }
 
@@ -1354,7 +1354,7 @@ static void SceneInspectorUI(Scene* scene)
         sceneInspectorCache.positionUi[2] = VecGetZ(entity->position);
         sceneInspectorCache.rotation = entity->rotation;
         if (!sceneObjectSelection.skinned)
-            Scene_PhysicsSyncEntityBody(scene, entity);
+            Entity_SyncPhysicsBody(scene, entity);
         scene->renderDataDirty = 1;
     }
 
@@ -1372,7 +1372,7 @@ static void SceneInspectorUI(Scene* scene)
         sceneInspectorCache.positionUi[2] = VecGetZ(entity->position);
         sceneInspectorCache.scalePacked = entity->scale;
         if (!sceneObjectSelection.skinned)
-            Scene_PhysicsSyncEntityBody(scene, entity);
+            Entity_SyncPhysicsBody(scene, entity);
         scene->renderDataDirty = 1;
     }
 

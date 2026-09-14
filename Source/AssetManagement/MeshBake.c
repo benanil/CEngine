@@ -143,7 +143,7 @@ static float3* GeneratePrimitiveNormals(const APrimitive* primitive, u32 vertexB
 
         float3 edge0 = F3Sub(positions[i1], positions[i0]);
         float3 edge1 = F3Sub(positions[i2], positions[i0]);
-        float3 faceNormal = F3Cross(&edge0, &edge1);
+        float3 faceNormal = F3Cross(edge0, edge1);
         normals[i0] = F3Add(normals[i0], faceNormal);
         normals[i1] = F3Add(normals[i1], faceNormal);
         normals[i2] = F3Add(normals[i2], faceNormal);

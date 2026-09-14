@@ -160,6 +160,7 @@ bool UIClicked(void);
 bool UIButton(Clay_ElementId id, Clay_String label, Clay_Dimensions size, bool selected);
 bool UIButtonFlags(Clay_ElementId id, Clay_String label, Clay_Dimensions size, bool selected, u32 flags);
 bool UICheckbox(Clay_ElementId id, Clay_String label, bool* value);
+bool UICheckboxS32(Clay_ElementId id, Clay_String label, s32* value);
 void UIProgressBar(Clay_ElementId id, Clay_String label, f32 value01);
 bool UISliderFloat(Clay_ElementId id, Clay_String label, f32* value, f32 minValue, f32 maxValue);
 bool UISliderFloatValue(Clay_ElementId id, Clay_String label, f32* value, f32 minValue, f32 maxValue, int decimals);

@@ -596,7 +596,7 @@ static void DrawSettingsWindow()
 
         // global (not per-scene); persisted to PhysicsSettings.txt and pushed live onto
         // the active world so edits take effect without reloading.
-        PhysicsSettings_Load();
+        Physics_Settings_Load();
         PhysicsSettings* phys = &g_PhysicsSettings;
         bool physChanged = UIEditFloatN(CLAY_ID("SettingsGravity"), CLAY_STRING("Gravity"), phys->gravity, 3u, -1000.0f, 1000.0f, 3);
 
@@ -612,8 +612,8 @@ static void DrawSettingsWindow()
 
         if (physChanged)
         {
-            Scene_PhysicsApplyWorldSettings();
-            PhysicsSettings_Save();
+            Physics_ApplyWorldSettings();
+            Physics_Settings_Save();
         }
 
         UIEndWindow();

@@ -134,7 +134,6 @@ static void UILayoutBeginFrame(void)
 
     f32 wheel = GetMouseWheelDelta();
     Clay_UpdateScrollContainers(false, (Clay_Vector2){ 0.0f, wheel * 24.0f }, GetDeltaTime());
-    PlatformCtx.MouseWheelDelta = 0.0f;
 }
 
 Clay_RenderCommandArray UIEndLayout(void)
@@ -581,14 +580,6 @@ bool UIButton(Clay_ElementId id, Clay_String label, Clay_Dimensions size, bool s
     return UIButtonFlags(id, label, size, selected, UIButtonFlag_None);
 }
 
-bool UICheckboxS32(Clay_ElementId id, Clay_String label, s32* value)
-{
-    bool val = (bool)value;
-    bool changed = UICheckbox(id, label, &val);
-    *value = (s32)val;
-    return changed;
-}
-
 bool UICheckbox(Clay_ElementId id, Clay_String label, bool* value)
 {
     bool checked = value && *value;
@@ -635,6 +626,14 @@ bool UICheckbox(Clay_ElementId id, Clay_String label, bool* value)
         }));
     }
 
+    return changed;
+}
+
+bool UICheckboxS32(Clay_ElementId id, Clay_String label, s32* value)
+{
+    bool val = (bool)value;
+    bool changed = UICheckbox(id, label, &val);
+    if (changed) *value = (s32)val;
     return changed;
 }
 

@@ -206,7 +206,7 @@ s32 SceneSerializer_Save(Scene* scene, const char* path)
         for (u32 e = 0; e < group->numEntities; e++)
         {
             ScenePhysicsRecord rec;
-            physCount += Scene_PhysicsGetEntityOverride(scene, surfaceSet->entities[group->entityOffset + e].sparseIdx, &rec);
+            physCount += Physics_GetEntityOverride(scene, surfaceSet->entities[group->entityOffset + e].sparseIdx, &rec);
         }
     }
 
@@ -219,7 +219,7 @@ s32 SceneSerializer_Save(Scene* scene, const char* path)
         for (u32 e = 0; e < group->numEntities; e++)
         {
             ScenePhysicsRecord rec;
-            if (!Scene_PhysicsGetEntityOverride(scene, surfaceSet->entities[group->entityOffset + e].sparseIdx, &rec))
+            if (!Physics_GetEntityOverride(scene, surfaceSet->entities[group->entityOffset + e].sparseIdx, &rec))
                 continue;
             p = WStr(line, "phys");
             p = WInt(p, (s64)rec.sparseIdx);
@@ -527,7 +527,7 @@ fail:
 static void BuildColliderEndCallback(void* data, s32 result)
 {
     Scene* scene = (Scene*)data;
-    Scene_PhysicsApplyPendingOverrides(scene); // no-op when nothing was persisted
+    Physics_ApplyPendingOverrides(scene); // no-op when nothing was persisted
     scene->physicsReady = true;
 }
 

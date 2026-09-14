@@ -31,9 +31,11 @@ typedef struct tFoliageType_
 {
     char  path[T_FOLIAGE_MAX_PATH];
     char  name[T_FOLIAGE_NAME_LEN]; // display label: file name, no directory/extension
-    u32   groupIdx;      // first primitive group in gFoliage.scene.surfaceSet, INVALID_GROUP if unresolved
-    u32   groupCount;    // number of primitive groups in the bundle (e.g. trunk+needles as separate
-                         // meshes) - every group must get an entity or parts of the model won't render
+    u32   bundleIdx; // in foliage scene
+    // todo(anil): remove these two
+    u32   groupIdx;      
+    u32   groupCount;    
+                         
     f32   localBaseY;    // lowest local-space point across all primitive groups
     f32   normalAlign;   // terrain-normal tilt amount; slender meshes stay mostly upright
     b3HullData* hull;    // native-scale convex hull, built lazily on first collider request
@@ -414,7 +416,7 @@ static void GetCellular(s32 chunkX, s32 chunkZ, f32 density, s32 axis, f32 frequ
 static Quaternion CreateFoliageRotation(float3 normal, f32 yaw, f32 normalAlign)
 {
     float3 up = F3Up();
-    float3 axis = F3Cross(&up, &normal);
+    float3 axis = F3Cross(up, normal);
     f32 upDot = Clampf32(F3Dot(up, normal), -1.0f, 1.0f);
     f32 axisLength = F3Dot(axis, axis);
     Quaternion tilt = QIdentity();
