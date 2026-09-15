@@ -147,7 +147,7 @@ struct SceneAsyncRequest_
 // One staged bundle load: mesh acquire (BundleCacheAcquire) plus cached-texture decode/GPU
 // upload (LoadBundleImagesFromCache). Touches only the bundle cache and this stage's own
 // buffer, so it's safe off the main thread (ParallelFor); Scene_AddBundleFinalize then
-// publishes it serially on the main thread (see tFoliage_Init, SceneSerializer_LoadBundles).
+// publishes it serially on the main thread (see Foliage_Init, SceneSerializer_LoadBundles).
 // Shared by Scene_AddBundleStage (mesh+textures) and Scene_AddBundleBakedStage (mesh only,
 // materialOffset given directly) - skinned/staging unused on the baked path, materialOffset
 // unused on the normal path.

@@ -110,30 +110,31 @@ typedef struct tFoliageParams_
     s32 enabled;
     s32 collider;      // spawn a static physics collider per instance
     s32 sizeVariance;  // +-30% random scale spread on top of size, when enabled
-} tFoliageParams;
+} FoliageParams;
 
-void tFoliage_Init();
-void tFoliage_Destroy();
-void tFoliage_SetSeed(u32 seed);
+void Foliage_Init();
+void Foliage_Destroy();
+void Foliage_SetSeed(u32 seed);
 
 // the scene foliage entities render into (separate from g_ActiveScene, drawn by an
-// explicit extra pass in RenderDepth/RenderSceneForward). NULL only before tFoliage_Init
-struct Scene_* tFoliage_GetScene(void);
+// explicit extra pass in RenderDepth/RenderSceneForward). NULL only before Foliage_Init
+struct Scene_* Foliage_GetScene(void);
 
 // one folliage type per mesh discovered under Assets/Foliage. index is stable for the
 // process lifetime (load order), used by the editor to bind per-type UI and params
-u32         tFoliage_NumTypes(void);
+u32         Foliage_NumTypes(void);
 // display label for the editor: file name without directory/extension
-const char* tFoliage_TypeName(u32 index);
-bool        tFoliage_GetParams(u32 index, tFoliageParams* out);
+const char* Foliage_TypeName(u32 index);
+bool        Foliage_GetParams(u32 index, FoliageParams* out);
 // bumps the type's generation: every resident chunk rebuilds its foliage set (not its
 // terrain mesh) over the next few frames, throttled the same way chunk streaming is
-void        tFoliage_SetParams(u32 index, const tFoliageParams* params);
+void        Foliage_SetParams(u32 index, const FoliageParams* params);
 // randomizes density and rarity for every type while preserving all other settings
-void        tFoliage_RandomizeParams(void);
+void        Foliage_RandomizeParams(void);
+s32         Foliage_BaseTypeOfGroup(s32 group);
 
-void        tFoliage_Save(const char* path);
-void        tFoliage_Load(const char* path);
+void        Foliage_Save(const char* path);
+void        Foliage_Load(const char* path);
 
 void tUpdate(void);
 void tInvalidateAll(void);

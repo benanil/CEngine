@@ -82,7 +82,7 @@ static SDL_AppResult SDLCALL MainAppInit(void** appstate, int argc, char* argv[]
     InitBuffers();
     // if (DemoScene_Create()) if (!Scene_MakeActive(DemoScene_Get())) return SDL_APP_FAILURE;
     if (!Scene_NewActive()) return SDL_APP_FAILURE;
-    tFoliage_Init();
+    Foliage_Init();
     tInit();
     // Keep the runnable Transvoxel example in the demo scene instead of reopening the last editor scene.
 
@@ -215,7 +215,7 @@ static void SDLCALL MainAppQuit(void* appstate, SDL_AppResult result)
 {
     (void)appstate;
     (void)result;
-    tFoliage_Destroy();
+    Foliage_Destroy();
     tDestroy();
     Physics_Destroy();
 }

@@ -39,11 +39,11 @@ typedef struct tFoliageType_
     f32   localBaseY;    // lowest local-space point across all primitive groups
     f32   normalAlign;   // terrain-normal tilt amount; slender meshes stay mostly upright
     b3HullData* hull;    // native-scale convex hull, built lazily on first collider request
-    tFoliageParams params;
-    bool  paramsDirty;   // set by tFoliage_SetParams; only this type's chunks get torn down
-                         // and rebuilt on the next tFoliage_Update, every other type's
+    FoliageParams params;
+    bool  paramsDirty;   // set by Foliage_SetParams; only this type's chunks get torn down
+                         // and rebuilt on the next Foliage_Update, every other type's
                          // instances stay untouched in the RenderSet
-} tFoliageType;
+} FoliageType;
 
 extern Graphics gGFX; // cpu mega buffers, declared per translation unit as elsewhere (BVH.c, Physics.c)
 
@@ -82,9 +82,9 @@ typedef struct tFoliageState_
     u32   numTypes;
     PCG   pcg;
     u32   seed;
-    tFoliageType types[T_MAX_FOLIAGE_SCENE];
+    FoliageType types[T_MAX_FOLIAGE_SCENE];
     tFoliageJob  jobs[T_MAX_CHUNKS]; // one slot per resident chunk, all dispatched and
-                                     // awaited within a single tFoliage_Update call
+                                     // awaited within a single Foliage_Update call
 } tFoliageState;
 
 static tFoliageState gFoliage;
@@ -102,12 +102,12 @@ static void VisitFile(const char* path, void* data)
         return;
     }
 
-    tFoliageType* type = &gFoliage.types[gFoliage.numTypes++];
+    FoliageType* type = &gFoliage.types[gFoliage.numTypes++];
     MemSet(type, 0, sizeof(*type));
     NormalizePath(path, type->path, T_FOLIAGE_MAX_PATH);
     GetFileNameNoExt(type->path, type->name);
     type->groupIdx = INVALID_GROUP;
-    type->params = (tFoliageParams){
+    type->params = (FoliageParams){
         .density      = RepeatMinMaxF32(PCGNext(&gFoliage.pcg), 7.5f, 10.0),
         .rarity       = RepeatMinMaxF32(PCGNext(&gFoliage.pcg), 0.8f, 0.9),
         .size         = 1.0f,
@@ -130,7 +130,7 @@ static void FoliageStageRange(u32 begin, u32 end, void* userData)
     }
 }
 
-void tFoliage_Init()
+void Foliage_Init()
 {
     MemSet(&gFoliage, 0, sizeof(gFoliage));
     gFoliage.pcg = (PCG){ 0x853c49e6748fea9bULL, 0xda3e39cb94b95bdbULL };
@@ -151,7 +151,7 @@ void tFoliage_Init()
 
     for (u32 i = 0; i < gFoliage.numTypes; i++)
     {
-        tFoliageType* type = &gFoliage.types[i];
+        FoliageType* type = &gFoliage.types[i];
         AX_LOG("foliage: %s", type->path);
         u32 bundleIdx = Scene_AddBundleFinalize(&gFoliage.scene, &stages[i]);
         if (bundleIdx == INVALID_BUNDLE) continue;
@@ -183,7 +183,7 @@ void tFoliage_Init()
     DeAllocateTLSFGlobal(stages);
 }
 
-void tFoliage_Destroy()
+void Foliage_Destroy()
 {
     for (u32 i = 0; i < gFoliage.numTypes; i++)
         if (gFoliage.types[i].hull) b3DestroyHull(gFoliage.types[i].hull);
@@ -191,34 +191,58 @@ void tFoliage_Destroy()
     MemSet(&gFoliage, 0, sizeof(gFoliage));
 }
 
-void tFoliage_SetSeed(u32 seed){
+void Foliage_SetSeed(u32 seed){
     gFoliage.seed = seed;
 }
 
-Scene* tFoliage_GetScene(void) { return &gFoliage.scene; }
+Scene* Foliage_GetScene(void) { return &gFoliage.scene; }
 
-u32 tFoliage_NumTypes(void) { return gFoliage.numTypes; }
+u32 Foliage_NumTypes(void) { return gFoliage.numTypes; }
 
-const char* tFoliage_TypeName(u32 index)
+const char* Foliage_TypeName(u32 index)
 {
     return index < gFoliage.numTypes ? gFoliage.types[index].name : "noname-prop";
 }
 
-bool tFoliage_GetParams(u32 index, tFoliageParams* out)
+bool Foliage_GetParams(u32 index, FoliageParams* out)
 {
     if (!out || index >= gFoliage.numTypes) return false;
     *out = gFoliage.types[index].params;
     return true;
 }
 
-void tFoliage_SetParams(u32 index, const tFoliageParams* params)
+s32 Foliage_BaseTypeOfGroup(s32 group)
 {
-    if (!params || index >= gFoliage.numTypes) return;
-    gFoliage.types[index].params = *params;
-    gFoliage.types[index].paramsDirty = true; // only this type rebuilds next tFoliage_Update
+    // first encounter is base group
+    for (s32 i = 0; i < gFoliage.numTypes; i++)
+        if (gFoliage.types[i].params.groupIndex == group)
+            return i;
+    return 0;
 }
 
-void tFoliage_Save(const char* path)
+void Foliage_SetParams(u32 index, const FoliageParams* params)
+{
+    if (!params || index >= gFoliage.numTypes) return;
+    FoliageType* type = &gFoliage.types[index];
+    type->params = *params;
+    type->paramsDirty = true; // only this type and its group rebuilds next Foliage_Update
+    bool isBaseType = Foliage_BaseTypeOfGroup(params->groupIndex) == params->groupIndex;
+    if (!isBaseType) return;
+
+    for (int i = 0; i < gFoliage.numTypes; i++)
+    {
+        if (gFoliage.types[i].params.groupIndex == params->groupIndex)
+        {
+            // these are shared properties, not all values has to be shared
+            gFoliage.types[i].params.density   = params->density;
+            gFoliage.types[i].params.rarity    = params->rarity;
+            gFoliage.types[i].params.frequency = params->frequency;
+            gFoliage.types[i].paramsDirty = true;
+        }
+    }
+}
+
+void Foliage_Save(const char* path)
 {
     AFile file = AFileOpen(path, AOpenFlag_WriteText);
     AFileWrite("numFoliages:", StringLength("numFoliages:"), file, 1);
@@ -227,8 +251,8 @@ void tFoliage_Save(const char* path)
 
     for (int i = 0; i < gFoliage.numTypes; i++)
     {
-        tFoliageType type = gFoliage.types[i];
-        tFoliageParams params = type.params;
+        FoliageType type = gFoliage.types[i];
+        FoliageParams params = type.params;
         AFileWrite(type.path, StringLength(type.path), file, 1);
         AFileWriteNamedF32("\ndensity:" , params.density   , file);
         AFileWriteNamedF32(" rarity:"    , params.rarity    , file);
@@ -243,7 +267,7 @@ void tFoliage_Save(const char* path)
     AFileClose(file);
 }
 
-void tFoliage_Load(const char* path)
+void Foliage_Load(const char* path)
 {
     char* txt = ReadAllTextAlloc(path, NULL, NULL);
     if (!txt) { AX_LOG("terrain foliage save file couldnt found"); return; }
@@ -259,8 +283,8 @@ void tFoliage_Load(const char* path)
         while (*p && !IsWhitespace(*p))
             path[strLen++] = *p++;
         // match with live foliages if exists change its params
-        tFoliageType* type = NULL;
-        tFoliageParams* params = NULL;
+        FoliageType* type = NULL;
+        FoliageParams* params = NULL;
         for (int i = 0; i < gFoliage.numTypes; i++)
         {
             if (StringEqual(gFoliage.types[i].path, path, strLen))
@@ -288,11 +312,11 @@ void tFoliage_Load(const char* path)
     FreeAllText(txt);
 }
 
-void tFoliage_RandomizeParams(void)
+void Foliage_RandomizeParams(void)
 {
     for (u32 i = 0; i < gFoliage.numTypes; i++)
     {
-        tFoliageType* type = &gFoliage.types[i];
+        FoliageType* type = &gFoliage.types[i];
         type->params.density = RepeatMinMaxF32(PCGNext(&gFoliage.pcg), 3.5f, 8.0f);
         type->params.rarity = RepeatMinMaxF32(PCGNext(&gFoliage.pcg), 0.85f, 0.95f);
         type->paramsDirty = true;
@@ -454,13 +478,13 @@ static void RunFoliageJob(void* userData)
         u8 group = g;
         u8 foliages[T_MAX_FOLIAGE_SCENE] = {0};
         u8 numFoliages = GetFoliageGroups(group, foliages);
-        const tFoliageType* baseType = &gFoliage.types[foliages[0]];
+        const FoliageType* baseType = &gFoliage.types[foliages[0]];
         if (numFoliages == 0) continue;
         
         u32 seed = WangHash(gFoliage.seed + (u32)job->chunkMin.x * 73856093u ^ (u32)job->chunkMin.z * 19349663u ^ (group * 83492791u + 1u));
         f32 density = Maxf32(baseType->params.density, T_MIN_DENSITY);
         f32 rarityGate = Clampf32(1.0f - baseType->params.rarity, 0.05f, 1.0f) * 1.5f;
-        v128u s4 = VeciSet(seed, seed + 234097, seed + 12345, seed + 314159265);
+        v128u s4 = VeciSet(seed, seed * 234097, seed * 12345, seed * 314159265);
         u32 typeNoiseSeed = WangHash((group + 1u) * 0x9e3779b9u);
         f32 noiseFrequency = baseType->params.frequency * 0.05f;
         f32 noiseOffsetX = RepeatMinMaxF32(WangHash(typeNoiseSeed ^ 0xa511e9b3u), 0.0f, 289.0f);
@@ -480,7 +504,7 @@ static void RunFoliageJob(void* userData)
             for (f32 z = density * 0.5f; z < T_CHUNK_CELLS; z += density, iz++)
             {
                 u32 foliageIndex = foliages[Abss32(rnd[rId] + iz) % numFoliages];
-                const tFoliageType* type = &gFoliage.types[foliageIndex];
+                const FoliageType* type = &gFoliage.types[foliageIndex];
                 // normally only types whose params just changed get (re)placed - every other
                 // type's chunks are left completely alone, both here and in IntegrateFinishedFoliage.
                 // a chunk that has never had foliage decided (placeAllEnabled) is the exception:
@@ -496,7 +520,13 @@ static void RunFoliageJob(void* userData)
                 if (cell.x > rarityGate) continue;
                 if (TerrainDensity_IslandMask(worldX, worldZ) > 0.02f) continue;
                 
-                f32 jitterX = (NextFloat01(rnd[rId++]) * 2.0f - 1.0f) * density * 0.46f;
+                u32 yawSeed = WangHash(
+                    seed ^
+                    (u32)(job->chunkMin.x + x) * 0x9e3779b9u ^
+                    (u32)(job->chunkMin.z + z) * 0x85ebca6bu
+                );
+
+                f32 jitterX = (NextFloat01(yawSeed) * 2.0f - 1.0f) * density * 0.46f;
                 f32 jitterZ = (NextFloat01(rnd[rId++]) * 2.0f - 1.0f) * density * 0.46f;
                 f32 localX = Clampf32(x + jitterX, 0.0f, T_CHUNK_CELLS);
                 f32 localZ = Clampf32(z + jitterZ, 0.0f, T_CHUNK_CELLS);
@@ -508,7 +538,8 @@ static void RunFoliageJob(void* userData)
                 f32 scale = baseType->params.sizeVariance ? RepeatMinMaxF32(rnd[rId++], 0.8f, 1.2f) : 1.0f;
                 
                 float3 localPos = F3Sub((float3){ localX, localY, localZ }, F3MulF(normal, T_FOLIAGE_GROUND_SNAP_OFFSET));
-                f32 yaw = NextFloat01(rnd[rId++]) * 2.0f * MATH_PI;
+
+                f32 yaw = NextFloat01(yawSeed) * (2.0f * MATH_PI);
                 tFoliagePlacement* placement = &job->placements[job->count++];
                 placement->localPos = Pack16x4Fixed(VecSetR(localPos.x, localPos.y, localPos.z, 0.0f), (f32)T_CHUNK_CELLS);
                 placement->rotation = PackQuaternionS16NormRet(CreateFoliageRotation(normal, yaw, type->normalAlign));
@@ -552,7 +583,7 @@ static void DestroyFoliageEntityRange(tChunk* chunk, u32 start, u32 count)
     }
 }
 
-void tFoliage_DestroyChunkFoliage(tChunk* chunk)
+void Foliage_DestroyChunkFoliage(tChunk* chunk)
 {
     if (!chunk) return;
     if (!chunk->foliageEntities) { chunk->foliageCount = 0u; return; }
@@ -570,7 +601,7 @@ static u32 FindFoliageTypeIndexForGroup(u32 groupIdx)
 {
     for (u32 t = 0; t < gFoliage.numTypes; t++)
     {
-        const tFoliageType* type = &gFoliage.types[t];
+        const FoliageType* type = &gFoliage.types[t];
         if (groupIdx >= type->groupIdx && groupIdx < type->groupIdx + type->groupCount) return t;
     }
     return ~0u;
@@ -606,7 +637,7 @@ static void RemoveDirtyChunkFoliage(tChunk* chunk)
     chunk->foliageCount = (u16)kept;
 }
 
-// Runs once per tFoliage_Update burst after JobSystem_Wait.
+// Runs once per Foliage_Update burst after JobSystem_Wait.
 // Bulk-adds dirty placements via RenderSet_AddEntities per (type, render group).
 static void IntegrateFinishedFoliage(u32 scheduledCount)
 {
@@ -632,7 +663,7 @@ static void IntegrateFinishedFoliage(u32 scheduledCount)
         u32 addCount = 0u;
         for (u32 p = 0; p < job->count; p++)
         {
-            tFoliageType* type = &gFoliage.types[job->placements[p].typeIndex];
+            FoliageType* type = &gFoliage.types[job->placements[p].typeIndex];
             if (type->groupIdx == INVALID_GROUP) continue;
             addCount += type->groupCount;
             typeCounts[job->placements[p].typeIndex]++;
@@ -664,7 +695,7 @@ static void IntegrateFinishedFoliage(u32 scheduledCount)
         for (u32 p = 0; p < job->count; p++)
         {
             const tFoliagePlacement* placement = &job->placements[p];
-            tFoliageType* type = &gFoliage.types[placement->typeIndex];
+            FoliageType* type = &gFoliage.types[placement->typeIndex];
             if (type->groupIdx == INVALID_GROUP || !typeItems[placement->typeIndex]) continue;
 
             float3 worldPos = F3Add(ToFloat3(job->chunkMin), Vec3Get(Unpack16x4Fixed(placement->localPos, (f32)T_CHUNK_CELLS)));
@@ -685,7 +716,7 @@ static void IntegrateFinishedFoliage(u32 scheduledCount)
     {
         u32 count = typeCounts[t];
         if (count == 0u || !typeItems[t]) continue;
-        const tFoliageType* type = &gFoliage.types[t];
+        const FoliageType* type = &gFoliage.types[t];
 
         Entity* entityBuf = (Entity*)AllocateTLSFGlobal(sizeof(Entity) * count);
         if (!entityBuf) {
@@ -732,7 +763,7 @@ static void IntegrateFinishedFoliage(u32 scheduledCount)
     DeAllocateTLSFGlobal(resolvedChunks);
 }
 
-void tFoliage_Update(void)
+void Foliage_Update(void)
 {
     JobSystem* js = tGetTerrainJobSystem();
     if (!js) return;

@@ -606,7 +606,7 @@ static void tFreeChunkSlot(u32 index)
     tDestroyChunkPhysics(chunk);
     tFreeMeshHandle(&chunk->mesh);
     tFreePendingMesh(chunk);
-    tFoliage_DestroyChunkFoliage(chunk);
+    Foliage_DestroyChunkFoliage(chunk);
     DeAllocateTLSFGlobal(chunk->density);
     chunk->density = NULL;
     tLRUUnlink(index);
@@ -697,7 +697,7 @@ static void tClearChunkCache(void)
         tDestroyChunkPhysics(&gMarchingTerrain.chunks[i]);
         tFreeMeshHandle(&gMarchingTerrain.chunks[i].mesh);
         tFreePendingMesh(&gMarchingTerrain.chunks[i]);
-        tFoliage_DestroyChunkFoliage(&gMarchingTerrain.chunks[i]);
+        Foliage_DestroyChunkFoliage(&gMarchingTerrain.chunks[i]);
         DeAllocateTLSFGlobal(gMarchingTerrain.chunks[i].density);
         gMarchingTerrain.chunks[i].density = NULL;
     }
@@ -1015,7 +1015,7 @@ void tUpdate(void)
 
     IntegrateFinishedBuilds();
     s64 tIntegrate = TimeNow();
-    tFoliage_Update();
+    Foliage_Update();
     s64 tFoliage = TimeNow();
     tResolveHeapPressure();
     tPromotePendingMeshes();

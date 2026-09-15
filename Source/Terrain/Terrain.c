@@ -108,7 +108,7 @@ void Terrain_ApplyGenParams(const TerrainGenParams* params) {
     if (!tp.initialized) tInit();
     tp.genParams = *params;
     tp.genParams.fixedWorldSize = (u32)Clamps32((s32)tp.genParams.fixedWorldSize, TERRAIN_FIXED_WORLD_MIN_SIZE, TERRAIN_FIXED_WORLD_MAX_SIZE);
-    tFoliage_SetSeed(tp.genParams.seed);
+    Foliage_SetSeed(tp.genParams.seed);
     TerrainDensity_SetParams(&tp.genParams);
     tInvalidateAll();
 }
@@ -258,7 +258,7 @@ bool Terrain_SaveWorld(const char* path) {
     EnsurePath(chunksPath);
     bool success = FileExist(path) && Terrain_SaveEditChunks(chunksPath);
     ChangeExtension(chunksPath, StringLength(chunksPath), "foliage");
-    tFoliage_Save(chunksPath);
+    Foliage_Save(chunksPath);
     return success;
 }
 
@@ -301,6 +301,6 @@ void Terrain_LoadWorld(const char* path) {
     StringCopy(path, chunksPath, sizeof(chunksPath));
     Terrain_LoadEditChunks(chunksPath);
     ChangeExtension(chunksPath, StringLength(chunksPath), "foliage");
-    tFoliage_Load(chunksPath);
+    Foliage_Load(chunksPath);
     Terrain_CreateWorld(&params);
 }

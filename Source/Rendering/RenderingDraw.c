@@ -76,7 +76,7 @@ void RenderDepth(SDL_GPUCommandBuffer* cmd, const DepthPassContext* ctx)
 
     // foliage: separate scene (own texture system/material buffers), same shared
     // vertex/index geometry heap, drawn as an extra pass in the same render pass
-    Scene* foliageScene = tFoliage_GetScene();
+    Scene* foliageScene = Foliage_GetScene();
     if (foliageScene && foliageScene->surfaceSet.numGroups > 0)
     {
         SDL_GPUTextureSamplerBinding foliageAlbedoSampler = {
@@ -215,7 +215,7 @@ void RenderSceneForward(SDL_GPUCommandBuffer* cmd, const ScenePassContext* ctx, 
 
     // foliage: separate scene (own texture system/material buffers, shares everything
     // else - shadows/AO/lights are global), same shared geometry heap
-    Scene* foliageScene = tFoliage_GetScene();
+    Scene* foliageScene = Foliage_GetScene();
     if (foliageScene && foliageScene->surfaceSet.numGroups > 0)
     {
         SDL_GPUTextureSamplerBinding foliageFragmentSamplers[8];

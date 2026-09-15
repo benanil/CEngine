@@ -15,7 +15,7 @@ static void CullFoliageShadowCasters(SDL_GPUCommandBuffer* cmd, FrustumPlanes pl
                                      CullDrawFlags flags, u32 instanceMultiplier,
                                      const f32 cullSphere[4])
 {
-    Scene* foliageScene = tFoliage_GetScene();
+    Scene* foliageScene = Foliage_GetScene();
     if (!foliageScene || foliageScene->surfaceSet.numGroups == 0u)
         return;
 

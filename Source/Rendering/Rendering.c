@@ -730,7 +730,7 @@ void Render(void)
         // foliage lives in its own scene (separate render sets/textures), not merged into
         // g_ActiveScene, so it needs the same per-frame upload+cull step done by hand here.
         // RenderDepth/RenderSceneForward draw it as an extra pass alongside the main scene.
-        Scene* foliageScene = tFoliage_GetScene();
+        Scene* foliageScene = Foliage_GetScene();
         if (foliageScene && foliageScene->surfaceSet.numGroups > 0)
         {
             UploadRenderSetStatics(&foliageScene->surfaceSet, &foliageScene->surfaceBuffers);

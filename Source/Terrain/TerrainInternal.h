@@ -224,7 +224,7 @@ typedef struct tChunk_
     // eviction pick the true least-recently-touched chunk without scanning the array
     u32   lruPrev, lruNext;
     u16   foliageCount;
-    // false until tFoliage_Update has scheduled at least one job for this chunk (zero
+    // false until Foliage_Update has scheduled at least one job for this chunk (zero
     // placements is a valid outcome and still sets this - it means "decided", not "has
     // foliage"). Lets newly streamed-in chunks get an initial placement pass even on a
     // frame where no foliage type's params changed; MemsetZero on chunk reuse resets it.
@@ -255,10 +255,10 @@ const u64* tGetOccupiedChunksBitset(void);
 
 // called by MarchingTerrain.c before a chunk slot is wiped/reused (eviction, cache
 // clear, shutdown): frees the chunk's render entities, colliders and instance array
-void tFoliage_DestroyChunkFoliage(tChunk* chunk);
+void Foliage_DestroyChunkFoliage(tChunk* chunk);
 // per-frame: schedules foliage (re)builds for stale resident chunks and integrates
 // finished worker jobs. called once from tUpdate
-void tFoliage_Update(void);
+void Foliage_Update(void);
 
 // one in-flight chunk build on a JobSystem worker. the main thread fills the inputs,
 // launches the job and reads the outputs after JobSystem_IsJobDone; exactly one job

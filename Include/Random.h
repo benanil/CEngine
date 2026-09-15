@@ -18,11 +18,11 @@ purefn u32 WangHash(u32 x) {
 }
 
 purefn v128u VCALL WangHashx4(v128u x) {
-	x = VeciXor(x, VeciSrl32(x, 16));
-	x = VeciMul(x, VeciSet1(0x7feb352d));
-	x = VeciXor(x, VeciSrl32(x, 15));
-	x = VeciMul(x, VeciSet1(0x846ca68b));
-	return VeciXor(x, VeciSrl32(x, 16));
+    x = VeciXor(x, VeciSrl32(x, 16));
+    x = VeciMul(x, VeciSet1(0x7feb352d));
+    x = VeciXor(x, VeciSrl32(x, 15));
+    x = VeciMul(x, VeciSet1(0x846ca68b));
+    return VeciXor(x, VeciSrl32(x, 16));
 }
 
 // given Wang hash returns input value: 
