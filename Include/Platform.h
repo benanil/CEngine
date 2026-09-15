@@ -134,6 +134,7 @@ void wOpenFile(const char* filePath, CP_DialogFileCallback callback);
 
 // Time
 f32   GetDeltaTime();
+s64   TimeNow();
 f32   TimeSinceStartup();
 
 // time is nanoseconds

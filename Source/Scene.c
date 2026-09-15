@@ -108,8 +108,11 @@ void Scene_Init(Scene* scene)
     scene->bundleRefs    = (SceneBundleRef*)AllocZeroTLSFGlobal(MAX_SCENE_BUNDLES, sizeof(SceneBundleRef));
 }
 
+extern void BeforeDestroySceneCallback(Scene* scene);
+
 void Scene_Destroy(Scene* scene)
 {
+    BeforeDestroySceneCallback(scene);
     if (scene->physicsBuildTask) AsyncWait(scene->physicsBuildTask);
     Scene_Deactivate(scene);
     for (u32 i = 0; i < scene->numBundles; i++)

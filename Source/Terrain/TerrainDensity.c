@@ -30,9 +30,7 @@ static TerrainGenParams td_Params = {
     .fixedWorldSize = (f32)TERRAIN_FIXED_WORLD_DEFAULT_SIZE,
     .islandRadius   = 260.0f,
     .islandFalloff  = 100.0f,
-    .island         = true,
-    .islandRadius   = 260.0f,
-    .islandFalloff  = 100.0f
+    .island         = true
 };
 // seed turns into a large noise domain offset, world coords stay near the origin
 // so the s8 quantization and chunk keys are unaffected
@@ -274,9 +272,7 @@ TerrainGenParams Terrain_DefaultGenParams(void)
         .fixedWorldSize = (f32)TERRAIN_FIXED_WORLD_DEFAULT_SIZE,
         .islandRadius   = 260.0f,
         .islandFalloff  = 100.0f,
-        .island         = true,
-        .islandRadius   = 260.0f,
-        .islandFalloff  = 100.0f
+        .island         = true
     };
     return defaults;
 }

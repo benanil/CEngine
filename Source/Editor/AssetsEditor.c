@@ -4,6 +4,7 @@
 #include "Include/Random.h"
 #include "Include/Algorithm.h"
 #include "Include/FileSystem.h"
+#include "Include/AssetManager.h"
 #include <SDL3/SDL_misc.h> // SDL_OpenURL
 
 extern WindowState g_WindowState;

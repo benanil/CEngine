@@ -4,6 +4,7 @@
 #include "Include/Graphics.h"
 #include "Include/Random.h"
 #include "Math/Noise.h"
+#include "SDL3/SDL_timer.h"
 
 #if defined(PLATFORM_MACOSX)
     #include "Shaders/msl/GrassVert.msl.h"

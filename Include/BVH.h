@@ -4,6 +4,7 @@
 #include "GLTFParser.h"
 #include "Math/Vector.h"
 #include "SIMD.h"
+#include "Scene.h"
 
 #if defined(__cplusplus)
 extern "C" {
@@ -45,11 +46,12 @@ static inline float3 BVH_HitPositionF(float3 origin, float3 dir, const BVHHit* h
     return F3Add(origin, F3MulF(dir, hit->hit.t));
 }
 
+
 // builds the blas of every primitive of the bundle from the lod0 triangles, fills
 // APrimitive.bvhNodeIndex and the cache entry's bvhNodes/bvhTris arrays. out: 0 on failure
-s32 BVH_BuildBundleCached(SceneBundle* bundle, struct BundleCacheEntry* bundleCache, bool skinned);
+s32 BVH_BuildBundleCached(SceneBundle* bundle, BundleCacheEntry* bundleCache, bool skinned);
 
-void BVH_FreeBundle(struct BundleCacheEntry* bundleCache);
+void BVH_FreeBundle(BundleCacheEntry* bundleCache);
 
 struct Scene_;
 

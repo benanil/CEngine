@@ -214,7 +214,9 @@ def configure_and_build(config: str, env: Dict[str, str]) -> None:
             "-B", str(build_dir),
             "-G", generator,
             "--log-level=WARNING",
-            "-DCMAKE_BUILD_TYPE={}".format(config),
+            "-DCMAKE_BUILD_TYPE={}".format(config)
+            # "-DCMAKE_C_COMPILER=clang-cl",
+            # "-DCMAKE_CXX_COMPILER=clang-cl",
         ],
         "[ERROR] CMake configure failed for {}".format(config),
         env=env,
@@ -279,6 +281,24 @@ def run_exe(config: str) -> None:
         subprocess.Popen([str(exe)])
 
 
+def get_clang_env() -> Dict[str, str]:
+    env = get_msvc_env()
+
+    clang = find_program(["clang-cl"])
+    clangxx = find_program(["clang-cl"])
+
+    if not clang:
+        print("[ERROR] Could not find clang-cl.")
+        sys.exit(1)
+
+    env["CC"] = clang
+    env["CXX"] = clangxx
+
+    print("Using C compiler:   {}".format(clang))
+    print("Using C++ compiler: {}".format(clangxx))
+
+    return env
+
 def main() -> int:
     config = get_config()
 
@@ -287,6 +307,7 @@ def main() -> int:
 
     if platform.system() == "Windows":
         env = get_msvc_env()
+        # env = get_clang_env()
     else:
         env = choose_unix_compiler_env()
 

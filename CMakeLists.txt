@@ -217,6 +217,7 @@ target_link_libraries(${EXECUTABLE_NAME} PUBLIC SDL3::SDL3) # If using satelite 
 
 add_subdirectory(Extern/box3d)
 
+# "C:/Program Files/LLVM/lib/libomp.lib"
 target_link_libraries(${EXECUTABLE_NAME} PRIVATE box3d::box3d)
 
 set_property(TARGET ${EXECUTABLE_NAME} PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")

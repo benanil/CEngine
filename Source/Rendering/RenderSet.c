@@ -25,7 +25,7 @@ void RenderSet_InitSet(RenderSet* set, u32 maxEntities, u32 maxGroups, u32 maxBu
     set->sparseSlots      = (u64*)AllocZeroTLSFGlobal((maxEntities + 63u) >> 6, sizeof(u64));
     set->primitiveGroups  = (PrimitiveGroup*)AllocAligned(maxGroups * sizeof(PrimitiveGroup), 16);
     set->bundlePrimRange = (Range*)AllocZeroTLSFGlobal(maxBundles, sizeof(Range));
-    set->bundles          = (const SceneBundle**)AllocZeroTLSFGlobal(maxBundles, sizeof(SceneBundle*));
+    set->bundles          = (const SceneBundle**)AllocateTLSFGlobal(maxBundles * sizeof(SceneBundle*));
     set->bundleSlots      = (u64*)AllocZeroTLSFGlobal((maxBundles + 63u) >> 6, sizeof(u64));
     MemSet(set->entities, 0, maxEntities * sizeof(Entity));
     MemSet(set->primitiveGroups, 0, maxGroups * sizeof(PrimitiveGroup));
@@ -36,7 +36,7 @@ void RenderSet_Destroy(RenderSet* set)
 {
     FreeAligned(set->entities);
     FreeAligned(set->sparseID); 
-    DeAllocateTLSFGlobal(set->sparseSlots);     
+    DeAllocateTLSFGlobal(set->sparseSlots);
     FreeAligned(set->primitiveGroups);
     DeAllocateTLSFGlobal(set->bundlePrimRange);
     DeAllocateTLSFGlobal(set->bundles);

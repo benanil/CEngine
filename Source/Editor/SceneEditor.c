@@ -231,7 +231,7 @@ static void ImportDetailSetAnimationBoundsInfo(ImportDetailInfo* info, const Sce
             bool skinned = bundle->numSkins > 0;
             if (!positions || (float3*)(0xcdcdcdcdcdcdcdcdull) == positions)
             {
-                if (bundle->numSkins > 0)
+                if (skinned)
                 {
                     const ASkinedVertex* vertices = (ASkinedVertex*)primitive->vertices;
                     for (s32 v = 0; v < primitive->numVertices; v++)

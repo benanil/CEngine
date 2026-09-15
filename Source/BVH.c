@@ -224,7 +224,7 @@ s32 BVH_BuildBundleCached(SceneBundle* bundle, BundleCacheEntry* bundleCache, bo
 
     // worst case two nodes per triangle, the arrays shrink to the used size after the
     // build. heap allocated, the engine tlsf pool is too small for big scenes
-    BVHBuild build;
+    ALIGNSIMD BVHBuild build;
     build.nodes     = (BVHNode*)SDL_malloc((u64)totalTris * 2u * sizeof(BVHNode));
     build.tris      = (BVHTri*)SDL_aligned_alloc(sizeof(v128f), (u64)totalTris * sizeof(BVHTri));
     build.centroids = (v128f*)SDL_aligned_alloc(sizeof(v128f), (u64)totalTris * sizeof(v128f));
@@ -245,6 +245,8 @@ s32 BVH_BuildBundleCached(SceneBundle* bundle, BundleCacheEntry* bundleCache, bo
     {
         for (int p = 0; p < bundle->meshes[m].numPrimitives; p++)
         {
+            if (bundle->meshes[m].primitives == (APrimitive*)0xCDCDCDCDCDCDCDCDULL)
+                continue;
             APrimitive* prim = &bundle->meshes[m].primitives[p];
             u32 numTris = (u32)prim->lodNumIndices[0] / 3u;
             if (numTris == 0)

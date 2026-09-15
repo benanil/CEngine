@@ -102,6 +102,11 @@ void OpenSceneCallback(const char* path)
     b3Body_SetBullet(body, true);
 }
 
+void BeforeDestroySceneCallback(Scene* scene)
+{
+    ballEntity = INVALID_ENTITY;
+}
+
 static void UpdateBall()
 {
     Scene* scene = Scene_GetActive();

@@ -251,7 +251,6 @@ static s32 CreateBVH(void* data)
 
     SceneBundle* bundle = BundleCacheFindBundle(key);
     if (!bundle) return 0;
-
     // Build using the stable bundle pointer (the SceneBundle is allocated separately, it never moves).
     // Results land in a local entry; bvhNodes/bvhTris are SDL_malloc'd and stable once built. A second
     // build is prevented by the !entry->bvhNodes check when publishing below (only one task is spawned
@@ -300,7 +299,7 @@ BundleCacheEntry* BundleCacheAcquire(const char* path)
 
     // Load/bake outside the lock (slow). Only one importer touches a given path at a time
     // (the async op guard plus callbacks running after the worker finishes), so no double bake.
-    SceneBundle* bundle = (SceneBundle*)AllocZeroTLSFGlobal(1, sizeof(SceneBundle));
+    SceneBundle* bundle = (SceneBundle*)AllocateTLSFGlobal(sizeof(SceneBundle));
     void* vertexHeapPtr = NULL;
     void* indexHeapPtr = NULL;
     bool baked = false;
