@@ -631,7 +631,7 @@ bool UICheckbox(Clay_ElementId id, Clay_String label, bool* value)
 
 bool UICheckboxS32(Clay_ElementId id, Clay_String label, s32* value)
 {
-    bool val = (bool)value;
+    bool val = (bool)*value;
     bool changed = UICheckbox(id, label, &val);
     if (changed) *value = (s32)val;
     return changed;
@@ -672,8 +672,11 @@ void UIProgressBar(Clay_ElementId id, Clay_String label, f32 value01)
 
 Clay_String UIStr(const char* chars)
 {
-    Clay_String result = { .isStaticallyAllocated = false, .length = (s32)StringLength(chars), .chars = chars };
-    return result;
+    return (Clay_String){
+        .isStaticallyAllocated = false, 
+        .length = (s32)StringLength(chars),
+        .chars = chars 
+    };
 }
 
 void UISectionHeader(const char* title)
@@ -704,7 +707,6 @@ void UITextU32(const char* label, u32 value)
 {
     u32 len = (u32)StringLength(label);
     char text[512] = {0};
-    if (!text) return;
     MemCopy(text, label, len);
     text[len++] = ':';
     text[len++] = ' ';
