@@ -451,7 +451,7 @@ static void TestAddScenePlaceholderHierarchy(void)
     CHECK(set.numEntities == 3, "numEntities=%u", set.numEntities);
     CHECK(set.entities[0].sparseIdx != set.entities[1].sparseIdx, "mesh0 primitives should get separate sparse ids");
     CHECK(set.entities[2].sparseIdx != set.entities[0].sparseIdx, "mesh1 should get another sparse id");
-    CHECK(((set.entities[0].parentIdx >> 24u) & ENTITY_FLAG_NOMESH) == 0u, "root mesh should not be no-mesh flagged");
+    CHECK((set.entities[0].flags & EntityFlags_NoMesh) == 0u, "root mesh should not be no-mesh flagged");
     CHECK(RenderSet_Validate(&set, "add scene"), "validation failed");
 }
 

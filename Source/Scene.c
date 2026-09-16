@@ -619,7 +619,7 @@ s32 Scene_RepackTextures(Scene* scene)
     return 1;
 }
 
-u32 Scene_Spawn(Scene* scene, u32 bundleIdx, v128f position, v128f rotation, v128f scale)
+EntityID Scene_Spawn(Scene* scene, u32 bundleIdx, v128f position, v128f rotation, v128f scale)
 {
     if (bundleIdx >= scene->numBundles || !scene->bundleRefs[bundleIdx].bundle) return 0;
 

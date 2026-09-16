@@ -397,7 +397,7 @@ static void Scene_PhysicsCreateEntityBody(Scene* scene, const Entity* entity)
     bool colliderEnabled = (entity->flags & EntityFlags_ColliderEnabled) != 0;
     b3BodyId* slot = PhysicsEntitySlot(scene, entity);
     if (!slot || B3_IS_NON_NULL(slot[0]) || !colliderEnabled) return;
-    if ((entity->parentIdx >> 24) & ENTITY_FLAG_NOMESH) return;
+    if (entity->flags & EntityFlags_NoMesh) return;
     if (entity->primitiveIdx >= scene->surfaceSet.numGroups) return;
     
     b3MeshData* mesh = Scene_PhysicsEnsureGroupMesh(scene, entity->primitiveIdx);

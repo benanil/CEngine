@@ -28,7 +28,7 @@ static bool g_MainLoopTicking;
 
 Camera       g_Camera;
 SDL_Window*  g_SDLWindow;
-static u32 ballEntity = INVALID_ENTITY;
+static EntityID ballEntity = INVALID_ENTITY;
 extern WindowState g_WindowState;
 
 static void MainSyncWindowSize(void)
@@ -112,9 +112,13 @@ static void UpdateBall()
     Scene* scene = Scene_GetActive();
     static bool ballActive = false;
     static float force = 300.0f;
-    if (ballEntity == INVALID_ENTITY) return;
-    force = Maxf32(0.0f, force + GetMouseWheelDelta());
     Entity* ball = RenderSet_GetEntity(&scene->surfaceSet, ballEntity);
+    if (ball == NULL) {
+        ballEntity = INVALID_ENTITY; // deleted somewhere we lost its reference
+        return;
+    }
+
+    force = Maxf32(0.0f, force + GetMouseWheelDelta());
     b3BodyId body = Entity_GetPhysicsBody(scene, ball);
 
     if (GetKeyPressed(SDLK_J))

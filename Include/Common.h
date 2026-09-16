@@ -97,8 +97,6 @@ extern "C" {
     #define AX_UNLIKELY(x) (x) 
 #endif
 
-
-
 // https://nullprogram.com/blog/2022/06/26/
 #if defined(_DEBUG) || defined(Debug)
     #if __GNUC__

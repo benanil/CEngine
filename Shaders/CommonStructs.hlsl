@@ -4,11 +4,11 @@
 #include "Common.hlsl"
 #include "../Include/RenderLimits.h"
 
-#define ENTITY_FLAG_NOMESH 1u
-
 #define EntityFlags_None            (0)
 #define EntityFlags_ColliderEnabled (1 << 0)
 #define EntityFlags_Transparent     (1 << 1)
+#define EntityFlags_NoMesh          (1 << 2)
+#define EntityFlags_Hidden          (1 << 3)
 
 typedef struct IndexedDrawCommand_
 {

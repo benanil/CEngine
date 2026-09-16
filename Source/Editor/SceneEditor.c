@@ -1231,10 +1231,10 @@ static void SceneInspectorPhysicsUI(Scene* scene, Entity* entity)
     UISectionHeader("State");
     UIPhysicsReadonlyRow(CLAY_ID("InspectorPhysicsMass"), "Mass", UIPhysicsFmtF(b3Body_GetMass(body), 3));
 
-    b3Pos com = b3Body_GetWorldCenterOfMass(body);
+    b3Pos com = b3Body_GetMassData(body).center;
     UIPhysicsReadonlyRow(CLAY_ID("InspectorPhysicsCom"), "Center of Mass",
                          UIPhysicsFmtV3((f32)com.x, (f32)com.y, (f32)com.z, 3));
-
+    
     b3Vec3 linVel = b3Body_GetLinearVelocity(body);
     UIPhysicsReadonlyRow(CLAY_ID("InspectorPhysicsLinVel"), "Linear Velocity",
                          UIPhysicsFmtV3(linVel.x, linVel.y, linVel.z, 3));

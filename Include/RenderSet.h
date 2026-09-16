@@ -13,7 +13,6 @@
 #define INVALID_GROUP   (~0u)
 #define INVALID_BUNDLE  (~0u)
 
-#define ENTITY_FLAG_NOMESH 1
 
 #define ENTITY_MAX_SCALE 10.0f
 
@@ -21,8 +20,14 @@ typedef enum EntityFlags_
 {
     EntityFlags_None            = 0,
     EntityFlags_ColliderEnabled = 1 << 0,
-    EntityFlags_Transparent     = 1 << 1
+    EntityFlags_Transparent     = 1 << 1,
+    EntityFlags_NoMesh          = 1 << 2,
+    EntityFlags_Hidden          = 1 << 3
 } EntityFlags;
+
+
+// sparseId | (generation << 24)
+typedef u32 EntityID;
 
 typedef struct Entity_
 {
@@ -31,7 +36,7 @@ typedef struct Entity_
     u64   scale;        // xyz16-last16 bit unused
     u32   primitiveIdx; // todo make it 16 bit
     u32   sparseIdx;
-    // 24 bit parent sparseIdx, last byte ENTITY_FLAG
+    // 24 bit parent sparseIdx, last byte generation
     u32   parentIdx;
     u16   material;
     u16   flags; // EntityFlags
@@ -110,8 +115,35 @@ static inline void PrimitiveGroup_SetAABB(PrimitiveGroup* group, v128f aabbMin, 
     group->aabbMax = aabbMax;
 }
 
-static inline Entity* RenderSet_GetEntity(RenderSet* rs, u32 sparseIdx) {
-    return &rs->entities[rs->sparseID[sparseIdx]];
+static inline EntityID MakeEntityID(u32 sparse, u32 gen) {
+    return sparse | (gen << 24);
+}
+
+static inline u32 GetEntityGen(const Entity* entity) {
+    return entity->parentIdx >> 24;
+}
+
+static inline u32 GetEntityID(const Entity* entity) {
+    return entity->sparseIdx | (entity->parentIdx & 0xFF000000u);
+}
+
+static inline void SetEntityGen(Entity* entity, u32 gen) {
+    entity->parentIdx &= 0x00ffffffu;
+    entity->parentIdx |= (u32)((u8)(gen)) << 24;
+}
+
+static inline void NextEntityGen(Entity* entity) {
+    SetEntityGen(entity, GetEntityGen(entity) + 1);
+}
+
+static inline Entity* RenderSet_GetEntity(RenderSet* rs, EntityID entityID)
+{
+    if (AX_UNLIKELY(entityID == INVALID_ENTITY)) return NULL;
+    u32 denseIdx = rs->sparseID[entityID & 0x00FFFFFFu];
+    if (denseIdx == INVALID_ENTITY) return NULL; // unmapped entity likely deleted
+    Entity* entity = &rs->entities[denseIdx];
+    bool expired = GetEntityGen(entity) != (entityID >> 24);
+    return expired ? NULL : entity;
 }
 
 v128f EntityUnpackScale01(u64 packed);
@@ -145,13 +177,13 @@ void  RenderSet_SetHookScene(RenderSet* set, struct Scene_* scene);
 // materialOffset is the scene's gpu material slot base of the bundle.
 // out: groupIdx, ~0u outherwise
 u32   RenderSet_AddSceneBundle(RenderSet* set, const SceneBundle* sceneBundle, u32 materialOffset);
-// returns: root node, first entity sparseID that is added
+// returns: root node, first entity that is added: sparseID | (generation << 24)
 //    since always parentID < childID look at: SceneNormalize.c EmitRemappedNode
-u32   RenderSet_AddScene(RenderSet* set, u32 bundleIdx, v128f position, v128f rotation, v128f scale, bool wantSkinned);
+EntityID RenderSet_AddScene(RenderSet* set, u32 bundleIdx, v128f position, v128f rotation, v128f scale, bool wantSkinned);
 
-u32   RenderSet_AddEntity(RenderSet* set, u32 primitiveIdx, const Entity* data);
+EntityID RenderSet_AddEntity(RenderSet* set, u32 primitiveIdx, const Entity* data);
 
-u32   RenderSet_AddEntities(RenderSet* set, u32 primitiveIdx, u32 numAdded, const Entity* data);
+EntityID RenderSet_AddEntities(RenderSet* set, u32 primitiveIdx, u32 numAdded, const Entity* data);
 
 void  RenderSet_Clear(RenderSet* set);
 
