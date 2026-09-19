@@ -395,7 +395,7 @@ void RBRotateRight(RBTree* tree, Node* node)
 
 Node* RBAllocateNode(void* data, Node* parent)
 {
-    Node* node   = AllocateTLSFGlobal(sizeof(Node));
+    Node* node   = AllocTLSF(sizeof(Node));
     node->value  = data;
     node->parent = parent;
     node->right  = node->left = &m_protect;
@@ -414,6 +414,6 @@ void RBFreeNode(Node* n, bool recursive)
     }
     if (n != &m_protect)
     {
-        DeAllocateTLSFGlobal(n);
+        DeAllocTLSF(n);
     }
 }

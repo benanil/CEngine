@@ -401,12 +401,12 @@ static void DDSTinyErrorCallback(void* user, const char* msg) {
 
 static void* DDSTinyAllocCallback(void* user, size_t size) {
     (void)user;
-    return AllocateTLSFGlobal(size);
+    return AllocTLSF(size);
 }
 
 static void DDSTinyFreeCallback(void* user, void* memory) {
     (void)user;
-    DeAllocateTLSFGlobal(memory);
+    DeAllocTLSF(memory);
 }
 
 static size_t DDSTinyReadCallback(void* user, void* buffer, size_t byteCount) {
@@ -481,7 +481,7 @@ bool DDSLoadDecompressImage(const char* inputFilename, DDSImage* outImage)
     }
 
     const u64 decodedSize = (u64)width * height * 4u;
-    u8* decoded = (u8*)AllocateTLSFGlobal((size_t)decodedSize);
+    u8* decoded = (u8*)AllocTLSF((size_t)decodedSize);
     if (!decoded) {
         AX_WARN("DDS allocation failed: %s", inputFilename);
         TinyDDS_DestroyContext(dds);
@@ -499,7 +499,7 @@ bool DDSLoadDecompressImage(const char* inputFilename, DDSImage* outImage)
 
     if (!ok) {
         AX_WARN("unsupported DDS format %d: %s", (int)format, inputFilename);
-        DeAllocateTLSFGlobal(decoded);
+        DeAllocTLSF(decoded);
         TinyDDS_DestroyContext(dds);
         SDL_CloseIO(file);
         return false;
@@ -518,7 +518,7 @@ void DDSFreeImage(DDSImage* image)
 {
     if (!image) return;
 
-    DeAllocateTLSFGlobal(image->pixels);
+    DeAllocTLSF(image->pixels);
     image->width = 0;
     image->height = 0;
     image->pixels = 0;

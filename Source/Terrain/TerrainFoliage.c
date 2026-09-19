@@ -124,9 +124,9 @@ static void FoliageStageRange(u32 begin, u32 end, void* userData)
     SceneBundleStage* stages = (SceneBundleStage*)userData;
     for (u32 i = begin; i < end; i++) 
     {
-        stages[i].storedPath = gFoliage.types[i].path;
-        stages[i].skinned    = false;
-        Scene_AddBundleStage(&stages[i]);
+        StringCopy(gFoliage.types[i].path, stages[i].path, 512);
+        stages[i].skinned = false;
+        Scene_AddBundleStage(&stages[i], false);
     }
 }
 
@@ -135,8 +135,10 @@ void Foliage_Init()
     MemSet(&gFoliage, 0, sizeof(gFoliage));
     gFoliage.pcg = (PCG){ 0x853c49e6748fea9bULL, 0xda3e39cb94b95bdbULL };
     Scene_Init(&gFoliage.scene);
+    
     // foliage objects needs more light for faking outdoor GI
-    gFoliage.scene.ambientBoost = 2.5f;
+    gFoliage.scene.ambientBoost = 16.0f;
+
     if (VisitFolder("Assets/Foliage", VisitFile, NULL, true) == 0) {
         AX_WARN("foliage file traverse failed!");
         return;
@@ -146,7 +148,7 @@ void Foliage_Init()
     // Stage every foliage bundle's mesh+texture load across worker threads via ParallelFor.
     // Finalize (RenderSet/TextureSystem/AnimationSystem mutation) still runs serially on the
     // main thread afterwards, same as the rest of Scene_Init's callers.
-    SceneBundleStage* stages = (SceneBundleStage*)AllocateTLSFGlobal(T_MAX_FOLIAGE_SCENE * sizeof(SceneBundleStage));
+    SceneBundleStage* stages = CAllocTLSFArray(SceneBundleStage, T_MAX_FOLIAGE_SCENE);
     ParallelFor(gFoliage.numTypes, 1u, FoliageStageRange, stages);
 
     for (u32 i = 0; i < gFoliage.numTypes; i++)
@@ -180,7 +182,7 @@ void Foliage_Init()
         type->normalAlign = Clampf32(1.0f / (tallness * tallness * tallness), 0.03f, 0.75f);
         type->paramsDirty = true; // build this type's foliage on the first update
     }
-    DeAllocateTLSFGlobal(stages);
+    DeAllocTLSF(stages);
 }
 
 void Foliage_Destroy()
@@ -590,7 +592,7 @@ void Foliage_DestroyChunkFoliage(tChunk* chunk)
 
     DestroyFoliageEntityRange(chunk, 0u, chunk->foliageCount);
 
-    DeAllocateTLSFGlobal(chunk->foliageEntities);
+    DeAllocTLSF(chunk->foliageEntities);
     chunk->foliageEntities = NULL;
     chunk->foliageCount = 0u;
 }
@@ -643,7 +645,7 @@ static void IntegrateFinishedFoliage(u32 scheduledCount)
 {
     if (scheduledCount == 0u) return;
 
-    tChunk** resolvedChunks = (tChunk**)AllocateTLSFGlobal(sizeof(tChunk*) * scheduledCount);
+    tChunk** resolvedChunks = (tChunk**)CAllocTLSF(sizeof(tChunk*) * scheduledCount);
     if (!resolvedChunks) return;
 
     u32 typeCounts[T_MAX_FOLIAGE_SCENE] = {0};
@@ -671,10 +673,10 @@ static void IntegrateFinishedFoliage(u32 scheduledCount)
         if (addCount == 0u) continue; // nothing new; kept entities are already compacted
 
         u32 keptCount = chunk->foliageCount;
-        tFoliageEntity* grown = (tFoliageEntity*)AllocateTLSFGlobal(sizeof(tFoliageEntity) * (keptCount + addCount));
+        tFoliageEntity* grown = (tFoliageEntity*)AllocTLSF(sizeof(tFoliageEntity) * (keptCount + addCount));
         if (!grown) continue;
         if (keptCount > 0u) MemCopy(grown, chunk->foliageEntities, sizeof(tFoliageEntity) * keptCount);
-        if (chunk->foliageEntities) DeAllocateTLSFGlobal(chunk->foliageEntities);
+        if (chunk->foliageEntities) DeAllocTLSF(chunk->foliageEntities);
         chunk->foliageEntities = grown; // foliageCount (== keptCount) is now pass 3's write cursor
     }
 
@@ -684,7 +686,7 @@ static void IntegrateFinishedFoliage(u32 scheduledCount)
     u32 typeWriteCursor[T_MAX_FOLIAGE_SCENE] = {0};
     for (u32 t = 0; t < gFoliage.numTypes; t++)
         if (typeCounts[t] > 0u)
-            typeItems[t] = (tFoliageBatchItem*)AllocateTLSFGlobal(sizeof(tFoliageBatchItem) * typeCounts[t]);
+            typeItems[t] = (tFoliageBatchItem*)AllocTLSF(sizeof(tFoliageBatchItem) * typeCounts[t]);
 
     for (u32 i = 0; i < scheduledCount; i++)
     {
@@ -718,9 +720,9 @@ static void IntegrateFinishedFoliage(u32 scheduledCount)
         if (count == 0u || !typeItems[t]) continue;
         const FoliageType* type = &gFoliage.types[t];
 
-        Entity* entityBuf = (Entity*)AllocateTLSFGlobal(sizeof(Entity) * count);
+        Entity* entityBuf = (Entity*)AllocTLSF(sizeof(Entity) * count);
         if (!entityBuf) {
-            DeAllocateTLSFGlobal(typeItems[t]);
+            DeAllocTLSF(typeItems[t]);
             continue;
         }
 
@@ -756,11 +758,11 @@ static void IntegrateFinishedFoliage(u32 scheduledCount)
             }
         }
 
-        DeAllocateTLSFGlobal(entityBuf);
-        DeAllocateTLSFGlobal(typeItems[t]);
+        DeAllocTLSF(entityBuf);
+        DeAllocTLSF(typeItems[t]);
     }
 
-    DeAllocateTLSFGlobal(resolvedChunks);
+    DeAllocTLSF(resolvedChunks);
 }
 
 void Foliage_Update(void)

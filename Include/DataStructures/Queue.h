@@ -56,19 +56,19 @@ static inline void QueQueueConstruct(Queue* queue)
     queue->front    = 0;
     queue->rear     = 0;
     queue->size     = 0;
-    queue->ptr      = AllocateTLSFGlobal(queue->capacity * sizeof(void*));
+    queue->ptr      = AllocTLSF(queue->capacity * sizeof(void*));
 }
 
 static inline void QueQueueInit(Queue *queue, int _capacity)
 {
     queue->capacity = (NextPowerOf2_32(_capacity + 1)); 
     queue->front = (0), queue->rear = (0), queue->size = (0);
-    queue->ptr = AllocateTLSFGlobal(queue->capacity * sizeof(void*));
+    queue->ptr = AllocTLSF(queue->capacity * sizeof(void*));
 }
 
 static inline void QueQueueClear(Queue *queue)
 {
-    DeAllocateTLSFGlobal(queue->ptr);
+    DeAllocTLSF(queue->ptr);
     queue->ptr = 0; 
     queue->capacity = queue->front = queue->rear = queue->size = 0;
 }
@@ -173,8 +173,8 @@ static inline void QueGrowIfNecessary(Queue *queue, u32_size)
     
     const int initialSize = 256;
     const u32newCapacity = newSize <= initialSize ? initialSize : newSize;
-    if (queue->ptr)  queue->ptr = ReAllocateTLSFGlobal(ptr, newCapacity);
-    else      queue->ptr = AllocateTLSFGlobal(newCapacity);
+    if (queue->ptr)  queue->ptr = ReAllocTLSF(ptr, newCapacity);
+    else      queue->ptr = AllocTLSF(newCapacity);
     
     // unify front and rear, if they are seperate.
     if (queue->front < queue->rear)
@@ -218,7 +218,7 @@ static inline void PriorityQueue(PriorityQueue* pq, int _size)
 {
     pq->size = (0);
     pq->capacity = CalculateArrayGrowth(_size);
-    pq->heap = AllocateTLSFGlobal(pq->capacity * sizeof(void*));
+    pq->heap = AllocTLSF(pq->capacity * sizeof(void*));
 }
 
 static inline void PriorityQueueRange(PriorityQueue* pq, const void** begin, const void** end)
@@ -240,9 +240,9 @@ static inline void PQGrowIfNecessarry(PriorityQueue* pq, int adition)
     {
         int newCapacity = pq->size + adition <= 256 ? 256 : CalculateArrayGrowth(pq->size + adition);
         if (heap)
-            pq->heap = ReAllocateTLSFGlobal(pq->heap, pq->capacity, newCapacity);
+            pq->heap = ReAllocTLSF(pq->heap, pq->capacity, newCapacity);
         else
-            pq->heap = AllocateTLSFGlobal(newCapacity);
+            pq->heap = AllocTLSF(newCapacity);
         pq->capacity = newCapacity;
     }
 }
@@ -291,7 +291,7 @@ static inline void PQClear(PriorityQueue* pq)
 {
     if (pq->heap)
     {
-        DeAllocateTLSFGlobal(pq->heap);
+        DeAllocTLSF(pq->heap);
         pq->heap = null;
         pq->size  = pq->capacity = 0;
     }

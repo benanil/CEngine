@@ -1,7 +1,7 @@
 // https://github.com/EricLengyel/Slug
 // https://github.com/ShadowCurse/cslug
-#define HMRealloc(mem, size) ReAllocateTLSFGlobal(mem, size)
-#define HMFree(mem) DeAllocateTLSFGlobal(mem)
+#define HMRealloc(mem, size) ReAllocTLSF(mem, size)
+#define HMFree(mem) DeAllocTLSF(mem)
 #define HMMemset(mem, val, size) SDL_memset(mem, val, size)
 #define HMMemcpy(mem, src, size) MemCopy(mem, src, size)
 #define HM_HASHMAP_IMPLEMENTATION
@@ -52,7 +52,7 @@ static void SlugEnsureU32Buffer(u32** ptr, u32* capacity, u32 needed)
     if (*capacity >= needed) return;
     u32 newCapacity = *capacity ? *capacity : 128u;
     while (newCapacity < needed) newCapacity *= 2u;
-    *ptr = (u32*)ReAllocateTLSFGlobal(*ptr, (size_t)newCapacity * sizeof(u32));
+    *ptr = (u32*)ReAllocTLSF(*ptr, (size_t)newCapacity * sizeof(u32));
     *capacity = newCapacity;
 }
 
@@ -138,7 +138,7 @@ static u32 SlugExtractCurves(stbtt_fontinfo* info, u32 glyphIndex, f32 emScale, 
     if (numVertices <= 0 || !vertices)
         return 0;
 
-    SlugCurve* curves = (SlugCurve*)AllocateTLSFGlobal((size_t)numVertices * 2u * sizeof(SlugCurve));
+    SlugCurve* curves = (SlugCurve*)AllocTLSF((size_t)numVertices * 2u * sizeof(SlugCurve));
     if (!curves)
     {
         stbtt_FreeShape(info, vertices);
@@ -198,7 +198,7 @@ static u32 SlugExtractCurves(stbtt_fontinfo* info, u32 glyphIndex, f32 emScale, 
 
     if (numCurves == 0u)
     {
-        DeAllocateTLSFGlobal(curves);
+        DeAllocTLSF(curves);
         return 0;
     }
 
@@ -321,7 +321,7 @@ static void SlugBuildGlyphByIndex(stbtt_fontinfo* info, u32 glyphIndex, f32 emSc
     }
 
     ArenaSetCurrentOffset(mark);
-    DeAllocateTLSFGlobal(curves);
+    DeAllocTLSF(curves);
 }
 
 static void SlugBuildGlyph(stbtt_fontinfo* info, u32 codePoint, f32 emScale, SlugBuildBuffers* buffers, SlugGlyph* glyph)
@@ -553,8 +553,8 @@ bool SlugLoadFont(SlugFont* font, const char* path)
     {
         AX_WARN("Slug font generated no draw data: %s", path);
         HMDestroy(&font->unicodeGlyphs);
-        DeAllocateTLSFGlobal(font->buffers.curves);
-        DeAllocateTLSFGlobal(font->buffers.bands);
+        DeAllocTLSF(font->buffers.curves);
+        DeAllocTLSF(font->buffers.bands);
         if (font->ownsFontData)
         {
             SlugFreeFallbackFonts(font);
@@ -569,7 +569,7 @@ bool SlugLoadFont(SlugFont* font, const char* path)
     font->gpuBandWords = Maxu32(font->buffers.maxBands, font->maxVertices);
     font->curveBuffer = CreateBuffer(NULL, (size_t)font->gpuCurveWords * sizeof(u32), BReadRasterBit, "SlugCurveBuffer");
     font->bandBuffer  = CreateBuffer(NULL, (size_t)font->gpuBandWords * sizeof(u32), BReadRasterBit, "SlugBandBuffer");
-    font->vertices = (SlugVertex*)AllocateTLSFGlobal((size_t)font->maxVertices * sizeof(SlugVertex));
+    font->vertices = (SlugVertex*)AllocTLSF((size_t)font->maxVertices * sizeof(SlugVertex));
     font->vertexBuffer = CreateBuffer(NULL, (size_t)font->maxVertices * sizeof(SlugVertex), BVertexBit, "SlugVertexBuffer");
     font->glyphBuffersDirty = true;
     return true;
@@ -580,10 +580,10 @@ void SlugDestroyFont(SlugFont* font)
     if (font->curveBuffer) SDL_ReleaseGPUBuffer(g_GPUDevice, font->curveBuffer);
     if (font->bandBuffer) SDL_ReleaseGPUBuffer(g_GPUDevice, font->bandBuffer);
     if (font->vertexBuffer) SDL_ReleaseGPUBuffer(g_GPUDevice, font->vertexBuffer);
-    if (font->vertices) DeAllocateTLSFGlobal(font->vertices);
+    if (font->vertices) DeAllocTLSF(font->vertices);
     HMDestroy(&font->unicodeGlyphs);
-    if (font->buffers.curves) DeAllocateTLSFGlobal(font->buffers.curves);
-    if (font->buffers.bands) DeAllocateTLSFGlobal(font->buffers.bands);
+    if (font->buffers.curves) DeAllocTLSF(font->buffers.curves);
+    if (font->buffers.bands) DeAllocTLSF(font->buffers.bands);
     if (font->ownsFontData)
     {
         SlugFreeFallbackFonts(font);
@@ -617,9 +617,9 @@ static bool SlugCloneFont(SlugFont* dst, const SlugFont* src, const char* label)
     size_t curveBytes   = (size_t)dst->buffers.maxCurveWords * sizeof(u32);
     size_t bandBytes    = (size_t)dst->buffers.maxBands * sizeof(u32);
     size_t vertexBytes  = (size_t)dst->maxVertices * sizeof(SlugVertex);
-    dst->buffers.curves = (u32*)AllocateTLSFGlobal(curveBytes);
-    dst->buffers.bands  = (u32*)AllocateTLSFGlobal(bandBytes);
-    dst->vertices       = (SlugVertex*)AllocateTLSFGlobal(vertexBytes);
+    dst->buffers.curves = (u32*)AllocTLSF(curveBytes);
+    dst->buffers.bands  = (u32*)AllocTLSF(bandBytes);
+    dst->vertices       = (SlugVertex*)AllocTLSF(vertexBytes);
     if (!dst->buffers.curves || !dst->buffers.bands || !dst->vertices)
     {
         AX_WARN("Slug font clone allocation failed: %s", label ? label : "SlugClone");

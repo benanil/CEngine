@@ -8,9 +8,9 @@
 #include "Math/Half.h"
 #include "Math/Vector.h"
 
-#define SAAlloc(size) AllocateTLSFGlobal(size)
-#define SARealloc(mem, size) ReAllocateTLSFGlobal(mem, size)
-#define SAFree(mem) DeAllocateTLSFGlobal(mem)
+#define SAAlloc(size) AllocTLSF(size)
+#define SARealloc(mem, size) ReAllocTLSF(mem, size)
+#define SAFree(mem) DeAllocTLSF(mem)
 #define SAAssert(cond) ASSERT(cond)
 #define SA_SMOL_ATLAS_IMPLEMENTATION
 #include "Extern/SmolAtlas.h"
@@ -433,7 +433,7 @@ static void OpenPage(TextureSystem* ts, u32 textureClass)
         for (u32 t = 0; t < TEXTURE_PAGE_TAIL_MIPS; t++)
         {
             u32 mipSize = Maxu32(TEXTURE_PAGE_SIZE >> (CompressedDirectMips + t), 1u);
-            cls->tailMips[page][t] = (u8*)AllocZeroTLSFGlobal(1, CompressedMipBytes(format, mipSize, mipSize));
+            cls->tailMips[page][t] = (u8*)AllocZeroTLSF(1, CompressedMipBytes(format, mipSize, mipSize));
         }
     }
 
@@ -607,7 +607,7 @@ static void ReleaseClassState(TextureSystem* ts)
             cls->packer[page] = NULL;
             for (u32 t = 0; t < TEXTURE_PAGE_TAIL_MIPS; t++)
             {
-                if (cls->tailMips[page][t]) DeAllocateTLSFGlobal(cls->tailMips[page][t]);
+                if (cls->tailMips[page][t]) DeAllocTLSF(cls->tailMips[page][t]);
                 cls->tailMips[page][t] = NULL;
             }
         }
@@ -958,10 +958,10 @@ static void DispatchPageCopies(TextureSystem* ts, const Texture* staging)
 void TextureSystem_Init(TextureSystem* ts)
 {
     MemsetZero(ts, sizeof(*ts));
-    ts->descriptors = (TextureDescriptor*)AllocZeroTLSFGlobal(MAX_TEXTURE_DESCRIPTORS, sizeof(TextureDescriptor));
-    ts->descriptorPacking = (TextureDescriptorPacking*)AllocZeroTLSFGlobal(MAX_TEXTURE_DESCRIPTORS, sizeof(TextureDescriptorPacking));
-    ts->materials   = (MaterialGPU*)AllocZeroTLSFGlobal(MAX_GPU_MATERIALS, sizeof(MaterialGPU));
-    ts->descriptorSlots = (u64*)AllocZeroTLSFGlobal((MAX_TEXTURE_DESCRIPTORS + 63u) >> 6, sizeof(u64));
+    ts->descriptors = (TextureDescriptor*)AllocZeroTLSF(MAX_TEXTURE_DESCRIPTORS, sizeof(TextureDescriptor));
+    ts->descriptorPacking = (TextureDescriptorPacking*)AllocZeroTLSF(MAX_TEXTURE_DESCRIPTORS, sizeof(TextureDescriptorPacking));
+    ts->materials   = (MaterialGPU*)AllocZeroTLSF(MAX_GPU_MATERIALS, sizeof(MaterialGPU));
+    ts->descriptorSlots = (u64*)AllocZeroTLSF((MAX_TEXTURE_DESCRIPTORS + 63u) >> 6, sizeof(u64));
     ts->descriptorBuffer = CreateBuffer(NULL, sizeof(TextureDescriptor) * MAX_TEXTURE_DESCRIPTORS, SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ, "TextureDescriptors");
     ts->materialBuffer   = CreateBuffer(NULL, sizeof(MaterialGPU) * MAX_GPU_MATERIALS, SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ, "Materials");
 
@@ -977,10 +977,10 @@ void TextureSystem_Destroy(TextureSystem* ts)
     ReleaseClassState(ts);
     if (ts->descriptorBuffer) SDL_ReleaseGPUBuffer(g_GPUDevice, ts->descriptorBuffer);
     if (ts->materialBuffer)   SDL_ReleaseGPUBuffer(g_GPUDevice, ts->materialBuffer);
-    if (ts->descriptors)      DeAllocateTLSFGlobal(ts->descriptors);
-    if (ts->descriptorPacking) DeAllocateTLSFGlobal(ts->descriptorPacking);
-    if (ts->materials)        DeAllocateTLSFGlobal(ts->materials);
-    if (ts->descriptorSlots)  DeAllocateTLSFGlobal(ts->descriptorSlots);
+    if (ts->descriptors)      DeAllocTLSF(ts->descriptors);
+    if (ts->descriptorPacking) DeAllocTLSF(ts->descriptorPacking);
+    if (ts->materials)        DeAllocTLSF(ts->materials);
+    if (ts->descriptorSlots)  DeAllocTLSF(ts->descriptorSlots);
     MemsetZero(ts, sizeof(*ts));
 }
 
@@ -995,6 +995,7 @@ s32 TextureSystem_AppendBundle(TextureSystem* ts, const SceneBundle* bundle, con
     double startTime = TimeSinceStartup();
     u32 numImages = bundle->numImages > 0 ? (u32)bundle->numImages : 0u;
     u32 numMaterials = bundle->numMaterials > 0 ? (u32)bundle->numMaterials : 0u;
+    if (numImages == 0u || numMaterials == 0) return 1;
 
     if (materialOffset + numMaterials > MAX_GPU_MATERIALS)
     {

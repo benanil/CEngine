@@ -393,7 +393,7 @@ void FreeAligned(void* pMem)
     #endif
 }
 
-void* AllocZeroTLSFGlobal(size_t count, size_t size)
+void* AllocZeroTLSF(size_t count, size_t size)
 {
     size_t bytes = 0;
     if (MulSizeOverflow(count, size, &bytes))
@@ -406,14 +406,14 @@ void* AllocZeroTLSFGlobal(size_t count, size_t size)
     if (bytes == 0)
         return NULL;
 
-    void* ptr = AllocateTLSFGlobal(bytes);
+    void* ptr = AllocTLSF(bytes);
     if (!ptr)
         return NULL;
     MemsetZero(ptr, bytes);
     return ptr;
 }
 
-void* AllocateTLSFGlobal(size_t size)
+void* AllocTLSF(size_t size)
 {
     if (size == 0) return NULL;
     CheckMemorySystem("malloc");
@@ -434,10 +434,17 @@ void* AllocateTLSFGlobal(size_t size)
     return ptr;
 }
 
-void* ReAllocateTLSFGlobal(void* ptr, size_t size)
+void* CAllocTLSF(size_t size)
+{
+    void* ptr = AllocTLSF(size);
+    if (ptr) MemSet(ptr, 0, size);
+    return ptr;
+}
+
+void* ReAllocTLSF(void* ptr, size_t size)
 {
     CheckMemorySystem("realloc");
-    if (!ptr) return AllocateTLSFGlobal(size);
+    if (!ptr) return AllocTLSF(size);
     if (size == 0)
         return NULL;
 
@@ -453,7 +460,7 @@ void* ReAllocateTLSFGlobal(void* ptr, size_t size)
     return res;
 }
 
-void DeAllocateTLSFGlobal(void* buff)
+void DeAllocTLSF(void* buff)
 {
     if (!buff) return;
     CheckMemorySystem("free");
@@ -466,7 +473,7 @@ void DeAllocateTLSFGlobal(void* buff)
     #endif
 }
 
-void RangeAllocator_Init(RangeAllocator* alloc, RangeU32* freeRanges, uint32_t maxFreeRanges, uint32_t capacity)
+void RangeAlloc_Init(RangeAllocator* alloc, RangeU32* freeRanges, uint32_t maxFreeRanges, uint32_t capacity)
 {
     MemsetZero(alloc, sizeof(*alloc));
     alloc->freeRanges = freeRanges;
@@ -474,7 +481,7 @@ void RangeAllocator_Init(RangeAllocator* alloc, RangeU32* freeRanges, uint32_t m
     alloc->capacity = capacity;
 }
 
-int RangeAllocator_Alloc(RangeAllocator* alloc, uint32_t count, uint32_t* outOffset)
+int RangeAlloc(RangeAllocator* alloc, uint32_t count, uint32_t* outOffset)
 {
     *outOffset = 0u;
     if (count == 0u) return 1;
@@ -500,7 +507,7 @@ int RangeAllocator_Alloc(RangeAllocator* alloc, uint32_t count, uint32_t* outOff
     return 1;
 }
 
-static void RangeAllocator_MergeFreeRanges(RangeAllocator* alloc)
+static void RangeAlloc_MergeFreeRanges(RangeAllocator* alloc)
 {
 merge_ranges:
     for (uint32_t i = 0u; i < alloc->numFreeRanges; i++)
@@ -534,7 +541,7 @@ trim_watermark:
     }
 }
 
-void RangeAllocator_Free(RangeAllocator* alloc, uint32_t offset, uint32_t count)
+void RangeAlloc_Free(RangeAllocator* alloc, uint32_t offset, uint32_t count)
 {
     if (count == 0u) return;
     if (alloc->numFreeRanges >= alloc->maxFreeRanges)
@@ -543,7 +550,7 @@ void RangeAllocator_Free(RangeAllocator* alloc, uint32_t offset, uint32_t count)
         return;
     }
     alloc->freeRanges[alloc->numFreeRanges++] = (RangeU32){ offset, count };
-    RangeAllocator_MergeFreeRanges(alloc);
+    RangeAlloc_MergeFreeRanges(alloc);
 }
 
 /*//////////////////////////////////////////////////////////////////////////*/
@@ -563,7 +570,7 @@ static inline void CheckArenaSize(void)
 bool ArenaScratchCreate(ArenaScratch* scratch, size_t size, const char* name)
 {
     *scratch = (ArenaScratch){0};
-    scratch->buf        = (char*)AllocateTLSFGlobal(size);
+    scratch->buf        = (char*)AllocTLSF(size);
     scratch->name       = name;
     scratch->buffLen    = size;
     if (!scratch->buf)
@@ -579,10 +586,10 @@ void ArenaScratchDestroy(ArenaScratch* scratch)
 {
     if (!scratch) return;
     while (scratch->spillCount > 0)
-        DeAllocateTLSFGlobal(scratch->spills[--scratch->spillCount].ptr);
+        DeAllocTLSF(scratch->spills[--scratch->spillCount].ptr);
     if (scratch->buf)
     {
-        DeAllocateTLSFGlobal(scratch->buf);
+        DeAllocTLSF(scratch->buf);
         scratch->buf = NULL;
     }
     *scratch = (ArenaScratch){0};
@@ -593,7 +600,7 @@ void ArenaScratchBegin(ArenaScratch* scratch)
     ASSERT(scratch && scratch->buf);
     scratch->currOffset = 0;
     while (scratch->spillCount > 0)
-        DeAllocateTLSFGlobal(scratch->spills[--scratch->spillCount].ptr);
+        DeAllocTLSF(scratch->spills[--scratch->spillCount].ptr);
     scratch->previous = g_CurrentScratch;
     g_CurrentScratch = scratch;
 }
@@ -602,7 +609,7 @@ void ArenaScratchEnd(ArenaScratch* scratch)
 {
     // free any spills the scope leaked (balanced push/pop or save/restore should leave none)
     while (scratch->spillCount > 0)
-        DeAllocateTLSFGlobal(scratch->spills[--scratch->spillCount].ptr);
+        DeAllocTLSF(scratch->spills[--scratch->spillCount].ptr);
     scratch->currOffset = 0;
     g_CurrentScratch = scratch->previous;
     scratch->previous = NULL;
@@ -756,7 +763,7 @@ void ArenaSetCurrentOffset(size_t offset)
         // restore the bump pointer and release every spill made at or after this mark (the most
         // recent suffix of the spill stack), so a save/restore scope frees its spilled allocations too
         while (s->spillCount > 0 && s->spills[s->spillCount - 1].offset >= offset)
-            DeAllocateTLSFGlobal(s->spills[--s->spillCount].ptr);
+            DeAllocTLSF(s->spills[--s->spillCount].ptr);
         if (offset > s->buffLen) offset = s->buffLen;
         s->currOffset = offset;
         return;
@@ -790,7 +797,7 @@ void* ArenaPushGlobal(uint64_t size)
             return NULL;
         }
         AX_WARN("arena spilled: %s", s->name);
-        void* result = AllocateTLSFGlobal(size);
+        void* result = AllocTLSF(size);
         if (!result) return NULL;
         s->spills[s->spillCount].offset = s->currOffset;
         s->spills[s->spillCount].ptr    = result;
@@ -820,7 +827,7 @@ void ArenaPopGlobal(uint64_t size)
         // The most recent allocation was a spill iff the top spill was made at the current offset
         // (a later bump would have advanced the offset past it). Otherwise it was a bump allocation.
         if (s->spillCount > 0 && s->spills[s->spillCount - 1].offset == s->currOffset)
-            DeAllocateTLSFGlobal(s->spills[--s->spillCount].ptr);
+            DeAllocTLSF(s->spills[--s->spillCount].ptr);
         else
         {
             if (size > s->currOffset)
@@ -847,24 +854,24 @@ void ArenaPopGlobal(uint64_t size)
 /*                          FixedPow2Allocator                              */
 /*//////////////////////////////////////////////////////////////////////////*/
 
-void FixedPow2Allocator_Init(FixedPow2Allocator* alloc, size_t initialSize)
+void Pow2Alloc_Init(Pow2Allocator* alloc, size_t initialSize)
 {
     ASSERT(alloc);
     ASSERT(initialSize);
     ASSERT((initialSize & (initialSize - 1u)) == 0);
 
     alloc->currentCapacity = initialSize;
-    alloc->base = (FixedFragment*)AllocateTLSFGlobal(sizeof(FixedFragment));
+    alloc->base = (FixedFragment*)AllocTLSF(sizeof(FixedFragment));
     ASSERT(alloc->base);
 
     alloc->current = alloc->base;
     alloc->base->next = NULL;
-    alloc->base->ptr = (char*)AllocateTLSFGlobal(initialSize);
+    alloc->base->ptr = (char*)AllocTLSF(initialSize);
     alloc->base->size = 0;
     ASSERT(alloc->base->ptr);
 }
 
-void FixedPow2Allocator_CheckFixGrow(FixedPow2Allocator* alloc, size_t countBytes)
+void Pow2Alloc_CheckFixGrow(Pow2Allocator* alloc, size_t countBytes)
 {
     ASSERT(alloc);
     ASSERT(alloc->current);
@@ -893,28 +900,28 @@ void FixedPow2Allocator_CheckFixGrow(FixedPow2Allocator* alloc, size_t countByte
             alloc->currentCapacity <<= 1u;
         }
 
-        alloc->current->next = (FixedFragment*)AllocateTLSFGlobal(sizeof(FixedFragment));
+        alloc->current->next = (FixedFragment*)AllocTLSF(sizeof(FixedFragment));
         ASSERT(alloc->current->next);
         alloc->current = alloc->current->next;
         alloc->current->next = NULL;
-        alloc->current->ptr = (char*)AllocateTLSFGlobal(alloc->currentCapacity);
+        alloc->current->ptr = (char*)AllocTLSF(alloc->currentCapacity);
         alloc->current->size = 0;
         ASSERT(alloc->current->ptr);
     }
 }
 
-void* FixedPow2Allocator_Allocate(FixedPow2Allocator* alloc, size_t countBytes)
+void* Pow2Alloc(Pow2Allocator* alloc, size_t countBytes)
 {
-    FixedPow2Allocator_CheckFixGrow(alloc, countBytes);
+    Pow2Alloc_CheckFixGrow(alloc, countBytes);
     void* ptr = alloc->current->ptr + alloc->current->size;
     alloc->current->size += countBytes;
     MemsetZero(ptr, countBytes);
     return ptr;
 }
 
-void* FixedPow2Allocator_AllocateUninitialized(FixedPow2Allocator* alloc, size_t countBytes)
+void* Pow2Alloc_Uninitialized(Pow2Allocator* alloc, size_t countBytes)
 {
-    FixedPow2Allocator_CheckFixGrow(alloc, countBytes);
+    Pow2Alloc_CheckFixGrow(alloc, countBytes);
     void* ptr = alloc->current->ptr + alloc->current->size;
     alloc->current->size += countBytes;
     
@@ -924,7 +931,7 @@ void* FixedPow2Allocator_AllocateUninitialized(FixedPow2Allocator* alloc, size_t
     return ptr;
 }
 
-void FixedPow2Allocator_Copy(FixedPow2Allocator* alloc, const FixedPow2Allocator* other)
+void Pow2Alloc_Copy(Pow2Allocator* alloc, const Pow2Allocator* other)
 {
     ASSERT(alloc);
 
@@ -960,11 +967,11 @@ void FixedPow2Allocator_Copy(FixedPow2Allocator* alloc, const FixedPow2Allocator
     }
 
     alloc->currentCapacity = capacity;
-    alloc->base = (FixedFragment*)AllocZeroTLSFGlobal(1, sizeof(FixedFragment));
+    alloc->base = (FixedFragment*)AllocZeroTLSF(1, sizeof(FixedFragment));
     ASSERT(alloc->base);
 
     alloc->base->next = NULL;
-    alloc->base->ptr = (char*)AllocateTLSFGlobal(alloc->currentCapacity);
+    alloc->base->ptr = (char*)AllocTLSF(alloc->currentCapacity);
     alloc->base->size = totalSize;
     alloc->current = alloc->base;
 
@@ -981,7 +988,7 @@ void FixedPow2Allocator_Copy(FixedPow2Allocator* alloc, const FixedPow2Allocator
     }
 }
 
-void* FixedPow2Allocator_TakeOwnership(FixedPow2Allocator* alloc)
+void* Pow2Alloc_TakeOwnership(Pow2Allocator* alloc)
 {
     ASSERT(alloc);
     void* result = alloc->base;
@@ -991,19 +998,19 @@ void* FixedPow2Allocator_TakeOwnership(FixedPow2Allocator* alloc)
     return result;
 }
 
-void FixedPow2Allocator_Destroy(FixedPow2Allocator* alloc)
+void Pow2Alloc_Destroy(Pow2Allocator* alloc)
 {
     if (!alloc || !alloc->base)
         return;
 
     while (alloc->base)
     {
-        DeAllocateTLSFGlobal(alloc->base->ptr);
+        DeAllocTLSF(alloc->base->ptr);
 
         FixedFragment* oldBase = alloc->base;
         alloc->base = alloc->base->next;
 
-        DeAllocateTLSFGlobal(oldBase);
+        DeAllocTLSF(oldBase);
     }
 
     alloc->current = NULL;

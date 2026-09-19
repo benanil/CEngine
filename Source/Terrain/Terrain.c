@@ -228,7 +228,7 @@ bool Terrain_SaveWorld(const char* path) {
     if (!path || !path[0] || !tGetEnabled()) return false;
     EnsurePath(path);
 
-    char* text = (char*)AllocateTLSFGlobal(4096u);
+    char* text = (char*)AllocTLSF(4096u);
     if (!text) return false;
 
     TerrainGenParams* params = &tp.genParams;
@@ -250,7 +250,7 @@ bool Terrain_SaveWorld(const char* path) {
     p = ParseWriteF32(p, "island_falloff" , params->islandFalloff, 3);
 
     WriteAllBytes(path, text, (unsigned long)(p - text));
-    DeAllocateTLSFGlobal(text);
+    DeAllocTLSF(text);
 
     char chunksPath[512];
     StringCopy(path, chunksPath, sizeof(chunksPath));

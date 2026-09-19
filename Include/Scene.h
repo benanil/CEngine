@@ -31,7 +31,6 @@ typedef struct SceneBundleRef_
 typedef struct BundleCacheEntry
 {
     SceneBundle* bundle;
-    char*        path;     // cache owned copy, scenes reference it in bundlePaths
     u32          refCount;
     // raw geometry heap pointers, needed to free the mega buffer ranges.
     // NULL when the geometry doesn't live in the mega buffers (fbx path)
@@ -154,12 +153,12 @@ struct SceneAsyncRequest_
 typedef struct SceneBundleStage_
 {
     SceneBundle* bundle;
-    const char*  storedPath; // bundle cache owned string, stable for the entry's lifetime
     u64          cacheKey;
-    u32          materialOffset; // Scene_AddBundleBaked* path only
-    bool         skinned;        // Scene_AddBundle* path only
-    bool         loaded;         // false when the load failed; Finalize/Abort are still safe to call
-    Texture      staging[1024];  // Scene_AddBundle* path only
+    u32          materialOffset;  // Scene_AddBundleBaked* path only
+    bool         skinned;         // Scene_AddBundle* path only
+    bool         loaded;          // false when the load failed; Finalize/Abort are still safe to call
+    char         path[512];       // bundle cache owned string, stable for the entry's lifetime
+    Texture      staging[1024];   // Scene_AddBundle* path only
 } SceneBundleStage;
 
 // scenes the renderer draws each frame, in activation order
@@ -196,16 +195,18 @@ bool Entity_IsTransparent(const Entity* entity);
 // per-frame scene tick: pumps async loads and steps physics for the active scene
 void Scene_Update(float deltaTime);
 
+u32 Scene_AddBundle(Scene* scene, SceneBundle* bundle);
 // loads a gltf bundle, packs its textures into the scene's texture system and registers
 // its primitives to the matching render set. bundles are shared through a global cache
 // keyed by path, repeated adds of the same path reuse the resident mesh data.
 // out: scene bundle index, INVALID_BUNDLE otherwise
-u32 Scene_AddBundle(Scene* scene, const char* path, bool skinned);
+u32 Scene_AddBundleFromPath(Scene* scene, const char* path);
 
 // caller sets stage->storedPath (+ stage->skinned) before calling; result lands in
 // stage->loaded (false on failure, Finalize/Abort still safe to call then). void*, single
 // argument so callers fan this out with ParallelFor via a small per-index range wrapper.
-void Scene_AddBundleStage(void* stage);
+void Scene_AddBundleStage(void* stage, bool baked);
+void StageBundleRange(u32 begin, u32 end, void* stages);
 
 // Main-thread only: publishes a staged load into the scene (GPU texture packing, material/
 // animation bookkeeping, render set registration) - the part that mutates shared scene state
@@ -213,6 +214,7 @@ void Scene_AddBundleStage(void* stage);
 // way. out: scene bundle index, INVALID_BUNDLE on failure or when the stage itself had failed
 u32 Scene_AddBundleFinalize(Scene* scene, SceneBundleStage* stage);
 
+u32 Scene_AddBundleBakedFinalize(Scene* scene, SceneBundleStage* stage);
 // Drops a staged load without adding it to any scene (e.g. caller decided not to use it).
 // No-op when the stage failed to load. Safe from any thread.
 void Scene_AddBundleStageAbort(SceneBundleStage* stage);
@@ -231,12 +233,6 @@ void Scene_ReleaseBundlePeek(const char* path);
 // out: scene bundle index, INVALID_BUNDLE otherwise
 u32 Scene_AddBundleBaked(Scene* scene, const char* path, u32 materialOffset);
 
-// Scene_AddBundleBaked split the same way as Scene_AddBundleStage/Finalize above: the Stage
-// half is just BundleCacheAcquire (no texture work at all on the baked path), safe from any
-// thread; Finalize does the material-slot/anim/render-set bookkeeping, main-thread only.
-// caller sets stage->storedPath + stage->materialOffset before calling; see Scene_AddBundleStage.
-void Scene_AddBundleBakedStage(void* stage);
-u32  Scene_AddBundleBakedFinalize(Scene* scene, SceneBundleStage* stage);
 void Scene_AddBundleBakedStageAbort(SceneBundleStage* stage);
 
 u32 Scene_DefaultAnimation(const Scene* scene, u32 bundleIdx);

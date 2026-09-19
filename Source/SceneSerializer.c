@@ -541,7 +541,7 @@ static void SceneStageRange(u32 begin, u32 end, void* userData)
 {
     SceneStageRangeCtx* ctx = (SceneStageRangeCtx*)userData;
     for (u32 b = begin; b < end; b++)
-        (ctx->baked ? Scene_AddBundleBakedStage : Scene_AddBundleStage)(&ctx->stages[b]);
+        Scene_AddBundleStage(&ctx->stages[b], ctx->baked);
 }
 
 // Stages every bundle (mesh, plus textures on the slow path) across worker threads via
@@ -551,11 +551,11 @@ static void SceneStageRange(u32 begin, u32 end, void* userData)
 static bool SceneSerializer_LoadBundles(Scene* scene, const SceneFileData* data, bool baked)
 {
     SceneBundleStage* stages =
-        (SceneBundleStage*)AllocateTLSFGlobal(Maxu32(data->numBundles, 1u) * sizeof(SceneBundleStage));
+        (SceneBundleStage*)AllocTLSF(Maxu32(data->numBundles, 1u) * sizeof(SceneBundleStage));
 
     for (u32 b = 0; b < data->numBundles; b++)
     {
-        stages[b].storedPath     = data->bundlePaths + (u64)b * 1024u;
+        StringCopy(data->bundlePaths + (u64)b * 1024u, stages[b].path, 512);
         stages[b].skinned        = data->bundleSkinned[b] != 0u;
         stages[b].materialOffset = data->bundleMaterialOff[b];
     }
@@ -574,7 +574,7 @@ static bool SceneSerializer_LoadBundles(Scene* scene, const SceneFileData* data,
                     scene->bundleRefs[bundleIdx].materialOffset, data->bundleMaterialOff[b]);
     }
 
-    DeAllocateTLSFGlobal(stages);
+    DeAllocTLSF(stages);
     return ok;
 }
 
@@ -727,12 +727,12 @@ s32 SceneSerializer_Load(Scene* scene, const char* path)
     scene->renderDataDirty = 1;
 
     // copy physics overrides out of the arena; applied when the collider build finishes
-    if (scene->pendingPhysics) DeAllocateTLSFGlobal(scene->pendingPhysics);
+    if (scene->pendingPhysics) DeAllocTLSF(scene->pendingPhysics);
     scene->pendingPhysics = NULL;
     scene->numPendingPhysics = 0;
     if (data.numPhysics > 0)
     {
-        scene->pendingPhysics = (ScenePhysicsRecord*)AllocateTLSFGlobal(data.numPhysics * sizeof(ScenePhysicsRecord));
+        scene->pendingPhysics = AllocTLSFArray(ScenePhysicsRecord, data.numPhysics);
         if (scene->pendingPhysics)
         {
             MemCopy(scene->pendingPhysics, data.physics, data.numPhysics * sizeof(ScenePhysicsRecord));

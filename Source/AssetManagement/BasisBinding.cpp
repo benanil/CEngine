@@ -127,7 +127,7 @@ bool BasisuTranscodeImageLayer(
         dataSize += level->size;
     }
 
-    void* data = AllocateTLSFGlobal(dataSize);
+    void* data = AllocTLSF(dataSize);
     if (!data) return false;
 
     uint8_t* ptr = (uint8_t*)data;
@@ -140,7 +140,7 @@ bool BasisuTranscodeImageLayer(
                                                    fmt, 0);
         if (!ok)
         {
-            DeAllocateTLSFGlobal(data);
+            DeAllocTLSF(data);
             SDL_memset(outImage, 0, sizeof(*outImage));
             return false;
         }
@@ -177,7 +177,7 @@ uint32_t BasisuGetImageCount(const void* basisu_data, uint64_t size)
 void BasisuFreeTranscodedImage(BasisuTranscodedImage* image)
 {
     if (!image) return;
-    if (image->data) DeAllocateTLSFGlobal(image->data);
+    if (image->data) DeAllocTLSF(image->data);
     SDL_memset(image, 0, sizeof(*image));
 }
 
@@ -334,7 +334,7 @@ void* BasisuDecodeImageRGBA(
     transcoder.get_image_level_desc(basisu_data, (uint32_t)size, 0, 0, levelWidth, levelHeight, levelBlocks);
 
     size_t outputSize = (size_t)levelWidth * (size_t)levelHeight * 4u;
-    void* output = AllocateTLSFGlobal(outputSize);
+    void* output = AllocTLSF(outputSize);
     if (!output)
         return nullptr;
 
@@ -368,7 +368,7 @@ void* BasisuDecodeLevelRGBA(
     if (levelWidth == 0 || levelHeight == 0) return nullptr;
 
     size_t outputSize = (size_t)levelWidth * (size_t)levelHeight * 4u;
-    void* output = AllocateTLSFGlobal(outputSize);
+    void* output = AllocTLSF(outputSize);
     if (!output) return nullptr;
 
     bool ok = transcoder.transcode_image_level(basisu_data, (uint32_t)size, imageIndex, level, output,
@@ -376,7 +376,7 @@ void* BasisuDecodeLevelRGBA(
                                                basist::transcoder_texture_format::cTFRGBA32, 0);
     if (!ok)
     {
-        DeAllocateTLSFGlobal(output);
+        DeAllocTLSF(output);
         return nullptr;
     }
 

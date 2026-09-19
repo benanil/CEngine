@@ -15,6 +15,7 @@
 
 #include "Graphics.h"
 #include "Async.h"
+#include "Include/Memory.h"
 
 #if defined(__cplusplus)
 extern "C" {
@@ -44,9 +45,7 @@ u8 IsMeshPath(const char* path);
 // returns 0 on not enough memory
 s32 BakeSceneMeshesAndAnimations(SceneBundle* gltf, void** outVertexHeapPtr, void** outIndexHeapPtr);
 
-void GenerateLOD_75_GLTF(SceneBundle* sceneBundle);
-
-void GenerateLOD_50_GLTF(SceneBundle* sceneBundle);
+SceneBundle* GetUnitCapsule();
 
 /* Animation baking */
 void BakeGLTFAnimations(SceneBundle* gltf);
@@ -63,6 +62,37 @@ void SaveSceneImagesAsync(SceneBundle* scene, const char* savePath, bool deleteR
 // returns: 0 = noFile, 1 = success, 2 = missingImages, 3 = fileNumImage missmatch
 s32 LoadSceneImages(const char* texturePath, Texture* textures, s32 numImages);
 
+
+// MeshBuilder.c
+typedef struct MeshBuilder_
+{
+    SceneBundle*   bundle;
+    APrimitive*    primitive;
+    Pow2Allocator* alloc;
+
+    float3* positions;
+    float2* texCoords;
+    float3* normals;
+    v128f*  tangents;
+    u32*    indices;
+} MeshBuilder;
+
+// MeshBuilder b = MeshBuilder_Create(numVertex, numIndex);
+// set vertices, set indices -> Scene_AddBundle -> Scene_Spawn
+// cache the b.result and use it later
+MeshBuilder MeshBuilder_Create(s32 numVertex, s32 numIndex);
+SceneBundle* GenerateSphere(float radius, u32 ringCount, u32 sliceCount);
+SceneBundle* GenerateCylinder(float radius, float height, u32 sliceCount);
+SceneBundle* GenerateCone(float height, float radius, u32 sliceCount);
+SceneBundle* GenerateGrid(float segmentSize, u32 verticalCount, u32 horizontalCount);
+SceneBundle* GenerateCube(float size);
+SceneBundle* GenerateCapsule(float radius, float height, u32 sliceCount);
+
+SceneBundle* GetUnitSphere(); // cached 1mt 16 ring sphere
+SceneBundle* GetUnitCylinder();
+SceneBundle* GetUnitCone(); // cached 1mt 16 ring cone
+SceneBundle* GetUnitGrid();
+SceneBundle* GetUnitCube();
 
 #if defined(__cplusplus)
 }

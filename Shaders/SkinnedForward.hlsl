@@ -23,7 +23,8 @@ cbuffer ps_params : register(b0, space3)
     uint   uTilesX;
     uint   uTileSize;
     uint   uLocalLightsEnabled;
-    uint3  uPad0;
+    float  ambientBoost;
+    uint2  uPad0;
 };
 
 StructuredBuffer<Entity>         sEntities            : register(t0);
@@ -180,7 +181,7 @@ float4 frag(VSOutput input) : SV_Target0
     shadow *= ContactShadow.SampleLevel(Sampler, uv, 0.0f);
 
     float3 color = ApplyPBR(float3(baseColor), N, viewDir, saturate(metallic), saturate(roughness),
-                            saturate(shadow), ao, uSunDirection.xyz);
+                            saturate(shadow), ao, uSunDirection.xyz, ambientBoost);
     if (uLocalLightsEnabled != 0u)
         color += AccumulateTileLights(float3(baseColor), N, viewDir, saturate(metallic), saturate(roughness),
                                       worldPos, ao, uint2(input.position.xy), uTilesX, uTileSize);

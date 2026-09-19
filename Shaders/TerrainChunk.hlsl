@@ -184,9 +184,9 @@ float4 frag(VSOutput i) : SV_Target0
     float2 uv = saturate(i.position.xy / float2(uOutputSize));
     float ao = AmbientOcclusion.SampleLevel(Sampler, uv, 0.0);
     shadow *= ContactShadow.SampleLevel(Sampler, uv, 0.0);
-
+    
     float3 color = ApplyPBR(baseColor, shadingN, viewDir, metallic, roughness,
-                            shadow, ao, uSunDirection.xyz);
+                            shadow, ao, uSunDirection.xyz, 2.0f);
     color += baseColor * (0.08 + saturate(shadingN.y) * 0.08);
     if (uLocalLightsEnabled != 0u)
         color += AccumulateTileLights(baseColor, shadingN, viewDir, metallic, roughness,

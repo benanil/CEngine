@@ -89,7 +89,7 @@ void BakeGLTFAnimations(SceneBundle* gltf)
         if (skin->numJoints > MAX_BONES)
             AX_WARN("skin %d has %d joints, max GPU bone count is %d", s, skin->numJoints, MAX_BONES);
 
-        mat4x4* inverseBindMatrices = AllocateTLSFGlobal(skin->numJoints * sizeof(mat4x4));
+        mat4x4* inverseBindMatrices = AllocTLSF(skin->numJoints * sizeof(mat4x4));
         SmallMemCpy(inverseBindMatrices, skin->inverseBindMatrices, sizeof(mat4x4) * skin->numJoints);
         skin->inverseBindMatrices = (f32*)inverseBindMatrices;
 
@@ -113,8 +113,8 @@ void BakeGLTFAnimations(SceneBundle* gltf)
         for (s32 s = 0; s < gltf->animations[a].numSamplers; s++)
             totalSamplerInput += gltf->animations[a].samplers[s].count;
 
-    f32* currSampler = (f32*)AllocZeroTLSFGlobal(totalSamplerInput, 4);
-    v128f* currOutput = (v128f*)AllocZeroTLSFGlobal(totalSamplerInput, sizeof(v128f));
+    f32* currSampler = (f32*)AllocZeroTLSF(totalSamplerInput, 4);
+    v128f* currOutput = (v128f*)AllocZeroTLSF(totalSamplerInput, sizeof(v128f));
 
     s32 numInvalidComponents = 0;
     s32 numNonFloatsIn = 0;

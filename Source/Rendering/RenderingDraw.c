@@ -138,12 +138,12 @@ static void DrawRenderBufferForward(SDL_GPUCommandBuffer* cmd, SDL_GPURenderPass
 }
 
 void RenderSceneForward(SDL_GPUCommandBuffer* cmd, const ScenePassContext* ctx, u32 width, u32 height, u32 tilesX, bool localLightsEnabled)
-{
+{   
     Scene* scene = g_ActiveScene;
     u32 totalGroups = scene->skinnedSet.numGroups + scene->surfaceSet.numGroups;
     if (totalGroups == 0 && g_NumTerrainChunkDraws == 0)
         return;
-
+    
     struct {
         mat4x4 viewProj;
         float cameraPosition[4];
@@ -167,7 +167,8 @@ void RenderSceneForward(SDL_GPUCommandBuffer* cmd, const ScenePassContext* ctx, 
         u32 tilesX;
         u32 tileSize;
         u32 localLightsEnabled;
-        u32 pad0[3];
+        f32 ambientBoost;
+        u32 pad0[2];
     } fragmentParams = {0};
     fragmentParams.sunDirection[0] = sunDirection.x;
     fragmentParams.sunDirection[1] = sunDirection.y;
@@ -179,6 +180,7 @@ void RenderSceneForward(SDL_GPUCommandBuffer* cmd, const ScenePassContext* ctx, 
     fragmentParams.outputSize[1] = height;
     fragmentParams.tilesX = tilesX;
     fragmentParams.tileSize = FORWARD_TILE_SIZE;
+    fragmentParams.ambientBoost = scene->ambientBoost;
     fragmentParams.localLightsEnabled = localLightsEnabled ? 1u : 0u;
 
     SDL_GPUTextureSamplerBinding fragmentSamplers[8] = {
@@ -203,6 +205,9 @@ void RenderSceneForward(SDL_GPUCommandBuffer* cmd, const ScenePassContext* ctx, 
 
     SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmd, ctx->colorTargets, ctx->numColorTargets, ctx->depthTarget);
 
+    RenderTerrain(cmd, pass, ctx->viewProj, width, height, tilesX, localLightsEnabled);
+    tRenderGrass(cmd, pass);
+    
     const SDL_GPUBufferBinding skinnedVertex = { g_RenderState.skinned.vertexBuffer, 0 };
     DrawRenderBufferForward(cmd, pass, true, scene, &scene->skinnedSet, &scene->skinnedBuffers, &scene->surfaceBuffers.draw,
                             g_RenderState.skinned.forwardPipeline, skinnedVertex, fragmentSamplers, fragmentBuffers,
@@ -228,15 +233,14 @@ void RenderSceneForward(SDL_GPUCommandBuffer* cmd, const ScenePassContext* ctx, 
         MemCopy(foliageFragmentBuffers, fragmentBuffers, sizeof(fragmentBuffers));
         foliageFragmentBuffers[0] = foliageScene->textureSystem.materialBuffer;
         foliageFragmentBuffers[1] = foliageScene->textureSystem.descriptorBuffer;
+        fragmentParams.ambientBoost = foliageScene->ambientBoost;
 
         DrawRenderBufferForward(cmd, pass, false, foliageScene, &foliageScene->surfaceSet, &foliageScene->surfaceBuffers, &foliageScene->surfaceBuffers.draw,
                                 g_RenderState.surface.forwardPipeline, surfaceVertex, foliageFragmentSamplers, foliageFragmentBuffers,
                                 &vertexParams, sizeof(vertexParams), &fragmentParams, sizeof(fragmentParams));
     }
 
-    RenderTerrain(cmd, pass, ctx->viewProj, width, height, tilesX, localLightsEnabled);
-    tRenderGrass(cmd, pass);
-
+    fragmentParams.ambientBoost = scene->ambientBoost;
     DrawRenderBufferForward(cmd, pass, false, scene, &scene->surfaceSet, &scene->surfaceBuffers, &scene->transparentDrawBuffers,
                             g_RenderState.transparentForwardPipeline, surfaceVertex, fragmentSamplers, fragmentBuffers,
                             &vertexParams, sizeof(vertexParams), &fragmentParams, sizeof(fragmentParams));
@@ -296,7 +300,7 @@ void RenderTerrain(SDL_GPUCommandBuffer* cmd, SDL_GPURenderPass* pass, mat4x4 vi
     SDL_GPUTexture* albedo = NULL;
     SDL_GPUTexture* normal = NULL;
     SDL_GPUTexture* arm = NULL;
-	if (!tGetMaterialTextures(&albedo, &normal, &arm)) return;
+    if (!tGetMaterialTextures(&albedo, &normal, &arm)) return;
 
     SDL_BindGPUGraphicsPipeline(pass, g_TerrainTrianglePipeline);
     SDL_GPUTextureSamplerBinding samplers[8] = {

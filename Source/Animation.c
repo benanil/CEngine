@@ -48,7 +48,7 @@ void AnimationSystem_Init(AnimationSystem* anims)
 {
     MemsetZero(anims, sizeof(*anims));
     anims->instanceDirtyStart = MAX_ANIM_INSTANCES;
-    RangeAllocator_Init(&anims->frameAllocator, anims->freeFrameRanges, MAX_ANIM_COUNT, MAX_GPU_ANIM_FRAMES);
+    RangeAlloc_Init(&anims->frameAllocator, anims->freeFrameRanges, MAX_ANIM_COUNT, MAX_GPU_ANIM_FRAMES);
 }
 
 void AnimationSystem_Destroy(AnimationSystem* anims)
@@ -255,7 +255,7 @@ s32 AnimationSystem_AppendBundle(AnimationSystem* anims, const SceneBundle* bund
         AX_WARN("animation skin slot capacity exceeded");
         return 0;
     }
-    if (!RangeAllocator_Alloc(&anims->frameAllocator, frameCount, &frameOffset))
+    if (!RangeAlloc(&anims->frameAllocator, frameCount, &frameOffset))
     {
         AX_WARN("animation frame capacity exceeded count=%d max=%d", frameCount, MAX_GPU_ANIM_FRAMES);
         return 0;
@@ -271,7 +271,7 @@ s32 AnimationSystem_AppendBundle(AnimationSystem* anims, const SceneBundle* bund
     {
         BitsetSetRange(anims->usedAnimSlots, (u32)animOffset, animCount, false);
         BitsetReset(anims->usedSkinSlots, skinSlot);
-        RangeAllocator_Free(&anims->frameAllocator, frameOffset, frameCount);
+        RangeAlloc_Free(&anims->frameAllocator, frameOffset, frameCount);
         return 0;
     }
 
@@ -315,7 +315,7 @@ void AnimationSystem_RemoveBundle(AnimationSystem* anims, AnimationBundleAlloc a
     if (!anims || alloc.skinSlot >= MAX_SKIN_COUNT) return;
     BitsetSetRange(anims->usedAnimSlots, alloc.animOffset, alloc.animCount, false);
     BitsetReset(anims->usedSkinSlots, (s32)alloc.skinSlot);
-    RangeAllocator_Free(&anims->frameAllocator, alloc.frameOffset, alloc.frameCount);
+    RangeAlloc_Free(&anims->frameAllocator, alloc.frameOffset, alloc.frameCount);
     if (alloc.animCount > 0u)
     {
         MemsetZero(anims->animData + alloc.animOffset, alloc.animCount * sizeof(GPUAnimationData));

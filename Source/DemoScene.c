@@ -104,8 +104,8 @@ static void UpdateDemoLights(void)
 s32 DemoScene_Create(void)
 {
     Scene_Init(&g_DemoScene);
-    g_PaladinBundle = Scene_AddBundle(&g_DemoScene, "Assets/Meshes/Paladin/Paladin.gltf", true);
-    g_BistroBundle  = Scene_AddBundle(&g_DemoScene, "Assets/Meshes/Bistro/Bistro.glb", false);
+    g_PaladinBundle = Scene_AddBundleFromPath(&g_DemoScene, "Assets/Meshes/Paladin/Paladin.gltf");
+    g_BistroBundle  = Scene_AddBundleFromPath(&g_DemoScene, "Assets/Meshes/Bistro/Bistro.glb");
     if (g_PaladinBundle == INVALID_BUNDLE || g_BistroBundle == INVALID_BUNDLE)
         return 0;
 

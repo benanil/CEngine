@@ -10,10 +10,10 @@
 //
 // The cache also owns the async scene/mesh import pipeline (SceneAsyncBegin/SceneAsyncUpdate) and the
 // worker-thread .abm/.bdc bake-persist and picking-BVH builds. See SceneBundleCache.c.
-
+// key cache key, usually StringToHash of path
 // out: cache entry with one reference added, NULL on load failure. The returned pointer is only
 // valid until the next map mutation; callers use it transiently and store the key, not the pointer.
-BundleCacheEntry* BundleCacheAcquire(const char* path);
+BundleCacheEntry* BundleCacheAcquire(SceneBundleStage* stage);
 
 // drops one reference to the cached bundle. When the last reference goes away the geometry is
 // returned to the mega buffers and the entry is erased.

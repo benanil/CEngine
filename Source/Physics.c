@@ -163,7 +163,7 @@ void Physics_Destroy(void)
 void Scene_InitPhysics(Scene* scene)
 {
     Physics_Init();
-    scene->physicsBodies = (b3BodyId*)AllocZeroTLSFGlobal(scene->surfaceSet.maxEntities, sizeof(b3BodyId));
+    scene->physicsBodies = (b3BodyId*)AllocZeroTLSF(scene->surfaceSet.maxEntities, sizeof(b3BodyId));
     if (!scene->physicsBodies)
         AX_WARN("physics: body slot allocation failed");
 }
@@ -187,8 +187,8 @@ void Scene_DestroyPhysics(Scene* scene)
     // chunk lifecycle (tFreeChunkSlot/tClearChunkCache/tMarchingDestroy).
     PhysicsDestroyLiveStaticColliders(scene);
 
-    if (scene->physicsBodies) DeAllocateTLSFGlobal(scene->physicsBodies);
-    if (scene->pendingPhysics) DeAllocateTLSFGlobal(scene->pendingPhysics);
+    if (scene->physicsBodies) DeAllocTLSF(scene->physicsBodies);
+    if (scene->pendingPhysics) DeAllocTLSF(scene->pendingPhysics);
     scene->physicsBodies = NULL;
     scene->pendingPhysics = NULL;
     scene->numPendingPhysics = 0;
@@ -602,7 +602,7 @@ bool Entity_SetPhysicsShape(Scene* scene,  const Entity* entity, b3ShapeType typ
         case b3_capsuleShape:
         {
             // Capsule along Y, radius from the other two half-extents.
-            f32 radius = Maxf32(hx, hz);
+            f32 radius   = Maxf32(hx, hz);
             f32 halfSpan = Maxf32(hy - radius, 0.0f);
             b3Capsule capsule = {
                 .center1 = { c.x, c.y - halfSpan, c.z },
@@ -718,7 +718,7 @@ void Physics_ApplyPendingOverrides(Scene* scene)
                 Physics_ApplyDefaultDynamicMass(body, shape);
         }
     }
-    if (scene->pendingPhysics) DeAllocateTLSFGlobal(scene->pendingPhysics);
+    if (scene->pendingPhysics) DeAllocTLSF(scene->pendingPhysics);
     scene->pendingPhysics = NULL;
     scene->numPendingPhysics = 0;
 }

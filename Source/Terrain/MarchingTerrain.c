@@ -178,8 +178,8 @@ static void tFreeMeshHandle(tMeshHandle* mesh)
         GeometryHeapFree(GeometryBuffer_TerrainIndex, mesh->indices.heapPtr);
         SaturatingSubtractU32(&gMarchingTerrain.cacheIndices, mesh->indices.count);
     }
-    DeAllocateTLSFGlobal(mesh->physics.vertices);
-    DeAllocateTLSFGlobal(mesh->physics.indices);
+    DeAllocTLSF(mesh->physics.vertices);
+    DeAllocTLSF(mesh->physics.indices);
     *mesh = (tMeshHandle){0};
 }
 
@@ -339,8 +339,8 @@ static bool BuildPhysicsMesh(tBuildJob* job, u32 vertexCount, u32 indexCount)
 
     job->mesh.physics.vertexCount = vertexCount;
     job->mesh.physics.indexCount = indexCount;
-    job->mesh.physics.vertices = (b3Vec3*)AllocateTLSFGlobal(sizeof(b3Vec3) * vertexCount);
-    job->mesh.physics.indices = (s32*)AllocateTLSFGlobal(sizeof(s32) * indexCount);
+    job->mesh.physics.vertices = AllocTLSFArray(b3Vec3, vertexCount);
+    job->mesh.physics.indices = AllocTLSFArray(s32, indexCount);
     if (job->mesh.physics.vertices && job->mesh.physics.indices)
     {
         f32 chunkSize = (f32)(T_CHUNK_CELLS);
@@ -356,8 +356,8 @@ static bool BuildPhysicsMesh(tBuildJob* job, u32 vertexCount, u32 indexCount)
     }
 
     AX_WARN("marching terrain physics mesh allocation failed");
-    DeAllocateTLSFGlobal(job->mesh.physics.vertices);
-    DeAllocateTLSFGlobal(job->mesh.physics.indices);
+    DeAllocTLSF(job->mesh.physics.vertices);
+    DeAllocTLSF(job->mesh.physics.indices);
     job->mesh.physics = (PhysicsMesh){0};
     return true;
 }
@@ -518,7 +518,7 @@ static void IntegrateFinishedBuilds(void)
         // still valid until job->busy clears) so foliage can read it instead of resampling
         {
             const s8* builtDensity = gMarchingTerrain.chunkDensity + (size_t)i * T_SAMPLES_TOTAL;
-            if (!chunk->density) chunk->density = (s8*)AllocateTLSFGlobal(T_SAMPLES_TOTAL);
+            if (!chunk->density) chunk->density = (s8*)AllocTLSF(T_SAMPLES_TOTAL);
             if (chunk->density) MemCopy(chunk->density, builtDensity, T_SAMPLES_TOTAL);
         }
 
@@ -607,7 +607,7 @@ static void tFreeChunkSlot(u32 index)
     tFreeMeshHandle(&chunk->mesh);
     tFreePendingMesh(chunk);
     Foliage_DestroyChunkFoliage(chunk);
-    DeAllocateTLSFGlobal(chunk->density);
+    DeAllocTLSF(chunk->density);
     chunk->density = NULL;
     tLRUUnlink(index);
 
@@ -698,7 +698,7 @@ static void tClearChunkCache(void)
         tFreeMeshHandle(&gMarchingTerrain.chunks[i].mesh);
         tFreePendingMesh(&gMarchingTerrain.chunks[i]);
         Foliage_DestroyChunkFoliage(&gMarchingTerrain.chunks[i]);
-        DeAllocateTLSFGlobal(gMarchingTerrain.chunks[i].density);
+        DeAllocTLSF(gMarchingTerrain.chunks[i].density);
         gMarchingTerrain.chunks[i].density = NULL;
     }
     gMarchingTerrain.chunkCount = 0;
@@ -977,9 +977,9 @@ bool tMarchingInit(void)
     gMarchingTerrain.generator.noise3D = tDensityNoise;
     gMarchingTerrain.generator.noise3DStrength = 1.0f;
 
-    gMarchingTerrain.chunkDraws = (TerrainChunkDraw*)AllocateTLSFGlobal(sizeof(TerrainChunkDraw) * MAX_TERRAIN_CHUNK_DRAWS);
-    gMarchingTerrain.occupiedChunksBitset = (u64*)AllocateTLSFGlobal(T_CHUNK_BITSET_WORDS * sizeof(u64));
-    gMarchingTerrain.chunkDensity = (s8*)AllocateTLSFGlobal(sizeof(s8) * (size_t)T_SAMPLES_TOTAL * T_MAX_BUILD_JOBS);
+    gMarchingTerrain.chunkDraws = AllocTLSFArray(TerrainChunkDraw, MAX_TERRAIN_CHUNK_DRAWS);
+    gMarchingTerrain.occupiedChunksBitset = (u64*)AllocTLSF(T_CHUNK_BITSET_WORDS * sizeof(u64));
+    gMarchingTerrain.chunkDensity = (s8*)AllocTLSF(sizeof(s8) * (size_t)T_SAMPLES_TOTAL * T_MAX_BUILD_JOBS);
     gMarchingTerrain.chunkLookup = HMCreate(T_MAX_CHUNKS, sizeof(u32));
     if (!gMarchingTerrain.chunkDraws || !gMarchingTerrain.occupiedChunksBitset || !gMarchingTerrain.chunkDensity)
     {
@@ -1104,9 +1104,9 @@ void tMarchingDestroy()
     RendererSetTerrainChunkDraws(NULL, 0);
     tClearChunkCache(); // drains in-flight builds first
     HMDestroy(&gMarchingTerrain.chunkLookup);
-    DeAllocateTLSFGlobal(gMarchingTerrain.chunkDraws);
-    DeAllocateTLSFGlobal(gMarchingTerrain.occupiedChunksBitset);
-    DeAllocateTLSFGlobal(gMarchingTerrain.chunkDensity);
+    DeAllocTLSF(gMarchingTerrain.chunkDraws);
+    DeAllocTLSF(gMarchingTerrain.occupiedChunksBitset);
+    DeAllocTLSF(gMarchingTerrain.chunkDensity);
     for (u32 i = 0; i < T_MAX_BUILD_JOBS; i++) {
         tMeshDataDestroy(&gMarchingTerrain.buildJobs[i].scratchMesh);
         ArenaScratchDestroy(&gMarchingTerrain.buildJobs[i].scratchArena);

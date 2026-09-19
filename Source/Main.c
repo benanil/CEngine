@@ -21,6 +21,7 @@
 #include "Include/Terrain.h"
 #include "Include/Editor.h"
 #include "Include/JobSystem.h"
+#include "Include/AssetManager.h"
 #include "Math/Quaternion.h"
 
 static s32 done = 0;
@@ -82,6 +83,7 @@ static SDL_AppResult SDLCALL MainAppInit(void** appstate, int argc, char* argv[]
     InitBuffers();
     // if (DemoScene_Create()) if (!Scene_MakeActive(DemoScene_Get())) return SDL_APP_FAILURE;
     if (!Scene_NewActive()) return SDL_APP_FAILURE;
+    
     Foliage_Init();
     tInit();
     // Keep the runnable Transvoxel example in the demo scene instead of reopening the last editor scene.
@@ -94,12 +96,15 @@ static SDL_AppResult SDLCALL MainAppInit(void** appstate, int argc, char* argv[]
 void OpenSceneCallback(const char* path)
 {
     Scene* scene = Scene_GetActive();
-    u32 bundle = Scene_AddBundle(scene, "Assets/Meshes/Sphere.gltf", false);
+    SceneBundle* sphereBundle = GetUnitSphere();
+    u32 bundle = Scene_AddBundle(scene, sphereBundle);
     ballEntity = Scene_Spawn(scene, bundle, VecSetR(0.0f, 34.0f, 0.0f, 0.0f), QIdentity(), VecOne());
     Entity* ball = RenderSet_GetEntity(&scene->surfaceSet, ballEntity);
     Entity_SetPhysicsShape(scene, ball, b3_sphereShape);
     b3BodyId body = Entity_GetPhysicsBody(scene, ball);
-    b3Body_SetBullet(body, true);
+
+    if(b3Body_IsValid(body))
+        b3Body_SetBullet(body, true);
 }
 
 void BeforeDestroySceneCallback(Scene* scene)
@@ -135,8 +140,7 @@ static void UpdateBall()
 
     static char forceText[128] = {0};
     static int forceLen = 1;
-    volatile float testForce = force;
-    forceLen = FloatToString(forceText, testForce, 2);
+    forceLen = FloatToString(forceText, force, 2);
     u32 w = g_WindowState.prev_width;
     float2 msSize = SlugCalcTextSizeN(NULL, forceText, forceLen, 32.0f);
     SlugAppendText2DN(NULL, forceText, forceLen, (float2){ w - msSize.x - 12.0f, 188.0f }, 32.0f, 0xFFCCCCFF);

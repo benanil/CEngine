@@ -102,10 +102,10 @@ void Scene_Init(Scene* scene)
     AnimationSystem_Init(&scene->animSystem);
     Scene_InitPhysics(scene);
     scene->ambientBoost = 1.0f;
-    scene->lights = (LightGPU*)AllocZeroTLSFGlobal(MAX_SCENE_LIGHTS, sizeof(LightGPU));
-    scene->materialSlots = (u64*)AllocZeroTLSFGlobal((MAX_GPU_MATERIALS + 63u) >> 6, sizeof(u64));
-    scene->bundleSlots   = (u64*)AllocZeroTLSFGlobal((MAX_SCENE_BUNDLES + 63u) >> 6, sizeof(u64));
-    scene->bundleRefs    = (SceneBundleRef*)AllocZeroTLSFGlobal(MAX_SCENE_BUNDLES, sizeof(SceneBundleRef));
+    scene->lights = (LightGPU*)AllocZeroTLSF(MAX_SCENE_LIGHTS, sizeof(LightGPU));
+    scene->materialSlots = (u64*)AllocZeroTLSF((MAX_GPU_MATERIALS + 63u) >> 6, sizeof(u64));
+    scene->bundleSlots   = (u64*)AllocZeroTLSF((MAX_SCENE_BUNDLES + 63u) >> 6, sizeof(u64));
+    scene->bundleRefs    = (SceneBundleRef*)AllocZeroTLSF(MAX_SCENE_BUNDLES, sizeof(SceneBundleRef));
 }
 
 extern void BeforeDestroySceneCallback(Scene* scene);
@@ -125,10 +125,10 @@ void Scene_Destroy(Scene* scene)
     AnimationSystem_Destroy(&scene->animSystem);
     RenderSet_Destroy(&scene->skinnedSet);
     RenderSet_Destroy(&scene->surfaceSet);
-    if (scene->bundleRefs)    DeAllocateTLSFGlobal(scene->bundleRefs);
-    if (scene->lights)        DeAllocateTLSFGlobal(scene->lights);
-    if (scene->materialSlots) DeAllocateTLSFGlobal(scene->materialSlots);
-    if (scene->bundleSlots)   DeAllocateTLSFGlobal(scene->bundleSlots);
+    if (scene->bundleRefs)    DeAllocTLSF(scene->bundleRefs);
+    if (scene->lights)        DeAllocTLSF(scene->lights);
+    if (scene->materialSlots) DeAllocTLSF(scene->materialSlots);
+    if (scene->bundleSlots)   DeAllocTLSF(scene->bundleSlots);
     Scene_DestroyPhysics(scene);
     if (scene == &g_OwnedActiveScene)
     {
@@ -237,10 +237,10 @@ bool Entity_IsTransparent(const Entity* entity)
 }
 
 // out: scene bundle index of the path, INVALID_BUNDLE when not present
-static u32 Scene_FindBundle(const Scene* scene, const char* path)
+static u32 Scene_FindBundle(const Scene* scene, const u32 cacheKey)
 {
     for (u32 i = 0; i < scene->numBundles; i++)
-        if (scene->bundleRefs[i].bundle && StringEqual(scene->bundleRefs[i].path, path, StringLength(path) + 1))
+        if (scene->bundleRefs[i].bundle && scene->bundleRefs[i].cacheKey == cacheKey)
             return i;
     return INVALID_BUNDLE;
 }
@@ -287,207 +287,11 @@ static s32 Scene_ReserveMaterialSlots(Scene* scene, u32 materialOffset, u32 numM
     return 1;
 }
 
-void Scene_AddBundleStage(void* stagePtr)
-{
-    SceneBundleStage* stage = (SceneBundleStage*)stagePtr;
-    const char* path = stage->storedPath; // caller-set inputs, read before the struct is cleared
-    bool skinned = stage->skinned;
-
-    MemsetZero(stage, sizeof(*stage));
-    stage->skinned = skinned;
-
-    BundleCacheEntry* entry = BundleCacheAcquire(path);
-    if (!entry) {
-        AX_WARN("gltf scene load failed: %s", path);
-        return;
-    }
-    // capture only the stable fields - the entry pointer itself dangles across cache map
-    // mutations (grow/erase) that another thread/stage could trigger before Finalize runs
-    stage->bundle     = entry->bundle;
-    stage->storedPath = entry->path;
-    stage->cacheKey   = StringToHash64(path);
-
-    if (!LoadBundleImagesFromCache(stage->storedPath, stage->bundle, stage->staging))
-    {
-        BundleCacheReleaseKey(stage->cacheKey);
-        MemsetZero(stage, sizeof(*stage));
-        return;
-    }
-    stage->loaded = true;
-}
 
 void Scene_AddBundleStageAbort(SceneBundleStage* stage)
 {
     if (!stage->loaded) return;
     TextureSystem_ReleaseTextures(stage->staging, (u32)stage->bundle->numImages);
-    BundleCacheReleaseKey(stage->cacheKey);
-    stage->loaded = false;
-}
-
-u32 Scene_AddBundleFinalize(Scene* scene, SceneBundleStage* stage)
-{
-    if (!stage->loaded) return INVALID_BUNDLE;
-
-    // scene-specific gates that used to run before the load itself - now here so many stages
-    // can be prepared for the same scene concurrently and finalized in any order
-    u32 existing = Scene_FindBundle(scene, stage->storedPath);
-    if (existing != INVALID_BUNDLE) {
-        BundleCacheReleaseKey(stage->cacheKey);
-        return existing;
-    }
-
-    if (BitsetFindFirstEmpty(scene->bundleSlots, (s32)MAX_SCENE_BUNDLES) < 0) {
-        AX_WARN("maximum scene bundle count reached: %d", MAX_SCENE_BUNDLES);
-        BundleCacheReleaseKey(stage->cacheKey);
-        return INVALID_BUNDLE;
-    }
-
-    if (scene->texturesBaked && !Scene_RepackTextures(scene)) {
-        BundleCacheReleaseKey(stage->cacheKey);
-        return INVALID_BUNDLE;
-    }
-
-    SceneBundle* bundle     = stage->bundle;
-    const char*  storedPath = stage->storedPath;
-    Texture*     staging    = stage->staging;
-    bool         skinned    = stage->skinned;
-
-    AnimationBundleAlloc animAlloc;
-    MemsetZero(&animAlloc, sizeof(animAlloc));
-    bool animAppended = false;
-    if (skinned && !AnimationSystem_AppendBundle(&scene->animSystem, bundle, &animAlloc))
-        goto err_early;
-    animAppended = skinned;
-
-    s32 allocatedMaterialOffset = Scene_AllocateMaterialSlots(scene, (u32)bundle->numMaterials);
-    if (allocatedMaterialOffset < 0) goto err_early;
-
-    u32 materialOffset = (u32)allocatedMaterialOffset;
-    s32 appended       = TextureSystem_AppendBundle(&scene->textureSystem, bundle, staging, materialOffset);
-    TextureSystem_ReleaseTextures(staging, (u32)bundle->numImages);
-
-    if (!appended) goto err_materials;
-
-    RenderSet* set  = skinned ? &scene->skinnedSet : &scene->surfaceSet;
-    u32 renderIdx   = RenderSet_AddSceneBundle(set, bundle, materialOffset);
-    if (renderIdx == INVALID_BUNDLE) goto err_textures;
-
-    u32 bundleIdx = Scene_AllocBundleSlot(scene);
-    if (bundleIdx == INVALID_BUNDLE)
-    {
-        RenderSet_RemoveSceneBundle(set, renderIdx);
-        goto err_textures;
-    }
-    SceneBundleRef* ref     = &scene->bundleRefs[bundleIdx];
-    ref->path               = storedPath;
-    ref->bundle             = bundle;
-    ref->renderIdx          = renderIdx;
-    ref->materialOffset     = materialOffset;
-    ref->animOffset         = animAlloc.animOffset;
-    ref->animAlloc          = animAlloc;
-    ref->skinned            = skinned;
-    ref->cacheKey           = stage->cacheKey;
-    Scene_StampGroupBundle(set, renderIdx, bundleIdx);
-
-    if (materialOffset + (u32)bundle->numMaterials > scene->numMaterials)
-        scene->numMaterials = materialOffset + (u32)bundle->numMaterials;
-    scene->renderDataDirty = 1;
-    return bundleIdx;
-
-err_textures:
-    AX_ERROR("render set bundle registration failed: %s", storedPath);
-    TextureSystem_RemoveBundle(&scene->textureSystem, bundle, materialOffset);
-err_materials:
-    BitsetSetRange(scene->materialSlots, materialOffset, (u32)bundle->numMaterials, false);
-    if (animAppended) AnimationSystem_RemoveBundle(&scene->animSystem, animAlloc);
-    BundleCacheReleaseKey(stage->cacheKey);
-    return INVALID_BUNDLE;
-err_early:
-    TextureSystem_ReleaseTextures(staging, (u32)bundle->numImages);
-    if (animAppended) AnimationSystem_RemoveBundle(&scene->animSystem, animAlloc);
-    BundleCacheReleaseKey(stage->cacheKey);
-    return INVALID_BUNDLE;
-}
-
-u32 Scene_AddBundle(Scene* scene, const char* path, bool skinned)
-{
-    SceneBundleStage stage;
-    stage.storedPath = path;
-    stage.skinned    = skinned;
-    Scene_AddBundleStage(&stage);
-    if (!stage.loaded) return INVALID_BUNDLE;
-    return Scene_AddBundleFinalize(scene, &stage);
-}
-
-const SceneBundle* Scene_AcquireBundlePeek(const char* path)
-{
-    BundleCacheEntry* entry = BundleCacheAcquire(path);
-    return entry ? entry->bundle : NULL;
-}
-
-u32 Scene_DefaultAnimation(const Scene* scene, u32 bundleIdx)
-{
-    if (!scene || bundleIdx >= scene->numBundles) return 0u;
-    const SceneBundleRef* ref = &scene->bundleRefs[bundleIdx];
-    u32 numAnims = ref->bundle ? (u32)ref->bundle->numAnimations : 0u;
-    if (numAnims == 0u) return 0u;
-    return ref->animOffset + (numAnims > 1u ? 1u : 0u);
-}
-
-u32 Scene_FindBundleForRenderGroup(const Scene* scene, bool skinned, u32 groupIdx)
-{
-    if (!scene) return INVALID_BUNDLE;
-    const RenderSet* set = skinned ? &scene->skinnedSet : &scene->surfaceSet;
-    if (groupIdx >= set->numGroups) return INVALID_BUNDLE;
-
-    // each group stores its owning scene bundle index directly. it is a stable handle and rides
-    // along through group compaction, so this is a plain O(1) field read.
-    return set->primitiveGroups[groupIdx].bundleIdx;
-}
-
-void Scene_ReleaseBundlePeek(const char* path)
-{
-    BundleCacheRelease(path);
-}
-
-u32 Scene_AddBundleAuto(Scene* scene, const char* path)
-{
-    // hold a reference while peeking so the bundle loads only once
-    BundleCacheEntry* entry = BundleCacheAcquire(path);
-    if (!entry) {
-        AX_ERROR("gltf scene load failed: %s", path);
-        return INVALID_BUNDLE;
-    }
-    bool skinned = entry->bundle->numSkins > 0;
-    u32 bundleIdx = Scene_AddBundle(scene, path, skinned);
-    BundleCacheRelease(path);
-    return bundleIdx;
-}
-
-void Scene_AddBundleBakedStage(void* stagePtr)
-{
-    SceneBundleStage* stage = (SceneBundleStage*)stagePtr;
-    const char* path = stage->storedPath; // caller-set inputs, read before the struct is cleared
-    u32 materialOffset = stage->materialOffset;
-
-    MemsetZero(stage, sizeof(*stage));
-    stage->materialOffset = materialOffset;
-
-    BundleCacheEntry* entry = BundleCacheAcquire(path);
-    if (!entry)
-    {
-        AX_ERROR("scene bundle load failed: %s", path);
-        return;
-    }
-    stage->bundle     = entry->bundle;
-    stage->storedPath = entry->path;
-    stage->cacheKey   = StringToHash64(path);
-    stage->loaded     = true;
-}
-
-void Scene_AddBundleBakedStageAbort(SceneBundleStage* stage)
-{
-    if (!stage->loaded) return;
     BundleCacheReleaseKey(stage->cacheKey);
     stage->loaded = false;
 }
@@ -504,7 +308,7 @@ u32 Scene_AddBundleBakedFinalize(Scene* scene, SceneBundleStage* stage)
     }
 
     SceneBundle* bundle        = stage->bundle;
-    const char*  storedPath    = stage->storedPath;
+    const char*  storedPath    = stage->path;
     u32          materialOffset = stage->materialOffset;
     bool         skinned       = bundle->numSkins > 0;
 
@@ -550,19 +354,188 @@ u32 Scene_AddBundleBakedFinalize(Scene* scene, SceneBundleStage* stage)
         scene->numMaterials = materialOffset + (u32)bundle->numMaterials;
     scene->renderDataDirty = 1;
     return bundleIdx;
-err_bundle:
-    if (animAppended) AnimationSystem_RemoveBundle(&scene->animSystem, animAlloc);
+    err_bundle:
+        if (animAppended) AnimationSystem_RemoveBundle(&scene->animSystem, animAlloc);
     BitsetSetRange(scene->materialSlots, materialOffset, (u32)bundle->numMaterials, false);
     BundleCacheReleaseKey(stage->cacheKey);
     return INVALID_BUNDLE;
 }
 
+u32 Scene_AddBundleFinalize(Scene* scene, SceneBundleStage* stage)
+{
+    if (!stage->loaded) return INVALID_BUNDLE;
+
+    // scene-specific gates that used to run before the load itself - now here so many stages
+    // can be prepared for the same scene concurrently and finalized in any order
+    u32 existing = Scene_FindBundle(scene, stage->cacheKey);
+    if (existing != INVALID_BUNDLE) {
+        BundleCacheReleaseKey(stage->cacheKey);
+        return existing;
+    }
+
+    if (BitsetFindFirstEmpty(scene->bundleSlots, (s32)MAX_SCENE_BUNDLES) < 0) {
+        AX_WARN("maximum scene bundle count reached: %d", MAX_SCENE_BUNDLES);
+        BundleCacheReleaseKey(stage->cacheKey);
+        return INVALID_BUNDLE;
+    }
+
+    if (scene->texturesBaked && !Scene_RepackTextures(scene)) {
+        BundleCacheReleaseKey(stage->cacheKey);
+        return INVALID_BUNDLE;
+    }
+
+    SceneBundle* bundle     = stage->bundle;
+    Texture*     staging    = stage->staging;
+
+    AnimationBundleAlloc animAlloc;
+    MemsetZero(&animAlloc, sizeof(animAlloc));
+    bool animAppended = false;
+    if (stage->skinned && !AnimationSystem_AppendBundle(&scene->animSystem, bundle, &animAlloc))
+        goto err_early;
+    animAppended = stage->skinned;
+
+    s32 allocatedMaterialOffset = Scene_AllocateMaterialSlots(scene, (u32)bundle->numMaterials);
+    if (allocatedMaterialOffset < 0) goto err_early;
+
+    u32 materialOffset = (u32)allocatedMaterialOffset;
+    s32 appended       = TextureSystem_AppendBundle(&scene->textureSystem, bundle, staging, materialOffset);
+    TextureSystem_ReleaseTextures(staging, (u32)bundle->numImages);
+
+    if (!appended) goto err_materials;
+
+    RenderSet* set  = stage->skinned ? &scene->skinnedSet : &scene->surfaceSet;
+    u32 renderIdx   = RenderSet_AddSceneBundle(set, bundle, materialOffset);
+    if (renderIdx == INVALID_BUNDLE) goto err_textures;
+
+    u32 bundleIdx = Scene_AllocBundleSlot(scene);
+    if (bundleIdx == INVALID_BUNDLE)
+    {
+        RenderSet_RemoveSceneBundle(set, renderIdx);
+        goto err_textures;
+    }
+    SceneBundleRef* ref     = &scene->bundleRefs[bundleIdx];
+    ref->path               = stage->path;
+    ref->bundle             = bundle;
+    ref->renderIdx          = renderIdx;
+    ref->materialOffset     = materialOffset;
+    ref->animOffset         = animAlloc.animOffset;
+    ref->animAlloc          = animAlloc;
+    ref->skinned            = stage->skinned;
+    ref->cacheKey           = stage->cacheKey;
+    Scene_StampGroupBundle(set, renderIdx, bundleIdx);
+
+    if (materialOffset + (u32)bundle->numMaterials > scene->numMaterials)
+        scene->numMaterials = materialOffset + (u32)bundle->numMaterials;
+    scene->renderDataDirty = 1;
+    return bundleIdx;
+
+err_textures:
+    AX_ERROR("render set bundle registration failed: %s", stage->path);
+    TextureSystem_RemoveBundle(&scene->textureSystem, bundle, materialOffset);
+err_materials:
+    BitsetSetRange(scene->materialSlots, materialOffset, (u32)bundle->numMaterials, false);
+    if (animAppended) AnimationSystem_RemoveBundle(&scene->animSystem, animAlloc);
+    BundleCacheReleaseKey(stage->cacheKey);
+    return INVALID_BUNDLE;
+err_early:
+    TextureSystem_ReleaseTextures(staging, (u32)bundle->numImages);
+    if (animAppended) AnimationSystem_RemoveBundle(&scene->animSystem, animAlloc);
+    BundleCacheReleaseKey(stage->cacheKey);
+    return INVALID_BUNDLE;
+}
+
+u32 Scene_AddBundle(Scene* scene, SceneBundle* bundle)
+{
+    SceneBundleStage stage = {};
+    StringCopy("NoPath\0", stage.path, sizeof(stage.path));
+    stage.bundle   = bundle;
+    stage.cacheKey = MurmurHash((u64)bundle);
+    Scene_AddBundleStage(&stage, false);
+    if (!stage.loaded) return INVALID_BUNDLE;
+    stage.skinned = stage.bundle->numSkins > 0;
+    return Scene_AddBundleFinalize(scene, &stage);
+}
+
+u32 Scene_AddBundleFromPath(Scene* scene, const char* path)
+{
+    SceneBundleStage stage;
+    StringCopy(path, stage.path, sizeof(stage.path));
+    stage.cacheKey = StringToHash64(path);
+    Scene_AddBundleStage(&stage, false);
+    if (!stage.loaded) return INVALID_BUNDLE;
+    stage.skinned = stage.bundle->numSkins > 0;
+    return Scene_AddBundleFinalize(scene, &stage);
+}
+
+const SceneBundle* Scene_AcquireBundlePeek(const char* path)
+{
+    SceneBundleStage stage = {
+        .bundle = NULL,
+        .cacheKey = StringToHash64(path)
+    };
+    StringCopy(path, stage.path, sizeof(stage.path));
+    BundleCacheEntry* entry = BundleCacheAcquire(&stage);
+    return entry ? entry->bundle : NULL;
+}
+
+u32 Scene_DefaultAnimation(const Scene* scene, u32 bundleIdx)
+{
+    if (!scene || bundleIdx >= scene->numBundles) return 0u;
+    const SceneBundleRef* ref = &scene->bundleRefs[bundleIdx];
+    u32 numAnims = ref->bundle ? (u32)ref->bundle->numAnimations : 0u;
+    if (numAnims == 0u) return 0u;
+    return ref->animOffset + (numAnims > 1u ? 1u : 0u);
+}
+
+u32 Scene_FindBundleForRenderGroup(const Scene* scene, bool skinned, u32 groupIdx)
+{
+    if (!scene) return INVALID_BUNDLE;
+    const RenderSet* set = skinned ? &scene->skinnedSet : &scene->surfaceSet;
+    if (groupIdx >= set->numGroups) return INVALID_BUNDLE;
+
+    // each group stores its owning scene bundle index directly. it is a stable handle and rides
+    // along through group compaction, so this is a plain O(1) field read.
+    return set->primitiveGroups[groupIdx].bundleIdx;
+}
+
+void Scene_ReleaseBundlePeek(const char* path)
+{
+    BundleCacheRelease(path);
+}
+
+void Scene_AddBundleStage(void* stagePtr, bool baked)
+{
+    SceneBundleStage* stage = (SceneBundleStage*)stagePtr;
+    BundleCacheEntry* entry = BundleCacheAcquire(stage);
+    if (!entry) {
+        AX_WARN("gltf scene load failed: %s", stage->path);
+        return;
+    }
+    // capture only the stable fields - the entry pointer itself dangles across cache map
+    // mutations (grow/erase) that another thread/stage could trigger before Finalize runs
+    stage->bundle = entry->bundle;
+    if (!baked && !LoadBundleImagesFromCache(stage->path, stage->bundle, stage->staging))
+    {
+        BundleCacheReleaseKey(stage->cacheKey);
+        MemsetZero(stage, sizeof(*stage));
+        return;
+    }
+    stage->loaded = true;
+}
+
+void Scene_AddBundleBakedStageAbort(SceneBundleStage* stage)
+{
+    if (!stage->loaded) return;
+    BundleCacheReleaseKey(stage->cacheKey);
+    stage->loaded = false;
+}
+
 u32 Scene_AddBundleBaked(Scene* scene, const char* path, u32 materialOffset)
 {
     SceneBundleStage stage;
-    stage.storedPath     = path;
+    StringCopy(path, stage.path, 512);
     stage.materialOffset = materialOffset;
-    Scene_AddBundleBakedStage(&stage);
+    Scene_AddBundleStage(&stage, true);
     if (!stage.loaded) return INVALID_BUNDLE;
     return Scene_AddBundleBakedFinalize(scene, &stage);
 }

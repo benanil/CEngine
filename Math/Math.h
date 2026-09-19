@@ -1,6 +1,3 @@
-#ifndef MATH_H
-#define MATH_H
-
 // most of the functions are accurate and faster than stl 
 // convinient for game programming, be aware of speed and preciseness tradeoffs because cstd has more accurate functions
 // https://seblagarde.wordpress.com/2014/12/01/inverse-trigonometric-functions-gpu-optimization-for-amd-gcn-architecture/
@@ -11,6 +8,134 @@
 // Half         : IEEE 16bit float, conversion functions
 // Color        : packing and unpacking rgba8 color
 // Ease         : easeIn, easeOut...
+
+
+#ifdef PREVIEW_MATH
+u8    IsNanF32(f32 value);
+u8    IsInfiniteF32(f32 value);
+u8    IsFiniteF32(f32 value);
+f32   VecMinVal(v128f a);
+v128f Vec3Cross(v128f vec0, v128f vec1);
+
+f32 VecMaxVal(v128f a);
+u32 VeciMinVal(v128u a);
+u32 VeciMaxVal(v128u a);
+
+f32 Min3(v128f a);
+f32 Max3(v128f a);
+u32 Mini3(v128u a);
+u32 Maxi3(v128u a);
+
+#define VecClamp01(v) VecClamp(v, VecZero(), VecOne())
+void  Vec3Store(float* f, v128f v);
+v128f Vec3Proj(v128f v, v128f n);
+v128f Vec3Reflect(v128f in, v128f normal);
+// Valid input range -1..1 output is -pi..pi
+v128f ACosV(v128f x);
+f32   Vec3Angle(v128f a, v128f b);
+v128f VecHSum(v128f v);
+v128f VecCopySign(v128f x, v128f y);
+v128f VecLerp(v128f x, v128f y, f32 t);
+v128f VecStep(v128f edge, v128f x);
+v128f VecFract(v128f x);
+//------------------------------------------------------------------------------
+v128f VecModAngles(v128f angles);
+v128f VecSin(const v128f V);
+v128f VecCos(const v128f V);
+void  VecSinCos(v128f V, v128f* pSin, v128f* pCos);
+v128f VecAtan(v128f x);
+v128f VecAtan2(v128f y, v128f x);
+u8 IsPointInsideAABB(v128f point, v128f aabbMin, v128f aabbMax);
+
+f32 IntersectAABB(v128f origin, v128f invDir, v128f aabbMin, v128f aabbMax, f32 minSoFar);
+
+// moller trumbore, ported from the old engine. dir may be unnormalized so t stays
+bool IntersectTriangle(v128f origin, v128f dir, v128f v0, v128f v1, v128f v2, RayHit* hit);
+// ray vs plane through planeOrigin with the given normal. out: false when parallel
+bool RayPlaneHit(v128f rayOrigin, v128f rayDir, v128f planeOrigin, v128f normal, v128f* outHit);
+
+f32 Sqrf(f32 x);
+f32 Sqrtf(f32 a);
+f32 Lerpf32(f32 x, f32 y, f32 t);
+u8  IsZerof(f32 x);
+u8  AlmostEqualf(f32 x, f32 y);
+f32 Signf(f32 x);
+s32 Sign32(s32 x);
+f32 CopySignf(f32 x, f32 y);
+u8  IsNanf(f32 f);
+s64 Int64MulDiv(s64 value, s64 numer, s64 denom);
+f32 FModf(f32 x, f32 y);
+f32 FMod(f32 x, f32 y);
+s32 FloorDiv(s32 a, s32 b);
+
+// https://github.com/id-Software/DOOM-3/blob/master/neo/idlib/math/Math.h
+f32 Expf(f32 f);
+f32 Powf(f32 a, f32 b);
+f32 Logf(f32 x);
+// if you want log10 for integer you can look at Algorithms.hpp
+f32 Log10f(f32 x);
+f32 Log2f(f32 val);
+u32 Log2u32(u32 v);
+u32 Log10_32(u32 v);
+s32 Log10_64(u64 v);
+/*//////////////////////////////////////////////////////////////////////////*/
+/*                      Trigonometric Functions                             */
+f32  ATan(f32 x);
+// Warning! if y and x is zero this will return HalfPI instead of 0.0f unlike cstdlib
+f32  ATan2(f32 y, f32 x);
+// Valid input range -1..1 output is -pi..pi
+f32  ACos(f32 x);
+f32  ACosPositive(f32 x);
+// input [-1, 1] and output [-PI/2, PI/2]
+f32  ASin(f32 x);
+// warning: accepts input between -TwoPi and TwoPi  if (Abs(x) > TwoPi) use x = FMod(x + PI, TwoPI) - PI;
+f32  RepeatPI(f32 x);
+f32  RSqrtf(f32 x);
+f32  CubeRootf(f32 val); // cbrt
+f32  Sin0pi(f32 x);
+f32  Sin(f32 x);
+// Accepts input between -TwoPi and TwoPi, use CosR if value is bigger than this range  
+f32  Cos(f32 x);
+// R suffix allows us to use with greater range than -TwoPI, TwoPI
+f32  SinR(f32 x);
+// R suffix allows us to use with greater range than -TwoPI, TwoPI
+f32  CosR(f32 x);
+void SinCos(f32 x, f32* sp, f32* cp);
+f32  Tan(f32 a); // tanf equivalent
+f32  ATan2PI(f32 y, f32 x) { return ATan2(y, x) / MATH_PI; }
+f32  ASinPI(f32 z) { return ASin(z) / MATH_PI; }
+f32  ACosPI(f32 x) { return ACos(x) / MATH_PI; }
+f32  CosPI(f32 x)  { return Cos(x) / MATH_PI; }
+f32  SinPI(f32 x)  { return Sin(x) / MATH_PI; }
+///////////////////////////////////////////////////////////////////////////
+// Packing
+u16  PackSnorm16(f32 x); // packs -1,1 range f1 to short
+u16  PackUnorm16(f32 x); // packs 0,1 range f1 to short
+f32  UnpackSnorm16(u16 x);
+f32  UnpackUnorm16(u16 x);
+
+///////////////////////////////////////////////////////////////////////////
+// Easing  to see visually: https://easings.net/ 
+f32  EaseIn(f32 x);
+f32  EaseOut(f32 x);
+f32  EaseInOut(f32 x);
+// integral symbol shaped interpolation, similar to EaseInOut
+f32  SmoothStep(f32 edge0, f32 edge1, f32 x);
+f32  EaseInSine(f32 x);
+f32  EaseOutSine(f32 x);
+
+///////////////////////////////////////////////////////////////////////////
+// Other
+// Gradually changes a value towards a desired goal over time.
+f32  SmoothDamp(f32 current, f32 target, f32* currentVelocity, f32 smoothTime, f32 maxSpeed, f32 deltaTime);
+f32  Remap(f32 in, f32 inMin, f32 inMax, f32 outMin, f32 outMax);
+f32  Repeat(f32 t, f32 length);
+f32  Step(f32 edge, f32 x);
+f32  LineDistance(f32 x0, f32 y0, f32 x1, f32 y1, f32 x2, f32 y2);
+#endif // MATH_H
+
+#ifndef MATH_H
+#define MATH_H
 
 #include "../Include/Common.h"
 
@@ -376,7 +501,7 @@ purefn f32 Sqrtf(f32 a) {
     #endif
 }
 
-purefn f32 Lerpf(f32 x, f32 y, f32 t) {
+purefn f32 Lerpf32(f32 x, f32 y, f32 t) {
     return x + (y - x) * t;
 }
 

@@ -69,7 +69,7 @@ typedef struct FixedPow2Allocator_ {
     size_t         currentCapacity;
     FixedFragment* base;
     FixedFragment* current;
-} FixedPow2Allocator;
+} Pow2Allocator;
 
 typedef struct RangeU32_
 {
@@ -135,23 +135,28 @@ int    OSFree(void *ptr, size_t size);
 #define ArenaArray(arena, type, cnt) ((type*)ArenaAllocAlign(arena, sizeof(type) * (cnt), _Alignof(type)))
 #define ArenaAllocGlobal(cnt)        (ArenaAllocAlign(&GlobalArena, (cnt), DEFAULT_ALIGN))
 
-void* AllocateTLSFGlobal(size_t size);
-void* ReAllocateTLSFGlobal(void* ptr, size_t size);
-void  DeAllocateTLSFGlobal(void* ptr);
-void* AllocZeroTLSFGlobal(size_t count, size_t size);
+void* AllocTLSF(size_t size);
+void* CAllocTLSF(size_t size);
+#define AllocTLSFArray(Type, Cnt) ((Type*)AllocTLSF((Cnt) * sizeof(Type)))
+#define CAllocTLSFArray(Type, Cnt) ((Type*)CAllocTLSF((Cnt) * sizeof(Type)))
 
-void RangeAllocator_Init(RangeAllocator* alloc, RangeU32* freeRanges, uint32_t maxFreeRanges, uint32_t capacity);
-int  RangeAllocator_Alloc(RangeAllocator* alloc, uint32_t count, uint32_t* outOffset);
-void RangeAllocator_Free(RangeAllocator* alloc, uint32_t offset, uint32_t count);
+void* ReAllocTLSF(void* ptr, size_t size);
+void  DeAllocTLSF(void* ptr);
+void* AllocZeroTLSF(size_t count, size_t size);
+
+void RangeAlloc_Init(RangeAllocator* alloc, RangeU32* freeRanges, uint32_t maxFreeRanges, uint32_t capacity);
+int  RangeAlloc(RangeAllocator* alloc, uint32_t count, uint32_t* outOffset);
+void RangeAlloc_Free(RangeAllocator* alloc, uint32_t offset, uint32_t count);
 
 // FixedPow2Allocator
-void  FixedPow2Allocator_Init(FixedPow2Allocator* alloc, size_t initialSize);
-void  FixedPow2Allocator_CheckFixGrow(FixedPow2Allocator* alloc, size_t countBytes);
-void* FixedPow2Allocator_Allocate(FixedPow2Allocator* alloc, size_t countBytes);
-void* FixedPow2Allocator_AllocateUninitialized(FixedPow2Allocator* alloc, size_t countBytes);
-void  FixedPow2Allocator_Copy(FixedPow2Allocator* alloc, const FixedPow2Allocator* other);
-void* FixedPow2Allocator_TakeOwnership(FixedPow2Allocator* alloc);
-void  FixedPow2Allocator_Destroy(FixedPow2Allocator* alloc);
+void  Pow2Alloc_Init(Pow2Allocator* alloc, size_t initialSize);
+void  Pow2Alloc_CheckFixGrow(Pow2Allocator* alloc, size_t countBytes);
+void* Pow2Alloc(Pow2Allocator* alloc, size_t countBytes);
+#define Pow2AllocArray(alloc, Type, Cnt) ((Type*)Pow2Alloc(alloc, (Cnt) * sizeof(Type)))
+void* Pow2Alloc_Uninitialized(Pow2Allocator* alloc, size_t countBytes);
+void  Pow2Alloc_Copy(Pow2Allocator* alloc, const Pow2Allocator* other);
+void* Pow2Alloc_TakeOwnership(Pow2Allocator* alloc);
+void  Pow2Alloc_Destroy(Pow2Allocator* alloc);
     
 #if defined(__cplusplus)
 }

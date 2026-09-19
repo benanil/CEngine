@@ -38,16 +38,16 @@ purefn u32 VCALL PackXY11Z10Unorm(v128f v)
 }
 
 purefn u32 VCALL PackXY11Z10UnormFixed(v128f v, float scale) {
-	return PackXY11Z10Unorm(VecDivf(v, scale));
+    return PackXY11Z10Unorm(VecDivf(v, scale));
 }
 
 purefn v128f VCALL UnpackXY11Z10UnormFixed(u32 v, float scale) {
-	v128u u = VeciSet1(v);
+    v128u u = VeciSet1(v);
     u = VeciSrl(u, VeciSetR(0, 11, 22, 0));
-	u = VeciAnd(u, VeciSetR(0x7FF, 0x7FF, 0x3FF, 0));
-	v128f f = VecI32ToF32(u);
-	f = VecDiv(f, VecSetR((f32)0x7FF, (f32)0x7FF, (f32)0x3FF, (f32)0));
-	return VecMulf(f, scale);
+    u = VeciAnd(u, VeciSetR(0x7FF, 0x7FF, 0x3FF, 0));
+    v128f f = VecI32ToF32(u);
+    f = VecDiv(f, VecSetR((f32)0x7FF, (f32)0x7FF, (f32)0x3FF, (f32)0));
+    return VecMulf(f, scale);
 }
 
 static inline u64 VCALL PackUnorm16x4(v128f val)

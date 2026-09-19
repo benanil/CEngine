@@ -152,6 +152,7 @@ target_sources(${EXECUTABLE_NAME} PRIVATE
     Source/AssetManagement/GLTFParser.c
     Source/AssetManagement/SceneNormalize.c
     Source/AssetManagement/MeshBake.c
+    Source/AssetManagement/MeshBuilder.c
     Source/AssetManagement/AssetManager.c
     Source/AssetManagement/BasisBinding.cpp
     Source/AssetManagement/TextureSystem.c

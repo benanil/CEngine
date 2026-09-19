@@ -1,8 +1,3 @@
-#ifndef MATRIX_H
-#define MATRIX_H
-
-#include "Quaternion.h"
-
 /*********************************************************************************
     *    Description:                                                                *
     *        Row major right handed vectorized M33x3 and M44x4 structures.   *
@@ -14,11 +9,74 @@
     *        Anilcan Gulkaya 2025 anilcangulkaya7@gmail.com github @benanil          *
     *********************************************************************************/
 
+#ifdef PREVIEW_MATRIX
+mat3x3 M33Multiply(mat3x3 a, mat3x3 b);
+float3 M33MultiplyF3(mat3x3 m, float3 v);
+    
+mat3x3 TBN(float3 normal, float3 tangent, float3 bitangent);
+mat3x3 Identity();
+
+mat3x3 M33LookAt(float3 direction, float3 up);
+Quaternion M33ToQuaternion(mat3x3 m);
+mat4x4 M44Identity();
+mat4x4 M44FromPosition(f32 x, f32 y, f32 z);
+mat4x4 M44FromPositionPtr(const f32* vec3);
+mat4x4 M44FromPositionF3(float3 vec3);
+mat4x4 M44FromScale(f32 ScaleX, f32 ScaleY, f32 ScaleZ);
+mat4x4 M44FromScaleVec(float3 vec3);
+mat4x4 M44FromScalePtr(f32* vec3);
+mat4x4 M44FromScalef(f32 scale);
+mat4x4 M44CreateRotation(float3 right, float3 up, float3 forward);
+// this will not work on camera matrix this is for only transformation matricies
+mat4x4 InverseTransform(mat4x4 inM);
+v128f  Mat2Mul(v128f vec1, v128f vec2);
+// 2x2 row major Matrix adjugate multiply (A#)*B
+v128f  Mat2AdjMul(v128f vec1, v128f vec2);
+// 2x2 row major Matrix multiply adjugate A*(B#)
+v128f  Mat2MulAdj(v128f vec1, v128f vec2);
+mat4x4 M44Inverse(mat4x4 m);
+mat4x4 M44Multiply(mat4x4 in0, const mat4x4 in1);
+v128f  Vec4Transform(v128f v, const v128f r[4]);
+v128f  Vec3Transform(v128f vec, const v128f r[4]);
+mat4x4 PerspectiveFovRH(f32 fov, f32 width, f32 height, f32 zNear, f32 zFar);
+mat4x4 PerspectiveFovRH_ReverseZ(f32 fov, f32 width, f32 height, f32 zNear, f32 zFar);
+mat4x4 M44Transpose(mat4x4 M);
+mat4x4 M44LookAtRHVec(v128f EyePosition, v128f Center, v128f UpDirection);
+mat4x4 M44LookAtRH(const float3 eye, const float3 center, const float3 up);
+mat4x4 M44OrthoRH(f32 left, f32 right, f32 bottom, f32 top, f32 zNear, f32 zFar);
+mat4x4 M44PositionRotationScaleVec(v128f position, Quaternion rotation, v128f scale);
+mat4x4 M44PositionRotationVec(v128f position, Quaternion rotation);
+mat4x4 M44PositionRotationScale(float3 position, Quaternion rotation, float3 scale);
+mat4x4 M44PositionRotationScalePtr(const f32* position, const f32* rotation, const f32* scale);
+float3 M44ExtractPosition(mat4x4 matrix);
+Quaternion M44ExtractRotation(mat4x4 M, u8 rowNormalize);
+float3 M44ExtractScale(mat4x4 matrix);
+v128f  M44ExtractScaleV(mat4x4 matrix);
+mat4x4 M44FromQuaternionV(Quaternion q);
+mat4x4 M44FromQuaternionF(const f32* quaternion);
+mat4x4 M44RotationX(f32 angleRadians);
+mat4x4 M44RotationY(f32 angleRadians);
+mat4x4 M44RotationZ(f32 angleRadians);
+FrustumPlanes CreateFrustumPlanes(mat4x4 viewProjection);
+FrustumPlanes CreateFrustumPlanesRevZ(mat4x4 viewProjection);
+void   NormalizeFrustumPlanes(FrustumPlanes* fp);
+v128f  MaxPointAlongNormal(v128f min, v128f max, v128f n);
+bool   CheckAABBCulled(v128f min, v128f max, const v128f frustumPlanes[6]);
+bool   isPointCulled(float3 _point, mat4x4 matrix, const v128f frustumPlanes[6]);
+float2 WorldToNDC(mat4x4 viewProj, float3 worldPos);
+float2 WorldToScreenCoord(mat4x4 viewProj, float3 worldPos, int width, int height);
+mat4x4 DQToMatrix(DualQuaternion dq);
+#endif
+
+#ifndef MATRIX_H
+#define MATRIX_H
+
+#include "Quaternion.h"
+
 typedef union M44_ {
     v128f r[4];
     f32 m[4][4];
 } mat4x4;
-
 
 typedef union M33_ {
     float3 r[3];

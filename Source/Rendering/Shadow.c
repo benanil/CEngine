@@ -38,8 +38,8 @@ static float CascadeSplitDistance(float shadowNear, float shadowFar, u32 cascade
     float splitNear = Maxf32(shadowNear, Minf32(g_RenderSettings.shadowSplitNearDistance, shadowFar * 0.5f));
     float p = (float)(cascade + 1u) / (float)SHADOW_CASCADE_COUNT;
     float logSplit = splitNear * Powf(shadowFar / splitNear, p);
-    float uniformSplit = Lerpf(splitNear, shadowFar, p);
-    return Maxf32(shadowNear, Minf32(shadowFar, Lerpf(uniformSplit, logSplit, Saturatef32(g_RenderSettings.shadowPSSMLambda))));
+    float uniformSplit = Lerpf32(splitNear, shadowFar, p);
+    return Maxf32(shadowNear, Minf32(shadowFar, Lerpf32(uniformSplit, logSplit, Saturatef32(g_RenderSettings.shadowPSSMLambda))));
 }
 
 void UploadShadowCascadeBuffer(const ShadowCascadeData* cascades)

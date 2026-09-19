@@ -279,7 +279,7 @@ static _WDIR * _wopendir(const wchar_t *dirname)
 		return NULL;
 	}
 
-	_WDIR *dirp = (_WDIR*) AllocateTLSFGlobal(sizeof(struct _WDIR));
+	_WDIR *dirp = (_WDIR*) AllocTLSF(sizeof(struct _WDIR));
 	if (!dirp)
 		return NULL;
 
@@ -294,7 +294,7 @@ static _WDIR * _wopendir(const wchar_t *dirname)
 	size_t n = wcslen(dirname);
 #endif
 
-	dirp->patt = (wchar_t*) AllocateTLSFGlobal(sizeof(wchar_t) * n + 16);
+	dirp->patt = (wchar_t*) AllocTLSF(sizeof(wchar_t) * n + 16);
 	if (dirp->patt == NULL)
 		goto exit_closedir;
 
@@ -396,8 +396,8 @@ static int _wclosedir(_WDIR *dirp)
 		FindClose(dirp->handle);
 	}
 
-	DeAllocateTLSFGlobal(dirp->patt);
-	DeAllocateTLSFGlobal(dirp);
+	DeAllocTLSF(dirp->patt);
+	DeAllocTLSF(dirp);
 	return /*success*/0;
 }
 
@@ -470,7 +470,7 @@ static DIR *opendir(const char *dirname)
 		return NULL;
 	}
 
-	struct DIR *dirp = (DIR*) AllocateTLSFGlobal(sizeof(struct DIR));
+	struct DIR *dirp = (DIR*) AllocTLSF(sizeof(struct DIR));
 	if (!dirp)
 		return NULL;
 
@@ -487,7 +487,7 @@ static DIR *opendir(const char *dirname)
 	return dirp;
 
 exit_failure:
-	DeAllocateTLSFGlobal(dirp);
+	DeAllocTLSF(dirp);
 	return NULL;
 }
 
@@ -566,7 +566,7 @@ static int closedir(DIR *dirp)
 	ok = _wclosedir(dirp->wdirp);
 	dirp->wdirp = NULL;
 
-	DeAllocateTLSFGlobal(dirp);
+	DeAllocTLSF(dirp);
 	return ok;
 
 exit_failure:

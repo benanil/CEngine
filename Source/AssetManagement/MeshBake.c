@@ -1,5 +1,4 @@
 #include "Include/AssetManager.h"
-#include "Include/Graphics.h"
 #include "Include/Memory.h"
 #include "Include/Platform.h"
 #include "Include/Algorithm.h"
@@ -210,8 +209,8 @@ static u16 PackVertexColorRGBA4444(const APrimitive* primitive, s32 vertexIndex)
         f32 channel = ReadColorChannel(src + (size_t)c * (size_t)componentSize, colorType);
         rgba[c] = (u32)(channel * 31.0f + 0.5f) & 0x1Fu;
     }
-	// 0:1= 0 -> 0.5 alpha, 1 -> 1.0 alpha
-	u16 opacity = primitive->colorCount >= 4 && ReadColorChannel(src + (size_t)3 * (size_t)componentSize, colorType) > 0.5f;
+    // 0:1= 0 -> 0.5 alpha, 1 -> 1.0 alpha
+    u16 opacity = primitive->colorCount >= 4 && ReadColorChannel(src + (size_t)3 * (size_t)componentSize, colorType) > 0.5f;
     return (u16)(rgba[0] | (rgba[1] << 5u) | (rgba[2] << 10u) | (opacity << 15u));
 }
 
@@ -245,17 +244,17 @@ static void SurfaceVerticesForPrimitive(APrimitive* primitive, AVertex* currVert
         currVertex[v].texCoord = Float2ToHalf2(&texCoord.x);
         currVertex[v].octTbn = PackNormalTangent(Vec3Load(&normal.x), tangent);
     }
-	
-	const u8* colors = (const u8*)primitive->vertexAttribs[AAttribIdx_COLOR_0];
-	if (colors && primitive->colorCount >= 3)
-	{
-	    for (s32 v = 0; v < primitive->numVertices; v++)
-	    {
+    
+    const u8* colors = (const u8*)primitive->vertexAttribs[AAttribIdx_COLOR_0];
+    if (colors && primitive->colorCount >= 3)
+    {
+        for (s32 v = 0; v < primitive->numVertices; v++)
+        {
             currVertex[v].position &= 0x0000FFFFFFFFFFFFull; // clear vertex color
-		    currVertex[v].position |= (u64)PackVertexColorRGBA4444(primitive, v) << 48u;
-	    }
-	}
-	if (generatedNormals) ArenaPopGlobal((u64)(primitive->numVertices + 1) * sizeof(float3));
+            currVertex[v].position |= (u64)PackVertexColorRGBA4444(primitive, v) << 48u;
+        }
+    }
+    if (generatedNormals) ArenaPopGlobal((u64)(primitive->numVertices + 1) * sizeof(float3));
 }
 
 static void BoundsForPrimitive(APrimitive* primitive)
@@ -707,8 +706,3 @@ s32 BakeSceneMeshesAndAnimations(SceneBundle* gltf, void** outVertexHeapPtr, voi
     AX_LOG("mesh bake complete: vertices=%d indices=%d", gltf->totalVertices, gltf->totalIndices);
     return 1;
 }
-
-void GenerateLOD_50_GLTF(SceneBundle* sceneBundle) { (void)sceneBundle; }
-
-void GenerateLOD_75_GLTF(SceneBundle* sceneBundle) { (void)sceneBundle; }
-

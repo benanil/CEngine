@@ -92,7 +92,7 @@ float3 DecodeNormalRG(float2 normalRG)
 
 float3 ApplyPBRLight(float3 albedo, float3 normal, float3 viewDir, float metallic, float perceptualRoughness, float3 radiance, float3 lightDir);
 
-float3 ApplyPBR(float3 albedo, float3 normal, float3 viewDir, float metallic, float perceptualRoughness, float shadow, float ao, float3 lightDir, float ambientBoost = 1.0f)
+float3 ApplyPBR(float3 albedo, float3 normal, float3 viewDir, float metallic, float perceptualRoughness, float shadow, float ao, float3 lightDir, float ambientBoost)
 {
     normal    = normalize(normal);
 
@@ -111,7 +111,7 @@ float3 ApplyPBR(float3 albedo, float3 normal, float3 viewDir, float metallic, fl
     // before applying visibility to direct BRDF terms, otherwise blocked specular leaks.
     float directShadow = saturate((shadow - 0.2f) * 1.25f);
     float3 direct = ApplyPBRLight(albedo, normal, viewDir, metallic, perceptualRoughness, radiance, lightDir) * directShadow;
-	float3 ambient = albedo * 0.10f * saturate(ao) * ambientBoost;
+    float3 ambient = albedo * 0.10f * saturate(ao) * ambientBoost;
     return ambient + direct;
 }
 

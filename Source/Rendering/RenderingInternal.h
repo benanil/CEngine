@@ -66,6 +66,7 @@ typedef struct ScenePassContext_
     u32 numColorTargets;
     SDL_GPUDepthStencilTargetInfo* depthTarget;
     ShadowCascadeData shadowCascades;
+    Scene* scene;
     mat4x4 viewProj;
 } ScenePassContext;
 

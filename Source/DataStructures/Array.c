@@ -12,7 +12,7 @@ void* ArrayCreateRaw(size_t capacity, size_t stride)
 
     size_t headerSize = ArrayField_Count * sizeof(size_t);
     size_t dataSize   = capacity * stride;
-    size_t* arr       = (size_t*)AllocateTLSFGlobal(headerSize + dataSize);
+    size_t* arr       = (size_t*)AllocTLSF(headerSize + dataSize);
     if (!arr) {
         AX_WARN("array allocation failed (%llu bytes)", (u64)(headerSize + dataSize));
         return NULL;
@@ -26,7 +26,7 @@ void* ArrayCreateRaw(size_t capacity, size_t stride)
 
 void ArrayDestroyRaw(void* arr) {
     if (!arr) return;
-    DeAllocateTLSFGlobal(ArrayHeader(arr));
+    DeAllocTLSF(ArrayHeader(arr));
 }
 
 size_t ArrayFieldGet(const void* arr, ArrayField field) {
@@ -46,7 +46,7 @@ void* ArrayResizeRaw(void* arr)
     size_t stride    = ArrayStride(arr);
     size_t newCap    = capacity ? capacity * ARRAY_GROWTH_FACTOR : ARRAY_DEFAULT_CAPACITY;
     size_t totalSize = ArrayField_Count * sizeof(size_t) + newCap * stride;
-    size_t* resized  = (size_t*)ReAllocateTLSFGlobal(ArrayHeader(arr), totalSize);
+    size_t* resized  = (size_t*)ReAllocTLSF(ArrayHeader(arr), totalSize);
     if (!resized) {
         AX_WARN("array resize failed (%llu bytes)", (u64)totalSize);
         return arr;

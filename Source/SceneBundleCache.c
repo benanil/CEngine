@@ -66,6 +66,51 @@ static bool SceneAsyncHold(SceneAsyncRequest* request, const char* path)
     return true;
 }
 
+void StageBundleRange(u32 begin, u32 end, void* userData)
+{
+    SceneBundleStage* stages = (SceneBundleStage*)userData;
+    for (u32 i = begin; i < end; i++) 
+        Scene_AddBundleStage(&stages[i], false);
+}
+
+static s32 PreloadAllBundlesOfScene(SceneAsyncRequest* request)
+{
+    AFile file = AFileOpen(request->path, AOpenFlag_ReadBinary);
+    if (!AFileExist(file)) return 0;
+    
+    char line[2048];
+    bool bundlesFound = false;
+    while (AFileReadLine(line, sizeof(line), file) > 0)
+    {
+        if (!StrCMP16(line, "bundles")) continue;
+        bundlesFound = true;
+    }
+    if (!bundlesFound) return 0;
+
+    s32 numBundles;
+    ParsePositiveNumber(line, &numBundles);
+    
+    SceneBundleStage* stages = CAllocTLSFArray(SceneBundleStage, numBundles);
+    s32 numLoaded = 0, lineLen = 0;
+    // bundle 0 0 0 Assets/Meshes/Sphere.gltf
+    while (lineLen = AFileReadLine(line, sizeof(line), file))
+    {
+        if (!StrCMP16(line, "bundle ")) continue;
+        const char* ln = line;
+        while (*ln && IsWhitespace(*ln) || IsNumber(*ln))
+            ln++;
+        s32 pathLen = (u32)(u64)(line - ln);
+        StringCopy(ln, stages[numLoaded++].path, pathLen);
+    }
+
+    if (numLoaded != numBundles)
+        AX_LOG("could'nt preload all bundles of scene");
+
+    ParallelFor(numLoaded, 1u, StageBundleRange, stages);
+    AFileClose(file);
+    return 1;
+}
+
 static s32 SceneAsyncProbe(void* userData)
 {
     SceneAsyncRequest* request = (SceneAsyncRequest*)userData;
@@ -73,40 +118,9 @@ static s32 SceneAsyncProbe(void* userData)
     if (request->op == SceneAsyncOp_ImportMesh)
         return SceneAsyncHold(request, request->path);
 
-    if (request->op == SceneAsyncOp_OpenScene)
-    {
-        AFile file = AFileOpen(request->path, AOpenFlag_ReadBinary);
-        if (!AFileExist(file)) return 0;
+    if (request->op != SceneAsyncOp_OpenScene)
+        return PreloadAllBundlesOfScene(request);
 
-        char line[2048];
-        while (AFileReadLine(line, sizeof(line), file) > 0)
-        {
-            int len = StringLength(line);
-            while (len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r' || line[len - 1] == ' '))
-                line[--len] = '\0';
-
-            const char prefix[] = "bundle ";
-            if (!StringEqual(line, prefix, StringLength(prefix))) continue;
-
-            const char* path = line + StringLength(prefix);
-            for (u32 spaces = 0u; spaces < 3u && *path; path++)
-                if (*path == ' ') spaces++;
-            while (*path == ' ') path++;
-            if (!*path) continue;
-
-            // Bake/load each bundle off the main thread and HOLD it, so the main-thread open hits the
-            // cache (no re-bake) and the worker-built picking BVH is reused. SceneAsyncUpdate releases
-            // these after the scene has taken its own references. The cache is keyed + lock-guarded,
-            // so this is safe against the main thread picking the still-active scene.
-            if (!SceneAsyncHold(request, path))
-            {
-                AFileClose(file);
-                return 0;
-            }
-        }
-        AFileClose(file);
-        return 1;
-    }
     return 1;
 }
 
@@ -120,47 +134,41 @@ static void SceneAsyncDone(void* userData, s32 result)
 
 bool SceneAsyncBegin(SceneAsyncOp op, const char* path, const char* taskName, SceneAsyncRequestCallback callback)
 {
-    if (!path || path[0] == '\0')
-    {
+    if (!path || path[0] == '\0') {
         AX_WARN("scene async request invalid path");
         return false;
     }
 
-    if (sceneAsyncRequest)
-    {
+    if (sceneAsyncRequest) {
         AX_WARN("scene async request already running: %s", sceneAsyncRequest->path);
-        return false;
-    }
-
-    char normalized[512];
-    NormalizePath(path, normalized, sizeof(normalized));
-    if (normalized[0] == '\0')
-    {
-        AX_WARN("scene async request invalid path");
         return false;
     }
 
     SceneAsyncRequest* request = (SceneAsyncRequest*)SDL_calloc(1, sizeof(SceneAsyncRequest));
     request->callback = callback;
     request->op = op;
-    MemCopy(request->path, normalized, StringLength(normalized) + 1);
+
+    NormalizePath(path, request->path, StringLength(path)+1);
+    if (request->path[0] == '\0') {
+        AX_WARN("scene async request invalid path");
+        return false;
+    }
     AsyncRun(taskName, SceneAsyncProbe, SceneAsyncDone, request);
     sceneAsyncRequest = request;
     return true;
 }
 
+// only one async task is not good design
 void Scene_AsyncUpdate(void)
 {
     SceneAsyncRequest* request = sceneAsyncRequest;
     if (!request || !SDL_GetAtomicInt(&request->done)) return;
     sceneAsyncRequest = NULL;
 
-    if (!request->result)
-    {
+    if (!request->result) {
         AX_ERROR("scene async request failed: %s", request->path);
     }
-    else if (request->callback)
-    {
+    else if (request->callback) {
         request->callback(request);
     }
 
@@ -278,55 +286,63 @@ static s32 CreateBVH(void* data)
     return 0;
 }
 
+static BundleCacheEntry* AddBundleCacheEntry(SceneBundle* bundle, void* vertexHeapPtr, void* indexHeapPtr, bool baked, u64 key)
+{
+    BundleCacheEntry value = { bundle, 1u };
+    value.vertexHeapPtr = vertexHeapPtr;
+    value.indexHeapPtr = indexHeapPtr;
+    SDL_LockSpinlock(&g_BundleCacheLock);
+    BundleCacheEntry* entry = (BundleCacheEntry*)HMInsert(&gBundleCache, key, &value);
+    if (entry && baked) entry->refCount++; // hold a reference for the async cache save
+    SDL_UnlockSpinlock(&g_BundleCacheLock);
+    return entry;
+}
+
 // out: cache entry with one reference added, NULL on load failure. The returned pointer is only
 // valid until the next map mutation; callers use it transiently and store the key, not the pointer.
-BundleCacheEntry* BundleCacheAcquire(const char* path)
+BundleCacheEntry* BundleCacheAcquire(SceneBundleStage* stage)
 {
-    u64 key = StringToHash64(path);
-
     SDL_LockSpinlock(&g_BundleCacheLock);
     if (gBundleCache.valueSize == 0)
         gBundleCache = HMCreate(64u, sizeof(BundleCacheEntry));
-    BundleCacheEntry* entry = (BundleCacheEntry*)HMFind(&gBundleCache, key);
+    BundleCacheEntry* entry = (BundleCacheEntry*)HMFind(&gBundleCache, stage->cacheKey);
     if (entry)
     {
         entry->refCount++;
-        AX_LOG("bundle cache hit: %s refs=%d", path, entry->refCount);
+        AX_LOG("bundle cache hit: %s refs=%d", stage->path, entry->refCount);
         SDL_UnlockSpinlock(&g_BundleCacheLock);
         return entry;
     }
     SDL_UnlockSpinlock(&g_BundleCacheLock);
 
+    bool hasPath = stage->bundle == NULL || stage->bundle == (SceneBundle*)0xCDCDCDCDCDCDCDCDull;
     // Load/bake outside the lock (slow). Only one importer touches a given path at a time
     // (the async op guard plus callbacks running after the worker finishes), so no double bake.
-    SceneBundle* bundle = (SceneBundle*)AllocateTLSFGlobal(sizeof(SceneBundle));
+    SceneBundle* bundle = !hasPath ? stage->bundle : (SceneBundle*)AllocTLSF(sizeof(SceneBundle));
+    stage->bundle = bundle;
     void* vertexHeapPtr = NULL;
     void* indexHeapPtr = NULL;
     bool baked = false;
-    if (!LoadBundleMeshCached(path, bundle, &vertexHeapPtr, &indexHeapPtr, &baked))
+    if (hasPath && !LoadBundleMeshCached(stage->path, bundle, &vertexHeapPtr, &indexHeapPtr, &baked))
     {
-        DeAllocateTLSFGlobal(bundle);
+        DeAllocTLSF(bundle);
         return NULL;
     }
-    int pathLen = StringLength(path);
-    char* pathCopy = (char*)AllocateTLSFGlobal(pathLen + 1);
-    MemCopy(pathCopy, path, pathLen + 1);
 
-    BundleCacheEntry value = { bundle, pathCopy, 1u };
-    value.vertexHeapPtr = vertexHeapPtr;
-    value.indexHeapPtr = indexHeapPtr;
-    SDL_LockSpinlock(&g_BundleCacheLock);
-    entry = (BundleCacheEntry*)HMInsert(&gBundleCache, key, &value);
-    if (entry && baked) entry->refCount++; // hold a reference for the async cache save
-    SDL_UnlockSpinlock(&g_BundleCacheLock);
+    if (!hasPath && !BakeSceneMeshesAndAnimations(bundle, &vertexHeapPtr, &indexHeapPtr))
+    {
+        AX_WARN("asset import failed during mesh bake: %s vertices=%d indices=%d", stage->path, bundle->totalVertices, bundle->totalIndices);
+        return NULL;
+    }
+    entry = AddBundleCacheEntry(bundle, vertexHeapPtr, indexHeapPtr, baked, stage->cacheKey);
 
     // Persist the freshly baked .abm/.bdc cache on a worker thread (it holds the reference above and
     // reads the resident geometry read-only). A plain cache hit already has its cache on disk.
     if (baked)
-        BundleCacheQueueSave(path, key);
+        BundleCacheQueueSave(stage->path, stage->cacheKey);
 
     // BVH builds asynchronously and addresses the entry by key, so it is safe across later inserts.
-    AsyncRun("Create BVH", CreateBVH, BVHCallback, (void*)(uintptr_t)key);
+    AsyncRun("Create BVH", CreateBVH, BVHCallback, (void*)(uintptr_t)stage->cacheKey);
     return entry;
 }
 
@@ -347,7 +363,6 @@ void BundleCacheReleaseKey(u64 key)
     // allocated, consistent with the engine teardown ownership model
     BVH_FreeBundle(&freed);
     Scene_FreeBundleGeometry(freed.bundle, &freed, freed.bundle->numSkins > 0);
-    DeAllocateTLSFGlobal(freed.path);
 }
 
 void BundleCacheRelease(const char* path)

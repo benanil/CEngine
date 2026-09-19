@@ -116,7 +116,7 @@ static void ImportMeshToSceneFinish(SceneAsyncRequest* request)
     Scene* scene = Scene_GetActive();
     if (!scene) scene = EditorNewScene();
 
-    u32 bundleIdx = Scene_AddBundleAuto(scene, request->path);
+    u32 bundleIdx = Scene_AddBundleFromPath(scene, request->path);
     if (bundleIdx == INVALID_BUNDLE)
     {
         AX_ERROR("import to scene failed: %s", request->path);
@@ -127,8 +127,7 @@ static void ImportMeshToSceneFinish(SceneAsyncRequest* request)
 
 static void OpenSceneFinish(SceneAsyncRequest* request)
 {
-    const char* path = request->path;
-    Scene* scene = Scene_OpenActive(path);
+    Scene* scene = Scene_OpenActive(request->path);
     if (!scene) return;
     EditorSceneResetState();
     EditorSettingsSetLastScene(Scene_GetActivePath());
@@ -534,7 +533,7 @@ static void SceneImportDetailPopup(void)
             ParseFloat(importDetailScaleText, &importDetailScale);
             Scene* scene = Scene_GetActive();
             if (!scene) scene = EditorNewScene();
-            u32 bundleIdx = Scene_AddBundleAuto(scene, importDetailPath);
+            u32 bundleIdx = Scene_AddBundleFromPath(scene, importDetailPath);
             if (bundleIdx != INVALID_BUNDLE)
             {
                 v128f rotation = VecNorm(QFromEuler(importDetailEuler[0] * MATH_DegToRad,

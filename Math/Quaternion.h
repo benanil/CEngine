@@ -1,3 +1,50 @@
+#ifdef PREVIEW_QUATERNION
+
+#define QIdentity()  VecSetR(0.0f, 0.0f, 0.0f, 1.0f)
+#define QNorm(q)     VecNorm(q)
+#define QNormEst(q)  VecNormEst(q)
+#define MakeQuat(_x, _y, _z, _w)  VecSetR(_x, _y, _z, _w)
+
+v128f QMul(v128f Q1, v128f Q2); 
+// Angle should be between -twopi, twopi
+v128f QFromAxisAngle(float3 axis, float angle);
+v128f QFromAxisAngleV(v128f axis, float angle);
+// below 3 function are same as QFromAxisAngle but with single axis, 
+// faster because no normalization and less multipication
+v128f  QFromXAngle(float angle);
+v128f  QFromYAngle(float angle);
+v128f  QFromZAngle(float angle);
+v128f  QMulVec3V(v128f vec, v128f quat);
+float3 QMulVec3(float3 vec, Quaternion quat);
+// Common code for computing the scalar coefficients of SLERP
+v128f QCalculateCoefficient(v128f vT, v128f xm1);
+Quaternion QSlerp(Quaternion q0, Quaternion q1, float t);
+// faster but less precise, more error prone version of slerp
+Quaternion QNLerp(Quaternion a, Quaternion b, float t);
+Quaternion QFromEuler(float x, float y, float z);
+Quaternion QFromPitchYawRoll(float pitch, float yaw, float roll);
+Quaternion QFromEulerVec3(float3 euler);
+float3 QToEulerAngles(Quaternion qu);
+// number of columns of matrix, 3 or 4
+void  QuaternionFromMatrix(float* Orientation, const float* m, int numCol);
+v128f QuaternionFromM33Vec(v128f r0, v128f r1, v128f r2);
+void  M33FromQuaternion(float* mat, Quaternion quat);
+void  M44FromQuaternion(float* mat, Quaternion quat);
+Quaternion QFromLookRotation(float3 direction, float3 up);
+Quaternion QConjugate(Quaternion vec);
+Quaternion QInverse(Quaternion q);
+float3 QGetForward(Quaternion vec);
+float3 QGetRight(Quaternion vec);
+float3 QGetLeft(Quaternion vec);
+float3 QGetUp(Quaternion vec);
+// dual quaternion
+v128f  DQGetTranslation(DualQuaternion dq);
+DualQuaternion DQMultiply(DualQuaternion a, DualQuaternion b);
+DualQuaternion DQFromRotationTranslation(v128f rotation, v128f translation);
+DualQuaternion DQBlend(DualQuaternion x, DualQuaternion y, float a);
+
+#endif // Quaternion_H
+
 #ifndef Quaternion_H
 #define Quaternion_H
 
@@ -146,8 +193,7 @@ purefn Quaternion QFromEuler(float x, float y, float z)
 {
     x *= 0.5f; y *= 0.5f; z *= 0.5f;
     float c[4], s[4];
-    v128f cv;
-    v128f sv;
+    v128f cv, sv;
     VecSinCos(VecSetR(x, y, z, 1.0f), &sv, &cv);
     VecStore(c, cv);
     VecStore(s, sv);
@@ -156,6 +202,22 @@ purefn Quaternion QFromEuler(float x, float y, float z)
         c[0] * s[1] * c[2] + s[0] * c[1] * s[2],
         c[0] * c[1] * s[2] - s[0] * s[1] * c[2],
         c[0] * c[1] * c[2] + s[0] * s[1] * s[2]);
+}
+
+purefn Quaternion QFromPitchYawRoll(float pitch, float yaw, float roll)
+{
+    pitch *= 0.5f; yaw *= 0.5f; roll *= 0.5f;
+    float c[4], s[4];
+    v128f cv, sv;
+    VecSinCos(VecSetR(pitch, yaw, roll, 1.0f), &sv, &cv);
+    VecStore(c, cv);
+    VecStore(s, sv);
+    return VecSetR(
+        c[2] * s[0] * c[1] + s[2] * c[0] * s[1],
+        c[2] * c[0] * s[1] - s[2] * s[0] * c[1],
+        s[2] * c[0] * c[1] - c[2] * s[0] * s[1],
+        c[2] * c[0] * c[1] + s[2] * s[0] * s[1]
+    );
 }
 
 purefn Quaternion VCALL QFromEulerVec3(float3 euler)
@@ -511,3 +573,4 @@ static inline DualQuaternion DQBlend(DualQuaternion x, DualQuaternion y, float a
 }
 
 #endif // Quaternion_H
+

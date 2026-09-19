@@ -66,6 +66,9 @@ int ChangeExtension(char* path, int pathLen, const char* newExt)
     while (path[lastDot - 1] != '.' && lastDot >= 0)
         lastDot--, oldLen++;
 
+    if (path[lastDot - 1] != '.')
+        return 1;
+
     int i = lastDot, newLen = 0;
     for (; *newExt; i++)
         path[i] = *newExt++, newLen++;
@@ -515,7 +518,7 @@ char* ReadAllFile(const char* fileName, char* buffer, uint64_t bufferSize)
 char* ReadAllFileAlloc(const char* fileName)
 {
     uint64_t fileSize = FileSize(fileName);
-    return ReadAllFile(fileName, AllocZeroTLSFGlobal(fileSize + 1, 1), fileSize); // +1 for null terminator
+    return ReadAllFile(fileName, AllocZeroTLSF(fileSize + 1, 1), fileSize); // +1 for null terminator
 }
 
 // don't forget to free using FreeAllText
@@ -529,7 +532,7 @@ char* ReadAllText(const char* fileName, char* buffer, uint64_t* numCharacters, c
     if (fileName == NULL || !FileExist(fileName)) 
         return NULL; 
     
-    if (buffer == NULL) { buffer = AllocZeroTLSFGlobal(1, FileSize(fileName)); }
+    if (buffer == NULL) { buffer = AllocZeroTLSF(1, FileSize(fileName)); }
 
     int startTextLen = startText ? StringLength(startText) : 0;
     AFile file = AFileOpen(fileName, AOpenFlag_ReadBinary);
@@ -567,13 +570,13 @@ char* ReadAllTextAlloc(const char* fileName, uint64_t* numCharacters, const char
 {
     int startTextLen = startText ? StringLength(startText) : 0;
     // Allocate memory to store the entire file
-    char* buffer = (char*)AllocZeroTLSFGlobal(FileSize(fileName) + 40 + startTextLen, 1); // +1 for null terminator
+    char* buffer = (char*)AllocZeroTLSF(FileSize(fileName) + 40 + startTextLen, 1); // +1 for null terminator
     return ReadAllText(fileName, buffer, numCharacters, startText);
 }
 
 void FreeAllText(char* text)
 {
-    DeAllocateTLSFGlobal(text);
+    DeAllocTLSF(text);
 }
 
 void WriteAllBytes(const char *filename, const char *bytes, unsigned long size) 
@@ -605,7 +608,7 @@ void ACopyFile(const char* source, const char* dst, char* buffer)
     AFileWrite(sourceFile, sourceSize, dstFile, 1);
     AFileClose(dstFile);
 
-    if (!bufferProvided) DeAllocateTLSFGlobal(sourceFile);
+    if (!bufferProvided) DeAllocTLSF(sourceFile);
 }
 
 #ifndef _WIN32

@@ -33,12 +33,12 @@
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_RESIZE_IMPLEMENTATION
 
-#define STBI_MALLOC(size)           ( AllocateTLSFGlobal(size) )
-#define STBI_FREE(ptr)              ( DeAllocateTLSFGlobal(ptr) )
-#define STBI_REALLOC(ptr, size)     ( ReAllocateTLSFGlobal(ptr, size) )
+#define STBI_MALLOC(size)           ( AllocTLSF(size) )
+#define STBI_FREE(ptr)              ( DeAllocTLSF(ptr) )
+#define STBI_REALLOC(ptr, size)     ( ReAllocTLSF(ptr, size) )
 
-#define STBIR_MALLOC(size, c)       ( AllocateTLSFGlobal(size) )
-#define STBIR_FREE(ptr, c)          ( (void)(c), DeAllocateTLSFGlobal(ptr) )
+#define STBIR_MALLOC(size, c)       ( AllocTLSF(size) )
+#define STBIR_FREE(ptr, c)          ( (void)(c), DeAllocTLSF(ptr) )
 
 #if !defined(PLATFORM_MACOSX)
 #define VULKAN_MAKE_API_VERSION(variant, major, minor, patch) \
@@ -108,12 +108,12 @@ static void InitGeometryHeaps(void)
 
     for (u32 kind = 0; kind < GeometryBuffer_Count; kind++)
     {
-        void* control = AllocateTLSFGlobal(tlsf_size());
+        void* control = AllocTLSF(tlsf_size());
         tlsf_t tlsf = control ? tlsf_create(control) : NULL;
         if (!tlsf || !tlsf_add_pool(tlsf, GeometryHeapBase((GeometryBufferKind)kind), poolBytes[kind]))
         {
             AX_ERROR("geometry heap init failed kind=%d", kind);
-            if (!tlsf) DeAllocateTLSFGlobal(control);
+            if (!tlsf) DeAllocTLSF(control);
             continue;
         }
         g_GeometryTLSF[kind] = tlsf;
@@ -124,7 +124,7 @@ static void DestroyGeometryHeaps(void)
 {
     for (u32 kind = 0; kind < GeometryBuffer_Count; kind++)
     {
-        if (g_GeometryTLSF[kind]) DeAllocateTLSFGlobal(g_GeometryTLSF[kind]);
+        if (g_GeometryTLSF[kind]) DeAllocTLSF(g_GeometryTLSF[kind]);
         g_GeometryTLSF[kind] = NULL;
     }
 }
@@ -305,11 +305,11 @@ void GraphicsInit(bool msaa)
     gGFX.TerrainGrassBuffer  = OSAllocAligned(sizeof(GrassInstance) * T_MAX_GRASS, 64);
     gGFX.TerrainVertexBuffer = OSAllocAligned(sizeof(tVertex) * T_MAX_VERTICES, 64);
     gGFX.TerrainIndexBuffer  = OSAllocAligned(sizeof(u16) * T_MAX_INDICES, 64);
-	gGFX.IndexBuffer         = OSAllocAligned(sizeof(u32) * MAX_INDEX + 16, 4); // 16->give little bit of space for memcpy
+    gGFX.IndexBuffer         = OSAllocAligned(sizeof(u32) * MAX_INDEX + 16, 4); // 16->give little bit of space for memcpy
     if (!gGFX.SkinnedVertexBuffer || !gGFX.SurfaceVertexBuffer || !gGFX.TerrainVertexBuffer 
-		|| !gGFX.TerrainIndexBuffer || !gGFX.IndexBuffer)
-		AX_ERROR("graphics shared memory allocation failed");
-
+        || !gGFX.TerrainIndexBuffer || !gGFX.IndexBuffer)
+        AX_ERROR("graphics shared memory allocation failed");
+    
     InitGeometryHeaps();
 }
 
@@ -670,20 +670,20 @@ Texture rImportTexture(const char* path, TexFlags flags, const char* label)
     void* textureLoadBuffer = ArenaPushGlobal(size);
     
     AFileRead(textureLoadBuffer, size, asset, 1);
-	if (FileHasExtension(path, (int)StringLength(path), ".dds")) {
+    if (FileHasExtension(path, (int)StringLength(path), ".dds")) {
         DDSImage dds;
         if (!DDSLoadDecompressImage(path, &dds)) {
-			AX_ERROR("dds image loading failed! %s", path);
-			return defTexture;
+            AX_ERROR("dds image loading failed! %s", path);
+            return defTexture;
         }
-
+        
         width = dds.width, height = dds.height, channels = 4;
-		image = dds.pixels;
-	}
-	else
-	{
-		image = stbi_load_from_memory(textureLoadBuffer, (int)size, &width, &height, &channels, 4);
-	}
+        image = dds.pixels;
+    }
+    else
+    {
+        image = stbi_load_from_memory(textureLoadBuffer, (int)size, &width, &height, &channels, 4);
+    }
     ArenaPopGlobal(size);
 
     AFileClose(asset);
@@ -709,27 +709,27 @@ Texture rImportTexture(const char* path, TexFlags flags, const char* label)
 }
 
 Texture LoadTextureArray(const char* const* paths, u32 count, s32 size, bool srgb,
-						 const char* label, const char* errorLabel)
+                         const char* label, const char* errorLabel)
 {
     Texture tex = rCreateTexture2DArray(size, size, count, NULL, TEX_FMT_8UNORM4,
                                         TexFlags_MipMap, TEX_SAMPLER | TEX_COLOR_TARGET, label);
     for (s32 layer = 0; layer < (s32)count; layer++)
     {
         int w, h, channels;
-		u8* image = NULL; 
-		if (FileHasExtension(paths[layer], (int)StringLength(paths[layer]), ".dds")) {
-			DDSImage dds;
-			if (!DDSLoadDecompressImage(paths[layer], &dds)) {
-				AX_ERROR("dds image loading failed! %s", paths[layer]);
-				return tex;
-			}
-
-			w = dds.width, h = dds.height, channels = 4;
-			image = dds.pixels;
-		}
-		else {
-			image = stbi_load(paths[layer], &w, &h, &channels, 4);
-		}
+        u8* image = NULL; 
+        if (FileHasExtension(paths[layer], (int)StringLength(paths[layer]), ".dds")) {
+            DDSImage dds;
+            if (!DDSLoadDecompressImage(paths[layer], &dds)) {
+                AX_ERROR("dds image loading failed! %s", paths[layer]);
+                return tex;
+            }
+            
+            w = dds.width, h = dds.height, channels = 4;
+            image = dds.pixels;
+        }
+        else {
+            image = stbi_load(paths[layer], &w, &h, &channels, 4);
+        }
 
         if (!image) {
             AX_ERROR("%s texture missing: %s", errorLabel, paths[layer]);

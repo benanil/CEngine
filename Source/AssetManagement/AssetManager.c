@@ -107,10 +107,10 @@ static u32 PackUFBXBaseColorFactor(const ufbx_material* material, f32 opacity)
     return PackColor3PtrToUint(&color.x);
 }
 
-static char* GetNameFromFBX(ufbx_string ustr, FixedPow2Allocator* stringAllocator)
+static char* GetNameFromFBX(ufbx_string ustr, Pow2Allocator* stringAllocator)
 {
     if (ustr.length == 0) return NULL;
-    char* name = FixedPow2Allocator_AllocateUninitialized(stringAllocator, ustr.length + 1);
+    char* name = Pow2Alloc_Uninitialized(stringAllocator, ustr.length + 1);
     SmallMemCpy(name, ustr.data, ustr.length);
     name[ustr.length] = 0;
     return name;
@@ -158,10 +158,10 @@ static s32 CopyUFBXFilename(char* dst, s32 dstSize, ufbx_string path)
 // blobs are written out next to the FBX. Returns an allocator-owned, possibly-empty path.
 static char* ResolveFBXImagePath(const char* fbxBaseDir, s32 fbxBaseLen,
                                  ufbx_string filename, ufbx_string absolute_filename, ufbx_string relative_filename,
-                                 ufbx_blob content, s32 index, FixedPow2Allocator* allocator)
+                                 ufbx_blob content, s32 index, Pow2Allocator* allocator)
 {
     enum { PATH_CAP = 1024 };
-    char* out = (char*)FixedPow2Allocator_AllocateUninitialized(allocator, PATH_CAP);
+    char* out = (char*)Pow2Alloc_Uninitialized(allocator, PATH_CAP);
     out[0] = '\0';
 
     if (content.size > 0)
@@ -268,8 +268,8 @@ s32 LoadFBX(const char* path, SceneBundle* fbxScene, f32 scale)
     if (uscene->skin_deformers.count > 0)
         AX_WARN("%s contains skin deformers, but this importer is intended for non-skinned meshes only: %s", importType, path);
     
-    FixedPow2Allocator* allocator = AllocateTLSFGlobal(sizeof(FixedPow2Allocator));
-    FixedPow2Allocator_Init(allocator, 2048);
+    Pow2Allocator* allocator = AllocTLSF(sizeof(Pow2Allocator));
+    Pow2Alloc_Init(allocator, 2048);
 
     // Static import only: skinning and animation are intentionally dropped so the
     // baker selects the surface (non-skinned) vertex path. See plan: skip animation.
@@ -278,8 +278,8 @@ s32 LoadFBX(const char* path, SceneBundle* fbxScene, f32 scale)
     fbxScene->numAnimations = 0;
     fbxScene->animations    = NULL;
 
-    if (fbxScene->numMeshes) fbxScene->meshes = (AMesh*)AllocZeroTLSFGlobal(fbxScene->numMeshes, sizeof(AMesh));
-    fbxScene->scenes = (AScene*)AllocZeroTLSFGlobal(1, sizeof(AScene));
+    if (fbxScene->numMeshes) fbxScene->meshes = (AMesh*)AllocZeroTLSF(fbxScene->numMeshes, sizeof(AMesh));
+    fbxScene->scenes = (AScene*)AllocZeroTLSF(1, sizeof(AScene));
 
     s32 totalIndices = 0, totalVertices = 0;
 
@@ -367,28 +367,28 @@ s32 LoadFBX(const char* path, SceneBundle* fbxScene, f32 scale)
 
         // Final attribute arrays live in the bundle allocator so they survive until bake.
         // One extra position slot pads wide v128f loads in BoundsForPrimitive().
-        float3* finalPos = (float3*)FixedPow2Allocator_Allocate(allocator, (uniqueCount + 1) * sizeof(float3));
+        float3* finalPos = (float3*)Pow2Alloc(allocator, (uniqueCount + 1) * sizeof(float3));
         meshopt_remapVertexBuffer(finalPos, cornerPos, (size_t)numCorners, sizeof(float3), remap);
         primitive->vertexAttribs[AAttribIdx_POSITION] = finalPos;
         primitive->attributes = AAttribType_POSITION;
 
         if (hasUV)
         {
-            float2* finalUV = (float2*)FixedPow2Allocator_Allocate(allocator, uniqueCount * sizeof(float2));
+            float2* finalUV = (float2*)Pow2Alloc(allocator, uniqueCount * sizeof(float2));
             meshopt_remapVertexBuffer(finalUV, cornerUV, (size_t)numCorners, sizeof(float2), remap);
             primitive->vertexAttribs[AAttribIdx_TEXCOORD_0] = finalUV;
             primitive->attributes |= AAttribType_TEXCOORD_0;
         }
         if (hasNormal)
         {
-            float3* finalNrm = (float3*)FixedPow2Allocator_Allocate(allocator, uniqueCount * sizeof(float3));
+            float3* finalNrm = (float3*)Pow2Alloc(allocator, uniqueCount * sizeof(float3));
             meshopt_remapVertexBuffer(finalNrm, cornerNrm, (size_t)numCorners, sizeof(float3), remap);
             primitive->vertexAttribs[AAttribIdx_NORMAL] = finalNrm;
             primitive->attributes |= AAttribType_NORMAL;
         }
         if (hasColor)
         {
-            v128f* finalColor = (v128f*)FixedPow2Allocator_Allocate(allocator, uniqueCount * sizeof(v128f));
+            v128f* finalColor = (v128f*)Pow2Alloc(allocator, uniqueCount * sizeof(v128f));
             meshopt_remapVertexBuffer(finalColor, cornerColor, (size_t)numCorners, sizeof(v128f), remap);
             primitive->vertexAttribs[AAttribIdx_COLOR_0] = finalColor;
             primitive->attributes |= AAttribType_COLOR_0;
@@ -397,7 +397,7 @@ s32 LoadFBX(const char* path, SceneBundle* fbxScene, f32 scale)
             primitive->colorStride = sizeof(v128f);
         }
 
-        u32* finalIdx = (u32*)FixedPow2Allocator_Allocate(allocator, (u64)numCorners * sizeof(u32));
+        u32* finalIdx = (u32*)Pow2Alloc(allocator, (u64)numCorners * sizeof(u32));
         meshopt_remapIndexBuffer(finalIdx, NULL, (size_t)numCorners, remap);
 
         primitive->numVertices = (s32)uniqueCount;
@@ -435,8 +435,8 @@ s32 LoadFBX(const char* path, SceneBundle* fbxScene, f32 scale)
 
     if (numTextures)
     {
-        fbxScene->textures = (ATexture*)AllocZeroTLSFGlobal(numTextures, sizeof(ATexture));
-        fbxScene->samplers = (ASampler*)AllocZeroTLSFGlobal(numTextures, sizeof(ASampler));
+        fbxScene->textures = (ATexture*)AllocZeroTLSF(numTextures, sizeof(ATexture));
+        fbxScene->samplers = (ASampler*)AllocZeroTLSF(numTextures, sizeof(ASampler));
     }
 
     for (u16 i = 0; i < numTextures; i++)
@@ -487,7 +487,7 @@ s32 LoadFBX(const char* path, SceneBundle* fbxScene, f32 scale)
     // consumed by PackMaterialFlags and the opaque/transparent render-set split; leaving them
     // as garbage pulls meshes into the blended pass or alpha-clips them away (renders black).
     if (numMaterials) {
-        fbxScene->materials = AllocZeroTLSFGlobal(numMaterials, sizeof(AMaterial));
+        fbxScene->materials = AllocZeroTLSF(numMaterials, sizeof(AMaterial));
     }
 
     for (u16 i = 0; i < numMaterials; i++)
@@ -569,12 +569,12 @@ s32 LoadFBX(const char* path, SceneBundle* fbxScene, f32 scale)
     fbxScene->numNodes = numNodes;
     
     if (numNodes)
-        fbxScene->nodes = (ANode*)AllocZeroTLSFGlobal(numNodes, sizeof(ANode));
+        fbxScene->nodes = (ANode*)AllocZeroTLSF(numNodes, sizeof(ANode));
 
     fbxScene->rootNode = uscene->root_node ? (s32)uscene->root_node->typed_id : 0;
     if (fbxScene->rootNode < 0) fbxScene->rootNode = 0;
     fbxScene->scenes[0].numNodes = 1;
-    fbxScene->scenes[0].nodes = FixedPow2Allocator_AllocateUninitialized(allocator, sizeof(s32));
+    fbxScene->scenes[0].nodes = Pow2Alloc_Uninitialized(allocator, sizeof(s32));
     fbxScene->scenes[0].nodes[0] = fbxScene->rootNode;
 
     for (s32 i = 0; i < numNodes; i++)
@@ -587,7 +587,7 @@ s32 LoadFBX(const char* path, SceneBundle* fbxScene, f32 scale)
         anode->name = GetNameFromFBX(unode->name, allocator);
         anode->numChildren = (s32)unode->children.count;
         if (anode->numChildren > 0)
-            anode->children = FixedPow2Allocator_AllocateUninitialized(allocator, sizeof(s32) * anode->numChildren);
+            anode->children = Pow2Alloc_Uninitialized(allocator, sizeof(s32) * anode->numChildren);
         
         for (s32 j = 0; j < anode->numChildren; j++)
         {
@@ -694,7 +694,8 @@ static void SceneImageCompressRange(u32 begin, u32 end, void* userData)
 void SaveSceneImages(SceneBundle* scene, const char* savePath, bool deleteRemaining)
 {
     char pathBuf[2048], baseDir[2048], name[512], bdcPath[2048], tmpPath[2048];
-
+    u32 numImages = scene->numImages > 0 ? (u32)scene->numImages : 0u;
+    if (numImages == 0) return;
     // .bdc path
     s32 len = StringLengthSafe(savePath, sizeof(bdcPath));
     SmallMemCpy(bdcPath, savePath, len);
@@ -713,7 +714,6 @@ void SaveSceneImages(SceneBundle* scene, const char* savePath, bool deleteRemain
 
     basis_encoder_init();
 
-    u32 numImages = scene->numImages > 0 ? (u32)scene->numImages : 0u;
     SceneImageCompressJob* jobs =
         (SceneImageCompressJob*)SDL_calloc(Maxu32(numImages, 1u), sizeof(SceneImageCompressJob));
 
@@ -1012,6 +1012,7 @@ s32 LoadSceneImages(const char* texturePath, Texture* textures, s32 numImages)
 // loads the cached basis images of a gltf into a bundle local staging array
 s32 LoadBundleImagesFromCache(const char* gltfPath, SceneBundle* bundle, Texture* staging)
 {
+    if (StrCMP16(gltfPath, "NoPath")) return 1;
     char path[1024];
     int pathLen = StringLength(gltfPath);
     MemCopy(path, gltfPath, pathLen + 1);
@@ -1186,14 +1187,14 @@ s32 SaveGLTFBinary(const SceneBundle* gltf, const char* path)
     // buffer, and use a per-call deflate state (the shared static one is not thread safe).
     // layout: [deflate output (max(vtx,idx)) | delta-encoded indices (idx)]
     u64 deflateSlotSize = Maxu64(allVertexSize, allIndexSize);
-    char* compressedBuffer = (char*)AllocZeroTLSFGlobal(1ull, deflateSlotSize + allIndexSize + 64);
-    struct sdefl* sdfl = (struct sdefl*)AllocZeroTLSFGlobal(1ull, sizeof(struct sdefl));
+    char* compressedBuffer = (char*)AllocZeroTLSF(1ull, deflateSlotSize + allIndexSize + 64);
+    struct sdefl* sdfl = (struct sdefl*)AllocZeroTLSF(1ull, sizeof(struct sdefl));
 
     if (!compressedBuffer || !sdfl)
     {
         AX_WARN("abm save alloc failed: %s", path);
-        if (compressedBuffer) DeAllocateTLSFGlobal(compressedBuffer);
-        if (sdfl) DeAllocateTLSFGlobal(sdfl);
+        if (compressedBuffer) DeAllocTLSF(compressedBuffer);
+        if (sdfl) DeAllocTLSF(sdfl);
         AFileClose(file);
         return 0;
     }
@@ -1210,8 +1211,8 @@ s32 SaveGLTFBinary(const SceneBundle* gltf, const char* path)
     AFileWrite(&afterCompSize, sizeof(u64), file, 1);
     AFileWrite(deflateOutput, afterCompSize, file, 1);
 
-    DeAllocateTLSFGlobal(sdfl);
-    DeAllocateTLSFGlobal(compressedBuffer);
+    DeAllocTLSF(sdfl);
+    DeAllocTLSF(compressedBuffer);
     // Cache stores runtime-ready mesh/animation data. Morph target animation is intentionally not serialized yet.
 
     for (s32 i = 0; i < gltf->numMeshes; i++)
@@ -1404,13 +1405,13 @@ void ReadAMaterialTexture(GLTFTexture* texture, AFile file)
     texture->scale    = data & 0xFFFFu;
 }
 
-void ReadGLTFString(char** str, AFile file, FixedPow2Allocator* stringAllocator)
+void ReadGLTFString(char** str, AFile file, Pow2Allocator* stringAllocator)
 {
     s32 nameLen = 0;
     AFileRead(&nameLen, sizeof(s32), file, 1);
     if (nameLen)    
     {
-        *str = FixedPow2Allocator_AllocateUninitialized(stringAllocator, nameLen + 1);
+        *str = Pow2Alloc_Uninitialized(stringAllocator, nameLen + 1);
         AFileRead(*str, nameLen + 1, file, 1);
         (*str)[nameLen] = 0;
     }
@@ -1427,8 +1428,8 @@ s32 LoadSceneBundleBinary(const char* path, SceneBundle* gltf, void** outVertexH
     }
     
     MemsetZero(gltf, sizeof(SceneBundle));
-    FixedPow2Allocator* allocator = AllocateTLSFGlobal(sizeof(FixedPow2Allocator));
-    FixedPow2Allocator_Init(allocator, 1024);
+    Pow2Allocator* allocator = AllocTLSF(sizeof(Pow2Allocator));
+    Pow2Alloc_Init(allocator, 1024);
 
     s32 version = 0;
     AFileRead(&version, sizeof(s32), file, 1);
@@ -1499,7 +1500,7 @@ s32 LoadSceneBundleBinary(const char* path, SceneBundle* gltf, void** outVertexH
 
         u64 deflateSlotSize = Maxu64(allVertexSize, allIndexSize);
         u64 tempSize        = deflateSlotSize;
-        char* compressedBuffer = (char*)AllocateTLSFGlobal(tempSize + 16);
+        char* compressedBuffer = (char*)AllocTLSF(tempSize + 16);
 
         u64 compressedSize;
 
@@ -1517,13 +1518,13 @@ s32 LoadSceneBundleBinary(const char* path, SceneBundle* gltf, void** outVertexH
         Rendering_QueueGeometryUpload(isSkined ? GeometryBuffer_SkinnedVertex : GeometryBuffer_SurfaceVertex,
                                       vertexBase, vertexBase + (u32)gltf->totalVertices);
         Rendering_QueueGeometryUpload(GeometryBuffer_Index, indexBase, indexBase + (u32)gltf->totalIndices);
-        DeAllocateTLSFGlobal(compressedBuffer);
+        DeAllocTLSF(compressedBuffer);
     }
     
     char* currVertices = (char*)gltf->allVertices;
     char* currIndices = (char*)gltf->allIndices;
     
-    if (gltf->numMeshes > 0) gltf->meshes = AllocZeroTLSFGlobal(gltf->numMeshes, sizeof(AMesh));
+    if (gltf->numMeshes > 0) gltf->meshes = AllocZeroTLSF(gltf->numMeshes, sizeof(AMesh));
     s32 totalPrimitives = 0;
     for (s32 i = 0; i < gltf->numMeshes; i++)
     {
@@ -1534,7 +1535,7 @@ s32 LoadSceneBundleBinary(const char* path, SceneBundle* gltf, void** outVertexH
         mesh->primitiveOffset = totalPrimitives;
         totalPrimitives += mesh->numPrimitives;
 
-        mesh->primitives = FixedPow2Allocator_AllocateUninitialized(allocator, sizeof(APrimitive) * mesh->numPrimitives);
+        mesh->primitives = Pow2Alloc_Uninitialized(allocator, sizeof(APrimitive) * mesh->numPrimitives);
         
         for (s32 j = 0; j < mesh->numPrimitives; j++)
         {
@@ -1575,7 +1576,7 @@ s32 LoadSceneBundleBinary(const char* path, SceneBundle* gltf, void** outVertexH
     }
     gltf->totalPrimitives = totalPrimitives;
     
-    if (gltf->numNodes > 0) gltf->nodes = AllocZeroTLSFGlobal(gltf->numNodes, sizeof(ANode));
+    if (gltf->numNodes > 0) gltf->nodes = AllocZeroTLSF(gltf->numNodes, sizeof(ANode));
     
     for (s32 i = 0; i < gltf->numNodes; i++)
     {
@@ -1590,14 +1591,14 @@ s32 LoadSceneBundleBinary(const char* path, SceneBundle* gltf, void** outVertexH
         
         if (node->numChildren)
         {
-            node->children = FixedPow2Allocator_AllocateUninitialized(allocator, sizeof(s32) * (node->numChildren+1));
+            node->children = Pow2Alloc_Uninitialized(allocator, sizeof(s32) * (node->numChildren+1));
             AFileRead(node->children, sizeof(s32) * node->numChildren, file, 1);
         }
         
         ReadGLTFString(&node->name, file, allocator);
     }
     
-    if (gltf->numMaterials > 0) gltf->materials = AllocZeroTLSFGlobal(gltf->numMaterials, sizeof(AMaterial));
+    if (gltf->numMaterials > 0) gltf->materials = AllocZeroTLSF(gltf->numMaterials, sizeof(AMaterial));
     for (s32 i = 0; i < gltf->numMaterials; i++)
     {
         AMaterial* material = &gltf->materials[i];
@@ -1637,7 +1638,7 @@ s32 LoadSceneBundleBinary(const char* path, SceneBundle* gltf, void** outVertexH
         ReadGLTFString(&material->name, file, allocator);
     }
     
-    if (gltf->numTextures > 0) gltf->textures = (ATexture*)AllocZeroTLSFGlobal(gltf->numTextures, sizeof(ATexture));
+    if (gltf->numTextures > 0) gltf->textures = (ATexture*)AllocZeroTLSF(gltf->numTextures, sizeof(ATexture));
     for (s32 i = 0; i < gltf->numTextures; i++)
     {
         ATexture* texture = &gltf->textures[i];
@@ -1645,19 +1646,19 @@ s32 LoadSceneBundleBinary(const char* path, SceneBundle* gltf, void** outVertexH
         AFileRead(&texture->source, sizeof(s32), file, 1);
         ReadGLTFString(&texture->name, file, allocator);
     }
-    if (gltf->numImages > 0) gltf->images = (AImage*)AllocZeroTLSFGlobal(gltf->numImages, sizeof(AImage));
+    if (gltf->numImages > 0) gltf->images = (AImage*)AllocZeroTLSF(gltf->numImages, sizeof(AImage));
     for (s32 i = 0; i < gltf->numImages; i++)
     {
         ReadGLTFString(&gltf->images[i].path, file, allocator);
     }
     
-    if (gltf->numSamplers > 0) gltf->samplers = (ASampler*)AllocZeroTLSFGlobal(gltf->numSamplers, sizeof(ASampler));
+    if (gltf->numSamplers > 0) gltf->samplers = (ASampler*)AllocZeroTLSF(gltf->numSamplers, sizeof(ASampler));
     for (s32 i = 0; i < gltf->numSamplers; i++)
     {
         AFileRead(&gltf->samplers[i], sizeof(ASampler), file, 1);
     }
     
-    if (gltf->numCameras > 0) gltf->cameras = (ACamera*)AllocZeroTLSFGlobal(gltf->numCameras, sizeof(ACamera));
+    if (gltf->numCameras > 0) gltf->cameras = (ACamera*)AllocZeroTLSF(gltf->numCameras, sizeof(ACamera));
     for (s32 i = 0; i < gltf->numCameras; i++)
     {
         ACamera* camera = &gltf->cameras[i];
@@ -1669,24 +1670,24 @@ s32 LoadSceneBundleBinary(const char* path, SceneBundle* gltf, void** outVertexH
         ReadGLTFString(&camera->name, file, allocator);
     }
     
-    if (gltf->numScenes > 0) gltf->scenes = (AScene*)AllocZeroTLSFGlobal(gltf->numScenes, sizeof(AScene));
+    if (gltf->numScenes > 0) gltf->scenes = (AScene*)AllocZeroTLSF(gltf->numScenes, sizeof(AScene));
     for (s32 i = 0; i < gltf->numScenes; i++)
     {
         AScene* scene = &gltf->scenes[i];
         ReadGLTFString(&scene->name, file, allocator);
         AFileRead(&scene->numNodes, sizeof(s32), file, 1);
-        scene->nodes = FixedPow2Allocator_AllocateUninitialized(allocator, scene->numNodes * sizeof(s32));
+        scene->nodes = Pow2Alloc_Uninitialized(allocator, scene->numNodes * sizeof(s32));
         AFileRead(scene->nodes, sizeof(s32) * scene->numNodes, file, 1);
     }
 
-    if (gltf->numSkins > 0) gltf->skins = (ASkin*)AllocZeroTLSFGlobal(gltf->numSkins, sizeof(ASkin));
+    if (gltf->numSkins > 0) gltf->skins = (ASkin*)AllocZeroTLSF(gltf->numSkins, sizeof(ASkin));
     for (s32 i = 0; i < gltf->numSkins; i++)
     {
         ASkin* skin = &gltf->skins[i];
         AFileRead(&skin->skeleton, sizeof(s32), file, 1);
         AFileRead(&skin->numJoints, sizeof(s32), file, 1);
-        skin->inverseBindMatrices = (f32*)AllocateTLSFGlobal(sizeof(mat4x4) * skin->numJoints);
-        skin->joints = FixedPow2Allocator_AllocateUninitialized(allocator, skin->numJoints * sizeof(s32));
+        skin->inverseBindMatrices = (f32*)AllocTLSF(sizeof(mat4x4) * skin->numJoints);
+        skin->joints = Pow2Alloc_Uninitialized(allocator, skin->numJoints * sizeof(s32));
         AFileRead(skin->inverseBindMatrices, sizeof(mat4x4) * skin->numJoints, file, 1);
         AFileRead(skin->joints, sizeof(s32) * skin->numJoints, file, 1);
     }
@@ -1697,13 +1698,13 @@ s32 LoadSceneBundleBinary(const char* path, SceneBundle* gltf, void** outVertexH
     v128f* currSamplerOutput = NULL;
 
     if (totalAnimSamplerInput) {
-        currSamplerInput  = (f32*)AllocZeroTLSFGlobal(totalAnimSamplerInput, sizeof(float));
-        currSamplerOutput = (v128f*)AllocZeroTLSFGlobal(totalAnimSamplerInput, sizeof(v128f));
+        currSamplerInput  = (f32*)AllocZeroTLSF(totalAnimSamplerInput, sizeof(float));
+        currSamplerOutput = (v128f*)AllocZeroTLSF(totalAnimSamplerInput, sizeof(v128f));
         AFileRead(currSamplerInput, sizeof(float) * totalAnimSamplerInput, file, 1);
         AFileRead(currSamplerOutput, sizeof(v128f) * totalAnimSamplerInput, file, 1);
     }
 
-    if (gltf->numAnimations) gltf->animations = AllocZeroTLSFGlobal(gltf->numAnimations, sizeof(AAnimation));
+    if (gltf->numAnimations) gltf->animations = AllocZeroTLSF(gltf->numAnimations, sizeof(AAnimation));
     for (s32 i = 0; i < gltf->numAnimations; i++)
     {
         AAnimation* animation = &gltf->animations[i];
@@ -1713,9 +1714,9 @@ s32 LoadSceneBundleBinary(const char* path, SceneBundle* gltf, void** outVertexH
         AFileRead(&animation->duration, sizeof(float), file, 1);
         AFileRead(&animation->speed, sizeof(float), file, 1);
         ReadGLTFString(&animation->name, file, allocator);
-        animation->channels = AllocateTLSFGlobal(animation->numChannels * sizeof(AAnimChannel));
+        animation->channels = AllocTLSF(animation->numChannels * sizeof(AAnimChannel));
         AFileRead(animation->channels, sizeof(AAnimChannel) * animation->numChannels, file, 1);
-        animation->samplers = AllocateTLSFGlobal(animation->numSamplers * sizeof(AAnimSampler));
+        animation->samplers = AllocTLSF(animation->numSamplers * sizeof(AAnimSampler));
 
         for (s32 j = 0; j < animation->numSamplers; j++)
         {

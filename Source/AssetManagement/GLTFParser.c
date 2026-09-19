@@ -31,7 +31,7 @@ typedef struct GLTFBufferView_
 
 typedef struct GLTFParseContext_
 {
-    FixedPow2Allocator* allocator;
+    Pow2Allocator* allocator;
     const char* path;
     sj_Reader* sj;
     float scale;
@@ -48,7 +48,7 @@ static int GLTFAccessorElementSize(const GLTFAccessor* accessor)
     return GraphicsTypeToSize(accessor->componentType) * accessor->type;
 }
 
-static void* GLTFPackStridedAccessor(FixedPow2Allocator* allocator, const void* src, int count, int elementSize, int byteStride)
+static void* GLTFPackStridedAccessor(Pow2Allocator* allocator, const void* src, int count, int elementSize, int byteStride)
 {
     if (src == NULL || count <= 0 || elementSize <= 0)
         return NULL;
@@ -56,7 +56,7 @@ static void* GLTFPackStridedAccessor(FixedPow2Allocator* allocator, const void* 
     if (byteStride == 0 || byteStride == elementSize)
         return (void*)src;
 
-    char* packed = (char*)FixedPow2Allocator_Allocate(allocator, (size_t)count * (size_t)elementSize);
+    char* packed = (char*)Pow2Alloc(allocator, (size_t)count * (size_t)elementSize);
     const char* input = (const char*)src;
     for (int i = 0; i < count; i++)
         SmallMemCpy(packed + ((size_t)i * (size_t)elementSize), input + ((size_t)i * (size_t)byteStride), (size_t)elementSize);
@@ -167,10 +167,10 @@ static const char* GetStringInQuotes(char* str, const char* curr)
     return ++curr;
 }
 
-static char* CopySJString(sj_Value key, FixedPow2Allocator* allocator)
+static char* CopySJString(sj_Value key, Pow2Allocator* allocator)
 {
     size_t len = (size_t)(key.end - key.start);
-    char* res = (char*)FixedPow2Allocator_Allocate(allocator, len + 1);
+    char* res = (char*)Pow2Alloc(allocator, len + 1);
     MemCopy(res, key.start, len);
     return res;
 }
@@ -213,7 +213,7 @@ static void ParseIntArray(const char* curr, const char* end, int* numbers)
 static int* ParseIntArrayAlloc(GLTFParseContext* ctx, sj_Value sjArr, int* outCount)
 {
     int numElements = sjCountArray(*ctx->sj, sjArr);
-    int* res = (int*)FixedPow2Allocator_AllocateUninitialized(ctx->allocator, numElements * sizeof(int)); 
+    int* res = (int*)Pow2Alloc_Uninitialized(ctx->allocator, numElements * sizeof(int)); 
     ParseIntArray(sjArr.start + 1, ctx->sj->end, res);
     *outCount = numElements;
     return res;
@@ -225,7 +225,7 @@ static void* ParseArray(sj_Value sjArray, size_t stride, int* numElementsOut,
                         GLTFParseContext* ctx, ParseArrayObjFn objFn)
 {
     int numElements = sjCountArray(*ctx->sj, sjArray);
-    char* arrayOfElements = (char*)FixedPow2Allocator_Allocate(ctx->allocator, stride * numElements);
+    char* arrayOfElements = (char*)Pow2Alloc(ctx->allocator, stride * numElements);
     sj_Value val;
     int index = 0;
     while (sj_iter_array(ctx->sj, sjArray, &val))
@@ -366,7 +366,7 @@ static void ParseBuffersObj(sj_Value sjBufferObj, void* element, GLTFParseContex
                 while (curr + base64Size < val.end) {
                     base64Size++;
                 }
-                buffer->uri = FixedPow2Allocator_Allocate(ctx->allocator, base64Size);
+                buffer->uri = Pow2Alloc(ctx->allocator, base64Size);
                 DecodeBase64((char*)buffer->uri, curr, base64Size);
                 curr += base64Size + 1;
             }
@@ -410,7 +410,7 @@ static void ParseImagesObj(sj_Value sjSceneObj, void* element, GLTFParseContext*
         if (StrCMP16(key.start, "uri"))
         {
             size_t uriSize = val.end - val.start;
-            image->path = (char*)FixedPow2Allocator_Allocate(ctx->allocator, uriSize + pathLen + 16);
+            image->path = (char*)Pow2Alloc(ctx->allocator, uriSize + pathLen + 16);
             SmallMemCpy(image->path, ctx->path, pathLen);
             SmallMemCpy(image->path + pathLen, val.start, uriSize);
             image->path[uriSize + pathLen] = '\0';
@@ -492,7 +492,7 @@ static void ParseMeshesObj(sj_Value sjMeshObj, void* element, GLTFParseContext* 
         {
             int numWeights = sjCountArray(*ctx->sj, val);
             mesh->numMorphWeights = numWeights;
-            mesh->morphWeights = FixedPow2Allocator_Allocate(
+            mesh->morphWeights = Pow2Alloc(
                 ctx->allocator,
                 numWeights * sizeof(float)
             );
@@ -511,7 +511,7 @@ static void ParseMeshesObj(sj_Value sjMeshObj, void* element, GLTFParseContext* 
         }
 
         mesh->numPrimitives = sjCountArray(*ctx->sj, val);
-        mesh->primitives = FixedPow2Allocator_Allocate(
+        mesh->primitives = Pow2Alloc(
             ctx->allocator, 
             mesh->numPrimitives * sizeof(APrimitive)
         );
@@ -536,7 +536,7 @@ static void ParseMeshesObj(sj_Value sjMeshObj, void* element, GLTFParseContext* 
                 else if (StrCMP16(sjPrimKey.start, "material"))   { ParsePositiveNumberU16(sjPrimVal.start, &primitive->material   ); }
                 else if (StrCMP16(sjPrimKey.start, "targets"))
                 {
-                    primitive->morphTargets = (AMorphTarget*)FixedPow2Allocator_Allocate(
+                    primitive->morphTargets = (AMorphTarget*)Pow2Alloc(
                         ctx->allocator, 
                         sizeof(AMorphTarget) * sjCountArray(*ctx->sj, sjPrimVal)
                     );
@@ -773,7 +773,7 @@ static void ParseAnimationsObj(sj_Value sjArrObj, void* element, GLTFParseContex
         else if (StrCMP16(key.start, "channels"))
         {
             animation->numChannels = sjCountArray(*ctx->sj, val);
-            animation->channels = (AAnimChannel*)FixedPow2Allocator_Allocate(
+            animation->channels = (AAnimChannel*)Pow2Alloc(
                 ctx->allocator, animation->numChannels * sizeof(AAnimChannel)
             );
             int channelIndex = 0;
@@ -823,7 +823,7 @@ static void ParseAnimationsObj(sj_Value sjArrObj, void* element, GLTFParseContex
         else if (StrCMP16(key.start, "samplers"))
         {
             animation->numSamplers = sjCountArray(*ctx->sj, val);
-            animation->samplers = (AAnimSampler*)FixedPow2Allocator_Allocate(
+            animation->samplers = (AAnimSampler*)Pow2Alloc(
                 ctx->allocator, animation->numSamplers * sizeof(AAnimSampler)
             );
             int samplerIdx = 0;
@@ -1007,7 +1007,7 @@ static char* ParseGLBHeader(const char* path, SceneBundle* result, uint64_t* jso
             if (chunk0Type != 0x4E4F534A) // json in binary
                 return 0; // json must exist
             
-            source = (char*)AllocZeroTLSFGlobal(chunk0Len + 40, 1);
+            source = (char*)AllocZeroTLSF(chunk0Len + 40, 1);
             AFileRead(source, chunk0Len, file, 1);
 
             int chunk1Len, chunk1Type;
@@ -1016,8 +1016,8 @@ static char* ParseGLBHeader(const char* path, SceneBundle* result, uint64_t* jso
 
             if (chunk1Type == 0x004E4942) // bin in binary
             {
-                result->buffers = (GLTFBuffer*)AllocateTLSFGlobal(sizeof(GLTFBuffer));
-                result->buffers[0].uri = AllocateTLSFGlobal(chunk1Len);
+                result->buffers = (GLTFBuffer*)AllocTLSF(sizeof(GLTFBuffer));
+                result->buffers[0].uri = AllocTLSF(chunk1Len);
                 result->buffers[0].byteLength = chunk1Len;
                 result->numBuffers = 1;
                 AFileRead(result->buffers[0].uri, chunk1Len, file, 1);
@@ -1057,8 +1057,8 @@ int ParseGLTF(const char* path, SceneBundle* result, float scale)
         return 0;
     }
 
-    FixedPow2Allocator* allocator = AllocateTLSFGlobal(sizeof(FixedPow2Allocator));
-    FixedPow2Allocator_Init(allocator, 2048 * 2);
+    Pow2Allocator* allocator = AllocTLSF(sizeof(Pow2Allocator));
+    Pow2Alloc_Init(allocator, 2048 * 2);
 
     GLTFAccessor* accessors = NULL;
     GLTFBufferView* bufferViews = NULL;
@@ -1359,7 +1359,7 @@ int ParseGLTF(const char* path, SceneBundle* result, float scale)
         AImage* image = result->images + i;
         if (image->bufferViewIndex == -1) continue;
         
-        image->path = (char*)FixedPow2Allocator_Allocate(allocator, pathLen + 64);
+        image->path = (char*)Pow2Alloc(allocator, pathLen + 64);
 
         size_t pathEnd = pathLen - (isGLB ? 4 : 5);
         SmallMemCpy(image->path, path, pathEnd);
@@ -1480,8 +1480,8 @@ void FreeGLTFBuffers(SceneBundle* gltf)
 
 void FreeSceneBundle(SceneBundle* gltf)
 {
-    FixedPow2Allocator_Destroy((FixedPow2Allocator*)gltf->allocator);
-    DeAllocateTLSFGlobal(gltf->allocator);
+    Pow2Alloc_Destroy((Pow2Allocator*)gltf->allocator);
+    DeAllocTLSF(gltf->allocator);
 }
 
 // <<<<<<<        prefab         >>>>>>>>>>>>

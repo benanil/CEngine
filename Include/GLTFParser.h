@@ -320,7 +320,7 @@ typedef struct SceneBundle_
     int numCameras;
     int numScenes;
     int defaultSceneIndex;
-    int numBuffers;
+    int numBuffers; // parser internal
     int numAnimations;
     int numSkins;
     int rootNode;

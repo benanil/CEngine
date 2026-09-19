@@ -301,11 +301,11 @@ static void TerrainBrushPaint(TerrainEditChunk* chunk, u32 idx, f32 weight, f32 
         // texture is in neither slot: replace whichever side currently matters less
         if (w < 128u) {
             b = tex;
-            w = (u32)Lerpf((f32)w, 255.0f, pressure * 0.85f);
+            w = (u32)Lerpf32((f32)w, 255.0f, pressure * 0.85f);
         }
         else {
             a = tex;
-            w = (u32)Lerpf((f32)w, 0.0f, pressure * 0.85f);
+            w = (u32)Lerpf32((f32)w, 0.0f, pressure * 0.85f);
             pressure = -pressure;
         }
     }
