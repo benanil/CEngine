@@ -375,6 +375,14 @@ void AFileWrite(const void* src, uint64_t size, AFile file, int alignment) {
     #endif
 }
 
+void AFileWriteInt(AFile file, s64 val, bool newLine)
+{
+    char str[32];
+    s32 len = IntToString(str, val, 0);
+    if (newLine) str[len++] = '\n';
+    AFileWrite(str, len, file, 1);
+}
+
 void AFileSeekBegin(AFile file) {
     #ifndef _MSC_VER
     fseek(file.file, 0, SEEK_SET);

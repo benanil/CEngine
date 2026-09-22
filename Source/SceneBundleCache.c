@@ -100,7 +100,7 @@ static s32 PreloadAllBundlesOfScene(SceneAsyncRequest* request)
         while (*ln && IsWhitespace(*ln) || IsNumber(*ln))
             ln++;
         s32 pathLen = (u32)(u64)(line - ln);
-        StringCopy(ln, stages[numLoaded++].path, pathLen);
+        stages[numLoaded++].path = StringDuplicateN(ln, pathLen);
     }
 
     if (numLoaded != numBundles)
@@ -315,21 +315,20 @@ BundleCacheEntry* BundleCacheAcquire(SceneBundleStage* stage)
     }
     SDL_UnlockSpinlock(&g_BundleCacheLock);
 
-    bool hasPath = stage->bundle == NULL || stage->bundle == (SceneBundle*)0xCDCDCDCDCDCDCDCDull;
     // Load/bake outside the lock (slow). Only one importer touches a given path at a time
     // (the async op guard plus callbacks running after the worker finishes), so no double bake.
-    SceneBundle* bundle = !hasPath ? stage->bundle : (SceneBundle*)AllocTLSF(sizeof(SceneBundle));
+    SceneBundle* bundle = stage->bundle ? stage->bundle : (SceneBundle*)AllocTLSF(sizeof(SceneBundle));
     stage->bundle = bundle;
     void* vertexHeapPtr = NULL;
     void* indexHeapPtr = NULL;
     bool baked = false;
-    if (hasPath && !LoadBundleMeshCached(stage->path, bundle, &vertexHeapPtr, &indexHeapPtr, &baked))
+    if (!stage->isRuntime && !LoadBundleMeshCached(stage->path, bundle, &vertexHeapPtr, &indexHeapPtr, &baked))
     {
         DeAllocTLSF(bundle);
         return NULL;
     }
 
-    if (!hasPath && !BakeSceneMeshesAndAnimations(bundle, &vertexHeapPtr, &indexHeapPtr))
+    if (stage->isRuntime && !BakeSceneMeshesAndAnimations(bundle, &vertexHeapPtr, &indexHeapPtr))
     {
         AX_WARN("asset import failed during mesh bake: %s vertices=%d indices=%d", stage->path, bundle->totalVertices, bundle->totalIndices);
         return NULL;

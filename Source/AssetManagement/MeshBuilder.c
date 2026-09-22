@@ -1,11 +1,13 @@
 #include "Include/AssetManager.h"
 #include "Math/Quaternion.h"
 
-static APrimitive* PrepareSingleMeshBundle(SceneBundle* result, u32 numVertex)
+static APrimitive* PrepareSingleMeshBundle(SceneBundle* result, u32 numVertex, s32 numIndex)
 {
     MemSet(result, 0x0, sizeof(SceneBundle));
     Pow2Allocator* allocator = AllocTLSF(sizeof(Pow2Allocator));
-    Pow2Alloc_Init(allocator, 1024);
+    size_t allocatorSize = (sizeof(v128f) * numVertex * 4ull) + // 4 attributes position, texcoord, normal, tangent
+                           (sizeof(u32) * numIndex);
+    Pow2Alloc_Init(allocator, NextPowerOf2_64(allocatorSize));
     result->allocator = allocator;
     result->totalVertices = numVertex;
     result->scale = 1.0f;
@@ -35,12 +37,12 @@ MeshBuilder MeshBuilder_Create(s32 numVertex, s32 numIndex)
 {
     MeshBuilder b;
     b.bundle    = (SceneBundle*)AllocTLSF(sizeof(SceneBundle));
-    b.primitive = PrepareSingleMeshBundle(b.bundle, numVertex);
+    b.primitive = PrepareSingleMeshBundle(b.bundle, numVertex, numIndex);
     b.alloc     = (Pow2Allocator*)b.bundle->allocator;
-    b.positions = (float3*)(b.primitive->vertexAttribs[AAttribIdx_POSITION]   = Pow2AllocArray(b.alloc, float3, numVertex));
-    b.texCoords = (float2*)(b.primitive->vertexAttribs[AAttribIdx_TEXCOORD_0] = Pow2AllocArray(b.alloc, float2, numVertex));
-    b.normals   = (float3*)(b.primitive->vertexAttribs[AAttribIdx_NORMAL] = Pow2AllocArray(b.alloc, float3, numVertex));
-    b.tangents  = (v128f*)(b.primitive->vertexAttribs[AAttribIdx_TANGENT] = Pow2AllocArray(b.alloc, v128f, numVertex));
+    b.positions = (float3*)(b.primitive->Attributes[AAttribIdx_POSITION]   = Pow2AllocArray(b.alloc, float3, numVertex));
+    b.texCoords = (float2*)(b.primitive->Attributes[AAttribIdx_TEXCOORD_0] = Pow2AllocArray(b.alloc, float2, numVertex));
+    b.normals   = (float3*)(b.primitive->Attributes[AAttribIdx_NORMAL] = Pow2AllocArray(b.alloc, float3, numVertex));
+    b.tangents  = (v128f*)(b.primitive->Attributes[AAttribIdx_TANGENT] = Pow2AllocArray(b.alloc, v128f, numVertex));
     b.primitive->numIndices = b.bundle->totalIndices = numIndex;
     b.primitive->indices = b.indices = Pow2AllocArray(b.alloc, u32, numIndex);
     return b;
@@ -77,13 +79,15 @@ SceneBundle* GenerateGrid(float segmentSize, u32 ver, u32 hor)
             ii += 6;
         }
     }
+    for (u32 i = 0; i < numIndex; i++)
+        ASSERT(b.indices[i] < numVertex);
     return b.bundle;
 }
 
 SceneBundle* GenerateCylinder(float radius, float height, u32 sliceCount)
 {
     const u32 numVertex = sliceCount * 2 + 2; // + 2 is up and down centers. * 2 is for top and bottom circles
-    const u32 numIndex  = sliceCount * 9; 
+    const u32 numIndex  = sliceCount * 12; 
     MeshBuilder b = MeshBuilder_Create(numVertex, numIndex);
     // Bottom center
     b.positions[0] = F3Zero();
@@ -117,19 +121,26 @@ SceneBundle* GenerateCylinder(float radius, float height, u32 sliceCount)
         u32 next = (i + 1) % sliceCount;
         u32 currVertex = i + 2;
         u32 nextVertex = next + 2;
-        // Side triangle
-        b.indices[i * 9 + 0] = currVertex;
-        b.indices[i * 9 + 1] = nextVertex;
-        b.indices[i * 9 + 2] = currVertex + sliceCount;
-        // upper triangle
-        b.indices[i * 9 + 3] = nextVertex;
-        b.indices[i * 9 + 4] = nextVertex + sliceCount;
-        b.indices[i * 9 + 5] = currVertex + sliceCount;
+        u32 j = i * 12;
+        // Side triangle 1
+        b.indices[j + 0] = currVertex;
+        b.indices[j + 1] = nextVertex;
+        b.indices[j + 2] = currVertex + sliceCount;
+        // Side triangle 2
+        b.indices[j + 3] = nextVertex;
+        b.indices[j + 4] = nextVertex + sliceCount;
+        b.indices[j + 5] = currVertex + sliceCount;
+        // Upper triangle
+        b.indices[j + 6] = 1;
+        b.indices[j + 7] = nextVertex + sliceCount;
+        b.indices[j + 8] = currVertex + sliceCount;
         // Bottom triangle
-        b.indices[i * 9 + 6] = currVertex;
-        b.indices[i * 9 + 7] = nextVertex;
-        b.indices[i * 9 + 8] = 0;
+        b.indices[j + 9] = currVertex;
+        b.indices[j + 10] = nextVertex;
+        b.indices[j + 11] = 0;
     }
+    for (u32 i = 0; i < numIndex; i++)
+        ASSERT(b.indices[i] < numVertex);
     return b.bundle;
 }
 
@@ -209,22 +220,27 @@ SceneBundle* GenerateCone(float height, float radius, u32 sliceCount)
         b.indices[i * 6 + 4] = 0; // bottom center
         b.indices[i * 6 + 5] = nextVertex;
     }
+    for (u32 i = 0; i < numIndex; i++)
+        ASSERT(b.indices[i] < numVertex);
     return b.bundle;
 }
 
 SceneBundle* GenerateCapsule(float radius, float height, u32 sliceCount)
 {
     const u32 hemiCount = 8;
-    const u32 ringCount = hemiCount * 2 + 1;
+    const u32 ringCount = hemiCount * 2 + 2;
     const u32 numVertex = ringCount * sliceCount + 2;
-    const u32 numIndex  = (ringCount - 1) * sliceCount * 6;
+    const u32 numIndex  = ringCount * sliceCount * 6;
     const f32 halfHeight = height * 0.5f;
     MeshBuilder b = MeshBuilder_Create(numVertex, numIndex);
+
+    // Bottom pole
     b.positions[0] = (float3){ 0, -halfHeight - radius, 0 };
     b.normals  [0] = (float3){ 0, -1, 0 };
     b.texCoords[0] = (float2){ 0.5f, 0 };
     b.tangents [0] = VecSetR(1, 0, 0, 0);
 
+    // Top pole
     b.positions[1] = (float3){ 0, halfHeight + radius, 0 };
     b.normals  [1] = (float3){ 0, 1, 0 };
     b.texCoords[1] = (float2){ 0.5f, 1 };
@@ -232,43 +248,72 @@ SceneBundle* GenerateCapsule(float radius, float height, u32 sliceCount)
 
     for (u32 y = 0; y < ringCount; y++)
     {
-        f32 v = (f32)(y + 1) / (f32)(ringCount + 1);
-        f32 angle = (v - 0.5f) * MATH_PI;
+        f32 angle, py;
+        if (y <= hemiCount) {
+            angle = -MATH_PI * 0.5f + (f32)y / (f32)hemiCount * MATH_PI * 0.5f;
+            py = -halfHeight + Sin(angle) * radius;
+        }
+        else {
+            u32 upperY = y - hemiCount - 1;
+            angle = (f32)upperY / (f32)hemiCount * MATH_PI * 0.5f;
+            py = halfHeight + Sin(angle) * radius;
+        }
+
         f32 sy = Sin(angle);
         f32 cy = Cos(angle);
-        f32 py = sy < 0.0f ? -halfHeight + sy * radius :  halfHeight + sy * radius;
 
         for (u32 x = 0; x < sliceCount; x++)
         {
-            f32 u = (f32)x / (f32)sliceCount;
+            f32 u = (f32)(x + 1) / (f32)sliceCount;
             f32 s = Sin(u * MATH_PI * 2.0f);
             f32 c = Cos(u * MATH_PI * 2.0f);
             u32 i = y * sliceCount + x + 2;
             b.positions[i] = (float3){ s * radius * cy, py, c * radius * cy };
             b.normals[i] = F3Norm((float3){ s * cy, sy, c * cy });
-            b.texCoords[i] = (float2){ u, v };
+            b.texCoords[i] = (float2){ u, (f32)y / (f32)(ringCount - 1) };
             float3 tangent = (float3){ c, 0, -s };
             b.tangents[i] = Vec3Load(&tangent.x);
         }
     }
+
+    u32 j = 0;
+    // Bottom cap
+    for (u32 x = 0; x < sliceCount; x++)
+    {
+        u32 next = (x + 1) % sliceCount;
+        b.indices[j++] = 0;
+        b.indices[j++] = x + 2;
+        b.indices[j++] = next + 2;
+    }
+
+    // Rings
     for (u32 y = 0; y < ringCount - 1; y++)
     {
         for (u32 x = 0; x < sliceCount; x++)
         {
             u32 next = (x + 1) % sliceCount;
             u32 a = y * sliceCount + x + 2;
-            u32 k = y * sliceCount + next + 2;
-            u32 c = a + sliceCount;
-            u32 d = k + sliceCount;
-            u32 i = (y * sliceCount + x) * 6;
-            b.indices[i + 0] = a;
-            b.indices[i + 1] = k;
-            b.indices[i + 2] = c;
-            b.indices[i + 3] = k;
-            b.indices[i + 4] = d;
-            b.indices[i + 5] = c;
+            u32 b0 = y * sliceCount + next + 2;
+            u32 c = (y + 1) * sliceCount + x + 2;
+            u32 d = (y + 1) * sliceCount + next + 2;
+            b.indices[j++] = a;
+            b.indices[j++] = b0;
+            b.indices[j++] = c;
+            b.indices[j++] = b0;
+            b.indices[j++] = d;
+            b.indices[j++] = c;
         }
     }
+    // Top cap
+    u32 top = (ringCount - 1) * sliceCount + 2;
+    for (u32 x = 0; x < sliceCount; x++)
+    {
+        u32 next = (x + 1) % sliceCount;
+        b.indices[j++] = top + next;
+        b.indices[j++] = top + x;
+        b.indices[j++] = 1;
+    }
+    for (u32 i = 0; i < numIndex; i++) ASSERT(b.indices[i] < numVertex);
     return b.bundle;
 }
 
@@ -279,7 +324,8 @@ SceneBundle* GenerateSphere(float radius, u32 ringCount, u32 sliceCount)
     s32 steps = (s32)(Floorf32((MATH_PI + 0.00001f) / dPhi)) + 1;
     u32 ringVertexCount = sliceCount + 1;
     s32 numVertex = steps * ringVertexCount;
-    MeshBuilder b = MeshBuilder_Create(numVertex, (ringCount - 1) * sliceCount * 6);
+    s32 numIndex = (ringCount - 1) * sliceCount * 6;
+    MeshBuilder b = MeshBuilder_Create(numVertex, numIndex);
     u32 vertIdx = 0;
     float dTheta = 2.0f * MATH_PI / (float)sliceCount;
 
@@ -317,29 +363,79 @@ SceneBundle* GenerateSphere(float radius, u32 ringCount, u32 sliceCount)
             b.indices[k++] = i * ringVertexCount + j + 1;
         }
     }
+    for (u32 i = 0; i < numIndex; i++)
+        ASSERT(b.indices[i] < numVertex);
     return b.bundle;
 }
 
+static SceneBundle unitCapsule = {};
+static SceneBundle unitCube = {};
+static SceneBundle unitGrid = {};
+static SceneBundle unitCylinder = {};
+static SceneBundle unitCone = {};
+static SceneBundle unitSphere = {};
+
 SceneBundle* GetUnitCapsule() {
-    static SceneBundle r = {}; return r.numMeshes != 0 ? &r : GenerateCapsule(1.0f, 1.0f, 16);
+     return unitCapsule.numMeshes != 0 ? &unitCapsule : GenerateCapsule(1.0f, 1.8f, 16);
 }
 
 SceneBundle* GetUnitCube() {
-    static SceneBundle r = {}; return r.numMeshes != 0 ? &r : GenerateCube(1.0f);
+    return unitCube.numMeshes != 0 ? &unitCube : GenerateCube(1.0f);
 }
 
 SceneBundle* GetUnitGrid() {
-    static SceneBundle r = {}; return r.numMeshes != 0 ? &r :  GenerateGrid(1.0f, 10, 10);
+     return unitGrid.numMeshes != 0 ? &unitGrid :  GenerateGrid(1.0f, 10, 10);
 }
 
 SceneBundle* GetUnitCylinder() {
-    static SceneBundle r = {}; return r.numMeshes != 0 ? &r : GenerateCylinder(1.0f, 1.0f, 16);
+    return unitCylinder.numMeshes != 0 ? &unitCylinder : GenerateCylinder(1.0f, 1.0f, 16);
 }
 
 SceneBundle* GetUnitCone() {
-    static SceneBundle r = {}; return r.numMeshes != 0 ? &r : GenerateCone(1.0f, 0.5f, 16);
+    return unitCone.numMeshes != 0 ? &unitCone : GenerateCone(1.0f, 0.5f, 16);
 }
 
 SceneBundle* GetUnitSphere() {
-    static SceneBundle r = {}; return r.numMeshes != 0 ? &r :  GenerateSphere(1.0f, 16, 16);
+    return unitSphere.numMeshes != 0 ? &unitSphere :  GenerateSphere(1.0f, 16, 16);
+}
+
+MeshType IsBundlePrimitive(SceneBundle* bundle)
+{
+    if (bundle == &unitCapsule)  return MeshType_Capsule;
+    if (bundle == &unitCube)     return MeshType_Cube;
+    if (bundle == &unitGrid)     return MeshType_Grid;
+    if (bundle == &unitCylinder) return MeshType_Cylinder;
+    if (bundle == &unitCone)     return MeshType_Cone;
+    if (bundle == &unitSphere)   return MeshType_Sphere;
+    return MeshType_Default;
+}
+
+SceneBundle* GetUnitPrimitive(MeshType type)
+{
+    switch (type)
+    {
+        case MeshType_Capsule:  return GetUnitCapsule();
+        case MeshType_Cube:     return GetUnitCube();
+        case MeshType_Grid:     return GetUnitGrid();
+        case MeshType_Cylinder: return GetUnitCylinder();
+        case MeshType_Cone:     return GetUnitCone();
+        case MeshType_Sphere:   return GetUnitSphere();
+    }
+    return NULL;
+}
+
+const char* GetPrimitiveName(MeshType type)
+{
+    switch (type)
+    {
+        case MeshType_Default:  return "Default";
+        case MeshType_Runtime:  return "Runtime";
+        case MeshType_Sphere:   return "Sphere";
+        case MeshType_Cylinder: return "Cylinder";
+        case MeshType_Cone:     return "Cone";
+        case MeshType_Grid:     return "Grid";
+        case MeshType_Cube:     return "Cube";
+        case MeshType_Capsule:  return "Capsule";
+    }
+    return NULL;
 }

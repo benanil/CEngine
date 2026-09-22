@@ -195,7 +195,7 @@ typedef struct APrimitive_
     // positions = (Vector3f*)vertexAttribs[0];
     // texCoords = (Vec2f*)vertexAttribs[1]; // note that tangent is vec4
     // ...
-    void* vertexAttribs[AAttribType_Count]; 
+    void* Attributes[AAttribType_Count]; 
     
     // AABB min and max
     AX_ALIGN(16) float min[4];

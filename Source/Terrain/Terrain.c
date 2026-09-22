@@ -63,9 +63,9 @@ static void TerrainAuthoringDefaults(TerrainAuthoring* authoring) {
     for (u32 i = 0; i < T_LAYER_COUNT; i++)
     {
         authoring->layers[i].enabled = true;
-        CopyString(authoring->layers[i].albedo, sizeof(authoring->layers[i].albedo), tAlbedoPaths[i]);
-        CopyString(authoring->layers[i].normal, sizeof(authoring->layers[i].normal), tNormalPaths[i]);
-        CopyString(authoring->layers[i].metallicRoughness, sizeof(authoring->layers[i].metallicRoughness), tMetallicRoughnessPaths[i]);
+        StringCopy(tAlbedoPaths[i], authoring->layers[i].albedo, sizeof(authoring->layers[i].albedo));
+        StringCopy(tNormalPaths[i], authoring->layers[i].normal, sizeof(authoring->layers[i].normal));
+        StringCopy(tMetallicRoughnessPaths[i], authoring->layers[i].metallicRoughness, sizeof(authoring->layers[i].metallicRoughness));
     }
 }
 
@@ -77,6 +77,7 @@ TerrainAuthoring* Terrain_GetAuthoring(void){
 void tInit(void)
 {
     if (tp.initialized) return;
+    Foliage_Init();
     tp.genParams = Terrain_DefaultGenParams();
     TerrainAuthoringDefaults(&tp.authoring);
     TerrainDensity_SetParams(&tp.genParams);

@@ -124,8 +124,9 @@ static void FoliageStageRange(u32 begin, u32 end, void* userData)
     SceneBundleStage* stages = (SceneBundleStage*)userData;
     for (u32 i = begin; i < end; i++) 
     {
-        StringCopy(gFoliage.types[i].path, stages[i].path, 512);
+        stages[i].path = StringDuplicate(gFoliage.types[i].path);
         stages[i].skinned = false;
+        stages[i].cacheKey = StringToHash64(stages[i].path);
         Scene_AddBundleStage(&stages[i], false);
     }
 }

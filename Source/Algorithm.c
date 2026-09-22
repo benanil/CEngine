@@ -4,6 +4,7 @@
 #include "Include/Algorithm.h"
 #include "Include/FileSystem.h"
 #include "Math/Math.h" // Log10_32
+#include "Include/Memory.h" // alloc tlsf
 
 #define XSWAP(type, x, y) do { \
     type SWAP_tmp = (x);      \
@@ -76,6 +77,61 @@ int* BinarySearch(int* begin, int len, int value)
     return NULL;
 }
 
+u64 EncodeBase64(char* dst, const uint8_t* src, size_t src_length)
+{
+    static const char table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+    size_t i = 0;
+    char* start = dst;
+    for (; i + 3 <= src_length; i += 3) {
+        uint32_t b0 = src[i + 0];
+        uint32_t b1 = src[i + 1];
+        uint32_t b2 = src[i + 2];
+
+        dst[0] = table[(b0 >> 2) & 0x3F];
+        dst[1] = table[((b0 << 4) | (b1 >> 4)) & 0x3F];
+        dst[2] = table[((b1 << 2) | (b2 >> 6)) & 0x3F];
+        dst[3] = table[b2 & 0x3F];
+        dst += 4;
+    }
+
+    // Handle padding for remaining bytes (1 or 2 bytes)
+    if (i < src_length) {
+        uint32_t b0 = src[i];
+        uint32_t b1 = (i + 1 < src_length) ? src[i + 1] : 0;
+
+        dst[0] = table[(b0 >> 2) & 0x3F];
+        dst[1] = table[((b0 << 4) | (b1 >> 4)) & 0x3F];
+        dst[2] = (i + 1 < src_length) ? table[(b1 << 2) & 0x3F] : '=';
+        dst[3] = '=';
+        dst += 4;
+    }
+    *dst = '\0'; // Null-terminate the destination string
+    return (u64)(dst - start); // num bytes written
+}
+
+void DecodeBase64(char *dst, const char *src, size_t src_length)
+{
+    uint8_t table[256] = { 0 };
+    for (char c = 'A'; c <= 'Z'; c++) table[c] = (uint8_t)(c - 'A');
+    for (char c = 'a'; c <= 'z'; c++) table[c] = (uint8_t)(26 + (c - 'a'));
+    for (char c = '0'; c <= '9'; c++) table[c] = (uint8_t)(52 + (c - '0'));
+    table['+'] = 62;
+    table['/'] = 63;
+    
+    for (uint64_t i = 0; i + 4 <= src_length; i += 4) {
+        uint32_t a = table[src[i + 0]];
+        uint32_t b = table[src[i + 1]];
+        uint32_t c = table[src[i + 2]];
+        uint32_t d = table[src[i + 3]];
+           
+        dst[0] = (char)(a << 2 | b >> 4);
+        dst[1] = (char)(b << 4 | c >> 2);
+        dst[2] = (char)(c << 6 | d);
+        dst += 3;
+    }
+}
+
 const char* ParseNumberI64(const char* curr, int64_t* result)
 {
     while (*curr && (*curr != '-' && !IsNumber(*curr))) 
@@ -120,7 +176,6 @@ bool IsParsable(const char* curr)
     if (!IsNumber(*curr) || *curr != '-') return false;
     return true;
 }
-
 const char* ParseFloat(const char* ptr, float* res)
 {
     const double POWER_10_POS[20] =
@@ -250,6 +305,7 @@ int FloatToString(char* ptr, float f, int afterpoint)
     return numChars + IntToString(ptr + numChars, frac, afterpoint);
 }
 
+// todo(anil): these has to move to Filesystem.h
 char* WStr(char* p, const char* s) {
     u32 len = (u32)StringLength(s);
     MemCopy(p, s, len);
@@ -263,7 +319,7 @@ char* WInt(char* p, s64 v) {
 
 char* WFlt(char* p, float v) {
     *p++ = ' '; 
-    return p + FloatToString(p, v, 6); 
+    return p + FloatToString(p, v, 6);
 }
 
 void WEnd(AFile file, char* base, char* p) {
@@ -439,10 +495,22 @@ bool StringEqual(const char* RESTRICT a, const char* RESTRICT b, int n)
     return true;
 }
 
-void StringCopy(const char* path, char* dst, u32 dstSize) {
-    u32 len = Minu32((u32)StringLength(path), dstSize - 1u);
-    MemCopy(dst, path, len);
+void StringCopy(const char* src, char* dst, u32 dstCapacity) {
+    u32 len = Minu32((u32)StringLength(src), dstCapacity - 1u);
+    MemCopy(dst, src, len);
     dst[len] = '\0';
+}
+
+char* StringDuplicateN(const char* src, s32 len)
+{
+    char* res = (char*)AllocTLSF(len + 1);
+    StringCopy(src, res, len + 1);
+    return res;
+}
+
+char* StringDuplicate(const char* src)
+{
+    return StringDuplicateN(src, StringLength(src));
 }
 
 #ifdef TEST_ALGO

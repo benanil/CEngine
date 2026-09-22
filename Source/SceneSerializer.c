@@ -8,6 +8,7 @@
 #include "Include/Algorithm.h"
 #include "Include/Memory.h"
 #include "Include/Platform.h"
+#include "Include/Random.h"
 #include "Include/Rendering.h"
 #include "Include/Bitset.h"
 #include "Include/ParallelFor.h"
@@ -35,6 +36,72 @@ static v128f SceneUnpackLegacyScaleXY11Z10(u32 packed)
 /*//////////////////////////////////////////////////////////////////////////*/
 /*                                  Save                                    */
 /*//////////////////////////////////////////////////////////////////////////*/
+
+// warning this has missing attributes, and last one is indexbuffer size
+static void WritePrimBuffer(AFile file, const char* name, char* buffer, const APrimitive* p, void* data, size_t size)
+{
+    char line[64] = {};
+    s32 nameLen = (u32)StringLength(name);
+    MemCopy(line, name, nameLen);
+    line[nameLen++] = ':';
+    u64 base64NumBytes = EncodeBase64(buffer, (u8*)data, size);
+    WEnd(file, line, WInt(line + nameLen, (s64)base64NumBytes));
+    AFileWrite(buffer, base64NumBytes, file, 1);
+    AFileWrite("\n", 1, file, 1);
+}
+
+static void ReadPrimitiveBuffer(AFile file, void* dst)
+{
+    char line[64] = {};
+    if (!AFileReadLine(line, sizeof(line), file))
+        return;
+    s64 base64NumBytes;
+    ParseNumberI64(line, &base64NumBytes);
+    // AFileSeek(1, file);// skip newline
+    char* encodedTmp = AllocTLSF((size_t)base64NumBytes + 1);
+    AFileRead(encodedTmp, base64NumBytes, file, 1);
+    encodedTmp[base64NumBytes] = '\0';
+    // Decode directly into target buffer
+    DecodeBase64((char*)dst, encodedTmp, base64NumBytes);
+    DeAllocTLSF(encodedTmp);
+    AFileReadLine(line, sizeof(line), file);
+}
+
+static void WriteProceduralBundle(const SceneBundleRef* ref, AFile file)
+{
+    const APrimitive* p = &ref->bundle->meshes[0].primitives[0];
+    size_t maxRawBytes = Maxu64(sizeof(v128f) * p->numVertices, sizeof(u32) * p->numIndices);
+    size_t maxBase64Bytes = 4 * ((maxRawBytes + 2) / 3) + 1;
+    char* buffer = AllocTLSF(maxBase64Bytes);
+    AFileWriteInt(file, (u64)p->numVertices, true);
+    AFileWriteInt(file, (u64)p->numIndices , true);
+    // todo save load path
+    WritePrimBuffer(file, "positions", buffer, p, p->Attributes[AAttribIdx_POSITION]  , sizeof(float3) * p->numVertices);
+    WritePrimBuffer(file, "texcoords", buffer, p, p->Attributes[AAttribIdx_TEXCOORD_0], sizeof(float2) * p->numVertices);
+    WritePrimBuffer(file, "normals"  , buffer, p, p->Attributes[AAttribIdx_NORMAL]    , sizeof(float3) * p->numVertices);
+    WritePrimBuffer(file, "tangents" , buffer, p, p->Attributes[AAttribIdx_TANGENT]   , sizeof(v128f ) * p->numVertices);
+    WritePrimBuffer(file, "indices"  , buffer, p, p->indices, sizeof(u32) * p->numIndices);
+    DeAllocTLSF(buffer);
+}
+
+static SceneBundle* ReadProceduralBundle(AFile file)
+{
+    char line[64] = {};
+    s32 numVertex, numIndex;
+
+    if (!AFileReadLine(line, sizeof(line), file)) return NULL;
+    ParsePositiveNumber(line, &numVertex);
+    if (!AFileReadLine(line, sizeof(line), file)) return NULL;
+    ParsePositiveNumber(line, &numIndex);
+
+    MeshBuilder builder = MeshBuilder_Create(numVertex, numIndex);
+    ReadPrimitiveBuffer(file, builder.positions);
+    ReadPrimitiveBuffer(file, builder.texCoords);
+    ReadPrimitiveBuffer(file, builder.normals);
+    ReadPrimitiveBuffer(file, builder.tangents);
+    ReadPrimitiveBuffer(file, builder.indices);
+    return builder.bundle;
+}
 
 s32 SceneSerializer_Save(Scene* scene, const char* path)
 {
@@ -92,9 +159,13 @@ s32 SceneSerializer_Save(Scene* scene, const char* path)
 
     // bundle indices are stable handles and may contain holes; persist only the live bundles,
     // a reload re-adds them sequentially into a hole-free scene.
+    // skip procedural meshes as well
     u32 liveBundles = 0;
     for (u32 b = 0; b < scene->numBundles; b++)
-        liveBundles += scene->bundleRefs[b].bundle != NULL;
+    {
+        const SceneBundleRef* ref = &scene->bundleRefs[b];
+        liveBundles += ref->bundle != NULL;
+    }
 
     p = WStr(line, "bundles");
     p = WInt(p, (s64)liveBundles);
@@ -108,8 +179,19 @@ s32 SceneSerializer_Save(Scene* scene, const char* path)
         p = WInt(p, (s64)ref->materialOffset);
         p = WInt(p, (s64)ref->bundle->numMaterials);
         p = WStr(p, " ");
-        p = WStr(p, ref->path);
-        WEnd(file, line, p);
+        MeshType meshType = IsBundlePrimitive(ref->bundle);
+        meshType = ref->isRuntime && meshType == MeshType_Default ? MeshType_Runtime : meshType;
+
+        p = WInt(p, (s64)meshType);
+        if (meshType == MeshType_Runtime)
+        {
+            WEnd(file, line, p);
+            WriteProceduralBundle(ref, file);
+        }
+        else
+        {
+            WEnd(file, line, WStr(p, ref->path));
+        }
     }
 
     p = WStr(line, "descriptors");
@@ -271,6 +353,7 @@ typedef struct SceneFileData_
     char* bundlePaths;       // numBundles * 1024
     u32*  bundleSkinned;
     u32*  bundleMaterialOff;
+    SceneBundle** runtimeBundles;
 
     TextureDescriptor* descriptors;
     u32 numDescriptors;
@@ -371,27 +454,47 @@ static s32 ParseSceneFile(const char* path, SceneFileData* data)
     data->bundlePaths       = (char*)ArenaAllocZero(&GlobalArena, (u64)Maxu32(data->numBundles, 1u) * 1024u);
     data->bundleSkinned     = (u32*)ArenaAllocZero(&GlobalArena, Maxu32(data->numBundles, 1u) * sizeof(u32));
     data->bundleMaterialOff = (u32*)ArenaAllocZero(&GlobalArena, Maxu32(data->numBundles, 1u) * sizeof(u32));
+    data->runtimeBundles    = (SceneBundle**)ArenaAllocZero(&GlobalArena, Maxu32(data->numBundles, 1u) * sizeof(SceneBundle*));
     for (u32 b = 0; b < data->numBundles; b++)
     {
         u32 numMaterials = 0;
-        if (!(p = ReadRecord(file, line, sizeof(line), "bundle"))) goto fail;
+        if (!(p = ReadRecord(file, line, sizeof(line), "bundle"))) 
+            goto fail;
         p = RU32(p, &data->bundleSkinned[b]);
         p = RU32(p, &data->bundleMaterialOff[b]);
         p = RU32(p, &numMaterials);
+        u32 meshType; // MeshType
+        p = RU32(p, &meshType);
+        
+        if (meshType == MeshType_Runtime)
+        {
+            data->runtimeBundles[b] = ReadProceduralBundle(file);
+            continue;
+        }
+        else if (meshType > MeshType_Runtime) // unit mesh
+        {
+            data->runtimeBundles[b] = GetUnitPrimitive(meshType);
+            continue;
+        }
+
+        char* bundlePath = data->bundlePaths + (u64)b * 1024u;
         while (*p == ' ') p++;
         int nameLen = StringLength(p);
-        if (nameLen <= 0 || nameLen >= 1024) goto fail;
-        MemCopy(data->bundlePaths + (u64)b * 1024u, p, nameLen + 1);
+        if (nameLen <= 0 || nameLen >= 1024) 
+            goto fail;
+        MemCopy(bundlePath, p, nameLen + 1);
     }
 
-    if (!(p = ReadRecord(file, line, sizeof(line), "descriptors"))) goto fail;
+    if (!(p = ReadRecord(file, line, sizeof(line), "descriptors")))
+        goto fail;
     RU32(p, &data->numDescriptors);
     if (data->numDescriptors > MAX_TEXTURE_DESCRIPTORS) goto fail;
     data->descriptors = (TextureDescriptor*)ArenaAllocZero(&GlobalArena, Maxu32(data->numDescriptors, 1u) * sizeof(TextureDescriptor));
     for (u32 i = 0; i < data->numDescriptors; i++)
     {
         u32 page = 0, x = 0, y = 0, w = 0, h = 0, flags = 0;
-        if (!(p = ReadRecord(file, line, sizeof(line), "desc"))) goto fail;
+        if (!(p = ReadRecord(file, line, sizeof(line), "desc")))
+            goto fail;
         p = RU32(p, &page);
         p = RU32(p, &x);
         p = RU32(p, &y);
@@ -407,14 +510,16 @@ static s32 ParseSceneFile(const char* path, SceneFileData* data)
         desc->uvScale.y = (float)h / (float)TEXTURE_PAGE_SIZE;
     }
 
-    if (!(p = ReadRecord(file, line, sizeof(line), "materials"))) goto fail;
+    if (!(p = ReadRecord(file, line, sizeof(line), "materials")))
+        goto fail;
     RU32(p, &data->materialWatermark);
     if (data->materialWatermark > MAX_GPU_MATERIALS) goto fail;
     data->materials = (MaterialGPU*)ArenaAllocZero(&GlobalArena, Maxu32(data->materialWatermark, 1u) * sizeof(MaterialGPU));
     for (u32 i = 0; i < data->materialWatermark; i++)
     {
         MaterialGPU* material = &data->materials[i];
-        if (!(p = ReadRecord(file, line, sizeof(line), "mat"))) goto fail;
+        if (!(p = ReadRecord(file, line, sizeof(line), "mat")))
+            goto fail;
         u32 albedoDescriptor = 0u;
         u32 normalDescriptor = 0u;
         u32 metallicRoughnessDescriptor = 0u;
@@ -431,14 +536,17 @@ static s32 ParseSceneFile(const char* path, SceneFileData* data)
         material->flags = (u16)flags;
     }
 
-    if (!(p = ReadRecord(file, line, sizeof(line), "lights"))) goto fail;
+    if (!(p = ReadRecord(file, line, sizeof(line), "lights")))
+        goto fail;
     RU32(p, &data->numLights);
-    if (data->numLights > MAX_SCENE_LIGHTS) goto fail;
+    if (data->numLights > MAX_SCENE_LIGHTS)
+        goto fail;
     data->lights = (LightGPU*)ArenaAllocZero(&GlobalArena, Maxu32(data->numLights, 1u) * sizeof(LightGPU));
     for (u32 i = 0; i < data->numLights; i++)
     {
         LightGPU* light = &data->lights[i];
-        if (!(p = ReadRecord(file, line, sizeof(line), "light"))) goto fail;
+        if (!(p = ReadRecord(file, line, sizeof(line), "light")))
+            goto fail;
         u32 type = 0u;
         u32 flags = 0u;
         p = RU32(p, &type);
@@ -459,7 +567,8 @@ static s32 ParseSceneFile(const char* path, SceneFileData* data)
     for (u32 s = 0; s < 2; s++)
     {
         u32 setIdx = 0;
-        if (!(p = ReadRecord(file, line, sizeof(line), "entities"))) goto fail;
+        if (!(p = ReadRecord(file, line, sizeof(line), "entities")))
+            goto fail;
         p = RU32(p, &setIdx);
         RU32(p, &data->numEntities[s]);
         if (setIdx != s || data->numEntities[s] > (s == 1u ? MAX_ANIM_INSTANCES : MAX_ENTITY)) goto fail;
@@ -468,7 +577,8 @@ static s32 ParseSceneFile(const char* path, SceneFileData* data)
         {
             SceneEntRecord* record = &data->entities[s][i];
             u32 rotLo = 0, rotHi = 0;
-            if (!(p = ReadRecord(file, line, sizeof(line), "ent"))) goto fail;
+            if (!(p = ReadRecord(file, line, sizeof(line), "ent"))) 
+                goto fail;
             p = RU32(p, &record->primGroupIdx);
             for (u32 k = 0; k < 3u; k++) p = RFlt(p, &record->position[k]);
             p = RU32(p, &rotLo);
@@ -494,14 +604,17 @@ static s32 ParseSceneFile(const char* path, SceneFileData* data)
     // physics overrides section (version 4+); absent in older files
     if (version >= 4u)
     {
-        if (!(p = ReadRecord(file, line, sizeof(line), "physics"))) goto fail;
+        if (!(p = ReadRecord(file, line, sizeof(line), "physics")))
+            goto fail;
         RU32(p, &data->numPhysics);
-        if (data->numPhysics > MAX_ENTITY) goto fail;
+        if (data->numPhysics > MAX_ENTITY) 
+            goto fail;
         data->physics = (ScenePhysicsRecord*)ArenaAllocZero(&GlobalArena, Maxu32(data->numPhysics, 1u) * sizeof(ScenePhysicsRecord));
         for (u32 i = 0; i < data->numPhysics; i++)
         {
             ScenePhysicsRecord* rec = &data->physics[i];
-            if (!(p = ReadRecord(file, line, sizeof(line), "phys"))) goto fail;
+            if (!(p = ReadRecord(file, line, sizeof(line), "phys")))
+                goto fail;
             p = RU32(p, &rec->sparseIdx);
             p = RU32(p, &rec->bodyType);
             p = RU32(p, &rec->shapeType);
@@ -550,14 +663,21 @@ static void SceneStageRange(u32 begin, u32 end, void* userData)
 // out: false on any bundle failure, scene is left with whatever finalized before the failure
 static bool SceneSerializer_LoadBundles(Scene* scene, const SceneFileData* data, bool baked)
 {
-    SceneBundleStage* stages =
-        (SceneBundleStage*)AllocTLSF(Maxu32(data->numBundles, 1u) * sizeof(SceneBundleStage));
+    SceneBundleStage* stages = CAllocTLSFArray(SceneBundleStage, Maxu32(data->numBundles, 1u));
 
     for (u32 b = 0; b < data->numBundles; b++)
     {
-        StringCopy(data->bundlePaths + (u64)b * 1024u, stages[b].path, 512);
+        stages[b].path = StringDuplicate(data->bundlePaths + ((u64)b * 1024u));
         stages[b].skinned        = data->bundleSkinned[b] != 0u;
         stages[b].materialOffset = data->bundleMaterialOff[b];
+        stages[b].bundle = data->runtimeBundles[b]; // for custom meshes this is not null
+        if (data->runtimeBundles[b] != NULL) {
+            stages[b].isRuntime = true;
+            stages[b].cacheKey = MurmurHash((u64)stages[b].bundle);
+        }
+        else {
+            stages[b].cacheKey = StringToHash64(stages[b].path);
+        }
     }
 
     SceneStageRangeCtx ctx = { stages, baked };

@@ -369,28 +369,28 @@ s32 LoadFBX(const char* path, SceneBundle* fbxScene, f32 scale)
         // One extra position slot pads wide v128f loads in BoundsForPrimitive().
         float3* finalPos = (float3*)Pow2Alloc(allocator, (uniqueCount + 1) * sizeof(float3));
         meshopt_remapVertexBuffer(finalPos, cornerPos, (size_t)numCorners, sizeof(float3), remap);
-        primitive->vertexAttribs[AAttribIdx_POSITION] = finalPos;
+        primitive->Attributes[AAttribIdx_POSITION] = finalPos;
         primitive->attributes = AAttribType_POSITION;
 
         if (hasUV)
         {
             float2* finalUV = (float2*)Pow2Alloc(allocator, uniqueCount * sizeof(float2));
             meshopt_remapVertexBuffer(finalUV, cornerUV, (size_t)numCorners, sizeof(float2), remap);
-            primitive->vertexAttribs[AAttribIdx_TEXCOORD_0] = finalUV;
+            primitive->Attributes[AAttribIdx_TEXCOORD_0] = finalUV;
             primitive->attributes |= AAttribType_TEXCOORD_0;
         }
         if (hasNormal)
         {
             float3* finalNrm = (float3*)Pow2Alloc(allocator, uniqueCount * sizeof(float3));
             meshopt_remapVertexBuffer(finalNrm, cornerNrm, (size_t)numCorners, sizeof(float3), remap);
-            primitive->vertexAttribs[AAttribIdx_NORMAL] = finalNrm;
+            primitive->Attributes[AAttribIdx_NORMAL] = finalNrm;
             primitive->attributes |= AAttribType_NORMAL;
         }
         if (hasColor)
         {
             v128f* finalColor = (v128f*)Pow2Alloc(allocator, uniqueCount * sizeof(v128f));
             meshopt_remapVertexBuffer(finalColor, cornerColor, (size_t)numCorners, sizeof(v128f), remap);
-            primitive->vertexAttribs[AAttribIdx_COLOR_0] = finalColor;
+            primitive->Attributes[AAttribIdx_COLOR_0] = finalColor;
             primitive->attributes |= AAttribType_COLOR_0;
             primitive->colorType = AComponentType_FLOAT;
             primitive->colorCount = 4;
@@ -1012,12 +1012,12 @@ s32 LoadSceneImages(const char* texturePath, Texture* textures, s32 numImages)
 // loads the cached basis images of a gltf into a bundle local staging array
 s32 LoadBundleImagesFromCache(const char* gltfPath, SceneBundle* bundle, Texture* staging)
 {
-    if (StrCMP16(gltfPath, "NoPath")) return 1;
     char path[1024];
     int pathLen = StringLength(gltfPath);
     MemCopy(path, gltfPath, pathLen + 1);
     ChangeExtension(path, pathLen, "bdc");
     if (!FileExist(path)) SaveSceneImages(bundle, path, false);
+    if (!FileExist(path)) return 1; // not saved
     return LoadSceneImages(path, staging, bundle->numImages);
 }
 

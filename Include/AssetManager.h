@@ -45,7 +45,6 @@ u8 IsMeshPath(const char* path);
 // returns 0 on not enough memory
 s32 BakeSceneMeshesAndAnimations(SceneBundle* gltf, void** outVertexHeapPtr, void** outIndexHeapPtr);
 
-SceneBundle* GetUnitCapsule();
 
 /* Animation baking */
 void BakeGLTFAnimations(SceneBundle* gltf);
@@ -66,16 +65,29 @@ s32 LoadSceneImages(const char* texturePath, Texture* textures, s32 numImages);
 // MeshBuilder.c
 typedef struct MeshBuilder_
 {
-    SceneBundle*   bundle;
-    APrimitive*    primitive;
-    Pow2Allocator* alloc;
-
     float3* positions;
     float2* texCoords;
     float3* normals;
     v128f*  tangents;
     u32*    indices;
+    
+    SceneBundle*   bundle;
+    APrimitive*    primitive;
+    Pow2Allocator* alloc;
 } MeshBuilder;
+
+typedef enum MeshType_
+{
+    MeshType_Default   , // imported from fbx, gltf, obj and saved with abm
+    MeshType_Runtime   , // generated runtime
+    // unit meshes
+    MeshType_Sphere    ,
+    MeshType_Cylinder  ,
+    MeshType_Cone      ,
+    MeshType_Grid      ,
+    MeshType_Cube      ,
+    MeshType_Capsule
+} MeshType;
 
 // MeshBuilder b = MeshBuilder_Create(numVertex, numIndex);
 // set vertices, set indices -> Scene_AddBundle -> Scene_Spawn
@@ -93,6 +105,12 @@ SceneBundle* GetUnitCylinder();
 SceneBundle* GetUnitCone(); // cached 1mt 16 ring cone
 SceneBundle* GetUnitGrid();
 SceneBundle* GetUnitCube();
+SceneBundle* GetUnitCapsule();
+
+MeshType IsBundlePrimitive(SceneBundle* bundle);
+SceneBundle* GetUnitPrimitive(MeshType type);
+const char* GetPrimitiveName(MeshType type);
+
 
 #if defined(__cplusplus)
 }

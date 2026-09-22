@@ -64,7 +64,7 @@ void ParallelFor(u32 itemCount, u32 minItemsPerWorker, ParallelForFn fn, void* u
     {
         threads[threadCount] = SDL_CreateThread(ParallelForThreadMain, "ParallelFor", &tasks[i]);
         
-		if (threads[threadCount]) {
+        if (threads[threadCount]) {
             threadCount++;
         }
         else {

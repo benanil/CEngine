@@ -22,7 +22,8 @@ typedef struct SceneBundleRef_
     u32          renderIdx;      // bundle index inside its render set
     u32          materialOffset; // gpu material slot base of the bundle in this scene
     u32          animOffset;     // first animation of the bundle inside the scene's animation system
-    u32          skinned;
+    u16          skinned;
+    u16          isRuntime;
     AnimationBundleAlloc animAlloc;
     u64          cacheKey;       // gBundleCache key (path hash); never store the entry pointer,
                                  // the cache map relocates entries on grow and on swap-with-last erase
@@ -86,7 +87,7 @@ typedef struct Scene_
 
     SceneBundleRef*  bundleRefs;   // fixed MAX_SCENE_BUNDLES allocation. bundle indices are stable
                                    // handles, removing one never shifts the others
-    u64*             bundleSlots;  // MAX_SCENE_BUNDLES bits, 1 means occupied
+    u64*             usedBundleBits;  // MAX_SCENE_BUNDLES bits, 1 means occupied
     u64*             materialSlots;// MAX_GPU_MATERIALS bits, 1 means occupied
 
     LightGPU*        lights;    // tlsf, MAX_SCENE_LIGHTS, authored lights pushed by Scene_SubmitLights
@@ -155,9 +156,10 @@ typedef struct SceneBundleStage_
     SceneBundle* bundle;
     u64          cacheKey;
     u32          materialOffset;  // Scene_AddBundleBaked* path only
+    bool         isRuntime;
     bool         skinned;         // Scene_AddBundle* path only
     bool         loaded;          // false when the load failed; Finalize/Abort are still safe to call
-    char         path[512];       // bundle cache owned string, stable for the entry's lifetime
+    char*        path;            // bundle cache owned string, stable for the entry's lifetime
     Texture      staging[1024];   // Scene_AddBundle* path only
 } SceneBundleStage;
 
@@ -195,7 +197,11 @@ bool Entity_IsTransparent(const Entity* entity);
 // per-frame scene tick: pumps async loads and steps physics for the active scene
 void Scene_Update(float deltaTime);
 
-u32 Scene_AddBundle(Scene* scene, SceneBundle* bundle);
+// returns stable index no need to wory about index will be invalid
+u32 Scene_AddBundle(Scene* scene, SceneBundle* bundle, const char* name);
+// if bundle is already added this will not add again
+u32 Scene_AddBundleCached(Scene* scene, SceneBundle* bundle, const char* name);
+
 // loads a gltf bundle, packs its textures into the scene's texture system and registers
 // its primitives to the matching render set. bundles are shared through a global cache
 // keyed by path, repeated adds of the same path reuse the resident mesh data.
@@ -288,7 +294,7 @@ void Physics_ApplyWorldSettings(void);
 // scene's surface render sets. call once after a scene finishes loading.
 void Scene_BuildStaticCollidersAsync(Scene* scene, AsyncCallback callback);
 void Scene_BuildStaticColliders(Scene* scene);
-
+// yea buddy
 b3BodyId Entity_GetPhysicsBody(Scene* scene, const Entity* entity);
 // after an entity moved call this to update its transformation in physics system
 void Entity_SyncPhysicsBody(Scene* scene, const Entity* entity);

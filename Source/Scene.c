@@ -57,13 +57,13 @@ static void SceneSaveTerrainSidecar(const char* scenePath)
 // fixed MAX_SCENE_BUNDLES allocation. out: bundle slot index, INVALID_BUNDLE when full
 static u32 Scene_AllocBundleSlot(Scene* scene)
 {
-    s32 slot = BitsetFindFirstEmpty(scene->bundleSlots, (s32)MAX_SCENE_BUNDLES);
+    s32 slot = BitsetFindFirstEmpty(scene->usedBundleBits, (s32)MAX_SCENE_BUNDLES);
     if (slot < 0)
     {
         AX_WARN("maximum scene bundle count reached: %d", MAX_SCENE_BUNDLES);
         return INVALID_BUNDLE;
     }
-    BitsetSet(scene->bundleSlots, slot);
+    BitsetSet(scene->usedBundleBits, slot);
     if ((u32)slot + 1u > scene->numBundles) scene->numBundles = (u32)slot + 1u;
     return (u32)slot;
 }
@@ -71,9 +71,9 @@ static u32 Scene_AllocBundleSlot(Scene* scene)
 // frees a bundle slot and pulls the watermark back over any trailing empty slots
 static void Scene_FreeBundleSlot(Scene* scene, u32 bundleIdx)
 {
-    BitsetReset(scene->bundleSlots, (s32)bundleIdx);
+    BitsetReset(scene->usedBundleBits, (s32)bundleIdx);
     MemsetZero(&scene->bundleRefs[bundleIdx], sizeof(SceneBundleRef));
-    while (scene->numBundles > 0 && !BitsetGet(scene->bundleSlots, (s32)(scene->numBundles - 1u)))
+    while (scene->numBundles > 0 && !BitsetGet(scene->usedBundleBits, (s32)(scene->numBundles - 1u)))
         scene->numBundles--;
 }
 
@@ -104,7 +104,7 @@ void Scene_Init(Scene* scene)
     scene->ambientBoost = 1.0f;
     scene->lights = (LightGPU*)AllocZeroTLSF(MAX_SCENE_LIGHTS, sizeof(LightGPU));
     scene->materialSlots = (u64*)AllocZeroTLSF((MAX_GPU_MATERIALS + 63u) >> 6, sizeof(u64));
-    scene->bundleSlots   = (u64*)AllocZeroTLSF((MAX_SCENE_BUNDLES + 63u) >> 6, sizeof(u64));
+    scene->usedBundleBits   = (u64*)AllocZeroTLSF((MAX_SCENE_BUNDLES + 63u) >> 6, sizeof(u64));
     scene->bundleRefs    = (SceneBundleRef*)AllocZeroTLSF(MAX_SCENE_BUNDLES, sizeof(SceneBundleRef));
 }
 
@@ -128,7 +128,7 @@ void Scene_Destroy(Scene* scene)
     if (scene->bundleRefs)    DeAllocTLSF(scene->bundleRefs);
     if (scene->lights)        DeAllocTLSF(scene->lights);
     if (scene->materialSlots) DeAllocTLSF(scene->materialSlots);
-    if (scene->bundleSlots)   DeAllocTLSF(scene->bundleSlots);
+    if (scene->usedBundleBits)   DeAllocTLSF(scene->usedBundleBits);
     Scene_DestroyPhysics(scene);
     if (scene == &g_OwnedActiveScene)
     {
@@ -287,7 +287,6 @@ static s32 Scene_ReserveMaterialSlots(Scene* scene, u32 materialOffset, u32 numM
     return 1;
 }
 
-
 void Scene_AddBundleStageAbort(SceneBundleStage* stage)
 {
     if (!stage->loaded) return;
@@ -300,17 +299,17 @@ u32 Scene_AddBundleBakedFinalize(Scene* scene, SceneBundleStage* stage)
 {
     if (!stage->loaded) return INVALID_BUNDLE;
 
-    if (BitsetFindFirstEmpty(scene->bundleSlots, (s32)MAX_SCENE_BUNDLES) < 0)
+    if (BitsetFindFirstEmpty(scene->usedBundleBits, (s32)MAX_SCENE_BUNDLES) < 0)
     {
         AX_WARN("maximum scene bundle count reached: %d", MAX_SCENE_BUNDLES);
         BundleCacheReleaseKey(stage->cacheKey);
         return INVALID_BUNDLE;
     }
 
-    SceneBundle* bundle        = stage->bundle;
-    const char*  storedPath    = stage->path;
+    SceneBundle* bundle         = stage->bundle;
+    const char*  storedPath     = stage->path;
     u32          materialOffset = stage->materialOffset;
-    bool         skinned       = bundle->numSkins > 0;
+    bool         skinned        = bundle->numSkins > 0;
 
     if (!Scene_ReserveMaterialSlots(scene, materialOffset, (u32)bundle->numMaterials))
     {
@@ -348,6 +347,7 @@ u32 Scene_AddBundleBakedFinalize(Scene* scene, SceneBundleStage* stage)
     ref->animOffset     = animAlloc.animOffset;
     ref->animAlloc      = animAlloc;
     ref->skinned        = skinned;
+    ref->isRuntime      = stage->isRuntime;
     ref->cacheKey       = stage->cacheKey;
     Scene_StampGroupBundle(set, renderIdx, bundleIdx);
     if (materialOffset + (u32)bundle->numMaterials > scene->numMaterials)
@@ -373,7 +373,7 @@ u32 Scene_AddBundleFinalize(Scene* scene, SceneBundleStage* stage)
         return existing;
     }
 
-    if (BitsetFindFirstEmpty(scene->bundleSlots, (s32)MAX_SCENE_BUNDLES) < 0) {
+    if (BitsetFindFirstEmpty(scene->usedBundleBits, (s32)MAX_SCENE_BUNDLES) < 0) {
         AX_WARN("maximum scene bundle count reached: %d", MAX_SCENE_BUNDLES);
         BundleCacheReleaseKey(stage->cacheKey);
         return INVALID_BUNDLE;
@@ -421,6 +421,7 @@ u32 Scene_AddBundleFinalize(Scene* scene, SceneBundleStage* stage)
     ref->animOffset         = animAlloc.animOffset;
     ref->animAlloc          = animAlloc;
     ref->skinned            = stage->skinned;
+    ref->isRuntime          = stage->isRuntime;
     ref->cacheKey           = stage->cacheKey;
     Scene_StampGroupBundle(set, renderIdx, bundleIdx);
 
@@ -444,23 +445,41 @@ err_early:
     return INVALID_BUNDLE;
 }
 
-u32 Scene_AddBundle(Scene* scene, SceneBundle* bundle)
+u32 Scene_AddBundle(Scene* scene, SceneBundle* bundle, const char* name)
 {
     SceneBundleStage stage = {};
-    StringCopy("NoPath\0", stage.path, sizeof(stage.path));
+    stage.path     = StringDuplicate(name);
     stage.bundle   = bundle;
     stage.cacheKey = MurmurHash((u64)bundle);
+    stage.isRuntime = true;
     Scene_AddBundleStage(&stage, false);
     if (!stage.loaded) return INVALID_BUNDLE;
     stage.skinned = stage.bundle->numSkins > 0;
     return Scene_AddBundleFinalize(scene, &stage);
 }
 
+u32 Scene_AddBundleCached(Scene* scene, SceneBundle* bundle, const char* name)
+{
+    int w = 0;
+    while (w < MAX_SCENE_BUNDLES >> 6)
+    {
+        u64 word = scene->usedBundleBits[w];
+        s32 set = 0;
+        while ((set = FindFirstSet(word)) != -1)
+        {
+            BitsetReset(&word, set);
+            if (scene->bundleRefs[w * 64 + set].bundle == bundle)
+                return w;
+        }
+        w++;
+    }
+    return Scene_AddBundle(scene, bundle, name);
+}
+
 u32 Scene_AddBundleFromPath(Scene* scene, const char* path)
 {
-    SceneBundleStage stage;
-    StringCopy(path, stage.path, sizeof(stage.path));
-    stage.cacheKey = StringToHash64(path);
+    SceneBundleStage stage = { NULL, StringToHash64(path)};
+    stage.path = StringDuplicate(path);
     Scene_AddBundleStage(&stage, false);
     if (!stage.loaded) return INVALID_BUNDLE;
     stage.skinned = stage.bundle->numSkins > 0;
@@ -473,8 +492,9 @@ const SceneBundle* Scene_AcquireBundlePeek(const char* path)
         .bundle = NULL,
         .cacheKey = StringToHash64(path)
     };
-    StringCopy(path, stage.path, sizeof(stage.path));
+    stage.path = StringDuplicate(path);
     BundleCacheEntry* entry = BundleCacheAcquire(&stage);
+    DeAllocTLSF(stage.path);
     return entry ? entry->bundle : NULL;
 }
 
@@ -532,8 +552,8 @@ void Scene_AddBundleBakedStageAbort(SceneBundleStage* stage)
 
 u32 Scene_AddBundleBaked(Scene* scene, const char* path, u32 materialOffset)
 {
-    SceneBundleStage stage;
-    StringCopy(path, stage.path, 512);
+    SceneBundleStage stage = {};
+    stage.path = StringDuplicate(path);
     stage.materialOffset = materialOffset;
     Scene_AddBundleStage(&stage, true);
     if (!stage.loaded) return INVALID_BUNDLE;

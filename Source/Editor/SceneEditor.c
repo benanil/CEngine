@@ -226,7 +226,7 @@ static void ImportDetailSetAnimationBoundsInfo(ImportDetailInfo* info, const Sce
         for (s32 p = 0; p < mesh->numPrimitives; p++)
         {
             const APrimitive* primitive = &mesh->primitives[p];
-            const float3* positions = (const float3*)primitive->vertexAttribs[AAttribIdx_POSITION];
+            const float3* positions = (const float3*)primitive->Attributes[AAttribIdx_POSITION];
             bool skinned = bundle->numSkins > 0;
             if (!positions || (float3*)(0xcdcdcdcdcdcdcdcdull) == positions)
             {
@@ -974,12 +974,19 @@ static void SceneEventDeleteBundle(void* unused)
 {
     (void)unused;
     Scene* scene = Scene_GetActive();
-    if (!scene || sceneSelectedBundle >= scene->numBundles) return;
     Scene_RemoveBundle(scene, sceneSelectedBundle);
     sceneSelectedBundle = INVALID_BUNDLE;
     sceneSelectedNode = -1;
     sceneObjectSelection.valid = false;
     EditorGizmoClear(); // group indices shifted
+}
+
+static void SceneAddPrimitive(void* data)
+{
+    Scene* scene = Scene_GetActive();
+    MeshType meshType = (MeshType)((u64)data);
+    u32 bundle = Scene_AddBundleCached(scene, GetUnitPrimitive(meshType), GetPrimitiveName(meshType));
+    Scene_Spawn(scene, bundle, VecZero(), QIdentity(), VecOne());
 }
 
 static bool SceneResolveSelectedObject(Scene* scene, RenderSet** outSet, PrimitiveGroup** outGroup, Entity** outEntity)
@@ -1778,12 +1785,22 @@ void DrawSceneWindow(bool* open)
             }
         }
 
+        if (scene)
+        {
+            UIRightClickAddEvent("Create Capsule" , SceneAddPrimitive, (void*)(u64)MeshType_Capsule);
+            UIRightClickAddEvent("Create Cube"    , SceneAddPrimitive, (void*)(u64)MeshType_Cube);
+            UIRightClickAddEvent("Create Grid"    , SceneAddPrimitive, (void*)(u64)MeshType_Grid);
+            UIRightClickAddEvent("Create Cylinder", SceneAddPrimitive, (void*)(u64)MeshType_Cylinder);
+            UIRightClickAddEvent("Create Cone"    , SceneAddPrimitive, (void*)(u64)MeshType_Cone);
+            UIRightClickAddEvent("Create Sphere"  , SceneAddPrimitive, (void*)(u64)MeshType_Sphere);
+        }
+
         if (scene && sceneSelectedBundle != INVALID_BUNDLE && sceneSelectedBundle < scene->numBundles)
         {
             if (sceneSelectedNode < 0)
             {
-                UIRightClickAddEvent("Duplicate", SceneEventDuplicateBundle, NULL);
                 UIRightClickAddEvent("Delete", SceneEventDeleteBundle, NULL);
+                UIRightClickAddEvent("Duplicate", SceneEventDuplicateBundle, NULL);
             }
             else
                 UIRightClickAddEvent("Delete", SceneEventDeleteNode, NULL);

@@ -111,28 +111,6 @@ static bool GLTFResolveAccessorPtr(const SceneBundle* result, const GLTFAccessor
     return true;
 }
 
-static void DecodeBase64(char *dst, const char *src, size_t src_length)
-{
-    uint8_t table[256] = { 0 };
-    for (char c = 'A'; c <= 'Z'; c++) table[c] = (uint8_t)(c - 'A');
-    for (char c = 'a'; c <= 'z'; c++) table[c] = (uint8_t)(26 + (c - 'a'));
-    for (char c = '0'; c <= '9'; c++) table[c] = (uint8_t)(52 + (c - '0'));
-    table['+'] = 62;
-    table['/'] = 63;
-    
-    for (uint64_t i = 0; i + 4 <= src_length; i += 4) {
-        uint32_t a = table[src[i + 0]];
-        uint32_t b = table[src[i + 1]];
-        uint32_t c = table[src[i + 2]];
-        uint32_t d = table[src[i + 3]];
-           
-        dst[0] = (char)(a << 2 | b >> 4);
-        dst[1] = (char)(b << 4 | c >> 2);
-        dst[2] = (char)(c << 6 | d);
-        dst += 3;
-    }
-}
-
 static inline char OGLWrapToWrap(int wrap)
 {
     switch (wrap)
@@ -445,7 +423,7 @@ static void ParseTexturesObj(sj_Value sjTextureObj, void* element, GLTFParseCont
 static void ParseAttributes(GLTFParseContext* ctx, sj_Value sjAttributes, APrimitive* primitive)
 {
     sj_Value key, val;
-    MemsetZero(primitive->vertexAttribs, sizeof(void*) * AAttribType_Count);
+    MemsetZero(primitive->Attributes, sizeof(void*) * AAttribType_Count);
     primitive->attributes = 0;
     while (sj_iter_object(ctx->sj, sjAttributes, &key, &val))
     {
@@ -472,7 +450,7 @@ static void ParseAttributes(GLTFParseContext* ctx, sj_Value sjAttributes, APrimi
         unsigned newIndex = TrailingZeroCount32(maskBefore ^ primitive->attributes);
         int attribOffset = 0;
         ParsePositiveNumber(val.start, &attribOffset);
-        primitive->vertexAttribs[newIndex] = (void*)(uint64_t)attribOffset;
+        primitive->Attributes[newIndex] = (void*)(uint64_t)attribOffset;
     }
 }
 
@@ -1207,7 +1185,7 @@ int ParseGLTF(const char* path, SceneBundle* result, float scale)
             void* resolvedPtr = NULL;
             GLTFAccessor accessor = {0};
             GLTFBufferView view = {0};
-            int positionAccessorIndex = (int)(size_t)primitive->vertexAttribs[AAttribIdx_POSITION];
+            int positionAccessorIndex = (int)(size_t)primitive->Attributes[AAttribIdx_POSITION];
             if (!GLTFResolveAccessorPtr(result, accessors, numAccessors, bufferViews, numBufferViews,
                                         positionAccessorIndex, "POSITION", &resolvedPtr, &accessor, &view))
             {
@@ -1251,19 +1229,19 @@ int ParseGLTF(const char* path, SceneBundle* result, float scale)
             const uint32_t jointIndex = TrailingZeroCount32(AAttribType_JOINTS);
             if (primitive->attributes & AAttribType_JOINTS)
             {
-                int jointAccessorIndex = (int)(size_t)primitive->vertexAttribs[jointIndex];
+                int jointAccessorIndex = (int)(size_t)primitive->Attributes[jointIndex];
                 if (GLTFResolveAccessorPtr(result, accessors, numAccessors, bufferViews, numBufferViews,
                                            jointAccessorIndex, "JOINTS_0", &resolvedPtr, &accessor, &view))
                 {
                     primitive->jointType   = (short)accessor.componentType;
                     primitive->jointCount  = (short)accessor.type;
                     primitive->jointStride = (short)view.byteStride;
-                    primitive->vertexAttribs[jointIndex] = resolvedPtr;
+                    primitive->Attributes[jointIndex] = resolvedPtr;
                 }
                 else
                 {
                     primitive->attributes &= ~AAttribType_JOINTS;
-                    primitive->vertexAttribs[jointIndex] = NULL;
+                    primitive->Attributes[jointIndex] = NULL;
                 }
             }
 
@@ -1271,18 +1249,18 @@ int ParseGLTF(const char* path, SceneBundle* result, float scale)
             const uint32_t weightIndex = TrailingZeroCount32(AAttribType_WEIGHTS);
             if (primitive->attributes & AAttribType_WEIGHTS)
             {
-                int weightAccessorIndex = (int)(size_t)primitive->vertexAttribs[weightIndex];
+                int weightAccessorIndex = (int)(size_t)primitive->Attributes[weightIndex];
                 if (GLTFResolveAccessorPtr(result, accessors, numAccessors, bufferViews, numBufferViews,
                                            weightAccessorIndex, "WEIGHTS_0", &resolvedPtr, &accessor, &view))
                 {
                     primitive->weightType   = (short)accessor.componentType;
                     primitive->weightStride = (short)view.byteStride;
-                    primitive->vertexAttribs[weightIndex] = resolvedPtr;
+                    primitive->Attributes[weightIndex] = resolvedPtr;
                 }
                 else
                 {
                     primitive->attributes &= ~AAttribType_WEIGHTS;
-                    primitive->vertexAttribs[weightIndex] = NULL;
+                    primitive->Attributes[weightIndex] = NULL;
                 }
             }
             if (((primitive->attributes & AAttribType_JOINTS) != 0) != ((primitive->attributes & AAttribType_WEIGHTS) != 0))
@@ -1299,12 +1277,12 @@ int ParseGLTF(const char* path, SceneBundle* result, float scale)
                 if (j == AAttribIdx_JOINTS || j == AAttribIdx_WEIGHTS)
                     continue;
 
-                int attribAccessorIndex = (int)(size_t)primitive->vertexAttribs[j];
+                int attribAccessorIndex = (int)(size_t)primitive->Attributes[j];
                 if (!GLTFResolveAccessorPtr(result, accessors, numAccessors, bufferViews, numBufferViews,
                                             attribAccessorIndex, "vertex attribute", &resolvedPtr, &accessor, &view))
                 {
                     AX_WARN("gltf vertex attribute invalid path=%s mesh=%d primitive=%d attrib=%d accessor=%d", path, m, p, j, attribAccessorIndex);
-                    primitive->vertexAttribs[j] = NULL;
+                    primitive->Attributes[j] = NULL;
                     primitive->attributes &= ~(1u << j);
                     continue;
                 }
@@ -1314,11 +1292,11 @@ int ParseGLTF(const char* path, SceneBundle* result, float scale)
                 if (packedPtr == NULL)
                 {
                     AX_WARN("gltf vertex attribute pack failed path=%s mesh=%d primitive=%d attrib=%d accessor=%d", path, m, p, j, attribAccessorIndex);
-                    primitive->vertexAttribs[j] = NULL;
+                    primitive->Attributes[j] = NULL;
                     primitive->attributes &= ~(1u << j);
                     continue;
                 }
-                primitive->vertexAttribs[j] = packedPtr;
+                primitive->Attributes[j] = packedPtr;
                 if (j == AAttribIdx_COLOR_0)
                 {
                     primitive->colorType = (short)accessor.componentType;

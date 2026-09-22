@@ -38,6 +38,11 @@ void Reverse(void** begin, void** end, int elemSize);
 
 int* BinarySearch(int* begin, int len, int value);
 
+// Ensure dst has at least 4 * ((src_length + 2) / 3) + 1 bytes allocated to avoid buffer overflows.
+u64 EncodeBase64(char *dst, const uint8_t *src, size_t src_length);
+
+void DecodeBase64(char *dst, const char *src, size_t src_length);
+
 // String to number functions
 const char* ParseNumber(const char* curr, int* result);
 
@@ -117,14 +122,10 @@ bool StringContains(const char* name, const char* search);
 
 bool StringEqual(const char* RESTRICT a, const char* RESTRICT b, int n);
 
-void StringCopy(const char* path, char* dst, u32 dstSize);
+void StringCopy(const char* src, char* dst, u32 dstCapacity);
 
-static inline void CopyString(char* dst, u32 dstSize, const char* src)
-{
-    u32 len = Minu32((u32)StringLength(src), dstSize - 1u);
-    MemCopy(dst, src, len);
-    dst[len] = '\0';
-}
+char* StringDuplicate(const char* src);
+char* StringDuplicateN(const char* src, s32 len);
 
 #if defined(__cplusplus)
 }

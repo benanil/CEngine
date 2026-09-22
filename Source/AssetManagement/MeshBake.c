@@ -11,7 +11,7 @@ extern Graphics gGFX;
 
 static void JointsForPrimitive(APrimitive* primitive, ASkinedVertex* currVertex)
 {
-    const u8* joints = (const u8*)primitive->vertexAttribs[AAttribIdx_JOINTS];
+    const u8* joints = (const u8*)primitive->Attributes[AAttribIdx_JOINTS];
     s32 jointSize    = GraphicsTypeToSize(primitive->jointType);
     s32 jointCount   = primitive->jointCount;
     s32 jointStride  = primitive->jointStride ? primitive->jointStride : jointSize * jointCount;
@@ -43,7 +43,7 @@ static void JointsForPrimitive(APrimitive* primitive, ASkinedVertex* currVertex)
 
 static void WeightsForPrimitive(APrimitive* primitive, ASkinedVertex* currVertex)
 {
-    const u8* weights = (const u8*)primitive->vertexAttribs[AAttribIdx_WEIGHTS];
+    const u8* weights = (const u8*)primitive->Attributes[AAttribIdx_WEIGHTS];
     s32 weightSize   = GraphicsTypeToSize(primitive->weightType);
     s32 weightCount  = primitive->jointCount;
     s32 weightStride = primitive->weightStride ? primitive->weightStride : weightSize * weightCount;
@@ -100,14 +100,13 @@ static void IndicesForPrimitive(APrimitive* primitive, u32* currIndices, const u
         return;
     }
 
-    const u8* beforeCopy = (const u8*)primitive->indices;
-    primitive->indices = currIndices;
     if (primitive->indexType < AComponentType_BYTE || primitive->indexType > AComponentType_FLOAT)
     {
         AX_WARN("primitive index type invalid: %d", primitive->indexType);
         primitive->numIndices = 0;
         return;
     }
+    const u8* beforeCopy = (const u8*)primitive->indices;
     s32 indexSize = GraphicsTypeToSize(primitive->indexType);
 
     for (s32 i = 0; i < primitive->numIndices; i++)
@@ -121,22 +120,16 @@ static void IndicesForPrimitive(APrimitive* primitive, u32* currIndices, const u
 
 static float3* GeneratePrimitiveNormals(const APrimitive* primitive, u32 vertexBase)
 {
-    const float3* positions = (const float3*)primitive->vertexAttribs[AAttribIdx_POSITION];
+    const float3* positions = (const float3*)primitive->Attributes[AAttribIdx_POSITION];
     const u32* indices = (const u32*)primitive->indices;
     float3* normals = (float3*)ArenaPushGlobal((u64)(primitive->numVertices + 1) * sizeof(float3));
     MemsetZero(normals, (u64)(primitive->numVertices + 1) * sizeof(float3));
 
     for (s32 i = 0; i + 2 < primitive->numIndices; i += 3)
     {
-        u32 global0 = indices[i + 0];
-        u32 global1 = indices[i + 1];
-        u32 global2 = indices[i + 2];
-        if (global0 < vertexBase || global1 < vertexBase || global2 < vertexBase)
-            continue;
-
-        u32 i0 = global0 - vertexBase;
-        u32 i1 = global1 - vertexBase;
-        u32 i2 = global2 - vertexBase;
+        u32 i0 = indices[i + 0];
+        u32 i1 = indices[i + 1];
+        u32 i2 = indices[i + 2];
         if (i0 >= (u32)primitive->numVertices || i1 >= (u32)primitive->numVertices || i2 >= (u32)primitive->numVertices)
             continue;
 
@@ -160,10 +153,10 @@ static float3* GeneratePrimitiveNormals(const APrimitive* primitive, u32 vertexB
 static void VerticesForPrimitive(APrimitive* primitive, ASkinedVertex* currVertex, u32 vertexBase)
 {
     primitive->vertices = currVertex;
-    const float3* positions  = (const float3*)primitive->vertexAttribs[AAttribIdx_POSITION];
-    const float2* texCoords  = (const float2*)primitive->vertexAttribs[AAttribIdx_TEXCOORD_0];
-    const float3* normals    = (const float3*)primitive->vertexAttribs[AAttribIdx_NORMAL];
-    const v128f* tangents    = (const v128f*)primitive->vertexAttribs[AAttribIdx_TANGENT];
+    const float3* positions  = (const float3*)primitive->Attributes[AAttribIdx_POSITION];
+    const float2* texCoords  = (const float2*)primitive->Attributes[AAttribIdx_TEXCOORD_0];
+    const float3* normals    = (const float3*)primitive->Attributes[AAttribIdx_NORMAL];
+    const v128f* tangents    = (const v128f*)primitive->Attributes[AAttribIdx_TANGENT];
     float3* generatedNormals = normals ? NULL : GeneratePrimitiveNormals(primitive, vertexBase);
     if (generatedNormals) normals = generatedNormals;
 
@@ -195,7 +188,7 @@ static f32 ReadColorChannel(const u8* src, s32 type)
 
 static u16 PackVertexColorRGBA4444(const APrimitive* primitive, s32 vertexIndex)
 {
-    const u8* colors = (const u8*)primitive->vertexAttribs[AAttribIdx_COLOR_0];
+    const u8* colors = (const u8*)primitive->Attributes[AAttribIdx_COLOR_0];
     if (!colors || primitive->colorCount < 3) return 0xFFFFu;
 
     s32 colorType = primitive->colorType;
@@ -220,10 +213,10 @@ static u16 PackVertexColorRGBA4444(const APrimitive* primitive, s32 vertexIndex)
 static void SurfaceVerticesForPrimitive(APrimitive* primitive, AVertex* currVertex, u32 vertexBase)
 {
     primitive->vertices = currVertex;
-    const float3* positions = (const float3*)primitive->vertexAttribs[AAttribIdx_POSITION];
-    const float2* texCoords = (const float2*)primitive->vertexAttribs[AAttribIdx_TEXCOORD_0];
-    const float3* normals   = (const float3*)primitive->vertexAttribs[AAttribIdx_NORMAL];
-    const v128f*  tangents  = (const v128f*)primitive->vertexAttribs[AAttribIdx_TANGENT];
+    const float3* positions = (const float3*)primitive->Attributes[AAttribIdx_POSITION];
+    const float2* texCoords = (const float2*)primitive->Attributes[AAttribIdx_TEXCOORD_0];
+    const float3* normals   = (const float3*)primitive->Attributes[AAttribIdx_NORMAL];
+    const v128f*  tangents  = (const v128f*)primitive->Attributes[AAttribIdx_TANGENT];
     float3* generatedNormals = normals ? NULL : GeneratePrimitiveNormals(primitive, vertexBase);
     if (generatedNormals) normals = generatedNormals;
 
@@ -245,7 +238,7 @@ static void SurfaceVerticesForPrimitive(APrimitive* primitive, AVertex* currVert
         currVertex[v].octTbn = PackNormalTangent(Vec3Load(&normal.x), tangent);
     }
     
-    const u8* colors = (const u8*)primitive->vertexAttribs[AAttribIdx_COLOR_0];
+    const u8* colors = (const u8*)primitive->Attributes[AAttribIdx_COLOR_0];
     if (colors && primitive->colorCount >= 3)
     {
         for (s32 v = 0; v < primitive->numVertices; v++)
@@ -259,7 +252,7 @@ static void SurfaceVerticesForPrimitive(APrimitive* primitive, AVertex* currVert
 
 static void BoundsForPrimitive(APrimitive* primitive)
 {
-    const float3* positions = (const float3*)primitive->vertexAttribs[AAttribIdx_POSITION];
+    const float3* positions = (const float3*)primitive->Attributes[AAttribIdx_POSITION];
     v128f min = VecSet1(FLT_MAX);
     v128f max = VecNeg(min);
     for (s32 i = 0; i < primitive->numVertices; i++)
@@ -332,7 +325,7 @@ static void BuildSkinSimplifyAttributes(const ASkinedVertex* vertices, f32* attr
 static void GenerateStaticLODsForPrimitive(APrimitive* primitive, const u32* globalIndices, u32 vertexBase,
                                            u32** lodWrite, u32* lodIndexCursor, u32 indexRangeEnd, f32 lodBudgetScale)
 {
-    const float3* positions = (const float3*)primitive->vertexAttribs[AAttribIdx_POSITION];
+    const float3* positions = (const float3*)primitive->Attributes[AAttribIdx_POSITION];
     if (!positions || primitive->numVertices <= 0 || primitive->numIndices < 3)
     {
         AX_WARN("static lod generation skipped: invalid primitive vertices=%d indices=%d", primitive->numVertices, primitive->numIndices);
@@ -387,7 +380,7 @@ static void GenerateSkinnedLODsForPrimitive(APrimitive* primitive, const u32* gl
                                             u32** lodWrite, u32* lodIndexCursor,
                                             u32 indexRangeEnd, f32 lodBudgetScale)
 {
-    const float3* positions = (const float3*)primitive->vertexAttribs[AAttribIdx_POSITION];
+    const float3* positions = (const float3*)primitive->Attributes[AAttribIdx_POSITION];
     if (!positions || primitive->numVertices <= 0 || primitive->numIndices < 3)
     {
         AX_WARN("skinned lod generation skipped: invalid primitive vertices=%d indices=%d", primitive->numVertices, primitive->numIndices);

@@ -165,7 +165,6 @@ float4 frag(VSOutput input) : SV_Target0
     cascadeIndex = input.viewDepth > input.cascadeSplits.y ? 2u : cascadeIndex;
     float4 shadowPos = cascadeIndex == 0u ? input.shadowPos0 : (cascadeIndex == 1u ? input.shadowPos1 : input.shadowPos2);
     float shadow = SampleShadow(ShadowMap, ShadowSampler, shadowPos, cascadeIndex, N, uSunDirection.xyz);
-
     roughness = SpecularAntiAliasing(roughness, ddx(N), ddy(N));
 
     float3 worldPos = input.worldPos;

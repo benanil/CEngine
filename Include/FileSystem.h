@@ -57,6 +57,7 @@ bool     RemoveFile      (const char* file);
 
 AFile    AFileOpen       (const char* fileName, AOpenFlag flag);
 void     AFileWrite      (const void* src, uint64_t size, AFile file, int alignment);
+void     AFileWriteInt   (AFile file, s64 w, bool newLine); 
 void     AFileRead       (      void* dst, uint64_t size, AFile file, int alignment);
 void     AFileSeekBegin  (      AFile file);
 void     AFileSeek       (      long  offset, AFile file);

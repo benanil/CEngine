@@ -29,8 +29,9 @@ static bool g_MainLoopTicking;
 
 Camera       g_Camera;
 SDL_Window*  g_SDLWindow;
-static EntityID ballEntity = INVALID_ENTITY;
+static EntityID characterEntity = INVALID_ENTITY;
 extern WindowState g_WindowState;
+SceneBundle* capsuleBundle;
 
 static void MainSyncWindowSize(void)
 {
@@ -81,27 +82,27 @@ static SDL_AppResult SDLCALL MainAppInit(void** appstate, int argc, char* argv[]
     EditorInit();
 
     InitBuffers();
+
+    GetUnitCapsule();
     // if (DemoScene_Create()) if (!Scene_MakeActive(DemoScene_Get())) return SDL_APP_FAILURE;
     if (!Scene_NewActive()) return SDL_APP_FAILURE;
     
-    Foliage_Init();
-    tInit();
     // Keep the runnable Transvoxel example in the demo scene instead of reopening the last editor scene.
 
     CameraInit(&g_Camera, 1920, 1080);
-
+    capsuleBundle  = GenerateCapsule(1.0f, 2.0f, 16u);
     return SDL_APP_CONTINUE;
 }
 
 void OpenSceneCallback(const char* path)
 {
     Scene* scene = Scene_GetActive();
-    SceneBundle* sphereBundle = GetUnitSphere();
-    u32 bundle = Scene_AddBundle(scene, sphereBundle);
-    ballEntity = Scene_Spawn(scene, bundle, VecSetR(0.0f, 34.0f, 0.0f, 0.0f), QIdentity(), VecOne());
-    Entity* ball = RenderSet_GetEntity(&scene->surfaceSet, ballEntity);
-    Entity_SetPhysicsShape(scene, ball, b3_sphereShape);
-    b3BodyId body = Entity_GetPhysicsBody(scene, ball);
+    u32 capsule  = Scene_AddBundle(scene, capsuleBundle, "Character");
+    characterEntity = Scene_Spawn(scene, capsule, VecSetR(0.0f, 0.0f, 0.0f, 0.f), QIdentity(), VecOne());
+
+    Entity* character = RenderSet_GetEntity(&scene->surfaceSet, characterEntity);
+    Entity_SetPhysicsShape(scene, character, b3_sphereShape);
+    b3BodyId body = Entity_GetPhysicsBody(scene, character);
 
     if(b3Body_IsValid(body))
         b3Body_SetBullet(body, true);
@@ -109,7 +110,7 @@ void OpenSceneCallback(const char* path)
 
 void BeforeDestroySceneCallback(Scene* scene)
 {
-    ballEntity = INVALID_ENTITY;
+    characterEntity = INVALID_ENTITY;
 }
 
 static void UpdateBall()
@@ -117,9 +118,9 @@ static void UpdateBall()
     Scene* scene = Scene_GetActive();
     static bool ballActive = false;
     static float force = 300.0f;
-    Entity* ball = RenderSet_GetEntity(&scene->surfaceSet, ballEntity);
+    Entity* ball = RenderSet_GetEntity(&scene->surfaceSet, characterEntity);
     if (ball == NULL) {
-        ballEntity = INVALID_ENTITY; // deleted somewhere we lost its reference
+        characterEntity = INVALID_ENTITY; // deleted somewhere we lost its reference
         return;
     }
 
