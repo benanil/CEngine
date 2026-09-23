@@ -458,7 +458,7 @@ u32 Scene_AddBundle(Scene* scene, SceneBundle* bundle, const char* name)
     return Scene_AddBundleFinalize(scene, &stage);
 }
 
-u32 Scene_AddBundleCached(Scene* scene, SceneBundle* bundle, const char* name)
+u32 Scene_BundleIdx(Scene* scene, SceneBundle* bundle)
 {
     int w = 0;
     while (w < MAX_SCENE_BUNDLES >> 6)
@@ -473,6 +473,31 @@ u32 Scene_AddBundleCached(Scene* scene, SceneBundle* bundle, const char* name)
         }
         w++;
     }
+    return ~0u;
+}
+
+u32 Scene_BundleFindFromPath(Scene* scene, const char* path)
+{
+    int w = 0;
+    while (w < MAX_SCENE_BUNDLES >> 6)
+    {
+        u64 word = scene->usedBundleBits[w];
+        while ((s32 set = FindFirstSet(word)) != -1)
+        {
+            BitsetReset(&word, set);
+            const char* bundlePath = scene->bundleRefs[w * 64 + set].path;
+            if (StringEqual(bundlePath == path)
+                return w;
+        }
+        w++;
+    }
+    return ~0u;
+}
+
+u32 Scene_AddBundleCached(Scene* scene, SceneBundle* bundle, const char* name)
+{
+    u32 exists = Scene_BundleIdx(scene, bundle);
+    if (exists != ~0) return exists;
     return Scene_AddBundle(scene, bundle, name);
 }
 

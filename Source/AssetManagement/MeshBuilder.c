@@ -368,45 +368,45 @@ SceneBundle* GenerateSphere(float radius, u32 ringCount, u32 sliceCount)
     return b.bundle;
 }
 
-static SceneBundle unitCapsule = {};
-static SceneBundle unitCube = {};
-static SceneBundle unitGrid = {};
-static SceneBundle unitCylinder = {};
-static SceneBundle unitCone = {};
-static SceneBundle unitSphere = {};
+static SceneBundle* unitCapsule  = NULL;
+static SceneBundle* unitCube     = NULL;
+static SceneBundle* unitGrid     = NULL;
+static SceneBundle* unitCylinder = NULL;
+static SceneBundle* unitCone     = NULL;
+static SceneBundle* unitSphere   = NULL;
 
 SceneBundle* GetUnitCapsule() {
-     return unitCapsule.numMeshes != 0 ? &unitCapsule : GenerateCapsule(1.0f, 1.8f, 16);
+    return unitCapsule ? unitCapsule : (unitCapsule = GenerateCapsule(1.0f, 1.8f, 16));
 }
 
 SceneBundle* GetUnitCube() {
-    return unitCube.numMeshes != 0 ? &unitCube : GenerateCube(1.0f);
+    return unitCube ? unitCube : (unitCube = GenerateCube(1.0f));
 }
 
 SceneBundle* GetUnitGrid() {
-     return unitGrid.numMeshes != 0 ? &unitGrid :  GenerateGrid(1.0f, 10, 10);
+    return unitGrid ? unitGrid : (unitGrid = GenerateGrid(1.0f, 10, 10));
 }
 
 SceneBundle* GetUnitCylinder() {
-    return unitCylinder.numMeshes != 0 ? &unitCylinder : GenerateCylinder(1.0f, 1.0f, 16);
+    return unitCylinder ? unitCylinder : (unitCylinder = GenerateCylinder(1.0f, 1.0f, 16));
 }
 
 SceneBundle* GetUnitCone() {
-    return unitCone.numMeshes != 0 ? &unitCone : GenerateCone(1.0f, 0.5f, 16);
+    return unitCone ? unitCone : (unitCone = GenerateCone(1.0f, 0.5f, 16));
 }
 
 SceneBundle* GetUnitSphere() {
-    return unitSphere.numMeshes != 0 ? &unitSphere :  GenerateSphere(1.0f, 16, 16);
+    return unitSphere ? unitSphere : (unitSphere = GenerateSphere(1.0f, 16, 16));
 }
 
 MeshType IsBundlePrimitive(SceneBundle* bundle)
 {
-    if (bundle == &unitCapsule)  return MeshType_Capsule;
-    if (bundle == &unitCube)     return MeshType_Cube;
-    if (bundle == &unitGrid)     return MeshType_Grid;
-    if (bundle == &unitCylinder) return MeshType_Cylinder;
-    if (bundle == &unitCone)     return MeshType_Cone;
-    if (bundle == &unitSphere)   return MeshType_Sphere;
+    if (bundle == unitCapsule)  return MeshType_Capsule;
+    if (bundle == unitCube)     return MeshType_Cube;
+    if (bundle == unitGrid)     return MeshType_Grid;
+    if (bundle == unitCylinder) return MeshType_Cylinder;
+    if (bundle == unitCone)     return MeshType_Cone;
+    if (bundle == unitSphere)   return MeshType_Sphere;
     return MeshType_Default;
 }
 

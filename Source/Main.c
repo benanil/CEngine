@@ -139,12 +139,6 @@ static void UpdateBall()
         b3Body_ApplyLinearImpulseToCenter(body, (b3Vec3) { 0.0f, force * 5.0f, 0.0f }, false);
     }
 
-    static char forceText[128] = {0};
-    static int forceLen = 1;
-    forceLen = FloatToString(forceText, force, 2);
-    u32 w = g_WindowState.prev_width;
-    float2 msSize = SlugCalcTextSizeN(NULL, forceText, forceLen, 32.0f);
-    SlugAppendText2DN(NULL, forceText, forceLen, (float2){ w - msSize.x - 12.0f, 188.0f }, 32.0f, 0xFFCCCCFF);
     if (ballActive)
     {
         float fwdButton = GetKeyDown(SDLK_W) ? 1.0f : GetKeyDown(SDLK_S) ? -1.0f : 0.0f;

@@ -47,25 +47,6 @@ static void Scene_FreeBundleGeometry(SceneBundle* bundle, BundleCacheEntry* cach
 
 SceneAsyncRequest* sceneAsyncRequest;
 
-// Acquire a bundle into the cache on the worker thread and HOLD the reference (recording its key on
-// the request). The main-thread callback then adds the bundle to the scene as a cache hit instead of
-// re-baking it; SceneAsyncUpdate drops these warming references afterwards. out: false on load failure.
-static bool SceneAsyncHold(SceneAsyncRequest* request, const char* path)
-{
-    if (!Scene_AcquireBundlePeek(path)) return false;
-
-    if (request->heldCount == request->heldCap)
-    {
-        u32 newCap  = request->heldCap ? request->heldCap * 2u : 8u;
-        u64* grown  = (u64*)SDL_realloc(request->heldKeys, (size_t)newCap * sizeof(u64));
-        if (!grown) { Scene_ReleaseBundlePeek(path); return false; }
-        request->heldKeys = grown;
-        request->heldCap  = newCap;
-    }
-    request->heldKeys[request->heldCount++] = StringToHash64(path);
-    return true;
-}
-
 void StageBundleRange(u32 begin, u32 end, void* userData)
 {
     SceneBundleStage* stages = (SceneBundleStage*)userData;
@@ -75,48 +56,30 @@ void StageBundleRange(u32 begin, u32 end, void* userData)
 
 static s32 PreloadAllBundlesOfScene(SceneAsyncRequest* request)
 {
-    AFile file = AFileOpen(request->path, AOpenFlag_ReadBinary);
-    if (!AFileExist(file)) return 0;
-    
-    char line[2048];
-    bool bundlesFound = false;
-    while (AFileReadLine(line, sizeof(line), file) > 0)
+    ArenaMark mark = ArenaSave(&GlobalArena);
+    SceneFileData data;
+    MemsetZero(&data, sizeof(data));
+    if (!ParseSceneFile(path, &data))
     {
-        if (!StrCMP16(line, "bundles")) continue;
-        bundlesFound = true;
-    }
-    if (!bundlesFound) return 0;
-
-    s32 numBundles;
-    ParsePositiveNumber(line, &numBundles);
-    
-    SceneBundleStage* stages = CAllocTLSFArray(SceneBundleStage, numBundles);
-    s32 numLoaded = 0, lineLen = 0;
-    // bundle 0 0 0 Assets/Meshes/Sphere.gltf
-    while (lineLen = AFileReadLine(line, sizeof(line), file))
-    {
-        if (!StrCMP16(line, "bundle ")) continue;
-        const char* ln = line;
-        while (*ln && IsWhitespace(*ln) || IsNumber(*ln))
-            ln++;
-        s32 pathLen = (u32)(u64)(line - ln);
-        stages[numLoaded++].path = StringDuplicateN(ln, pathLen);
+        ArenaRestore(&GlobalArena, mark);
+        return 0;
     }
 
-    if (numLoaded != numBundles)
-        AX_LOG("could'nt preload all bundles of scene");
-
-    ParallelFor(numLoaded, 1u, StageBundleRange, stages);
-    AFileClose(file);
+    ArenaRestore(&GlobalArena, mark);
     return 1;
 }
 
 static s32 SceneAsyncProbe(void* userData)
 {
     SceneAsyncRequest* request = (SceneAsyncRequest*)userData;
-
     if (request->op == SceneAsyncOp_ImportMesh)
-        return SceneAsyncHold(request, request->path);
+    {
+        SceneBundleStage stage = { NULL, StringToHash64(request->path)};
+        stage.path = StringDuplicate(request->path);
+        Scene_AddBundleStage(&stage, false);
+        if (!stage.loaded) return 0;
+        stage.skinned = stage.bundle->numSkins > 0;
+    }
 
     if (request->op != SceneAsyncOp_OpenScene)
         return PreloadAllBundlesOfScene(request);

@@ -200,8 +200,11 @@ void Scene_Update(float deltaTime);
 // returns stable index no need to wory about index will be invalid
 u32 Scene_AddBundle(Scene* scene, SceneBundle* bundle, const char* name);
 // if bundle is already added this will not add again
+// most of the time use this otherwise if you want to duplicate use Scene_AddBundle
 u32 Scene_AddBundleCached(Scene* scene, SceneBundle* bundle, const char* name);
-
+// returns index of bundle if exists otherwise ~0
+u32 Scene_BundleIdx(Scene* scene, SceneBundle* bundle);
+u32 Scene_BundleFindFromPath(Scene* scene, const char* path);
 // loads a gltf bundle, packs its textures into the scene's texture system and registers
 // its primitives to the matching render set. bundles are shared through a global cache
 // keyed by path, repeated adds of the same path reuse the resident mesh data.

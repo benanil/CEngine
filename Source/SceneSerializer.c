@@ -14,7 +14,7 @@
 #include "Include/ParallelFor.h"
 #include "Math/Bitpack.h"
 
-#define SCENE_FILE_VERSION 5
+#define SCENE_FILE_VERSION 6
 
 // first descriptors of a texture system are the built in defaults (TextureSystem.c)
 enum { SceneSer_DefaultDescriptors = 4 };
@@ -75,7 +75,7 @@ static void WriteProceduralBundle(const SceneBundleRef* ref, AFile file)
     char* buffer = AllocTLSF(maxBase64Bytes);
     AFileWriteInt(file, (u64)p->numVertices, true);
     AFileWriteInt(file, (u64)p->numIndices , true);
-    // todo save load path
+    AFileWrite(ref->path, StringLength(ref->path), file, 1);
     WritePrimBuffer(file, "positions", buffer, p, p->Attributes[AAttribIdx_POSITION]  , sizeof(float3) * p->numVertices);
     WritePrimBuffer(file, "texcoords", buffer, p, p->Attributes[AAttribIdx_TEXCOORD_0], sizeof(float2) * p->numVertices);
     WritePrimBuffer(file, "normals"  , buffer, p, p->Attributes[AAttribIdx_NORMAL]    , sizeof(float3) * p->numVertices);
@@ -84,7 +84,7 @@ static void WriteProceduralBundle(const SceneBundleRef* ref, AFile file)
     DeAllocTLSF(buffer);
 }
 
-static SceneBundle* ReadProceduralBundle(AFile file)
+static SceneBundle* ReadProceduralBundle(AFile file, s32 version, char* nameBuffer)
 {
     char line[64] = {};
     s32 numVertex, numIndex;
@@ -93,8 +93,8 @@ static SceneBundle* ReadProceduralBundle(AFile file)
     ParsePositiveNumber(line, &numVertex);
     if (!AFileReadLine(line, sizeof(line), file)) return NULL;
     ParsePositiveNumber(line, &numIndex);
-
     MeshBuilder builder = MeshBuilder_Create(numVertex, numIndex);
+    if (version >= 6 && !AFileReadLine(nameBuffer, 1024, file)) return NULL;
     ReadPrimitiveBuffer(file, builder.positions);
     ReadPrimitiveBuffer(file, builder.texCoords);
     ReadPrimitiveBuffer(file, builder.normals);
@@ -178,7 +178,6 @@ s32 SceneSerializer_Save(Scene* scene, const char* path)
         p = WInt(p, ref->skinned != 0);
         p = WInt(p, (s64)ref->materialOffset);
         p = WInt(p, (s64)ref->bundle->numMaterials);
-        p = WStr(p, " ");
         MeshType meshType = IsBundlePrimitive(ref->bundle);
         meshType = ref->isRuntime && meshType == MeshType_Default ? MeshType_Runtime : meshType;
 
@@ -465,15 +464,17 @@ static s32 ParseSceneFile(const char* path, SceneFileData* data)
         p = RU32(p, &numMaterials);
         u32 meshType; // MeshType
         p = RU32(p, &meshType);
-        
+        char* nameBuffer = data->bundlePaths + ((u64)b * 1024u);
         if (meshType == MeshType_Runtime)
         {
-            data->runtimeBundles[b] = ReadProceduralBundle(file);
+            data->runtimeBundles[b] = ReadProceduralBundle(file, version, nameBuffer);
             continue;
         }
         else if (meshType > MeshType_Runtime) // unit mesh
         {
             data->runtimeBundles[b] = GetUnitPrimitive(meshType);
+            const char* name = GetPrimitiveName(meshType);
+            MemCopy(nameBuffer, name, StringLength(name));
             continue;
         }
 
@@ -664,15 +665,16 @@ static void SceneStageRange(u32 begin, u32 end, void* userData)
 static bool SceneSerializer_LoadBundles(Scene* scene, const SceneFileData* data, bool baked)
 {
     SceneBundleStage* stages = CAllocTLSFArray(SceneBundleStage, Maxu32(data->numBundles, 1u));
-
     for (u32 b = 0; b < data->numBundles; b++)
     {
-        stages[b].path = StringDuplicate(data->bundlePaths + ((u64)b * 1024u));
+        char* path = data->bundlePaths + ((u64)b * 1024u);
+        bool isRuntime = data->runtimeBundles[b] != NULL;
+        stages[b].path           = StringDuplicate(path);
         stages[b].skinned        = data->bundleSkinned[b] != 0u;
         stages[b].materialOffset = data->bundleMaterialOff[b];
-        stages[b].bundle = data->runtimeBundles[b]; // for custom meshes this is not null
-        if (data->runtimeBundles[b] != NULL) {
-            stages[b].isRuntime = true;
+        stages[b].bundle         = data->runtimeBundles[b]; // for custom meshes this is not null
+        stages[b].isRuntime      = isRuntime;
+        if (isRuntime) {
             stages[b].cacheKey = MurmurHash((u64)stages[b].bundle);
         }
         else {
