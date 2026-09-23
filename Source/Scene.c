@@ -482,11 +482,12 @@ u32 Scene_BundleFindFromPath(Scene* scene, const char* path)
     while (w < MAX_SCENE_BUNDLES >> 6)
     {
         u64 word = scene->usedBundleBits[w];
-        while ((s32 set = FindFirstSet(word)) != -1)
+        s32 set;
+        while ((set = FindFirstSet(word)) != -1)
         {
             BitsetReset(&word, set);
             const char* bundlePath = scene->bundleRefs[w * 64 + set].path;
-            if (StringEqual(bundlePath == path)
+            if (StringEqual(bundlePath, path, StringLength(path)))
                 return w;
         }
         w++;
