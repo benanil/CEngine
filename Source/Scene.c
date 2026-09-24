@@ -72,6 +72,7 @@ static u32 Scene_AllocBundleSlot(Scene* scene)
 static void Scene_FreeBundleSlot(Scene* scene, u32 bundleIdx)
 {
     BitsetReset(scene->usedBundleBits, (s32)bundleIdx);
+    DeAllocTLSF(scene->bundleRefs[bundleIdx].path);
     MemsetZero(&scene->bundleRefs[bundleIdx], sizeof(SceneBundleRef));
     while (scene->numBundles > 0 && !BitsetGet(scene->usedBundleBits, (s32)(scene->numBundles - 1u)))
         scene->numBundles--;
@@ -308,7 +309,6 @@ u32 Scene_AddBundleBakedFinalize(Scene* scene, SceneBundleStage* stage)
     }
 
     SceneBundle* bundle         = stage->bundle;
-    const char*  storedPath     = stage->path;
     u32          materialOffset = stage->materialOffset;
     bool         skinned        = bundle->numSkins > 0;
 
@@ -322,7 +322,7 @@ u32 Scene_AddBundleBakedFinalize(Scene* scene, SceneBundleStage* stage)
     MemsetZero(&animAlloc, sizeof(animAlloc));
     bool animAppended = false;
     if (skinned && !AnimationSystem_AppendBundle(&scene->animSystem, bundle, &animAlloc)) {
-        AX_ERROR("scene animation creation failed: %s", storedPath);
+        AX_ERROR("scene animation creation failed: %s", stage->path);
         goto err_bundle;
     }
     animAppended = skinned;
@@ -330,7 +330,7 @@ u32 Scene_AddBundleBakedFinalize(Scene* scene, SceneBundleStage* stage)
     RenderSet* set = skinned ? &scene->skinnedSet : &scene->surfaceSet;
     u32 renderIdx = RenderSet_AddSceneBundle(set, bundle, materialOffset);
     if (renderIdx == INVALID_BUNDLE) {
-        AX_ERROR("render set bundle registration failed: %s", storedPath);
+        AX_ERROR("render set bundle registration failed: %s", stage->path);
         goto err_bundle;
     }
 
@@ -341,14 +341,13 @@ u32 Scene_AddBundleBakedFinalize(Scene* scene, SceneBundleStage* stage)
         goto err_bundle;
     }
     SceneBundleRef* ref = &scene->bundleRefs[bundleIdx];
-    ref->path           = storedPath;
+    ref->path           = stage->path;
     ref->bundle         = bundle;
     ref->renderIdx      = renderIdx;
     ref->materialOffset = materialOffset;
     ref->animOffset     = animAlloc.animOffset;
     ref->animAlloc      = animAlloc;
     ref->skinned        = skinned;
-    ref->isRuntime      = stage->isRuntime;
     ref->cacheKey       = stage->cacheKey;
     Scene_StampGroupBundle(set, renderIdx, bundleIdx);
     if (materialOffset + (u32)bundle->numMaterials > scene->numMaterials)
@@ -422,7 +421,6 @@ u32 Scene_AddBundleFinalize(Scene* scene, SceneBundleStage* stage)
     ref->animOffset         = animAlloc.animOffset;
     ref->animAlloc          = animAlloc;
     ref->skinned            = stage->skinned;
-    ref->isRuntime          = stage->isRuntime;
     ref->cacheKey           = stage->cacheKey;
     Scene_StampGroupBundle(set, renderIdx, bundleIdx);
 
@@ -452,7 +450,6 @@ u32 Scene_AddBundle(Scene* scene, SceneBundle* bundle, const char* name)
     stage.path     = StringDuplicate(name);
     stage.bundle   = bundle;
     stage.cacheKey = MurmurHash((u64)bundle);
-    stage.isRuntime = true;
     Scene_AddBundleStage(&stage, false);
     if (!stage.loaded) return INVALID_BUNDLE;
     stage.skinned = stage.bundle->numSkins > 0;
@@ -516,7 +513,6 @@ SceneBundleStage* Scene_AddBundleFromPathStage(Scene* scene, const char* path)
     stage->bundle = NULL;
     stage->cacheKey  = StringToHash64(path);
     stage->path      = StringDuplicate(path);
-    stage->isRuntime = false;
     Scene_AddBundleStage(stage, false);
     if (!stage->loaded) return NULL;
     stage->skinned = stage->bundle->numSkins > 0;
@@ -589,12 +585,12 @@ u32 Scene_AddBundleBaked(Scene* scene, const char* path, u32 materialOffset)
     SceneBundleStage stage = {};
     stage.path = StringDuplicate(path);
     stage.materialOffset = materialOffset;
-    stage.isRuntime = false;
     Scene_AddBundleStage(&stage, true);
     if (!stage.loaded) return INVALID_BUNDLE;
     return Scene_AddBundleBakedFinalize(scene, &stage);
 }
 
+// todo(anil): when scene destroyed destroy all bundleRef's heap allocated pointers
 u32 Scene_RemoveBundle(Scene* scene, u32 bundleIdx)
 {
     if (bundleIdx >= scene->numBundles || !scene->bundleRefs[bundleIdx].bundle) return 0;

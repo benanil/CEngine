@@ -258,20 +258,21 @@ BundleCacheEntry* BundleCacheAcquire(SceneBundleStage* stage)
     }
     SDL_UnlockSpinlock(&g_BundleCacheLock);
 
+    bool isRuntime = PTR_VALID(stage->bundle);
     // Load/bake outside the lock (slow). Only one importer touches a given path at a time
     // (the async op guard plus callbacks running after the worker finishes), so no double bake.
-    SceneBundle* bundle = stage->bundle ? stage->bundle : (SceneBundle*)AllocTLSF(sizeof(SceneBundle));
+    SceneBundle* bundle = isRuntime ? stage->bundle : (SceneBundle*)AllocTLSF(sizeof(SceneBundle));
     stage->bundle = bundle;
     void* vertexHeapPtr = NULL;
     void* indexHeapPtr = NULL;
     bool baked = false;
-    if (!stage->isRuntime && !LoadBundleMeshCached(stage->path, bundle, &vertexHeapPtr, &indexHeapPtr, &baked))
+    if (!isRuntime && !LoadBundleMeshCached(stage->path, bundle, &vertexHeapPtr, &indexHeapPtr, &baked))
     {
         DeAllocTLSF(bundle);
         return NULL;
     }
 
-    if (stage->isRuntime && !BakeSceneMeshesAndAnimations(bundle, &vertexHeapPtr, &indexHeapPtr))
+    if (isRuntime && !BakeSceneMeshesAndAnimations(bundle, &vertexHeapPtr, &indexHeapPtr))
     {
         AX_WARN("asset import failed during mesh bake: %s vertices=%d indices=%d", stage->path, bundle->totalVertices, bundle->totalIndices);
         return NULL;

@@ -434,6 +434,13 @@ void* AllocTLSF(size_t size)
     return ptr;
 }
 
+void* CDAllocTLSF(size_t size)
+{
+    void* ptr = AllocTLSF(size);
+    if (ptr) MemSet(ptr, 0xCD, size);
+    return ptr;
+}
+
 void* CAllocTLSF(size_t size)
 {
     void* ptr = AllocTLSF(size);

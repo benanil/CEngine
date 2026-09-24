@@ -416,10 +416,10 @@ static s32 ParseSceneFile(const char* path, SceneFileData* data)
     if (!(p = ReadRecord(file, line, sizeof(line), "bundles"))) goto fail;
     RU32(p, &data->numBundles);
     if (data->numBundles > MAX_SCENE_BUNDLES) goto fail;
-    data->bundlePaths       = (char*)AllocTLSF((u64)Maxu32(data->numBundles, 1u) * 1024u);
-    data->bundleSkinned     = (u32*)AllocTLSF(Maxu32(data->numBundles, 1u) * sizeof(u32));
-    data->bundleMaterialOff = (u32*)AllocTLSF(Maxu32(data->numBundles, 1u) * sizeof(u32));
-    data->runtimeBundles    = (SceneBundle**)AllocTLSF(Maxu32(data->numBundles, 1u) * sizeof(SceneBundle*));
+    data->bundlePaths       = (char*)CDAllocTLSF((u64)Maxu32(data->numBundles, 1u) * 1024u);
+    data->bundleSkinned     = (u32*)CDAllocTLSF(Maxu32(data->numBundles, 1u) * sizeof(u32));
+    data->bundleMaterialOff = (u32*)CDAllocTLSF(Maxu32(data->numBundles, 1u) * sizeof(u32));
+    data->runtimeBundles    = (SceneBundle**)CDAllocTLSF(Maxu32(data->numBundles, 1u) * sizeof(SceneBundle*));
     for (u32 b = 0; b < data->numBundles; b++)
     {
         u32 numMaterials = 0;
@@ -634,15 +634,15 @@ SceneFileData* SceneSerializer_LoadStage(const char* path)
     }
     SceneBundleStage* stages = CAllocTLSFArray(SceneBundleStage, Maxu32(data->numBundles, 1u));
     data->stages = stages;
+    data->baked = true;
     for (u32 b = 0; b < data->numBundles; b++)
     {
         char* path = data->bundlePaths + ((u64)b * 1024u);
-        bool isRuntime = data->runtimeBundles[b] != NULL;
+        bool isRuntime = PTR_VALID(data->runtimeBundles[b]);
         stages[b].path           = StringDuplicate(path);
         stages[b].skinned        = data->bundleSkinned[b] != 0u;
         stages[b].materialOffset = data->bundleMaterialOff[b];
         stages[b].bundle         = data->runtimeBundles[b]; // for custom meshes this is not null
-        stages[b].isRuntime      = isRuntime;
         if (isRuntime) {
             stages[b].cacheKey = MurmurHash((u64)stages[b].bundle);
         }

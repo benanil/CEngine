@@ -137,6 +137,8 @@ int    OSFree(void *ptr, size_t size);
 
 void* AllocTLSF(size_t size);
 void* CAllocTLSF(size_t size);
+void* CDAllocTLSF(size_t size);
+
 #define AllocTLSFArray(Type, Cnt) ((Type*)AllocTLSF((Cnt) * sizeof(Type)))
 #define CAllocTLSFArray(Type, Cnt) ((Type*)CAllocTLSF((Cnt) * sizeof(Type)))
 

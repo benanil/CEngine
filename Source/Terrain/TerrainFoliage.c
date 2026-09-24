@@ -143,7 +143,6 @@ void Foliage_Init()
         stages[i].path      = StringDuplicate(gFoliage.types[i].path);
         stages[i].cacheKey  = StringToHash64(stages[i].path);
         stages[i].skinned   = false;
-        stages[i].isRuntime = false;
     }
     ParallelFor(gFoliage.numTypes, 1u, SceneStageRange, &(SceneStageRangeCtx){ stages, false });
 

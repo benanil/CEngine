@@ -17,7 +17,7 @@
 // one bundle registered in a scene
 typedef struct SceneBundleRef_
 {
-    const char*  path;           // bundle cache owned string
+    char*        path;           // bundle cache owned string
     SceneBundle* bundle;
     u32          renderIdx;      // bundle index inside its render set
     u32          materialOffset; // gpu material slot base of the bundle in this scene
@@ -126,7 +126,6 @@ typedef struct SceneBundleStage_
     SceneBundle* bundle;
     u64          cacheKey;
     u32          materialOffset;  // Scene_AddBundleBaked* path only
-    bool         isRuntime;
     bool         skinned;         // Scene_AddBundle* path only
     bool         loaded;          // false when the load failed; Finalize/Abort are still safe to call
     char*        path;            // bundle cache owned string, stable for the entry's lifetime
