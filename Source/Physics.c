@@ -111,11 +111,11 @@ static void PhysicsFinishTask(void* userTask, void* userContext)
     JobSystem_WaitJob(jobSystem, handle);
 }
 
-static void* PhysicsAllocFn(int32_t size, int32_t alignment) {
+static void* PhysicsAllocFn(size_t size, int32_t alignment) {
     return AllocAligned((uint64_t)size, (uint64_t)alignment);
 }
 
-static void PhysicsFreeFn(void* mem) {
+static void PhysicsFreeFn(void* mem, size_t size) {
     FreeAligned(mem);
 }
 
@@ -260,7 +260,7 @@ void Scene_UpdatePhysics(Scene* scene, float deltaTime)
             tInvalidatePhysics();
             AX_LOG("physics: built %u static collider meshes\n", PhysicsCountMeshes(scene));
         }
-
+               
         AsyncCallback callback = scene->physicsColliderBuildCallback;
         scene->physicsColliderBuildCallback = NULL;
         if (callback) callback(scene, scene->physicsColliderBuildResult);
@@ -300,7 +300,7 @@ static void PhysicsDestroyMeshStorage(Scene* scene)
 {
     for (u32 i = 0; i < scene->surfaceSet.maxGroups; i++)
     {
-        if (!scene->physicsMeshes[i]) continue;
+        if (!PTR_VALID(scene->physicsMeshes[i])) continue;
         b3DestroyMesh(scene->physicsMeshes[i]);
         scene->physicsMeshes[i] = NULL;
     }

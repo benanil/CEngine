@@ -116,7 +116,7 @@ static void ImportMeshToSceneFinish(SceneAsyncRequest* request)
     Scene* scene = Scene_GetActive();
     if (!scene) scene = EditorNewScene();
 
-    u32 bundleIdx = Scene_AddBundleFromPath(scene, request->path);
+    u32 bundleIdx = Scene_AddBundleFinalize(scene, request->sceneBundleStage);
     if (bundleIdx == INVALID_BUNDLE)
     {
         AX_ERROR("import to scene failed: %s", request->path);
@@ -127,7 +127,7 @@ static void ImportMeshToSceneFinish(SceneAsyncRequest* request)
 
 static void OpenSceneFinish(SceneAsyncRequest* request)
 {
-    Scene* scene = Scene_OpenActive(request->path);
+    Scene* scene = Scene_OpenActive(request->path, request->sceneFileData);
     if (!scene) return;
     EditorSceneResetState();
     EditorSettingsSetLastScene(Scene_GetActivePath());

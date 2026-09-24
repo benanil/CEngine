@@ -114,36 +114,6 @@ typedef struct Scene_
     AsyncTask*          physicsBuildTask;
 } Scene;
 
-typedef enum SceneAsyncOp_
-{
-    SceneAsyncOp_None = 0,
-    SceneAsyncOp_ImportMesh,
-    SceneAsyncOp_OpenScene
-} SceneAsyncOp;
-
-typedef struct SceneAsyncRequest_ SceneAsyncRequest;
-
-typedef void (*SceneAsyncRequestCallback)(SceneAsyncRequest* request);
-
-struct SceneAsyncRequest_
-{
-    SceneAsyncOp op;
-    SDL_AtomicInt done;
-    Scene* scene;
-    SceneAsyncRequestCallback callback;
-    s32    result;
-    u32    bundleIdx;
-    v128f  position;
-    v128f  rotation;
-    v128f  scale;
-    char   path[512];
-    // bundle cache keys the probe acquired (and is holding) on the worker. The scene takes its own
-    // references in the callback, then SceneAsyncUpdate drops these warming references. SDL_malloc'd.
-    u64*   heldKeys;
-    u32    heldCount;
-    u32    heldCap;
-};
-
 // One staged bundle load: mesh acquire (BundleCacheAcquire) plus cached-texture decode/GPU
 // upload (LoadBundleImagesFromCache). Touches only the bundle cache and this stage's own
 // buffer, so it's safe off the main thread (ParallelFor); Scene_AddBundleFinalize then
@@ -163,6 +133,81 @@ typedef struct SceneBundleStage_
     Texture      staging[1024];   // Scene_AddBundle* path only
 } SceneBundleStage;
 
+// one serialized render set entity, packed transform forms round trip exactly
+typedef struct SceneEntRecord_
+{
+    u64   rotation;
+    u64   scale;
+    float position[3];
+    u32   primGroupIdx;
+    u32   sparseIdx;
+    u32   flags;
+} SceneEntRecord;
+
+// internal no need to know its content
+// lifetime ends after scene load
+typedef struct SceneFileData_
+{
+    f32 sunYaw, sunPitch;
+    u32 atlasLayers[TextureClass_Count];
+    char atlasPath[TextureClass_Count][1024];
+    SceneBundleStage* stages;
+    bool              baked;
+
+    u32           numBundles;
+    char*         bundlePaths;       // numBundles * 1024
+    u32*          bundleSkinned;
+    u32*          bundleMaterialOff;
+    SceneBundle** runtimeBundles;
+
+    TextureDescriptor* descriptors;
+    u32 numDescriptors;
+
+    MaterialGPU* materials;
+    u32 materialWatermark;
+
+    LightGPU* lights;
+    u32 numLights;
+
+    SceneEntRecord* entities[2]; // 0 surface, 1 skinned
+    u32 numEntities[2];
+
+    ScenePhysicsRecord* physics; // surface entities that override the default collider
+    u32 numPhysics;
+} SceneFileData;
+
+typedef enum SceneAsyncOp_
+{
+    SceneAsyncOp_None = 0,
+    SceneAsyncOp_ImportMesh,
+    SceneAsyncOp_OpenScene
+} SceneAsyncOp;
+
+typedef struct SceneAsyncRequest_ SceneAsyncRequest;
+
+typedef void (*SceneAsyncRequestCallback)(SceneAsyncRequest* request);
+
+struct SceneAsyncRequest_
+{
+    SceneAsyncOp op;
+    SDL_AtomicInt done;
+    Scene* scene;
+    SceneFileData* sceneFileData;
+    SceneBundleStage* sceneBundleStage;
+    SceneAsyncRequestCallback callback;
+    s32    result;
+    u32    bundleIdx;
+    v128f  position;
+    v128f  rotation;
+    v128f  scale;
+    char   path[512];
+};
+typedef struct SceneStageRangeCtx_
+{
+    SceneBundleStage* stages;
+    bool baked;
+} SceneStageRangeCtx;
+
 // scenes the renderer draws each frame, in activation order
 extern Scene* g_ActiveScene;
 
@@ -172,7 +217,8 @@ void Scene_Destroy(Scene* scene);
 // engine-owned active scene helpers. These are usable without editor code and keep
 // the active .scene path in Scene.c.
 Scene* Scene_NewActive(void);
-Scene* Scene_OpenActive(const char* path);
+// data: null or call SceneSerializer_LoadStage
+Scene* Scene_OpenActive(const char* path, SceneFileData* data);
 s32    Scene_SaveActive(void);
 s32    Scene_SaveActiveAs(const char* path);
 const char* Scene_GetActivePath(void);
@@ -211,6 +257,12 @@ u32 Scene_BundleFindFromPath(Scene* scene, const char* path);
 // out: scene bundle index, INVALID_BUNDLE otherwise
 u32 Scene_AddBundleFromPath(Scene* scene, const char* path);
 
+// Async and ParallelFor compatible
+// userdata: SceneStageRangeCtx
+void SceneStageRange(u32 begin, u32 end, void* userData);
+
+SceneBundleStage* Scene_AddBundleFromPathStage(Scene* scene, const char* path);
+
 // caller sets stage->storedPath (+ stage->skinned) before calling; result lands in
 // stage->loaded (false on failure, Finalize/Abort still safe to call then). void*, single
 // argument so callers fan this out with ParallelFor via a small per-index range wrapper.
@@ -231,10 +283,6 @@ void Scene_AddBundleStageAbort(SceneBundleStage* stage);
 // Scene_AddBundle with the skinned flag detected from the bundle's skin data
 u32 Scene_AddBundleAuto(Scene* scene, const char* path);
 
-// loads (or finds) a bundle through the cache and holds a reference so it can be
-// inspected without adding it to a scene. pair with Scene_ReleaseBundlePeek.
-// out: NULL on load failure
-const SceneBundle* Scene_AcquireBundlePeek(const char* path);
 void Scene_ReleaseBundlePeek(const char* path);
 
 // registers an already loaded bundle without touching the texture system, used by the

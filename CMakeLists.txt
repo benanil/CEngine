@@ -55,10 +55,12 @@ set(BASIS_ENCODER_SOURCES
     Extern/basis_universal/encoder/basisu_uastc_enc.cpp
     Extern/basis_universal/encoder/basisu_astc_ldr_common.cpp
     Extern/basis_universal/encoder/basisu_astc_ldr_encode.cpp
+    Extern/basis_universal/encoder/basisu_astc_ldr_fencode.cpp
     Extern/basis_universal/encoder/basisu_astc_hdr_common.cpp
     Extern/basis_universal/encoder/basisu_astc_hdr_6x6_enc.cpp
     Extern/basis_universal/encoder/basisu_uastc_hdr_4x4_enc.cpp
     Extern/basis_universal/encoder/basisu_bc7enc.cpp
+    Extern/basis_universal/encoder/basisu_xbc7_encode.cpp
     Extern/basis_universal/encoder/basisu_kernels_sse.cpp
     Extern/basis_universal/encoder/basisu_tinyexr.cpp
     Extern/basis_universal/encoder/jpgd.cpp

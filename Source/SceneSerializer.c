@@ -75,7 +75,7 @@ static void WriteProceduralBundle(const SceneBundleRef* ref, AFile file)
     char* buffer = AllocTLSF(maxBase64Bytes);
     AFileWriteInt(file, (u64)p->numVertices, true);
     AFileWriteInt(file, (u64)p->numIndices , true);
-    AFileWrite(ref->path, StringLength(ref->path), file, 1);
+    AFileWrite(ref->path, StringLength(ref->path)+1, file, 1);
     WritePrimBuffer(file, "positions", buffer, p, p->Attributes[AAttribIdx_POSITION]  , sizeof(float3) * p->numVertices);
     WritePrimBuffer(file, "texcoords", buffer, p, p->Attributes[AAttribIdx_TEXCOORD_0], sizeof(float2) * p->numVertices);
     WritePrimBuffer(file, "normals"  , buffer, p, p->Attributes[AAttribIdx_NORMAL]    , sizeof(float3) * p->numVertices);
@@ -94,7 +94,11 @@ static SceneBundle* ReadProceduralBundle(AFile file, s32 version, char* nameBuff
     if (!AFileReadLine(line, sizeof(line), file)) return NULL;
     ParsePositiveNumber(line, &numIndex);
     MeshBuilder builder = MeshBuilder_Create(numVertex, numIndex);
-    if (version >= 6 && !AFileReadLine(nameBuffer, 1024, file)) return NULL;
+    if (version >= 6)
+    {
+        s32 nameLen = AFileReadLine(nameBuffer, 1024, file);
+        nameBuffer[nameLen] = '/0';
+    }
     ReadPrimitiveBuffer(file, builder.positions);
     ReadPrimitiveBuffer(file, builder.texCoords);
     ReadPrimitiveBuffer(file, builder.normals);
@@ -331,44 +335,6 @@ s32 SceneSerializer_Save(Scene* scene, const char* path)
 /*                                  Load                                    */
 /*//////////////////////////////////////////////////////////////////////////*/
 
-// one serialized render set entity, packed transform forms round trip exactly
-typedef struct SceneEntRecord_
-{
-    u64   rotation;
-    u64   scale;
-    float position[3];
-    u32   primGroupIdx;
-    u32   sparseIdx;
-    u32   flags;
-} SceneEntRecord;
-
-typedef struct SceneFileData_
-{
-    f32 sunYaw, sunPitch;
-    u32 atlasLayers[TextureClass_Count];
-    char atlasPath[TextureClass_Count][1024];
-
-    u32   numBundles;
-    char* bundlePaths;       // numBundles * 1024
-    u32*  bundleSkinned;
-    u32*  bundleMaterialOff;
-    SceneBundle** runtimeBundles;
-
-    TextureDescriptor* descriptors;
-    u32 numDescriptors;
-
-    MaterialGPU* materials;
-    u32 materialWatermark;
-
-    LightGPU* lights;
-    u32 numLights;
-
-    SceneEntRecord* entities[2]; // 0 surface, 1 skinned
-    u32 numEntities[2];
-
-    ScenePhysicsRecord* physics; // surface entities that override the default collider
-    u32 numPhysics;
-} SceneFileData;
 
 // reads one line and checks it starts with the expected keyword. the line keeps its
 // trailing newline from AFileReadLine, trim it so path tails parse clean.
@@ -450,10 +416,10 @@ static s32 ParseSceneFile(const char* path, SceneFileData* data)
     if (!(p = ReadRecord(file, line, sizeof(line), "bundles"))) goto fail;
     RU32(p, &data->numBundles);
     if (data->numBundles > MAX_SCENE_BUNDLES) goto fail;
-    data->bundlePaths       = (char*)ArenaAllocZero(&GlobalArena, (u64)Maxu32(data->numBundles, 1u) * 1024u);
-    data->bundleSkinned     = (u32*)ArenaAllocZero(&GlobalArena, Maxu32(data->numBundles, 1u) * sizeof(u32));
-    data->bundleMaterialOff = (u32*)ArenaAllocZero(&GlobalArena, Maxu32(data->numBundles, 1u) * sizeof(u32));
-    data->runtimeBundles    = (SceneBundle**)ArenaAllocZero(&GlobalArena, Maxu32(data->numBundles, 1u) * sizeof(SceneBundle*));
+    data->bundlePaths       = (char*)AllocTLSF((u64)Maxu32(data->numBundles, 1u) * 1024u);
+    data->bundleSkinned     = (u32*)AllocTLSF(Maxu32(data->numBundles, 1u) * sizeof(u32));
+    data->bundleMaterialOff = (u32*)AllocTLSF(Maxu32(data->numBundles, 1u) * sizeof(u32));
+    data->runtimeBundles    = (SceneBundle**)AllocTLSF(Maxu32(data->numBundles, 1u) * sizeof(SceneBundle*));
     for (u32 b = 0; b < data->numBundles; b++)
     {
         u32 numMaterials = 0;
@@ -474,7 +440,7 @@ static s32 ParseSceneFile(const char* path, SceneFileData* data)
         {
             data->runtimeBundles[b] = GetUnitPrimitive(meshType);
             const char* name = GetPrimitiveName(meshType);
-            MemCopy(nameBuffer, name, StringLength(name));
+            MemCopy(nameBuffer, name, StringLength(name) + 1);
             continue;
         }
 
@@ -490,7 +456,7 @@ static s32 ParseSceneFile(const char* path, SceneFileData* data)
         goto fail;
     RU32(p, &data->numDescriptors);
     if (data->numDescriptors > MAX_TEXTURE_DESCRIPTORS) goto fail;
-    data->descriptors = (TextureDescriptor*)ArenaAllocZero(&GlobalArena, Maxu32(data->numDescriptors, 1u) * sizeof(TextureDescriptor));
+    data->descriptors = (TextureDescriptor*)AllocTLSF(Maxu32(data->numDescriptors, 1u) * sizeof(TextureDescriptor));
     for (u32 i = 0; i < data->numDescriptors; i++)
     {
         u32 page = 0, x = 0, y = 0, w = 0, h = 0, flags = 0;
@@ -515,7 +481,7 @@ static s32 ParseSceneFile(const char* path, SceneFileData* data)
         goto fail;
     RU32(p, &data->materialWatermark);
     if (data->materialWatermark > MAX_GPU_MATERIALS) goto fail;
-    data->materials = (MaterialGPU*)ArenaAllocZero(&GlobalArena, Maxu32(data->materialWatermark, 1u) * sizeof(MaterialGPU));
+    data->materials = (MaterialGPU*)AllocTLSF(Maxu32(data->materialWatermark, 1u) * sizeof(MaterialGPU));
     for (u32 i = 0; i < data->materialWatermark; i++)
     {
         MaterialGPU* material = &data->materials[i];
@@ -542,7 +508,7 @@ static s32 ParseSceneFile(const char* path, SceneFileData* data)
     RU32(p, &data->numLights);
     if (data->numLights > MAX_SCENE_LIGHTS)
         goto fail;
-    data->lights = (LightGPU*)ArenaAllocZero(&GlobalArena, Maxu32(data->numLights, 1u) * sizeof(LightGPU));
+    data->lights = (LightGPU*)AllocTLSF(Maxu32(data->numLights, 1u) * sizeof(LightGPU));
     for (u32 i = 0; i < data->numLights; i++)
     {
         LightGPU* light = &data->lights[i];
@@ -573,7 +539,7 @@ static s32 ParseSceneFile(const char* path, SceneFileData* data)
         p = RU32(p, &setIdx);
         RU32(p, &data->numEntities[s]);
         if (setIdx != s || data->numEntities[s] > (s == 1u ? MAX_ANIM_INSTANCES : MAX_ENTITY)) goto fail;
-        data->entities[s] = (SceneEntRecord*)ArenaAllocZero(&GlobalArena, Maxu32(data->numEntities[s], 1u) * sizeof(SceneEntRecord));
+        data->entities[s] = (SceneEntRecord*)AllocTLSF(Maxu32(data->numEntities[s], 1u) * sizeof(SceneEntRecord));
         for (u32 i = 0; i < data->numEntities[s]; i++)
         {
             SceneEntRecord* record = &data->entities[s][i];
@@ -610,7 +576,7 @@ static s32 ParseSceneFile(const char* path, SceneFileData* data)
         RU32(p, &data->numPhysics);
         if (data->numPhysics > MAX_ENTITY) 
             goto fail;
-        data->physics = (ScenePhysicsRecord*)ArenaAllocZero(&GlobalArena, Maxu32(data->numPhysics, 1u) * sizeof(ScenePhysicsRecord));
+        data->physics = (ScenePhysicsRecord*)AllocTLSF(Maxu32(data->numPhysics, 1u) * sizeof(ScenePhysicsRecord));
         for (u32 i = 0; i < data->numPhysics; i++)
         {
             ScenePhysicsRecord* rec = &data->physics[i];
@@ -645,26 +611,29 @@ static void BuildColliderEndCallback(void* data, s32 result)
     scene->physicsReady = true;
 }
 
-typedef struct SceneStageRangeCtx_
+void SceneFileData_Destroy(SceneFileData* data)
 {
-    SceneBundleStage* stages;
-    bool baked;
-} SceneStageRangeCtx;
-
-static void SceneStageRange(u32 begin, u32 end, void* userData)
-{
-    SceneStageRangeCtx* ctx = (SceneStageRangeCtx*)userData;
-    for (u32 b = begin; b < end; b++)
-        Scene_AddBundleStage(&ctx->stages[b], ctx->baked);
+    if (PTR_VALID(data->bundlePaths))    DeAllocTLSF(data->bundlePaths);
+    if (PTR_VALID(data->bundleSkinned))  DeAllocTLSF(data->bundleSkinned);
+    if (PTR_VALID(data->runtimeBundles)) DeAllocTLSF(data->runtimeBundles);
+    if (PTR_VALID(data->descriptors))    DeAllocTLSF(data->descriptors);
+    if (PTR_VALID(data->materials))      DeAllocTLSF(data->materials);
+    if (PTR_VALID(data->lights))         DeAllocTLSF(data->lights);
+    MemSet(data, 0, sizeof(SceneFileData));
+    DeAllocTLSF(data);
 }
 
-// Stages every bundle (mesh, plus textures on the slow path) across worker threads via
-// ParallelFor, then publishes serially on the main thread. Shared by both load paths below;
-// baked bundles are already-atlased (mesh only), everything else goes through stage/finalize.
-// out: false on any bundle failure, scene is left with whatever finalized before the failure
-static bool SceneSerializer_LoadBundles(Scene* scene, const SceneFileData* data, bool baked)
+SceneFileData* SceneSerializer_LoadStage(const char* path)
 {
+    SceneFileData* data = AllocTLSFArray(SceneFileData, 1);
+    MemsetZero(data, sizeof(data));
+    if (!ParseSceneFile(path, data))
+    {
+        SceneFileData_Destroy(data);
+        return NULL;
+    }
     SceneBundleStage* stages = CAllocTLSFArray(SceneBundleStage, Maxu32(data->numBundles, 1u));
+    data->stages = stages;
     for (u32 b = 0; b < data->numBundles; b++)
     {
         char* path = data->bundlePaths + ((u64)b * 1024u);
@@ -682,9 +651,23 @@ static bool SceneSerializer_LoadBundles(Scene* scene, const SceneFileData* data,
         }
     }
 
-    SceneStageRangeCtx ctx = { stages, baked };
-    ParallelFor(data->numBundles, 1u, SceneStageRange, &ctx);
+    return data;
+}
 
+// Stages every bundle (mesh, plus textures on the slow path) across worker threads via
+// ParallelFor, then publishes serially on the main thread. Shared by both load paths below;
+// baked bundles are already-atlased (mesh only), everything else goes through stage/finalize.
+// out: false on any bundle failure, scene is left with whatever finalized before the failure
+static bool SceneSerializer_LoadBundles(Scene* scene, SceneFileData* data, const char* path)
+{
+    SceneBundleStage* stages = data->stages;
+    // the fast path needs compressed pages, every referenced atlas on disk and the tables
+    bool baked = scene->textureSystem.compressed != 0u && data->numDescriptors >= SceneSer_DefaultDescriptors;
+    for (u32 c = 0; c < TextureClass_Count && baked; c++)
+        if (data->atlasLayers[c] > 0u && (data->atlasPath[c][0] == '\0' || !FileExist(data->atlasPath[c])))
+            baked = false;
+    data->baked = baked;
+    
     bool ok = true;
     for (u32 b = 0; b < data->numBundles; b++)
     {
@@ -697,42 +680,16 @@ static bool SceneSerializer_LoadBundles(Scene* scene, const SceneFileData* data,
     }
 
     DeAllocTLSF(stages);
-    return ok;
-}
 
-s32 SceneSerializer_Load(Scene* scene, const char* path)
-{
-    double startTime = TimeSinceStartup();
-    ArenaMark mark = ArenaSave(&GlobalArena);
-
-    SceneFileData data;
-    MemsetZero(&data, sizeof(data));
-    if (!ParseSceneFile(path, &data))
+    if (baked)
     {
-        ArenaRestore(&GlobalArena, mark);
-        return 0;
-    }
-    // the fast path needs compressed pages, every referenced atlas on disk and the tables
-    bool fast = scene->textureSystem.compressed != 0u && data.numDescriptors >= SceneSer_DefaultDescriptors;
-    for (u32 c = 0; c < TextureClass_Count && fast; c++)
-        if (data.atlasLayers[c] > 0u && (data.atlasPath[c][0] == '\0' || !FileExist(data.atlasPath[c])))
-            fast = false;
-
-    if (fast)
-    {
-        if (!SceneSerializer_LoadBundles(scene, &data, true))
-        {
-            ArenaRestore(&GlobalArena, mark);
-            return 0;
-        }
-
         const char* atlasPaths[TextureClass_Count];
         for (u32 c = 0; c < TextureClass_Count; c++)
-            atlasPaths[c] = data.atlasLayers[c] > 0u ? data.atlasPath[c] : NULL;
+            atlasPaths[c] = data->atlasLayers[c] > 0u ? data->atlasPath[c] : NULL;
 
         if (TextureSystem_RestoreBaked(&scene->textureSystem, atlasPaths,
-                                       data.descriptors, data.numDescriptors,
-                                       data.materials, data.materialWatermark))
+                                       data->descriptors, data->numDescriptors,
+                                       data->materials, data->materialWatermark))
         {
             scene->texturesBaked = 1;
         }
@@ -741,22 +698,31 @@ s32 SceneSerializer_Load(Scene* scene, const char* path)
             AX_WARN("baked atlas restore failed, repacking from bundle caches: %s", path);
             if (!Scene_RepackTextures(scene))
             {
-                ArenaRestore(&GlobalArena, mark);
+                SceneFileData_Destroy(data);
                 return 0;
             }
         }
-        if (data.materialWatermark > scene->numMaterials)
-            scene->numMaterials = data.materialWatermark;
+        if (data->materialWatermark > scene->numMaterials)
+            scene->numMaterials = data->materialWatermark;
     }
-    else
-    {
-        AX_LOG("scene loading through the slow path (no baked atlases): %s", path);
+    else AX_LOG("scene loaded through the slow path (no baked atlases): %s", path);
+    
+    return ok;
+}
 
-        if (!SceneSerializer_LoadBundles(scene, &data, false))
-        {
-            ArenaRestore(&GlobalArena, mark);
-            return 0;
-        }
+s32 SceneSerializer_Load(Scene* scene, const char* path, SceneFileData* data)
+{
+    double startTime = TimeSinceStartup();
+    
+    if (!data)
+    {
+        data = SceneSerializer_LoadStage(path);
+        ParallelFor(data->numBundles, 1u, SceneStageRange, &(SceneStageRangeCtx){ data->stages, data->baked });
+    }
+
+    if (!SceneSerializer_LoadBundles(scene, data, path))
+    {
+        return 0;
     }
 
     // entities restore straight into the render sets, records are in (group, local) order
@@ -770,9 +736,9 @@ s32 SceneSerializer_Load(Scene* scene, const char* path)
         MemSet(primitiveCounts, 0, set->numGroups * sizeof(u32));
         u32 validEntities = 0;
 
-        for (u32 i = 0; i < data.numEntities[s]; i++)
+        for (u32 i = 0; i < data->numEntities[s]; i++)
         {
-            const SceneEntRecord* record = &data.entities[s][i];
+            const SceneEntRecord* record = &data->entities[s][i];
             if (record->primGroupIdx >= set->numGroups)
             {
                 AX_WARN("scene entity group out of range: %d >= %d", record->primGroupIdx, set->numGroups);
@@ -801,9 +767,9 @@ s32 SceneSerializer_Load(Scene* scene, const char* path)
         primitiveCounts = NULL;
         ArenaPopGlobal(set->numGroups * sizeof(u32)); // primitiveCounts
 
-        for (u32 i = 0; i < data.numEntities[s]; i++)
+        for (u32 i = 0; i < data->numEntities[s]; i++)
         {
-            const SceneEntRecord* record = &data.entities[s][i];
+            const SceneEntRecord* record = &data->entities[s][i];
             u32 groupIdx = record->primGroupIdx;
             if (groupIdx >= set->numGroups || record->sparseIdx >= set->maxEntities)
                 continue;
@@ -840,29 +806,27 @@ s32 SceneSerializer_Load(Scene* scene, const char* path)
         RenderSet_Validate(set, isSkinned ? "load skinned" : "load surface");
     }
 
-    if (data.numLights > 0)
-        MemCopy(scene->lights, data.lights, data.numLights * sizeof(LightGPU));
-    scene->numLights = data.numLights;
+    if (data->numLights > 0)
+        MemCopy(scene->lights, data->lights, data->numLights * sizeof(LightGPU));
+    scene->numLights = data->numLights;
 
-    g_RenderSettings.sunYaw   = data.sunYaw;
-    g_RenderSettings.sunPitch = data.sunPitch;
+    g_RenderSettings.sunYaw   = data->sunYaw;
+    g_RenderSettings.sunPitch = data->sunPitch;
     scene->renderDataDirty = 1;
 
-    // copy physics overrides out of the arena; applied when the collider build finishes
     if (scene->pendingPhysics) DeAllocTLSF(scene->pendingPhysics);
     scene->pendingPhysics = NULL;
     scene->numPendingPhysics = 0;
-    if (data.numPhysics > 0)
+    if (data->numPhysics > 0)
     {
-        scene->pendingPhysics = AllocTLSFArray(ScenePhysicsRecord, data.numPhysics);
+        scene->pendingPhysics = AllocTLSFArray(ScenePhysicsRecord, data->numPhysics);
         if (scene->pendingPhysics)
         {
-            MemCopy(scene->pendingPhysics, data.physics, data.numPhysics * sizeof(ScenePhysicsRecord));
-            scene->numPendingPhysics = data.numPhysics;
+            MemCopy(scene->pendingPhysics, data->physics, data->numPhysics * sizeof(ScenePhysicsRecord));
+            scene->numPendingPhysics = data->numPhysics;
         }
     }
 
-    ArenaRestore(&GlobalArena, mark);
     scene->physicsReady = false;
     // every mesh instance is static for now: give each a static rigid body with a triangle collider
     Scene_BuildStaticCollidersAsync(scene, BuildColliderEndCallback);
@@ -870,5 +834,7 @@ s32 SceneSerializer_Load(Scene* scene, const char* path)
     AX_LOG("scene loaded: %s bundles=%d entities=%d lights=%d baked=%d %.2fs",
            path, scene->numBundles, scene->surfaceSet.numEntities + scene->skinnedSet.numEntities,
            scene->numLights, scene->texturesBaked, TimeSinceStartup() - startTime);
+    
+    SceneFileData_Destroy(data);
     return 1;
 }

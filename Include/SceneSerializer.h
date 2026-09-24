@@ -13,10 +13,17 @@ extern "C" {
 // <name>_mr.basis. out: 0 on failure
 s32 SceneSerializer_Save(Scene* scene, const char* path);
 
+// thread safe function can be called async. after this call SceneSerializer_Load
+SceneFileData* SceneSerializer_LoadStage(const char* path);
+
+// in case SceneSerializer_LoadStage fail, otherwise no need to destroy
+void SceneFileData_Destroy(SceneFileData* data);
+
 // loads a .scene file into a freshly initialized empty scene. when the baked atlases
 // are usable the texture system restores from them directly (no per image packing),
 // otherwise every bundle appends through the normal path. out: 0 on failure
-s32 SceneSerializer_Load(Scene* scene, const char* path);
+// data: can be null, or retrive from SceneSerializer_LoadStage
+s32 SceneSerializer_Load(Scene* scene, const char* path, SceneFileData* data);
 
 #if defined(__cplusplus)
 }

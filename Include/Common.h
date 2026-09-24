@@ -150,7 +150,7 @@ extern "C" {
     #define AX_UNREACHABLE() 
 #endif
 
-
+#define PTR_VALID(p) ((u64)(p) != 0xCDCDCDCDCDCDCDCDull && (u64)(p) != 0)
 //------------------------------------------------------------------------
 // Determinate Operating System
 

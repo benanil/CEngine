@@ -114,6 +114,7 @@ void Scene_Destroy(Scene* scene)
 {
     BeforeDestroySceneCallback(scene);
     if (scene->physicsBuildTask) AsyncWait(scene->physicsBuildTask);
+    Scene_DestroyPhysics(scene);
     Scene_Deactivate(scene);
     for (u32 i = 0; i < scene->numBundles; i++)
         if (scene->bundleRefs[i].bundle)
@@ -129,7 +130,7 @@ void Scene_Destroy(Scene* scene)
     if (scene->lights)        DeAllocTLSF(scene->lights);
     if (scene->materialSlots) DeAllocTLSF(scene->materialSlots);
     if (scene->usedBundleBits)   DeAllocTLSF(scene->usedBundleBits);
-    Scene_DestroyPhysics(scene);
+
     if (scene == &g_OwnedActiveScene)
     {
         g_OwnedActiveSceneInit = false;
@@ -167,24 +168,24 @@ void Scene_Update(float deltaTime)
 
 extern void OpenSceneCallback(const char* path);
 
-Scene* Scene_OpenActive(const char* path)
+Scene* Scene_OpenActive(const char* path, SceneFileData* data)
 {
-    char normalized[512];
-    NormalizePath(path, normalized, sizeof(normalized));
+    char pathCopy[512];
+    NormalizePath(path, pathCopy, sizeof(pathCopy));
 
     Scene* scene = Scene_NewActive();
     if (!scene) return NULL;
-    if (!SceneSerializer_Load(scene, normalized))
+    if (!SceneSerializer_Load(scene, pathCopy, data))
     {
-        AX_ERROR("scene load failed: %s", normalized);
+        AX_ERROR("scene load failed: %s", pathCopy);
         return NULL;
     }
-    MemCopy(g_ActiveScenePath, normalized, StringLength(normalized) + 1);
+    MemCopy(g_ActiveScenePath, pathCopy, StringLength(pathCopy) + 1);
     OpenSceneCallback(path);
 
     Terrain_DeleteWorld();
     char terrainPath[512];
-    SceneTerrainPath(normalized, terrainPath, sizeof(terrainPath));
+    SceneTerrainPath(pathCopy, terrainPath, sizeof(terrainPath));
     Terrain_LoadWorld(terrainPath);
     return scene;
 }
@@ -502,26 +503,33 @@ u32 Scene_AddBundleCached(Scene* scene, SceneBundle* bundle, const char* name)
     return Scene_AddBundle(scene, bundle, name);
 }
 
-u32 Scene_AddBundleFromPath(Scene* scene, const char* path)
+void SceneStageRange(u32 begin, u32 end, void* userData)
 {
-    SceneBundleStage stage = { NULL, StringToHash64(path)};
-    stage.path = StringDuplicate(path);
-    Scene_AddBundleStage(&stage, false);
-    if (!stage.loaded) return INVALID_BUNDLE;
-    stage.skinned = stage.bundle->numSkins > 0;
-    return Scene_AddBundleFinalize(scene, &stage);
+    SceneStageRangeCtx* ctx = (SceneStageRangeCtx*)userData;
+    for (u32 b = begin; b < end; b++)
+        Scene_AddBundleStage(&ctx->stages[b], ctx->baked);
 }
 
-const SceneBundle* Scene_AcquireBundlePeek(const char* path)
+SceneBundleStage* Scene_AddBundleFromPathStage(Scene* scene, const char* path)
 {
-    SceneBundleStage stage = {
-        .bundle = NULL,
-        .cacheKey = StringToHash64(path)
-    };
-    stage.path = StringDuplicate(path);
-    BundleCacheEntry* entry = BundleCacheAcquire(&stage);
-    DeAllocTLSF(stage.path);
-    return entry ? entry->bundle : NULL;
+    SceneBundleStage* stage = (SceneBundleStage*)AllocTLSF(sizeof(SceneBundleStage));
+    stage->bundle = NULL;
+    stage->cacheKey  = StringToHash64(path);
+    stage->path      = StringDuplicate(path);
+    stage->isRuntime = false;
+    Scene_AddBundleStage(stage, false);
+    if (!stage->loaded) return NULL;
+    stage->skinned = stage->bundle->numSkins > 0;
+    return stage;
+}
+
+u32 Scene_AddBundleFromPath(Scene* scene, const char* path)
+{
+    SceneBundleStage* stage = Scene_AddBundleFromPathStage(scene, path);
+    if (!stage) return INVALID_BUNDLE;
+    u32 res = Scene_AddBundleFinalize(scene, stage);
+    DeAllocTLSF(stage);
+    return res;
 }
 
 u32 Scene_DefaultAnimation(const Scene* scene, u32 bundleIdx)
@@ -581,6 +589,7 @@ u32 Scene_AddBundleBaked(Scene* scene, const char* path, u32 materialOffset)
     SceneBundleStage stage = {};
     stage.path = StringDuplicate(path);
     stage.materialOffset = materialOffset;
+    stage.isRuntime = false;
     Scene_AddBundleStage(&stage, true);
     if (!stage.loaded) return INVALID_BUNDLE;
     return Scene_AddBundleBakedFinalize(scene, &stage);

@@ -119,18 +119,6 @@ static void VisitFile(const char* path, void* data)
     };
 }
 
-static void FoliageStageRange(u32 begin, u32 end, void* userData)
-{
-    SceneBundleStage* stages = (SceneBundleStage*)userData;
-    for (u32 i = begin; i < end; i++) 
-    {
-        stages[i].path = StringDuplicate(gFoliage.types[i].path);
-        stages[i].skinned = false;
-        stages[i].cacheKey = StringToHash64(stages[i].path);
-        Scene_AddBundleStage(&stages[i], false);
-    }
-}
-
 void Foliage_Init()
 {
     MemSet(&gFoliage, 0, sizeof(gFoliage));
@@ -150,7 +138,14 @@ void Foliage_Init()
     // Finalize (RenderSet/TextureSystem/AnimationSystem mutation) still runs serially on the
     // main thread afterwards, same as the rest of Scene_Init's callers.
     SceneBundleStage* stages = CAllocTLSFArray(SceneBundleStage, T_MAX_FOLIAGE_SCENE);
-    ParallelFor(gFoliage.numTypes, 1u, FoliageStageRange, stages);
+    for (u32 i = 0; i < gFoliage.numTypes; i++)
+    {
+        stages[i].path      = StringDuplicate(gFoliage.types[i].path);
+        stages[i].cacheKey  = StringToHash64(stages[i].path);
+        stages[i].skinned   = false;
+        stages[i].isRuntime = false;
+    }
+    ParallelFor(gFoliage.numTypes, 1u, SceneStageRange, &(SceneStageRangeCtx){ stages, false });
 
     for (u32 i = 0; i < gFoliage.numTypes; i++)
     {
