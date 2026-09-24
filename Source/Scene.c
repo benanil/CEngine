@@ -349,6 +349,7 @@ u32 Scene_AddBundleBakedFinalize(Scene* scene, SceneBundleStage* stage)
     ref->animAlloc      = animAlloc;
     ref->skinned        = skinned;
     ref->cacheKey       = stage->cacheKey;
+    ref->isRuntime      = !FileExist(ref->path);
     Scene_StampGroupBundle(set, renderIdx, bundleIdx);
     if (materialOffset + (u32)bundle->numMaterials > scene->numMaterials)
         scene->numMaterials = materialOffset + (u32)bundle->numMaterials;
@@ -422,6 +423,7 @@ u32 Scene_AddBundleFinalize(Scene* scene, SceneBundleStage* stage)
     ref->animAlloc          = animAlloc;
     ref->skinned            = stage->skinned;
     ref->cacheKey           = stage->cacheKey;
+    ref->isRuntime          = !FileExist(ref->path);
     Scene_StampGroupBundle(set, renderIdx, bundleIdx);
 
     if (materialOffset + (u32)bundle->numMaterials > scene->numMaterials)

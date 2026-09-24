@@ -75,7 +75,10 @@ static void WriteProceduralBundle(const SceneBundleRef* ref, AFile file)
     char* buffer = AllocTLSF(maxBase64Bytes);
     AFileWriteInt(file, (u64)p->numVertices, true);
     AFileWriteInt(file, (u64)p->numIndices , true);
-    AFileWrite(ref->path, StringLength(ref->path)+1, file, 1);
+    s32 pathLen = StringLength(ref->path);
+    ref->path[pathLen] = '\n';
+    AFileWrite(ref->path, pathLen + 1, file, 1);
+    ref->path[pathLen] = '\0';
     WritePrimBuffer(file, "positions", buffer, p, p->Attributes[AAttribIdx_POSITION]  , sizeof(float3) * p->numVertices);
     WritePrimBuffer(file, "texcoords", buffer, p, p->Attributes[AAttribIdx_TEXCOORD_0], sizeof(float2) * p->numVertices);
     WritePrimBuffer(file, "normals"  , buffer, p, p->Attributes[AAttribIdx_NORMAL]    , sizeof(float3) * p->numVertices);
