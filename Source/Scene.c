@@ -241,9 +241,10 @@ bool Entity_IsTransparent(const Entity* entity)
 // out: scene bundle index of the path, INVALID_BUNDLE when not present
 static u32 Scene_FindBundle(const Scene* scene, const u32 cacheKey)
 {
-    for (u32 i = 0; i < scene->numBundles; i++)
-        if (scene->bundleRefs[i].bundle && scene->bundleRefs[i].cacheKey == cacheKey)
-            return i;
+    IterateSetBits(scene->usedBundleBits, MAX_SCENE_BUNDLES,
+        if (scene->bundleRefs[bitId].cacheKey == cacheKey)
+            return bitId;
+    );
     return INVALID_BUNDLE;
 }
 
@@ -455,43 +456,25 @@ u32 Scene_AddBundle(Scene* scene, SceneBundle* bundle, const char* name)
     Scene_AddBundleStage(&stage, false);
     if (!stage.loaded) return INVALID_BUNDLE;
     stage.skinned = stage.bundle->numSkins > 0;
-    return Scene_AddBundleFinalize(scene, &stage);
+    return Scene_AddBundleBakedFinalize(scene, &stage);
 }
 
 u32 Scene_BundleIdx(Scene* scene, SceneBundle* bundle)
 {
-    int w = 0;
-    while (w < MAX_SCENE_BUNDLES >> 6)
-    {
-        u64 word = scene->usedBundleBits[w];
-        s32 set = 0;
-        while ((set = FindFirstSet(word)) != -1)
-        {
-            BitsetReset(&word, set);
-            if (scene->bundleRefs[w * 64 + set].bundle == bundle)
-                return w;
-        }
-        w++;
-    }
+    IterateSetBits(scene->usedBundleBits, MAX_SCENE_BUNDLES,
+        if (scene->bundleRefs[bitId].bundle == bundle)
+            return bitId;
+    );
     return ~0u;
 }
 
 u32 Scene_BundleFindFromPath(Scene* scene, const char* path)
 {
-    int w = 0;
-    while (w < MAX_SCENE_BUNDLES >> 6)
-    {
-        u64 word = scene->usedBundleBits[w];
-        s32 set;
-        while ((set = FindFirstSet(word)) != -1)
-        {
-            BitsetReset(&word, set);
-            const char* bundlePath = scene->bundleRefs[w * 64 + set].path;
-            if (StringEqual(bundlePath, path, StringLength(path)))
-                return w;
-        }
-        w++;
-    }
+    IterateSetBits(scene->usedBundleBits, MAX_SCENE_BUNDLES,
+        const char* bundlePath = scene->bundleRefs[bitId].path;
+        if (StringEqual(bundlePath, path, StringLength(path)))
+            return bitId;
+    );
     return ~0u;
 }
 

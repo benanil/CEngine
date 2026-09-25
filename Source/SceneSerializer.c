@@ -97,11 +97,9 @@ static SceneBundle* ReadProceduralBundle(AFile file, s32 version, char* nameBuff
     if (!AFileReadLine(line, sizeof(line), file)) return NULL;
     ParsePositiveNumber(line, &numIndex);
     MeshBuilder builder = MeshBuilder_Create(numVertex, numIndex);
-    if (version >= 6)
-    {
-        s32 nameLen = AFileReadLine(nameBuffer, 1024, file);
-        nameBuffer[nameLen] = '/0';
-    }
+    s32 nameLen = AFileReadLine(nameBuffer, 1024, file);
+    nameBuffer[nameLen] = '/0';
+    
     ReadPrimitiveBuffer(file, builder.positions);
     ReadPrimitiveBuffer(file, builder.texCoords);
     ReadPrimitiveBuffer(file, builder.normals);
@@ -571,32 +569,28 @@ static s32 ParseSceneFile(const char* path, SceneFileData* data)
         }
     }
 
-    // physics overrides section (version 4+); absent in older files
-    if (version >= 4u)
+    if (!(p = ReadRecord(file, line, sizeof(line), "physics")))
+        goto fail;
+    RU32(p, &data->numPhysics);
+    if (data->numPhysics > MAX_ENTITY) 
+        goto fail;
+    data->physics = (ScenePhysicsRecord*)AllocTLSF(Maxu32(data->numPhysics, 1u) * sizeof(ScenePhysicsRecord));
+    for (u32 i = 0; i < data->numPhysics; i++)
     {
-        if (!(p = ReadRecord(file, line, sizeof(line), "physics")))
+        ScenePhysicsRecord* rec = &data->physics[i];
+        if (!(p = ReadRecord(file, line, sizeof(line), "phys")))
             goto fail;
-        RU32(p, &data->numPhysics);
-        if (data->numPhysics > MAX_ENTITY) 
-            goto fail;
-        data->physics = (ScenePhysicsRecord*)AllocTLSF(Maxu32(data->numPhysics, 1u) * sizeof(ScenePhysicsRecord));
-        for (u32 i = 0; i < data->numPhysics; i++)
-        {
-            ScenePhysicsRecord* rec = &data->physics[i];
-            if (!(p = ReadRecord(file, line, sizeof(line), "phys")))
-                goto fail;
-            p = RU32(p, &rec->sparseIdx);
-            p = RU32(p, &rec->bodyType);
-            p = RU32(p, &rec->shapeType);
-            p = RU32(p, &rec->lockBits);
-            p = RFlt(p, &rec->friction);
-            p = RFlt(p, &rec->restitution);
-            p = RFlt(p, &rec->density);
-            p = RFlt(p, &rec->linearDamping);
-            p = RFlt(p, &rec->angularDamping);
-            p = RFlt(p, &rec->gravityScale);
-            p = RFlt(p, &rec->sleepThreshold);
-        }
+        p = RU32(p, &rec->sparseIdx);
+        p = RU32(p, &rec->bodyType);
+        p = RU32(p, &rec->shapeType);
+        p = RU32(p, &rec->lockBits);
+        p = RFlt(p, &rec->friction);
+        p = RFlt(p, &rec->restitution);
+        p = RFlt(p, &rec->density);
+        p = RFlt(p, &rec->linearDamping);
+        p = RFlt(p, &rec->angularDamping);
+        p = RFlt(p, &rec->gravityScale);
+        p = RFlt(p, &rec->sleepThreshold);
     }
 
     AFileClose(file);
@@ -671,19 +665,6 @@ static bool SceneSerializer_LoadBundles(Scene* scene, SceneFileData* data, const
             baked = false;
     data->baked = baked;
     
-    bool ok = true;
-    for (u32 b = 0; b < data->numBundles; b++)
-    {
-        u32 bundleIdx = baked ? Scene_AddBundleBakedFinalize(scene, &stages[b])
-                              : Scene_AddBundleFinalize(scene, &stages[b]);
-        if (bundleIdx == INVALID_BUNDLE) { ok = false; continue; }
-        if (scene->bundleRefs[bundleIdx].materialOffset != data->bundleMaterialOff[b])
-            AX_WARN("scene bundle material offset drifted: %s %d != %d", data->bundlePaths + (u64)b * 1024u,
-                    scene->bundleRefs[bundleIdx].materialOffset, data->bundleMaterialOff[b]);
-    }
-
-    DeAllocTLSF(stages);
-
     if (baked)
     {
         const char* atlasPaths[TextureClass_Count];
@@ -709,7 +690,20 @@ static bool SceneSerializer_LoadBundles(Scene* scene, SceneFileData* data, const
             scene->numMaterials = data->materialWatermark;
     }
     else AX_LOG("scene loaded through the slow path (no baked atlases): %s", path);
-    
+
+    bool ok = true;
+    for (u32 b = 0; b < data->numBundles; b++)
+    {
+        u32 bundleIdx = baked ? Scene_AddBundleBakedFinalize(scene, &stages[b])
+                              : Scene_AddBundleFinalize(scene, &stages[b]);
+        if (bundleIdx == INVALID_BUNDLE) { ok = false; continue; }
+        if (scene->bundleRefs[bundleIdx].materialOffset != data->bundleMaterialOff[b])
+            AX_WARN("scene bundle material offset drifted: %s %d != %d", data->bundlePaths + (u64)b * 1024u,
+                    scene->bundleRefs[bundleIdx].materialOffset, data->bundleMaterialOff[b]);
+    }
+
+    DeAllocTLSF(stages);
+
     return ok;
 }
 

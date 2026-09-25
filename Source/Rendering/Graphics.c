@@ -296,7 +296,8 @@ void GraphicsInit(bool msaa)
     winstate->tex_spot_shadow_depth  = CreateTexture2D(SPOT_SHADOW_SIZE , SPOT_SHADOW_SIZE , TEX_FMT_D32_FLT, TEX_DEPTH_STENCIL, TEX_SMP_CNT1, 1, "Spot Shadow Depth Texture");
     winstate->tex_point_shadow_color = CreateTexture2DArray(POINT_SHADOW_ATLAS_WIDTH, POINT_SHADOW_SIZE, POINT_SHADOW_MAX_LIGHTS, TEX_FMT_R32_FLT, TEX_COLOR_TARGET | TEX_SAMPLER, "Point Shadow Depth Texture");
     winstate->tex_spot_shadow_color  = CreateTexture2DArray(SPOT_SHADOW_SIZE , SPOT_SHADOW_SIZE , POINT_SHADOW_LAYER_COUNT, TEX_FMT_R32_FLT, TEX_COLOR_TARGET | TEX_SAMPLER, "Spot Shadow Depth Texture");
-    
+    wGetWindowSize((s32*)&winstate->prev_width, (s32*)&winstate->prev_height);
+
     g_RenderState.skyNoise3D = Create3DNoise3DTexture(64u);
     // 64-byte base alignment keeps every power-of-two element stride aligned in the
     // heaps above, so heap pointers are directly usable for SIMD-typed elements

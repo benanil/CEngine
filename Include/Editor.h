@@ -14,4 +14,6 @@ void  EditorConsoleInit(void);
 void  EditorSceneStartup(void);
 void  EditorSceneHotkeys(void);
 
+void GraphicsEditorUI(void);
+
 #endif 

@@ -383,6 +383,37 @@ static bool BitsetHasAtLeastEmptyBits(const u64* bits, s32 bitCount, u32 needed)
     return found >= needed;
 }
 
+// example usage
+// IterateSetBits(scene->usedBundleBits, MAX_SCENE_BUNDLES,
+//     if (scene->bundleRefs[bitId].cacheKey == cacheKey)
+//         return bitId;
+// );
+// instead of continue or break use goto or return to exit from here
+
+#define IterateSetBits(bits, numBits, fn) \
+{\
+    for (s32 _w = 0; _w < (numBits) >> 6; ++_w) {\
+        u64 _word = (bits)[_w];\
+        while (_word != 0) {\
+            s32 bitId = (_w << 6) + LeadingZeroCount64(_word);\
+            fn;\
+            _word &= (_word - 1);\
+        }\
+    }\
+}
+
+#define IterateZeroBits(bits, numBits, fn) \
+{\
+    for (s32 _w = 0; _w < (numBits) >> 6; ++_w) {\
+        u64 _word = ~(bits)[_w];\
+        while (_word != 0) {\
+            s32 bitId = (_w << 6) + LeadingZeroCount64(_word);\
+            fn;\
+            _word &= (_word - 1);\
+        }\
+    }\
+}
+
 #if defined(__cplusplus)
 }
 #endif

@@ -126,6 +126,7 @@ void RecordLastKeys();
 typedef void (SDLCALL *CP_DialogFileCallback)(void *userdata, const char * const *filelist, s32 filter);
 
 // Window
+bool wGetWindowSize(s32* width, s32* height);
 void wSetWindowSize(s32 width, s32 height);
 void wSetWindowPosition(s32 x, s32 y);
 void wApplyWindowShape(void);

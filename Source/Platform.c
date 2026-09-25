@@ -289,6 +289,11 @@ void RecordLastKeys()
     PlatformCtx.MouseLast = PlatformCtx.MouseDown;
 }
 
+bool wGetWindowSize(s32* width, s32* height)
+{
+    return SDL_GetWindowSize(g_SDLWindow, width, height);
+}
+
 void wSetWindowSize(s32 width, s32 height)
 {
     SDL_SetWindowSize(g_SDLWindow, width, height);
