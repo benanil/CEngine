@@ -843,8 +843,6 @@ void Render(void)
     }
 
     SDL_GPUColorTargetInfo ui_target = MakeLoadedTextureTarget(swapchainTexture);
-    UIBeginFrame();
-    UIRenderCallback();
     UIEndFrame(cmd, &ui_target);
 
     if (submitLightVisReadback) {

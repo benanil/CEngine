@@ -1400,6 +1400,7 @@ bool UIBeginWindowId(Clay_ElementId id, const char* title, float2 position, floa
     bool hovered = UIHitRect(window->position, visibleScale, g_UI.mouse);
     bool anyOnTop = hovered && UIWindowOnTopOf(windowIndex, g_UI.mouse);
     window->isFocused = !anyOnTop && g_UIWindowActive == windowIndex;
+    
 
     if (hovered && !anyOnTop && mousePressed) UIWindowBringToFront(windowIndex);
 
@@ -1411,12 +1412,16 @@ bool UIBeginWindowId(Clay_ElementId id, const char* title, float2 position, floa
 
     f32 titlePad = 10.0f;
     f32 buttonSize = 22.0f;
-    float2 closePos = { window->position.x + window->scale.x - titlePad - buttonSize, window->position.y + (window->topHeight - buttonSize) * 0.5f };
+    bool noClose = (window->flags & UIWindowFlags_NoClose) != 0;
+    float2 closePos = { 
+        window->position.x + window->scale.x - ((titlePad + buttonSize) * !noClose),
+        window->position.y + (window->topHeight - buttonSize) * 0.5f 
+    };
     float2 collapsePos = { closePos.x - buttonSize - 8.0f, closePos.y };
     bool closeHovered = window->topHeight > 0.0f && UIHitRect(closePos, F2Set1(buttonSize), g_UI.mouse);
     bool collapseHovered = window->topHeight > 0.0f && UIHitRect(collapsePos, F2Set1(buttonSize), g_UI.mouse);
 
-    if (!anyOnTop && mousePressed && closeHovered && open) { *open = false; g_UIWindowLayoutChanged = true; }
+    if (!anyOnTop && mousePressed && closeHovered && open && !noClose) { *open = false; g_UIWindowLayoutChanged = true; }
     if (!anyOnTop && mousePressed && collapseHovered) { window->isCollapsed = !window->isCollapsed; g_UIWindowLayoutChanged = true; }
 
     // tabs are hit-tested against last frame's layout, pressing one selects it and
@@ -1518,7 +1523,7 @@ bool UIBeginWindowId(Clay_ElementId id, const char* title, float2 position, floa
             }) {
                 UIWindowTitleButtonIcon(window->isCollapsed ? &g_UIWindowMaximizeImage : &g_UIWindowMinimizeImage);
             }
-            if (open)
+            if (!noClose && open)
             {
                 CLAY(CLAY_ID_LOCAL("Close"), {
                     .layout = { .sizing = { CLAY_SIZING_FIXED(buttonSize), CLAY_SIZING_FIXED(buttonSize) }, .childAlignment = { CLAY_ALIGN_X_CENTER, CLAY_ALIGN_Y_CENTER } },

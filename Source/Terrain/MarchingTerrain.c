@@ -1044,18 +1044,18 @@ void tUpdate(void)
     s64 totalUs = TimeToMicroseconds(tEnd - tBegin);
     if (totalUs >= T_STALL_LOG_THRESHOLD_US)
     {
-        AX_WARN("terrain frame stall %lldus [integrate=%lld foliage=%lld promote=%lld prune=%lld "
-                "submit=%lld physics=%lld upload=%lld] newChunks=%u chunkCount=%u draws=%u",
-                (long long)totalUs,
-                (long long)TimeToMicroseconds(tIntegrate - tBegin),
-                (long long)TimeToMicroseconds(tFoliage - tIntegrate),
-                (long long)TimeToMicroseconds(tPromote - tFoliage),
-                (long long)TimeToMicroseconds(tPrune - tPromote),
-                (long long)TimeToMicroseconds(tSubmit - tPrune),
-                (long long)TimeToMicroseconds(tPhysics - tSubmit),
-                (long long)TimeToMicroseconds(tEnd - tPhysics),
-                gMarchingTerrain.chunkCount - chunkCountBefore,
-                gMarchingTerrain.chunkCount, gMarchingTerrain.numChunkDraws);
+        // AX_WARN("terrain frame stall %lldus [integrate=%lld foliage=%lld promote=%lld prune=%lld "
+        //         "submit=%lld physics=%lld upload=%lld] newChunks=%u chunkCount=%u draws=%u",
+        //         (long long)totalUs,
+        //         (long long)TimeToMicroseconds(tIntegrate - tBegin),
+        //         (long long)TimeToMicroseconds(tFoliage - tIntegrate),
+        //         (long long)TimeToMicroseconds(tPromote - tFoliage),
+        //         (long long)TimeToMicroseconds(tPrune - tPromote),
+        //         (long long)TimeToMicroseconds(tSubmit - tPrune),
+        //         (long long)TimeToMicroseconds(tPhysics - tSubmit),
+        //         (long long)TimeToMicroseconds(tEnd - tPhysics),
+        //         gMarchingTerrain.chunkCount - chunkCountBefore,
+        //         gMarchingTerrain.chunkCount, gMarchingTerrain.numChunkDraws);
     }
 }
 

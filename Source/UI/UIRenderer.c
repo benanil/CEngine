@@ -411,6 +411,15 @@ void UIBeginFrame(void)
     if (!g_UI.keyboardFocus) PlatformConsumeTextKeyEvents(NULL, UINT32_MAX);
     UIWindowBeginFrame();
     UILayoutBeginFrame();
+
+    Clay_BeginLayout();
+    
+    Clay__OpenElementWithId(CLAY_ID("EDITOR_ROOT")); 
+    Clay__ConfigureOpenElement((Clay_ElementDeclaration){
+        .layout = {
+            .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_GROW(0) },
+        }
+    });
 }
 
 char* UIFrameStringAlloc(u32 size)
@@ -426,6 +435,11 @@ char* UIFrameStringAlloc(u32 size)
 
 void UIEndFrame(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget)
 {
+    Clay__CloseElement(); // close EDITOR_ROOT
+
+    Clay_RenderCommandArray commands = UIEndLayout();
+    UIRenderCommands(&commands);
+
     UIWindowEndFrame();
     UIRender(cmd, colorTarget);
     SlugFont* font = SlugGetDemoFont();

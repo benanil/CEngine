@@ -9,14 +9,17 @@ extern "C" {
 
 #define UI_MAX_WINDOWS 32u
 
-typedef enum UIWindowFlags_
+enum UIWindowFlags_
 {
+    UIWindowFlags_None              = 0u << 0,
     UIWindowFlags_NoMove            = 1u << 0,
     UIWindowFlags_NoResize          = 1u << 1,
     UIWindowFlags_FixedElementStart = 1u << 2,
     UIWindowFlags_NoTabBar          = 1u << 3,
-    UIWindowFlags_RightClickable    = 1u << 4
-} UIWindowFlags;
+    UIWindowFlags_RightClickable    = 1u << 4,
+    UIWindowFlags_NoClose           = 1u << 5
+};
+typedef u32 UIWindowFlags;
 
 typedef struct UIWindow_
 {
@@ -32,7 +35,7 @@ typedef struct UIWindow_
     f32 scrollPercent;
     f32 topHeight;
 
-    u32 flags;
+    UIWindowFlags flags;
     u32 hash;
     u32 tabGroup; // windows sharing a group id occupy the same rect as switchable tabs, 0 = ungrouped
     s32 currElement;

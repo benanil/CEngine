@@ -821,10 +821,14 @@ void EditorInit(void)
     editorCloseImage    = UIImageFromTexture(&editorCloseTexture);
 }
 
-static void GraphicsEditorUI(void)
+void GraphicsEditorUI(void)
 {
     const f32 tabBarHeight = EDITOR_TAB_BAR_HEIGHT;
-    Clay_BeginLayout();
+    // static char textArea[512] = "Text area 中文测试 日本語テスト\nArabic: العربية\nGreek: Ελληνικά";
+    // UIText("SDF + Slug Immediate UI", (float2){ 56.0f, 56.0f });
+    // UITextArea("Text Area", (float2){ 56.0f, 292.0f }, textArea, (u32)sizeof(textArea), (float2){ 520.0f, 160.0f });
+      
+    if (GetKeyPressed(SDLK_F7)) showFps = !showFps;
 
     int screenWidth, screenHeight;
     SDL_GetWindowSize(g_SDLWindow, &screenWidth, &screenHeight);
@@ -937,13 +941,8 @@ static void GraphicsEditorUI(void)
     EditorCacheTabBarButtonBox(CLAY_ID("TabBarLogo"));
 
     UIPopFloat(UIFloat_BorderWidth);
-
-    CLAY(CLAY_ID("GraphicsEditorRoot"), {
-        .layout = {
-            .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_GROW(0) },
-        }
-    }) {
-
+    // windows
+    {
         if (showFps) ShowFps();
         bool sceneViewWasVisible = sceneViewVisible;
         if (!sceneViewWasVisible) DrawSceneLightGizmos(&g_Camera);
@@ -973,20 +972,6 @@ static void GraphicsEditorUI(void)
     if (sceneViewVisible) SetSceneViewSize((u32)(sceneViewContentSize.x + 0.5f), (u32)(sceneViewContentSize.y + 0.5f));
     else SetSceneViewSize(0u, 0u);
 
-    Clay_RenderCommandArray commands = UIEndLayout();
-    UIRenderCommands(&commands);
-
-    // with the scene in a window the light icons draw after the window quads so they
     // appear on top of the scene image, filtered to spots where the view is unobstructed
     if (sceneViewVisible) DrawSceneLightGizmos(&g_Camera);
-}
-
-void UIRenderCallback(void)
-{
-    // static char textArea[512] = "Text area 中文测试 日本語テスト\nArabic: العربية\nGreek: Ελληνικά";
-    // UIText("SDF + Slug Immediate UI", (float2){ 56.0f, 56.0f });
-    // UITextArea("Text Area", (float2){ 56.0f, 292.0f }, textArea, (u32)sizeof(textArea), (float2){ 520.0f, 160.0f });
-      
-    if (GetKeyPressed(SDLK_F7)) showFps = !showFps;
-    GraphicsEditorUI();
 }
