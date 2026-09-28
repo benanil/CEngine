@@ -519,7 +519,7 @@ static void SceneImportDetailPopup(void)
         }) {}
     }
 
-    UIEditFloatN(CLAY_ID("ImportDetailEuler"), CLAY_STRING("Euler"), importDetailEuler, 3u, -360.0f, 360.0f, 3);
+    UIEditFloatN("Euler", importDetailEuler, 3u, -360.0f, 360.0f, 3);
 
     CLAY(CLAY_ID("ImportDetailButtons"), {
         .layout = {
@@ -528,7 +528,7 @@ static void SceneImportDetailPopup(void)
             .layoutDirection = CLAY_LEFT_TO_RIGHT
         }
     }) {
-        if (UIButton(CLAY_ID("ImportDetailOk"), CLAY_STRING("Import"), (Clay_Dimensions){ 96.0f, 30.0f }, false))
+        if (UIButton("Import", (Clay_Dimensions){ 96.0f, 30.0f }, false))
         {
             ParseFloat(importDetailScaleText, &importDetailScale);
             Scene* scene = Scene_GetActive();
@@ -545,7 +545,7 @@ static void SceneImportDetailPopup(void)
                 AX_ERROR("import to scene failed: %s", importDetailPath);
             importDetailOpen = false;
         }
-        if (UIButton(CLAY_ID("ImportDetailCancel"), CLAY_STRING("Cancel"), (Clay_Dimensions){ 96.0f, 30.0f }, false))
+        if (UIButton("Cancel", (Clay_Dimensions){ 96.0f, 30.0f }, false))
         {
             importDetailOpen = false;
         }
@@ -1137,9 +1137,7 @@ static void UIPhysicsReadonlyRow(Clay_ElementId id, const char* label, const cha
 // A per-axis lock row: a leading label followed by three checkboxes (X/Y/Z)
 // laid out horizontally rather than stacked. Returns true when any axis toggled.
 static bool UIPhysicsLockRow(Clay_ElementId rowId, Clay_String label,
-                             Clay_ElementId idX, bool* x,
-                             Clay_ElementId idY, bool* y,
-                             Clay_ElementId idZ, bool* z)
+                             bool* x, bool* y, bool* z)
 {
     bool changed = false;
     CLAY(rowId, {
@@ -1158,9 +1156,9 @@ static bool UIPhysicsLockRow(Clay_ElementId rowId, Clay_String label,
         }) {
             CLAY_TEXT(label, CLAY_TEXT_CONFIG({ .fontSize = 14, .textColor = UIGetClayColor(UIColor_SubText) }));
         }
-        changed |= UICheckbox(idX, CLAY_STRING("X"), x);
-        changed |= UICheckbox(idY, CLAY_STRING("Y"), y);
-        changed |= UICheckbox(idZ, CLAY_STRING("Z"), z);
+        changed |= UICheckboxID("X", rowId.id * 0 + 0, x);
+        changed |= UICheckboxID("Y", rowId.id * 1 + 1, y);
+        changed |= UICheckboxID("Z", rowId.id * 2 + 2, z);
     }
     return changed;
 }
@@ -1198,7 +1196,7 @@ static void SceneInspectorPhysicsUI(Scene* scene, Entity* entity)
     if (!scenePhysicsOpen) return;
     
     bool isEnabled = Entity_IsPhysicsEnabled(scene, entity);
-    if (UICheckbox(CLAY_ID("ColliderEnabled"), CLAY_STRING("Enabled"), &isEnabled))
+    if (UICheckbox("Enabled", &isEnabled))
     {
         Entity_TogglePhysics(scene, entity, isEnabled);
         body = scene->physicsBodies[entity->sparseIdx];
@@ -1213,8 +1211,7 @@ static void SceneInspectorPhysicsUI(Scene* scene, Entity* entity)
     static const char* bodyTypes[] = { "Static", "Kinematic", "Dynamic" };
     u32 bodyType = (u32)b3Body_GetType(body);
     if (bodyType >= ARRAY_SIZE(bodyTypes)) bodyType = 0u;
-    if (UIDropdown(CLAY_ID("InspectorPhysicsBodyType"), CLAY_STRING("Body Type"),
-                   bodyTypes, ARRAY_SIZE(bodyTypes), &bodyType))
+    if (UIDropdown("Body Type", bodyTypes, ARRAY_SIZE(bodyTypes), &bodyType))
     {
         b3Body_SetType(body, (b3BodyType)bodyType);
         if (bodyType == (u32)b3_dynamicBody && hasShape && b3Body_GetMass(body) <= 0.0f)
@@ -1228,8 +1225,7 @@ static void SceneInspectorPhysicsUI(Scene* scene, Entity* entity)
         static const char* shapeTypes[] = { "Capsule", "Compound", "Height", "Hull", "Mesh", "Sphere" };
         u32 shapeType = (u32)b3Shape_GetType(shapeId);
         if (shapeType >= ARRAY_SIZE(shapeTypes)) shapeType = 0u;
-        if (UIDropdown(CLAY_ID("InspectorPhysicsShape"), CLAY_STRING("Shape"),
-                       shapeTypes, ARRAY_SIZE(shapeTypes), &shapeType))
+        if (UIDropdown("Shape", shapeTypes, ARRAY_SIZE(shapeTypes), &shapeType))
             Entity_SetPhysicsShape(scene, entity, (b3ShapeType)shapeType);
     }
 
@@ -1252,19 +1248,19 @@ static void SceneInspectorPhysicsUI(Scene* scene, Entity* entity)
     // Integration scalars: each edit is pushed straight to the body.
     UISectionHeader("Dynamics");
     f32 linearDamping = b3Body_GetLinearDamping(body);
-    if (UIEditFloat(CLAY_ID("InspectorPhysicsLinDamp"), CLAY_STRING("Linear Damping"), &linearDamping, 0.0f, 100.0f, 0.01f, 3))
+    if (UIEditFloat("Linear Damping", &linearDamping, 0.0f, 100.0f, 0.01f, 3))
         b3Body_SetLinearDamping(body, linearDamping);
 
     f32 angularDamping = b3Body_GetAngularDamping(body);
-    if (UIEditFloat(CLAY_ID("InspectorPhysicsAngDamp"), CLAY_STRING("Angular Damping"), &angularDamping, 0.0f, 100.0f, 0.01f, 3))
+    if (UIEditFloat("Angular Damping", &angularDamping, 0.0f, 100.0f, 0.01f, 3))
         b3Body_SetAngularDamping(body, angularDamping);
 
     f32 gravityScale = b3Body_GetGravityScale(body);
-    if (UIEditFloat(CLAY_ID("InspectorPhysicsGravity"), CLAY_STRING("Gravity Scale"), &gravityScale, -10.0f, 10.0f, 0.1f, 3))
+    if (UIEditFloat("Gravity Scale", &gravityScale, -10.0f, 10.0f, 0.1f, 3))
         b3Body_SetGravityScale(body, gravityScale);
 
     f32 sleepThreshold = b3Body_GetSleepThreshold(body);
-    if (UIEditFloat(CLAY_ID("InspectorPhysicsSleep"), CLAY_STRING("Sleep Threshold"), &sleepThreshold, 0.0f, 100.0f, 0.01f, 3))
+    if (UIEditFloat("Sleep Threshold", &sleepThreshold, 0.0f, 100.0f, 0.01f, 3))
         b3Body_SetSleepThreshold(body, sleepThreshold);
 
     // Surface material of the primary shape.
@@ -1272,16 +1268,16 @@ static void SceneInspectorPhysicsUI(Scene* scene, Entity* entity)
     {
         UISectionHeader("Material");
         f32 friction = b3Shape_GetFriction(shapeId);
-        if (UIEditFloat(CLAY_ID("InspectorPhysicsFriction"), CLAY_STRING("Friction"), &friction, 0.0f, 1.0f, 0.01f, 3))
+        if (UIEditFloat("Friction", &friction, 0.0f, 1.0f, 0.01f, 3))
             b3Shape_SetFriction(shapeId, friction);
 
         f32 restitution = b3Shape_GetRestitution(shapeId);
-        if (UIEditFloat(CLAY_ID("InspectorPhysicsRestitution"), CLAY_STRING("Restitution"), &restitution, 0.0f, 1.0f, 0.01f, 3))
+        if (UIEditFloat("Restitution", &restitution, 0.0f, 1.0f, 0.01f, 3))
             b3Shape_SetRestitution(shapeId, restitution);
 
         f32 density = b3Shape_GetDensity(shapeId);
         // updateBodyMass = true so mass properties recompute (matters once bodies are dynamic).
-        if (UIEditFloat(CLAY_ID("InspectorPhysicsDensity"), CLAY_STRING("Density"), &density, 0.0f, 100000.0f, 0.1f, 3))
+        if (UIEditFloat("Density", &density, 0.0f, 100000.0f, 0.1f, 3))
             b3Shape_SetDensity(shapeId, density, true);
     }
 
@@ -1291,13 +1287,10 @@ static void SceneInspectorPhysicsUI(Scene* scene, Entity* entity)
     {
         b3MotionLocks locks = b3Body_GetMotionLocks(body);
         bool locksChanged = UIPhysicsLockRow(CLAY_ID("InspectorPhysLockLinRow"), CLAY_STRING("Position"),
-                         CLAY_ID("InspectorPhysLockLinX"), &locks.linearX,
-                         CLAY_ID("InspectorPhysLockLinY"), &locks.linearY,
-                         CLAY_ID("InspectorPhysLockLinZ"), &locks.linearZ);
+                                             &locks.linearX, &locks.linearY, &locks.linearZ);
+
         locksChanged |= UIPhysicsLockRow(CLAY_ID("InspectorPhysLockAngRow"), CLAY_STRING("Rotation"),
-                         CLAY_ID("InspectorPhysLockAngX"), &locks.angularX,
-                         CLAY_ID("InspectorPhysLockAngY"), &locks.angularY,
-                         CLAY_ID("InspectorPhysLockAngZ"), &locks.angularZ);
+                                         &locks.angularX, &locks.angularY, &locks.angularZ);
         if (locksChanged)
             b3Body_SetMotionLocks(body, locks);
     }
@@ -1335,7 +1328,7 @@ static void SceneInspectorUI(Scene* scene)
 
     SceneInspectorValidateCache(entity);
 
-    if (UIEditFloatN(CLAY_ID("InspectorPosition"), CLAY_STRING("Position"), sceneInspectorCache.positionUi, 3u, -100000.0f, 100000.0f, 3))
+    if (UIEditFloatN("Position", sceneInspectorCache.positionUi, 3u, -100000.0f, 100000.0f, 3))
     {
         entity->position = VecSetR(sceneInspectorCache.positionUi[0], sceneInspectorCache.positionUi[1], sceneInspectorCache.positionUi[2], 0.0f);
         sceneInspectorCache.position = entity->position;
@@ -1344,7 +1337,7 @@ static void SceneInspectorUI(Scene* scene)
         scene->renderDataDirty = 1;
     }
 
-    if (UIEditIntN(CLAY_ID("InspectorRotation"), CLAY_STRING("Rotation"), sceneInspectorCache.rotationUi, 3u, -180, 180))
+    if (UIEditIntN("Rotation", sceneInspectorCache.rotationUi, 3u, -180, 180))
     {
         v128f oldRot = VecNorm(UnpackQuaternionS16Norm1(entity->rotation));
         v128f oldScale = SceneEntityWorldScale(entity);
@@ -1364,7 +1357,7 @@ static void SceneInspectorUI(Scene* scene)
         scene->renderDataDirty = 1;
     }
 
-    if (UIEditFloatN(CLAY_ID("InspectorScale"), CLAY_STRING("Scale"), sceneInspectorCache.scaleUi, 3u, 0.001f, 10.0f, 3))
+    if (UIEditFloatN("Scale", sceneInspectorCache.scaleUi, 3u, 0.001f, 10.0f, 3))
     {
         v128f rotation = VecNorm(UnpackQuaternionS16Norm1(entity->rotation));
         v128f oldScale = SceneEntityWorldScale(entity);
@@ -1398,8 +1391,8 @@ static void SceneInspectorUI(Scene* scene)
         options[i] = bundle->animations[i].name && bundle->animations[i].name[0] ? bundle->animations[i].name : "Animation";
     if (animLocal >= numOptions) animLocal = 0u;
 
-    bool changed = UIDropdown(CLAY_ID("InspectorAnimation"), CLAY_STRING("Animation"), options, numOptions, &animLocal);
-    changed |= UISliderFloatValue(CLAY_ID("InspectorAnimationTime"), CLAY_STRING("Time offset"), &sceneObjectSelection.animTime, 0.0f, 10.0f, 2);
+    bool changed = UIDropdown("Animation", options, numOptions, &animLocal);
+    changed |= UISliderFloatValue("Time offset", &sceneObjectSelection.animTime, 0.0f, 10.0f, 2);
     if (changed)
     {
         sceneObjectSelection.animIdx = animLocal;
@@ -1454,7 +1447,7 @@ static bool SceneLightWorldToScreen(Camera* camera, const LightGPU* light, float
     if (outDepth)
     {
         v128f camPos = VecLoad(&camera->position.x);
-        v128f normal = Vec3NormV(VecLoad(&camera->Front.x));
+        v128f normal = Vec3NormV(VecLoad(&camera->front.x));
         *outDepth = Maxf32(Vec3DotfV(VecSub(world, camPos), normal), 0.001f);
     }
     return true;
@@ -1471,7 +1464,7 @@ static bool SceneLightPlaneHit(Camera* camera, float2 mouse, f32 depth, v128f* o
 {
     RayV ray = ScreenPointToRay(camera, mouse);
     v128f camPos = VecLoad(&camera->position.x);
-    v128f normal = Vec3NormV(VecLoad(&camera->Front.x));
+    v128f normal = Vec3NormV(VecLoad(&camera->front.x));
     v128f planePoint = VecAdd(camPos, VecMulf(normal, depth));
     return RayPlaneHit(ray.origin, ray.dir, planePoint, normal, outHit);
 }
@@ -1578,12 +1571,12 @@ static void SceneLightsUI(Scene* scene)
         }
     }) {
         UIPushFloatAdd(UIFloat_TextScale, -0.15f);
-        if (UIButton(CLAY_ID("SceneAddPoint"), CLAY_STRING("Add Point"), (Clay_Dimensions){ 100.0f, 26.0f }, false))
+        if (UIButton("Add Point", (Clay_Dimensions){ 100.0f, 26.0f }, false))
             SceneAddLight(scene, LightType_Point);
-        if (UIButton(CLAY_ID("SceneAddSpot"), CLAY_STRING("Add Spot"), (Clay_Dimensions){ 100.0f, 26.0f }, false))
+        if (UIButton("Add Spot", (Clay_Dimensions){ 100.0f, 26.0f }, false))
             SceneAddLight(scene, LightType_Spot);
         if (sceneSelectedLight >= 0 && sceneSelectedLight < (s32)scene->numLights &&
-            UIButton(CLAY_ID("SceneDeleteLight"), CLAY_STRING("Delete"), (Clay_Dimensions){ 90.0f, 26.0f }, false))
+            UIButton("Delete", (Clay_Dimensions){ 90.0f, 26.0f }, false))
             SceneRemoveLight(scene, (u32)sceneSelectedLight);
         UIPopFloat(UIFloat_TextScale);
     }
@@ -1601,28 +1594,28 @@ static void SceneLightsUI(Scene* scene)
     if (sceneSelectedLight < 0 || sceneSelectedLight >= (s32)scene->numLights) return;
     LightGPU* light = &scene->lights[sceneSelectedLight];
 
-    UIEditFloatN(CLAY_ID("SceneLightPos"), CLAY_STRING("Position"), light->positionRadius, 3u, -10000.0f, 10000.0f, 2);
-    UISliderFloatValue(CLAY_ID("SceneLightRadius"), CLAY_STRING("Radius"), &light->positionRadius[3], 0.1f, 200.0f, 1);
+    UIEditFloatN("Position", light->positionRadius, 3u, -10000.0f, 10000.0f, 2);
+    UISliderFloatValue("Radius", &light->positionRadius[3], 0.1f, 200.0f, 1);
     if (light->type == LightType_Spot)
     {
         f32 directionCone[4];
         LightGPU_GetDirectionCone(light, directionCone);
-        bool directionChanged = UIEditFloatN(CLAY_ID("SceneLightDir"), CLAY_STRING("Direction"), directionCone, 3u, -1.0f, 1.0f, 2);
-        directionChanged |= UISliderFloatValue(CLAY_ID("SceneLightCone"), CLAY_STRING("Cone"), &directionCone[3], 0.0f, 0.99f, 2);
+        bool directionChanged = UIEditFloatN("Direction", directionCone, 3u, -1.0f, 1.0f, 2);
+        directionChanged |= UISliderFloatValue("Cone", &directionCone[3], 0.0f, 0.99f, 2);
         if (directionChanged) LightGPU_SetDirectionCone(light, directionCone);
     }
 
     f32 color[3];
     LightGPU_GetColor3(light, color);
-    if (UIColorEdit3(CLAY_ID("SceneLightColor"), CLAY_STRING("Color"), color))
+    if (UIColorEdit3("Color", color))
         LightGPU_SetColor3(light, color);
 
     f32 intensity = LightGPU_GetIntensity(light);
-    if (UISliderFloatValue(CLAY_ID("SceneLightIntensity"), CLAY_STRING("Intensity"), &intensity, 0.0f, 200.0f, 1))
+    if (UISliderFloatValue("Intensity", &intensity, 0.0f, 200.0f, 1))
         LightGPU_SetIntensity(light, intensity);
 
     bool shadowed = (light->flags & LIGHT_FLAG_SHADOWED) != 0u;
-    UICheckbox(CLAY_ID("SceneLightShadowed"), CLAY_STRING("Shadowed"), &shadowed);
+    UICheckbox("Shadowed", &shadowed);
     light->flags = shadowed ? LIGHT_FLAG_SHADOWED : 0u;
 }
 
@@ -1656,12 +1649,12 @@ static void SceneSavePopup(void)
             .layoutDirection = CLAY_LEFT_TO_RIGHT
         }
     }) {
-        if (UIButton(CLAY_ID("SceneSaveOk"), CLAY_STRING("Save"), (Clay_Dimensions){ 96.0f, 30.0f }, false) || GetKeyPressed('\r'))
+        if (UIButton("Save", (Clay_Dimensions){ 96.0f, 30.0f }, false) || GetKeyPressed('\r'))
         {
             EditorSaveSceneAs(sceneSaveName);
             sceneSavePopupOpen = false;
         }
-        if (UIButton(CLAY_ID("SceneSaveCancel"), CLAY_STRING("Cancel"), (Clay_Dimensions){ 96.0f, 30.0f }, false))
+        if (UIButton("Cancel", (Clay_Dimensions){ 96.0f, 30.0f }, false))
         {
             sceneSavePopupOpen = false;
         }
@@ -1697,18 +1690,18 @@ static void SceneSaveConfirmPopup(void)
             .layoutDirection = CLAY_LEFT_TO_RIGHT
         }
     }) {
-        if (UIButton(CLAY_ID("SceneSaveConfirmYes"), CLAY_STRING("Save"), (Clay_Dimensions){ 96.0f, 30.0f }, false) || GetKeyPressed('\r'))
+        if (UIButton("Save", (Clay_Dimensions){ 96.0f, 30.0f }, false) || GetKeyPressed('\r'))
         {
             EditorSaveActiveScene();
             sceneSaveConfirmOpen = false;
         }
-        if (UIButton(CLAY_ID("SceneSaveConfirmAsNew"), CLAY_STRING("Save As New"), (Clay_Dimensions){ 128.0f, 30.0f }, false))
+        if (UIButton("Save As New", (Clay_Dimensions){ 128.0f, 30.0f }, false))
         {
             sceneSaveConfirmOpen = false;
             sceneSavePopupOpen = true;
             sceneSaveName[0] = '\0';
         }
-        if (UIButton(CLAY_ID("SceneSaveConfirmNo"), CLAY_STRING("Cancel"), (Clay_Dimensions){ 96.0f, 30.0f }, false))
+        if (UIButton("Cancel", (Clay_Dimensions){ 96.0f, 30.0f }, false))
         {
             sceneSaveConfirmOpen = false;
         }
@@ -1748,13 +1741,13 @@ static void SceneDeletePopup(void)
             .layoutDirection = CLAY_LEFT_TO_RIGHT
         }
     }) {
-        if (UIButton(CLAY_ID("SceneDeleteYes"), CLAY_STRING("Delete"), (Clay_Dimensions){ 96.0f, 30.0f }, false) || GetKeyPressed('\r'))
+        if (UIButton("Delete", (Clay_Dimensions){ 96.0f, 30.0f }, false) || GetKeyPressed('\r'))
         {
             SceneDeleteWithDependencies(sceneDeletePath);
             sceneDeletePath[0] = '\0';
             sceneDeletePopupOpen = false;
         }
-        if (UIButton(CLAY_ID("SceneDeleteNo"), CLAY_STRING("Cancel"), (Clay_Dimensions){ 96.0f, 30.0f }, false))
+        if (UIButton("Cancel", (Clay_Dimensions){ 96.0f, 30.0f }, false))
         {
             sceneDeletePopupOpen = false;
         }
@@ -1816,9 +1809,9 @@ void DrawSceneWindow(bool* open)
             }
         }) {
             UIPushFloatAdd(UIFloat_TextScale, -0.15f);
-            if (UIButton(CLAY_ID("SceneNewButton"), CLAY_STRING("New"), (Clay_Dimensions){ 80.0f, 26.0f }, false))
+            if (UIButton("New", (Clay_Dimensions){ 80.0f, 26.0f }, false))
                 EditorNewScene();
-            if (scene && UIButton(CLAY_ID("SceneSaveButton"), CLAY_STRING("Save"), (Clay_Dimensions){ 80.0f, 26.0f }, false))
+            if (scene && UIButton("Save", (Clay_Dimensions){ 80.0f, 26.0f }, false))
             {
                 if (Scene_GetActivePath()[0])
                     sceneSaveConfirmOpen = true;
@@ -2010,9 +2003,9 @@ void DrawTexturesWindow(bool* open)
         }
     }) {
         UIPushFloatAdd(UIFloat_TextScale, -0.15f);
-        if (UIButton(CLAY_ID("TexClassAlbedo"), CLAY_STRING("Albedo")    , (Clay_Dimensions){ 110.0f, 28.0f }, texInspectClass == TextureClass_Albedo))            texInspectClass = TextureClass_Albedo;
-        if (UIButton(CLAY_ID("TexClassNormal"), CLAY_STRING("Normal")    , (Clay_Dimensions){ 110.0f, 28.0f }, texInspectClass == TextureClass_Normal))            texInspectClass = TextureClass_Normal;
-        if (UIButton(CLAY_ID("TexClassMR")    , CLAY_STRING("MetalRough"), (Clay_Dimensions){ 110.0f, 28.0f }, texInspectClass == TextureClass_MetallicRoughness)) texInspectClass = TextureClass_MetallicRoughness;
+        if (UIButton("Albedo"    , (Clay_Dimensions){ 110.0f, 28.0f }, texInspectClass == TextureClass_Albedo))            texInspectClass = TextureClass_Albedo;
+        if (UIButton("Normal"    , (Clay_Dimensions){ 110.0f, 28.0f }, texInspectClass == TextureClass_Normal))            texInspectClass = TextureClass_Normal;
+        if (UIButton("MetalRough", (Clay_Dimensions){ 110.0f, 28.0f }, texInspectClass == TextureClass_MetallicRoughness)) texInspectClass = TextureClass_MetallicRoughness;
         UIPopFloat(UIFloat_TextScale);
     }
 
@@ -2040,7 +2033,7 @@ void DrawTexturesWindow(bool* open)
             Clay_ElementId id = Clay_GetElementIdWithIndex(CLAY_STRING("TexLayerButton"), i);
             char* buffer = UIFrameStringAlloc(16);
             IntToString(buffer, (s64)i, 0);
-            if (UIButton(id, UIStr(buffer), (Clay_Dimensions){ 30.0f, 26.0f }, i == texInspectLayer)) texInspectLayer = i;
+            if (UIButtonID(UIStr(buffer).chars, id.id, (Clay_Dimensions){ 30.0f, 26.0f }, i == texInspectLayer)) texInspectLayer = i;
         }
     }
 

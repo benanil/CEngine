@@ -454,7 +454,7 @@ static float2 GetGodRaySunPos(mat4x4 viewProj, float* intensity)
     float3 sunWorld = F3Add(g_Camera.position, F3MulF(dir, 100.0f));
     v128f clip = Vec3Transform(Vec3Load(&sunWorld.x), viewProj.r);
     float w = VecGetW(clip);
-    float facing = F3Dot(g_Camera.Front, dir);
+    float facing = F3Dot(g_Camera.front, dir);
     if (facing <= -0.2f) {
         *intensity = 0.0f;
         return (float2){ -10.0f, -10.0f };

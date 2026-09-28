@@ -440,7 +440,7 @@ static void AssetNavBar(void)
         }
     }) {
         UIPushFloatAdd(UIFloat_TextScale, -0.2f);
-        bool back = UIButton(CLAY_ID("AssetsBack"), CLAY_STRING("<"), (Clay_Dimensions){ 30.0f, 24.0f }, false);
+        bool back = UIButton("<", (Clay_Dimensions){ 30.0f, 24.0f }, false);
         UIPopFloat(UIFloat_TextScale);
         if ((back || GetMouseReleased(MouseButton_Backward)) && StringLength(assetCurrentFolder) > (int)sizeof(ASSET_ROOT) - 1)
         {
@@ -586,7 +586,7 @@ static void AssetCreatePopup(void)
             .layoutDirection = CLAY_LEFT_TO_RIGHT
         }
     }) {
-        if (UIButton(CLAY_ID("AssetCreateOk"), CLAY_STRING("Create"), (Clay_Dimensions){ 96.0f, 30.0f }, false) || GetKeyPressed('\r'))
+        if (UIButton("Create", (Clay_Dimensions){ 96.0f, 30.0f }, false) || GetKeyPressed('\r'))
         {
             if (assetNameInput[0])
             {
@@ -605,7 +605,7 @@ static void AssetCreatePopup(void)
             }
             assetCreatePopupOpen = false;
         }
-        if (UIButton(CLAY_ID("AssetCreateCancel"), CLAY_STRING("Cancel"), (Clay_Dimensions){ 96.0f, 30.0f }, false))
+        if (UIButton("Cancel", (Clay_Dimensions){ 96.0f, 30.0f }, false))
         {
             assetCreatePopupOpen = false;
         }
@@ -641,7 +641,7 @@ static void AssetDeletePopup(void)
             .layoutDirection = CLAY_LEFT_TO_RIGHT
         }
     }) {
-        if (UIButton(CLAY_ID("AssetDeleteYes"), CLAY_STRING("Yes"), (Clay_Dimensions){ 96.0f, 30.0f }, false) || GetKeyPressed('\r'))
+        if (UIButton("Yes", (Clay_Dimensions){ 96.0f, 30.0f }, false) || GetKeyPressed('\r'))
         {
             if (IsFolder(assetSelectedPath)) RemoveFolder(assetSelectedPath, NULL);
             else RemoveFile(assetSelectedPath);
@@ -649,7 +649,7 @@ static void AssetDeletePopup(void)
             assetDbDirty = true;
             assetDeletePopupOpen = false;
         }
-        if (UIButton(CLAY_ID("AssetDeleteNo"), CLAY_STRING("No"), (Clay_Dimensions){ 96.0f, 30.0f }, false))
+        if (UIButton("No", (Clay_Dimensions){ 96.0f, 30.0f }, false))
         {
             assetDeletePopupOpen = false;
         }

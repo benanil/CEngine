@@ -327,11 +327,12 @@ void main(uint3 tid : SV_DispatchThreadID)
     
     uint dense = idx;
     Entity entity = entities[dense];
-    const bool entityTransparent = ((entity.materialAndFlags >> 16u) & EntityFlags_Transparent) != 0;
+    uint entityFlags = entity.materialAndFlags >> 16u;
+    const bool entityTransparent = (entityFlags & EntityFlags_Transparent) != 0;
     
     if (!(onlyTransparent == entityTransparent) || 
-        ((entity.materialAndFlags >> 16u) & EntityFlags_NoMesh) != 0u || 
-        entity.primitiveIdx == 0xffffffffu)
+         (entityFlags & EntityFlags_NoMesh) != 0u || 
+         entity.primitiveIdx == 0xffffffffu)
         return;
 
     uint primitiveIdx = entity.primitiveIdx;

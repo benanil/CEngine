@@ -108,10 +108,11 @@ purefn float2 F2Rotate(float2 vec, f32 angle) {
     return (float2){vec.x * c - vec.y * s, vec.x * s + vec.y * c};
 }
 
-purefn float2 Tof22(int2 vec)  { return (float2){(f32)vec.x,(f32)vec.y }; }
-purefn int2 ToInt2(float2 vec) { return (int2){(s32)vec.x,(s32)vec.y }; }
+purefn float2 Tof2(int2 vec)    { return (float2){(f32)vec.x,(f32)vec.y }; }
+purefn int2   ToInt2(float2 vec) { return (int2){(s32)vec.x,(s32)vec.y }; }
 purefn float3 ToFloat3(int3 vec) { return (float3){ (f32)vec.x, (f32)vec.y, (f32)vec.z }; }
-purefn int3 ToInt3(float3 vec)   { return (int3){ (s32)vec.x, (s32)vec.y, (s32)vec.z }; }
+purefn int3   ToInt3(float3 vec) { return (int3){ (s32)vec.x, (s32)vec.y, (s32)vec.z }; }
+
 purefn bool F3Approx(float3 a, float3 b)
 {
     const f32 tolerance = 0.0001f;

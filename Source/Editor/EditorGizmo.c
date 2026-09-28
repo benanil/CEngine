@@ -609,9 +609,9 @@ bool EditorGizmoUpdate(Camera* camera)
     if (GetKeyDown(SDLK_LCTRL) && GetKeyPressed('f'))
     {
         f32 focusDistance = Maxf32(gizmoFocusRadius * 2.5f, 1.0f);
-        camera->position.x = VecGetX(center) - camera->Front.x * focusDistance;
-        camera->position.y = VecGetY(center) - camera->Front.y * focusDistance;
-        camera->position.z = VecGetZ(center) - camera->Front.z * focusDistance;
+        camera->position.x = VecGetX(center) - camera->front.x * focusDistance;
+        camera->position.y = VecGetY(center) - camera->front.y * focusDistance;
+        camera->position.z = VecGetZ(center) - camera->front.z * focusDistance;
         Camera_RecalculateView(camera);
     }
 

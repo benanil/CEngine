@@ -105,7 +105,7 @@ void DrawConsoleWindow(bool* open)
         }
     }) {
         UIPushFloatAdd(UIFloat_TextScale, -0.2f);
-        if (UIButton(CLAY_ID("ConsoleClear"), CLAY_STRING("Clear"), (Clay_Dimensions){ 70.0f, 24.0f }, false))
+        if (UIButton("Clear", (Clay_Dimensions){ 70.0f, 24.0f }, false))
         {
             SDL_LockMutex(consoleMutex);
             consoleHead = 0u;
@@ -115,9 +115,9 @@ void DrawConsoleWindow(bool* open)
             SDL_UnlockMutex(consoleMutex);
         }
         UIPopFloat(UIFloat_TextScale);
-        UICheckbox(CLAY_ID("ConsoleShowInfo"),  CLAY_STRING("Info"),     &consoleShowInfo);
-        UICheckbox(CLAY_ID("ConsoleShowWarn"),  CLAY_STRING("Warnings"), &consoleShowWarn);
-        UICheckbox(CLAY_ID("ConsoleShowError"), CLAY_STRING("Errors"),   &consoleShowError);
+        UICheckbox("Info",     &consoleShowInfo);
+        UICheckbox("Warnings", &consoleShowWarn);
+        UICheckbox("Errors",   &consoleShowError);
         UITextU32("Lines", consoleCount);
         UITextU32("Warnings", consoleNumWarns);
         UITextU32("Errors", consoleNumErrors);

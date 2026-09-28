@@ -157,24 +157,36 @@ UIImageData UIImageFromTexture(Texture* texture);
 Clay_RenderCommandArray UIEndLayout(void);
 void UIRenderCommands(Clay_RenderCommandArray* commands);
 bool UIClicked(void);
-bool UIButton(Clay_ElementId id, Clay_String label, Clay_Dimensions size, bool selected);
-bool UIButtonFlags(Clay_ElementId id, Clay_String label, Clay_Dimensions size, bool selected, u32 flags);
-bool UICheckbox(Clay_ElementId id, Clay_String label, bool* value);
-bool UICheckboxS32(Clay_ElementId id, Clay_String label, s32* value);
-void UIProgressBar(Clay_ElementId id, Clay_String label, f32 value01);
-bool UISliderFloat(Clay_ElementId id, Clay_String label, f32* value, f32 minValue, f32 maxValue);
-bool UISliderFloatValue(Clay_ElementId id, Clay_String label, f32* value, f32 minValue, f32 maxValue, int decimals);
-bool UIEditInt(Clay_ElementId id, Clay_String label, f32* value, s32 minValue, s32 maxValue);
-bool UIEditFloat(Clay_ElementId id, Clay_String label, f32* value, f32 minValue, f32 maxValue, f32 step, int decimals);
+bool UIButton(const char* label, Clay_Dimensions size, bool selected);
+bool UIButtonID(const char* labelS, s32 id, Clay_Dimensions size, bool selected);
+bool UIButtonFlags(const char* label, Clay_Dimensions size, bool selected, u32 flags);
+bool UIButtonFlagsID(const char* labelS, s32 index, Clay_Dimensions size, bool selected, u32 flags);
+bool UICheckbox(const char* label, bool* value);
+bool UICheckboxID(const char* labelS, s32 index, bool* value);
+bool UICheckboxS32(const char* label, s32* value);
+bool UICheckboxS32ID(const char* label, s32 id, s32* value);
+void UIProgressBar(const char* label, f32 value01);
+bool UISliderFloat(const char* label, f32* value, f32 minValue, f32 maxValue);
+bool UISliderFloatID(const char* labelS, s32 index, f32* value, f32 minValue, f32 maxValue);
+bool UISliderFloatValue(const char* label, f32* value, f32 minValue, f32 maxValue, int decimals);
+bool UISliderFloatValueId(const char* labelS, s32 index, f32* value, f32 minValue, f32 maxValue, int decimals);
+
+bool UIEditInt(const char* label, f32* value, s32 minValue, s32 maxValue);
+bool UIEditFloat(const char* label, f32* value, f32 minValue, f32 maxValue, f32 step, int decimals);
+bool UIEditIntID(const char* labelS, int index, f32* value, s32 minValue, s32 maxValue);
+bool UIEditFloatID(const char* labelS, int index, f32* value, f32 minValue, f32 maxValue, f32 step, int decimals);
+// bool UIEditFloatInstancedIndexedIndirect(); // lololololololol
 
 // multi component numeric edit rows for vectors, 1..4 text boxes side by side.
 // out: true when any component changed
-bool UIEditFloatN(Clay_ElementId id, Clay_String label, f32* values, u32 numComponents, f32 minValue, f32 maxValue, int decimals);
-bool UIEditIntN(Clay_ElementId id, Clay_String label, s32* values, u32 numComponents, s32 minValue, s32 maxValue);
+bool UIEditFloatN(const char* label, f32* values, u32 numComponents, f32 minValue, f32 maxValue, int decimals);
+bool UIEditIntN(const char* label, s32* values, u32 numComponents, s32 minValue, s32 maxValue);
+bool UIEditFloatNID(const char* label, s32 index, f32* values, u32 numComponents, f32 minValue, f32 maxValue, int decimals);
+bool UIEditIntNID(const char* label, s32 index, s32* values, u32 numComponents, s32 minValue, s32 maxValue);
 
 // color swatch row that opens a floating hsv picker (sv field, hue bar, rgb boxes).
 // rgb is 3 floats 0..1. out: true while the color is being edited
-bool UIColorEdit3(Clay_ElementId id, Clay_String label, f32* rgb);
+bool UIColorEdit3(const char* label, f32* rgb);
 
 // wraps a null terminated c string, the string must stay alive until UIEndLayout
 Clay_String UIStr(const char* chars);
@@ -205,7 +217,8 @@ bool UICollapsingHeader(Clay_ElementId id, Clay_String label, bool open);
 // labeled selection box that opens a floating option list under it, only one
 // dropdown is open at a time. options must outlive the frame.
 // out: true when the selection changed
-bool UIDropdown(Clay_ElementId id, Clay_String label, const char** options, u32 numOptions, u32* selectedIndex);
+bool UIDropdown(const char* labelS, const char** options, u32 numOptions, u32* selectedIndex);
+bool UIDropdownID(const char* labelS, s32 index, const char** options, u32 numOptions, u32* selectedIndex);
 
 typedef struct UIMenuItem_ { const char* label; bool checked; } UIMenuItem;
 

@@ -8,8 +8,15 @@
 #include "Include/BVH.h"
 #include "Include/AssetManager.h"
 
-float characterSpeed = 5.0f;
-float jumpSpeed       = 80.0f;
+typedef struct PlaneCapture
+{
+    b3CollisionPlane planes[16];
+    b3ShapeId shape;
+    int count;
+} PlaneCapture;
+
+float characterSpeed = 8.0f;
+float jumpSpeed      = 10.0f;
 float maxSpeed       = 10.0f;
 float acceleration   = 20.0f;
 float decceleration  = 10.0f;
@@ -26,8 +33,6 @@ static const float moveTolerance = 0.001f;
 static float verticalSpeed = 0.0f;
 static bool grounded = false;
 static b3Vec3 groundNormal = { 0.0f, 1.0f, 0.0f };
-
-#define SphereRadius 0.5f
 
 EntityID characterEntity = INVALID_ENTITY;
 SceneBundle* capsuleBundle;
@@ -50,13 +55,13 @@ static void CharacterUI()
 
     static bool open = true;
     if (UIBeginWindowId(CLAY_ID("Character"), "Character",
-                        (float2) { 18.0f, 18.0f }, (float2) { 500.0f, 760.0f }, 
+                        (float2) { 18.0f, 18.0f }, (float2) { 500.0f, 260.0f }, 
                         &open, UIWindowFlags_NoClose))
     {
         UIText("Character Settings");
-        UIEditFloat(CLAY_ID("CharForce"), CLAY_STRING("speed"), &characterSpeed, 0.0f, 100.0f, 0.2f, 2);
-        UIEditFloat(CLAY_ID("JumpForce"), CLAY_STRING("jump force"), &jumpSpeed, 0.0f, 100.0f, 0.2f, 2);
-        UIEditFloat(CLAY_ID("maxSpeed") , CLAY_STRING("maxSpeed"), &maxSpeed, 0.0f, 100.0f, 0.1f, 2);
+        UIEditFloat("speed", &characterSpeed, 0.0f, 100.0f, 0.2f, 2);
+        UIEditFloat("jump force", &jumpSpeed, 0.0f, 100.0f, 0.2f, 2);
+        UIEditFloat("maxSpeed", &maxSpeed, 0.0f, 100.0f, 0.1f, 2);
         UIEndWindow();
     }
 }
@@ -95,18 +100,6 @@ static b3QueryFilter MakeFilter(void)
     filter.name = NULL;
     return filter;
 }
-
-static b3Vec3 ProjectOnPlane(b3Vec3 v, b3Vec3 n)
-{
-    return b3Sub(v, b3MulSV(b3Dot(v, n), n));
-}
-
-typedef struct PlaneCapture
-{
-    b3CollisionPlane planes[16];
-    b3ShapeId shape;
-    int count;
-} PlaneCapture;
 
 static bool CapturePlaneFcn( b3ShapeId shapeId, const b3PlaneResult* planes, int planeCount, void* context )
 {
@@ -154,25 +147,34 @@ static void UpdateCharacter()
         return;
     }
 
-    if (GetKeyPressed(SDLK_J))
+    if (GetKeyPressed(SDLK_J) || GetKeyPressed(SDLK_K))
     {
         characterActive = !characterActive;
         character->position = VecZero();
         verticalSpeed = 0.0f;
         grounded = false;
+        CameraMode wantedMode = GetKeyPressed(SDLK_K) ? CameraMode_FPS : CameraMode_TPS;
+        wantedMode = characterActive ? wantedMode : CameraMode_Fly;
+        CameraSwitchMode(&g_Camera, wantedMode);
+        character->flags &= ~EntityFlags_NoMesh;
+        // only fps mode entity is not visible
+        character->flags |= (characterActive && wantedMode == CameraMode_FPS) * EntityFlags_NoMesh; // toggle visibility of capsule
+
+        if (characterActive == false)
+            g_Camera.position = F3Sub(g_Camera.position, F3MulF(g_Camera.front, 6.0f));
     }
     if (!characterActive) return;
-
+    
     float dt = GetDeltaTime();
     b3WorldId worldId = Physics_GetWorld();
     b3Capsule mover = MakeMover();
     b3QueryFilter filter = MakeFilter();
 
     float2 axis = GetMovementAxis();
-    b3Vec3 forward = Float3ToB3Vec3(g_Camera.Front);
+    b3Vec3 forward = Float3ToB3Vec3(g_Camera.front);
     forward.y = 0.0f;
     forward = b3Normalize(forward);
-    b3Vec3 right = Float3ToB3Vec3(g_Camera.Right);
+    b3Vec3 right = Float3ToB3Vec3(g_Camera.right);
     right.y = 0.0f;
     right = b3Normalize(right);
 
@@ -185,7 +187,7 @@ static void UpdateCharacter()
     }
     if (grounded && wishLength > 0.0f)
     {
-        wish = b3MulSV(wishLength, b3Normalize(ProjectOnPlane(wish, groundNormal)));
+        wish = b3MulSV(wishLength, b3Normalize(b3ProjectOnPlane(wish, groundNormal)));
     }
 
     if (grounded) verticalSpeed = 0.0f;
@@ -245,6 +247,9 @@ static void UpdateCharacter()
     }
 
     groundNormal = grounded ? normal : (b3Vec3){ 0.0f, 1.0f, 0.0f };
+    Vec3Store(&g_Camera.position.x, character->position);
+    g_Camera.position.y += 1.6f;
+    g_Camera.target = g_Camera.position;
 }
 
 void Gameplay_Update()

@@ -389,6 +389,10 @@ b3Quat ToB3Quat(v128f q);
 v128f  B3VecTov128f(b3Pos p);
 u64    B3QuatToEntityRotation(b3Quat q);
 
+purefn b3Vec3 b3ProjectOnPlane(b3Vec3 v, b3Vec3 n)
+{
+    return b3Sub(v, b3MulSV(b3Dot(v, n), n));
+}
 
 #endif // SCENE_H
 

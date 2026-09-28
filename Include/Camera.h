@@ -4,12 +4,20 @@
 #include "../Math/Matrix.h"
 #include "Platform.h"
 #include <SDL3/SDL_keycode.h>
+#include <SDL3/SDL_mouse.h>
 
-//#include "sokol/sokol_app.h"
 
 #if defined(__cplusplus)
 extern "C" {
 #endif
+
+enum CameraMode_
+{
+    CameraMode_Fly, // flying camera
+    CameraMode_FPS,
+    CameraMode_TPS
+};
+typedef s8 CameraMode;
 
 typedef struct Camera_
 {
@@ -25,13 +33,15 @@ typedef struct Camera_
     float3 position;
     float2 mouseOld;
     float3 targetPos;
-    float3 Front, Right, Up;
- 
-    f32 pitch, yaw, senstivity;
+    float3 front, right, up;
+    float3 target; // for TPS camera 
+    float2 mouseDiff;
+    float distance; // for TPS camera
+    f32 pitch, yaw, sensitivity;
     f32 speed;
-
+    CameraMode mode;
+    
     u8 wasPressing;
-    u8 captured; // owns the active right-drag; only set when the press began over the 3d scene
 
     FrustumPlanes frustumPlanes;
 
@@ -51,7 +61,7 @@ static inline void Camera_SanitizeConfig(Camera* camera)
     camera->farClip     = Camera_SanitizeF32(camera->farClip, 30000.0f);
     if (camera->farClip <= camera->nearClip + 0.001f) camera->farClip = camera->nearClip + 1.0f;
     camera->speed      = MMAX(Camera_SanitizeF32(camera->speed, 1.0f), 0.0f);
-    camera->senstivity = MMAX(Camera_SanitizeF32(camera->senstivity, 15.0f), 0.0f);
+    camera->sensitivity = MMAX(Camera_SanitizeF32(camera->sensitivity, 15.0f), 0.0f);
 }
 
 static inline void Camera_RecalculateProjection(Camera* camera, s32 width, s32 height)
@@ -68,7 +78,7 @@ static inline void Camera_RecalculateProjection(Camera* camera, s32 width, s32 h
 static inline void Camera_RecalculateView(Camera* camera)
 {
     if (!camera) return;
-    camera->view = M44LookAtRH(camera->position, camera->Front, camera->Up);
+    camera->view = M44LookAtRH(camera->position, camera->front, camera->up);
     camera->inverseView = M44Inverse(camera->view);
 }
 
@@ -79,15 +89,15 @@ static inline void Camera_CalculateLook(Camera* camera) // from yaw pitch
     camera->yaw = Camera_SanitizeF32(camera->yaw, 0.0f);
     camera->yaw = FModf(camera->yaw + 180.0f, 360.0f) - 180.0f;
 
-    camera->Front.x = Cos(camera->yaw * MATH_DegToRad) * Cos(camera->pitch * MATH_DegToRad);
-    camera->Front.y = Sin(camera->pitch * MATH_DegToRad);
-    camera->Front.z = Sin(camera->yaw * MATH_DegToRad) * Cos(camera->pitch * MATH_DegToRad);
-    camera->Front   = F3NormSafe(camera->Front);
+    camera->front.x = Cos(camera->yaw * MATH_DegToRad) * Cos(camera->pitch * MATH_DegToRad);
+    camera->front.y = Sin(camera->pitch * MATH_DegToRad);
+    camera->front.z = Sin(camera->yaw * MATH_DegToRad) * Cos(camera->pitch * MATH_DegToRad);
+    camera->front   = F3NormSafe(camera->front);
     // also re-calculate the Right and Up vector
     // normalize the vectors, because their length gets closer to 0 the more you look up or down which results in slower movement.
     float3 worldUp = { 0.0f, 1.0f, 0.0f };
-    camera->Right = F3NormSafe(F3Cross(camera->Front, worldUp));
-    camera->Up = F3NormSafe(F3Cross(camera->Right, camera->Front));
+    camera->right = F3NormSafe(F3Cross(camera->front, worldUp));
+    camera->up = F3NormSafe(F3Cross(camera->right, camera->front));
 }
 
 static inline RayV ScreenPointToRay(Camera* camera, float2 pos)
@@ -110,14 +120,14 @@ static inline RayV ScreenPointToRay(Camera* camera, float2 pos)
     if (w > -MATH_Epsilon && w < MATH_Epsilon)
     {
         ray.origin = VecLoad(&camera->position.x);
-        ray.dir = VecLoad(&camera->Front.x);
+        ray.dir = VecLoad(&camera->front.x);
         return ray;
     }
     viewSpacePos = VecDiv(viewSpacePos, VecSet1(w));
          
     v128f worldSpacePos = Vec4Transform(viewSpacePos, camera->inverseView.r);
     v128f toWorld = VecSub(worldSpacePos, VecLoad(&camera->position.x));
-    v128f rayDir = Vec3DotfV(toWorld, toWorld) > MATH_Epsilon ? Vec3NormV(toWorld) : VecLoad(&camera->Front.x);
+    v128f rayDir = Vec3DotfV(toWorld, toWorld) > MATH_Epsilon ? Vec3NormV(toWorld) : VecLoad(&camera->front.x);
          
     ray.origin = VecLoad(&camera->position.x); 
     ray.dir = rayDir;
@@ -130,12 +140,13 @@ static inline void CameraInit(Camera* camera, int width, int height)
     MemsetZero(camera, sizeof(Camera));
     camera->pitch       = 0.0f;
     camera->yaw         = 0.0f;
-    camera->senstivity  = 15.0f;
+    camera->sensitivity = 15.0f;
     camera->verticalFOV = 65.0f;
     camera->nearClip    = 0.1f;
     camera->farClip     = 2500.0f; // minimum = (sum(cascadeSizes))
     camera->speed       = 3.0f;
     camera->position.x -= 6;
+    camera->distance    = 5.0f;
     wGetMonitorSize(&camera->monitorSize.x, &camera->monitorSize.y);
 
     Camera_CalculateLook(camera);
@@ -156,12 +167,21 @@ static inline float2 InfiniteMouse(float2 point)
     return point;
 }
 
-static inline void CameraUpdate(Camera* camera, f32 dt, bool canCapture)
+static inline void CameraHandleYawPitch(Camera* camera)
+{
+    if (F2LenSq(camera->mouseDiff) < 130.0f * 130.0f)
+    {
+        camera->pitch -= camera->mouseDiff.y * 0.01f * camera->sensitivity;
+        camera->yaw   += camera->mouseDiff.x * 0.01f * camera->sensitivity;
+        camera->yaw   = FModf(camera->yaw + 180.0f, 360.0f) - 180.0f;
+        camera->pitch = MCLAMP(camera->pitch, -89.0f, 89.0f);
+    }
+}
+
+static inline void CameraUpdateFly(Camera* camera, f32 dt, float2 mousePos)
 {
     if (!camera) return;
-    Camera_SanitizeConfig(camera);
-    dt = MMAX(Camera_SanitizeF32(dt, 0.0f), 0.0f);
-
+    
     bool pressing = GetMouseDown(MouseButton_Right);
     f32 speed = dt * (1.0f + GetKeyDown(SDLK_LSHIFT) * 6.0f) * camera->speed;
 
@@ -170,29 +190,9 @@ static inline void CameraUpdate(Camera* camera, f32 dt, bool canCapture)
         wSetCursor(wCursor_Default);
         GetMousePos(&camera->mouseOld.x, &camera->mouseOld.y);
         camera->wasPressing = false;
-        camera->captured = false;
         return;
     }
-
-    // a right-drag may only begin while the cursor is over the 3d scene, never over an
-    // editor panel (that press belongs to the context menu). once the camera owns the
-    // drag it keeps it until release, so sweeping over a panel mid-rotation still works.
-    // gating here also stops InfiniteMouse from warping the cursor on a ui right-click.
-    if (!camera->captured)
-    {
-        if (!canCapture)
-        {
-            GetMousePos(&camera->mouseOld.x, &camera->mouseOld.y);
-            camera->wasPressing = false;
-            return;
-        }
-        camera->captured = true;
-    }
-
-    float2 mousePos;
-    GetMousePos(&mousePos.x, &mousePos.y);
-    float2 diff = F2Sub(mousePos, camera->mouseOld);
-    
+  
     wSetCursor(wCursor_Move);
          
     // if platform is android left side is for movement, right side is for rotating camera
@@ -201,36 +201,81 @@ static inline void CameraUpdate(Camera* camera, f32 dt, bool canCapture)
     if (mousePos.x > (camera->monitorSize.x / 2.0f))
     #endif
     {
-        if (camera->wasPressing && F2LenSq(diff) < 130.0f * 130.0f)
-        {
-            camera->pitch -= diff.y * dt * camera->senstivity;
-            camera->yaw   += diff.x * dt * camera->senstivity;
-            camera->yaw   = FModf(camera->yaw + 180.0f, 360.0f) - 180.0f;
-            camera->pitch = MCLAMP(camera->pitch, -89.0f, 89.0f);
-        }
-        Camera_CalculateLook(camera);
+        CameraHandleYawPitch(camera);
     }
     #ifdef __ANDROID__
-    else if (camera->wasPressing && F2LenSq(diff) < 130.0f * 130.0f)
-        camera->position += (camera->Right * diff.x * 0.02f) + (camera->Front * -diff.y * 0.02f);
+    else if (camera->wasPressing && F2LenSq(camera->mouseDiff) < 130.0f * 130.0f)
+        camera->position += (camera->right * camera->mouseDiff.x * 0.02f) + 
+                            (camera->front * -camera->mouseDiff.y * 0.02f);
     #endif  
 
     camera->wasPressing = true;
-
-    if (GetKeyDown(SDLK_D)) camera->position = F3Add(camera->position, F3MulF(camera->Right, speed));
-    if (GetKeyDown(SDLK_A)) camera->position = F3Sub(camera->position, F3MulF(camera->Right, speed));
-    if (GetKeyDown(SDLK_W)) camera->position = F3Add(camera->position, F3MulF(camera->Front, speed));
-    if (GetKeyDown(SDLK_S)) camera->position = F3Sub(camera->position, F3MulF(camera->Front, speed));
-    if (GetKeyDown(SDLK_E)) camera->position = F3Add(camera->position, F3MulF(camera->Up, speed));
-    if (GetKeyDown(SDLK_Q)) camera->position = F3Sub(camera->position, F3MulF(camera->Up, speed));
+    float2 moveAxis = GetMovementAxis();
+    camera->position = F3Add(camera->position, F3MulF(camera->right, moveAxis.x * speed));
+    camera->position = F3Add(camera->position, F3MulF(camera->front, moveAxis.y * speed));
+    
+    if (GetKeyDown(SDLK_E)) camera->position = F3Add(camera->position, F3MulF(camera->up, speed));
+    if (GetKeyDown(SDLK_Q)) camera->position = F3Sub(camera->position, F3MulF(camera->up, speed));
 
     if (GetKeyReleased(SDLK_R))
     {
         SDL_Log("cam pos: %f, %f, %f", camera->position.x, camera->position.y, camera->position.z);
     }
-
     camera->mouseOld = InfiniteMouse(mousePos);
+}
+
+static inline int2 MoveMouseToCenter(int2 monitorSize)
+{
+    int2 pos = I2Div(monitorSize, (int2) { 2, 2 });
+    SDL_WarpMouseGlobal(pos.x, pos.y);
+    return pos;
+}
+
+extern PlatformContext PlatformCtx;
+
+static inline void CameraUpdateFPS(Camera* camera, f32 dt, float2 mousePos)
+{
+    camera->mouseDiff = (float2){ PlatformCtx.MouseMotionX, PlatformCtx.MouseMotionY };
+    CameraHandleYawPitch(camera);
+    camera->mouseOld = mousePos;
+}
+
+static inline void CameraUpdateTPS(Camera* camera, f32 dt, float2 mousePos)
+{
+    camera->mouseDiff = (float2){ PlatformCtx.MouseMotionX, PlatformCtx.MouseMotionY };
+    CameraHandleYawPitch(camera);
+    camera->position = F3Sub(camera->target, F3MulF(camera->front, camera->distance));
+    camera->distance = Clampf32(camera->distance + GetMouseWheelDelta(), 1.5f, 50.0f);
+    camera->mouseOld = mousePos; // Tof2(MoveMouseToCenter(camera->monitorSize));
+    camera->pitch = MCLAMP(camera->pitch, -89.0f, 0.0f);
+}
+
+extern SDL_Window*  g_SDLWindow;
+
+static inline void CameraSwitchMode(Camera* camera, CameraMode mode)
+{
+    SDL_SetWindowRelativeMouseMode(g_SDLWindow, mode != CameraMode_Fly);
+    camera->mode = mode;
+}
+
+static inline void CameraUpdate(Camera* camera, f32 dt)
+{
+    Camera_SanitizeConfig(camera);
+    dt = MMAX(Camera_SanitizeF32(dt, 0.0f), 0.0f);
+
+    float2 mousePos;
+    GetMousePos(&mousePos.x, &mousePos.y);
+    camera->mouseDiff = F2Sub(mousePos, camera->mouseOld);
+
+    switch (camera->mode)
+    {
+        case CameraMode_Fly: CameraUpdateFly(camera, dt, mousePos); break;
+        case CameraMode_FPS: CameraUpdateFPS(camera, dt, mousePos);  break;
+        case CameraMode_TPS: CameraUpdateTPS(camera, dt, mousePos);  break;
+    }
+
     Camera_RecalculateView(camera);
+    Camera_CalculateLook(camera);    
     // frustumPlanes updated unconditionally in Rendering.c (Render()) using the RevZ variant
 }
 

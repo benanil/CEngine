@@ -419,9 +419,9 @@ ShadowCascadeData GetShadowCascades(void)
     v128f lightViewDir   = VecMul(lightDir, VecSet1(-1.0f));
     v128f cameraPosition = Vec3Load(&g_Camera.position.x);
 
-    v128f cameraFront    = Vec3Load(&g_Camera.Front.x);
-    v128f cameraRight    = Vec3Load(&g_Camera.Right.x);
-    v128f cameraUp       = Vec3Load(&g_Camera.Up.x);
+    v128f cameraFront    = Vec3Load(&g_Camera.front.x);
+    v128f cameraRight    = Vec3Load(&g_Camera.right.x);
+    v128f cameraUp       = Vec3Load(&g_Camera.up.x);
     float previousSplit = shadowNear;
 
     for (u32 cascade = 0; cascade < SHADOW_CASCADE_COUNT; cascade++)

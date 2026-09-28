@@ -49,6 +49,7 @@ typedef struct PlatformContext_
 {
     // Mouse state
     f32  MousePosX, MousePosY;
+    f32  MouseMotionX, MouseMotionY;
     f32  MouseWheelDelta;
     f32  SecondsSinceLastClick;
     f32  DeltaTime;

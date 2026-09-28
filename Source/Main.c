@@ -35,6 +35,7 @@ Camera       g_Camera;
 SDL_Window*  g_SDLWindow;
 
 extern WindowState g_WindowState;
+extern void Gameplay_Update();
 
 static void MainSyncWindowSize(void)
 {
@@ -103,7 +104,6 @@ static void MainLoopTick(void)
 
     SetPressedAndReleasedKeys();
     PlatformUpdate();
-    CameraUpdate(&g_Camera, PlatformCtx.DeltaTime, EditorSceneInteractAllowed());
 
     EditorSceneHotkeys();
     
@@ -118,9 +118,10 @@ static void MainLoopTick(void)
     UIBeginFrame();
 
     tUpdate();
-    extern void Gameplay_Update();
     Gameplay_Update();
     GraphicsEditorUI();
+    
+    CameraUpdate(&g_Camera, PlatformCtx.DeltaTime);
 
     if (!done) Render();
     // else emscripten_cancel_main_loop();
@@ -128,6 +129,9 @@ static void MainLoopTick(void)
     RecordLastKeys();
     PlatformCtx.FrameCount++;
     PlatformCtx.MouseWheelDelta = 0.0f;
+    PlatformCtx.MouseMotionX = 0.0f;
+    PlatformCtx.MouseMotionY = 0.0f;
+
     g_MainLoopTicking = false;
 }
 

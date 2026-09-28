@@ -154,9 +154,9 @@ void RenderSceneForward(SDL_GPUCommandBuffer* cmd, const ScenePassContext* ctx, 
     vertexParams.cameraPosition[1] = g_Camera.position.y;
     vertexParams.cameraPosition[2] = g_Camera.position.z;
     vertexParams.cameraPosition[3] = 0.0f;
-    vertexParams.cameraForward[0] = g_Camera.Front.x;
-    vertexParams.cameraForward[1] = g_Camera.Front.y;
-    vertexParams.cameraForward[2] = g_Camera.Front.z;
+    vertexParams.cameraForward[0] = g_Camera.front.x;
+    vertexParams.cameraForward[1] = g_Camera.front.y;
+    vertexParams.cameraForward[2] = g_Camera.front.z;
     vertexParams.cameraForward[3] = 0.0f;
 
     float3 sunDirection = GetRenderSunDirection();
@@ -333,9 +333,9 @@ void RenderTerrain(SDL_GPUCommandBuffer* cmd, SDL_GPURenderPass* pass, mat4x4 vi
     vertexParams.cameraPosition[0] = g_Camera.position.x;
     vertexParams.cameraPosition[1] = g_Camera.position.y;
     vertexParams.cameraPosition[2] = g_Camera.position.z;
-    vertexParams.cameraForward[0] = g_Camera.Front.x;
-    vertexParams.cameraForward[1] = g_Camera.Front.y;
-    vertexParams.cameraForward[2] = g_Camera.Front.z;
+    vertexParams.cameraForward[0] = g_Camera.front.x;
+    vertexParams.cameraForward[1] = g_Camera.front.y;
+    vertexParams.cameraForward[2] = g_Camera.front.z;
     SDL_PushGPUVertexUniformData(cmd, 0, &vertexParams, sizeof(vertexParams));
 
     float3 sunDirection = GetRenderSunDirection();

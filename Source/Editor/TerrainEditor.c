@@ -266,7 +266,7 @@ static void TerrainToolbar(void)
         }
     }) {
         UIPushFloatAdd(UIFloat_TextScale, -0.15f);
-        if (UIButton(CLAY_ID("TerrainCreate"), CLAY_STRING("Create"), (Clay_Dimensions){ 78.0f, 26.0f }, false))
+        if (UIButton("Create", (Clay_Dimensions){ 78.0f, 26.0f }, false))
         {
             TerrainSyncScenePath();
             // applies the current noise settings, also regenerates an existing world
@@ -274,11 +274,11 @@ static void TerrainToolbar(void)
             Terrain_CreateWorld(&params);
             terrainUI.created = true;
         }
-        if (UIButton(CLAY_ID("TerrainDelete"), CLAY_STRING("Delete"), (Clay_Dimensions){ 78.0f, 26.0f }, false))
+        if (UIButton("Delete", (Clay_Dimensions){ 78.0f, 26.0f }, false))
             terrainUI.deleteConfirmOpen = true;
-        if (UIButton(CLAY_ID("TerrainSave"), CLAY_STRING("Save"), (Clay_Dimensions){ 78.0f, 26.0f }, false))
+        if (UIButton("Save", (Clay_Dimensions){ 78.0f, 26.0f }, false))
             terrainUI.lastSaveOk = TerrainEditorSave();
-        if (UIButton(CLAY_ID("TerrainLoad"), CLAY_STRING("Load"), (Clay_Dimensions){ 78.0f, 26.0f }, false))
+        if (UIButton("Load", (Clay_Dimensions){ 78.0f, 26.0f }, false))
             terrainUI.lastSaveOk = TerrainEditorLoad();
         UIPopFloat(UIFloat_TextScale);
     }
@@ -304,19 +304,19 @@ static void TerrainNoiseUI(void)
         }));
     }
     bool edited = false;
-    edited |= UICheckbox(CLAY_ID("TerrainFixedChunks"), CLAY_STRING("Fixed chunk size, do not stream with movement"), &terrainUI.fixedChunkSize);
+    edited |= UICheckbox("Fixed chunk size, do not stream with movement", &terrainUI.fixedChunkSize);
     if (terrainUI.fixedChunkSize)
-        edited |= UIEditFloat(CLAY_ID("TerrainFixedWorldSize"), CLAY_STRING("Fixed world size"), &terrainUI.fixedWorldSize, (f32)TERRAIN_FIXED_WORLD_MIN_SIZE, (f32)TERRAIN_FIXED_WORLD_MAX_SIZE, 16.0f, 0);
-    edited |= UICheckbox(CLAY_ID("TerrainIsland"), CLAY_STRING("Island mask, center area above sea level"), &terrainUI.island);
-    edited |= UIEditFloat(CLAY_ID("TerrainSeed"), CLAY_STRING("Seed"), &terrainUI.seed, 0.0f, 999999.0f, 1.0f, 0);
-    edited |= UIEditFloat(CLAY_ID("TerrainSeaLevel"), CLAY_STRING("Sea level"), &terrainUI.seaLevel, -200.0f, 200.0f, 1.0f, 2);
-    edited |= UIEditFloat(CLAY_ID("TerrainBaseHeight"), CLAY_STRING("Base height"), &terrainUI.baseHeight, -200.0f, 200.0f, 1.0f, 2);
-    edited |= UIEditFloat(CLAY_ID("TerrainHillAmp"), CLAY_STRING("Lowland scale"), &terrainUI.hillAmplitude, 0.25f, 8.0f, 0.1f, 2);
-    edited |= UIEditFloat(CLAY_ID("TerrainHillFreq"), CLAY_STRING("Noise scale"), &terrainUI.hillFrequency, 0.05f, 4.0f, 0.05f, 2);
-    edited |= UIEditFloat(CLAY_ID("TerrainRidgeAmp"), CLAY_STRING("Height scale"), &terrainUI.ridgeAmplitude, 0.25f, 2.0f, 0.05f, 2);
-    edited |= UIEditFloat(CLAY_ID("TerrainRidgeFreq"), CLAY_STRING("Mountain scale"), &terrainUI.ridgeFrequency, 0.05f, 2.0f, 0.05f, 2);
-    edited |= UIEditFloat(CLAY_ID("TerrainCaveAmp"), CLAY_STRING("Carve amplitude"), &terrainUI.caveAmplitude, 0.0f, 32.0f, 0.5f, 2);
-    edited |= UIEditFloat(CLAY_ID("TerrainCaveFreq"), CLAY_STRING("Carve frequency"), &terrainUI.caveFrequency, 0.0001f, 0.2f, 0.001f, 5);
+        edited |= UIEditFloat("Fixed world size", &terrainUI.fixedWorldSize, (f32)TERRAIN_FIXED_WORLD_MIN_SIZE, (f32)TERRAIN_FIXED_WORLD_MAX_SIZE, 16.0f, 0);
+    edited |= UICheckbox("Island mask, center area above sea level", &terrainUI.island);
+    edited |= UIEditFloat("Seed", &terrainUI.seed, 0.0f, 999999.0f, 1.0f, 0);
+    edited |= UIEditFloat("Sea level", &terrainUI.seaLevel, -200.0f, 200.0f, 1.0f, 2);
+    edited |= UIEditFloat("Base height", &terrainUI.baseHeight, -200.0f, 200.0f, 1.0f, 2);
+    edited |= UIEditFloat("Lowland scale", &terrainUI.hillAmplitude, 0.25f, 8.0f, 0.1f, 2);
+    edited |= UIEditFloat("Noise scale", &terrainUI.hillFrequency, 0.05f, 4.0f, 0.05f, 2);
+    edited |= UIEditFloat("Height scale", &terrainUI.ridgeAmplitude, 0.25f, 2.0f, 0.05f, 2);
+    edited |= UIEditFloat("Mountain scale", &terrainUI.ridgeFrequency, 0.05f, 2.0f, 0.05f, 2);
+    edited |= UIEditFloat("Carve amplitude", &terrainUI.caveAmplitude, 0.0f, 32.0f, 0.5f, 2);
+    edited |= UIEditFloat("Carve frequency", &terrainUI.caveFrequency, 0.0001f, 0.2f, 0.001f, 5);
     if (edited)
     {
         AX_LOG("terrain edited");
@@ -327,25 +327,25 @@ static void TerrainNoiseUI(void)
     }
     if (terrainUI.island)
     {
-        UIEditFloat(CLAY_ID("TerrainIslandRadius"), CLAY_STRING("Island radius"), &terrainUI.islandRadius, 1.0f, 10000.0f, 10.0f, 1);
-        UIEditFloat(CLAY_ID("TerrainIslandFalloff"), CLAY_STRING("Island falloff"), &terrainUI.islandFalloff, 1.0f, 5000.0f, 10.0f, 1);
+        UIEditFloat("Island radius", &terrainUI.islandRadius, 1.0f, 10000.0f, 10.0f, 1);
+        UIEditFloat("Island falloff", &terrainUI.islandFalloff, 1.0f, 5000.0f, 10.0f, 1);
     }
 }
 
 static void TerrainEditModeUI(void)
 {
     UISectionHeader("Edit Mode");
-    UICheckbox(CLAY_ID("TerrainEditMode"), CLAY_STRING("Terrain edit mode"), &terrainUI.editMode);
+    UICheckbox("Terrain edit mode", &terrainUI.editMode);
     CLAY(CLAY_ID("TerrainModeButtons"), {
         .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(30.0f) }, .childGap = 6, .layoutDirection = CLAY_LEFT_TO_RIGHT }
     }) {
-        if (UIButtonFlags(CLAY_ID("TerrainModeManipulate"), CLAY_STRING("Manipulate"), (Clay_Dimensions){ 72.0f, 26.0f }, terrainUI.mode == TerrainEditorMode_Manipulate, UIButtonFlag_FitText)) terrainUI.mode = TerrainEditorMode_Manipulate;
-        if (UIButtonFlags(CLAY_ID("TerrainModePaint"), CLAY_STRING("Paint"), (Clay_Dimensions){ 58.0f, 26.0f }, terrainUI.mode == TerrainEditorMode_Paint, UIButtonFlag_FitText)) terrainUI.mode = TerrainEditorMode_Paint;
-        if (UIButtonFlags(CLAY_ID("TerrainModeGrass"), CLAY_STRING("Grass"), (Clay_Dimensions){ 58.0f, 26.0f }, terrainUI.mode == TerrainEditorMode_Grass, UIButtonFlag_FitText)) terrainUI.mode = TerrainEditorMode_Grass;
+        if (UIButtonFlags("Manipulate", (Clay_Dimensions){ 72.0f, 26.0f }, terrainUI.mode == TerrainEditorMode_Manipulate, UIButtonFlag_FitText)) terrainUI.mode = TerrainEditorMode_Manipulate;
+        if (UIButtonFlags("Paint", (Clay_Dimensions){ 58.0f, 26.0f }, terrainUI.mode == TerrainEditorMode_Paint, UIButtonFlag_FitText)) terrainUI.mode = TerrainEditorMode_Paint;
+        if (UIButtonFlags("Grass", (Clay_Dimensions){ 58.0f, 26.0f }, terrainUI.mode == TerrainEditorMode_Grass, UIButtonFlag_FitText)) terrainUI.mode = TerrainEditorMode_Grass;
     }
-    UIEditFloat(CLAY_ID("TerrainBrushRadius"), CLAY_STRING("Brush radius"), &terrainUI.brushRadius, 0.1f, 200.0f, 1.0f, 2);
-    UIEditFloat(CLAY_ID("TerrainBrushStrength"), CLAY_STRING("Brush strength"), &terrainUI.brushStrength, -10.0f, 10.0f, 0.1f, 2);
-    UIEditFloat(CLAY_ID("TerrainBrushSoftness"), CLAY_STRING("Brush softness"), &terrainUI.brushSoftness, 0.0f, 1.0f, 0.05f, 2);
+    UIEditFloat("Brush radius", &terrainUI.brushRadius, 0.1f, 200.0f, 1.0f, 2);
+    UIEditFloat("Brush strength", &terrainUI.brushStrength, -10.0f, 10.0f, 0.1f, 2);
+    UIEditFloat("Brush softness", &terrainUI.brushSoftness, 0.0f, 1.0f, 0.05f, 2);
     CLAY_TEXT(CLAY_STRING("Cursor preview: terrain hit point whitens while edit mode is active."), CLAY_TEXT_CONFIG({
         .fontSize = 13,
         .textColor = UIGetClayColor(UIColor_SubText)
@@ -356,9 +356,9 @@ static void TerrainLayersUI(void)
 {
     UISectionHeader("Paint Layers");
     static const char* layerOptions[] = { "Layer 0", "Layer 1", "Layer 2", "Layer 3", "Layer 4", "Layer 5", "Layer 6", "Layer 7" };
-    UIDropdown(CLAY_ID("TerrainLayerSelect"), CLAY_STRING("Selected layer"), layerOptions, TERRAIN_MAX_LAYERS, &terrainUI.selectedLayer);
+    UIDropdown("Selected layer", layerOptions, TERRAIN_MAX_LAYERS, &terrainUI.selectedLayer);
     TerrainLayerDesc* layer = &Terrain_GetAuthoring()->layers[terrainUI.selectedLayer];
-    UICheckbox(CLAY_ID("TerrainLayerEnabled"), CLAY_STRING("Layer enabled"), &layer->enabled);
+    UICheckbox("Layer enabled", &layer->enabled);
     TerrainLabeledText(CLAY_ID("TerrainLayerAlbedo"), "Albedo texture path", layer->albedo, sizeof(layer->albedo));
     TerrainLabeledText(CLAY_ID("TerrainLayerNormal"), "Normal texture path", layer->normal, sizeof(layer->normal));
 }
@@ -378,7 +378,7 @@ static void TerrainFoliageUI(void)
         return;
     }
 
-    if (UIButton(CLAY_ID("FoliageRandomize"), CLAY_STRING("Randomize density + rarity"),
+    if (UIButton("Randomize density + rarity",
                  (Clay_Dimensions){ 240.0f, 26.0f }, false))
         Foliage_RandomizeParams();
 
@@ -393,18 +393,18 @@ static void TerrainFoliageUI(void)
         if (!foliageTypeOpen[i]) continue;
 
         bool edited = false;
-        edited |= UICheckboxS32(Clay_GetElementIdWithIndex(CLAY_STRING("FoliageEnabled"), i), CLAY_STRING("Enabled"), &params.enabled);
-        edited |= UICheckboxS32(Clay_GetElementIdWithIndex(CLAY_STRING("FoliageCollider"), i), CLAY_STRING("Collider"), &params.collider);
-        edited |= UICheckboxS32(Clay_GetElementIdWithIndex(CLAY_STRING("FoliageSizeVariance"), i), CLAY_STRING("Size variance (+-20%)"), &params.sizeVariance);
-        edited |= UIEditFloat(Clay_GetElementIdWithIndex(CLAY_STRING("FoliageSize"), i), CLAY_STRING("Size"), &params.size, 0.05f, 10.0f, 0.05f, 2);
-        edited |= UIEditInt(Clay_GetElementIdWithIndex(CLAY_STRING("FoliageGroup"), i), CLAY_STRING("Group"), &params.groupIndex, 0, 63);
+        edited |= UICheckboxS32ID("Enabled", i, &params.enabled);
+        edited |= UICheckboxS32ID("Collider", i, &params.collider);
+        edited |= UICheckboxS32ID("Size variance (+-20%)", i, &params.sizeVariance);
+        edited |= UIEditFloatID("Size", i, &params.size, 0.05f, 10.0f, 0.05f, 2);
+        edited |= UIEditIntID("Group", i, &params.groupIndex, 0, 63);
         s32 isBaseType = Foliage_BaseTypeOfGroup(params.groupIndex) == i;
         // these parameters only need to be shown with base types
         if (isBaseType)
         {
-            edited |= UIEditFloat(Clay_GetElementIdWithIndex(CLAY_STRING("FoliageDensity"), i), CLAY_STRING("Density"), &params.density, 0.5f, 32.0f, 0.5f, 2);
-            edited |= UIEditFloat(Clay_GetElementIdWithIndex(CLAY_STRING("FoliageRarity"), i), CLAY_STRING("Rarity"), &params.rarity, 0.0f, 1.0f, 0.05f, 2);
-            edited |= UIEditFloat(Clay_GetElementIdWithIndex(CLAY_STRING("FoliageFreq"), i), CLAY_STRING("Frequency"), &params.frequency, 0.05f, 4.0f, 0.01f, 2);
+            edited |= UIEditFloatID("Density", i, &params.density, 0.5f, 32.0f, 0.5f, 2);
+            edited |= UIEditFloatID("Rarity", i, &params.rarity, 0.0f, 1.0f, 0.05f, 2);
+            edited |= UIEditFloatID("Frequency", i, &params.frequency, 0.05f, 4.0f, 0.01f, 2);
         }
         
         anyEdited |= edited;
@@ -448,14 +448,14 @@ static void TerrainDeletePopup(void)
     CLAY(CLAY_ID("TerrainDeleteButtons"), {
         .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(34.0f) }, .childGap = 10, .layoutDirection = CLAY_LEFT_TO_RIGHT }
     }) {
-        if (UIButton(CLAY_ID("TerrainDeleteYes"), CLAY_STRING("Delete"), (Clay_Dimensions){ 96.0f, 30.0f }, false) || GetKeyPressed('\r'))
+        if (UIButton("Delete", (Clay_Dimensions){ 96.0f, 30.0f }, false) || GetKeyPressed('\r'))
         {
             terrainUI.created = false;
             terrainUI.editMode = false;
             Terrain_DeleteWorld();
             terrainUI.deleteConfirmOpen = false;
         }
-        if (UIButton(CLAY_ID("TerrainDeleteNo"), CLAY_STRING("Cancel"), (Clay_Dimensions){ 96.0f, 30.0f }, false))
+        if (UIButton("Cancel", (Clay_Dimensions){ 96.0f, 30.0f }, false))
             terrainUI.deleteConfirmOpen = false;
     }
     UIEndWindow();

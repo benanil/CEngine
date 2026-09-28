@@ -558,8 +558,16 @@ bool UIClicked(void)
     return Clay_Hovered() && pointer.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME;
 }
 
-bool UIButtonFlags(Clay_ElementId id, Clay_String label, Clay_Dimensions size, bool selected, u32 flags)
+bool UIButtonFlags(const char* labelS, Clay_Dimensions size, bool selected, u32 flags)
 {
+    return UIButtonFlagsID(labelS, 0, size, selected, flags);
+}
+
+bool UIButtonFlagsID(const char* labelS, s32 index, Clay_Dimensions size, bool selected, u32 flags)
+{
+    Clay_String label = (Clay_String){ true, StringLength(labelS), labelS };
+    Clay_ElementId id = CLAY_SIDI_LOCAL(label, index);
+
     bool clicked = false;
     u32 fontSize = Maxu32((u32)(17.0f * UIGetFloat(UIFloat_TextScale)), 1u);
     if (flags & UIButtonFlag_FitText)
@@ -589,15 +597,27 @@ bool UIButtonFlags(Clay_ElementId id, Clay_String label, Clay_Dimensions size, b
     return clicked;
 }
 
-bool UIButton(Clay_ElementId id, Clay_String label, Clay_Dimensions size, bool selected)
+bool UIButtonID(const char* labelS, s32 id, Clay_Dimensions size, bool selected)
 {
-    return UIButtonFlags(id, label, size, selected, UIButtonFlag_None);
+    return UIButtonFlagsID(labelS, id, size, selected, UIButtonFlag_None);
 }
 
-bool UICheckbox(Clay_ElementId id, Clay_String label, bool* value)
+bool UIButton(const char* labelS, Clay_Dimensions size, bool selected)
+{
+    return UIButtonFlagsID(labelS, 0, size, selected, UIButtonFlag_None);
+}
+
+bool UICheckbox(const char* labelS, bool* value)
+{
+    return UICheckboxID(labelS, 0, value);
+}
+
+bool UICheckboxID(const char* labelS, s32 index, bool* value)
 {
     bool checked = value && *value;
     bool changed = false;
+    Clay_String label = (Clay_String){ true, StringLength(labelS), labelS };
+    Clay_ElementId id = CLAY_SIDI_LOCAL(label, index);
 
     CLAY(id, {
         .layout = {
@@ -643,16 +663,23 @@ bool UICheckbox(Clay_ElementId id, Clay_String label, bool* value)
     return changed;
 }
 
-bool UICheckboxS32(Clay_ElementId id, Clay_String label, s32* value)
+bool UICheckboxS32(const char* labelS, s32* value)
+{
+    return UICheckboxS32ID(labelS, 0, value);
+}
+
+bool UICheckboxS32ID(const char* labelS, s32 id, s32* value)
 {
     bool val = (bool)*value;
-    bool changed = UICheckbox(id, label, &val);
+    bool changed = UICheckboxID(labelS, id, &val);
     if (changed) *value = (s32)val;
     return changed;
 }
 
-void UIProgressBar(Clay_ElementId id, Clay_String label, f32 value01)
+void UIProgressBar(const char* labelS, f32 value01)
 {
+    Clay_String label = (Clay_String){ true, StringLength(labelS), labelS };
+    Clay_ElementId id = CLAY_SIDI_LOCAL(label, 0);
     value01 = Saturatef32(value01);
     CLAY(id, {
         .layout = {
@@ -846,11 +873,17 @@ bool UICollapsingHeader(Clay_ElementId id, Clay_String label, bool open)
 
 static u64 g_UIDropdownOpenId; // only one dropdown list is open at a time
 
-bool UIDropdown(Clay_ElementId id, Clay_String label, const char** options, u32 numOptions, u32* selectedIndex)
+bool UIDropdown(const char* labelS, const char** options, u32 numOptions, u32* selectedIndex)
+{
+    return UIDropdownID(labelS, 0, options, numOptions, selectedIndex);
+}
+
+bool UIDropdownID(const char* labelS, s32 index, const char** options, u32 numOptions, u32* selectedIndex)
 {
     if (!options || numOptions == 0u || !selectedIndex) return false;
     if (*selectedIndex >= numOptions) *selectedIndex = 0u;
-
+    Clay_String label = (Clay_String){ true, StringLength(labelS), labelS };
+    Clay_ElementId id = CLAY_SIDI_LOCAL(label, index);
     bool open = g_UIDropdownOpenId == (u64)id.id;
     bool changed = false;
 
@@ -1101,10 +1134,16 @@ s32 UIMenuButton(Clay_ElementId id, Clay_String label, Clay_Dimensions size, con
     return clickedIndex;
 }
 
-bool UISliderFloat(Clay_ElementId id, Clay_String label, f32* value, f32 minValue, f32 maxValue)
+bool UISliderFloat(const char* labelS, f32* value, f32 minValue, f32 maxValue)
+{
+    return UISliderFloatID(labelS, 0, value, minValue, maxValue);
+}
+
+bool UISliderFloatID(const char* labelS, s32 index, f32* value, f32 minValue, f32 maxValue)
 {
     if (!value || !IsFiniteF32(minValue) || !IsFiniteF32(maxValue) || maxValue <= minValue) return false;
-
+    Clay_String label = (Clay_String){ true, StringLength(labelS), labelS };
+    Clay_ElementId id = CLAY_SIDI_LOCAL(label, index);
     bool changed = false;
     f32 currentValue = IsFiniteF32(*value) ? *value : minValue;
     f32 clampedValue = Clampf32(currentValue, minValue, maxValue);
@@ -1176,10 +1215,16 @@ bool UISliderFloat(Clay_ElementId id, Clay_String label, f32* value, f32 minValu
     return changed;
 }
 
-bool UISliderFloatValue(Clay_ElementId id, Clay_String label, f32* value, f32 minValue, f32 maxValue, int decimals)
+bool UISliderFloatValue(const char* labelS, f32* value, f32 minValue, f32 maxValue, int decimals)
+{
+    return UISliderFloatValueId(labelS, 0, value, minValue, maxValue, decimals);
+}
+
+bool UISliderFloatValueId(const char* labelS, s32 id, f32* value, f32 minValue, f32 maxValue, int decimals)
 {
     if (!value) return false;
-
+    Clay_String label = (Clay_String){ true, StringLength(labelS), labelS };
+    Clay_ElementId elementID = CLAY_SIDI_LOCAL(label, id);
     u32 index = g_UISliderValueLabelIndex++ % (u32)(sizeof(g_UISliderValueLabels) / sizeof(g_UISliderValueLabels[0]));
     char* text = g_UISliderValueLabels[index];
     u32 capacity = (u32)sizeof(g_UISliderValueLabels[0]);
@@ -1203,7 +1248,7 @@ bool UISliderFloatValue(Clay_ElementId id, Clay_String label, f32* value, f32 mi
     text[length] = '\0';
 
     Clay_String valueLabel = { .isStaticallyAllocated = false, .length = (s32)length, .chars = text };
-    return UISliderFloat(id, valueLabel, value, minValue, maxValue);
+    return UISliderFloatID(labelS, elementID.id, value, minValue, maxValue);
 }
 
 typedef struct UIEditSlot_
@@ -1341,10 +1386,17 @@ static bool UIParseFloatBuffer(const char* buffer, f32* outValue)
     return true;
 }
 
-bool UIEditInt(Clay_ElementId id, Clay_String label, f32* value, s32 minValue, s32 maxValue)
+bool UIEditInt(const char* labelS, f32* value, s32 minValue, s32 maxValue)
+{
+    return UIEditIntID(labelS, 0, value, minValue, maxValue);
+}
+
+bool UIEditIntID(const char* labelS, int index, f32* value, s32 minValue, s32 maxValue)
 {
     if (!value || maxValue < minValue) return false;
 
+    Clay_String label = (Clay_String){ true, StringLength(labelS), labelS };
+    Clay_ElementId id = CLAY_SIDI_LOCAL(label, index);
     UIEditSlot* slot = UIGetEditSlot(id);
     if (!slot) return false;
 
@@ -1396,7 +1448,7 @@ bool UIEditInt(Clay_ElementId id, Clay_String label, f32* value, s32 minValue, s
             .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(1.0f) } }
         }) {}
 
-        if (UIButton(CLAY_ID_LOCAL("Dec"), CLAY_STRING("<"), (Clay_Dimensions){ 28.0f, 28.0f }, false))
+        if (UIButtonID("<", id.id, (Clay_Dimensions){ 28.0f, 28.0f }, false))
         {
             current = Clamps32(current - 1, minValue, maxValue);
             *value = (f32)current;
@@ -1413,7 +1465,7 @@ bool UIEditInt(Clay_ElementId id, Clay_String label, f32* value, s32 minValue, s
             .custom = { .customData = &slot->textData }
         }) {}
 
-        if (UIButton(CLAY_ID_LOCAL("Inc"), CLAY_STRING(">"), (Clay_Dimensions){ 28.0f, 28.0f }, false))
+        if (UIButtonID(">", id.id, (Clay_Dimensions){ 28.0f, 28.0f }, false))
         {
             current = Clamps32(current + 1, minValue, maxValue);
             *value = (f32)current;
@@ -1438,9 +1490,21 @@ bool UIEditInt(Clay_ElementId id, Clay_String label, f32* value, s32 minValue, s
     return changed;
 }
 
-bool UIEditFloat(Clay_ElementId id, Clay_String label, f32* value, f32 minValue, f32 maxValue, f32 step, int decimals)
+bool UIEditFloat(const char* labelS, f32* value, f32 minValue, f32 maxValue, f32 step, int decimals)
+{
+    return UIEditFloatID(labelS, 0, value, minValue, maxValue, step, decimals);
+}
+
+bool UIEditFloatID(const char* labelS, int index, f32* value, f32 minValue, f32 maxValue, f32 step, int decimals)
 {
     if (!value || !IsFiniteF32(minValue) || !IsFiniteF32(maxValue) || maxValue < minValue) return false;
+
+    Clay_String label = (Clay_String){ 
+        .isStaticallyAllocated = true,
+        .length = StringLength(labelS),
+        .chars  = labelS
+    };
+    Clay_ElementId id = CLAY_SIDI_LOCAL(label, index);
 
     UIEditSlot* slot = UIGetEditSlot(id);
     if (!slot) return false;
@@ -1489,7 +1553,7 @@ bool UIEditFloat(Clay_ElementId id, Clay_String label, f32* value, f32 minValue,
             .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(1.0f) } }
         }) {}
 
-        if (UIButton(CLAY_ID_LOCAL("Dec"), CLAY_STRING("<"), (Clay_Dimensions){ 28.0f, 28.0f }, false))
+        if (UIButtonID("<", id.id, (Clay_Dimensions){ 28.0f, 28.0f }, false))
         {
             *value = Clampf32(*value - step, minValue, maxValue);
             UIFormatFloat(slot->buffer, (u32)sizeof(slot->buffer), *value, decimals);
@@ -1505,7 +1569,7 @@ bool UIEditFloat(Clay_ElementId id, Clay_String label, f32* value, f32 minValue,
             .custom = { .customData = &slot->textData }
         }) {}
 
-        if (UIButton(CLAY_ID_LOCAL("Inc"), CLAY_STRING(">"), (Clay_Dimensions){ 28.0f, 28.0f }, false))
+        if (UIButtonID(">", id.id, (Clay_Dimensions){ 28.0f, 28.0f }, false))
         {
             *value = Clampf32(*value + step, minValue, maxValue);
             UIFormatFloat(slot->buffer, (u32)sizeof(slot->buffer), *value, decimals);
@@ -1593,11 +1657,23 @@ static bool UIEditComponent(Clay_ElementId compId, f32* value, f32 minValue, f32
     return changed;
 }
 
-bool UIEditFloatN(Clay_ElementId id, Clay_String label, f32* values, u32 numComponents,
-                  f32 minValue, f32 maxValue, int decimals)
+bool UIEditFloatN(const char* label, f32* values, u32 numComponents, f32 minValue, f32 maxValue, int decimals)
+{
+    return UIEditFloatNID(label, 0, values, numComponents, minValue, maxValue, decimals);
+}
+
+bool UIEditIntN(const char* label, s32* values, u32 numComponents, s32 minValue, s32 maxValue)
+{
+    return UIEditIntNID(label, 0, values, numComponents, minValue, maxValue);
+}
+
+bool UIEditFloatNID(const char* labelS, int index, f32* values, u32 numComponents, f32 minValue, f32 maxValue, int decimals)
 {
     if (!values || numComponents == 0u || numComponents > 4u ||
         !IsFiniteF32(minValue) || !IsFiniteF32(maxValue) || maxValue < minValue) return false;
+
+    Clay_String label = (Clay_String){ true, StringLength(labelS), labelS};
+    Clay_ElementId id = CLAY_SIDI_LOCAL(label, index * numComponents);
 
     bool changed = false;
     CLAY(id, {
@@ -1624,14 +1700,16 @@ bool UIEditFloatN(Clay_ElementId id, Clay_String label, f32* values, u32 numComp
             changed |= UIEditComponent(compId, &values[i], minValue, maxValue, decimals, true, 75.0f);
         }
     }
+
     return changed;
 }
 
-bool UIEditIntN(Clay_ElementId id, Clay_String label, s32* values, u32 numComponents,
-                s32 minValue, s32 maxValue)
+bool UIEditIntNID(const char* labelS, s32 index, s32* values, u32 numComponents, s32 minValue, s32 maxValue)
 {
     if (!values || numComponents == 0u || numComponents > 4u || maxValue < minValue) return false;
-
+    Clay_String label = (Clay_String){ true, StringLength(labelS), labelS };
+    Clay_ElementId id = CLAY_SIDI_LOCAL(label, index * numComponents);
+    
     bool changed = false;
     CLAY(id, {
         .layout = {
@@ -1738,10 +1816,12 @@ static bool UIColorDragBox(Clay_ElementId boxId, f32* outX, f32* outY)
     return true;
 }
 
-bool UIColorEdit3(Clay_ElementId id, Clay_String label, f32* rgb)
+bool UIColorEdit3(const char* labelS, f32* rgb)
 {
     if (!rgb) return false;
 
+    Clay_String label = (Clay_String){ true, StringLength(labelS), labelS };
+    Clay_ElementId id = CLAY_SIDI_LOCAL(label, 0);
     bool open = g_UIColorEditOpenId == (u64)id.id;
     bool changed = false;
 
@@ -1849,7 +1929,7 @@ bool UIColorEdit3(Clay_ElementId id, Clay_String label, f32* rgb)
                     }) {}
 
                     Clay_ElementId rgbRowId = Clay_GetElementIdWithIndex(CLAY_STRING("UIColorRGBRow"), id.id);
-                    if (UIEditFloatN(rgbRowId, CLAY_STRING("RGB"), rgb, 3u, 0.0f, 1.0f, 3))
+                    if (UIEditFloatNID("RGB", rgbRowId.id, rgb, 3u, 0.0f, 1.0f, 3))
                     {
                         g_UIColorEditHSV = RGBToHSV((float3){ rgb[0], rgb[1], rgb[2] });
                         UIColorPickRender();
