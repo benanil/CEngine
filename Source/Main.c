@@ -35,7 +35,6 @@ Camera       g_Camera;
 SDL_Window*  g_SDLWindow;
 
 extern WindowState g_WindowState;
-#include "Gameplay.c"
 
 static void MainSyncWindowSize(void)
 {
@@ -119,6 +118,7 @@ static void MainLoopTick(void)
     UIBeginFrame();
 
     tUpdate();
+    extern void Gameplay_Update();
     Gameplay_Update();
     GraphicsEditorUI();
 

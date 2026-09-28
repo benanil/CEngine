@@ -322,6 +322,15 @@ bool SceneAsyncBegin(SceneAsyncOp op, const char* path, const char* taskName, Sc
 /////////////////////////////
 //         PHYSICS         //
 /////////////////////////////
+
+// collision categories for static geometry. scene picking filters to surface only, matching the
+// old cpu-BVH picking 
+#define PHYS_CAT_SURFACE     1ull
+#define PHYS_CAT_TERRAIN     2ull
+#define PHYS_CAT_PLAYER      4ull
+
+#define PHYS_PICK_MAX_DIST   1.0e5f
+
 // the box3d world is a single global, scene independent instance (Physics_Init creates
 // it lazily on first use) so bodies from different scenes - including gFoliage's private
 // scene - can physically interact. Scene_InitPhysics/Scene_PhysicsDestroy only manage the
@@ -373,12 +382,13 @@ bool Physics_GetEntityOverride(const Scene* scene, u32 sparseIdx, ScenePhysicsRe
 void Physics_ApplyPendingOverrides(Scene* scene);
 
 b3Vec3 Float3ToB3Vec3(float3 v);
-float3 B3PosToFloat3(b3Pos p);
+float3 B3VecToFloat3(b3Pos p);
 
-b3Vec3 ToB3Vec3(v128f v);
+b3Vec3 v128fToB3Vec3(v128f v);
 b3Quat ToB3Quat(v128f q);
-v128f  B3PosToVec3(b3Pos p);
+v128f  B3VecTov128f(b3Pos p);
 u64    B3QuatToEntityRotation(b3Quat q);
+
 
 #endif // SCENE_H
 

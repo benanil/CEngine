@@ -2,6 +2,7 @@
 #define PLATFORM_H
 
 #include "Bitset.h"
+#include "Math/Vector.h"
 #include <SDL3/SDL_events.h>
 
 // enables logging no matter what
@@ -110,12 +111,14 @@ void wGetMouseWindowPos(f32* x, f32* y);
 void wGetMonitorSize(s32* width, s32* height);
 void wSetCursor(wCursor cursor);
 
+float2 GetMovementAxis();
 // Keyboard
 typedef s32 SDLK;
 u8   AnyKeyDown();
 u8   GetKeyDown(SDLK c);
 u8   GetKeyReleased(SDLK c);
 u8   GetKeyPressed(SDLK c);
+
 u32  PlatformConsumeTextInput(char* dst, u32 capacity);
 u32  PlatformConsumeTextKeyEvents(PlatformTextKeyEvent* dst, u32 capacity);
 

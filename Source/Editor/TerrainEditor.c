@@ -78,7 +78,7 @@ static void TerrainEditorInit(void)
     TerrainSyncScenePath();
     terrainUI.seed           = 1.0f;
     terrainUI.seaLevel       = -25.0f;
-    terrainUI.baseHeight     = -30.0f;
+    terrainUI.baseHeight     = -40.0f;
     terrainUI.hillAmplitude  = 0.4f;
     terrainUI.hillFrequency  = 0.5f;
     terrainUI.ridgeAmplitude = 0.5f;

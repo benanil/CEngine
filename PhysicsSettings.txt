@@ -1,4 +1,4 @@
 gravity 0.000000 -9.810000 0.000000
-substeps 1
+substeps 4
 sleep 1
 continuous 1

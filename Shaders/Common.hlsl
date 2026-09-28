@@ -150,7 +150,7 @@ typedef float4x4 mat4x4;
 #define MCLAMP(x, mn, mx)     clamp(x, mn, mx)
 #define MCLAMP01(x)           saturate(x)
                              
-#define Clamp01f32(x)         saturate(x)
+#define Saturatef32(x)         saturate(x)
 
 #define Clampf32(x, min, max) clamp(x, min, max)
 #define Clamps32(x, min, max) clamp(x, min, max)

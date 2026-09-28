@@ -104,6 +104,7 @@ target_sources(${EXECUTABLE_NAME} PRIVATE
     Extern/ExternAll.cpp
 
     Source/Animation.c
+    Source/Gameplay.c
     Source/Algorithm.c
     Source/Async.c
     Source/JobSystem.c

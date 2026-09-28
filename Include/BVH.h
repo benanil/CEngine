@@ -34,6 +34,7 @@ typedef struct BVHHit_
     u32 groupIdx;     // primitive group inside the set
     u32 entityIdx;    // group local entity
     u32 bundleIdx;    // scene bundle
+    b3Vec3 normal;
 } BVHHit;
 
 static inline v128f BVH_HitPositionV(v128f origin, v128f dir, const BVHHit* hit)
@@ -45,7 +46,6 @@ static inline float3 BVH_HitPositionF(float3 origin, float3 dir, const BVHHit* h
 {
     return F3Add(origin, F3MulF(dir, hit->hit.t));
 }
-
 
 // builds the blas of every primitive of the bundle from the lod0 triangles, fills
 // APrimitive.bvhNodeIndex and the cache entry's bvhNodes/bvhTris arrays. out: 0 on failure
@@ -61,7 +61,8 @@ s32 BVH_RaycastScene(const struct Scene_* scene, v128f origin, v128f dir, BVHHit
 
 // box3d raycast against the static surface colliders, fills *hit in the same BVHHit contract when the
 // physics hit is nearer than hit->hit.t. implemented in Physics.c. out: 1 when *hit is written
-s32 Scene_PhysicsRaycastPick(const struct Scene_* scene, v128f origin, v128f dir, BVHHit* hit);
+// mask: PHYS_CAT_TERRAIN | PHYS_CAT_SURFACE
+s32 Scene_PhysicsRaycastPick(const struct Scene_* scene, v128f origin, v128f dir, float rayLen, BVHHit* hit, u64 mask);
 
 #if defined(__cplusplus)
 }

@@ -223,6 +223,15 @@ u8 GetKeyDown(s32 c)     { return BitsetGet(DownKeys    , GetRealKey(c) & 511); 
 u8 GetKeyReleased(s32 c) { return BitsetGet(ReleasedKeys, GetRealKey(c) & 511); }
 u8 GetKeyPressed(s32 c)  { return BitsetGet(PressedKeys , GetRealKey(c) & 511); }
 
+float2 GetMovementAxis()
+{
+    // todo(anil) add joystick etc
+    return (float2){
+        GetKeyDown(SDLK_D) ? 1.0f : GetKeyDown(SDLK_A) ? -1.0f : 0.0f,
+        GetKeyDown(SDLK_W) ? 1.0f : GetKeyDown(SDLK_S) ? -1.0f : 0.0f
+    };
+}
+
 // Mouse
 f32 GetMouseWheelDelta()  { return PlatformCtx.MouseWheelDelta; }
 u8 GetDoubleClicked()     { return PlatformCtx.DoubleClicked; }

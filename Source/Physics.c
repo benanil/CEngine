@@ -15,12 +15,7 @@
 
 extern Graphics gGFX; // cpu mega buffers, declared per translation unit as elsewhere (BVH.c)
 
-// collision categories for static geometry. scene picking filters to surface only, matching the
-// old cpu-BVH picking 
-#define PHYS_CAT_SURFACE     0x0001ull
-
 // finite segment length for picking rays; the ray dir is unit length so fraction*length is world t
-#define PHYS_PICK_MAX_DIST   1.0e5f
 
 #define PHYSICS_SETTINGS_PATH "PhysicsSettings.txt"
 
@@ -198,7 +193,7 @@ void Scene_DestroyPhysics(Scene* scene)
     scene->physicsColliderBuildResult = 0;
 }
 
-b3Vec3 ToB3Vec3(v128f v) { return (b3Vec3){ VecGetX(v), VecGetY(v), VecGetZ(v) }; }
+b3Vec3 v128fToB3Vec3(v128f v) { return (b3Vec3){ VecGetX(v), VecGetY(v), VecGetZ(v) }; }
 b3Vec3 Float3ToB3Vec3(float3 v) { return (b3Vec3){ v.x, v.y, v.z }; }
 
 b3Quat ToB3Quat(v128f q)
@@ -213,8 +208,8 @@ b3Quat ToB3Quat(v128f q)
     return res;
 }
 
-float3 B3PosToFloat3(b3Pos p) { return (float3){p.x, p.y, p.z }; }
-v128f B3PosToVec3(b3Pos p) { return VecSetR(p.x, p.y, p.z, 0.0f); }
+float3 B3VecToFloat3(b3Pos p) { return (float3){p.x, p.y, p.z }; }
+v128f B3VecTov128f(b3Pos p) { return VecSetR(p.x, p.y, p.z, 0.0f); }
 u64 B3QuatToEntityRotation(b3Quat q) { return PackQuaternionS16NormRet(VecSetR(q.v.x, q.v.y, q.v.z, q.s)); }
 
 static u32 PhysicsCountMeshes(Scene* scene);
@@ -265,7 +260,7 @@ void Scene_UpdatePhysics(Scene* scene, float deltaTime)
         scene->physicsColliderBuildCallback = NULL;
         if (callback) callback(scene, scene->physicsColliderBuildResult);
     }
-
+    
     b3World_Step(gPhysicsWorld, deltaTime, (int)g_PhysicsSettings.substepCount);
 
     // Write moved bodies back onto their entities. Move events only report bodies
@@ -279,7 +274,7 @@ void Scene_UpdatePhysics(Scene* scene, float deltaTime)
         u32 sparseIdx = PhysicsUserDataSparse(move->userData);
         u32 dense = set->sparseID[sparseIdx];
         Entity* entity = &set->entities[dense];
-        entity->position = B3PosToVec3(move->transform.p);
+        entity->position = B3VecTov128f(move->transform.p);
         entity->rotation = B3QuatToEntityRotation(move->transform.q);
     }
     scene->renderDataDirty |= events.moveCount > 0;
@@ -359,7 +354,7 @@ static b3MeshData* Scene_PhysicsEnsureGroupMesh(Scene* scene, u32 groupIdx)
     
     const AVertex* vb = gGFX.SurfaceVertexBuffer + vertexOffset;
     for (u32 v = 0; v < numVertices; v++)
-        verts[v] = ToB3Vec3(VecAdd(decodeMin, VecMul(UnpackUnorm16x4(vb[v].position), decodeExtent)));
+        verts[v] = v128fToB3Vec3(VecAdd(decodeMin, VecMul(UnpackUnorm16x4(vb[v].position), decodeExtent)));
     
     const u32* ib = gGFX.IndexBuffer + indexOffset;
     for (u32 k = 0; k < numIndices; k++)
@@ -408,13 +403,13 @@ static void Scene_PhysicsCreateEntityBody(Scene* scene, const Entity* entity)
     // no volume/mass and can only back a static body, so this stays static; a
     // movable prop would need a convex hull/primitive shape instead.
     bd.type       = b3_staticBody;
-    bd.position   = ToB3Vec3(entity->position);
+    bd.position   = v128fToB3Vec3(entity->position);
     bd.rotation   = ToB3Quat(UnpackQuaternionS16Norm1(entity->rotation));
     bd.userData   = (void*)PhysicsBodyUserData(entity->sparseIdx);
     b3BodyId body = b3CreateBody(gPhysicsWorld, &bd);
     b3ShapeDef sd = b3DefaultShapeDef();
     sd.filter.categoryBits = PHYS_CAT_SURFACE;
-    b3ShapeId shape = b3CreateMeshShape(body, &sd, mesh, ToB3Vec3(EntityUnpackWorldScale(entity->scale)));
+    b3ShapeId shape = b3CreateMeshShape(body, &sd, mesh, v128fToB3Vec3(EntityUnpackWorldScale(entity->scale)));
     if (B3_IS_NULL(shape))
     {
         b3DestroyBody(body);
@@ -463,7 +458,7 @@ void Entity_SyncPhysicsBody(Scene* scene, const Entity* entity)
     b3ShapeId shape;
     if (b3Body_GetShapes(body, &shape, 1) > 0 && b3Shape_GetType(shape) == b3_meshShape)
     {
-        b3Vec3 newScale = ToB3Vec3(EntityUnpackWorldScale(entity->scale));
+        b3Vec3 newScale = v128fToB3Vec3(EntityUnpackWorldScale(entity->scale));
         b3Vec3 curScale = b3Shape_GetMesh(shape).scale;
         if (newScale.x != curScale.x || newScale.y != curScale.y || newScale.z != curScale.z)
         {
@@ -472,7 +467,7 @@ void Entity_SyncPhysicsBody(Scene* scene, const Entity* entity)
         }
     }
     
-    b3Body_SetTransform(body, ToB3Vec3(entity->position), ToB3Quat(UnpackQuaternionS16Norm1(entity->rotation)));
+    b3Body_SetTransform(body, v128fToB3Vec3(entity->position), ToB3Quat(UnpackQuaternionS16Norm1(entity->rotation)));
 }
 
 void Physics_DestroyTerrainChunk(u64* inOutBody, struct b3MeshData** inOutMesh)
@@ -517,7 +512,7 @@ bool Physics_SyncTerrainChunkMesh(u64* inOutBody, struct b3MeshData** inOutMesh,
         body = b3CreateBody(gPhysicsWorld, &bd);
         
         b3ShapeDef sd = b3DefaultShapeDef();
-        sd.filter.categoryBits = PHYS_CAT_SURFACE;
+        sd.filter.categoryBits = PHYS_CAT_TERRAIN;
         b3ShapeId shape = b3CreateMeshShape(body, &sd, mesh, b3Vec3_one);
         if (B3_IS_NULL(shape))
         {
@@ -571,7 +566,7 @@ bool Entity_SetPhysicsShape(Scene* scene,  const Entity* entity, b3ShapeType typ
     {
         b3MeshData* mesh = Scene_PhysicsEnsureGroupMesh(scene, groupIdx);
         if (!mesh) return false;
-        b3Shape_SetMesh(shape, mesh, ToB3Vec3(EntityUnpackWorldScale(entity->scale)));
+        b3Shape_SetMesh(shape, mesh, v128fToB3Vec3(EntityUnpackWorldScale(entity->scale)));
         return true;
     }
     
@@ -589,7 +584,7 @@ bool Entity_SetPhysicsShape(Scene* scene,  const Entity* entity, b3ShapeType typ
     v128f center = VecMulf(VecAdd(localMin, localMax), 0.5f);
     v128f half   = VecMax(VecMulf(VecSub(localMax, localMin), 0.5f), VecSet1(0.01f));
     f32 hx = VecGetX(half), hy = VecGetY(half), hz = VecGetZ(half);
-    b3Vec3 c = ToB3Vec3(center);
+    b3Vec3 c = v128fToB3Vec3(center);
     
     switch (type)
     {
@@ -883,16 +878,16 @@ void Scene_BuildStaticCollidersAsync(Scene* scene, AsyncCallback callback)
 // box3d picking against the static surface colliders. mirrors the BVHHit contract of the cpu-BVH
 // path so BVH_RaycastScene can keep whichever of (static physics, skinned cpu-BVH) hit is nearer.
 // only writes *hit when the physics hit is closer than the current hit->hit.t. out: 1 when written.
-s32 Scene_PhysicsRaycastPick(const Scene* scene, v128f origin, v128f dir, BVHHit* hit)
+s32 Scene_PhysicsRaycastPick(const Scene* scene, v128f origin, v128f dir, float rayLen, BVHHit* hit, u64 mask)
 {
     b3QueryFilter filter = b3DefaultQueryFilter();
-    filter.maskBits = PHYS_CAT_SURFACE; 
+    filter.maskBits = mask;
 
-    b3RayResult r = b3World_CastRayClosest(gPhysicsWorld, ToB3Vec3(origin),
-                                           ToB3Vec3(VecMulf(dir, PHYS_PICK_MAX_DIST)), filter);
+    b3RayResult r = b3World_CastRayClosest(gPhysicsWorld, v128fToB3Vec3(origin),
+                                           v128fToB3Vec3(VecMulf(dir, rayLen)), filter);
     if (!r.hit) return 0;
 
-    f32 t = r.fraction * PHYS_PICK_MAX_DIST; // dir is unit length, so this is world distance
+    f32 t = r.fraction * rayLen; // dir is unit length, so this is world distance
     if (t >= hit->hit.t) return 0;
 
     // body userData packs the sparse id plus the render-set kind; resolve it to (group, local entity)

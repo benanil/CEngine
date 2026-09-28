@@ -1,13 +1,48 @@
 
-float characterForce = 25.0f;
-float jumpForce      = 800.0f;
-float maxSpeed       = 10.0f;
-// todo(anil)
-float acceleration   = 10.0f;
-float currentSpeed   = 0.0f;
 
-static EntityID characterEntity = INVALID_ENTITY;
-SceneBundle* sphereBundle;
+#include <box3d/box3d.h>
+#include "Include/Scene.h"
+#include "Include/Camera.h"
+#include "Include/UIRenderer.h"
+#include "Include/UIWindow.h"
+#include "Include/BVH.h"
+#include "Include/AssetManager.h"
+
+float characterSpeed = 5.0f;
+float jumpSpeed       = 80.0f;
+float maxSpeed       = 10.0f;
+float acceleration   = 20.0f;
+float decceleration  = 10.0f;
+float currentSpeed   = 0.0f; // [0, 1]
+
+bool characterActive = false;
+bool jumped = false;
+
+static const float gravity = -25.0f;
+static const float groundMinNormalY = 0.7f;
+static const float snapDistance = 0.3f;
+static const float moveTolerance = 0.001f;
+
+static float verticalSpeed = 0.0f;
+static bool grounded = false;
+static b3Vec3 groundNormal = { 0.0f, 1.0f, 0.0f };
+
+#define SphereRadius 0.5f
+
+EntityID characterEntity = INVALID_ENTITY;
+SceneBundle* capsuleBundle;
+
+extern Camera g_Camera;
+
+// # make "get movement axis" function for cross platform compatability
+// # use get surface info function  instead of bottom two
+// # IsJumping function; if jumped and not grounded else jumped == false
+// # if IsJumping don't jump
+// currentSpeed += hasAnyInput * acceleration * dt;
+// currentSpeed -= hasAnyInput * decceleration * dt;
+// multiply characterSpeed by currentSpeed
+// if (currentSpeed < 0.9 && !hasAnyInput) LinearVelocity *= currentSpeed; // WARNING deltatime
+// project movement direction with surface normal instead of Vec3Up
 
 static void CharacterUI()
 {
@@ -19,8 +54,8 @@ static void CharacterUI()
                         &open, UIWindowFlags_NoClose))
     {
         UIText("Character Settings");
-        UIEditFloat(CLAY_ID("CharForce"), CLAY_STRING("speed"), &characterForce, 0.0f, 1000.0f, 5.0f, 2);
-        UIEditFloat(CLAY_ID("JumpForce"), CLAY_STRING("jump force"), &jumpForce, 0.0f, 10000.0f, 10.0f, 2);
+        UIEditFloat(CLAY_ID("CharForce"), CLAY_STRING("speed"), &characterSpeed, 0.0f, 100.0f, 0.2f, 2);
+        UIEditFloat(CLAY_ID("JumpForce"), CLAY_STRING("jump force"), &jumpSpeed, 0.0f, 100.0f, 0.2f, 2);
         UIEditFloat(CLAY_ID("maxSpeed") , CLAY_STRING("maxSpeed"), &maxSpeed, 0.0f, 100.0f, 0.1f, 2);
         UIEndWindow();
     }
@@ -29,23 +64,12 @@ static void CharacterUI()
 void OpenSceneCallback(const char* path)
 {
     Scene* scene = Scene_GetActive();
-    if (!sphereBundle) sphereBundle  = GenerateSphere(1.0f, 16u, 16u);
-    u32 capsule  = Scene_AddBundle(scene, sphereBundle, "Character");
-    characterEntity = Scene_Spawn(scene, capsule, VecSetR(0.0f, 0.0f, 0.0f, 0.f), QIdentity(), VecOne());
+    if (!capsuleBundle) capsuleBundle  = GenerateCapsule(0.5f, 1.8f, 16u);
+    u32 capsuleId  = Scene_AddBundle(scene, capsuleBundle, "Character");
+    characterEntity = Scene_Spawn(scene, capsuleId, VecSetR(0.0f, 0.0f, 0.0f, 0.f), QIdentity(), VecOne());
 
     Entity* character = RenderSet_GetEntity(&scene->surfaceSet, characterEntity);
-    b3BodyId body = Entity_GetPhysicsBody(scene, character);
-
-    b3ShapeId shapeId;
-    b3MotionLocks locks = {};
-    locks.angularX = locks.angularY = locks.angularZ = true;
-    b3Body_SetMotionLocks(body, locks);
-    b3Body_GetShapes(body, &shapeId, 1);
-    b3Shape_SetDensity(shapeId, 20.0f, true);
-    b3Body_SetGravityScale(body, 2.0f);
-
-    if(b3Body_IsValid(body))
-        b3Body_SetBullet(body, true);
+    Entity_TogglePhysics(scene, character, false);
 }
 
 void BeforeDestroySceneCallback(Scene* scene)
@@ -53,56 +77,174 @@ void BeforeDestroySceneCallback(Scene* scene)
     characterEntity = INVALID_ENTITY;
 }
 
+static b3Capsule MakeMover(void)
+{
+    return (b3Capsule){
+        .center1 = (b3Vec3){ 0.0f, -0.85f, 0.0f },
+        .center2 = (b3Vec3){ 0.0f, 0.85f, 0.0f },
+        .radius = 0.5f
+    };
+}
+
+static b3QueryFilter MakeFilter(void)
+{
+    b3QueryFilter filter;
+    filter.categoryBits = PHYS_CAT_SURFACE | PHYS_CAT_TERRAIN;
+    filter.maskBits = ~0;
+    filter.id = 0;
+    filter.name = NULL;
+    return filter;
+}
+
+static b3Vec3 ProjectOnPlane(b3Vec3 v, b3Vec3 n)
+{
+    return b3Sub(v, b3MulSV(b3Dot(v, n), n));
+}
+
+typedef struct PlaneCapture
+{
+    b3CollisionPlane planes[16];
+    b3ShapeId shape;
+    int count;
+} PlaneCapture;
+
+static bool CapturePlaneFcn( b3ShapeId shapeId, const b3PlaneResult* planes, int planeCount, void* context )
+{
+    PlaneCapture* capture = context;
+    capture->shape = shapeId;
+    for ( int i = 0; i < planeCount && capture->count < 16; ++i )
+    {
+        capture->planes[capture->count++] = (b3CollisionPlane){
+            .plane        = planes[i].plane,
+            .pushLimit    = 0.1f,
+            .push         = 0.0f,
+            .clipVelocity = true
+        };
+    }
+    return true;
+}
+
+static bool FindGround(b3WorldId worldId, b3Pos origin, b3Capsule* mover, b3QueryFilter filter, b3Vec3* normal)
+{
+    PlaneCapture capture = { 0 };
+    b3World_CollideMover(worldId, origin, mover, filter, CapturePlaneFcn, &capture);
+
+    bool found = false;
+    float best = groundMinNormalY;
+    for (int i = 0; i < capture.count; ++i)
+    {
+        b3Vec3 n = capture.planes[i].plane.normal;
+        if (n.y >= best)
+        {
+            best = n.y;
+            *normal = n;
+            found = true;
+        }
+    }
+    return found;
+}
+
 static void UpdateCharacter()
 {
     Scene* scene = Scene_GetActive();
-    static bool ballActive = false;
-    Entity* ball = RenderSet_GetEntity(&scene->surfaceSet, characterEntity);
-    if (ball == NULL) {
-        characterEntity = INVALID_ENTITY; // deleted somewhere we lost its reference
+    Entity* character = RenderSet_GetEntity(&scene->surfaceSet, characterEntity);
+    if (character == NULL)
+    {
+        characterEntity = INVALID_ENTITY;
         return;
     }
 
-    b3BodyId body = Entity_GetPhysicsBody(scene, ball);
     if (GetKeyPressed(SDLK_J))
     {
-        ballActive = !ballActive;
-        ball->position = VecZero();
-        Entity_SetPhysicsBodyType(scene, ball, ballActive ? b3_dynamicBody : b3_staticBody);
+        characterActive = !characterActive;
+        character->position = VecZero();
+        verticalSpeed = 0.0f;
+        grounded = false;
     }
-    
-    if (GetKeyPressed(SDLK_SPACE))
+    if (!characterActive) return;
+
+    float dt = GetDeltaTime();
+    b3WorldId worldId = Physics_GetWorld();
+    b3Capsule mover = MakeMover();
+    b3QueryFilter filter = MakeFilter();
+
+    float2 axis = GetMovementAxis();
+    b3Vec3 forward = Float3ToB3Vec3(g_Camera.Front);
+    forward.y = 0.0f;
+    forward = b3Normalize(forward);
+    b3Vec3 right = Float3ToB3Vec3(g_Camera.Right);
+    right.y = 0.0f;
+    right = b3Normalize(right);
+
+    b3Vec3 wish = b3Add(b3MulSV(axis.y, forward), b3MulSV(axis.x, right));
+    float wishLength = b3Length(wish);
+    if (wishLength > 1.0f)
     {
-        b3Body_ApplyLinearImpulseToCenter(body, (b3Vec3) { 0.0f, jumpForce, 0.0f }, false);
+        wish = b3MulSV(1.0f / wishLength, wish);
+        wishLength = 1.0f;
+    }
+    if (grounded && wishLength > 0.0f)
+    {
+        wish = b3MulSV(wishLength, b3Normalize(ProjectOnPlane(wish, groundNormal)));
     }
 
-    if (!ballActive)
-        return;
-    
-    float fwdButton = GetKeyDown(SDLK_W) ? 1.0f : GetKeyDown(SDLK_S) ? -1.0f : 0.0f;
-    float rgtButton = GetKeyDown(SDLK_D) ? 1.0f : GetKeyDown(SDLK_A) ? -1.0f : 0.0f;
-    // if no input slowly stop
-    if (Absf32(fwdButton) + Absf32(rgtButton) < MATH_Epsilon)
+    if (grounded) verticalSpeed = 0.0f;
+    else verticalSpeed += gravity * dt;
+
+    if (grounded && GetKeyPressed(SDLK_SPACE))
     {
-        b3Vec3 vel = b3Body_GetLinearVelocity(body);
-        float slowDown = 1.0f - (float)GetDeltaTime();
-        b3Body_SetLinearVelocity(body, b3Mul(vel, (b3Vec3){slowDown, slowDown, slowDown}));
+        verticalSpeed = jumpSpeed;
+        grounded = false;
     }
-    else
+
+    b3Vec3 velocity = b3MulSV(characterSpeed, wish);
+    velocity.y += verticalSpeed;
+
+    b3Vec3 target = b3Add(v128fToB3Vec3(character->position), b3MulSV(dt, velocity));
+    b3Vec3 start = v128fToB3Vec3(character->position);
+
+    for (int iteration = 0; iteration < 5; ++iteration)
     {
-        b3Vec3 forward = Float3ToB3Vec3(F3Proj(F3MulF(g_Camera.Front, fwdButton), F3Up()));
-        b3Vec3 right   = Float3ToB3Vec3(F3Proj(F3MulF(g_Camera.Right, rgtButton), F3Up()));
-        b3Vec3 direction = b3Normalize(b3Add(forward, right));
-        b3Body_ApplyLinearImpulseToCenter(body, b3Mul(direction, (b3Vec3){characterForce, characterForce, characterForce}), true);
+        b3Pos origin = v128fToB3Vec3(character->position);
+
+        PlaneCapture capture = { 0 };
+        b3World_CollideMover(worldId, origin, &mover, filter, CapturePlaneFcn, &capture);
+
+        b3Vec3 remaining = b3Sub(target, v128fToB3Vec3(character->position));
+        b3PlaneSolverResult result = b3SolvePlanes(remaining, capture.planes, capture.count);
+
+        float fraction = b3World_CastMover(worldId, origin, &mover, result.delta, filter, NULL, NULL);
+        b3Vec3 delta = b3MulSV(fraction, result.delta);
+        character->position = VecAdd(character->position, B3VecTov128f(delta));
+
+        if (b3LengthSquared(delta) < moveTolerance * moveTolerance) break;
     }
-    b3Vec3 velocity = b3Body_GetLinearVelocity(body);
-    float velocityMagnitude = b3Length(velocity);
-    if (velocityMagnitude > maxSpeed)
+
+    if (verticalSpeed > 0.0f)
     {
-        b3Vec3 newVelocity = b3MulSV(velocityMagnitude, b3Normalize(velocity));
-        b3Body_SetLinearVelocity(body, newVelocity);        
+        float intended = verticalSpeed * dt;
+        float actual = v128fToB3Vec3(character->position).y - start.y;
+        if (actual < intended * 0.5f) verticalSpeed = 0.0f;
     }
-    // Entity_SyncPhysicsBody(scene, ball);
+
+    bool wasGrounded = grounded;
+    b3Vec3 normal = { 0.0f, 1.0f, 0.0f };
+    grounded = verticalSpeed <= 0.0f && 
+               FindGround(worldId, v128fToB3Vec3(character->position), &mover, filter, &normal);
+
+    if (!grounded && wasGrounded && verticalSpeed <= 0.0f)
+    {
+        b3Pos origin = v128fToB3Vec3(character->position);
+        b3Vec3 down = { 0.0f, -snapDistance, 0.0f };
+        float fraction = b3World_CastMover(worldId, origin, &mover, down, filter, NULL, NULL);
+        if (fraction < 1.0f)
+        {
+            character->position = VecAdd(character->position, B3VecTov128f(b3MulSV(fraction, down)));
+            grounded = FindGround(worldId, v128fToB3Vec3(character->position), &mover, filter, &normal);
+        }
+    }
+
+    groundNormal = grounded ? normal : (b3Vec3){ 0.0f, 1.0f, 0.0f };
 }
 
 void Gameplay_Update()
