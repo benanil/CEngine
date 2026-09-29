@@ -49,6 +49,9 @@ typedef struct Camera_
     mat4x4 inverseView;
 } Camera;
 
+extern PlatformContext PlatformCtx;
+extern SDL_Window*     g_SDLWindow;
+
 static inline f32 Camera_SanitizeF32(f32 value, f32 fallback)
 {
     return IsFiniteF32(value) ? value : fallback;
@@ -231,8 +234,6 @@ static inline int2 MoveMouseToCenter(int2 monitorSize)
     return pos;
 }
 
-extern PlatformContext PlatformCtx;
-
 static inline void CameraUpdateFPS(Camera* camera, f32 dt, float2 mousePos)
 {
     camera->mouseDiff = (float2){ PlatformCtx.MouseMotionX, PlatformCtx.MouseMotionY };
@@ -244,13 +245,12 @@ static inline void CameraUpdateTPS(Camera* camera, f32 dt, float2 mousePos)
 {
     camera->mouseDiff = (float2){ PlatformCtx.MouseMotionX, PlatformCtx.MouseMotionY };
     CameraHandleYawPitch(camera);
+    camera->distance = Clampf32(camera->distance - GetMouseWheelDelta(), 1.5f, 50.0f);
     camera->position = F3Sub(camera->target, F3MulF(camera->front, camera->distance));
-    camera->distance = Clampf32(camera->distance + GetMouseWheelDelta(), 1.5f, 50.0f);
     camera->mouseOld = mousePos; // Tof2(MoveMouseToCenter(camera->monitorSize));
     camera->pitch = MCLAMP(camera->pitch, -89.0f, 0.0f);
 }
 
-extern SDL_Window*  g_SDLWindow;
 
 static inline void CameraSwitchMode(Camera* camera, CameraMode mode)
 {
@@ -274,8 +274,8 @@ static inline void CameraUpdate(Camera* camera, f32 dt)
         case CameraMode_TPS: CameraUpdateTPS(camera, dt, mousePos);  break;
     }
 
-    Camera_RecalculateView(camera);
     Camera_CalculateLook(camera);    
+    Camera_RecalculateView(camera);
     // frustumPlanes updated unconditionally in Rendering.c (Render()) using the RevZ variant
 }
 

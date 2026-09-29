@@ -225,6 +225,12 @@
 					<File>
 						<Path>Extern/SmolAtlas.h</Path>
 					</File>
+					<File>
+						<Path>Extern/mikktspace.c</Path>
+					</File>
+					<File>
+						<Path>Extern/mikktspace.h</Path>
+					</File>
 				</Children>
 			</Folder>
 			<Folder>

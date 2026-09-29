@@ -6,6 +6,7 @@
 #include "Math/Color.h"
 #include "Math/Bitpack.h"
 #include "Extern/meshoptimizer/src/meshoptimizer.h"
+#include "MeshTangentGen.h"
 
 extern Graphics gGFX;
 
@@ -118,51 +119,33 @@ static void IndicesForPrimitive(APrimitive* primitive, u32* currIndices, const u
     }
 }
 
-static float3* GeneratePrimitiveNormals(const APrimitive* primitive, u32 vertexBase)
+static float3* GeneratePrimitiveNormals(const APrimitive* primitive, const u32* bakedIndices, u32 vertexBase)
 {
-    const float3* positions = (const float3*)primitive->Attributes[AAttribIdx_POSITION];
-    const u32* indices = (const u32*)primitive->indices;
-    float3* normals = (float3*)ArenaPushGlobal((u64)(primitive->numVertices + 1) * sizeof(float3));
-    MemsetZero(normals, (u64)(primitive->numVertices + 1) * sizeof(float3));
-
-    for (s32 i = 0; i + 2 < primitive->numIndices; i += 3)
-    {
-        u32 i0 = indices[i + 0];
-        u32 i1 = indices[i + 1];
-        u32 i2 = indices[i + 2];
-        if (i0 >= (u32)primitive->numVertices || i1 >= (u32)primitive->numVertices || i2 >= (u32)primitive->numVertices)
-            continue;
-
-        float3 edge0 = F3Sub(positions[i1], positions[i0]);
-        float3 edge1 = F3Sub(positions[i2], positions[i0]);
-        float3 faceNormal = F3Cross(edge0, edge1);
-        normals[i0] = F3Add(normals[i0], faceNormal);
-        normals[i1] = F3Add(normals[i1], faceNormal);
-        normals[i2] = F3Add(normals[i2], faceNormal);
-    }
-
-    for (s32 i = 0; i < primitive->numVertices; i++)
-    {
-        float3 normal = normals[i];
-        float lengthSquared = normal.x * normal.x + normal.y * normal.y + normal.z * normal.z;
-        normals[i] = lengthSquared > 0.000001f ? F3NormSafe(normal) : (float3){0.0f, 0.0f, 1.0f};
-    }
-    return normals;
+    return TgGenerateNormals((const float3*)primitive->Attributes[AAttribIdx_POSITION], primitive->numVertices,
+                             bakedIndices, vertexBase, primitive->numIndices);
 }
 
-static void VerticesForPrimitive(APrimitive* primitive, ASkinedVertex* currVertex, u32 vertexBase)
+static TangentW* GeneratePrimitiveTangents(const APrimitive* primitive, const float3* normals, const u32* bakedIndices, u32 vertexBase)
+{
+    return TgGenerateTangents((const float3*)primitive->Attributes[AAttribIdx_POSITION],
+                              (const float2*)primitive->Attributes[AAttribIdx_TEXCOORD_0], normals,
+                              primitive->numVertices, bakedIndices, vertexBase, primitive->numIndices);
+}
+
+static void VerticesForPrimitive(APrimitive* primitive, ASkinedVertex* currVertex, const u32* bakedIndices, u32 vertexBase)
 {
     primitive->vertices = currVertex;
     const float3* positions  = (const float3*)primitive->Attributes[AAttribIdx_POSITION];
     const float2* texCoords  = (const float2*)primitive->Attributes[AAttribIdx_TEXCOORD_0];
     const float3* normals    = (const float3*)primitive->Attributes[AAttribIdx_NORMAL];
     const v128f* tangents    = (const v128f*)primitive->Attributes[AAttribIdx_TANGENT];
-    float3* generatedNormals = normals ? NULL : GeneratePrimitiveNormals(primitive, vertexBase);
+    float3* generatedNormals = normals ? NULL : GeneratePrimitiveNormals(primitive, bakedIndices, vertexBase);
     if (generatedNormals) normals = generatedNormals;
+    TangentW* generatedTangents = tangents ? NULL : GeneratePrimitiveTangents(primitive, normals, bakedIndices, vertexBase);
 
     for (s32 v = 0; v < primitive->numVertices; v++)
     {
-        v128f tangent = tangents  ? tangents[v]  : VecZero();
+        v128f tangent = tangents ? tangents[v] : VecSetR(generatedTangents[v].x, generatedTangents[v].y, generatedTangents[v].z, generatedTangents[v].w);
         float2 texCoord  = texCoords ? texCoords[v] : (float2){0.0f, 0.0f};
         float3 normal    = normals[v];
 
@@ -170,6 +153,7 @@ static void VerticesForPrimitive(APrimitive* primitive, ASkinedVertex* currVerte
         currVertex[v].texCoord = Float2ToHalf2(&texCoord.x);
         currVertex[v].octTbn = PackNormalTangent(Vec3Load(&normal.x), tangent);
     }
+    if (generatedTangents) ArenaPopGlobal((u64)primitive->numVertices * sizeof(TangentW));
     if (generatedNormals) ArenaPopGlobal((u64)(primitive->numVertices + 1) * sizeof(float3));
 }
 
@@ -210,15 +194,16 @@ static u16 PackVertexColorRGBA4444(const APrimitive* primitive, s32 vertexIndex)
 // Requires primitive->min/max to be set first (BoundsForPrimitive). Positions are quantized
 // to xyz unorm16 relative to the primitive AABB; the vertex/depth/shadow shaders and the BVH
 // de-quantize with the same AABB (PrimitiveGroup.aabbMin/aabbMax == primitive->min/max).
-static void SurfaceVerticesForPrimitive(APrimitive* primitive, AVertex* currVertex, u32 vertexBase)
+static void SurfaceVerticesForPrimitive(APrimitive* primitive, AVertex* currVertex, const u32* bakedIndices, u32 vertexBase)
 {
     primitive->vertices = currVertex;
     const float3* positions = (const float3*)primitive->Attributes[AAttribIdx_POSITION];
     const float2* texCoords = (const float2*)primitive->Attributes[AAttribIdx_TEXCOORD_0];
     const float3* normals   = (const float3*)primitive->Attributes[AAttribIdx_NORMAL];
     const v128f*  tangents  = (const v128f*)primitive->Attributes[AAttribIdx_TANGENT];
-    float3* generatedNormals = normals ? NULL : GeneratePrimitiveNormals(primitive, vertexBase);
+    float3* generatedNormals = normals ? NULL : GeneratePrimitiveNormals(primitive, bakedIndices, vertexBase);
     if (generatedNormals) normals = generatedNormals;
+    TangentW* generatedTangents = tangents ? NULL : GeneratePrimitiveTangents(primitive, normals, bakedIndices, vertexBase);
 
     v128f aabbMin    = VecLoad(primitive->min);
     // guard against a zero-extent axis (planar mesh) so the divide can't produce NaN
@@ -227,7 +212,7 @@ static void SurfaceVerticesForPrimitive(APrimitive* primitive, AVertex* currVert
 
     for (s32 v = 0; v < primitive->numVertices; v++)
     {
-        v128f tangent   = tangents ? tangents[v] : VecZero();
+        v128f tangent   = tangents ? tangents[v] : VecSetR(generatedTangents[v].x, generatedTangents[v].y, generatedTangents[v].z, generatedTangents[v].w);
         float2 texCoord = texCoords ? texCoords[v] : (float2){0.0f, 0.0f};
         float3 normal   = normals[v];
 
@@ -247,6 +232,7 @@ static void SurfaceVerticesForPrimitive(APrimitive* primitive, AVertex* currVert
             currVertex[v].position |= (u64)PackVertexColorRGBA4444(primitive, v) << 48u;
         }
     }
+    if (generatedTangents) ArenaPopGlobal((u64)primitive->numVertices * sizeof(TangentW));
     if (generatedNormals) ArenaPopGlobal((u64)(primitive->numVertices + 1) * sizeof(float3));
 }
 
@@ -643,7 +629,7 @@ s32 BakeSceneMeshesAndAnimations(SceneBundle* gltf, void** outVertexHeapPtr, voi
             BoundsForPrimitive(primitive);
             if (isSkinned)
             {
-                VerticesForPrimitive(primitive, currSkinnedVertex, primitiveVertexCursor);
+                VerticesForPrimitive(primitive, currSkinnedVertex, currIndices, primitiveVertexCursor);
                 JointsForPrimitive(primitive, currSkinnedVertex);
                 WeightsForPrimitive(primitive, currSkinnedVertex);
                 currSkinnedVertex += primitive->numVertices;
@@ -651,7 +637,7 @@ s32 BakeSceneMeshesAndAnimations(SceneBundle* gltf, void** outVertexHeapPtr, voi
             }
             else
             {
-                SurfaceVerticesForPrimitive(primitive, currSurfaceVertex, primitiveVertexCursor);
+                SurfaceVerticesForPrimitive(primitive, currSurfaceVertex, currIndices, primitiveVertexCursor);
                 currSurfaceVertex += primitive->numVertices;
                 // Optimize LOD0 index order before LODs are generated from it.
                 OptimizePrimitiveVertexCache(currIndices, primitive->numIndices, primitive->numVertices, primitiveVertexCursor);

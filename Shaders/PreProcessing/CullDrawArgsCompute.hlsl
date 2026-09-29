@@ -258,7 +258,7 @@ uint SelectLOD(in ProjectedAABB proj, float indexCountModifier)
 uint SelectLODFromDistance(float3 worldCenter, float3 cameraPos, float indexCountModifier)
 {
     float dist = distance(worldCenter, cameraPos) - LOD_NEAR_DISTANCE;
-    int lodOffset = int(floor(dist * 0.18f * lodDistanceModifier * indexCountModifier));
+    int lodOffset = int(floor(dist * 0.2f * lodDistanceModifier * indexCountModifier));
     return (uint)clamp(lodOffset, 0, int(MESH_LOD_COUNT) - 1);
 }
 

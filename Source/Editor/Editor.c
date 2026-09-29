@@ -399,7 +399,7 @@ static void DrawGraphicsWindow()
                 UICheckbox("Show MLAA edge mask", &settings->showMLAAEdges);
                 UICheckbox("Terrain wireframe", &settings->terrainWireframe);
                 UISliderFloatValue("Terrain LOD factor", &settings->terrainLodFactor, 0.5f, 2.0f, 2);
-                UISliderFloatValue("LOD distance", &settings->lodDistanceModifier, 0.05f, 4.0f, 2);
+                UISliderFloatValue("LOD distance", &settings->lodDistanceModifier, 0.05f, 16.0f, 2);
                 // scene resolution multiplier, the ui stays at native resolution
                 UIEditFloat("Render scale", &settings->renderScale, 0.25f, 2.0f, 0.25, 3);
             }
@@ -460,7 +460,7 @@ static void DrawGraphicsWindow()
                 UISectionHeader("Height fog");
                 UICheckbox("Enable height fog", &settings->enableHeightFog);
                 UISliderFloatValue("Density"    , &settings->fogDensity   , 0.00f,  1.00f, 2);
-                UISliderFloatValue("Base height" , &settings->fogHeight    , -50.0f, 50.00f, 1);
+                UISliderFloatValue("Base height", &settings->fogHeight    , -50.0f, 50.00f, 1);
                 UISliderFloatValue("Falloff"    , &settings->fogFalloff   , 0.001f, 0.50f, 3);
                 UISliderFloatValue("Sun scatter", &settings->fogSunScatter, 0.00f,  1.00f, 2);
                 UIColorEdit3("Color", settings->fogColor);
@@ -508,9 +508,9 @@ static void DrawGraphicsWindow()
                     .godRaySamples = 64.0f,
                     .enableHeightFog = true,
                     .fogColor = { 0.62f, 0.70f, 0.80f },
-                    .fogDensity = 0.1f,
+                    .fogDensity = 0.05f,
                     .fogHeight = 0.0f,
-                    .fogFalloff = 0.04f,
+                    .fogFalloff = 0.02f,
                     .fogSunScatter = 0.6f,
                     .hbaoDirections = 8.0f,
                     .lodDistanceModifier = 1.0f,

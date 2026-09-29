@@ -102,6 +102,8 @@ void EventCallback(const SDL_Event* event)
             break;
         }
         case SDL_EVENT_MOUSE_MOTION:
+            PlatformCtx.MousePosX = event->motion.x;
+            PlatformCtx.MousePosY = event->motion.y;
             PlatformCtx.MouseMotionX = event->motion.xrel;
             PlatformCtx.MouseMotionY = event->motion.yrel;
             break;

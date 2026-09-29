@@ -150,12 +150,26 @@ f16_2 DecodeDiamond(f16 p)
     return normalize(v);
 }
 
-// https://www.jeremyong.com/graphics/2023/01/09/tangent-spaces-and-diamond-encoding/
-f16_3 DecodeTangent(f16_3 normal, f16 diamond_tangent)
+bool TangentUsesYBranch(uint packed)
 {
-    f16_3 t1_a = normalize(f16_3( normal.y, -normal.x, f16(0.0)));
-    f16_3 t1_b = normalize(f16_3( normal.z,  f16(0.0), -normal.x));
-    f16_3 t1   = select(abs(normal.y) > abs(normal.z), t1_a, t1_b);
+    int ix = (int)(packed << 21) >> 21;
+    int iy = (int)(packed << 10) >> 21;
+    int ax = abs(ix);
+    int ay = abs(iy);
+    int s = ax + ay;
+    int absY = s <= 1023 ? ay : 1023 - ax;
+    int absZ = abs(1023 - s);
+    return absY > absZ;
+}
+
+// https://www.jeremyong.com/graphics/2023/01/09/tangent-spaces-and-diamond-encoding/
+f16_3 DecodeTangent(f16_3 normal, f16 diamond_tangent, bool useY)
+{
+    f16_3 t1;
+    if (useY)
+        t1 = normalize(f16_3(normal.y, -normal.x, f16(0.0)));
+    else
+        t1 = normalize(f16_3(normal.z, f16(0.0), -normal.x));
 
     f16_2 packed_tangent = DecodeDiamond(diamond_tangent);
     return packed_tangent.x * t1 + packed_tangent.y * cross(t1, normal);
@@ -167,8 +181,8 @@ void UnpackNormalTangent(uint packed, out f16_3 normal, out f16_3 tangent)
         f16((int)(packed << 21) >> 21) * f16(1.0 / 1023.0),
         f16((int)(packed << 10) >> 21) * f16(1.0 / 1023.0));
     f16 diamond = f16((packed >> 22) & 0x1FFu) * f16(1.0 / 511.0);
-    normal      = OctDecode(oct);
-    tangent     = DecodeTangent(normal, diamond);
+    normal  = OctDecode(oct);
+    tangent = DecodeTangent(normal, diamond, TangentUsesYBranch(packed));
 }
 
 f16_3 UnpackNormal(uint packed)
@@ -208,10 +222,10 @@ f16_2 OctEncode(f16_3 n)
 }
 
 // https://www.jeremyong.com/graphics/2023/01/09/tangent-spaces-and-diamond-encoding/
-f16 EncodeTangentDiamond(f16_3 normal, f16_3 tangent)
+f16 EncodeTangentDiamond(f16_3 normal, f16_3 tangent, bool useY)
 {
     f16_3 t1;
-    if (abs(normal.y) > abs(normal.z))
+    if (useY)
         t1 = f16_3(normal.y, -normal.x, f16(0.0));
     else
         t1 = f16_3(normal.z, f16(0.0), -normal.x);
@@ -255,7 +269,7 @@ uint PackNormalTangent(f16_3 normal, f16_4 tangent)
 {
     normal = normalize(normal);
     f16_2 oct = OctEncode(normal);
-    f16 diamond  = EncodeTangentDiamond(normal, tangent.xyz);
+    f16 diamond  = EncodeTangentDiamond(normal, tangent.xyz, true);
     uint packedOct = PackXY11Z10SnormToU32(f16_3(oct.x, oct.y, 0.0)) & 0x3FFFFFu;
     uint packedDiamond = uint(saturate(diamond) * 511.0 + 0.5) & 0x1FFu;
     uint handedness = (tangent.w < 0.0) ? 1u : 0u;
@@ -267,7 +281,7 @@ uint PackTangentSpace25(f16_3 normal, f16_3 tangent, f16 handedness)
     normal = normalize(normal);
     f16_2 oct = OctEncode(normal);
     uint2 n = uint2(saturate(oct * f16(0.5) + f16(0.5)) * 511.0 + 0.5) & 0x1FFu;
-    uint td = uint(saturate(EncodeTangentDiamond(normal, normalize(tangent))) * 63.0 + 0.5) & 0x3Fu;
+    uint td = uint(saturate(EncodeTangentDiamond(normal, normalize(tangent), true)) * 63.0 + 0.5) & 0x3Fu;
     uint h = handedness < f16(0.0) ? 1u : 0u;
     return n.x | (n.y << 9) | (td << 18) | (h << 24);
 }
@@ -276,7 +290,7 @@ void UnpackTangentSpace25(uint packed, out f16_3 normal, out f16_3 tangent, out 
 {
     f16_2 oct = f16_2(f16(packed & 0x1FFu), f16((packed >> 9) & 0x1FFu)) * f16(1.0 / 511.0) * f16(2.0) - f16(1.0);
     normal = OctDecode(oct);
-    tangent = DecodeTangent(normal, f16((packed >> 18) & 0x3Fu) * f16(1.0 / 63.0));
+    tangent = DecodeTangent(normal, f16((packed >> 18) & 0x3Fu) * f16(1.0 / 63.0), true);
     handedness = (packed & 0x1000000u) != 0u ? f16(-1.0) : f16(1.0);
 }
 

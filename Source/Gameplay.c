@@ -150,7 +150,7 @@ static void UpdateCharacter()
     if (GetKeyPressed(SDLK_J) || GetKeyPressed(SDLK_K))
     {
         characterActive = !characterActive;
-        character->position = VecZero();
+        character->position = VecSetR(0.0f, 10.0f, 0.0f, 0.0f);
         verticalSpeed = 0.0f;
         grounded = false;
         CameraMode wantedMode = GetKeyPressed(SDLK_K) ? CameraMode_FPS : CameraMode_TPS;

@@ -145,11 +145,30 @@ static inline v128f OctDecode(v128f f)
     return Vec3NormVSafe(VecSetR(x, y, z, 0.0f));
 }
 
+static inline s32 TangentUsesYBranch(u32 packedOct)
+{
+    s32 ix   = (s32)(packedOct << 21) >> 21;
+    s32 iy   = (s32)(packedOct << 10) >> 21;
+    s32 ax   = ix < 0 ? -ix : ix;
+    s32 ay   = iy < 0 ? -iy : iy;
+    s32 s    = ax + ay;
+    s32 absY = s <= 1023 ? ay : 1023 - ax;
+    s32 absZ = s <= 1023 ? 1023 - s : s - 1023;
+    return absY > absZ;
+}
+
+static inline v128f DecodeOct22(u32 packedOct)
+{
+    f32 ox = (f32)((s32)(packedOct << 21) >> 21) * (1.0f / 1023.0f);
+    f32 oy = (f32)((s32)(packedOct << 10) >> 21) * (1.0f / 1023.0f);
+    return OctDecode(VecSetR(ox, oy, 0.0f, 0.0f));
+}
+
 // https://www.jeremyong.com/graphics/2023/01/09/tangent-spaces-and-diamond-encoding/
-static inline float EncodeTangentDiamond(v128f normal, v128f tangent)
+static inline float EncodeTangentDiamond(v128f normal, v128f tangent, s32 useY)
 {
     v128f t1;
-    if (Absf32(VecGetY(normal)) > Absf32(VecGetZ(normal)))
+    if (useY)
         t1 = VecSetR(VecGetY(normal), -VecGetX(normal), 0.0f, 0.0f);
     else
         t1 = VecSetR(VecGetZ(normal), 0.0f, -VecGetX(normal), 0.0f);
@@ -165,8 +184,8 @@ static inline float EncodeTangentDiamond(v128f normal, v128f tangent)
 purefn u32 VCALL PackNormalTangent(v128f normal, v128f tangent)
 {
     v128f oct          = OctEncode(normal);
-    float diamond      = EncodeTangentDiamond(normal, tangent);
     u32 packedOct      = PackXY11Z10Snorm(VecSetR(VecGetX(oct), VecGetY(oct), 0.0f, 0.0f)) & 0x3FFFFFu;
+    float diamond      = EncodeTangentDiamond(DecodeOct22(packedOct), tangent, TangentUsesYBranch(packedOct));
     u32 packedDiamond  = (u32)(Saturatef32(diamond) * 511.0f + 0.5f) & 0x1FFu;
     u32 handedness     = VecGetW(tangent) < 0.0f ? 1u : 0u;
     return packedOct | (packedDiamond << 22) | (handedness << 31);

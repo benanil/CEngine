@@ -101,6 +101,7 @@ target_sources(${EXECUTABLE_NAME} PRIVATE
     Source/Main.c
     Source/DataStructures/Array.c
     Extern/tlsf.c
+    Extern/mikktspace.c
     Extern/ExternAll.cpp
 
     Source/Animation.c
