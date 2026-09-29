@@ -19,6 +19,10 @@ extern Graphics gGFX; // cpu mega buffers, declared per translation unit as else
 
 #define PHYSICS_SETTINGS_PATH "PhysicsSettings.txt"
 
+
+#define PHYSICS_TERRAIN_USERDATA (1ull << 32ull)
+#define PHYSICS_FOLIAGE_USERDATA (((u64)PhysBit_Foliage) << 32ull)
+
 PhysicsSettings g_PhysicsSettings = {
     .gravity = { 0.0f, -9.81f, 0.0f },
     .substepCount = 4,
@@ -193,9 +197,6 @@ void Scene_DestroyPhysics(Scene* scene)
     scene->physicsColliderBuildResult = 0;
 }
 
-b3Vec3 v128fToB3Vec3(v128f v) { return (b3Vec3){ VecGetX(v), VecGetY(v), VecGetZ(v) }; }
-b3Vec3 Float3ToB3Vec3(float3 v) { return (b3Vec3){ v.x, v.y, v.z }; }
-
 b3Quat ToB3Quat(v128f q)
 {
     f32 lenSq = VecGetX(VecLenSq(q));
@@ -208,8 +209,6 @@ b3Quat ToB3Quat(v128f q)
     return res;
 }
 
-float3 B3VecToFloat3(b3Pos p) { return (float3){p.x, p.y, p.z }; }
-v128f B3VecTov128f(b3Pos p) { return VecSetR(p.x, p.y, p.z, 0.0f); }
 u64 B3QuatToEntityRotation(b3Quat q) { return PackQuaternionS16NormRet(VecSetR(q.v.x, q.v.y, q.v.z, q.s)); }
 
 static u32 PhysicsCountMeshes(Scene* scene);
@@ -223,24 +222,24 @@ static b3BodyId* PhysicsEntitySlot(Scene* scene, const Entity* entity)
     return &scene->physicsBodies[entity->sparseIdx];
 }
 
-static uintptr_t PhysicsBodyUserData(u32 sparseIdx)
+static uintptr_t PhysicsBodyUserData(EntityID entityID, bool isFoliage)
 {
-    return ((uintptr_t)sparseIdx << 1u);
+    return (uintptr_t)entityID | (((uintptr_t)isFoliage) * PHYSICS_FOLIAGE_USERDATA);
 }
-
-// top bit tags a body as terrain (vs. the sparseIdx << 1 encoding below). No
-// chunk-specific payload anymore - chunks own their body/mesh handles directly instead of
-// indexing into a shared slot array, so there's no slot number left to stash here.
-#define PHYSICS_TERRAIN_USERDATA ((void*)((uintptr_t)1u << (sizeof(uintptr_t) * 8u - 1u)))
 
 static bool PhysicsUserDataIsTerrain(void* userData)
 {
-    return (((uintptr_t)userData) & ((uintptr_t)1u << (sizeof(uintptr_t) * 8u - 1u))) != 0u;
+    return (((uintptr_t)userData) & PHYSICS_TERRAIN_USERDATA) != 0u;
 }
 
-static u32 PhysicsUserDataSparse(void* userData)
+static EntityID PhysicsUserDataEntity(void* userData)
 {
-    return (u32)((uintptr_t)userData >> 1u);
+    return (EntityID)((uintptr_t)userData & 0xFFFFFFFFull);
+}
+
+static bool PhysicsUserDataIsFoliage(void* userData)
+{
+    return ((uintptr_t)userData & PHYSICS_FOLIAGE_USERDATA) != 0;
 }
 
 void Scene_UpdatePhysics(Scene* scene, float deltaTime)
@@ -271,7 +270,7 @@ void Scene_UpdatePhysics(Scene* scene, float deltaTime)
     {
         const b3BodyMoveEvent* move = &events.moveEvents[i];
         RenderSet* set = &scene->surfaceSet;
-        u32 sparseIdx = PhysicsUserDataSparse(move->userData);
+        u32 sparseIdx = PhysicsUserDataEntity(move->userData);
         u32 dense = set->sparseID[sparseIdx];
         Entity* entity = &set->entities[dense];
         entity->position = B3VecTov128f(move->transform.p);
@@ -405,10 +404,10 @@ static void Scene_PhysicsCreateEntityBody(Scene* scene, const Entity* entity)
     bd.type       = b3_staticBody;
     bd.position   = v128fToB3Vec3(entity->position);
     bd.rotation   = ToB3Quat(UnpackQuaternionS16Norm1(entity->rotation));
-    bd.userData   = (void*)PhysicsBodyUserData(entity->sparseIdx);
+    bd.userData   = (void*)PhysicsBodyUserData(GetEntityID(entity), scene->isFoliageScene);
     b3BodyId body = b3CreateBody(gPhysicsWorld, &bd);
     b3ShapeDef sd = b3DefaultShapeDef();
-    sd.filter.categoryBits = PHYS_CAT_SURFACE;
+    sd.filter.categoryBits = scene->isFoliageScene ? PhysBit_Foliage : PhysBit_Surface;
     b3ShapeId shape = b3CreateMeshShape(body, &sd, mesh, v128fToB3Vec3(EntityUnpackWorldScale(entity->scale)));
     if (B3_IS_NULL(shape))
     {
@@ -508,11 +507,11 @@ bool Physics_SyncTerrainChunkMesh(u64* inOutBody, struct b3MeshData** inOutMesh,
     {
         b3BodyDef bd = b3DefaultBodyDef();
         bd.type     = b3_staticBody;
-        bd.userData = PHYSICS_TERRAIN_USERDATA;
+        bd.userData = (void*)(u64)PHYSICS_TERRAIN_USERDATA;
         body = b3CreateBody(gPhysicsWorld, &bd);
         
         b3ShapeDef sd = b3DefaultShapeDef();
-        sd.filter.categoryBits = PHYS_CAT_TERRAIN;
+        sd.filter.categoryBits = PhysBit_Terrain;
         b3ShapeId shape = b3CreateMeshShape(body, &sd, mesh, b3Vec3_one);
         if (B3_IS_NULL(shape))
         {
@@ -878,7 +877,7 @@ void Scene_BuildStaticCollidersAsync(Scene* scene, AsyncCallback callback)
 // box3d picking against the static surface colliders. mirrors the BVHHit contract of the cpu-BVH
 // path so BVH_RaycastScene can keep whichever of (static physics, skinned cpu-BVH) hit is nearer.
 // only writes *hit when the physics hit is closer than the current hit->hit.t. out: 1 when written.
-s32 Scene_PhysicsRaycastPick(const Scene* scene, v128f origin, v128f dir, float rayLen, BVHHit* hit, u64 mask)
+s32 Scene_PhysicsRaycastPick(v128f origin, v128f dir, float rayLen, BVHHit* hit, u64 mask)
 {
     b3QueryFilter filter = b3DefaultQueryFilter();
     filter.maskBits = mask;
@@ -900,12 +899,16 @@ s32 Scene_PhysicsRaycastPick(const Scene* scene, v128f origin, v128f dir, float 
         hit->skinnedSet = 0xFFFFFFFFu;
         hit->bundleIdx  = 0xFFFFFFFFu;
         hit->groupIdx   = 0u;
-        hit->entityIdx  = 0u; // no chunk id in userData anymore, see PHYSICS_TERRAIN_USERDATA
+        hit->groupLocalID  = 0u; // no chunk id in userData anymore, see PHYSICS_TERRAIN_USERDATA
         hit->triIndex   = (u32)r.triangleIndex;
         return 1;
     }
 
-    u32 sparse = PhysicsUserDataSparse(userData);
+    EntityID entityID = PhysicsUserDataEntity(userData);
+    u32 sparse = entityID & 0x00FFFFFFu;
+    bool isFoliage = PhysicsUserDataIsFoliage(userData);
+    Scene* scene = isFoliage ? Foliage_GetScene() : GetActiveScene();
+    hit->scene = scene;
     const RenderSet* set = &scene->surfaceSet;
     if (sparse >= set->maxEntities) return 0;
     u32 dense = set->sparseID[sparse];
@@ -919,7 +922,12 @@ s32 Scene_PhysicsRaycastPick(const Scene* scene, v128f origin, v128f dir, float 
     hit->hit.v     = 0.0f;
     hit->skinnedSet = 0;
     hit->groupIdx  = groupIdx;
-    hit->entityIdx = dense - set->primitiveGroups[groupIdx].entityOffset;
+    hit->groupLocalID = dense - set->primitiveGroups[groupIdx].entityOffset;
+    hit->entityID  = entityID;
     hit->triIndex  = (u32)r.triangleIndex;
+    // resolve the render group back to the scene bundle for reporting. the group carries its
+    // owning render bundle slot and the scene keeps a reverse map, so this is O(1).
+    if (hit->skinnedSet != 0xFFFFFFFFu || hit->bundleIdx != 0xFFFFFFFFu)
+        hit->bundleIdx = Scene_FindBundleForRenderGroup(scene, hit->skinnedSet != 0, hit->groupIdx);
     return 1;
 }

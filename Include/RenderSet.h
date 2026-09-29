@@ -123,7 +123,7 @@ static inline u32 GetEntityGen(const Entity* entity) {
     return entity->parentIdx >> 24;
 }
 
-static inline u32 GetEntityID(const Entity* entity) {
+static inline EntityID GetEntityID(const Entity* entity) {
     return entity->sparseIdx | (entity->parentIdx & 0xFF000000u);
 }
 

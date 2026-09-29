@@ -29,12 +29,15 @@ typedef struct BVHTri_
 typedef struct BVHHit_
 {
     RayHit hit;
-    u32 triIndex;     // bundle local triangle record
-    u32 skinnedSet;   // which render set the entity lives in
-    u32 groupIdx;     // primitive group inside the set
-    u32 entityIdx;    // group local entity
-    u32 bundleIdx;    // scene bundle
+    u32 triIndex;      // bundle local triangle record
+    // todo(anil) all this can be u16, and only entityID is enough
+    u32 skinnedSet;    // which render set the entity lives in
+    u32 groupIdx;      // primitive group inside the set
+    u32 groupLocalID;  // group local entity
+    u32 bundleIdx;     // scene bundle
+    EntityID entityID;
     b3Vec3 normal;
+    Scene* scene; // foliage or active scene
 } BVHHit;
 
 static inline v128f BVH_HitPositionV(v128f origin, v128f dir, const BVHHit* hit)
@@ -61,8 +64,8 @@ s32 BVH_RaycastScene(const struct Scene_* scene, v128f origin, v128f dir, BVHHit
 
 // box3d raycast against the static surface colliders, fills *hit in the same BVHHit contract when the
 // physics hit is nearer than hit->hit.t. implemented in Physics.c. out: 1 when *hit is written
-// mask: PHYS_CAT_TERRAIN | PHYS_CAT_SURFACE
-s32 Scene_PhysicsRaycastPick(const struct Scene_* scene, v128f origin, v128f dir, float rayLen, BVHHit* hit, u64 mask);
+// mask: PhysBit_Surface | PhysBit_Terrain
+s32 Scene_PhysicsRaycastPick(v128f origin, v128f dir, float rayLen, BVHHit* hit, u64 mask);
 
 #if defined(__cplusplus)
 }

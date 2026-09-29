@@ -140,7 +140,7 @@ s32 DemoScene_Create(void)
 void DemoScene_Update(f32 deltaTime)
 {
     // editor scenes own their lights, only drive the demo lights while the demo renders
-    if (Scene_GetActive() != &g_DemoScene) return;
+    if (GetActiveScene() != &g_DemoScene) return;
     UpdateDemoLights();
 }
 

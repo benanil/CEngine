@@ -36,6 +36,7 @@ const char* GetActiveScenePath()
     return g_ActiveScenePath;
 }
 
+
 static void SceneTerrainPath(const char* scenePath, char* out, u32 outSize)
 {
     NormalizePath(scenePath, out, outSize);
@@ -161,7 +162,7 @@ void Scene_Update(float deltaTime)
 {
     Scene_AsyncUpdate();
 
-    Scene* activeScene = Scene_GetActive();
+    Scene* activeScene = GetActiveScene();
     if (activeScene == NULL) return;
     
     Scene_UpdatePhysics(activeScene, deltaTime);
@@ -193,7 +194,7 @@ Scene* Scene_OpenActive(const char* path, SceneFileData* data)
 
 s32 Scene_SaveActive(void)
 {
-    Scene* scene = Scene_GetActive();
+    Scene* scene = GetActiveScene();
     if (!scene || g_ActiveScenePath[0] == '\0') return 0;
     if (!SceneSerializer_Save(scene, g_ActiveScenePath)) return 0;
     SceneSaveTerrainSidecar(g_ActiveScenePath);
@@ -202,7 +203,7 @@ s32 Scene_SaveActive(void)
 
 s32 Scene_SaveActiveAs(const char* path)
 {
-    Scene* scene = Scene_GetActive();
+    Scene* scene = GetActiveScene();
     if (!scene || !path || path[0] == '\0') return 0;
 
     char normalized[512];
@@ -674,7 +675,7 @@ void Scene_ClearEntities(Scene* scene)
 
 void Scene_SubmitLights(void)
 {
-    Scene* scene = Scene_GetActive();
+    Scene* scene = GetActiveScene();
     if (scene && scene->numLights)
         RendererSetLights(scene->lights, scene->numLights);
 }
@@ -685,7 +686,7 @@ s32 Scene_MakeActive(Scene* scene)
     return Scene_Activate(scene);
 }
 
-Scene* Scene_GetActive(void)
+Scene* GetActiveScene(void)
 {
     return g_ActiveScene;
 }

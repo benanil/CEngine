@@ -125,7 +125,7 @@ static u32 GizmoTargetSparseId(const Scene* scene, const GizmoTarget* target)
 // ctrl click: toggles the object in the selection
 void EditorGizmoAddTarget(u32 skinned, u32 groupIdx, u32 entityIdx)
 {
-    Scene* scene = Scene_GetActive();
+    Scene* scene = GetActiveScene();
     if (!scene) return;
 
     GizmoTarget added = (GizmoTarget){ skinned, groupIdx, entityIdx };
@@ -146,7 +146,7 @@ void EditorGizmoAddTarget(u32 skinned, u32 groupIdx, u32 entityIdx)
 
 bool EditorGizmoDuplicateSelected(void)
 {
-    Scene* scene = Scene_GetActive();
+    Scene* scene = GetActiveScene();
     if (!scene || gizmoNumTargets == 0u) return false;
 
     static GizmoDuplicateRecord records[GIZMO_MAX_MEMBERS];
@@ -211,7 +211,7 @@ bool EditorGizmoDuplicateSelected(void)
 
 bool EditorGizmoDeleteSelected(void)
 {
-    Scene* scene = Scene_GetActive();
+    Scene* scene = GetActiveScene();
     if (!scene || gizmoNumTargets == 0u) return false;
 
     u32 surfaceSparse[GIZMO_MAX_TARGETS];
@@ -564,7 +564,7 @@ static void GizmoApplyMembers(Scene* scene, const v128f axes[3], f32 mouseY)
 // out: true while the gizmo owns the mouse, the caller skips picking then
 bool EditorGizmoUpdate(Camera* camera)
 {
-    Scene* scene = Scene_GetActive();
+    Scene* scene = GetActiveScene();
     if (gizmoNumTargets == 0 || !scene)
         return false;
 

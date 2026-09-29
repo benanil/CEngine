@@ -181,7 +181,7 @@ s32 tRaycastField(float3 origin, float3 dir, f32 maxDist, BVHHit* hit)
             hit->hit.u = 0.0f;
             hit->hit.v = 0.0f;
             hit->triIndex = 0u;
-            hit->entityIdx = 0xFFFFFFFFu;
+            hit->groupLocalID = 0xFFFFFFFFu;
             hit->groupIdx = 0u;
             hit->skinnedSet = 0xFFFFFFFFu;
             hit->bundleIdx = 0xFFFFFFFFu;

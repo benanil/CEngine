@@ -1,12 +1,14 @@
 
-
 #include <box3d/box3d.h>
+
 #include "Include/Scene.h"
+#include "Include/Terrain.h"
 #include "Include/Camera.h"
 #include "Include/UIRenderer.h"
 #include "Include/UIWindow.h"
 #include "Include/BVH.h"
 #include "Include/AssetManager.h"
+#include "Math/Bitpack.h"
 
 typedef struct PlaneCapture
 {
@@ -68,7 +70,7 @@ static void CharacterUI()
 
 void OpenSceneCallback(const char* path)
 {
-    Scene* scene = Scene_GetActive();
+    Scene* scene = GetActiveScene();
     if (!capsuleBundle) capsuleBundle  = GenerateCapsule(0.5f, 1.8f, 16u);
     u32 capsuleId  = Scene_AddBundle(scene, capsuleBundle, "Character");
     characterEntity = Scene_Spawn(scene, capsuleId, VecSetR(0.0f, 0.0f, 0.0f, 0.f), QIdentity(), VecOne());
@@ -94,7 +96,7 @@ static b3Capsule MakeMover(void)
 static b3QueryFilter MakeFilter(void)
 {
     b3QueryFilter filter;
-    filter.categoryBits = PHYS_CAT_SURFACE | PHYS_CAT_TERRAIN;
+    filter.categoryBits = ~PhysBit_Player;
     filter.maskBits = ~0;
     filter.id = 0;
     filter.name = NULL;
@@ -139,7 +141,7 @@ static bool FindGround(b3WorldId worldId, b3Pos origin, b3Capsule* mover, b3Quer
 
 static void UpdateCharacter()
 {
-    Scene* scene = Scene_GetActive();
+    Scene* scene = GetActiveScene();
     Entity* character = RenderSet_GetEntity(&scene->surfaceSet, characterEntity);
     if (character == NULL)
     {
@@ -252,8 +254,28 @@ static void UpdateCharacter()
     g_Camera.target = g_Camera.position;
 }
 
+static void UpdatePicking()
+{
+    BVHHit hit = {};
+    v128f origin = Vec3Load(&g_Camera.position.x);
+    v128f direction = VecNorm(Vec3Load(&g_Camera.front));
+    hit.hit.t = FLT_MAX;
+
+    if (GetMouseDown(MouseButton_Left) && Scene_PhysicsRaycastPick(origin, direction, 10.0f, &hit, PhysBit_Foliage))
+    {
+        Scene* scene = Foliage_GetScene();
+        float dt = GetDeltaTime();
+        Entity* entity = RenderSet_GetEntity(&scene->surfaceSet, hit.entityID);
+        Quaternion rotation = UnpackQuaternionS16Norm1(entity->rotation);
+        rotation = QMul(rotation, QFromYAngle(dt * 10.0f));
+        PackQuaternionS16Norm(rotation, &entity->rotation);
+        Entity_SyncPhysicsBody(scene, entity);
+    }
+}
+
 void Gameplay_Update()
 {
+    UpdatePicking();
     UpdateCharacter();
     CharacterUI();
 }

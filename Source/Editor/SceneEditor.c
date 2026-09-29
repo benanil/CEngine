@@ -113,7 +113,7 @@ Scene* EditorNewScene(void)
 
 static void ImportMeshToSceneFinish(SceneAsyncRequest* request)
 {
-    Scene* scene = Scene_GetActive();
+    Scene* scene = GetActiveScene();
     if (!scene) scene = EditorNewScene();
 
     u32 bundleIdx = Scene_AddBundleFinalize(scene, request->sceneBundleStage);
@@ -278,7 +278,7 @@ static void ImportDetailSetAnimationBoundsInfo(ImportDetailInfo* info, const Sce
 
 static bool EditorReadBundleInfoFromScene(const char* path, ImportDetailInfo* info)
 {
-    Scene* scene = Scene_GetActive();
+    Scene* scene = GetActiveScene();
     if (!scene) return false;
 
     u32 pathLen = (u32)StringLength(path) + 1u;
@@ -531,7 +531,7 @@ static void SceneImportDetailPopup(void)
         if (UIButton("Import", (Clay_Dimensions){ 96.0f, 30.0f }, false))
         {
             ParseFloat(importDetailScaleText, &importDetailScale);
-            Scene* scene = Scene_GetActive();
+            Scene* scene = GetActiveScene();
             if (!scene) scene = EditorNewScene();
             u32 bundleIdx = Scene_AddBundleFromPath(scene, importDetailPath);
             if (bundleIdx != INVALID_BUNDLE)
@@ -560,7 +560,7 @@ void EditorPickingUpdate(Camera* camera)
 {
     if (!GetMousePressed(MouseButton_Left) || !EditorSceneInteractAllowed()) return;
 
-    Scene* scene = Scene_GetActive();
+    Scene* scene = GetActiveScene();
     if (!scene) return;
 
     RayV ray = ScreenPointToRay(camera, EditorSceneMouse());
@@ -571,7 +571,7 @@ void EditorPickingUpdate(Camera* camera)
         if (!GetKeyDown(SDLK_LCTRL)) EditorGizmoClear();
         return;
     }
-
+    scene = hit.scene;
     const RenderSet* set = hit.skinnedSet ? &scene->skinnedSet : &scene->surfaceSet;
     const PrimitiveGroup* group = &set->primitiveGroups[hit.groupIdx];
     const SceneBundleRef* ref = hit.bundleIdx < scene->numBundles ? &scene->bundleRefs[hit.bundleIdx] : NULL;
@@ -583,18 +583,18 @@ void EditorPickingUpdate(Camera* camera)
     {
         sceneSelectedBundle = hit.bundleIdx;
         sceneSelectedNode = -1;
-        SceneSelectObject(hit.skinnedSet, hit.groupIdx, hit.entityIdx, hit.bundleIdx);
+        SceneSelectObject(hit.skinnedSet, hit.groupIdx, hit.groupLocalID, hit.bundleIdx);
     }
     // the gizmo submits the outlines of the whole selection every frame
     if (GetKeyDown(SDLK_LCTRL)) // ctrl click toggles the object in the multi selection
-        EditorGizmoAddTarget(hit.skinnedSet, hit.groupIdx, hit.entityIdx);
+        EditorGizmoAddTarget(hit.skinnedSet, hit.groupIdx, hit.groupLocalID);
     else
-        EditorGizmoSetTarget(hit.skinnedSet, hit.groupIdx, hit.entityIdx);
+        EditorGizmoSetTarget(hit.skinnedSet, hit.groupIdx, hit.groupLocalID);
 }
 
 void EditorSceneHotkeys(void)
 {
-    Scene* scene = Scene_GetActive();
+    Scene* scene = GetActiveScene();
     if (!scene) return;
 
     bool ctrl = GetKeyDown(SDLK_LCTRL) || GetKeyDown(SDLK_RCTRL);
@@ -617,7 +617,7 @@ void EditorSceneHotkeys(void)
 
 static void EditorSaveSceneAs(const char* name)
 {
-    Scene* scene = Scene_GetActive();
+    Scene* scene = GetActiveScene();
     if (!scene || name[0] == '\0') return;
 
     CreateFolder(EDITOR_SCENE_FOLDER);
@@ -639,7 +639,7 @@ static void EditorSaveSceneAs(const char* name)
 
 static void EditorSaveActiveScene(void)
 {
-    Scene* scene = Scene_GetActive();
+    Scene* scene = GetActiveScene();
     if (!scene || Scene_GetActivePath()[0] == '\0') return;
     if (Scene_SaveActive())
     {
@@ -894,7 +894,7 @@ static void SceneNodeTree(const SceneBundle* bundle, u32 bundleIdx, s32 nodeIdx,
     {
         sceneSelectedBundle = bundleIdx;
         sceneSelectedNode = nodeIdx;
-        if (selected) SceneSelectNodeInViewport(Scene_GetActive(), bundleIdx, nodeIdx);
+        if (selected) SceneSelectNodeInViewport(GetActiveScene(), bundleIdx, nodeIdx);
     }
     if (!open) return;
 
@@ -943,7 +943,7 @@ static void SceneBundleTree(const Scene* scene, u32 bundleIdx)
 static void SceneEventDuplicateBundle(void* unused)
 {
     (void)unused;
-    Scene* scene = Scene_GetActive();
+    Scene* scene = GetActiveScene();
     if (!scene || sceneSelectedBundle >= scene->numBundles || !scene->bundleRefs[sceneSelectedBundle].bundle) return;
 
     const SceneBundleRef* ref = &scene->bundleRefs[sceneSelectedBundle];
@@ -973,7 +973,7 @@ static void SceneEventDuplicateBundle(void* unused)
 static void SceneEventDeleteBundle(void* unused)
 {
     (void)unused;
-    Scene* scene = Scene_GetActive();
+    Scene* scene = GetActiveScene();
     Scene_RemoveBundle(scene, sceneSelectedBundle);
     sceneSelectedBundle = INVALID_BUNDLE;
     sceneSelectedNode = -1;
@@ -983,7 +983,7 @@ static void SceneEventDeleteBundle(void* unused)
 
 static void SceneAddPrimitive(void* data)
 {
-    Scene* scene = Scene_GetActive();
+    Scene* scene = GetActiveScene();
     MeshType meshType = (MeshType)((u64)data);
     u32 bundle = Scene_AddBundleCached(scene, GetUnitPrimitive(meshType), GetPrimitiveName(meshType));
     Scene_Spawn(scene, bundle, VecZero(), QIdentity(), VecOne());
@@ -999,7 +999,7 @@ static bool SceneResolveSelectedObject(Scene* scene, RenderSet** outSet, Primiti
 
 static void SceneDeleteSelectedObject(void)
 {
-    Scene* scene = Scene_GetActive();
+    Scene* scene = GetActiveScene();
     RenderSet* set;
     PrimitiveGroup* group;
     Entity* entity;
@@ -1019,7 +1019,7 @@ static void SceneDeleteSelectedObject(void)
 static void SceneEventDeleteNode(void* unused)
 {
     (void)unused;
-    Scene* scene = Scene_GetActive();
+    Scene* scene = GetActiveScene();
     if (!scene || sceneSelectedBundle >= scene->numBundles || sceneSelectedNode < 0
         || !scene->bundleRefs[sceneSelectedBundle].bundle) return;
 
@@ -1471,7 +1471,7 @@ static bool SceneLightPlaneHit(Camera* camera, float2 mouse, f32 depth, v128f* o
 
 bool EditorLightGizmoUpdate(Camera* camera)
 {
-    Scene* scene = Scene_GetActive();
+    Scene* scene = GetActiveScene();
     if (!scene || scene->numLights == 0u) return false;
 
     float2 mouse = EditorSceneMouse();
@@ -1521,7 +1521,7 @@ bool EditorLightGizmoUpdate(Camera* camera)
 
 void DrawSceneLightGizmos(Camera* camera)
 {
-    Scene* scene = Scene_GetActive();
+    Scene* scene = GetActiveScene();
     if (!scene) return;
 
     float2 origin = EditorSceneViewOrigin();
@@ -1760,7 +1760,7 @@ void DrawSceneWindow(bool* open)
     Clay_ElementId windowID = (Clay_ElementId) { .id = StringToHash("SceneWindow", 5381u) };
     if (UIBeginWindowId(windowID, "Scene", (float2) { 18.0f, 18.0f }, (float2) { 500.0f, 760.0f }, open, UIWindowFlags_RightClickable))
     {
-        Scene* scene = Scene_GetActive();
+        Scene* scene = GetActiveScene();
 
         if (scene && GetKeyPressed(SDLK_DELETE) && (!UIAnyWindowHovered() || EditorSceneInteractAllowed()))
         {
@@ -1959,7 +1959,7 @@ void DrawTexturesWindow(bool* open)
     Clay_ElementId windowID = (Clay_ElementId) { .id = StringToHash("TexturesWindow", 5381u) };
     if (!UIBeginWindowId(windowID, "Textures", (float2) { 540.0f, 18.0f }, (float2) { 520.0f, 760.0f }, open, 0u)) return;
 
-    Scene* scene = Scene_GetActive();
+    Scene* scene = GetActiveScene();
     if (!scene)
     {
         CLAY_TEXT(CLAY_STRING("No active scene."), CLAY_TEXT_CONFIG({

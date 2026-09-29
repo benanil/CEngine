@@ -381,7 +381,7 @@ void RenderTerrainTrianglesDepth(SDL_GPUCommandBuffer* cmd, SDL_GPURenderPass* p
 void RenderOutline(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarget, SDL_GPUDepthStencilTargetInfo* depthTarget, mat4x4 viewProj)
 {
     if (g_NumOutlineTargets == 0 || !g_OutlinePipeline) return;
-    Scene* scene = Scene_GetActive();
+    Scene* scene = GetActiveScene();
     if (!scene) return;
 
     SDL_GPURenderPass* pass = NULL;

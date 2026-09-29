@@ -99,6 +99,7 @@ typedef struct Scene_
     u32 texturesBaked;   // pages came from a baked atlas, packer state is unusable until a repack
 
     bool physicsReady;
+    bool isFoliageScene;
     // static collision mesh handles, one per primitive group of each static render set. shapes
     // reference these (box3d does not copy mesh data), so they must outlive the world.
     struct b3MeshData*   physicsMeshes[MAX_GROUP];
@@ -233,7 +234,7 @@ void Scene_Deactivate(Scene* scene);
 s32 Scene_MakeActive(Scene* scene);
 
 // out: the first active scene, NULL when none
-Scene* Scene_GetActive(void);
+Scene* GetActiveScene(void);
 
 const char* GetActiveScenePath();
 
@@ -325,9 +326,14 @@ bool SceneAsyncBegin(SceneAsyncOp op, const char* path, const char* taskName, Sc
 
 // collision categories for static geometry. scene picking filters to surface only, matching the
 // old cpu-BVH picking 
-#define PHYS_CAT_SURFACE     1ull
-#define PHYS_CAT_TERRAIN     2ull
-#define PHYS_CAT_PLAYER      4ull
+enum PhysBit_
+{
+    PhysBit_Surface  = 1ull,
+    PhysBit_Terrain  = 2ull,
+    PhysBit_Player   = 4ull,
+    PhysBit_Foliage  = 8ull
+};
+typedef u32 PhysBit;
 
 #define PHYS_PICK_MAX_DIST   1.0e5f
 
@@ -381,12 +387,12 @@ bool Physics_GetEntityOverride(const Scene* scene, u32 sparseIdx, ScenePhysicsRe
 // Applies scene->pendingPhysics onto the freshly built bodies, then frees the buffer.
 void Physics_ApplyPendingOverrides(Scene* scene);
 
-b3Vec3 Float3ToB3Vec3(float3 v);
-float3 B3VecToFloat3(b3Pos p);
+static inline b3Vec3 v128fToB3Vec3(v128f v)   { return (b3Vec3){ VecGetX(v), VecGetY(v), VecGetZ(v) }; }
+static inline b3Vec3 Float3ToB3Vec3(float3 v) { return (b3Vec3){ v.x, v.y, v.z }; }
+static inline float3 B3VecToFloat3(b3Pos p)   { return (float3){p.x, p.y, p.z }; }
+static inline v128f  B3VecTov128f(b3Pos p)    { return VecSetR(p.x, p.y, p.z, 0.0f); }
 
-b3Vec3 v128fToB3Vec3(v128f v);
 b3Quat ToB3Quat(v128f q);
-v128f  B3VecTov128f(b3Pos p);
 u64    B3QuatToEntityRotation(b3Quat q);
 
 purefn b3Vec3 b3ProjectOnPlane(b3Vec3 v, b3Vec3 n)

@@ -89,6 +89,10 @@ typedef struct tFoliageState_
 
 static tFoliageState gFoliage;
 
+Scene* GetFoliageScene() {
+    return &gFoliage.scene;
+}
+
 static void VisitFile(const char* path, void* data)
 {
     (void)data;
@@ -124,7 +128,7 @@ void Foliage_Init()
     MemSet(&gFoliage, 0, sizeof(gFoliage));
     gFoliage.pcg = (PCG){ 0x853c49e6748fea9bULL, 0xda3e39cb94b95bdbULL };
     Scene_Init(&gFoliage.scene);
-    
+    gFoliage.scene.isFoliageScene = true;
     // foliage objects needs more light for faking outdoor GI
     gFoliage.scene.ambientBoost = 16.0f;
 

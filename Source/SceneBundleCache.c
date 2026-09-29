@@ -62,7 +62,7 @@ static s32 SceneAsyncProbe(void* userData)
     SceneAsyncRequest* request = (SceneAsyncRequest*)userData;
     if (request->op == SceneAsyncOp_ImportMesh)
     {
-        request->sceneBundleStage = Scene_AddBundleFromPathStage(Scene_GetActive(), request->path);
+        request->sceneBundleStage = Scene_AddBundleFromPathStage(GetActiveScene(), request->path);
         return request->sceneBundleStage != NULL;
     }
 
