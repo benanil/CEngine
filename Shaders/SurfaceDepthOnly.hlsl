@@ -1,6 +1,7 @@
 #include "TextureSampling.hlsl"
 #include "Bitpack.hlsl"
 #include "Math.hlsl"
+#include "Entity.hlsl"
 
 cbuffer vs_params : register(b0, space1)
 {
@@ -41,8 +42,8 @@ VSOutput vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("Dra
     float3 aabbMin = PrimitiveGroup_AABBMin(group);
     float3 aabbMax = PrimitiveGroup_AABBMax(group);
 
-    f16_4  insRot   = normalize(UnpackRGBA16Snorm(entity.rotation[0], entity.rotation[1]));
-    f16_3  insScale = UnpackRGBA16Unorm(entity.scale).xyz * f16(10.0);
+    f16_4  insRot   = EntityGetRotation(entity);
+    f16_3  insScale = EntityGetScale(entity);
     float3 localPos = aabbMin + UnpackUnorm16x4(input.aPos).xyz * (aabbMax - aabbMin);
     f16_3  worldPos = QMulVec3(insRot, f16_3(localPos) * insScale);
     float3 finalWorldPos = float3(worldPos) + entity.position.xyz;

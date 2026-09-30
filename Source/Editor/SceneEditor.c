@@ -837,7 +837,7 @@ static void SceneSelectNodeInViewport(const Scene* scene, u32 bundleIdx, s32 nod
     {
         const PrimitiveGroup* group = &set->primitiveGroups[g];
         if (group->meshIndex == (u32)bundle->nodes[meshNodes[0]].index && group->numEntities > 0)
-            baseSparse = set->entities[group->entityOffset].sparseIdx;
+            baseSparse = EntityGetSparseID(&set->entities[group->entityOffset]);
     }
     if (baseSparse == INVALID_ENTITY || baseOrdinal < 0) return;
 
@@ -961,8 +961,8 @@ static void SceneEventDuplicateBundle(void* unused)
             if (group->numEntities == 0u) continue;
             const Entity* entity = &set->entities[group->entityOffset];
             position = entity->position;
-            rotation = UnpackQuaternionS16Norm1(entity->rotation);
-            scale    = UnpackUnorm16x4(entity->scale);
+            rotation = EntityGetRotation(entity);
+            scale    = EntityGetScaleV(entity);
             break;
         }
     }
@@ -1050,11 +1050,6 @@ static void SceneEventDeleteNode(void* unused)
     AX_LOG("removed %d entities of node %d", removed, sceneSelectedNode);
 }
 
-static v128f SceneEntityWorldScale(const Entity* entity)
-{
-    return EntityUnpackWorldScale(entity->scale);
-}
-
 typedef struct SceneInspectorCache_
 {
     bool valid;
@@ -1073,24 +1068,24 @@ static SceneInspectorCache sceneInspectorCache;
 
 static void SceneInspectorRefreshCache(const Entity* entity)
 {
-    sceneInspectorCache.valid = true;
-    sceneInspectorCache.skinned = sceneObjectSelection.skinned;
-    sceneInspectorCache.groupIdx = sceneObjectSelection.groupIdx;
-    sceneInspectorCache.entityIdx = sceneObjectSelection.entityIdx;
-    sceneInspectorCache.position = entity->position;
-    sceneInspectorCache.rotation = entity->rotation;
+    sceneInspectorCache.valid       = true;
+    sceneInspectorCache.skinned     = sceneObjectSelection.skinned;
+    sceneInspectorCache.groupIdx    = sceneObjectSelection.groupIdx;
+    sceneInspectorCache.entityIdx   = sceneObjectSelection.entityIdx;
+    sceneInspectorCache.position    = entity->position;
+    sceneInspectorCache.rotation    = entity->rotation;
     sceneInspectorCache.scalePacked = entity->scale;
 
     sceneInspectorCache.positionUi[0] = VecGetX(entity->position);
     sceneInspectorCache.positionUi[1] = VecGetY(entity->position);
     sceneInspectorCache.positionUi[2] = VecGetZ(entity->position);
 
-    float3 euler = QToEulerAngles(VecNorm(UnpackQuaternionS16Norm1(entity->rotation)));
+    float3 euler = QToEulerAngles(EntityGetRotation(entity));
     sceneInspectorCache.rotationUi[0] = Clamps32((s32)(euler.x * MATH_RadToDeg + (euler.x >= 0.0f ? 0.5f : -0.5f)), -180, 180);
     sceneInspectorCache.rotationUi[1] = Clamps32((s32)(euler.y * MATH_RadToDeg + (euler.y >= 0.0f ? 0.5f : -0.5f)), -180, 180);
     sceneInspectorCache.rotationUi[2] = Clamps32((s32)(euler.z * MATH_RadToDeg + (euler.z >= 0.0f ? 0.5f : -0.5f)), -180, 180);
 
-    v128f scaleV = EntityUnpackWorldScale(entity->scale);
+    v128f scaleV = EntityGetScaleV(entity);
     sceneInspectorCache.scaleUi[0] = VecGetX(scaleV);
     sceneInspectorCache.scaleUi[1] = VecGetY(scaleV);
     sceneInspectorCache.scaleUi[2] = VecGetZ(scaleV);
@@ -1188,7 +1183,8 @@ static const char* UIPhysicsFmtV3(f32 x, f32 y, f32 z, int decimals)
 static void SceneInspectorPhysicsUI(Scene* scene, Entity* entity)
 {
     if (sceneObjectSelection.skinned) return;
-    if (!scene->physicsBodies || entity->sparseIdx >= scene->surfaceSet.maxEntities) return;
+    u32 sparseId = EntityGetSparseID(entity);
+    if (!scene->physicsBodies || sparseId >= scene->surfaceSet.maxEntities) return;
 
     b3BodyId body = Entity_GetPhysicsBody(scene, entity);
     UIDivider(CLAY_ID("InspectorPhysicsDivider"));
@@ -1199,7 +1195,7 @@ static void SceneInspectorPhysicsUI(Scene* scene, Entity* entity)
     if (UICheckbox("Enabled", &isEnabled))
     {
         Entity_TogglePhysics(scene, entity, isEnabled);
-        body = scene->physicsBodies[entity->sparseIdx];
+        body = scene->physicsBodies[sparseId];
     }
 
     if (B3_IS_NULL(body)) return;
@@ -1330,7 +1326,7 @@ static void SceneInspectorUI(Scene* scene)
 
     if (UIEditFloatN("Position", sceneInspectorCache.positionUi, 3u, -100000.0f, 100000.0f, 3))
     {
-        entity->position = VecSetR(sceneInspectorCache.positionUi[0], sceneInspectorCache.positionUi[1], sceneInspectorCache.positionUi[2], 0.0f);
+        EntitySetPositionV(entity, Vec3Load(sceneInspectorCache.positionUi));
         sceneInspectorCache.position = entity->position;
         if (!sceneObjectSelection.skinned)
             Entity_SyncPhysicsBody(scene, entity);
@@ -1339,14 +1335,14 @@ static void SceneInspectorUI(Scene* scene)
 
     if (UIEditIntN("Rotation", sceneInspectorCache.rotationUi, 3u, -180, 180))
     {
-        v128f oldRot = VecNorm(UnpackQuaternionS16Norm1(entity->rotation));
-        v128f oldScale = SceneEntityWorldScale(entity);
+        v128f oldRot = EntityGetRotation(entity);
+        v128f oldScale = EntityGetScaleV(entity);
         v128f center = RenderSet_EntityBoundsCenter(group, entity, oldRot, oldScale);
         v128f q = VecNorm(QFromEuler((f32)sceneInspectorCache.rotationUi[0] * MATH_DegToRad,
                                      (f32)sceneInspectorCache.rotationUi[1] * MATH_DegToRad,
                                      (f32)sceneInspectorCache.rotationUi[2] * MATH_DegToRad));
-        PackQuaternionS16Norm(q, &entity->rotation);
-        entity->position = VecSub(center, QMulVec3V(VecMul(RenderSet_GroupLocalCenter(group), oldScale), q));
+        EntitySetRotation(entity, q);
+        EntitySetPositionV(entity, VecSub(center, QMulVec3V(VecMul(RenderSet_GroupLocalCenter(group), oldScale), q)));
         sceneInspectorCache.position = entity->position;
         sceneInspectorCache.positionUi[0] = VecGetX(entity->position);
         sceneInspectorCache.positionUi[1] = VecGetY(entity->position);
@@ -1359,12 +1355,12 @@ static void SceneInspectorUI(Scene* scene)
 
     if (UIEditFloatN("Scale", sceneInspectorCache.scaleUi, 3u, 0.001f, 10.0f, 3))
     {
-        v128f rotation = VecNorm(UnpackQuaternionS16Norm1(entity->rotation));
-        v128f oldScale = SceneEntityWorldScale(entity);
+        v128f rotation = EntityGetRotation(entity);
+        v128f oldScale = EntityGetScaleV(entity);
         v128f center = RenderSet_EntityBoundsCenter(group, entity, rotation, oldScale);
-        entity->scale = EntityPackWorldScale(Vec3Load(sceneInspectorCache.scaleUi));
-        v128f newScale = SceneEntityWorldScale(entity);
-        entity->position = VecSub(center, QMulVec3V(VecMul(RenderSet_GroupLocalCenter(group), newScale), rotation));
+        EntitySetScaleV(entity, Vec3Load(sceneInspectorCache.scaleUi));
+        v128f newScale = EntityGetScaleV(entity);
+        EntitySetPositionV(entity, VecSub(center, QMulVec3V(VecMul(RenderSet_GroupLocalCenter(group), newScale), rotation)));
         sceneInspectorCache.position = entity->position;
         sceneInspectorCache.positionUi[0] = VecGetX(entity->position);
         sceneInspectorCache.positionUi[1] = VecGetY(entity->position);
@@ -1397,7 +1393,7 @@ static void SceneInspectorUI(Scene* scene)
     {
         sceneObjectSelection.animIdx = animLocal;
         GPUAnimationInstance instance = { .animIdx = ref->animOffset + animLocal, .timeOffset = sceneObjectSelection.animTime };
-        AnimationSystem_SetInstance(&scene->animSystem, entity->sparseIdx, instance);
+        AnimationSystem_SetInstance(&scene->animSystem, EntityGetSparseID(entity), instance);
     }
 }
 

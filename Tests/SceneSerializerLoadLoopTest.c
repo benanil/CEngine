@@ -99,8 +99,8 @@ static void TestRestoreLoop(RenderSet* set, TestRestoreScratch* scratch, const T
         group->numEntities++;
         entity->rotation = record->rotation;
         entity->scale = record->scale;
-        entity->primitiveIdx = groupIdx;
-        entity->sparseIdx = record->sparseIdx;
+        EntitySetPrimitiveID(entity, groupIdx);
+        EntitySetSparseID(entity, record->sparseIdx);
 
         BitsetSet(set->sparseSlots, (s32)record->sparseIdx);
         if (set->sparseID[record->sparseIdx] == INVALID_ENTITY || denseIdx < set->sparseID[record->sparseIdx])
@@ -366,9 +366,9 @@ static void Test_BistroGoodEntityLoop(void)
             {
                 Entity* entity = &set.entities[group->entityOffset + e];
                 CHECK(entity->primitiveIdx == g, "set %u dense entity primitive=%u expected=%u", s, entity->primitiveIdx, g);
-                CHECK(entity->sparseIdx < set.maxEntities, "set %u sparse out of range: %u", s, entity->sparseIdx);
-                CHECK(BitsetGet(set.sparseSlots, (s32)entity->sparseIdx), "set %u sparse slot missing: %u", s, entity->sparseIdx);
-                CHECK(set.sparseID[entity->sparseIdx] != INVALID_ENTITY, "set %u sparse map missing: %u", s, entity->sparseIdx);
+                CHECK(EntityGetSparseID(entity) < set.maxEntities, "set %u sparse out of range: %u", s, EntityGetSparseID(entity));
+                CHECK(BitsetGet(set.sparseSlots, (s32)EntityGetSparseID(entity)), "set %u sparse slot missing: %u", s, EntityGetSparseID(entity));
+                CHECK(set.sparseID[EntityGetSparseID(entity)] != INVALID_ENTITY, "set %u sparse map missing: %u", s, EntityGetSparseID(entity));
             }
             counted += group->numEntities;
         }
@@ -376,7 +376,7 @@ static void Test_BistroGoodEntityLoop(void)
 
         for (u32 i = 0; i < set.numEntities; i++)
         {
-            u32 sparseIdx = set.entities[i].sparseIdx;
+            u32 sparseIdx = EntityGetSparseID(&set.entities[i]);
             CHECK(set.sparseID[sparseIdx] <= i, "set %u sparse %u maps forward to %u from dense %u", s, sparseIdx, set.sparseID[sparseIdx], i);
         }
 

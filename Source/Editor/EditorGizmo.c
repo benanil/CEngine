@@ -54,7 +54,7 @@ typedef struct GizmoMember_
     u32 entityIdx;
     v128f startPos;
     v128f startRot;
-    v128f startScale;  // stored 0..1 form
+    v128f startScale01;  // stored 0..1 form
     v128f localCenter; // group aabb center in entity local space
     v128f startCenter; // world aabb center
 } GizmoMember;
@@ -119,7 +119,7 @@ static u32 GizmoTargetSparseId(const Scene* scene, const GizmoTarget* target)
     if (target->groupIdx >= set->numGroups) return INVALID_ENTITY;
     const PrimitiveGroup* group = &set->primitiveGroups[target->groupIdx];
     if (target->entityIdx >= group->numEntities) return INVALID_ENTITY;
-    return set->entities[group->entityOffset + target->entityIdx].sparseIdx;
+    return EntityGetSparseID(&set->entities[group->entityOffset + target->entityIdx]);
 }
 
 // ctrl click: toggles the object in the selection
@@ -168,7 +168,7 @@ bool EditorGizmoDuplicateSelected(void)
             for (u32 e = 0u; e < group->numEntities && numRecords < GIZMO_MAX_MEMBERS; e++)
             {
                 const Entity* entity = &set->entities[group->entityOffset + e];
-                if (entity->sparseIdx != sparseIdx) continue;
+                if (EntityGetSparseID(entity) != sparseIdx) continue;
                 records[numRecords++] = (GizmoDuplicateRecord){ target.skinned, g, *entity };
             }
         }
@@ -179,7 +179,7 @@ bool EditorGizmoDuplicateSelected(void)
         for (u32 i = 0u; i < numRecords; i++)
         {
             GizmoDuplicateRecord* record = &records[i];
-            record->entity.sparseIdx = newSparse;
+            EntitySetSparseID(&record->entity, newSparse);
             record->entity.position = VecAdd(record->entity.position, VecSetR(1.0f, 0.0f, 0.0f, 0.0f));
             u32 denseIdx = RenderSet_AddEntity(set, record->groupIdx, &record->entity);
             if (denseIdx == INVALID_ENTITY) continue;
@@ -250,7 +250,7 @@ bool EditorGizmoDeleteSelected(void)
                 Entity* entity = &set->entities[group->entityOffset + (u32)e];
                 for (u32 i = 0u; i < sparseCount; i++)
                 {
-                    if (entity->sparseIdx == sparseList[i])
+                    if (EntityGetSparseID(entity) == sparseList[i])
                     {
                         RenderSet_RemoveEntity(set, (u32)g, (u32)e);
                         removed = true;
@@ -297,18 +297,18 @@ static u32 GizmoCollectMembers(Scene* scene, v128f* outCenter)
             for (u32 e = 0; e < group->numEntities && gizmoNumMembers < GIZMO_MAX_MEMBERS; e++)
             {
                 const Entity* entity = &set->entities[group->entityOffset + e];
-                if (entity->sparseIdx != sparseIdx) continue;
+                if (EntityGetSparseID(entity) != sparseIdx) continue;
 
                 GizmoMember* member = &gizmoMembers[gizmoNumMembers++];
                 member->skinned = target->skinned;
                 member->groupIdx = g;
                 member->entityIdx = e;
                 member->startPos = entity->position;
-                member->startRot = VecNorm(UnpackQuaternionS16Norm1(entity->rotation));
-                member->startScale = UnpackUnorm16x4(entity->scale);
+                member->startRot = EntityGetRotation(entity);
+                member->startScale01 = UnpackUnorm16x4(entity->scale);
                 member->localCenter = localCenter;
 
-                v128f worldScale = VecMulf(member->startScale, 10.0f);
+                v128f worldScale = VecMulf(member->startScale01, 10.0f);
                 v128f rotation = member->startRot;
                 v128f center = VecAdd(QMulVec3V(VecMul(localCenter, worldScale), rotation), entity->position);
                 member->startCenter = center;
@@ -508,19 +508,19 @@ static void GizmoApplyMembers(Scene* scene, const v128f axes[3], f32 mouseY)
             v128f delta = gizmo.hotAxis >= GizmoAxis_PlaneX
                 ? gizmo.planeDelta
                 : VecMulf(axes[gizmo.hotAxis], gizmo.dragStart);
-            entity->position = VecAdd(startPos, delta);
+            EntitySetPositionV(entity, VecAdd(startPos, delta));
         }
         else if (gizmo.mode == GizmoMode_Rotate)
         {
             v128f deltaQ = QFromAxisAngleV(axes[gizmo.hotAxis], gizmo.dragStart);
             v128f newQ = VecNorm(QMul(startRot, deltaQ)); // extra world rotation
-            PackQuaternionS16Norm(newQ, &entity->rotation);
+            EntitySetRotation(entity, newQ);
 
             // the member's center orbits the shared pivot, then its own center pins
             // to that location: T = C' - R' * (localCenter * worldScale)
             v128f newCenter = VecAdd(QMulVec3V(VecSub(startCenter, pivot), deltaQ), pivot);
-            v128f worldScale = VecMulf(member->startScale, 10.0f);
-            entity->position = VecSub(newCenter, QMulVec3V(VecMul(localCenter, worldScale), newQ));
+            v128f worldScale = VecMulf(member->startScale01, 10.0f);
+            EntitySetPositionV(entity, VecSub(newCenter, QMulVec3V(VecMul(localCenter, worldScale), newQ)));
         }
         else // scale
         {
@@ -537,9 +537,9 @@ static void GizmoApplyMembers(Scene* scene, const v128f axes[3], f32 mouseY)
                           gizmo.hotAxis == 1 ? factor : 1.0f,
                           gizmo.hotAxis == 2 ? factor : 1.0f,
                           0.0f);
-            v128f scale = VecClamp(VecMul(member->startScale, scaleFactor), VecSet1(0.0001f), VecSet1(1.0f));
+            v128f scale = VecClamp(VecMul(member->startScale01, scaleFactor), VecSet1(0.0001f), VecSet1(1.0f));
             VecSetW(scale, 0.0f);
-            entity->scale = EntityPackWorldScale(VecMulf(scale, ENTITY_MAX_SCALE));
+            EntitySetScaleV(entity, VecMulf(scale, ENTITY_MAX_SCALE));
 
             // the member center moves with the scale: radially for uniform, along the
             // handle's world direction for a single axis
@@ -553,7 +553,7 @@ static void GizmoApplyMembers(Scene* scene, const v128f axes[3], f32 mouseY)
             }
             v128f newCenter = VecAdd(pivot, rel);
             v128f worldScale = VecMulf(scale, 10.0f);
-            entity->position = VecSub(newCenter, QMulVec3V(VecMul(localCenter, worldScale), startRot));
+            EntitySetPositionV(entity, VecSub(newCenter, QMulVec3V(VecMul(localCenter, worldScale), startRot)));
         }
 
         if (!member->skinned)

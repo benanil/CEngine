@@ -83,10 +83,24 @@ float4 UnpackUnorm16x4(uint2 p) {
     return float4(u) * (1.0 / 65534.0);
 }
 
+uint2 PackSnorm16x4(float4 q) {
+    int4 i = int4(round(clamp(q, -1.0, 1.0) * 32766.0));
+    return uint2((uint)(i.x & 0xFFFF) | ((uint)i.y << 16),
+                 (uint)(i.z & 0xFFFF) | ((uint)i.w << 16));
+}
+
 // inverse of UnpackUnorm16x4. fp32 input so meter-scale values keep full 16-bit precision.
 uint2 PackUnorm16x4(float4 v) {
     uint4 u = uint4(round(saturate(v) * 65534.0)) & 0xFFFFu;
     return uint2(u.x | (u.y << 16), u.z | (u.w << 16));
+}
+
+uint2 Pack16x4Fixed(v128f val, float scale) {
+	return PackUnorm16x4(val / scale);
+}
+
+v128f Unpack16x4Fixed(uint2 i16, float scale) {
+    return UnpackUnorm16x4(i16) * scale;
 }
 
 float4 UnpackColor4Uint(uint color)

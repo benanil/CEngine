@@ -197,6 +197,10 @@ void Scene_DestroyPhysics(Scene* scene)
     scene->physicsColliderBuildResult = 0;
 }
 
+v128f  B3ToQuat(b3Quat q) {
+    return VecSetR(q.v.x, q.v.y, q.v.z, q.s); 
+}
+
 b3Quat ToB3Quat(v128f q)
 {
     f32 lenSq = VecGetX(VecLenSq(q));
@@ -218,8 +222,8 @@ static void BuildCollidersForScene(Scene* scene);
 // range. The slot's body may still be null (no body created yet).
 static b3BodyId* PhysicsEntitySlot(Scene* scene, const Entity* entity)
 {
-    if (!scene || !entity || entity->sparseIdx == INVALID_ENTITY) return NULL;
-    return &scene->physicsBodies[entity->sparseIdx];
+    if (!scene || !entity || EntityGetSparseID(entity) == INVALID_ENTITY) return NULL;
+    return &scene->physicsBodies[EntityGetSparseID(entity)];
 }
 
 static uintptr_t PhysicsBodyUserData(EntityID entityID, bool isFoliage)
@@ -273,8 +277,8 @@ void Scene_UpdatePhysics(Scene* scene, float deltaTime)
         u32 sparseIdx = PhysicsUserDataEntity(move->userData);
         u32 dense = set->sparseID[sparseIdx];
         Entity* entity = &set->entities[dense];
-        entity->position = B3VecTov128f(move->transform.p);
-        entity->rotation = B3QuatToEntityRotation(move->transform.q);
+        EntitySetPositionV(entity, B3VecTov128f(move->transform.p));
+        EntitySetRotation(entity, B3ToQuat(move->transform.q));
     }
     scene->renderDataDirty |= events.moveCount > 0;
 }
@@ -388,13 +392,15 @@ static b3MeshData* Scene_PhysicsEnsureGroupMesh(Scene* scene, u32 groupIdx)
 
 static void Scene_PhysicsCreateEntityBody(Scene* scene, const Entity* entity)
 {
-    bool colliderEnabled = (entity->flags & EntityFlags_ColliderEnabled) != 0;
+    EntityFlags entityFlags = EntityGetFlags(entity);
+    bool colliderEnabled = (entityFlags & EntityFlags_ColliderEnabled) != 0;
     b3BodyId* slot = PhysicsEntitySlot(scene, entity);
     if (!slot || B3_IS_NON_NULL(slot[0]) || !colliderEnabled) return;
-    if (entity->flags & EntityFlags_NoMesh) return;
-    if (entity->primitiveIdx >= scene->surfaceSet.numGroups) return;
+    if (EntityGetFlags(entity) & EntityFlags_NoMesh) return;
+    u32 primitiveIdx = EntityGetPrimitiveID(entity);
+    if (primitiveIdx >= scene->surfaceSet.numGroups) return;
     
-    b3MeshData* mesh = Scene_PhysicsEnsureGroupMesh(scene, entity->primitiveIdx);
+    b3MeshData* mesh = Scene_PhysicsEnsureGroupMesh(scene, primitiveIdx);
     if (!mesh) return;
     
     b3BodyDef bd  = b3DefaultBodyDef();
@@ -403,12 +409,12 @@ static void Scene_PhysicsCreateEntityBody(Scene* scene, const Entity* entity)
     // movable prop would need a convex hull/primitive shape instead.
     bd.type       = b3_staticBody;
     bd.position   = v128fToB3Vec3(entity->position);
-    bd.rotation   = ToB3Quat(UnpackQuaternionS16Norm1(entity->rotation));
+    bd.rotation   = ToB3Quat(EntityGetRotation(entity));
     bd.userData   = (void*)PhysicsBodyUserData(GetEntityID(entity), scene->isFoliageScene);
     b3BodyId body = b3CreateBody(gPhysicsWorld, &bd);
     b3ShapeDef sd = b3DefaultShapeDef();
     sd.filter.categoryBits = scene->isFoliageScene ? PhysBit_Foliage : PhysBit_Surface;
-    b3ShapeId shape = b3CreateMeshShape(body, &sd, mesh, v128fToB3Vec3(EntityUnpackWorldScale(entity->scale)));
+    b3ShapeId shape = b3CreateMeshShape(body, &sd, mesh, EntityGetB3Scale(entity));
     if (B3_IS_NULL(shape))
     {
         b3DestroyBody(body);
@@ -420,24 +426,29 @@ static void Scene_PhysicsCreateEntityBody(Scene* scene, const Entity* entity)
 
 bool Entity_IsPhysicsEnabled(Scene* scene, Entity* entity)
 {
-    if (!scene->physicsBodies || entity->sparseIdx >= scene->surfaceSet.maxEntities) return false;
-    b3BodyId body = scene->physicsBodies[entity->sparseIdx];
+    u32 sparseId = EntityGetSparseID(entity);
+    if (!scene->physicsBodies || sparseId >= scene->surfaceSet.maxEntities) return false;
+    b3BodyId body = scene->physicsBodies[sparseId];
     return !B3_IS_NULL(body) && b3Body_IsEnabled(body);
 }
 
 void Entity_TogglePhysics(Scene* scene, Entity* entity, bool enabled)
 {
-    if (!scene->physicsBodies || entity->sparseIdx >= scene->surfaceSet.maxEntities) return;
-    b3BodyId body = scene->physicsBodies[entity->sparseIdx];
+    u32 sparseId = EntityGetSparseID(entity);
+    if (!scene->physicsBodies || sparseId >= scene->surfaceSet.maxEntities) return;
+    b3BodyId body = scene->physicsBodies[sparseId];
     bool isEnabled = !B3_IS_NULL(body) && b3Body_IsEnabled(body);
     if (B3_IS_NULL(body))
     {
         Scene_PhysicsCreateEntityBody(scene, entity);
-        body = scene->physicsBodies[entity->sparseIdx];
+        body = scene->physicsBodies[sparseId];
     }
+    if (B3_IS_NULL(body)) return;
     if (isEnabled) b3Body_Enable(body); else b3Body_Disable(body);
-    entity->flags &= ~EntityFlags_ColliderEnabled;
-    entity->flags |= isEnabled * EntityFlags_ColliderEnabled;
+    EntityFlags entityFlags = EntityGetFlags(entity);
+    entityFlags &= ~EntityFlags_ColliderEnabled;
+    entityFlags |= isEnabled * EntityFlags_ColliderEnabled;
+    EntitySetFlags(entity, entityFlags);
 }
 
 void Entity_SyncPhysicsBody(Scene* scene, const Entity* entity)
@@ -457,16 +468,16 @@ void Entity_SyncPhysicsBody(Scene* scene, const Entity* entity)
     b3ShapeId shape;
     if (b3Body_GetShapes(body, &shape, 1) > 0 && b3Shape_GetType(shape) == b3_meshShape)
     {
-        b3Vec3 newScale = v128fToB3Vec3(EntityUnpackWorldScale(entity->scale));
+        b3Vec3 newScale = EntityGetB3Scale(entity);
         b3Vec3 curScale = b3Shape_GetMesh(shape).scale;
         if (newScale.x != curScale.x || newScale.y != curScale.y || newScale.z != curScale.z)
         {
-            b3MeshData* mesh = Scene_PhysicsEnsureGroupMesh(scene,   entity->primitiveIdx);
+            b3MeshData* mesh = Scene_PhysicsEnsureGroupMesh(scene, EntityGetPrimitiveID(entity));
             if (mesh) b3Shape_SetMesh(shape, mesh, newScale);
         }
     }
     
-    b3Body_SetTransform(body, v128fToB3Vec3(entity->position), ToB3Quat(UnpackQuaternionS16Norm1(entity->rotation)));
+    b3Body_SetTransform(body, v128fToB3Vec3(entity->position), EntityGetB3Quat(entity));
 }
 
 void Physics_DestroyTerrainChunk(u64* inOutBody, struct b3MeshData** inOutMesh)
@@ -537,7 +548,7 @@ bool Physics_SyncTerrainChunkMesh(u64* inOutBody, struct b3MeshData** inOutMesh,
 
 b3BodyId Entity_GetPhysicsBody(Scene* scene, const Entity* entity)
 {
-    return scene->physicsBodies[entity->sparseIdx];
+    return scene->physicsBodies[EntityGetSparseID(entity) ];
 }
 
 void Entity_SetPhysicsBodyType(Scene* scene, Entity* entity, b3BodyType type)
@@ -554,7 +565,7 @@ bool Entity_SetPhysicsShape(Scene* scene,  const Entity* entity, b3ShapeType typ
 {
     b3BodyId* slot = PhysicsEntitySlot(scene, entity);
     RenderSet* set = &scene->surfaceSet;
-    u32 groupIdx = entity->primitiveIdx;
+    u32 groupIdx = EntityGetPrimitiveID(entity);
     if (!slot || B3_IS_NULL(slot[0]) || groupIdx >= set->numGroups) return false;
     
     b3ShapeId shape;
@@ -565,7 +576,7 @@ bool Entity_SetPhysicsShape(Scene* scene,  const Entity* entity, b3ShapeType typ
     {
         b3MeshData* mesh = Scene_PhysicsEnsureGroupMesh(scene, groupIdx);
         if (!mesh) return false;
-        b3Shape_SetMesh(shape, mesh, v128fToB3Vec3(EntityUnpackWorldScale(entity->scale)));
+        b3Shape_SetMesh(shape, mesh, EntityGetB3Scale(entity));
         return true;
     }
     
@@ -577,7 +588,7 @@ bool Entity_SetPhysicsShape(Scene* scene,  const Entity* entity, b3ShapeType typ
     const SceneBundle* bundle = scene->bundleRefs[group->bundleIdx].bundle;
     const APrimitive* prim = &bundle->meshes[group->meshIndex].primitives[group->primitiveIndex];
     
-    v128f scaleV = EntityUnpackWorldScale(entity->scale);
+    v128f scaleV = EntityGetScaleV(entity);
     v128f localMin = VecMul(VecLoad(prim->min), scaleV);
     v128f localMax = VecMul(VecLoad(prim->max), scaleV);
     v128f center = VecMulf(VecAdd(localMin, localMax), 0.5f);
@@ -914,7 +925,7 @@ s32 Scene_PhysicsRaycastPick(v128f origin, v128f dir, float rayLen, BVHHit* hit,
     u32 dense = set->sparseID[sparse];
     if (dense == INVALID_ENTITY || dense >= set->numEntities) return 0;
 
-    u32 groupIdx = set->entities[dense].primitiveIdx;
+    u32 groupIdx = EntityGetPrimitiveID(&set->entities[dense]);
     if (groupIdx >= set->numGroups) return 0;
 
     hit->hit.t        = t;

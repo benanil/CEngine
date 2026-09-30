@@ -419,9 +419,8 @@ static s32 BVH_RaycastSet(const Scene* scene, const RenderSet* set, bool skinned
 
                 // transform the ray into entity local space instead of the mesh into
                 // world space, the unnormalized direction keeps t in world units
-                v128f rotation = VecNorm(UnpackQuaternionS16Norm1(entity->rotation));
-                v128f invRot   = QConjugate(rotation);
-                v128f scale    = VecMax(EntityUnpackWorldScale(entity->scale), VecSet1(1.0e-6f));
+                v128f invRot   = QConjugate(EntityGetRotation(entity));
+                v128f scale    = VecMax(EntityGetScaleV(entity), VecSet1(1.0e-6f));
                 VecSetW(scale, 1.0f);
                 v128f localOrigin = VecDiv(QMulVec3V(VecSub(origin, entity->position), invRot), scale);
                 v128f localDir    = VecDiv(QMulVec3V(dir, invRot), scale);
@@ -444,7 +443,7 @@ static s32 BVH_RaycastSet(const Scene* scene, const RenderSet* set, bool skinned
     if (anyHit && hit->skinnedSet != 0xFFFFFFFFu || hit->bundleIdx != 0xFFFFFFFFu)
     {
         hit->bundleIdx = Scene_FindBundleForRenderGroup(scene, hit->skinnedSet != 0, hit->groupIdx);
-        hit->scene = scene;
+        hit->scene = (Scene*)scene;
     }
 
     return anyHit;

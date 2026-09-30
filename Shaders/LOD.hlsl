@@ -5,6 +5,7 @@
 #include "CommonStructs.hlsl"
 #include "Bitpack.hlsl"
 #include "Math.hlsl"
+#include "../Entity.hlsl"
 
 #define LOD0_PIXEL_DIAMETER 128.0f
 #define LOD1_PIXEL_DIAMETER 40.0f
@@ -42,7 +43,7 @@ void BuildWorldAABB(Entity entity, PrimitiveGroup group, out float3 worldCenter,
     float3 localCenter = (localMin + localMax) * 0.5f;
     float3 localExtent = (localMax - localMin) * 0.5f;
 
-    float4 q = VecNorm(UnpackRGBA16Snorm(entity.rotation.x, entity.rotation.y));
+    float4 q = VecNorm(EntityGetRotation(entity));
     float3 s = float3(UnpackRGBA16Unorm(entity.scale).xyz) * 10.0f;
     float3x3 rotM = M33FromQuaternionF32(q);
 

@@ -63,14 +63,14 @@ void main(uint3 globalID : SV_DispatchThreadID, uint3 groupID : SV_GroupID, uint
         return;
 
     Entity baseEntity = sEntities[baseDenseIdx];
-    PrimitiveGroup baseGroup = sPrimitiveGroups[baseEntity.primitiveIdx];
+    PrimitiveGroup baseGroup = sPrimitiveGroups[EntityGetPrimitiveID(baseEntity)];
     uint instanceSlot = baseDenseIdx - PrimitiveGroup_EntityOffset(baseGroup);
     if (instanceSlot >= PrimitiveGroup_NumEntities(group))
         return;
 
     uint denseIdx = PrimitiveGroup_EntityOffset(group) + instanceSlot;
     Entity entity = sEntities[denseIdx];
-    if (entity.sparse != sparse)
+    if (EntityGetSparseID(entity) != sparse)
         return;
 
     uint vertexBase = groupID.z * 32u;

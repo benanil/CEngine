@@ -6,6 +6,7 @@
 #include "Bitpack.hlsl"
 #include "Math.hlsl"
 #include "Shadow/Shadow.hlsl"
+#include "Entity.hlsl"
 
 #define LOD_VISUALIZE 0
 
@@ -95,9 +96,8 @@ VSOutput vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("Dra
     Entity entity = sEntities[denseIdx];
     float3 aabbMin = PrimitiveGroup_AABBMin(group);
     float3 aabbMax = PrimitiveGroup_AABBMax(group);
-
-    f16_4 insRot   = normalize(UnpackRGBA16Snorm(entity.rotation[0], entity.rotation[1]));
-    f16_3 insScale = UnpackRGBA16Unorm(entity.scale).xyz * f16(10.0);
+    f16_4  insRot   = EntityGetRotation(entity);
+    f16_3  insScale = EntityGetScale(entity);
 
     f16_3x3 tbn;
     UnpackNormalTangent(input.aTangentSpace, tbn[2], tbn[1]);

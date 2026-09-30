@@ -4,12 +4,6 @@
 #include "Common.hlsl"
 #include "../Include/RenderLimits.h"
 
-#define EntityFlags_None            (0)
-#define EntityFlags_ColliderEnabled (1 << 0)
-#define EntityFlags_Transparent     (1 << 1)
-#define EntityFlags_NoMesh          (1 << 2)
-#define EntityFlags_Hidden          (1 << 3)
-
 typedef struct IndexedDrawCommand_
 {
     uint numIndices;
@@ -34,16 +28,6 @@ typedef struct IndirectDispatchCommand_
     uint groupCountZ;
 } IndirectDispatchCommand;
 
-typedef struct Entity_
-{
-    float4 position;
-    uint2  rotation;
-    uint2  scale;
-    uint   primitiveIdx; // primitive group
-    uint   sparse;
-    uint   parentIdx; // sparseIdx
-    uint   materialAndFlags;
-} Entity;
 
 typedef struct PrimitiveGroup_
 {

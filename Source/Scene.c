@@ -236,7 +236,7 @@ void Scene_Deactivate(Scene* scene)
 
 bool Entity_IsTransparent(const Entity* entity)
 {
-    return !!(entity->flags & EntityFlags_Transparent);
+    return !!(EntityGetFlags(entity) & EntityFlags_Transparent);
 }
 
 // out: scene bundle index of the path, INVALID_BUNDLE when not present
@@ -655,7 +655,7 @@ EntityID Scene_Spawn(Scene* scene, u32 bundleIdx, v128f position, v128f rotation
             PrimitiveGroup* group = &set->primitiveGroups[range.start + i];
             for (u32 e = oldCounts[i]; e < group->numEntities; e++)
             {
-                u32 sparseIdx = set->entities[group->entityOffset + e].sparseIdx;
+                u32 sparseIdx = EntityGetSparseID(&set->entities[group->entityOffset + e]);
                 AnimationSystem_SetInstance(&scene->animSystem, sparseIdx, instance);
             }
         }

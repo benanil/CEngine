@@ -275,8 +275,8 @@ s32 SceneSerializer_Save(Scene* scene, const char* path)
                 p = WInt(p, (s64)(u32)(entity->rotation & 0xFFFFFFFFull));
                 p = WInt(p, (s64)(u32)(entity->rotation >> 32u));
                 p = WInt(p, (s64)entity->scale);
-                p = WInt(p, (s64)entity->sparseIdx);
-                p = WInt(p, (s64)entity->flags);
+                p = WInt(p, (s64)EntityGetSparseID(entity));
+                p = WInt(p, (s64)EntityGetFlags(entity));
                 WEnd(file, line, p);
             }
         }
@@ -292,7 +292,8 @@ s32 SceneSerializer_Save(Scene* scene, const char* path)
         for (u32 e = 0; e < group->numEntities; e++)
         {
             ScenePhysicsRecord rec;
-            physCount += Physics_GetEntityOverride(scene, surfaceSet->entities[group->entityOffset + e].sparseIdx, &rec);
+            u32 sparseId = EntityGetSparseID(&surfaceSet->entities[group->entityOffset + e]);
+            physCount += Physics_GetEntityOverride(scene, sparseId, &rec);
         }
     }
 
@@ -305,7 +306,8 @@ s32 SceneSerializer_Save(Scene* scene, const char* path)
         for (u32 e = 0; e < group->numEntities; e++)
         {
             ScenePhysicsRecord rec;
-            if (!Physics_GetEntityOverride(scene, surfaceSet->entities[group->entityOffset + e].sparseIdx, &rec))
+            u32 sparseId = EntityGetSparseID(&surfaceSet->entities[group->entityOffset + e]);
+            if (!Physics_GetEntityOverride(scene, sparseId, &rec))
                 continue;
             p = WStr(line, "phys");
             p = WInt(p, (s64)rec.sparseIdx);
@@ -779,9 +781,9 @@ s32 SceneSerializer_Load(Scene* scene, const char* path, SceneFileData* data)
             entity->position  = Vec3Load(record->position);
             entity->rotation  = record->rotation;
             entity->scale     = record->scale;
-            entity->primitiveIdx = groupIdx;
-            entity->sparseIdx = record->sparseIdx;
-            entity->flags = record->flags;
+            EntitySetSparseID(entity, record->sparseIdx);
+            EntitySetPrimitiveID(entity, groupIdx);
+            EntitySetFlags(entity, record->flags);
 
             BitsetSet(set->sparseSlots, (s32)record->sparseIdx);
             if (set->sparseID[record->sparseIdx] == INVALID_ENTITY || denseIdx < set->sparseID[record->sparseIdx])
@@ -796,7 +798,8 @@ s32 SceneSerializer_Load(Scene* scene, const char* path, SceneFileData* data)
                         .animIdx = Scene_DefaultAnimation(scene, bundleIdx),
                         .timeOffset = 0.0f
                     };
-                    AnimationSystem_SetInstance(&scene->animSystem, entity->sparseIdx, instance);
+
+                    AnimationSystem_SetInstance(&scene->animSystem, record->sparseIdx, instance);
                 }
             }
         }

@@ -397,7 +397,7 @@ void RenderOutline(SDL_GPUCommandBuffer* cmd, SDL_GPUColorTargetInfo* colorTarge
 
         const Entity* entity = &set->entities[group->entityOffset + target->entityIdx];
         v128f rotation = VecNorm(UnpackQuaternionS16Norm1(entity->rotation));
-        v128f scale = EntityUnpackWorldScale(entity->scale);
+        v128f scale = EntityGetScaleV(entity);
 
         struct { mat4x4 viewProj; float position[4]; float rotationQ[4]; float scaleBias[4]; float aabbMin[4]; float aabbMax[4]; } params;
         params.viewProj = viewProj;

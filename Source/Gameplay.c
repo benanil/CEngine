@@ -158,9 +158,11 @@ static void UpdateCharacter()
         CameraMode wantedMode = GetKeyPressed(SDLK_K) ? CameraMode_FPS : CameraMode_TPS;
         wantedMode = characterActive ? wantedMode : CameraMode_Fly;
         CameraSwitchMode(&g_Camera, wantedMode);
-        character->flags &= ~EntityFlags_NoMesh;
+        EntityFlags entityFlags = EntityGetFlags(character);
+        entityFlags &= ~EntityFlags_NoMesh;
         // only fps mode entity is not visible
-        character->flags |= (characterActive && wantedMode == CameraMode_FPS) * EntityFlags_NoMesh; // toggle visibility of capsule
+        entityFlags |= (characterActive && wantedMode == CameraMode_FPS) * EntityFlags_NoMesh; // toggle visibility of capsule
+        EntitySetFlags(character, entityFlags);
 
         if (characterActive == false)
             g_Camera.position = F3Sub(g_Camera.position, F3MulF(g_Camera.front, 6.0f));
@@ -204,22 +206,22 @@ static void UpdateCharacter()
     b3Vec3 velocity = b3MulSV(characterSpeed, wish);
     velocity.y += verticalSpeed;
 
-    b3Vec3 target = b3Add(v128fToB3Vec3(character->position), b3MulSV(dt, velocity));
-    b3Vec3 start = v128fToB3Vec3(character->position);
+    b3Vec3 target = b3Add(EntityGetB3Pos(character), b3MulSV(dt, velocity));
+    b3Vec3 start = EntityGetB3Pos(character);
 
     for (int iteration = 0; iteration < 5; ++iteration)
     {
-        b3Pos origin = v128fToB3Vec3(character->position);
+        b3Pos origin = EntityGetB3Pos(character);
 
         PlaneCapture capture = { 0 };
         b3World_CollideMover(worldId, origin, &mover, filter, CapturePlaneFcn, &capture);
 
-        b3Vec3 remaining = b3Sub(target, v128fToB3Vec3(character->position));
+        b3Vec3 remaining = b3Sub(target, EntityGetB3Pos(character));
         b3PlaneSolverResult result = b3SolvePlanes(remaining, capture.planes, capture.count);
 
         float fraction = b3World_CastMover(worldId, origin, &mover, result.delta, filter, NULL, NULL);
         b3Vec3 delta = b3MulSV(fraction, result.delta);
-        character->position = VecAdd(character->position, B3VecTov128f(delta));
+        EntitySetPositionV(character, VecAdd(character->position, B3VecTov128f(delta)));
 
         if (b3LengthSquared(delta) < moveTolerance * moveTolerance) break;
     }
@@ -227,24 +229,25 @@ static void UpdateCharacter()
     if (verticalSpeed > 0.0f)
     {
         float intended = verticalSpeed * dt;
-        float actual = v128fToB3Vec3(character->position).y - start.y;
+        float actual = EntityGetB3Pos(character).y - start.y;
         if (actual < intended * 0.5f) verticalSpeed = 0.0f;
     }
 
     bool wasGrounded = grounded;
     b3Vec3 normal = { 0.0f, 1.0f, 0.0f };
     grounded = verticalSpeed <= 0.0f && 
-               FindGround(worldId, v128fToB3Vec3(character->position), &mover, filter, &normal);
+               FindGround(worldId, EntityGetB3Pos(character), &mover, filter, &normal);
 
     if (!grounded && wasGrounded && verticalSpeed <= 0.0f)
     {
-        b3Pos origin = v128fToB3Vec3(character->position);
+        b3Pos origin = EntityGetB3Pos(character);
         b3Vec3 down = { 0.0f, -snapDistance, 0.0f };
         float fraction = b3World_CastMover(worldId, origin, &mover, down, filter, NULL, NULL);
         if (fraction < 1.0f)
         {
-            character->position = VecAdd(character->position, B3VecTov128f(b3MulSV(fraction, down)));
-            grounded = FindGround(worldId, v128fToB3Vec3(character->position), &mover, filter, &normal);
+            v128f newPos = VecAdd(character->position, B3VecTov128f(b3MulSV(fraction, down)));
+            EntitySetPositionV(character, newPos);
+            grounded = FindGround(worldId, EntityGetB3Pos(character), &mover, filter, &normal);
         }
     }
 
@@ -266,9 +269,8 @@ static void UpdatePicking()
         Scene* scene = Foliage_GetScene();
         float dt = GetDeltaTime();
         Entity* entity = RenderSet_GetEntity(&scene->surfaceSet, hit.entityID);
-        Quaternion rotation = UnpackQuaternionS16Norm1(entity->rotation);
-        rotation = QMul(rotation, QFromYAngle(dt * 10.0f));
-        PackQuaternionS16Norm(rotation, &entity->rotation);
+        Quaternion rotation = QMul(EntityGetRotation(entity), QFromYAngle(dt * 10.0f));
+        EntitySetRotation(entity, rotation);
         Entity_SyncPhysicsBody(scene, entity);
     }
 }

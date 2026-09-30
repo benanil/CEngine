@@ -49,18 +49,6 @@ void RenderSet_SetHookScene(RenderSet* set, struct Scene_* scene)
     set->hookScene = scene;
 }
 
-v128f EntityUnpackWorldScale(u64 packed) {
-    return Unpack16x4Fixed(packed, ENTITY_MAX_SCALE);
-}
-
-u64 EntityPackWorldScale(v128f scale) {
-    return Pack16x4Fixed(scale, ENTITY_MAX_SCALE);
-}
-
-u64 EntityPackUniformWorldScale(f32 scale) {
-    return PackUnorm16x4(VecSet1(Saturatef32(scale * 0.1f)));
-}
-
 v128f RenderSet_GroupLocalCenter(const PrimitiveGroup* group) {
     return VecMulf(VecAdd(group->aabbMin, group->aabbMax), 0.5f);
 }
@@ -102,7 +90,7 @@ bool RenderSet_FindNodeEntity(const RenderSet* set, Range range, u32 meshIndex, 
         if (group->meshIndex != meshIndex) continue;
         for (u32 e = 0; e < group->numEntities; e++)
         {
-            if (set->entities[group->entityOffset + e].sparseIdx == sparseIdx)
+            if (EntityGetSparseID(&set->entities[group->entityOffset + e]) == sparseIdx)
             {
                 *outGroup = g;
                 *outEntity = e;
@@ -282,7 +270,7 @@ static void RebuildSparseToDense(RenderSet* set)
 
     for (u32 e = 0; e < set->numEntities; e++)
     {
-        u32 sparseIdx = set->entities[e].sparseIdx;
+        u32 sparseIdx = EntityGetSparseID(&set->entities[e]);
         if (sparseIdx != INVALID_ENTITY && sparseIdx < set->maxEntities)
         {
             BitsetSet(set->sparseSlots, (s32)sparseIdx);
@@ -315,7 +303,7 @@ static u32 LeaveSpaceForEntities(RenderSet* set, u32 primitiveIdx, u32 numAdded)
         u32 dst = (u32)i + numAdded;
         set->entities[dst] = set->entities[i];
 
-        u32 sparseIdx = set->entities[dst].sparseIdx;
+        u32 sparseIdx = EntityGetSparseID(&set->entities[dst]);
         if (sparseIdx != INVALID_ENTITY && sparseIdx < set->maxEntities && set->sparseID[sparseIdx] == (u32)i)
             set->sparseID[sparseIdx] = dst;
     }
@@ -331,7 +319,7 @@ EntityID RenderSet_AddEntities(RenderSet* set, u32 primitiveIdx, u32 numAdded, c
 {
     u32 startIdx = LeaveSpaceForEntities(set, primitiveIdx, numAdded);
     if (startIdx == INVALID_ENTITY) {
-        RenderSet_FreeSparseIDRange(set, data[0].sparseIdx, numAdded);
+        RenderSet_FreeSparseIDRange(set, EntityGetSparseID(&data[0]), numAdded);
         return INVALID_ENTITY;
     }
     PrimitiveGroup* group = &set->primitiveGroups[primitiveIdx];
@@ -339,8 +327,9 @@ EntityID RenderSet_AddEntities(RenderSet* set, u32 primitiveIdx, u32 numAdded, c
     {
         u32 denseIdx = startIdx + i;
         set->entities[denseIdx] = data[i];
-        set->entities[denseIdx].primitiveIdx = primitiveIdx;
-        SetSparseToDense(set, set->entities[denseIdx].sparseIdx, denseIdx);
+        u32 sparseIdx = EntityGetSparseID(&set->entities[denseIdx]);
+        EntitySetPrimitiveID(&set->entities[denseIdx], primitiveIdx);
+        SetSparseToDense(set, sparseIdx, denseIdx);
     }
     group->numEntities += numAdded;
     group->capacity = group->numEntities;
@@ -382,14 +371,14 @@ void RendersetAddANodesAsEntities(RenderSet* rs, const ANode* nodes, s32 numNode
         const Entity* parent = world + node->parent;
         u32 noMesh = (node->type != 0) | (node->index < 0) | (rs->skinned && node->skin < 0);
         Entity* added = world + n;
-        v128f parentRot = UnpackQuaternionS16Norm1(parent->rotation);
-        v128f parentScale = EntityUnpackWorldScale(parent->scale);
-        added->position = VecAdd(QMulVec3V(VecMul(localPos, parentScale), parentRot), parent->position);
-        added->rotation = PackQuaternionS16NormRet(VecNorm(QMul(localRot, parentRot)));
-        added->scale = EntityPackWorldScale(VecMul(localScale, parentScale));
-        added->parentIdx = parent->sparseIdx;
-        added->flags |= noMesh * EntityFlags_NoMesh;
-        added->sparseIdx = INVALID_ENTITY;
+        v128f parentRot = EntityGetRotation(parent);
+        v128f parentScale = EntityGetScaleV(parent);
+        EntitySetPositionV(added, VecAdd(QMulVec3V(VecMul(localPos, parentScale), parentRot), parent->position));
+        EntitySetRotation(added, VecNorm(QMul(localRot, parentRot)));
+        EntitySetScaleV(added, VecMul(localScale, parentScale));
+        // added->parentIdx = parent->sparseIdx;
+        EntitySetFlags(added, noMesh * EntityFlags_NoMesh);
+        EntitySetSparseID(added, INVALID_ENTITY);
     }
 }
 
@@ -424,15 +413,15 @@ EntityID RenderSet_AddScene(RenderSet* set, u32 bundleIdx, v128f position, v128f
         const ANode* node = nodes + m;
         if (!ANodeIsMesh(node, wantSkinned))
         {
-            nodeEntities[m + 1u].primitiveIdx = range.start;
+            EntitySetPrimitiveID(&nodeEntities[m + 1u], range.start);
             continue;
         }
         const AMesh* mesh = bundle->meshes + node->index;
         u32 firstGroupIdx = range.start + (u32)mesh->primitiveOffset;
         meshNodeCount++;
 
-        nodeEntities[m + 1u].primitiveIdx = firstGroupIdx;
-        nodeEntities[m + 1u].flags = EntityFlags_ColliderEnabled;
+        EntitySetPrimitiveID(&nodeEntities[m + 1u], firstGroupIdx);
+        EntitySetFlags(&nodeEntities[m + 1u], EntityFlags_ColliderEnabled);
         for (u32 p = 0; p < (u32)mesh->numPrimitives; p++)
         {
             const APrimitive* primitive = mesh->primitives + p;
@@ -473,9 +462,9 @@ EntityID RenderSet_AddScene(RenderSet* set, u32 bundleIdx, v128f position, v128f
         {
             u32 dst = newOffset + (u32)e;
             set->entities[dst] = set->entities[oldOffset + (u32)e];
-            set->entities[dst].primitiveIdx = (u32)g;
+            EntitySetPrimitiveID(&set->entities[dst], (u32)g);
 
-            u32 sparseIdx = set->entities[dst].sparseIdx;
+            u32 sparseIdx = EntityGetSparseID(&set->entities[dst]);
             if (sparseIdx != INVALID_ENTITY && sparseIdx < set->maxEntities)
                 set->sparseID[sparseIdx] = dst;
         }
@@ -492,9 +481,7 @@ EntityID RenderSet_AddScene(RenderSet* set, u32 bundleIdx, v128f position, v128f
     nodeEntities[0].position     = position;
     nodeEntities[0].rotation     = PackQuaternionS16NormRet(rotation);
     nodeEntities[0].scale        = EntityPackWorldScale(scale);
-    nodeEntities[0].primitiveIdx = 0;
-    nodeEntities[0].sparseIdx    = INVALID_ENTITY;
-    nodeEntities[0].flags        = 0;
+    EntitySetSparseID(&nodeEntities[0], INVALID_ENTITY);
     RendersetAddANodesAsEntities(set, bundle->nodes, bundle->numNodes, nodeEntities + 1, sparseStart);
 
     // insert entities
@@ -505,7 +492,7 @@ EntityID RenderSet_AddScene(RenderSet* set, u32 bundleIdx, v128f position, v128f
         if (!ANodeIsMesh(node, wantSkinned)) continue;
 
         const AMesh* mesh = bundle->meshes + node->index;
-        u32 firstGroupIdx = nodeEntities[n + 1u].primitiveIdx;
+        u32 firstGroupIdx = EntityGetPrimitiveID(&nodeEntities[n + 1u]);
         u32 nodeSparseIdx = INVALID_ENTITY;
         if (set->skinned)
             nodeSparseIdx = sparseStart + sparseCursor++;
@@ -515,24 +502,25 @@ EntityID RenderSet_AddScene(RenderSet* set, u32 bundleIdx, v128f position, v128f
             const APrimitive* primitive = mesh->primitives + p;
             
             Entity added = nodeEntities[n + 1u];
-            added.primitiveIdx = firstGroupIdx + p;
-            added.sparseIdx = set->skinned ? nodeSparseIdx : sparseStart + sparseCursor++;
-            added.flags |= PrimitiveIsTransparent(bundle, primitive) * EntityFlags_Transparent;
-            PrimitiveGroup* group = &set->primitiveGroups[added.primitiveIdx];
+            EntitySetPrimitiveID(&added, firstGroupIdx + p);
+            u32 sparseId = set->skinned ? nodeSparseIdx : sparseStart + sparseCursor++;
+            EntitySetSparseID(&added, sparseId);
+            EntityAddFlags(&added, PrimitiveIsTransparent(bundle, primitive) * EntityFlags_Transparent);
+            PrimitiveGroup* group = &set->primitiveGroups[EntityGetPrimitiveID(&added)];
             u32 localIdx = group->numEntities++;
             u32 denseIdx = group->entityOffset + localIdx;
             Entity* entity = &set->entities[denseIdx];
-            SetEntityGen(&added, GetEntityGen(entity)); // reserve generation
+            EntitySetGen(&added, EntityGetGen(entity)); // reserve generation
             set->entities[denseIdx] = added;
-            SetSparseToDense(set, added.sparseIdx, denseIdx);
-            RenderSet_AddEntitiesCallback(set, added.primitiveIdx, localIdx, 1u);
+            SetSparseToDense(set, sparseId, denseIdx);
+            RenderSet_AddEntitiesCallback(set, EntityGetPrimitiveID(&added), localIdx, 1u);
         }
     }
 
     ArenaPopGlobal(((u32)numNodes + 1u) * sizeof(Entity));
     ArenaPopGlobal(numPrimitives * sizeof(u32));
     const Entity* firstEntity = &set->entities[set->sparseID[sparseStart]];
-    return MakeEntityID(sparseStart, GetEntityGen(firstEntity));
+    return MakeEntityID(sparseStart, EntityGetGen(firstEntity));
 }
 
 void RenderSet_CompactEntities(RenderSet* set)
@@ -546,8 +534,9 @@ void RenderSet_CompactEntities(RenderSet* set)
     for (u32 i = 0; i < oldNumEntities; i++)
     {
         Entity entity = set->entities[i];
-        bool noMesh = (entity.flags  & EntityFlags_NoMesh) != 0u || entity.primitiveIdx == INVALID_GROUP;
-        if (noMesh && entity.sparseIdx != INVALID_ENTITY)
+        bool noMesh = (EntityGetFlags(&entity) & EntityFlags_NoMesh) != 0u 
+                    || EntityGetPrimitiveID(&entity) == INVALID_GROUP;
+        if (noMesh && EntityGetSparseID(&entity)!= INVALID_ENTITY)
         {
             noMeshEntities[noMeshCount++] = entity;
         }
@@ -560,7 +549,7 @@ void RenderSet_CompactEntities(RenderSet* set)
         for (u32 i = 0; i < group->numEntities; i++)
         {
             Entity entity = set->entities[group->entityOffset + i];
-            if (entity.sparseIdx != INVALID_ENTITY)
+            if (EntityGetSparseID(&entity) != INVALID_ENTITY)
             {
                 groupCounts[groupIdx]++;
                 totalDrawable++;
@@ -579,11 +568,11 @@ void RenderSet_CompactEntities(RenderSet* set)
         for (u32 i = 0; i < oldCount; i++)
         {
             Entity entity = set->entities[oldOffset + i];
-            if (entity.sparseIdx == INVALID_ENTITY)
+            if (EntityGetSparseID(&entity) == INVALID_ENTITY)
                 continue;
 
             set->entities[writeEntity] = entity;
-            set->entities[writeEntity].primitiveIdx = groupIdx;
+            EntitySetPrimitiveID(&set->entities[writeEntity], groupIdx);
             writeEntity++;
         }
     }
@@ -646,7 +635,7 @@ static void ShiftEntitiesLeft(RenderSet* set, u32 firstRemoved, u32 count)
     u32 endRemoved = firstRemoved + count;
     for (u32 i = firstRemoved; i < endRemoved && i < oldNumEntities; i++)
     {
-        u32 sparseIdx = set->entities[i].sparseIdx;
+        u32 sparseIdx = EntityGetSparseID(&set->entities[i]);
         bool validSparse = sparseIdx != INVALID_ENTITY && sparseIdx < set->maxEntities;
         bool sparseMapsToRemoved = validSparse &&
                                    set->sparseID[sparseIdx] >= firstRemoved &&
@@ -663,7 +652,7 @@ static void ShiftEntitiesLeft(RenderSet* set, u32 firstRemoved, u32 count)
         u32 dst = i - count;
         set->entities[dst] = set->entities[i];
 
-        u32 sparseIdx = set->entities[dst].sparseIdx;
+        u32 sparseIdx = EntityGetSparseID(&set->entities[dst]);
         bool validSparse = sparseIdx != INVALID_ENTITY && sparseIdx < set->maxEntities;
         bool sparseMapsToMovedSource = validSparse && set->sparseID[sparseIdx] == i;
         bool sparseNeedsReplacement = validSparse && set->sparseID[sparseIdx] == INVALID_ENTITY;
@@ -690,7 +679,7 @@ u32 RenderSet_RemoveEntities(RenderSet* set, u32 groupIdx, u32 localStartIdx, u3
     RenderSet_RemoveRangeCallback(set, groupIdx, localStartIdx, count);
     u32 cnt = group->numEntities - localStartIdx;
     for (u32 i = 0; i < cnt; i++)
-        NextEntityGen(&set->entities[group->entityOffset + localStartIdx + i]);
+        EntityNextGen(&set->entities[group->entityOffset + localStartIdx + i]);
 
     u32 firstRemoved = group->entityOffset + localStartIdx;
     ShiftEntitiesLeft(set, firstRemoved, count);
@@ -732,8 +721,9 @@ u32 RenderSet_RemoveSceneBundle(RenderSet* set, u32 bundleIdx)
     for (s32 e = (s32)set->numEntities - 1; e >= 0; e--)
     {
         Entity* entity = &set->entities[e];
-        bool noMesh = (entity->flags & EntityFlags_NoMesh) != 0u;
-        if (noMesh && entity->primitiveIdx >= firstGroup && entity->primitiveIdx <= lastGroup)
+        bool noMesh = (EntityGetFlags(entity) & EntityFlags_NoMesh) != 0u;
+        u32 primitiveID = EntityGetPrimitiveID(entity);
+        if (noMesh && primitiveID >= firstGroup && primitiveID <= lastGroup)
         {
             ShiftEntitiesLeft(set, (u32)e, 1u);
             noMeshRemoved++;
@@ -747,7 +737,7 @@ u32 RenderSet_RemoveSceneBundle(RenderSet* set, u32 bundleIdx)
         moved.entityOffset = (u16)(moved.entityOffset - entityCount);
         set->primitiveGroups[i - groupCount] = moved;
         for (u32 e = 0; e < moved.numEntities; e++)
-            set->entities[moved.entityOffset + e].primitiveIdx = i - groupCount;
+            EntitySetPrimitiveID(&set->entities[moved.entityOffset + e], i - groupCount);
     }
     set->numGroups -= groupCount;
 
@@ -820,11 +810,12 @@ bool RenderSet_Validate(const RenderSet* set, const char* label)
 
     for (u32 e = 0; e < set->numEntities; e++)
     {
-        bool noMesh = (set->entities[e].flags & EntityFlags_NoMesh) != 0u ||
-                       set->entities[e].primitiveIdx == INVALID_GROUP;
-        u32 groupIdx = set->entities[e].primitiveIdx;
+        Entity* entity = &set->entities[e];
+        bool noMesh = (EntityGetFlags(entity) & EntityFlags_NoMesh) != 0u ||
+                       EntityGetPrimitiveID(entity) == INVALID_GROUP;
+        u32 groupIdx = EntityGetPrimitiveID(entity);
         if (noMesh) {
-            u32 sparseIdx = set->entities[e].sparseIdx;
+            u32 sparseIdx = EntityGetSparseID(entity);
             if (sparseIdx != INVALID_ENTITY && sparseIdx < set->maxEntities && set->sparseID[sparseIdx] == INVALID_ENTITY) {
                 AX_WARN("RenderSet invalid %s: no-mesh dense %d sparse %d missing sparseToDense", label ? label : "", e, sparseIdx);
                 ok = false;
@@ -845,7 +836,7 @@ bool RenderSet_Validate(const RenderSet* set, const char* label)
             ok = false;
         }
 
-        u32 sparseIdx = set->entities[e].sparseIdx;
+        u32 sparseIdx = EntityGetSparseID(entity) ;
         if (sparseIdx != INVALID_ENTITY && sparseIdx < set->maxEntities && set->sparseID[sparseIdx] == INVALID_ENTITY) {
             AX_WARN("RenderSet invalid %s: dense %d sparse %d missing sparseToDense", label ? label : "", e, sparseIdx);
             ok = false;

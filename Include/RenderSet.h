@@ -5,42 +5,12 @@
 #define RENDER_SET_H
 
 #include "GLTFParser.h"
-#include "SIMD.h"
-#include "../Math/Half.h" 
+#include "Entity.h"
 #include "RenderLimits.h"
+#include "../Math/Half.h" 
 
-#define INVALID_ENTITY  (~0u)
 #define INVALID_GROUP   (~0u)
 #define INVALID_BUNDLE  (~0u)
-
-
-#define ENTITY_MAX_SCALE 10.0f
-
-typedef enum EntityFlags_
-{
-    EntityFlags_None            = 0,
-    EntityFlags_ColliderEnabled = 1 << 0,
-    EntityFlags_Transparent     = 1 << 1,
-    EntityFlags_NoMesh          = 1 << 2,
-    EntityFlags_Hidden          = 1 << 3
-} EntityFlags;
-
-
-// sparseId | (generation << 24)
-typedef u32 EntityID;
-
-typedef struct Entity_
-{
-    v128f position;     // last 32bit unused
-    u64   rotation;     
-    u64   scale;        // xyz16-last16 bit unused
-    u32   primitiveIdx; // todo make it 16 bit
-    u32   sparseIdx;
-    // 24 bit parent sparseIdx, last byte generation
-    u32   parentIdx;
-    u16   material;
-    u16   flags; // EntityFlags
-} Entity;
 
 typedef struct Range_
 {
@@ -115,41 +85,15 @@ static inline void PrimitiveGroup_SetAABB(PrimitiveGroup* group, v128f aabbMin, 
     group->aabbMax = aabbMax;
 }
 
-static inline EntityID MakeEntityID(u32 sparse, u32 gen) {
-    return sparse | (gen << 24);
-}
-
-static inline u32 GetEntityGen(const Entity* entity) {
-    return entity->parentIdx >> 24;
-}
-
-static inline EntityID GetEntityID(const Entity* entity) {
-    return entity->sparseIdx | (entity->parentIdx & 0xFF000000u);
-}
-
-static inline void SetEntityGen(Entity* entity, u32 gen) {
-    entity->parentIdx &= 0x00ffffffu;
-    entity->parentIdx |= (u32)((u8)(gen)) << 24;
-}
-
-static inline void NextEntityGen(Entity* entity) {
-    SetEntityGen(entity, GetEntityGen(entity) + 1);
-}
-
 static inline Entity* RenderSet_GetEntity(RenderSet* rs, EntityID entityID)
 {
     if (AX_UNLIKELY(entityID == INVALID_ENTITY)) return NULL;
     u32 denseIdx = rs->sparseID[entityID & 0x00FFFFFFu];
     if (denseIdx == INVALID_ENTITY) return NULL; // unmapped entity likely deleted
     Entity* entity = &rs->entities[denseIdx];
-    bool expired = GetEntityGen(entity) != (entityID >> 24);
+    bool expired = EntityGetGen(entity) != (entityID >> 24);
     return expired ? NULL : entity;
 }
-
-v128f EntityUnpackScale01(u64 packed);
-v128f EntityUnpackWorldScale(u64 packed);
-u64   EntityPackWorldScale(v128f scale);
-u64   EntityPackUniformWorldScale(f32 scale);
 
 v128f RenderSet_GroupLocalCenter(const PrimitiveGroup* group);
 v128f RenderSet_EntityBoundsCenter(const PrimitiveGroup* group, const Entity* entity, v128f rotation, v128f worldScale);

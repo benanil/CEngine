@@ -327,15 +327,15 @@ void main(uint3 tid : SV_DispatchThreadID)
     
     uint dense = idx;
     Entity entity = entities[dense];
-    uint entityFlags = entity.materialAndFlags >> 16u;
+    uint entityFlags = EntityGetFlags(entity);
     const bool entityTransparent = (entityFlags & EntityFlags_Transparent) != 0;
     
+    uint primitiveIdx = EntityGetPrimitiveID(entity);
     if (!(onlyTransparent == entityTransparent) || 
          (entityFlags & EntityFlags_NoMesh) != 0u || 
-         entity.primitiveIdx == 0xffffffffu)
+         primitiveIdx == 0xffffffffu)
         return;
 
-    uint primitiveIdx = entity.primitiveIdx;
     PrimitiveGroup group = primitiveGroups[primitiveIdx];
     PrimitiveGroupLOD lodGroup = primitiveGroupLODs[primitiveIdx];
 
@@ -411,7 +411,7 @@ void main(uint3 tid : SV_DispatchThreadID)
 
     if ((flags & CULL_DRAW_FLAG_VISIBILITY_OUTPUT) != 0u)
     {
-        uint visibleSparse = entities[dense].sparse;
+        uint visibleSparse = EntityGetSparseID(entities[dense]);
         uint old;
         InterlockedCompareExchange(visibilityMask[visibleSparse], 0, 1, old);
         InterlockedMax(dispatchArgs[1].groupCountZ, (lodGroup.lodNumVertices[lod] + 31u) / 32u);

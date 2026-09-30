@@ -738,9 +738,9 @@ static void IntegrateFinishedFoliage(u32 scheduledCount)
                 e.position  = typeItems[t][k].position;
                 e.rotation  = typeItems[t][k].rotation;
                 e.scale     = typeItems[t][k].scale;
-                e.sparseIdx = sparseBase + k;
-                e.flags     = type->params.collider * EntityFlags_ColliderEnabled;
-                e.primitiveIdx = groupIdx;
+                EntitySetSparseID(&e, sparseBase + k);
+                EntitySetFlags(&e, type->params.collider * EntityFlags_ColliderEnabled);
+                EntitySetPrimitiveID(&e, groupIdx);
                 entityBuf[k] = e;
             }
 

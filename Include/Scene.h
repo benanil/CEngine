@@ -392,12 +392,24 @@ static inline b3Vec3 Float3ToB3Vec3(float3 v) { return (b3Vec3){ v.x, v.y, v.z }
 static inline float3 B3VecToFloat3(b3Pos p)   { return (float3){p.x, p.y, p.z }; }
 static inline v128f  B3VecTov128f(b3Pos p)    { return VecSetR(p.x, p.y, p.z, 0.0f); }
 
+v128f  B3ToQuat(b3Quat q);
 b3Quat ToB3Quat(v128f q);
 u64    B3QuatToEntityRotation(b3Quat q);
 
-purefn b3Vec3 b3ProjectOnPlane(b3Vec3 v, b3Vec3 n)
-{
+purefn b3Vec3 b3ProjectOnPlane(b3Vec3 v, b3Vec3 n) {
     return b3Sub(v, b3MulSV(b3Dot(v, n), n));
+}
+
+purefn b3Vec3 EntityGetB3Pos(const Entity* e) {
+    return v128fToB3Vec3(EntityGetPosV(e));
+}
+
+purefn b3Vec3 EntityGetB3Scale(const Entity* e) {
+    return Float3ToB3Vec3(EntityGetScale(e));
+}
+
+purefn b3Quat EntityGetB3Quat(const Entity* e) {
+    return ToB3Quat(EntityGetRotation(e));
 }
 
 #endif // SCENE_H

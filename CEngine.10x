@@ -366,6 +366,9 @@
 					<File>
 						<Path>Include/Texture.h</Path>
 					</File>
+					<File>
+						<Path>Include/Entity.h</Path>
+					</File>
 				</Children>
 			</Folder>
 			<Folder>
@@ -609,6 +612,9 @@
 						<IncludeFilesWithoutExt>false</IncludeFilesWithoutExt>
 						<Children></Children>
 					</Folder>
+					<File>
+						<Path>Shaders/Entity.hlsl</Path>
+					</File>
 				</Children>
 			</Folder>
 			<Folder>
