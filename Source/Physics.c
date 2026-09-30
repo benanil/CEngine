@@ -917,14 +917,14 @@ s32 Scene_PhysicsRaycastPick(v128f origin, v128f dir, float rayLen, BVHHit* hit,
     u32 groupIdx = set->entities[dense].primitiveIdx;
     if (groupIdx >= set->numGroups) return 0;
 
-    hit->hit.t     = t;
-    hit->hit.u     = 0.0f;
-    hit->hit.v     = 0.0f;
-    hit->skinnedSet = 0;
-    hit->groupIdx  = groupIdx;
+    hit->hit.t        = t;
+    hit->hit.u        = 0.0f;
+    hit->hit.v        = 0.0f;
+    hit->skinnedSet   = 0;
+    hit->groupIdx     = groupIdx;
     hit->groupLocalID = dense - set->primitiveGroups[groupIdx].entityOffset;
-    hit->entityID  = entityID;
-    hit->triIndex  = (u32)r.triangleIndex;
+    hit->entityID     = entityID;
+    hit->triIndex     = (u32)r.triangleIndex;
     // resolve the render group back to the scene bundle for reporting. the group carries its
     // owning render bundle slot and the scene keeps a reverse map, so this is O(1).
     if (hit->skinnedSet != 0xFFFFFFFFu || hit->bundleIdx != 0xFFFFFFFFu)
