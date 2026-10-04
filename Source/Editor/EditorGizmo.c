@@ -181,8 +181,9 @@ bool EditorGizmoDuplicateSelected(void)
             GizmoDuplicateRecord* record = &records[i];
             EntitySetSparseID(&record->entity, newSparse);
             record->entity.position = VecAdd(record->entity.position, VecSetR(1.0f, 0.0f, 0.0f, 0.0f));
-            u32 denseIdx = RenderSet_AddEntity(set, record->groupIdx, &record->entity);
-            if (denseIdx == INVALID_ENTITY) continue;
+            SparseData* sparseData = RenderSet_AddEntity(set, record->groupIdx, &record->entity);
+            if (sparseData == NULL) continue;
+            u32 denseIdx = sparseData->id;
             PrimitiveGroup* group = &set->primitiveGroups[record->groupIdx];
             if (!targetSet && denseIdx >= group->entityOffset)
             {

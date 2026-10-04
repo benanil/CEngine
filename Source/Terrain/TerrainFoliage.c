@@ -577,7 +577,7 @@ static void DestroyFoliageEntityRange(tChunk* chunk, u32 start, u32 count)
 
         tFoliageEntity* first = &chunk->foliageEntities[runStart];
         if (first->sparseIdx >= set->maxEntities || groupIdx >= set->numGroups) continue;
-        u32 denseIdx = set->sparseID[first->sparseIdx];
+        u32 denseIdx = set->sparseData[first->sparseIdx].id;
         if (denseIdx == INVALID_ENTITY) continue;
         u32 localStartIdx = denseIdx - set->primitiveGroups[groupIdx].entityOffset;
         RenderSet_RemoveEntities(set, groupIdx, localStartIdx, runCount);
@@ -744,7 +744,7 @@ static void IntegrateFinishedFoliage(u32 scheduledCount)
                 entityBuf[k] = e;
             }
 
-            if (RenderSet_AddEntities(set, groupIdx, count, entityBuf) == INVALID_ENTITY)
+            if (RenderSet_AddEntities(set, groupIdx, count, entityBuf) == NULL)
             {
                 RenderSet_FreeSparseIDRange(set, sparseBase, count);
                 continue;

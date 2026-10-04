@@ -30,19 +30,7 @@ u32 EntityGetPrimitiveID(in Entity e) {
 }
 
 u32 EntityGetFlags(in Entity e) {
-    return asuint(e.position.w) >> 28;
-}
-
-u32 EntityGetGen(in Entity e) {
-    return (asuint(e.position.w) >> 24) & 0xfu;
-}
-
-EntityID GetEntityID(in Entity e) {
-    return EntityGetSparseID(e) | (EntityGetGen(e) << 24u);
-}
-
-EntityID MakeEntityID(u32 sparse, u32 gen) {
-    return sparse | (gen << 24);
+    return asuint(e.position.w) >> 24;
 }
 
 void EntitySetSparseID(inout Entity e, u32 id) {
@@ -57,24 +45,14 @@ void EntitySetPrimitiveID(inout Entity e, u32 id) {
 
 void EntitySetFlags(inout Entity e, EntityFlags flags) {
     u32 w = asuint(e.position.w);
-    w = (w & 0x0FFFFFFFu) | (((u32)flags & 0xFu) << 28u);
+    w = (w & 0x00FFFFFFu) | (((u32)flags & 0xFFu) << 24u);
     e.position.w = asfloat(w);
 }
 
 void EntityAddFlags(inout Entity e, EntityFlags flags) {
     u32 w = asuint(e.position.w);
-    w |= ((u32)flags & 0xFu) << 28u;
+    w |= ((u32)flags & 0xFFu) << 24u;
     e.position.w = asfloat(w);
-}
-
-void EntitySetGen(inout Entity e, u32 gen) {
-    u32 w = asuint(e.position.w);
-    w = (w & 0xF0FFFFFFu) | ((gen & 0xFu) << 24u);
-    e.position.w = asfloat(w);
-}
-
-void EntityNextGen(inout Entity e) {
-    EntitySetGen(e, (EntityGetGen(e) + 1) & 0xFu);
 }
 
 uint2 EntityPackWorldScale(v128f scale) {

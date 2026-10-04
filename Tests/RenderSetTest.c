@@ -205,8 +205,8 @@ static void AddEntitiesToGroup(RenderSet* set, u32 groupIdx, u32 count)
     for (u32 i = 0; i < count; i++)
         entities[i] = MakeEntity(INVALID_ENTITY);
 
-    u32 result = RenderSet_AddEntities(set, groupIdx, count, entities);
-    CHECK(result != INVALID_ENTITY, "AddEntities failed group=%u count=%u", groupIdx, count);
+    SparseData* result = RenderSet_AddEntities(set, groupIdx, count, entities);
+    CHECK(result != NULL, "AddEntities failed group=%u count=%u", groupIdx, count);
 }
 
 static void AddSparseEntitiesToGroup(RenderSet* set, u32 groupIdx, u32 count)
@@ -227,8 +227,8 @@ static void AddSparseEntitiesToGroup(RenderSet* set, u32 groupIdx, u32 count)
     for (u32 i = 0; i < count; i++)
         entities[i] = MakeEntity(sparseStart + i);
 
-    u32 result = RenderSet_AddEntities(set, groupIdx, count, entities);
-    CHECK(result != INVALID_ENTITY, "AddEntities failed group=%u count=%u", groupIdx, count);
+    SparseData* result = RenderSet_AddEntities(set, groupIdx, count, entities);
+    CHECK(result != NULL, "AddEntities failed group=%u count=%u", groupIdx, count);
 }
 
 static void CheckGroupRange(const RenderSet* set, u32 groupIdx, u32 offset, u32 count, const char* label)
@@ -416,9 +416,9 @@ static void TestMiddleInsertionKeepsMappings(void)
     RenderSet_AddSceneBundle(&set, &bundleB, 1);
 
     Entity e = MakeEntity(INVALID_ENTITY);
-    CHECK(RenderSet_AddEntity(&set, 0, &e) != INVALID_ENTITY, "add group 0");
-    CHECK(RenderSet_AddEntity(&set, 2, &e) != INVALID_ENTITY, "add group 2 after middle shift");
-    CHECK(RenderSet_AddEntity(&set, 1, &e) != INVALID_ENTITY, "add group 1 after group 2 has entity");
+    CHECK(RenderSet_AddEntity(&set, 0, &e) != NULL, "add group 0");
+    CHECK(RenderSet_AddEntity(&set, 2, &e) != NULL, "add group 2 after middle shift");
+    CHECK(RenderSet_AddEntity(&set, 1, &e) != NULL, "add group 1 after group 2 has entity");
 
     CHECK(set.numEntities == 3, "numEntities=%u", set.numEntities);
     CHECK(set.primitiveGroups[0].entityOffset == 0 && set.primitiveGroups[0].numEntities == 1, "group0 range %u+%u", set.primitiveGroups[0].entityOffset, set.primitiveGroups[0].numEntities);
@@ -510,9 +510,9 @@ static void TestSparseCapacityFailureDoesNotMutate(void)
     RenderSet_AddSceneBundle(&set, &bundle, 0);
 
     Entity two[2] = { MakeEntity(INVALID_ENTITY), MakeEntity(INVALID_ENTITY) };
-    u32 result = RenderSet_AddEntities(&set, 0, 2, two);
+    SparseData* result = RenderSet_AddEntities(&set, 0, 2, two);
 
-    CHECK(result == INVALID_ENTITY, "result=%u", result);
+    CHECK(result == NULL, "result=%u", result);
     CHECK(set.numEntities == 0, "numEntities mutated to %u", set.numEntities);
     CHECK(set.primitiveGroups[0].numEntities == 0, "group count mutated to %u", set.primitiveGroups[0].numEntities);
     CHECK(RenderSet_Validate(&set, "sparse failure"), "validation failed");

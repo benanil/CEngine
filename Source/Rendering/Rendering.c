@@ -327,7 +327,7 @@ static void UploadRenderSetStatics(const RenderSet* set, RenderSetBuffers* buffe
 
     UpdateGPUBuffer(buffers->primitiveGroup, gpuGroups, set->numGroups * sizeof(PrimitiveGroupGPU), 0);
     UpdateGPUBuffer(buffers->primitiveGroupLOD, lodGroups, set->numGroups * sizeof(PrimitiveGroupLOD), 0);
-    UpdateGPUBuffer(buffers->sparseToDense, set->sparseID, set->maxEntities * sizeof(u32), 0);
+    UpdateGPUBuffer(buffers->sparseToDense, set->sparseData, set->maxEntities * sizeof(u32), 0);
     ArenaRestore(&GlobalArena, mark);
 }
 

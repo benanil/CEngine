@@ -22,7 +22,7 @@ typedef u32 EntityID;
 typedef struct Entity_
 {
     // todo(anil) generation has to be in sparseID array
-    v128f position; // last 24bit sparse, 4bit generation 4bit flags
+    v128f position; // w 24bit sparse, 8bit flags
     u64   rotation; 
     u64   scale;    // xyz16 last 16 primitive idx
 } Entity;
@@ -36,19 +36,15 @@ purefn u32 EntityGetPrimitiveID(const Entity* e) {
 }
 
 purefn u32 EntityGetFlags(const Entity* e) {
-    return VeciGetW(VecBitcastU32(e->position)) >> 28ull;
+    return VeciGetW(VecBitcastU32(e->position)) >> 24ull;
 }
 
 purefn u32 EntityGetGen(const Entity* e) {
-    return (VeciGetW(VecBitcastU32(e->position)) >> 24ull) & 0xfu;
-}
-
-purefn EntityID GetEntityID(const Entity* e) {
-    return EntityGetSparseID(e) | (EntityGetGen(e) << 24u);
+    return (VeciGetW(VecBitcastU32(e->position)) >> 24ull) & 0xFFu;
 }
 
 purefn EntityID MakeEntityID(u32 sparse, u32 gen) {
-    return (sparse & 0xFFFFFFu) | ((gen & 0xFu) << 24u);
+    return (sparse & 0xFFFFFFu) | ((gen & 0xFFu) << 24u);
 }
 
 static inline void EntitySetSparseID(Entity* e, u32 id) {
@@ -64,27 +60,17 @@ static inline void EntitySetPrimitiveID(Entity* e, u32 id) {
 }
 
 static inline void EntitySetFlags(Entity* e, EntityFlags flags) {
-    ASSERT(flags < 16);
+    ASSERT(flags <= 255);
     u32 w = VeciGetW(VecBitcastU32(e->position));
-    w = (w & 0x0FFFFFFFu) | (((u32)flags & 0xFu) << 28u);
+    w = (w & 0x00FFFFFFu) | (((u32)flags & 0xFFu) << 24u);
     VecSetW(e->position, BitCast(f32, w));
 }
 
 static inline void EntityAddFlags(Entity* e, EntityFlags flags) {
-    ASSERT(flags < 16);
+    ASSERT(flags <= 255);
     u32 w = VeciGetW(VecBitcastU32(e->position));
-    w |= ((u32)flags & 0xFu) << 28u;
+    w |= ((u32)flags & 0xFFu) << 24u;
     VecSetW(e->position, BitCast(f32, w));
-}
-
-static inline void EntitySetGen(Entity* e, u32 gen) {
-    u32 w = VeciGetW(VecBitcastU32(e->position));
-    w = (w & 0xF0FFFFFFu) | ((gen & 0xFu) << 24u);
-    VecSetW(e->position, BitCast(f32, w));
-}
-
-static inline void EntityNextGen(Entity* e) {
-    EntitySetGen(e, (EntityGetGen(e) + 1) & 0xFu);
 }
 
 purefn u64 EntityPackWorldScale(v128f scale) {

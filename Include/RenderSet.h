@@ -24,10 +24,16 @@ typedef struct PrimitiveGroupLOD_ PrimitiveGroupLOD;
 
 struct Scene_;
 
+typedef struct SparseData_
+{
+    u32 id  : 24;
+    u32 gen : 8;
+} SparseData;
+
 typedef struct RenderSet_
 {
     Entity*             entities;
-    u32*                sparseID; // sparse to dense
+    SparseData*         sparseData; // sparse to dense
     u64*                sparseSlots; // bitset for used sparse id's
     
     PrimitiveGroup*     primitiveGroups;
@@ -87,12 +93,15 @@ static inline void PrimitiveGroup_SetAABB(PrimitiveGroup* group, v128f aabbMin, 
 
 static inline Entity* RenderSet_GetEntity(RenderSet* rs, EntityID entityID)
 {
-    if (AX_UNLIKELY(entityID == INVALID_ENTITY)) return NULL;
-    u32 denseIdx = rs->sparseID[entityID & 0x00FFFFFFu];
-    if (denseIdx == INVALID_ENTITY) return NULL; // unmapped entity likely deleted
-    Entity* entity = &rs->entities[denseIdx];
-    bool expired = EntityGetGen(entity) != (entityID >> 24);
-    return expired ? NULL : entity;
+    if (AX_UNLIKELY((entityID & INVALID_ENTITY) == INVALID_ENTITY)) return NULL;
+    SparseData sparse = rs->sparseData[entityID & 0x00FFFFFFu];
+    if (sparse.id == INVALID_ENTITY || sparse.gen != (entityID >> 24)) return NULL; // unmapped entity likely deleted
+    return &rs->entities[sparse.id];
+}
+
+static inline EntityID EntityIDFromSparseData(RenderSet* rs, const SparseData* sparse)
+{
+    return (u32)(sparse - rs->sparseData) | (sparse->gen << 24);
 }
 
 v128f RenderSet_GroupLocalCenter(const PrimitiveGroup* group);
@@ -123,11 +132,11 @@ void  RenderSet_SetHookScene(RenderSet* set, struct Scene_* scene);
 u32   RenderSet_AddSceneBundle(RenderSet* set, const SceneBundle* sceneBundle, u32 materialOffset);
 // returns: root node, first entity that is added: sparseID | (generation << 24)
 //    since always parentID < childID look at: SceneNormalize.c EmitRemappedNode
-EntityID RenderSet_AddScene(RenderSet* set, u32 bundleIdx, v128f position, v128f rotation, v128f scale, bool wantSkinned);
+SparseData* RenderSet_AddScene(RenderSet* set, u32 bundleIdx, v128f position, v128f rotation, v128f scale, bool wantSkinned);
 
-EntityID RenderSet_AddEntity(RenderSet* set, u32 primitiveIdx, const Entity* data);
+SparseData* RenderSet_AddEntity(RenderSet* set, u32 primitiveIdx, const Entity* data);
 
-EntityID RenderSet_AddEntities(RenderSet* set, u32 primitiveIdx, u32 numAdded, const Entity* data);
+SparseData* RenderSet_AddEntities(RenderSet* set, u32 primitiveIdx, u32 numAdded, const Entity* data);
 
 void  RenderSet_Clear(RenderSet* set);
 

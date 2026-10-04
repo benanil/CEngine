@@ -309,7 +309,7 @@ u32 Scene_RemoveBundle(Scene* scene, u32 bundleIdx);
 s32 Scene_RepackTextures(Scene* scene);
 
 // instances the bundle node hierarchy with the given transform. out: number of entities added
-EntityID Scene_Spawn(Scene* scene, u32 bundleIdx, v128f position, v128f rotation, v128f scale);
+SparseData* Scene_Spawn(Scene* scene, u32 bundleIdx, v128f position, v128f rotation, v128f scale);
 
 void Scene_ClearEntities(Scene* scene);
 

@@ -634,7 +634,7 @@ s32 Scene_RepackTextures(Scene* scene)
     return 1;
 }
 
-EntityID Scene_Spawn(Scene* scene, u32 bundleIdx, v128f position, v128f rotation, v128f scale)
+SparseData* Scene_Spawn(Scene* scene, u32 bundleIdx, v128f position, v128f rotation, v128f scale)
 {
     if (bundleIdx >= scene->numBundles || !scene->bundleRefs[bundleIdx].bundle) return 0;
 
@@ -650,9 +650,9 @@ EntityID Scene_Spawn(Scene* scene, u32 bundleIdx, v128f position, v128f rotation
             oldCounts[i] = set->primitiveGroups[range.start + i].numEntities;
     }
 
-    u32 added = RenderSet_AddScene(set, scene->bundleRefs[bundleIdx].renderIdx, position, rotation, scale, skinned);
+    SparseData* added = RenderSet_AddScene(set, scene->bundleRefs[bundleIdx].renderIdx, position, rotation, scale, skinned);
 
-    if (skinned && added != INVALID_ENTITY && oldCounts)
+    if (skinned && added != NULL && oldCounts)
     {
         GPUAnimationInstance instance = { .animIdx = Scene_DefaultAnimation(scene, bundleIdx), .timeOffset = 0.0f };
         for (u32 i = 0; i < range.count; i++)
@@ -667,7 +667,7 @@ EntityID Scene_Spawn(Scene* scene, u32 bundleIdx, v128f position, v128f rotation
     }
     if (oldCounts) ArenaPopGlobal(range.count * sizeof(u32));
 
-    if (added != INVALID_ENTITY) scene->renderDataDirty = 1;
+    if (added != NULL) scene->renderDataDirty = 1;
     return added;
 }
 

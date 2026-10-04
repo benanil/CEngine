@@ -121,3 +121,100 @@ crash:   #21 00007FF7CAE615E2 __scrt_common_main_seh+0x132 rva 0x9515e2 D:\a\_wo
 crash:   #22 00007FF7CAE6149E __scrt_common_main+0xe rva 0x95149e D:\a\_work\1\s\src\vctools\crt\vcstartup\src\startup\exe_common.inl:331 C:\CEngine\Debug\Debug\CEngine.exe
 crash:   #23 00007FF7CAE6178E mainCRTStartup+0xe rva 0x95178e D:\a\_work\1\s\src\vctools\crt\vcstartup\src\startup\exe_main.cpp:17 C:\CEngine\Debug\Debug\CEngine.exe
 crash:   #24 00007FFB5D1AE8D7 BaseThreadInitThunk+0x17 rva 0x2e8d7 C:\Windows\System32\KERNEL32.DLL
+crash: Exception code: 0xC0000005 at 00007FF78C44248F module 00007FF78C410000 rva 0x3248f
+crash: Access violation: reading address 0000000000000000
+crash:   #00 00007FF78C44248F ?+0x0 rva 0x3248f C:\CEngine\Release\Release\CEngine.exe
+crash:   #01 00007FF78C44248F ?+0x0 rva 0x3248f C:\CEngine\Release\Release\CEngine.exe
+crash:   #02 00007FF78C438C56 ?+0x0 rva 0x28c56 C:\CEngine\Release\Release\CEngine.exe
+crash:   #03 00007FF78C431EE7 ?+0x0 rva 0x21ee7 C:\CEngine\Release\Release\CEngine.exe
+crash:   #04 00007FF78C413184 ?+0x0 rva 0x3184 C:\CEngine\Release\Release\CEngine.exe
+crash:   #05 00007FF78C41304C ?+0x0 rva 0x304c C:\CEngine\Release\Release\CEngine.exe
+crash:   #06 00007FFC047B8104 SDL_wcstoull+0x36724 rva 0x68104 C:\CEngine\Release\Release\SDL3.dll
+crash:   #07 00007FFC04932578 SDL_wcstoull+0x1b0b98 rva 0x1e2578 C:\CEngine\Release\Release\SDL3.dll
+crash:   #08 00007FF78C41341F ?+0x0 rva 0x341f C:\CEngine\Release\Release\CEngine.exe
+crash:   #09 00007FFC048AFBC6 SDL_wcstoull+0x12e1e6 rva 0x15fbc6 C:\CEngine\Release\Release\SDL3.dll
+crash:   #10 00007FF78C79CD40 ?+0x0 rva 0x38cd40 C:\CEngine\Release\Release\CEngine.exe
+crash:   #11 00007FFC71B8E8D7 BaseThreadInitThunk+0x17 rva 0x2e8d7 C:\Windows\System32\KERNEL32.DLL
+crash:   #12 00007FFC7342C53C RtlUserThreadStart+0x2c rva 0x8c53c C:\Windows\SYSTEM32\ntdll.dll
+crash: Exception code: 0xC0000005 at 00007FF65D5C246F module 00007FF65D590000 rva 0x3246f
+crash: Access violation: reading address 0000000000000000
+crash:   #00 00007FF65D5C246F ?+0x0 rva 0x3246f C:\CEngine\Release\Release\CEngine.exe
+crash:   #01 00007FF65D5C246F ?+0x0 rva 0x3246f C:\CEngine\Release\Release\CEngine.exe
+crash:   #02 00007FF65D5B8C36 ?+0x0 rva 0x28c36 C:\CEngine\Release\Release\CEngine.exe
+crash:   #03 00007FF65D5B1EC7 ?+0x0 rva 0x21ec7 C:\CEngine\Release\Release\CEngine.exe
+crash:   #04 00007FF65D593184 ?+0x0 rva 0x3184 C:\CEngine\Release\Release\CEngine.exe
+crash:   #05 00007FF65D59304C ?+0x0 rva 0x304c C:\CEngine\Release\Release\CEngine.exe
+crash:   #06 00007FFC047B8104 SDL_wcstoull+0x36724 rva 0x68104 C:\CEngine\Release\Release\SDL3.dll
+crash:   #07 00007FFC04932578 SDL_wcstoull+0x1b0b98 rva 0x1e2578 C:\CEngine\Release\Release\SDL3.dll
+crash:   #08 00007FF65D59341F ?+0x0 rva 0x341f C:\CEngine\Release\Release\CEngine.exe
+crash:   #09 00007FFC048AFBC6 SDL_wcstoull+0x12e1e6 rva 0x15fbc6 C:\CEngine\Release\Release\SDL3.dll
+crash:   #10 00007FF65D91CD20 ?+0x0 rva 0x38cd20 C:\CEngine\Release\Release\CEngine.exe
+crash:   #11 00007FFC71B8E8D7 BaseThreadInitThunk+0x17 rva 0x2e8d7 C:\Windows\System32\KERNEL32.DLL
+crash:   #12 00007FFC7342C53C RtlUserThreadStart+0x2c rva 0x8c53c C:\Windows\SYSTEM32\ntdll.dll
+crash: Exception code: 0xC0000005 at 00007FF69266246F module 00007FF692630000 rva 0x3246f
+crash: Access violation: reading address 0000000000000000
+crash:   #00 00007FF69266246F ?+0x0 rva 0x3246f C:\CEngine\Release\Release\CEngine.exe
+crash:   #01 00007FF69266246F ?+0x0 rva 0x3246f C:\CEngine\Release\Release\CEngine.exe
+crash:   #02 00007FF692658C36 ?+0x0 rva 0x28c36 C:\CEngine\Release\Release\CEngine.exe
+crash:   #03 00007FF692651EC7 ?+0x0 rva 0x21ec7 C:\CEngine\Release\Release\CEngine.exe
+crash:   #04 00007FF692633184 ?+0x0 rva 0x3184 C:\CEngine\Release\Release\CEngine.exe
+crash:   #05 00007FF69263304C ?+0x0 rva 0x304c C:\CEngine\Release\Release\CEngine.exe
+crash:   #06 00007FFC047B8104 SDL_wcstoull+0x36724 rva 0x68104 C:\CEngine\Release\Release\SDL3.dll
+crash:   #07 00007FFC04932578 SDL_wcstoull+0x1b0b98 rva 0x1e2578 C:\CEngine\Release\Release\SDL3.dll
+crash:   #08 00007FF69263341F ?+0x0 rva 0x341f C:\CEngine\Release\Release\CEngine.exe
+crash:   #09 00007FFC048AFBC6 SDL_wcstoull+0x12e1e6 rva 0x15fbc6 C:\CEngine\Release\Release\SDL3.dll
+crash:   #10 00007FF6929BCD20 ?+0x0 rva 0x38cd20 C:\CEngine\Release\Release\CEngine.exe
+crash:   #11 00007FFC71B8E8D7 BaseThreadInitThunk+0x17 rva 0x2e8d7 C:\Windows\System32\KERNEL32.DLL
+crash:   #12 00007FFC7342C53C RtlUserThreadStart+0x2c rva 0x8c53c C:\Windows\SYSTEM32\ntdll.dll
+crash: Exception code: 0xC0000005 at 00007FF63820179B module 00007FF638160000 rva 0xa179b
+crash: Access violation: reading address 0000000000000000
+crash:   #00 00007FF63820179B EntityGetSparseID+0xb rva 0xa179b C:\CEngine\Include\Entity.h:31 C:\CEngine\Debug\Debug\CEngine.exe
+crash:   #01 00007FF63820179B EntityGetSparseID+0xb rva 0xa179b C:\CEngine\Include\Entity.h:31 C:\CEngine\Debug\Debug\CEngine.exe
+crash:   #02 00007FF638202CA4 Entity_TogglePhysics+0x34 rva 0xa2ca4 C:\CEngine\Source\Physics.c:439 C:\CEngine\Debug\Debug\CEngine.exe
+crash:   #03 00007FF6381BC979 OpenSceneCallback+0xd9 rva 0x5c979 C:\CEngine\Source\Gameplay.c:79 C:\CEngine\Debug\Debug\CEngine.exe
+crash:   #04 00007FF6381EA767 Scene_OpenActive+0x187 rva 0x8a767 C:\CEngine\Source\Scene.c:193 C:\CEngine\Debug\Debug\CEngine.exe
+crash:   #05 00007FF6381E0812 GraphicsEditorUI+0x122 rva 0x80812 C:\CEngine\Source\Editor\Editor.c:855 C:\CEngine\Debug\Debug\CEngine.exe
+crash:   #06 00007FF63818B60A MainLoopTick+0xaa rva 0x2b60a C:\CEngine\Source\Main.c:124 C:\CEngine\Debug\Debug\CEngine.exe
+crash:   #07 00007FF63818B72F MainAppIterate+0x1f rva 0x2b72f C:\CEngine\Source\Main.c:152 C:\CEngine\Debug\Debug\CEngine.exe
+crash:   #08 00007FFC03FC1F51 SDL_IterateMainCallbacks+0x41 rva 0xd1f51 C:\CEngine\Extern\SDL3\src\main\SDL_main_callbacks.c:125 C:\CEngine\Debug\Debug\SDL3.dll
+crash:   #09 00007FFC0434E7C9 GenericIterateMainCallbacks+0x69 rva 0x45e7c9 C:\CEngine\Extern\SDL3\src\main\generic\SDL_sysmain_callbacks.c:67 C:\CEngine\Debug\Debug\SDL3.dll
+crash:   #10 00007FFC0434E55A SDL_EnterAppMainCallbacks_REAL+0xaa rva 0x45e55a C:\CEngine\Extern\SDL3\src\main\generic\SDL_sysmain_callbacks.c:77 C:\CEngine\Debug\Debug\SDL3.dll
+crash:   #11 00007FFC03F45D25 SDL_EnterAppMainCallbacks+0x45 rva 0x55d25 C:\CEngine\Extern\SDL3\src\dynapi\SDL_dynapi_procs.h:207 C:\CEngine\Debug\Debug\SDL3.dll
+crash:   #12 00007FF638187C22 SDL_main+0x42 rva 0x27c22 C:\CEngine\Source\Main.c:167 C:\CEngine\Debug\Debug\CEngine.exe
+crash:   #13 00007FFC03FC2014 SDL_CallMainFunction+0x34 rva 0xd2014 C:\CEngine\Extern\SDL3\src\main\SDL_main_callbacks.c:160 C:\CEngine\Debug\Debug\SDL3.dll
+crash:   #14 00007FFC0422715E SDL_RunApp_REAL+0x8e rva 0x33715e C:\CEngine\Extern\SDL3\src\main\windows\SDL_sysmain_runapp.c:41 C:\CEngine\Debug\Debug\SDL3.dll
+crash:   #15 00007FFC03F50A06 SDL_RunApp_DEFAULT+0x36 rva 0x60a06 C:\CEngine\Extern\SDL3\src\dynapi\SDL_dynapi_procs.h:804 C:\CEngine\Debug\Debug\SDL3.dll
+crash:   #16 00007FFC03F45CD1 SDL_RunApp+0x31 rva 0x55cd1 C:\CEngine\Extern\SDL3\src\dynapi\SDL_dynapi_procs.h:804 C:\CEngine\Debug\Debug\SDL3.dll
+crash:   #17 00007FF638187C51 main+0x21 rva 0x27c51 C:\CEngine\Extern\SDL3\include\SDL3\SDL_main_impl.h:111 C:\CEngine\Debug\Debug\CEngine.exe
+crash:   #18 00007FF638AB14F9 invoke_main+0x39 rva 0x9514f9 D:\a\_work\1\s\src\vctools\crt\vcstartup\src\startup\exe_common.inl:79 C:\CEngine\Debug\Debug\CEngine.exe
+crash:   #19 00007FF638AB13E2 __scrt_common_main_seh+0x132 rva 0x9513e2 D:\a\_work\1\s\src\vctools\crt\vcstartup\src\startup\exe_common.inl:288 C:\CEngine\Debug\Debug\CEngine.exe
+crash:   #20 00007FF638AB129E __scrt_common_main+0xe rva 0x95129e D:\a\_work\1\s\src\vctools\crt\vcstartup\src\startup\exe_common.inl:331 C:\CEngine\Debug\Debug\CEngine.exe
+crash:   #21 00007FF638AB158E mainCRTStartup+0xe rva 0x95158e D:\a\_work\1\s\src\vctools\crt\vcstartup\src\startup\exe_main.cpp:17 C:\CEngine\Debug\Debug\CEngine.exe
+crash:   #22 00007FFC71B8E8D7 BaseThreadInitThunk+0x17 rva 0x2e8d7 C:\Windows\System32\KERNEL32.DLL
+crash:   #23 00007FFC7342C53C RtlUserThreadStart+0x2c rva 0x8c53c C:\Windows\SYSTEM32\ntdll.dll
+crash: Exception code: 0xC0000005 at 00007FF75030179B module 00007FF750260000 rva 0xa179b
+crash: Access violation: reading address 0000000000000000
+crash:   #00 00007FF75030179B EntityGetSparseID+0xb rva 0xa179b C:\CEngine\Include\Entity.h:31 C:\CEngine\Debug\Debug\CEngine.exe
+crash:   #01 00007FF75030179B EntityGetSparseID+0xb rva 0xa179b C:\CEngine\Include\Entity.h:31 C:\CEngine\Debug\Debug\CEngine.exe
+crash:   #02 00007FF750302CA4 Entity_TogglePhysics+0x34 rva 0xa2ca4 C:\CEngine\Source\Physics.c:439 C:\CEngine\Debug\Debug\CEngine.exe
+crash:   #03 00007FF7502BC979 OpenSceneCallback+0xd9 rva 0x5c979 C:\CEngine\Source\Gameplay.c:79 C:\CEngine\Debug\Debug\CEngine.exe
+crash:   #04 00007FF7502EA767 Scene_OpenActive+0x187 rva 0x8a767 C:\CEngine\Source\Scene.c:193 C:\CEngine\Debug\Debug\CEngine.exe
+crash:   #05 00007FF7502E0812 GraphicsEditorUI+0x122 rva 0x80812 C:\CEngine\Source\Editor\Editor.c:855 C:\CEngine\Debug\Debug\CEngine.exe
+crash:   #06 00007FF75028B60A MainLoopTick+0xaa rva 0x2b60a C:\CEngine\Source\Main.c:124 C:\CEngine\Debug\Debug\CEngine.exe
+crash:   #07 00007FF75028B72F MainAppIterate+0x1f rva 0x2b72f C:\CEngine\Source\Main.c:152 C:\CEngine\Debug\Debug\CEngine.exe
+crash:   #08 00007FFC03FC1F51 SDL_IterateMainCallbacks+0x41 rva 0xd1f51 C:\CEngine\Extern\SDL3\src\main\SDL_main_callbacks.c:125 C:\CEngine\Debug\Debug\SDL3.dll
+crash:   #09 00007FFC0434E7C9 GenericIterateMainCallbacks+0x69 rva 0x45e7c9 C:\CEngine\Extern\SDL3\src\main\generic\SDL_sysmain_callbacks.c:67 C:\CEngine\Debug\Debug\SDL3.dll
+crash:   #10 00007FFC0434E55A SDL_EnterAppMainCallbacks_REAL+0xaa rva 0x45e55a C:\CEngine\Extern\SDL3\src\main\generic\SDL_sysmain_callbacks.c:77 C:\CEngine\Debug\Debug\SDL3.dll
+crash:   #11 00007FFC03F45D25 SDL_EnterAppMainCallbacks+0x45 rva 0x55d25 C:\CEngine\Extern\SDL3\src\dynapi\SDL_dynapi_procs.h:207 C:\CEngine\Debug\Debug\SDL3.dll
+crash:   #12 00007FF750287C22 SDL_main+0x42 rva 0x27c22 C:\CEngine\Source\Main.c:167 C:\CEngine\Debug\Debug\CEngine.exe
+crash:   #13 00007FFC03FC2014 SDL_CallMainFunction+0x34 rva 0xd2014 C:\CEngine\Extern\SDL3\src\main\SDL_main_callbacks.c:160 C:\CEngine\Debug\Debug\SDL3.dll
+crash:   #14 00007FFC0422715E SDL_RunApp_REAL+0x8e rva 0x33715e C:\CEngine\Extern\SDL3\src\main\windows\SDL_sysmain_runapp.c:41 C:\CEngine\Debug\Debug\SDL3.dll
+crash:   #15 00007FFC03F50A06 SDL_RunApp_DEFAULT+0x36 rva 0x60a06 C:\CEngine\Extern\SDL3\src\dynapi\SDL_dynapi_procs.h:804 C:\CEngine\Debug\Debug\SDL3.dll
+crash:   #16 00007FFC03F45CD1 SDL_RunApp+0x31 rva 0x55cd1 C:\CEngine\Extern\SDL3\src\dynapi\SDL_dynapi_procs.h:804 C:\CEngine\Debug\Debug\SDL3.dll
+crash:   #17 00007FF750287C51 main+0x21 rva 0x27c51 C:\CEngine\Extern\SDL3\include\SDL3\SDL_main_impl.h:111 C:\CEngine\Debug\Debug\CEngine.exe
+crash:   #18 00007FF750BB14F9 invoke_main+0x39 rva 0x9514f9 D:\a\_work\1\s\src\vctools\crt\vcstartup\src\startup\exe_common.inl:79 C:\CEngine\Debug\Debug\CEngine.exe
+crash:   #19 00007FF750BB13E2 __scrt_common_main_seh+0x132 rva 0x9513e2 D:\a\_work\1\s\src\vctools\crt\vcstartup\src\startup\exe_common.inl:288 C:\CEngine\Debug\Debug\CEngine.exe
+crash:   #20 00007FF750BB129E __scrt_common_main+0xe rva 0x95129e D:\a\_work\1\s\src\vctools\crt\vcstartup\src\startup\exe_common.inl:331 C:\CEngine\Debug\Debug\CEngine.exe
+crash:   #21 00007FF750BB158E mainCRTStartup+0xe rva 0x95158e D:\a\_work\1\s\src\vctools\crt\vcstartup\src\startup\exe_main.cpp:17 C:\CEngine\Debug\Debug\CEngine.exe
+crash:   #22 00007FFC71B8E8D7 BaseThreadInitThunk+0x17 rva 0x2e8d7 C:\Windows\System32\KERNEL32.DLL
+crash:   #23 00007FFC7342C53C RtlUserThreadStart+0x2c rva 0x8c53c C:\Windows\SYSTEM32\ntdll.dll

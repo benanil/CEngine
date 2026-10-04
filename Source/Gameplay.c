@@ -36,7 +36,7 @@ static float verticalSpeed = 0.0f;
 static bool grounded = false;
 static b3Vec3 groundNormal = { 0.0f, 1.0f, 0.0f };
 
-EntityID characterEntity = INVALID_ENTITY;
+EntityID characterEntity;
 SceneBundle* capsuleBundle;
 
 extern Camera g_Camera;
@@ -73,8 +73,8 @@ void OpenSceneCallback(const char* path)
     Scene* scene = GetActiveScene();
     if (!capsuleBundle) capsuleBundle  = GenerateCapsule(0.5f, 1.8f, 16u);
     u32 capsuleId  = Scene_AddBundle(scene, capsuleBundle, "Character");
-    characterEntity = Scene_Spawn(scene, capsuleId, VecSetR(0.0f, 0.0f, 0.0f, 0.f), QIdentity(), VecOne());
-
+    SparseData* sparse = Scene_Spawn(scene, capsuleId, VecSetR(0.0f, 0.0f, 0.0f, 0.f), QIdentity(), VecOne());
+    characterEntity = EntityIDFromSparseData(&scene->surfaceSet, sparse);
     Entity* character = RenderSet_GetEntity(&scene->surfaceSet, characterEntity);
     Entity_TogglePhysics(scene, character, false);
 }

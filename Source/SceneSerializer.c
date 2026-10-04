@@ -786,8 +786,8 @@ s32 SceneSerializer_Load(Scene* scene, const char* path, SceneFileData* data)
             EntitySetFlags(entity, record->flags);
 
             BitsetSet(set->sparseSlots, (s32)record->sparseIdx);
-            if (set->sparseID[record->sparseIdx] == INVALID_ENTITY || denseIdx < set->sparseID[record->sparseIdx])
-                set->sparseID[record->sparseIdx] = denseIdx;
+            if (set->sparseData[record->sparseIdx].id == INVALID_ENTITY || denseIdx < set->sparseData[record->sparseIdx].id)
+                set->sparseData[record->sparseIdx].id = denseIdx;
 
             if (isSkinned)
             {

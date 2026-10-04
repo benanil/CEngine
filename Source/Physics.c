@@ -275,7 +275,7 @@ void Scene_UpdatePhysics(Scene* scene, float deltaTime)
         const b3BodyMoveEvent* move = &events.moveEvents[i];
         RenderSet* set = &scene->surfaceSet;
         u32 sparseIdx = PhysicsUserDataEntity(move->userData);
-        u32 dense = set->sparseID[sparseIdx];
+        u32 dense = set->sparseData[sparseIdx].id;
         Entity* entity = &set->entities[dense];
         EntitySetPositionV(entity, B3VecTov128f(move->transform.p));
         EntitySetRotation(entity, B3ToQuat(move->transform.q));
@@ -410,7 +410,9 @@ static void Scene_PhysicsCreateEntityBody(Scene* scene, const Entity* entity)
     bd.type       = b3_staticBody;
     bd.position   = v128fToB3Vec3(entity->position);
     bd.rotation   = ToB3Quat(EntityGetRotation(entity));
-    bd.userData   = (void*)PhysicsBodyUserData(GetEntityID(entity), scene->isFoliageScene);
+    u32 sparseID = EntityGetSparseID(entity);
+    SparseData sparseData = scene->surfaceSet.sparseData[sparseID];
+    bd.userData   = (void*)PhysicsBodyUserData(sparseID | (sparseData.gen << 24), scene->isFoliageScene);
     b3BodyId body = b3CreateBody(gPhysicsWorld, &bd);
     b3ShapeDef sd = b3DefaultShapeDef();
     sd.filter.categoryBits = scene->isFoliageScene ? PhysBit_Foliage : PhysBit_Surface;
@@ -683,7 +685,7 @@ void Physics_ApplyPendingOverrides(Scene* scene)
     {
         const ScenePhysicsRecord* rec = &scene->pendingPhysics[i];
         if (rec->sparseIdx >= set->maxEntities) continue;
-        u32 dense = set->sparseID[rec->sparseIdx];
+        u32 dense = set->sparseData[rec->sparseIdx].id;
         if (dense >= set->numEntities) continue;
         const Entity* entity = &set->entities[dense];
         b3BodyId* slot = PhysicsEntitySlot(scene, entity);
@@ -922,7 +924,7 @@ s32 Scene_PhysicsRaycastPick(v128f origin, v128f dir, float rayLen, BVHHit* hit,
     hit->scene = scene;
     const RenderSet* set = &scene->surfaceSet;
     if (sparse >= set->maxEntities) return 0;
-    u32 dense = set->sparseID[sparse];
+    u32 dense = set->sparseData[sparse].id;
     if (dense == INVALID_ENTITY || dense >= set->numEntities) return 0;
 
     u32 groupIdx = EntityGetPrimitiveID(&set->entities[dense]);

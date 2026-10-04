@@ -21,21 +21,21 @@ void RenderSet_InitSet(RenderSet* set, u32 maxEntities, u32 maxGroups, u32 maxBu
     set->skinned     = skinned ? 1u : 0u;
 
     set->entities         = (Entity*)AllocAligned(maxEntities * sizeof(Entity), 16);
-    set->sparseID         = (u32*)AllocAligned(maxEntities * sizeof(u32), 16);
+    set->sparseData       = (SparseData*)AllocAligned(maxEntities * sizeof(SparseData), 16);
     set->sparseSlots      = (u64*)AllocZeroTLSF((maxEntities + 63u) >> 6, sizeof(u64));
     set->primitiveGroups  = (PrimitiveGroup*)AllocAligned(maxGroups * sizeof(PrimitiveGroup), 16);
-    set->bundlePrimRange = (Range*)AllocZeroTLSF(maxBundles, sizeof(Range));
+    set->bundlePrimRange  = (Range*)AllocZeroTLSF(maxBundles, sizeof(Range));
     set->bundles          = (const SceneBundle**)AllocTLSF(maxBundles * sizeof(SceneBundle*));
     set->bundleSlots      = (u64*)AllocZeroTLSF((maxBundles + 63u) >> 6, sizeof(u64));
     MemSet(set->entities, 0, maxEntities * sizeof(Entity));
     MemSet(set->primitiveGroups, 0, maxGroups * sizeof(PrimitiveGroup));
-    MemSet(set->sparseID, 0xFF, maxEntities * sizeof(u32));
+    MemSet32((u32*)set->sparseData, 0x00FFFFFF, maxEntities);
 }
 
 void RenderSet_Destroy(RenderSet* set)
 {
     FreeAligned(set->entities);
-    FreeAligned(set->sparseID); 
+    FreeAligned(set->sparseData); 
     DeAllocTLSF(set->sparseSlots);
     FreeAligned(set->primitiveGroups);
     DeAllocTLSF(set->bundlePrimRange);
@@ -145,14 +145,14 @@ void RenderSet_FreeSparseIDRange(RenderSet* set, u32 sparseIdx, u32 count)
     if (sparseIdx + count > set->maxEntities)
         count = set->maxEntities - sparseIdx;
     BitsetSetRange(set->sparseSlots, sparseIdx, count, false);
-    MemSet(set->sparseID + sparseIdx, 0xFF, count * sizeof(u32));
+    MemSet32((u32*)set->sparseData + sparseIdx, 0x00FFFFFF, count);
 }
 
 void RenderSet_FreeSparseID(RenderSet* set, u32 sparseIdx)
 {
     if (sparseIdx >= set->maxEntities) return;
     BitsetReset(set->sparseSlots, (s32)sparseIdx);
-    set->sparseID[sparseIdx] = INVALID_ENTITY;
+    set->sparseData[sparseIdx].id = INVALID_ENTITY;
 }
 
 static s32 GetNumPrimitivesOfSceneBundle(const SceneBundle* sceneBundle)
@@ -265,7 +265,7 @@ static u32 FindPrimitiveGroup(RenderSet* set, Range range, u32 meshIndex, u32 pr
 
 static void RebuildSparseToDense(RenderSet* set)
 {
-    MemSet(set->sparseID, 0xFF, set->maxEntities * sizeof(u32));
+    MemSet32((u32*)set->sparseData, 0x00FFFFFF, set->maxEntities);
     MemSet(set->sparseSlots, 0, ((set->maxEntities + 63u) >> 6) * sizeof(u64));
 
     for (u32 e = 0; e < set->numEntities; e++)
@@ -274,8 +274,8 @@ static void RebuildSparseToDense(RenderSet* set)
         if (sparseIdx != INVALID_ENTITY && sparseIdx < set->maxEntities)
         {
             BitsetSet(set->sparseSlots, (s32)sparseIdx);
-            if (set->sparseID[sparseIdx] == INVALID_ENTITY)
-                set->sparseID[sparseIdx] = e;
+            if (set->sparseData[sparseIdx].id == INVALID_ENTITY)
+                set->sparseData[sparseIdx].id = e;
         }
     }
 }
@@ -285,8 +285,8 @@ static void SetSparseToDense(RenderSet* set, u32 sparseIdx, u32 denseIdx)
     if (sparseIdx == INVALID_ENTITY || sparseIdx >= set->maxEntities) return;
 
     BitsetSet(set->sparseSlots, (s32)sparseIdx);
-    if (set->sparseID[sparseIdx] == INVALID_ENTITY || denseIdx < set->sparseID[sparseIdx])
-        set->sparseID[sparseIdx] = denseIdx;
+    if (set->sparseData[sparseIdx].id == INVALID_ENTITY || denseIdx < set->sparseData[sparseIdx].id)
+        set->sparseData[sparseIdx].id = denseIdx;
 }
 
 static u32 LeaveSpaceForEntities(RenderSet* set, u32 primitiveIdx, u32 numAdded)
@@ -304,8 +304,8 @@ static u32 LeaveSpaceForEntities(RenderSet* set, u32 primitiveIdx, u32 numAdded)
         set->entities[dst] = set->entities[i];
 
         u32 sparseIdx = EntityGetSparseID(&set->entities[dst]);
-        if (sparseIdx != INVALID_ENTITY && sparseIdx < set->maxEntities && set->sparseID[sparseIdx] == (u32)i)
-            set->sparseID[sparseIdx] = dst;
+        if (sparseIdx != INVALID_ENTITY && sparseIdx < set->maxEntities && set->sparseData[sparseIdx].id == (u32)i)
+            set->sparseData[sparseIdx].id = dst;
     }
 
     for (u32 i = primitiveIdx + 1u; i < set->numGroups; i++)
@@ -315,12 +315,12 @@ static u32 LeaveSpaceForEntities(RenderSet* set, u32 primitiveIdx, u32 numAdded)
     return entityStart;
 }
 
-EntityID RenderSet_AddEntities(RenderSet* set, u32 primitiveIdx, u32 numAdded, const Entity* data)
+SparseData* RenderSet_AddEntities(RenderSet* set, u32 primitiveIdx, u32 numAdded, const Entity* data)
 {
     u32 startIdx = LeaveSpaceForEntities(set, primitiveIdx, numAdded);
     if (startIdx == INVALID_ENTITY) {
         RenderSet_FreeSparseIDRange(set, EntityGetSparseID(&data[0]), numAdded);
-        return INVALID_ENTITY;
+        return NULL;
     }
     PrimitiveGroup* group = &set->primitiveGroups[primitiveIdx];
     for (u32 i = 0; i < numAdded; i++)
@@ -334,10 +334,10 @@ EntityID RenderSet_AddEntities(RenderSet* set, u32 primitiveIdx, u32 numAdded, c
     group->numEntities += numAdded;
     group->capacity = group->numEntities;
     RenderSet_AddEntitiesCallback(set, primitiveIdx, group->numEntities - numAdded, numAdded);
-    return GetEntityID(&set->entities[startIdx]);
+    return set->sparseData + EntityGetSparseID(&set->entities[startIdx]);
 }
 
-EntityID RenderSet_AddEntity(RenderSet* set, u32 primitiveIdx, const Entity* data)
+SparseData* RenderSet_AddEntity(RenderSet* set, u32 primitiveIdx, const Entity* data)
 {
     return RenderSet_AddEntities(set, primitiveIdx, 1, data);
 }
@@ -382,11 +382,42 @@ void RendersetAddANodesAsEntities(RenderSet* rs, const ANode* nodes, s32 numNode
     }
 }
 
-EntityID RenderSet_AddScene(RenderSet* set, u32 bundleIdx, v128f position, v128f rotation, v128f scale, bool wantSkinned)
+// totalPrimAdded = SumU32(primitiveCounts, numPrimitives)
+void BatchLeaveSpacePrimitives(RenderSet* set, u32 primitiveStart, u32 numPrimitives, u32* primitiveCounts, u32 totalPrimAdded)
+{
+    u32 insertedBefore = totalPrimAdded; 
+    if (insertedBefore == 0) return;
+    for (s32 g = (s32)set->numGroups - 1; g >= (s32)primitiveStart; g--)
+    {
+        PrimitiveGroup* group = &set->primitiveGroups[g];
+        if ((u32)g < primitiveStart + numPrimitives)
+        {
+            u32 localIdx = (u32)g - primitiveStart;
+            insertedBefore -= primitiveCounts[localIdx];
+        }
+
+        u32 oldOffset = group->entityOffset;
+        u32 newOffset = oldOffset + insertedBefore;
+        for (s32 e = (s32)group->numEntities - 1; e >= 0; e--)
+        {
+            u32 dst = newOffset + (u32)e;
+            set->entities[dst] = set->entities[oldOffset + (u32)e];
+            EntitySetPrimitiveID(&set->entities[dst], (u32)g);
+
+            u32 sparseIdx = EntityGetSparseID(&set->entities[dst]);
+            if (sparseIdx != INVALID_ENTITY && sparseIdx < set->maxEntities)
+                set->sparseData[sparseIdx].id = dst;
+        }
+
+        group->entityOffset = (u16)newOffset;
+    }
+}
+
+SparseData* RenderSet_AddScene(RenderSet* set, u32 bundleIdx, v128f position, v128f rotation, v128f scale, bool wantSkinned)
 {
     if (bundleIdx >= set->numBundles || set->bundles[bundleIdx] == NULL) {
         AX_WARN("add scene bundle bounds check failed!");
-        return INVALID_ENTITY;
+        return NULL;
     }
 
     const Range range = set->bundlePrimRange[bundleIdx];
@@ -396,7 +427,7 @@ EntityID RenderSet_AddScene(RenderSet* set, u32 bundleIdx, v128f position, v128f
     u32 numPrimitives = range.count;
     if (numNodes <= 0 || numPrimitives == 0u) {
         AX_WARN("no nodes in bundle to add!");
-        return INVALID_ENTITY;
+        return NULL;
     }
  
     u32* primitiveCounts = ArenaAllocGlobal(numPrimitives * sizeof(u32));
@@ -430,47 +461,17 @@ EntityID RenderSet_AddScene(RenderSet* set, u32 bundleIdx, v128f position, v128f
         }
     }
 
-    if (AX_UNLIKELY(totalPrimAdded == 0u)) {
-        ArenaPopGlobal(((u32)numNodes + 1u) * sizeof(Entity));
-        ArenaPopGlobal(numPrimitives * sizeof(u32));
-        return INVALID_ENTITY;
-    }
-
     u32 sparseCount = set->skinned ? meshNodeCount : totalPrimAdded;
     u32 sparseStart = RenderSet_AllocateSparseIDRange(set, sparseCount);
-    if (AX_UNLIKELY(sparseStart == INVALID_ENTITY))
+    if (sparseStart == INVALID_ENTITY || totalPrimAdded == 0u)
     {
         AX_WARN("maximum entity reached: %d", set->maxEntities);
         ArenaPopGlobal(((u32)numNodes + 1u) * sizeof(Entity));
         ArenaPopGlobal(numPrimitives * sizeof(u32));
-        return INVALID_ENTITY;
+        return NULL;
     }
-    // leave space for inserted entities
-    u32 insertedBefore = totalPrimAdded;
-    for (s32 g = (s32)set->numGroups - 1; g >= (s32)range.start; g--)
-    {
-        PrimitiveGroup* group = &set->primitiveGroups[g];
-        if ((u32)g < range.start + numPrimitives)
-        {
-            u32 localIdx = (u32)g - range.start;
-            insertedBefore -= primitiveCounts[localIdx];
-        }
 
-        u32 oldOffset = group->entityOffset;
-        u32 newOffset = oldOffset + insertedBefore;
-        for (s32 e = (s32)group->numEntities - 1; e >= 0; e--)
-        {
-            u32 dst = newOffset + (u32)e;
-            set->entities[dst] = set->entities[oldOffset + (u32)e];
-            EntitySetPrimitiveID(&set->entities[dst], (u32)g);
-
-            u32 sparseIdx = EntityGetSparseID(&set->entities[dst]);
-            if (sparseIdx != INVALID_ENTITY && sparseIdx < set->maxEntities)
-                set->sparseID[sparseIdx] = dst;
-        }
-
-        group->entityOffset = (u16)newOffset;
-    }
+    BatchLeaveSpacePrimitives(set, range.start, numPrimitives, primitiveCounts, totalPrimAdded);
 
     for (u32 p = 0; p < numPrimitives; p++)
         set->primitiveGroups[range.start + p].capacity += primitiveCounts[p];
@@ -510,7 +511,6 @@ EntityID RenderSet_AddScene(RenderSet* set, u32 bundleIdx, v128f position, v128f
             u32 localIdx = group->numEntities++;
             u32 denseIdx = group->entityOffset + localIdx;
             Entity* entity = &set->entities[denseIdx];
-            EntitySetGen(&added, EntityGetGen(entity)); // reserve generation
             set->entities[denseIdx] = added;
             SetSparseToDense(set, sparseId, denseIdx);
             RenderSet_AddEntitiesCallback(set, EntityGetPrimitiveID(&added), localIdx, 1u);
@@ -519,8 +519,8 @@ EntityID RenderSet_AddScene(RenderSet* set, u32 bundleIdx, v128f position, v128f
 
     ArenaPopGlobal(((u32)numNodes + 1u) * sizeof(Entity));
     ArenaPopGlobal(numPrimitives * sizeof(u32));
-    const Entity* firstEntity = &set->entities[set->sparseID[sparseStart]];
-    return MakeEntityID(sparseStart, EntityGetGen(firstEntity));
+    const Entity* firstEntity = &set->entities[set->sparseData[sparseStart].id];
+    return set->sparseData + sparseStart;
 }
 
 void RenderSet_CompactEntities(RenderSet* set)
@@ -597,7 +597,7 @@ void RenderSet_ClearEntities(RenderSet* set)
 {
     RenderSet_ClearEntitiesCallback(set);
     MemsetZero(set->entities, set->maxEntities * sizeof(Entity));
-    MemSet(set->sparseID, 0xFF, set->maxEntities * sizeof(u32));
+    MemSet32((u32*)set->sparseData, 0x00FFFFFF, set->maxEntities * sizeof(u32));
     MemsetZero(set->sparseSlots, ((set->maxEntities + 63u) >> 6) * sizeof(u64));
 
     for (u32 g = 0; g < set->numGroups; g++)
@@ -618,7 +618,7 @@ void RenderSet_Clear(RenderSet* set)
     set->numGroups = 0;
     set->numBundles = 0;
     
-    MemSet(set->sparseID, 0xFF, set->maxEntities * sizeof(u32));
+    MemSet32((u32*)set->sparseData, 0x00FFFFFF, set->maxEntities * sizeof(u32));
     MemsetZero(set->sparseSlots, ((set->maxEntities + 63u) >> 6) * sizeof(u64));
     MemsetZero(set->entities, set->maxEntities * sizeof(Entity));
     MemsetZero(set->primitiveGroups, set->maxGroups * sizeof(PrimitiveGroup));
@@ -638,11 +638,11 @@ static void ShiftEntitiesLeft(RenderSet* set, u32 firstRemoved, u32 count)
         u32 sparseIdx = EntityGetSparseID(&set->entities[i]);
         bool validSparse = sparseIdx != INVALID_ENTITY && sparseIdx < set->maxEntities;
         bool sparseMapsToRemoved = validSparse &&
-                                   set->sparseID[sparseIdx] >= firstRemoved &&
-                                   set->sparseID[sparseIdx] < endRemoved;
+                                   set->sparseData[sparseIdx].id >= firstRemoved &&
+                                   set->sparseData[sparseIdx].id < endRemoved;
         if (sparseMapsToRemoved)
         {
-            set->sparseID[sparseIdx] = INVALID_ENTITY;
+            set->sparseData[sparseIdx].id = INVALID_ENTITY;
             BitsetReset(set->sparseSlots, (s32)sparseIdx);
         }
     }
@@ -654,11 +654,11 @@ static void ShiftEntitiesLeft(RenderSet* set, u32 firstRemoved, u32 count)
 
         u32 sparseIdx = EntityGetSparseID(&set->entities[dst]);
         bool validSparse = sparseIdx != INVALID_ENTITY && sparseIdx < set->maxEntities;
-        bool sparseMapsToMovedSource = validSparse && set->sparseID[sparseIdx] == i;
-        bool sparseNeedsReplacement = validSparse && set->sparseID[sparseIdx] == INVALID_ENTITY;
+        bool sparseMapsToMovedSource = validSparse && set->sparseData[sparseIdx].id == i;
+        bool sparseNeedsReplacement = validSparse && set->sparseData[sparseIdx].id == INVALID_ENTITY;
         if (sparseMapsToMovedSource || sparseNeedsReplacement)
         {
-            set->sparseID[sparseIdx] = dst;
+            set->sparseData[sparseIdx].id = dst;
             BitsetSet(set->sparseSlots, (s32)sparseIdx);
         }
     }
@@ -679,7 +679,10 @@ u32 RenderSet_RemoveEntities(RenderSet* set, u32 groupIdx, u32 localStartIdx, u3
     RenderSet_RemoveRangeCallback(set, groupIdx, localStartIdx, count);
     u32 cnt = group->numEntities - localStartIdx;
     for (u32 i = 0; i < cnt; i++)
-        EntityNextGen(&set->entities[group->entityOffset + localStartIdx + i]);
+    {
+        Entity* entity = &set->entities[group->entityOffset + localStartIdx + i];
+        set->sparseData[EntityGetSparseID(entity)].id++;
+    }
 
     u32 firstRemoved = group->entityOffset + localStartIdx;
     ShiftEntitiesLeft(set, firstRemoved, count);
@@ -816,7 +819,7 @@ bool RenderSet_Validate(const RenderSet* set, const char* label)
         u32 groupIdx = EntityGetPrimitiveID(entity);
         if (noMesh) {
             u32 sparseIdx = EntityGetSparseID(entity);
-            if (sparseIdx != INVALID_ENTITY && sparseIdx < set->maxEntities && set->sparseID[sparseIdx] == INVALID_ENTITY) {
+            if (sparseIdx != INVALID_ENTITY && sparseIdx < set->maxEntities && set->sparseData[sparseIdx].id == INVALID_ENTITY) {
                 AX_WARN("RenderSet invalid %s: no-mesh dense %d sparse %d missing sparseToDense", label ? label : "", e, sparseIdx);
                 ok = false;
             }
@@ -837,7 +840,7 @@ bool RenderSet_Validate(const RenderSet* set, const char* label)
         }
 
         u32 sparseIdx = EntityGetSparseID(entity) ;
-        if (sparseIdx != INVALID_ENTITY && sparseIdx < set->maxEntities && set->sparseID[sparseIdx] == INVALID_ENTITY) {
+        if (sparseIdx != INVALID_ENTITY && sparseIdx < set->maxEntities && set->sparseData[sparseIdx].id == INVALID_ENTITY) {
             AX_WARN("RenderSet invalid %s: dense %d sparse %d missing sparseToDense", label ? label : "", e, sparseIdx);
             ok = false;
         }
