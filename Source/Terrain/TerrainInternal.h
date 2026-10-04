@@ -323,9 +323,6 @@ f32  TerrainDensity_SDF(f32 x, f32 y, f32 z);
 void TerrainDensity_SampleChunk(s32 cx, s32 cy, s32 cz, s8* out /*19^3*/);
 // world vertical band that can contain surface, chunks outside it are never created
 void TerrainDensity_GetYRange(f32* outMin, f32* outMax);
-// true when the chunk sits past the island falloff - no ocean yet, so callers skip
-// sampling/meshing/slot allocation (and physics, since no mesh means no collider) entirely
-bool TerrainDensity_ChunkOutsideIslandEmpty(int3 chunkMin);
 
 // analytic column surface height (heightfield term, before the 3D carve). a good seed
 // for the vertical surface march below.

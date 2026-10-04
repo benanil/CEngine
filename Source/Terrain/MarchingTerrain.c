@@ -314,14 +314,6 @@ static bool PrepareBuildScratch(tBuildJob* job)
 
 static bool GenerateChunkMesh(tBuildJob* job)
 {
-    // keyed by build-job slot, not job->chunkIndex: the chunk-cache evictor can remap a
-    // busy job's chunkIndex from its own thread mid-build (tFreeChunkSlot's swap-compact),
-    // so that field isn't stable for the worker to index into. the job slot itself never
-    // moves for the life of RunBuildJob, so it's the only race-free key here.
-    // past the island's edge the field is provably uniform - skip sampling/meshing outright
-    if (TerrainDensity_ChunkOutsideIslandEmpty(job->min))
-        return true;
-
     u32 jobSlot = (u32)(job - gMarchingTerrain.buildJobs);
     s8* density = gMarchingTerrain.chunkDensity + (size_t)jobSlot * T_SAMPLES_TOTAL;
     tBuildDensity(job->min, density);
@@ -905,10 +897,6 @@ static bool tSubmitChunkColumn(s32 chunkX, s32 chunkZ, bool useFrustum)
             }
             continue;
         }
-
-        // guaranteed-empty past the island's edge: don't spend a chunk slot on it
-        if (TerrainDensity_ChunkOutsideIslandEmpty(min))
-            continue;
 
         tChunk* chunk = GetOrCreateChunk(min);
         if (!tChunkPresentable(chunk))

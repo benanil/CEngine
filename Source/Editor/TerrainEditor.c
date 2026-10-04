@@ -72,7 +72,7 @@ static void TerrainEditorInit(void)
     terrainUI.initialized = true;
     terrainUI.created = tGetEnabled();
     terrainUI.fixedChunkSize = false;
-    terrainUI.island   = true;
+    terrainUI.island   = false;
     terrainUI.editMode = false;
     terrainUI.mode = TerrainEditorMode_Manipulate;
     TerrainSyncScenePath();

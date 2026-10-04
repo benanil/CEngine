@@ -272,7 +272,7 @@ TerrainGenParams Terrain_DefaultGenParams(void)
         .fixedWorldSize = (f32)TERRAIN_FIXED_WORLD_DEFAULT_SIZE,
         .islandRadius   = 260.0f,
         .islandFalloff  = 100.0f,
-        .island         = true
+        .island         = false
     };
     return defaults;
 }
@@ -393,22 +393,6 @@ f32 TerrainDensity_SurfaceY(f32 x, f32 z, f32 startY, float3* outNormal)
         *outNormal = F3NormSafe(grad);
     }
     return y;
-}
-
-bool TerrainDensity_ChunkOutsideIslandEmpty(int3 chunkMin)
-{
-    if (!td_Params.island) return false;
-
-    // closest point of the chunk footprint to the island center (world origin). no ocean
-    // yet, so skip everything past the falloff outright - not just the guaranteed-empty
-    // Y band - island mode still streams like an infinite plane without this.
-    f32 size = (f32)T_CHUNK_CELLS * T_VOXEL_SIZE;
-    f32 minX = (f32)chunkMin.x, maxX = minX + size;
-    f32 minZ = (f32)chunkMin.z, maxZ = minZ + size;
-    f32 nearX = Clampf32(0.0f, minX, maxX);
-    f32 nearZ = Clampf32(0.0f, minZ, maxZ);
-    f32 nearDist = Sqrtf(nearX * nearX + nearZ * nearZ);
-    return nearDist >= td_Params.islandRadius + Maxf32(td_Params.islandFalloff, 1.0f);
 }
 
 void TerrainDensity_GetYRange(f32* outMin, f32* outMax)
