@@ -128,6 +128,7 @@ void Terrain_DeleteWorld(void) {
     tp.enabled = false;
     TerrainEdit_Clear();
     tInvalidateAll();
+    Foliage_ClearEntities();
 }
 
 void Terrain_SetBrushCursor(float3 position, f32 radius, bool active) {

@@ -415,6 +415,15 @@ void BatchLeaveSpacePrimitives(RenderSet* set, u32 primitiveStart, u32 numPrimit
 
 SparseData* RenderSet_AddScene(RenderSet* set, u32 bundleIdx, v128f position, v128f rotation, v128f scale, bool wantSkinned)
 {
+    Entity e = {};
+    EntitySetPositionV(&e, position);
+    EntitySetRotation(&e, rotation);
+    EntitySetPositionV(&e, scale);
+    return RenderSet_AddSceneArray(set, bundleIdx, &e, 1, false);
+}
+
+SparseData* RenderSet_AddSceneArray(RenderSet* set, u32 bundleIdx, const Entity* transforms, u32 numScenes, bool wantSkinned)
+{
     if (bundleIdx >= set->numBundles || set->bundles[bundleIdx] == NULL) {
         AX_WARN("add scene bundle bounds check failed!");
         return NULL;
@@ -478,10 +487,11 @@ SparseData* RenderSet_AddScene(RenderSet* set, u32 bundleIdx, v128f position, v1
 
     set->numEntities += totalPrimAdded;
     // dummy root node
-    rotation = VecNorm(rotation);
-    nodeEntities[0].position     = position;
-    nodeEntities[0].rotation     = PackQuaternionS16NormRet(rotation);
-    nodeEntities[0].scale        = EntityPackWorldScale(scale);
+    nodeEntities[0] = *transforms;
+    // rotation = VecNorm(rotation);
+    // nodeEntities[0].position     = position;
+    // nodeEntities[0].rotation     = PackQuaternionS16NormRet(rotation);
+    // nodeEntities[0].scale        = EntityPackWorldScale(scale);
     EntitySetSparseID(&nodeEntities[0], INVALID_ENTITY);
     RendersetAddANodesAsEntities(set, bundle->nodes, bundle->numNodes, nodeEntities + 1, sparseStart);
 
@@ -597,7 +607,7 @@ void RenderSet_ClearEntities(RenderSet* set)
 {
     RenderSet_ClearEntitiesCallback(set);
     MemsetZero(set->entities, set->maxEntities * sizeof(Entity));
-    MemSet32((u32*)set->sparseData, 0x00FFFFFF, set->maxEntities * sizeof(u32));
+    MemSet32((u32*)set->sparseData, 0x00FFFFFF, set->maxEntities);
     MemsetZero(set->sparseSlots, ((set->maxEntities + 63u) >> 6) * sizeof(u64));
 
     for (u32 g = 0; g < set->numGroups; g++)
@@ -618,7 +628,7 @@ void RenderSet_Clear(RenderSet* set)
     set->numGroups = 0;
     set->numBundles = 0;
     
-    MemSet32((u32*)set->sparseData, 0x00FFFFFF, set->maxEntities * sizeof(u32));
+    MemSet32((u32*)set->sparseData, 0x00FFFFFF, set->maxEntities);
     MemsetZero(set->sparseSlots, ((set->maxEntities + 63u) >> 6) * sizeof(u64));
     MemsetZero(set->entities, set->maxEntities * sizeof(Entity));
     MemsetZero(set->primitiveGroups, set->maxGroups * sizeof(PrimitiveGroup));

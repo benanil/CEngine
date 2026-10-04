@@ -134,6 +134,8 @@ u32   RenderSet_AddSceneBundle(RenderSet* set, const SceneBundle* sceneBundle, u
 //    since always parentID < childID look at: SceneNormalize.c EmitRemappedNode
 SparseData* RenderSet_AddScene(RenderSet* set, u32 bundleIdx, v128f position, v128f rotation, v128f scale, bool wantSkinned);
 
+SparseData* RenderSet_AddSceneArray(RenderSet* set, u32 bundleIdx, const Entity* transforms, u32 numScenes, bool wantSkinned);
+
 SparseData* RenderSet_AddEntity(RenderSet* set, u32 primitiveIdx, const Entity* data);
 
 SparseData* RenderSet_AddEntities(RenderSet* set, u32 primitiveIdx, u32 numAdded, const Entity* data);

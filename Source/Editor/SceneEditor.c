@@ -77,7 +77,7 @@ static u32  sceneLastClickHash;
 
 static const char* const kEditorSceneAtlasSuffix[TextureClass_Count] = { "_albedo.ctex", "_normal.ctex", "_mr.ctex" };
 
-extern void TerrainEditorSceneChanged(bool loadSidecar);
+extern void TerrainEditorSceneChanged();
 
 static bool SceneRowRightClicked(Clay_ElementId id);
 static bool EditorImportNeedsDetailWarning(const char* normalizedPath);
@@ -107,7 +107,7 @@ Scene* EditorNewScene(void)
 {
     Scene* scene = Scene_NewActive();
     EditorSceneResetState();
-    TerrainEditorSceneChanged(false);
+    TerrainEditorSceneChanged();
     return scene;
 }
 
@@ -131,7 +131,7 @@ static void OpenSceneFinish(SceneAsyncRequest* request)
     if (!scene) return;
     EditorSceneResetState();
     EditorSettingsSetLastScene(Scene_GetActivePath());
-    TerrainEditorSceneChanged(false);
+    TerrainEditorSceneChanged();
 }
 
 static void SceneSelectObject(u32 skinned, u32 groupIdx, u32 entityIdx, u32 bundleIdx)

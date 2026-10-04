@@ -684,15 +684,14 @@ static void tClearChunkCache(void)
     AX_LOG("marching terrain chunk cache reset");
     tDrainBuildJobs();
     RendererSetTerrainChunkDraws(NULL, 0);
-    for (u32 i = 0; i < gMarchingTerrain.chunkCount; i++)
-    {
-        tDestroyChunkPhysics(&gMarchingTerrain.chunks[i]);
-        tFreeMeshHandle(&gMarchingTerrain.chunks[i].mesh);
-        tFreePendingMesh(&gMarchingTerrain.chunks[i]);
-        Foliage_DestroyChunkFoliage(&gMarchingTerrain.chunks[i]);
-        DeAllocTLSF(gMarchingTerrain.chunks[i].density);
-        gMarchingTerrain.chunks[i].density = NULL;
-    }
+    IterateSetBits(gMarchingTerrain.occupiedChunksBitset, T_CHUNK_BITSET_WORDS * sizeof(u64),
+        tDestroyChunkPhysics(&gMarchingTerrain.chunks[bitId]);
+        tFreeMeshHandle(&gMarchingTerrain.chunks[bitId].mesh);
+        tFreePendingMesh(&gMarchingTerrain.chunks[bitId]);
+        DeAllocTLSF(gMarchingTerrain.chunks[bitId].density);
+        gMarchingTerrain.chunks[bitId].density = NULL;
+    );
+
     gMarchingTerrain.chunkCount = 0;
     gMarchingTerrain.cacheVertices = 0u;
     gMarchingTerrain.cacheIndices = 0u;

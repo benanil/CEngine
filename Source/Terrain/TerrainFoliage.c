@@ -562,6 +562,11 @@ static void ScheduleFoliageJob(JobSystem* js, tFoliageJob* job, const tChunk* ch
     JobSystem_Execute(js, RunFoliageJob, job);
 }
 
+void Foliage_ClearEntities()
+{
+    RenderSet_ClearEntities(&gFoliage.scene.surfaceSet);
+}
+
 // Destroys chunk->foliageEntities range: colliders individually, RenderSet entities batched by groupIdx.
 static void DestroyFoliageEntityRange(tChunk* chunk, u32 start, u32 count)
 {
@@ -778,27 +783,20 @@ void Foliage_Update(void)
     // Uses the occupied-chunks bitset instead of trusting chunkCount density.
     const u64* occupied = tGetOccupiedChunksBitset();
     u32 scheduledCount = 0u;
-    for (u32 w = 0; occupied && w < T_CHUNK_BITSET_WORDS && scheduledCount < T_MAX_CHUNKS; w++)
+    IterateSetBits(occupied, T_CHUNK_BITSET_WORDS * 64,
     {
-        u64 word = occupied[w];
-        while (word)
-        {
-            s32 bit = FindFirstSet(word);
-            word &= word - 1; // clear the lowest set bit, move to the next resident
-            u32 chunkIndex = (w * 64) + (u32)bit;
-
-            tChunk* chunk = tGetChunkByIndex(chunkIndex);
-            if (!chunk || chunk->buildState != CHUNK_READY || !chunk->mesh.vertices.heapPtr) continue;
-            if (!chunk->density) continue; // no cached density grid yet, nothing to sample
-
-            bool needsInitialBuild = !chunk->foliageBuilt;
-            if (!anyDirty && !needsInitialBuild) continue; // nothing to do for this chunk right now
-
-            ScheduleFoliageJob(js, &gFoliage.jobs[scheduledCount], chunk, needsInitialBuild);
-            chunk->foliageBuilt = true; // decided (even a zero-placement result counts)
-            scheduledCount++;
-        }
-    }
+        if (scheduledCount >= T_MAX_CHUNKS) continue;
+        tChunk* chunk = tGetChunkByIndex(bitId);
+        if (!chunk || chunk->buildState != CHUNK_READY || !chunk->mesh.vertices.heapPtr) continue;
+        if (!chunk->density) continue; // no cached density grid yet, nothing to sample
+    
+        bool needsInitialBuild = !chunk->foliageBuilt;
+        if (!anyDirty && !needsInitialBuild) continue; // nothing to do for this chunk right now
+    
+        ScheduleFoliageJob(js, &gFoliage.jobs[scheduledCount], chunk, needsInitialBuild);
+        chunk->foliageBuilt = true; // decided (even a zero-placement result counts)
+        scheduledCount++;
+    });
 
     if (scheduledCount > 0u)
     {

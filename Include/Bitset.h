@@ -384,9 +384,9 @@ static bool BitsetHasAtLeastEmptyBits(const u64* bits, s32 bitCount, u32 needed)
     for (s32 _w = 0; _w < (numBits) >> 6; ++_w) {\
         u64 _word = (bits)[_w];\
         while (_word != 0) {\
-            s32 bitId = (_w << 6) + LeadingZeroCount64(_word);\
-            fn;\
+            s32 bitId = (_w << 6) + TrailingZeroCount64(_word);\
             _word &= (_word - 1);\
+            fn;\
         }\
     }\
 }
@@ -396,9 +396,9 @@ static bool BitsetHasAtLeastEmptyBits(const u64* bits, s32 bitCount, u32 needed)
     for (s32 _w = 0; _w < (numBits) >> 6; ++_w) {\
         u64 _word = ~(bits)[_w];\
         while (_word != 0) {\
-            s32 bitId = (_w << 6) + LeadingZeroCount64(_word);\
-            fn;\
+            s32 bitId = (_w << 6) + TrailingZeroCount64(_word);\
             _word &= (_word - 1);\
+            fn;\
         }\
     }\
 }

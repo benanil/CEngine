@@ -132,6 +132,7 @@ void        Foliage_SetParams(u32 index, const FoliageParams* params);
 // randomizes density and rarity for every type while preserving all other settings
 void        Foliage_RandomizeParams(void);
 s32         Foliage_BaseTypeOfGroup(s32 group);
+void        Foliage_ClearEntities();
 
 void        Foliage_Save(const char* path);
 void        Foliage_Load(const char* path);

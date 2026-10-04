@@ -215,9 +215,8 @@ static bool TerrainEditorLoad(void)
     return true;
 }
 
-void TerrainEditorSceneChanged(bool loadSidecar)
+void TerrainEditorSceneChanged()
 {
-    (void)loadSidecar;
     TerrainEditorInit();
     terrainUI.created = tGetEnabled();
     terrainUI.editMode = false;
