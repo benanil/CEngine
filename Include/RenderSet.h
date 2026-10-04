@@ -50,13 +50,13 @@ struct PrimitiveGroup_
     v128f aabbMin;
     v128f aabbMax;
     u32 lodIndexOffset[3];
-    u16 entityOffset, numEntities;
+    u16 bundleIdx, numEntities;
     u32 lodNumIndices[3];
     u16 capacity, meshIndex;
     u32 lodVertexOffset[3];
     u16 primitiveIndex, materialIndex; 
     u32 lodNumVertices[3];
-    u16 bundleIdx, padding0;
+    u32 entityOffset;
 };
 
 STATIC_ASSERT(sizeof(PrimitiveGroup) == 96, "PrimitiveGroup CPU/GPU stride mismatch");

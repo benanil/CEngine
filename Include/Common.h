@@ -439,6 +439,9 @@ purefn bool InRange(float x, float start, float length) {
     return x > start && x < start + length;
 }
 
+purefn bool InRangeU32(u32 x, u32 start, u32 length) {
+    return x > start && x < start + length;
+}
 
 //------------------------------------------------------------------------
 // Other Util
@@ -541,6 +544,43 @@ static inline void MemSet(void* dst, uint8_t value, size_t size)
     if (r) { *d = value; }
 }
 
+#if defined(__aarch64__) || defined(__arm__)
+#define HSum32_128(x) vaddvq_u32(x)
+#else
+purefn u32 VCALL HSum32_128(v128u x)
+{
+    v128u hi64  = _mm_shuffle_epi32(x,     _MM_SHUFFLE(1, 0, 3, 2));
+    v128u sum64 = _mm_add_epi32(x, hi64);
+    v128u hi32  = _mm_shuffle_epi32(sum64, _MM_SHUFFLE(2, 3, 0, 1));
+    return _mm_cvtsi128_si32(_mm_add_epi32(sum64, hi32));
+}
+#endif
+
+static inline u32 SumU32(const u32* p, s32 len)
+{
+    s32 i = 0;
+    v128u a = VeciZero();
+#ifdef AX_SUPPORT_AVX2
+    __m256i b = _mm256_set1_epi32(0);
+    for (; i <= len - 8; i += 8) 
+        b = _mm256_add_epi32(b, _mm256_stream_load_si256((__m256i const *)(p + i)));
+    
+    a = VeciAdd(_mm256_castsi256_si128(b), _mm256_extractf128_si256(b, 0x1));
+    if (len - i >= 4) 
+        a = VeciAdd(a, VeciLoad(p + i)); 
+#else
+    for (; i <= len - 4; i += 4)
+        a = VeciAdd(a, VeciLoad(p + i + 0)); 
+#endif
+
+    u32 leftover = 0;
+    switch (len & 3) {
+        case 3: leftover += p[len - 3];
+        case 2: leftover += p[len - 2];
+        case 1: leftover += p[len - 1];
+    }
+    return HSum32_128(a) + leftover;
+}
 
 //------------------------------------------------------------------------
 // String

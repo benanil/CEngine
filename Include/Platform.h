@@ -54,23 +54,23 @@ typedef struct PlatformContext_
     f32  SecondsSinceLastClick;
     f32  DeltaTime;
     
-    s64 LastClickTime;
-    s64 CPUFrequency;
-    s64 StartupTime;
-    s64 LastTime;
-    s64 FrameCount;
+    s64  LastClickTime;
+    s64  CPUFrequency;
+    s64  StartupTime;
+    s64  LastTime;
+    s64  FrameCount;
     
     // Window state
-    s32 WindowWidth, WindowHeight;
-    s32 WindowPosX, WindowPosY;
+    s32  WindowWidth, WindowHeight;
+    s32  WindowPosX, WindowPosY;
     bool WindowFocused;
     
-    s32 MouseDown, MouseLast, MousePressed, MouseReleased;
-    char TextInput[256];
+    s32  MouseDown, MouseLast, MousePressed, MouseReleased;
     u32  TextInputLength;
-    PlatformTextKeyEvent TextKeyEvents[64];
     u32  TextKeyEventCount;
-    u8  DoubleClicked;
+    u8   DoubleClicked;
+    char TextInput[256];
+    PlatformTextKeyEvent TextKeyEvents[64];
     
 } PlatformContext;
 

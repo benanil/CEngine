@@ -172,6 +172,11 @@ extern void OpenSceneCallback(const char* path);
 
 Scene* Scene_OpenActive(const char* path, SceneFileData* data)
 {
+    if (path == NULL || !FileExist(path))
+    {
+        AX_WARN("the scene you try to open is not exist!");
+        return NULL;
+    }
     char pathCopy[512];
     NormalizePath(path, pathCopy, sizeof(pathCopy));
 

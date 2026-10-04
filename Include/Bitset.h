@@ -67,17 +67,6 @@ static inline void Not256(u64* res, const u64* a)
     #endif
 }
 
-#if defined(__aarch64__) || defined(__arm__)
-    #define HSum32_128(x) vaddvq_u32(x)
-#else
-purefn u32 VCALL HSum32_128(v128u x)
-{
-    v128u hi64  = _mm_shuffle_epi32(x,     _MM_SHUFFLE(1, 0, 3, 2));
-    v128u sum64 = _mm_add_epi32(x, hi64);
-    v128u hi32  = _mm_shuffle_epi32(sum64, _MM_SHUFFLE(2, 3, 0, 1));
-    return _mm_cvtsi128_si32(_mm_add_epi32(sum64, hi32));
-}
-#endif
 
 #if defined(__aarch64__) || defined(__arm__)
 purefn v128u VCALL PopCount128(v128u x)
