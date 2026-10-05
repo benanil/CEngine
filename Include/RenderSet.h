@@ -69,8 +69,8 @@ STATIC_ASSERT(sizeof(PrimitiveGroup) == 96, "PrimitiveGroup CPU/GPU stride misma
 
 struct PrimitiveGroupGPU_
 {
-    u32 aabbMinEntity[4]; // xyz float bits, w entityOffset | (numEntities << 16)
-    u32 aabbMaxMaterial[4]; // xyz float bits, w materialIndex
+    u32 aabbMinEntity[4]; // xyz float bits, w entityOffset 
+    u32 aabbMaxMaterial[4]; // xyz float bits, w materialIndex | (numEntities << 16)
 };
 
 STATIC_ASSERT(sizeof(PrimitiveGroupGPU) == 32, "PrimitiveGroupGPU must stay 32 bytes");

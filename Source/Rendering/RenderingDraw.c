@@ -114,6 +114,7 @@ static void DrawRenderBufferForward(SDL_GPUCommandBuffer* cmd, SDL_GPURenderPass
                                     const void* fragmentParams, u32 fragmentParamsSize)
 {
     const SDL_GPUBufferBinding index_binding = { g_RenderState.indexBuffer, 0 };
+
     if (renderSet->numGroups == 0 || !pipeline) return;
     SDL_BindGPUGraphicsPipeline(pass, pipeline);
     SDL_BindGPUVertexBuffers(pass, 0, &vertex_binding, 1);
@@ -209,7 +210,7 @@ void RenderSceneForward(SDL_GPUCommandBuffer* cmd, const ScenePassContext* ctx, 
     tRenderGrass(cmd, pass);
     
     const SDL_GPUBufferBinding skinnedVertex = { g_RenderState.skinned.vertexBuffer, 0 };
-    DrawRenderBufferForward(cmd, pass, true, scene, &scene->skinnedSet, &scene->skinnedBuffers, &scene->surfaceBuffers.draw,
+    DrawRenderBufferForward(cmd, pass, true, scene, &scene->skinnedSet, &scene->skinnedBuffers, &scene->skinnedBuffers.draw,
                             g_RenderState.skinned.forwardPipeline, skinnedVertex, fragmentSamplers, fragmentBuffers,
                             &vertexParams, sizeof(vertexParams), &fragmentParams, sizeof(fragmentParams));
 

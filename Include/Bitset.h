@@ -382,6 +382,9 @@ static bool BitsetHasAtLeastEmptyBits(const u64* bits, s32 bitCount, u32 needed)
 #define IterateSetBits(bits, numBits, fn) \
 {\
     for (s32 _w = 0; _w < (numBits) >> 6; ++_w) {\
+        AX_NO_UNROLL\
+        while (_w * 64 + 256 > (numBits) && PopCount256((bits) + _w) == 0)\
+            _w += 4;\
         u64 _word = (bits)[_w];\
         while (_word != 0) {\
             s32 bitId = (_w << 6) + TrailingZeroCount64(_word);\
@@ -394,6 +397,9 @@ static bool BitsetHasAtLeastEmptyBits(const u64* bits, s32 bitCount, u32 needed)
 #define IterateZeroBits(bits, numBits, fn) \
 {\
     for (s32 _w = 0; _w < (numBits) >> 6; ++_w) {\
+        AX_NO_UNROLL\
+        while (_w * 64 + 256 > (numBits) && PopCount256((bits) + _w) == 256)\
+            _w += 4;\
         u64 _word = ~(bits)[_w];\
         while (_word != 0) {\
             s32 bitId = (_w << 6) + TrailingZeroCount64(_word);\

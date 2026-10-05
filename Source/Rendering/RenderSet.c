@@ -418,8 +418,8 @@ SparseData* RenderSet_AddScene(RenderSet* set, u32 bundleIdx, v128f position, v1
     Entity e = {};
     EntitySetPositionV(&e, position);
     EntitySetRotation(&e, rotation);
-    EntitySetPositionV(&e, scale);
-    return RenderSet_AddSceneArray(set, bundleIdx, &e, 1, false);
+    EntitySetScaleV(&e, scale);
+    return RenderSet_AddSceneArray(set, bundleIdx, &e, 1, wantSkinned);
 }
 
 SparseData* RenderSet_AddSceneArray(RenderSet* set, u32 bundleIdx, const Entity* transforms, u32 numScenes, bool wantSkinned)
@@ -488,10 +488,6 @@ SparseData* RenderSet_AddSceneArray(RenderSet* set, u32 bundleIdx, const Entity*
     set->numEntities += totalPrimAdded;
     // dummy root node
     nodeEntities[0] = *transforms;
-    // rotation = VecNorm(rotation);
-    // nodeEntities[0].position     = position;
-    // nodeEntities[0].rotation     = PackQuaternionS16NormRet(rotation);
-    // nodeEntities[0].scale        = EntityPackWorldScale(scale);
     EntitySetSparseID(&nodeEntities[0], INVALID_ENTITY);
     RendersetAddANodesAsEntities(set, bundle->nodes, bundle->numNodes, nodeEntities + 1, sparseStart);
 

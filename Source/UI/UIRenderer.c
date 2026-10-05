@@ -23,7 +23,7 @@ static UIImageCommand       g_UIImageStorage[UI_MAX_IMAGES];
 static UIOrderedTextCommand g_UITextStorage[UI_MAX_TEXTS];
 static UIBatch              g_UIBatchStorage[UI_MAX_BATCHES];
 static u8                   g_UILayoutMemory[8u * 1024u * 1024u];
-static char                 g_UIFrameStringMemory[64u * 1024u];
+static char                 g_UIFrameStringMemory[128u * 1024u];
 static Arena                g_UIFrameStringArena;
 
 void UIRecordTextBatches(u32 firstBatch, u32 batchCount)
@@ -424,11 +424,12 @@ void UIBeginFrame(void)
 
 char* UIFrameStringAlloc(u32 size)
 {
-    if (size == 0u) return NULL;
+    if (size == 0u) return g_UIFrameStringMemory;
+
     if (ArenaRemaining(&g_UIFrameStringArena) < size)
     {
         AX_WARN("UI frame string arena full: requested=%u remaining=%llu", size, (u64)ArenaRemaining(&g_UIFrameStringArena));
-        return NULL;
+        return g_UIFrameStringMemory;
     }
     return (char*)ArenaAllocAlign(&g_UIFrameStringArena, size, 1u);
 }

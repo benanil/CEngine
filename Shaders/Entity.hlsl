@@ -22,7 +22,7 @@ typedef struct Entity_
 typedef u32 EntityID;
 
 u32 EntityGetSparseID(in Entity e) {
-    return asuint(e.position.w) & 0xFFFFFFu;
+    return asuint(e.position.w) & 0x00FFFFFFu;
 }
 
 u32 EntityGetPrimitiveID(in Entity e) {
