@@ -221,11 +221,8 @@ static inline s32 BitsetFindEmptyRange(const u64* bits, u32 bitCount, u32 count)
     if (count == 0u) return 0;
     if (!bits || count > bitCount) return -1;
 
-    // Fast path for the common case.
     if (count == 1u)
-    {
-        return BitsetFindFirstEmpty(bits, bitCount);
-    }
+        return BitsetFindFirstEmpty(bits, bitCount); // Fast path for the common case.
 
     const u32 wordCount = (bitCount + 63u) >> 6;
     u32 runStart = 0u;

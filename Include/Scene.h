@@ -387,6 +387,10 @@ bool Physics_GetEntityOverride(const Scene* scene, u32 sparseIdx, ScenePhysicsRe
 // Applies scene->pendingPhysics onto the freshly built bodies, then frees the buffer.
 void Physics_ApplyPendingOverrides(Scene* scene);
 
+void Scene_PhysicsDestroyEntityBody(Scene* scene, const Entity* entity);
+
+void Scene_PhysicsCreateEntityBody(Scene* scene, const Entity* entity);
+
 static inline b3Vec3 v128fToB3Vec3(v128f v)   { return (b3Vec3){ VecGetX(v), VecGetY(v), VecGetZ(v) }; }
 static inline b3Vec3 Float3ToB3Vec3(float3 v) { return (b3Vec3){ v.x, v.y, v.z }; }
 static inline float3 B3VecToFloat3(b3Pos p)   { return (float3){p.x, p.y, p.z }; }

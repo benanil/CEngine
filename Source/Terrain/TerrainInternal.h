@@ -4,6 +4,7 @@
 #include "Include/Graphics.h"
 #include "Include/Memory.h"
 #include "Include/JobSystem.h"
+#include "Include/Scene.h"
 
 #define GRASS_PER_METER        4
 #define GRASS_PER_ROW          (GRASS_PER_METER * T_CHUNK_CELLS)     // 64 blades per chunk axis
@@ -75,6 +76,8 @@
 #define T_DENSITY_DECODE_SCALE (-(TERRAIN_SDF_CLAMP) / 127.0f)
 
 #define T_LAYER_COUNT 4u
+
+#define T_FOLIAGE_MAX_PER_CHUNK 256u
 
 // one camera-facing grass blade, 8 bytes, fed to the grass draw as an instance-rate
 // vertex attribute. positions are chunk-relative meters so a 16 m lod0 chunk keeps full
@@ -191,16 +194,11 @@ typedef enum PendingMeshState_
     PENDING_EMPTY
 } PendingMeshState;
 
-// one procedural foliage placement living in a render set entity. sparseIdx/packed
-// address gFoliage.scene's render sets (packed = (groupIdx << 3) | renderSetIndex,
-// renderSetIndex reserved for surface/skinned/transparent, only surface used today).
-// physicsBody is a b3StoreBodyId() value in the active gameplay scene's physics world,
-// 0 when the owning foliage type has no collider
-typedef struct tFoliageEntity_
+typedef struct FoliageEntity_
 {
-    u32 sparseIdx;
-    u32 packed;
-} tFoliageEntity;
+    Range range;
+    u32 bundleId;
+} FoliageEntity;
 
 typedef struct tChunk_
 {
@@ -218,7 +216,8 @@ typedef struct tChunk_
     s8*   density;
     // procedural foliage instances for this chunk, TLSF-owned; rebuilt whenever a
     // foliage type's params change (see tFoliageType.paramsDirty in TerrainFoliage.c)
-    tFoliageEntity* foliageEntities;
+    FoliageEntity foliageEntities[T_FOLIAGE_MAX_PER_CHUNK];
+
     u32   lastTouchedFrame;
     // intrusive residency LRU (MarchingTerrain.c), T_CHUNK_LRU_NONE-terminated; lets
     // eviction pick the true least-recently-touched chunk without scanning the array

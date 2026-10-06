@@ -58,7 +58,7 @@ struct PrimitiveGroup_
     u32 lodIndexOffset[3];
     u16 bundleIdx, numEntities;
     u32 lodNumIndices[3];
-    u16 capacity, meshIndex;
+    u16 padding, meshIndex;
     u32 lodVertexOffset[3];
     u16 primitiveIndex, materialIndex; 
     u32 lodNumVertices[3];
@@ -140,6 +140,13 @@ SparseData* RenderSet_AddEntity(RenderSet* set, u32 primitiveIdx, const Entity* 
 
 SparseData* RenderSet_AddEntities(RenderSet* set, u32 primitiveIdx, u32 numAdded, const Entity* data);
 
+u32 CountNumPrimitives(RenderSet* set, u32 bundleIdx, u32 numScenes, u32* primitiveCounts, bool wantSkinned);
+
+// returns num entity added
+u32 AddBundleAsScene(RenderSet* set, u32 bundleIdx, u32 sparseStart, const Entity* root, bool wantSkinned);
+
+void BatchLeaveSpacePrimitives(RenderSet* set, u32 primitiveStart, u32 numPrimitives, u32* primitiveCounts, u32 totalEntityAdded);
+
 void  RenderSet_Clear(RenderSet* set);
 
 // removes all entities, keeps registered bundles and primitive groups
@@ -153,11 +160,14 @@ u32   RenderSet_RemoveSceneBundle(RenderSet* set, u32 bundleIdx);
 
 void  RenderSet_CompactEntities(RenderSet* set);
 
+void RenderSet_RemoveEntityStaged(RenderSet* set, u32 sparseId);
+
+void RenderSet_RemoveEntityRangeStaged(RenderSet* set, Range range);
+
 // define these somewhere
 void RenderSet_AddEntitiesCallback(RenderSet* set, u32 groupIdx, u32 localStartIdx, u32 count);
 void RenderSet_RemoveRangeCallback(RenderSet* set, u32 groupIdx, u32 localStartIdx, u32 count);
 void RenderSet_RemoveGroupsCallback(RenderSet* set, u32 firstGroup, u32 groupCount);
 void RenderSet_ClearEntitiesCallback(RenderSet* set);
-
 
 #endif

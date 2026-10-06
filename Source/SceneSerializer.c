@@ -759,7 +759,6 @@ s32 SceneSerializer_Load(Scene* scene, const char* path, SceneFileData* data)
             group->entityOffset = entityOffset;
             u32 numEntities = primitiveCounts[g];
             group->numEntities = 0;
-            group->capacity = numEntities;
             entityOffset += numEntities;
         }
         set->numEntities = validEntities;

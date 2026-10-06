@@ -568,7 +568,7 @@ static inline u32 SumU32(const u32* p, s32 len)
 #ifdef AX_SUPPORT_AVX2
     __m256i b = _mm256_set1_epi32(0);
     for (; i <= len - 8; i += 8) 
-        b = _mm256_add_epi32(b, _mm256_stream_load_si256((__m256i const *)(p + i)));
+        b = _mm256_add_epi32(b, _mm256_loadu_si256((__m256i const *)(p + i)));
     
     a = VeciAdd(_mm256_castsi256_si128(b), _mm256_extractf128_si256(b, 0x1));
     if (len - i >= 4) 

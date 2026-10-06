@@ -4,7 +4,7 @@
 #include "Math/Bitpack.h"
 #include "Math/Quaternion.h"
 
-#define INVALID_ENTITY  (0xFFFFFFu)
+#define INVALID_ENTITY  (0x00FFFFFFu)
 #define ENTITY_MAX_SCALE 10.0f
 
 enum EntityFlags_
@@ -28,7 +28,7 @@ typedef struct Entity_
 } Entity;
 
 purefn u32 EntityGetSparseID(const Entity* e) {
-    return VeciGetW(VecBitcastU32(e->position)) & 0xFFFFFFu;
+    return VeciGetW(VecBitcastU32(e->position)) & 0x00FFFFFFu;
 }
 
 purefn u32 EntityGetPrimitiveID(const Entity* e) {

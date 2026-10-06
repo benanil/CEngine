@@ -390,7 +390,7 @@ static b3MeshData* Scene_PhysicsEnsureGroupMesh(Scene* scene, u32 groupIdx)
     return mesh;
 }
 
-static void Scene_PhysicsCreateEntityBody(Scene* scene, const Entity* entity)
+void Scene_PhysicsCreateEntityBody(Scene* scene, const Entity* entity)
 {
     EntityFlags entityFlags = EntityGetFlags(entity);
     bool colliderEnabled = (entityFlags & EntityFlags_ColliderEnabled) != 0;
@@ -730,9 +730,8 @@ void Physics_ApplyPendingOverrides(Scene* scene)
     scene->numPendingPhysics = 0;
 }
 
-static void Scene_PhysicsDestroyEntityBody(Scene* scene, u32 groupIdx, const Entity* entity)
+void Scene_PhysicsDestroyEntityBody(Scene* scene, const Entity* entity)
 {
-    (void)groupIdx;
     b3BodyId* slot = PhysicsEntitySlot(scene, entity);
     if (!slot) return;
     if (B3_IS_NON_NULL(slot[0])) b3DestroyBody(slot[0]);
@@ -749,7 +748,7 @@ static void Scene_PhysicsDestroyBodiesInRange(Scene* scene, u32 firstGroup, u32 
     {
         PrimitiveGroup* group = &set->primitiveGroups[g];
         for (u32 e = 0; e < group->numEntities; e++)
-            Scene_PhysicsDestroyEntityBody(scene,   g, &set->entities[group->entityOffset + e]);
+            Scene_PhysicsDestroyEntityBody(scene, &set->entities[group->entityOffset + e]);
     }
 }
 
@@ -789,7 +788,7 @@ void RenderSet_RemoveRangeCallback(RenderSet* set, u32 groupIdx, u32 localStartI
     PrimitiveGroup* group = &set->primitiveGroups[groupIdx];
     u32 cnt = group->numEntities - localStartIdx;
     for (u32 i = 0; i < cnt; i++)
-        Scene_PhysicsDestroyEntityBody(set->hookScene, groupIdx, &set->entities[group->entityOffset + localStartIdx + i]);
+        Scene_PhysicsDestroyEntityBody(set->hookScene, &set->entities[group->entityOffset + localStartIdx + i]);
 }
 
 void RenderSet_RemoveGroupsCallback(RenderSet* set, u32 firstGroup, u32 groupCount)

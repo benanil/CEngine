@@ -23,7 +23,6 @@
 #define T_MAX_FOLIAGE_SCENE     64u
 #define T_FOLIAGE_MAX_PATH      512
 #define T_FOLIAGE_NAME_LEN      64
-#define T_FOLIAGE_MAX_PER_CHUNK 192u
 #define T_MAX_FOLIAGE_GROUPS    64 // WARNING used with bitset if you go above 64 be aware
 #define T_FOLIAGE_GROUND_SNAP_OFFSET 0.1f
 
@@ -62,6 +61,7 @@ typedef struct tFoliageJob_
     // true for a chunk that has never had foliage decided (see tChunk.foliageBuilt): place
     // every currently-enabled type for it, not just the ones flagged paramsDirty this round.
     bool        placeAllEnabled;
+    u64         changedBundles; // this is for making sure we dont exceed 64bit
     u32         count;
     tFoliagePlacement placements[T_FOLIAGE_MAX_PER_CHUNK];
 } tFoliageJob;
@@ -110,7 +110,7 @@ static void VisitFile(const char* path, void* data)
     MemSet(type, 0, sizeof(*type));
     NormalizePath(path, type->path, T_FOLIAGE_MAX_PATH);
     GetFileNameNoExt(type->path, type->name);
-    type->groupIdx = INVALID_GROUP;
+    type->bundleIdx = INVALID_BUNDLE;
     type->params = (FoliageParams){
         .density      = RepeatMinMaxF32(PCGNext(&gFoliage.pcg), 7.5f, 10.0),
         .rarity       = RepeatMinMaxF32(PCGNext(&gFoliage.pcg), 0.8f, 0.9),
@@ -119,7 +119,7 @@ static void VisitFile(const char* path, void* data)
         .groupIndex   = 0u,
         .enabled      = true, // off by default until placement/visuals are verified per type
         .collider     = false,
-        .sizeVariance = true
+        .sizeVariance = true,
     };
 }
 
@@ -155,13 +155,12 @@ void Foliage_Init()
         FoliageType* type = &gFoliage.types[i];
         AX_LOG("foliage: %s", type->path);
         u32 bundleIdx = Scene_AddBundleFinalize(&gFoliage.scene, &stages[i]);
+        type->bundleIdx = bundleIdx;
         if (bundleIdx == INVALID_BUNDLE) continue;
 
         Range range = gFoliage.scene.surfaceSet.bundlePrimRange[bundleIdx];
         if (range.count == 0u) continue;
-
-        type->groupIdx = range.start;
-        type->groupCount = range.count;
+        
         PrimitiveGroup* firstGroup = &gFoliage.scene.surfaceSet.primitiveGroups[range.start];
         v128f localBoundsMin = firstGroup->aabbMin;
         v128f localBoundsMax = firstGroup->aabbMax;
@@ -469,7 +468,7 @@ static void RunFoliageJob(void* userData)
 {
     tFoliageJob* job = (tFoliageJob*)userData;
     job->count = 0u;
-
+    job->changedBundles = 0ull;
     ALIGNSIMD s32 rnd[T_NOISE_AXIS_MAX * T_NOISE_AXIS_MAX * 5];
     ALIGNSIMD f32 cx[T_NOISE_AXIS_MAX * T_NOISE_AXIS_MAX];
     ALIGNSIMD f32 cz[T_NOISE_AXIS_MAX * T_NOISE_AXIS_MAX];
@@ -510,7 +509,7 @@ static void RunFoliageJob(void* userData)
                 // type's chunks are left completely alone, both here and in IntegrateFinishedFoliage.
                 // a chunk that has never had foliage decided (placeAllEnabled) is the exception:
                 // every enabled type gets placed for it once, dirty or not.
-                if (!type->params.enabled || type->groupIdx == INVALID_GROUP) continue;
+                if (!type->params.enabled || type->bundleIdx == INVALID_BUNDLE) continue;
                 if (!job->placeAllEnabled && !type->paramsDirty) continue;
                 if (job->count >= T_FOLIAGE_MAX_PER_CHUNK) return;
                 
@@ -546,6 +545,7 @@ static void RunFoliageJob(void* userData)
                 placement->rotation = PackQuaternionS16NormRet(CreateFoliageRotation(normal, yaw, type->normalAlign));
                 placement->scale = scale;
                 placement->typeIndex = foliageIndex;
+                BitsetSet(&job->changedBundles, foliageIndex);
             }
         }
     }
@@ -567,80 +567,15 @@ void Foliage_ClearEntities()
     RenderSet_ClearEntities(&gFoliage.scene.surfaceSet);
 }
 
-// Destroys chunk->foliageEntities range: colliders individually, RenderSet entities batched by groupIdx.
-static void DestroyFoliageEntityRange(tChunk* chunk, u32 start, u32 count)
-{
-    RenderSet* set = &gFoliage.scene.surfaceSet;
-    u32 end = start + count;
-    u32 i = start;
-    while (i < end)
-    {
-        u32 groupIdx = chunk->foliageEntities[i].packed >> 3;
-        u32 runStart = i;
-        while (i < end && (chunk->foliageEntities[i].packed >> 3) == groupIdx) i++;
-        u32 runCount = i - runStart;
-
-        tFoliageEntity* first = &chunk->foliageEntities[runStart];
-        if (first->sparseIdx >= set->maxEntities || groupIdx >= set->numGroups) continue;
-        u32 denseIdx = set->sparseData[first->sparseIdx].id;
-        if (denseIdx == INVALID_ENTITY) continue;
-        u32 localStartIdx = denseIdx - set->primitiveGroups[groupIdx].entityOffset;
-        RenderSet_RemoveEntities(set, groupIdx, localStartIdx, runCount);
-    }
-}
-
 void Foliage_DestroyChunkFoliage(tChunk* chunk)
 {
-    if (!chunk) return;
-    if (!chunk->foliageEntities) { chunk->foliageCount = 0u; return; }
+    if (!PTR_VALID(chunk) || chunk->foliageCount == 0) return;
 
-    DestroyFoliageEntityRange(chunk, 0u, chunk->foliageCount);
-
-    DeAllocTLSF(chunk->foliageEntities);
-    chunk->foliageEntities = NULL;
+    RenderSet* set = &gFoliage.scene.surfaceSet;
+    for (s32 j = 0; j < chunk->foliageCount; j++) 
+        RenderSet_RemoveEntityRangeStaged(set, chunk->foliageEntities[j].range);
+    
     chunk->foliageCount = 0u;
-}
-
-// which foliage type owns a render set group, INVALID_GROUP if none (every type owns a
-// contiguous [groupIdx, groupIdx+groupCount) range, ranges never overlap between types)
-static u32 FindFoliageTypeIndexForGroup(u32 groupIdx)
-{
-    for (u32 t = 0; t < gFoliage.numTypes; t++)
-    {
-        const FoliageType* type = &gFoliage.types[t];
-        if (groupIdx >= type->groupIdx && groupIdx < type->groupIdx + type->groupCount) return t;
-    }
-    return ~0u;
-}
-
-// Tears down entities of dirty types only, compacting survivors in-place.
-// Untouched types are left alone; runs are classified once by groupIdx.
-static void RemoveDirtyChunkFoliage(tChunk* chunk)
-{
-    if (!chunk->foliageEntities) { chunk->foliageCount = 0u; return; }
-
-    u32 total = chunk->foliageCount;
-    u32 kept = 0u;
-    u32 i = 0;
-    while (i < total)
-    {
-        u32 groupIdx = chunk->foliageEntities[i].packed >> 3;
-        u32 runStart = i;
-        while (i < total && (chunk->foliageEntities[i].packed >> 3) == groupIdx) i++;
-        u32 runCount = i - runStart;
-
-        u32 typeIdx = FindFoliageTypeIndexForGroup(groupIdx);
-        if (typeIdx != ~0u && !gFoliage.types[typeIdx].paramsDirty)
-        {
-            if (kept != runStart)
-                MemCopy(&chunk->foliageEntities[kept], &chunk->foliageEntities[runStart], sizeof(tFoliageEntity) * runCount);
-            kept += runCount;
-            continue;
-        }
-
-        DestroyFoliageEntityRange(chunk, runStart, runCount);
-    }
-    chunk->foliageCount = (u16)kept;
 }
 
 // Runs once per Foliage_Update burst after JobSystem_Wait.
@@ -649,49 +584,53 @@ static void IntegrateFinishedFoliage(u32 scheduledCount)
 {
     if (scheduledCount == 0u) return;
 
-    tChunk** resolvedChunks = (tChunk**)CAllocTLSF(sizeof(tChunk*) * scheduledCount);
-    if (!resolvedChunks) return;
+    RenderSet* set = &gFoliage.scene.surfaceSet;
+    tChunk** resolvedChunks = ArenaAllocGlobal(scheduledCount * sizeof(tChunk*));
+    u32* primitiveCounts = ArenaAllocGlobal(set->numGroups * sizeof(u32));
+    u32 totalEntityAdded = 0;
+    MemSet(primitiveCounts, 0, set->numGroups * sizeof(u32));
 
-    u32 typeCounts[T_MAX_FOLIAGE_SCENE] = {0};
-
-    // pass 1: re-resolve each job's chunk (it may have been evicted/reused while the job
-    // was in flight), strip only the dirty-type entities out of it, and tally how many new
-    // placements landed per type so the batch arrays below can be sized exactly.
     for (u32 i = 0; i < scheduledCount; i++)
     {
         tFoliageJob* job = &gFoliage.jobs[i];
         tChunk* chunk = tFindChunkByMin(job->chunkMin);
         resolvedChunks[i] = chunk;
         if (!chunk) continue;
+        // remove invalidated foliages only
+        for (s32 j = 0; j < chunk->foliageCount; j++)
+        {
+            FoliageEntity foliage = chunk->foliageEntities[j];
+            if (!BitsetGet(&job->changedBundles, foliage.bundleId))
+                continue;
 
-        RemoveDirtyChunkFoliage(chunk);
+            for (s32 k = 0; k < foliage.range.count; k++)
+            {
+                const Entity* entity = &set->entities[set->sparseData[foliage.range.start + k].id];
+                Scene_PhysicsDestroyEntityBody(&gFoliage.scene, entity);
+            }
 
-        u32 addCount = 0u;
+            chunk->foliageEntities[j--] = chunk->foliageEntities[chunk->foliageCount - 1]; // unordered remove
+            RenderSet_RemoveEntityRangeStaged(set, foliage.range);
+        }
+
         for (u32 p = 0; p < job->count; p++)
         {
             FoliageType* type = &gFoliage.types[job->placements[p].typeIndex];
-            if (type->groupIdx == INVALID_GROUP) continue;
-            addCount += type->groupCount;
-            typeCounts[job->placements[p].typeIndex]++;
+            totalEntityAdded += CountNumPrimitives(set, type->bundleIdx, 1, primitiveCounts, false);
         }
-        if (addCount == 0u) continue; // nothing new; kept entities are already compacted
+    }
+    RenderSet_CompactEntities(set);
 
-        u32 keptCount = chunk->foliageCount;
-        tFoliageEntity* grown = (tFoliageEntity*)AllocTLSF(sizeof(tFoliageEntity) * (keptCount + addCount));
-        if (!grown) continue;
-        if (keptCount > 0u) MemCopy(grown, chunk->foliageEntities, sizeof(tFoliageEntity) * keptCount);
-        if (chunk->foliageEntities) DeAllocTLSF(chunk->foliageEntities);
-        chunk->foliageEntities = grown; // foliageCount (== keptCount) is now pass 3's write cursor
+    u32 sparseStart = RenderSet_AllocateSparseIDRange(set, totalEntityAdded);
+    if (sparseStart == INVALID_ENTITY) {
+        ArenaPopGlobal(set->numGroups * sizeof(u32)); /* primitiveCounts */ 
+        ArenaPopGlobal(scheduledCount * sizeof(tChunk*)); /* resolvedChunks */ 
+        return; 
     }
 
-    // pass 2: bucket every dirty-type placement into that type's batch array. worldPos/
-    // rotation/scale are resolved once here and reused for every render group.
-    tFoliageBatchItem* typeItems[T_MAX_FOLIAGE_SCENE] = {0};
-    u32 typeWriteCursor[T_MAX_FOLIAGE_SCENE] = {0};
-    for (u32 t = 0; t < gFoliage.numTypes; t++)
-        if (typeCounts[t] > 0u)
-            typeItems[t] = (tFoliageBatchItem*)AllocTLSF(sizeof(tFoliageBatchItem) * typeCounts[t]);
-
+    BatchLeaveSpacePrimitives(set, 0, set->numGroups, primitiveCounts, totalEntityAdded);
+    
+    u32 sparseCursor = sparseStart;
     for (u32 i = 0; i < scheduledCount; i++)
     {
         tChunk* chunk = resolvedChunks[i];
@@ -702,72 +641,26 @@ static void IntegrateFinishedFoliage(u32 scheduledCount)
         {
             const tFoliagePlacement* placement = &job->placements[p];
             FoliageType* type = &gFoliage.types[placement->typeIndex];
-            if (type->groupIdx == INVALID_GROUP || !typeItems[placement->typeIndex]) continue;
 
             float3 worldPos = F3Add(ToFloat3(job->chunkMin), Vec3Get(Unpack16x4Fixed(placement->localPos, (f32)T_CHUNK_CELLS)));
             f32 finalScale = type->params.size * placement->scale;
             worldPos.y -= type->localBaseY * finalScale;
 
-            tFoliageBatchItem* item = &typeItems[placement->typeIndex][typeWriteCursor[placement->typeIndex]++];
-            item->chunk = chunk;
-            item->position = VecSetR(worldPos.x, worldPos.y, worldPos.z, 0.0f);
-            item->rotation = placement->rotation;
-            item->scale = EntityPackUniformWorldScale(finalScale);
+            Entity e = {0};
+            e.position = VecSetR(worldPos.x, worldPos.y, worldPos.z, 0.0f);
+            e.rotation = placement->rotation;
+            e.scale    = EntityPackUniformWorldScale(finalScale);
+            EntitySetFlags(&e, type->params.collider * EntityFlags_ColliderEnabled);
+            u32 numEntityAdded = AddBundleAsScene(set, type->bundleIdx, sparseCursor, &e, false);
+            chunk->foliageEntities[chunk->foliageCount++] = (FoliageEntity){
+                (Range){ sparseCursor, numEntityAdded},
+                type->bundleIdx
+            };
+            sparseCursor += numEntityAdded;
         }
     }
-
-    // pass 3: one bulk RenderSet_AddEntities call per (dirty type, render group).
-    RenderSet* set = &gFoliage.scene.surfaceSet;
-    for (u32 t = 0; t < gFoliage.numTypes; t++)
-    {
-        u32 count = typeCounts[t];
-        if (count == 0u || !typeItems[t]) continue;
-        const FoliageType* type = &gFoliage.types[t];
-
-        Entity* entityBuf = (Entity*)AllocTLSF(sizeof(Entity) * count);
-        if (!entityBuf) {
-            DeAllocTLSF(typeItems[t]);
-            continue;
-        }
-
-        for (u32 g = 0; g < type->groupCount; g++)
-        {
-            u32 groupIdx = type->groupIdx + g;
-            u32 sparseBase = RenderSet_AllocateSparseIDRange(set, (int)count);
-            if (sparseBase == INVALID_ENTITY)
-                continue;
-
-            for (u32 k = 0; k < count; k++)
-            {
-                Entity e = {0};
-                e.position  = typeItems[t][k].position;
-                e.rotation  = typeItems[t][k].rotation;
-                e.scale     = typeItems[t][k].scale;
-                EntitySetSparseID(&e, sparseBase + k);
-                EntitySetFlags(&e, type->params.collider * EntityFlags_ColliderEnabled);
-                EntitySetPrimitiveID(&e, groupIdx);
-                entityBuf[k] = e;
-            }
-
-            if (RenderSet_AddEntities(set, groupIdx, count, entityBuf) == NULL)
-            {
-                RenderSet_FreeSparseIDRange(set, sparseBase, count);
-                continue;
-            }
-
-            for (u32 k = 0; k < count; k++)
-            {
-                tChunk* itemChunk = typeItems[t][k].chunk;
-                tFoliageEntity foliage = { sparseBase + k, groupIdx << 3 };
-                itemChunk->foliageEntities[itemChunk->foliageCount++] = foliage;
-            }
-        }
-
-        DeAllocTLSF(entityBuf);
-        DeAllocTLSF(typeItems[t]);
-    }
-
-    DeAllocTLSF(resolvedChunks);
+    ArenaPopGlobal(set->numGroups * sizeof(u32)); // primitiveCounts
+    ArenaPopGlobal(scheduledCount * sizeof(tChunk*)); /* resolvedChunks */ 
 }
 
 void Foliage_Update(void)

@@ -544,12 +544,9 @@ SDL_GPUTexture* CreateTexture2D(u32 width, u32 height, SDL_GPUTextureFormat form
 {
     SDL_GPUTextureCreateInfo createinfo = {
         .type = SDL_GPU_TEXTURETYPE_2D,
-        .format = format,
-        .usage = usage,
-        .width = width,
-        .height = height,
+        .format = format, .usage = usage, .width = width, .height = height,
         .layer_count_or_depth = 1,
-        .num_levels = mipLevels,
+        .num_levels   = mipLevels,
         .sample_count = sampleCount,
         .props = 0
     };
@@ -564,10 +561,7 @@ SDL_GPUTexture* CreateTexture2DArray(u32 width, u32 height, u32 layers, SDL_GPUT
 {
     SDL_GPUTextureCreateInfo createinfo = {
         .type = SDL_GPU_TEXTURETYPE_2D_ARRAY,
-        .format = format,
-        .usage = usage,
-        .width = width,
-        .height = height,
+        .format = format, .usage = usage, .width = width, .height = height,
         .layer_count_or_depth = layers,
         .num_levels = 1,
         .sample_count = TEX_SMP_CNT1,
@@ -764,14 +758,9 @@ Texture LoadTextureArray(const char* const* paths, u32 count, s32 size, bool srg
 }
 
 static Texture rCreateTextureEx(
-    int width,
-    int height,
-    int layers,
-    void* data,
-    SDL_GPUTextureFormat format,
-    SDL_GPUTextureUsageFlags usage,
-    TexFlags flags,
-    const char* label)
+    int width, int height, int layers, void* data,
+    SDL_GPUTextureFormat format, SDL_GPUTextureUsageFlags usage,
+    TexFlags flags, char* label)
 {
     bool isArray = layers > 1;
 
@@ -846,12 +835,9 @@ static Texture rCreateTextureEx(
             .texture   = res.handle,
             .mip_level = 0,
             .layer     = 0,
-            .x         = 0,
-            .y         = 0,
-            .z         = 0,
-            .w         = (u32)width,
-            .h         = (u32)height,
-            .d         = isArray ? 1 : (u32)layers
+            .x = 0, .y = 0, .z = 0,
+            .w = (u32)width, .h = (u32)height,
+            .d = isArray ? 1 : (u32)layers
         };
 
         if (isArray)
@@ -930,12 +916,8 @@ void UploadTextureRegion(Texture texture, u32 layer, u32 x, u32 y, u32 width, u3
         .texture = texture.handle,
         .mip_level = 0,
         .layer = layer,
-        .x = x,
-        .y = y,
-        .z = 0,
-        .w = width,
-        .h = height,
-        .d = 1
+        .x = x    , .y = y     , .z = 0,
+        .w = width, .h = height, .d = 1
     };
     SDL_UploadToGPUTexture(copyPass, &transferInfo, &region, false);
     SDL_EndGPUCopyPass(copyPass);
