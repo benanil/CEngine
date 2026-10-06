@@ -634,7 +634,7 @@ s32 Scene_RepackTextures(Scene* scene)
     return 1;
 }
 
-SparseData* Scene_Spawn(Scene* scene, u32 bundleIdx, v128f position, v128f rotation, v128f scale)
+SparseData* Scene_Spawn(Scene* scene, u32 bundleIdx, v128f position, v128f rotation, v128f scale, EntityFlags flags)
 {
     if (bundleIdx >= scene->numBundles || !scene->bundleRefs[bundleIdx].bundle) return 0;
 
@@ -650,7 +650,7 @@ SparseData* Scene_Spawn(Scene* scene, u32 bundleIdx, v128f position, v128f rotat
             oldCounts[i] = set->primitiveGroups[range.start + i].numEntities;
     }
 
-    SparseData* added = RenderSet_AddScene(set, scene->bundleRefs[bundleIdx].renderIdx, position, rotation, scale, skinned);
+    SparseData* added = RenderSet_AddScene(set, scene->bundleRefs[bundleIdx].renderIdx, position, rotation, scale, skinned, flags);
 
     if (skinned && added != NULL && oldCounts)
     {

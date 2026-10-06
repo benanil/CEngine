@@ -120,7 +120,7 @@ s32 DemoScene_Create(void)
         v128f rot = QFromAxisAngle(F3Up(), (float)(NextDouble01(hash) * 2.0 * MATH_PI));
         v128f scale = VecSet1(0.01f);
 
-        if (!Scene_Spawn(&g_DemoScene, g_PaladinBundle, pos, rot, scale))
+        if (!Scene_Spawn(&g_DemoScene, g_PaladinBundle, pos, rot, scale, EntityFlags_None))
             break;
     }
 
@@ -131,7 +131,7 @@ s32 DemoScene_Create(void)
         v128f pos = VecMulf(VecSetR(0.02f+f32_(i % surfaceGridStride), -0.0f, f32_(i / surfaceGridStride) -0.0f, 0.0f), 150.0f);
         v128f rot = QIdentity();
         v128f scale = VecSet1(0.1f);
-        if (!Scene_Spawn(&g_DemoScene, g_BistroBundle, pos, rot, scale))
+        if (!Scene_Spawn(&g_DemoScene, g_BistroBundle, pos, rot, scale, EntityFlags_None))
             break;
     }
     return 1;

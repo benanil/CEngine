@@ -355,32 +355,6 @@ static bool PrimitiveIsTransparent(const SceneBundle* bundle, const APrimitive* 
     return alphaMode == AMaterialAlphaMode_Blend;
 }
 
-// world: staging entities -1 is root
-// rootTemp: temp rootNodeTransform. WARNING make SparseID = INVALID_ENTITY if empty
-void RendersetAddANodesAsEntities(RenderSet* rs, const ANode* nodes, s32 numNode, 
-                                  Entity* world, s32 sparseStart)
-{
-    (void)sparseStart;
-    for (s32 n = 0; n < numNode; n++)
-    {
-        const ANode* node = nodes + n;
-        v128f localPos   = VecLoad(node->translation);
-        v128f localRot   = VecNorm(VecLoad(node->rotation));
-        v128f localScale = VecLoad(node->scale);
-
-        const Entity* parent = world + node->parent;
-        u32 noMesh = (node->type != 0) | (node->index < 0) | (rs->skinned && node->skin < 0);
-        Entity* added = world + n;
-        v128f parentRot = EntityGetRotation(parent);
-        v128f parentScale = EntityGetScaleV(parent);
-        EntitySetPositionV(added, VecAdd(QMulVec3V(VecMul(localPos, parentScale), parentRot), parent->position));
-        EntitySetRotation(added, VecNorm(QMul(localRot, parentRot)));
-        EntitySetScaleV(added, VecMul(localScale, parentScale));
-        // added->parentIdx = parent->sparseIdx;
-        EntitySetFlags(added, noMesh * EntityFlags_NoMesh);
-        EntitySetSparseID(added, INVALID_ENTITY);
-    }
-}
 
 // totalPrimAdded = SumU32(primitiveCounts, numPrimitives)
 void BatchLeaveSpacePrimitives(RenderSet* set, u32 primitiveStart, u32 numPrimitives, u32* primitiveCounts, u32 totalPrimAdded)
@@ -413,12 +387,39 @@ void BatchLeaveSpacePrimitives(RenderSet* set, u32 primitiveStart, u32 numPrimit
     }
 }
 
-SparseData* RenderSet_AddScene(RenderSet* set, u32 bundleIdx, v128f position, v128f rotation, v128f scale, bool wantSkinned)
+u32 CountNumPrimitives(RenderSet* set, u32 bundleIdx, u32 numScenes, u32* primitiveCounts, bool wantSkinned)
+{
+    const SceneBundle* bundle = set->bundles[bundleIdx];
+    const ANode* nodes = bundle->nodes;
+    u32 meshNodeCount = 0;
+    u32 totalPrimAdded = 0;
+    // count num nodesfor allocations
+    for (u32 m = 0; m < (u32)bundle->numNodes; m++)
+    {
+        const ANode* node = nodes + m;
+        if (!ANodeIsMesh(node, wantSkinned)) 
+            continue;
+
+        const AMesh* mesh = bundle->meshes + node->index;
+        meshNodeCount += numScenes;
+
+        for (u32 p = 0; p < (u32)mesh->numPrimitives; p++)
+        {
+            primitiveCounts[(u32)mesh->primitiveOffset + p] += numScenes;
+            totalPrimAdded += numScenes;
+        }
+    }
+
+    return set->skinned ? meshNodeCount : totalPrimAdded;
+}
+
+SparseData* RenderSet_AddScene(RenderSet* set, u32 bundleIdx, v128f position, v128f rotation, v128f scale, bool wantSkinned, EntityFlags flag)
 {
     Entity e = {};
     EntitySetPositionV(&e, position);
     EntitySetRotation(&e, rotation);
     EntitySetScaleV(&e, scale);
+    EntitySetFlags(&e, flag);
     return RenderSet_AddSceneArray(set, bundleIdx, &e, 1, wantSkinned);
 }
 
@@ -441,38 +442,10 @@ SparseData* RenderSet_AddSceneArray(RenderSet* set, u32 bundleIdx, const Entity*
  
     u32* primitiveCounts = ArenaAllocGlobal(numPrimitives * sizeof(u32));
     MemSet(primitiveCounts, 0, numPrimitives * sizeof(u32));
-    // zeroed: flags is never set below, was left as garbage
-    Entity* nodeEntities = ArenaAllocGlobal(((u32)numNodes + 1u) * sizeof(Entity));
-    MemsetZero(nodeEntities, ((u32)numNodes + 1u) * sizeof(Entity));
-
-    u32 meshNodeCount = 0;
-    u32 totalPrimAdded = 0;
-    // count num nodesfor allocations
-    for (u32 m = 0; m < (u32)numNodes; m++)
-    {
-        const ANode* node = nodes + m;
-        if (!ANodeIsMesh(node, wantSkinned))
-        {
-            EntitySetPrimitiveID(&nodeEntities[m + 1u], range.start);
-            continue;
-        }
-        const AMesh* mesh = bundle->meshes + node->index;
-        u32 firstGroupIdx = range.start + (u32)mesh->primitiveOffset;
-        meshNodeCount++;
-
-        EntitySetPrimitiveID(&nodeEntities[m + 1u], firstGroupIdx);
-        EntitySetFlags(&nodeEntities[m + 1u], EntityFlags_ColliderEnabled);
-        for (u32 p = 0; p < (u32)mesh->numPrimitives; p++)
-        {
-            const APrimitive* primitive = mesh->primitives + p;
-            primitiveCounts[firstGroupIdx + p - range.start]++;
-            totalPrimAdded++;
-        }
-    }
-
-    u32 sparseCount = set->skinned ? meshNodeCount : totalPrimAdded;
+    
+    u32 sparseCount = CountNumPrimitives(set, bundleIdx, numScenes, primitiveCounts, wantSkinned);
     u32 sparseStart = RenderSet_AllocateSparseIDRange(set, sparseCount);
-    if (sparseStart == INVALID_ENTITY || totalPrimAdded == 0u)
+    if (sparseStart == INVALID_ENTITY || sparseCount == 0u)
     {
         AX_WARN("maximum entity reached: %d", set->maxEntities);
         ArenaPopGlobal(((u32)numNodes + 1u) * sizeof(Entity));
@@ -480,48 +453,74 @@ SparseData* RenderSet_AddSceneArray(RenderSet* set, u32 bundleIdx, const Entity*
         return NULL;
     }
 
-    BatchLeaveSpacePrimitives(set, range.start, numPrimitives, primitiveCounts, totalPrimAdded);
+    BatchLeaveSpacePrimitives(set, range.start, numPrimitives, primitiveCounts, sparseCount);
 
     for (u32 p = 0; p < numPrimitives; p++)
         set->primitiveGroups[range.start + p].capacity += primitiveCounts[p];
 
-    set->numEntities += totalPrimAdded;
-    // dummy root node
-    nodeEntities[0] = *transforms;
-    EntitySetSparseID(&nodeEntities[0], INVALID_ENTITY);
-    RendersetAddANodesAsEntities(set, bundle->nodes, bundle->numNodes, nodeEntities + 1, sparseStart);
+    set->numEntities += sparseCount;
 
-    // insert entities
-    u32 sparseCursor = 0;
-    for (u32 n = 0; n < (u32)numNodes; n++)
+    // zeroed: flags is never set below, was left as garbage
+    Entity* nodeEntities = ArenaAllocGlobal(((u32)numNodes + 1u) * sizeof(Entity));
+    MemsetZero(nodeEntities, ((u32)numNodes + 1u) * sizeof(Entity));
+
+    nodeEntities++;
+    for (s32 s = 0; s < numScenes; s++)
     {
-        const ANode* node = nodes + n;
-        if (!ANodeIsMesh(node, wantSkinned)) continue;
-
-        const AMesh* mesh = bundle->meshes + node->index;
-        u32 firstGroupIdx = EntityGetPrimitiveID(&nodeEntities[n + 1u]);
-        u32 nodeSparseIdx = INVALID_ENTITY;
-        if (set->skinned)
-            nodeSparseIdx = sparseStart + sparseCursor++;
-
-        for (u32 p = 0; p < (u32)mesh->numPrimitives; p++)
+        // world: staging entities -1 is root
+        nodeEntities[-1] = transforms[s];
+        EntityFlags flags = EntityGetFlags(&transforms[s]);
+        for (s32 n = 0; n < numNodes; n++)
         {
-            const APrimitive* primitive = mesh->primitives + p;
+            const ANode* node = nodes + n;
+            v128f localPos   = VecLoad(node->translation);
+            v128f localRot   = VecNorm(VecLoad(node->rotation));
+            v128f localScale = VecLoad(node->scale);
+
+            const Entity* parent = nodeEntities + node->parent;
+            u32 noMesh = (node->type != 0) | (node->index < 0) | (set->skinned && node->skin < 0);
+            Entity* added = nodeEntities + n;
+            v128f parentRot = EntityGetRotation(parent);
+            v128f parentScale = EntityGetScaleV(parent);
+            EntitySetPositionV(added, VecAdd(QMulVec3V(VecMul(localPos, parentScale), parentRot), parent->position));
+            EntitySetRotation(added, VecNorm(QMul(localRot, parentRot)));
+            EntitySetScaleV(added, VecMul(localScale, parentScale));
+            EntitySetFlags(added, flags | (noMesh * EntityFlags_NoMesh));
+        }
+
+        // insert entities
+        u32 sparseCursor = 0;
+        for (u32 n = 0; n < (u32)numNodes; n++)
+        {
+            const ANode* node = nodes + n;
+            if (!ANodeIsMesh(node, wantSkinned)) continue;
+
+            const AMesh* mesh = bundle->meshes + node->index;
+            u32 firstGroupIdx = range.start + (u32)mesh->primitiveOffset;
+            u32 nodeSparseIdx = INVALID_ENTITY;
+            if (set->skinned)
+                nodeSparseIdx = sparseStart + sparseCursor++;
+
+            for (u32 p = 0; p < (u32)mesh->numPrimitives; p++)
+            {
+                const APrimitive* primitive = mesh->primitives + p;
             
-            Entity added = nodeEntities[n + 1u];
-            EntitySetPrimitiveID(&added, firstGroupIdx + p);
-            u32 sparseId = set->skinned ? nodeSparseIdx : sparseStart + sparseCursor++;
-            EntitySetSparseID(&added, sparseId);
-            EntityAddFlags(&added, PrimitiveIsTransparent(bundle, primitive) * EntityFlags_Transparent);
-            PrimitiveGroup* group = &set->primitiveGroups[EntityGetPrimitiveID(&added)];
-            u32 localIdx = group->numEntities++;
-            u32 denseIdx = group->entityOffset + localIdx;
-            Entity* entity = &set->entities[denseIdx];
-            set->entities[denseIdx] = added;
-            SetSparseToDense(set, sparseId, denseIdx);
-            RenderSet_AddEntitiesCallback(set, EntityGetPrimitiveID(&added), localIdx, 1u);
+                Entity added = nodeEntities[n];
+                EntitySetPrimitiveID(&added, firstGroupIdx + p);
+                u32 sparseId = set->skinned ? nodeSparseIdx : sparseStart + sparseCursor++;
+                EntitySetSparseID(&added, sparseId);
+                EntityAddFlags(&added, PrimitiveIsTransparent(bundle, primitive) * EntityFlags_Transparent);
+                PrimitiveGroup* group = &set->primitiveGroups[EntityGetPrimitiveID(&added)];
+                u32 localIdx = group->numEntities++;
+                u32 denseIdx = group->entityOffset + localIdx;
+                Entity* entity = &set->entities[denseIdx];
+                set->entities[denseIdx] = added;
+                SetSparseToDense(set, sparseId, denseIdx);
+                RenderSet_AddEntitiesCallback(set, EntityGetPrimitiveID(&added), localIdx, 1u);
+            }
         }
     }
+    // nodeEntities--;
 
     ArenaPopGlobal(((u32)numNodes + 1u) * sizeof(Entity));
     ArenaPopGlobal(numPrimitives * sizeof(u32));

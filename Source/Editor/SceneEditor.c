@@ -86,7 +86,7 @@ static bool EditorImportNeedsDetailWarning(const char* normalizedPath);
 // spawns one instance and assigns the default animation to skinned ones
 static void EditorSpawnBundleAt(Scene* scene, u32 bundleIdx, v128f position, v128f rotation, v128f scale)
 {
-    Scene_Spawn(scene, bundleIdx, position, rotation, scale);
+    Scene_Spawn(scene, bundleIdx, position, rotation, scale, EntityFlags_ColliderEnabled);
 }
 
 static void EditorSpawnBundle(Scene* scene, u32 bundleIdx, f32 scale)
@@ -986,7 +986,7 @@ static void SceneAddPrimitive(void* data)
     Scene* scene = GetActiveScene();
     MeshType meshType = (MeshType)((u64)data);
     u32 bundle = Scene_AddBundleCached(scene, GetUnitPrimitive(meshType), GetPrimitiveName(meshType));
-    Scene_Spawn(scene, bundle, VecZero(), QIdentity(), VecOne());
+    Scene_Spawn(scene, bundle, VecZero(), QIdentity(), VecOne(), EntityFlags_ColliderEnabled);
 }
 
 static bool SceneResolveSelectedObject(Scene* scene, RenderSet** outSet, PrimitiveGroup** outGroup, Entity** outEntity)

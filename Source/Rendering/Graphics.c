@@ -468,18 +468,26 @@ SDL_GPUBuffer* CreateBuffer(
 
 void UpdateGPUBufferCycle(SDL_GPUBuffer* buffer, const void* data, size_t bufferSize, size_t offset, bool cycle)
 {
+    cycle = false;
     SDL_GPUTransferBufferCreateInfo transferBufferCreateInfo;
     transferBufferCreateInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
     transferBufferCreateInfo.size  = bufferSize;
     transferBufferCreateInfo.props = 0;
-
+    
     SDL_GPUTransferBuffer* dataTransferBuffer;
     Uint8* dataTransferPtr;
     SDL_GPUCommandBuffer* uploadCmdBuf = SDL_AcquireGPUCommandBuffer(g_GPUDevice);
+    if (!uploadCmdBuf) { AX_LOG("AcquireGPUCommandBuffer: %s", SDL_GetError()); return; }
+
     SDL_GPUCopyPass* copyPass = SDL_BeginGPUCopyPass(uploadCmdBuf);
-    
+    if (!copyPass) { AX_LOG("BeginGPUCopyPass: %s", SDL_GetError()); SDL_CancelGPUCommandBuffer(uploadCmdBuf); return; }
+
     dataTransferBuffer = SDL_CreateGPUTransferBuffer(g_GPUDevice, &transferBufferCreateInfo);
+    if (!dataTransferBuffer) { AX_LOG("dataTransferBuffer: %s", SDL_GetError()); SDL_CancelGPUCommandBuffer(uploadCmdBuf); return; }
+
     dataTransferPtr = (Uint8*)SDL_MapGPUTransferBuffer(g_GPUDevice, dataTransferBuffer, true);
+    if (!dataTransferPtr) { AX_LOG("dataTransferPtr: %s", SDL_GetError()); SDL_CancelGPUCommandBuffer(uploadCmdBuf); return; }
+
     MemCopy(dataTransferPtr, data, bufferSize);
     SDL_UnmapGPUTransferBuffer(g_GPUDevice, dataTransferBuffer);
 
@@ -489,23 +497,25 @@ void UpdateGPUBufferCycle(SDL_GPUBuffer* buffer, const void* data, size_t buffer
                           cycle);
 
     SDL_EndGPUCopyPass(copyPass);
-
     if (cycle)
     {
         // cycle=true gets a fresh internal buffer generation, so no race with GPU reads
         // on the old one - no fence wait needed. SDL_ReleaseGPUTransferBuffer defers
         // actual teardown until safe (SDL_gpu.h), so it's fine to release right away.
         SDL_SubmitGPUCommandBuffer(uploadCmdBuf);
-        SDL_ReleaseGPUTransferBuffer(g_GPUDevice, dataTransferBuffer);
     }
     else
     {
-        // same buffer generation, in place: wait so a GPU read in flight can't race it
         SDL_GPUFence* fence = SDL_SubmitGPUCommandBufferAndAcquireFence(uploadCmdBuf);
+        if (!PTR_VALID(fence)) {
+            AX_LOG("omassey %s", SDL_GetError());
+            return;
+        }
+        // same buffer generation, in place: wait so a GPU read in flight can't race it
         SDL_WaitForGPUFences(g_GPUDevice, true, &fence, 1);
         SDL_ReleaseGPUFence(g_GPUDevice, fence);
-        SDL_ReleaseGPUTransferBuffer(g_GPUDevice, dataTransferBuffer);
     }
+    SDL_ReleaseGPUTransferBuffer(g_GPUDevice, dataTransferBuffer);
 }
 
 void UpdateGPUBuffer(SDL_GPUBuffer* buffer, const void* data, size_t bufferSize, size_t offset)

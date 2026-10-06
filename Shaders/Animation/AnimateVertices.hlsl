@@ -59,7 +59,7 @@ void main(uint3 globalID : SV_DispatchThreadID, uint3 groupID : SV_GroupID, uint
         return;
 
     uint baseDenseIdx = sSparseToDense[sparse];
-    if (baseDenseIdx == 0x00ffffffu)
+    if ((baseDenseIdx & 0x00ffffffu) == 0x00ffffffu)
         return;
 
     Entity baseEntity = sEntities[baseDenseIdx];

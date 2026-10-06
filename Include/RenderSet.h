@@ -132,7 +132,7 @@ void  RenderSet_SetHookScene(RenderSet* set, struct Scene_* scene);
 u32   RenderSet_AddSceneBundle(RenderSet* set, const SceneBundle* sceneBundle, u32 materialOffset);
 // returns: root node, first entity that is added: sparseID | (generation << 24)
 //    since always parentID < childID look at: SceneNormalize.c EmitRemappedNode
-SparseData* RenderSet_AddScene(RenderSet* set, u32 bundleIdx, v128f position, v128f rotation, v128f scale, bool wantSkinned);
+SparseData* RenderSet_AddScene(RenderSet* set, u32 bundleIdx, v128f position, v128f rotation, v128f scale, bool wantSkinned, EntityFlags flags);
 
 SparseData* RenderSet_AddSceneArray(RenderSet* set, u32 bundleIdx, const Entity* transforms, u32 numScenes, bool wantSkinned);
 

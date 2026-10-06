@@ -50,7 +50,7 @@ purefn EntityID MakeEntityID(u32 sparse, u32 gen) {
 static inline void EntitySetSparseID(Entity* e, u32 id) {
     ASSERT(id <= 0xFFFFFFu);
     u32 genFlag = VeciGetW(VecBitcastU32(e->position));
-    id |= (genFlag & ~0xFFFFFF);
+    id |= genFlag & 0xFF000000u;
     VecSetW(e->position, BitCast(f32, id));
 }
 
