@@ -146,34 +146,68 @@ SceneBundle* GenerateCylinder(float radius, float height, u32 sliceCount)
 
 SceneBundle* GenerateCube(float size)
 {
-    const u32 numVertex = 8, numIndex  = 36;
+    const u32 numVertex = 24, numIndex = 36;
     const f32 h = size * 0.5f;
     MeshBuilder b = MeshBuilder_Create(numVertex, numIndex);
-    b.positions[0] = (float3){-h, -h, -h};
-    b.positions[1] = (float3){ h, -h, -h};
-    b.positions[2] = (float3){ h,  h, -h};
-    b.positions[3] = (float3){-h,  h, -h};
-    b.positions[4] = (float3){-h, -h,  h};
-    b.positions[5] = (float3){ h, -h,  h};
-    b.positions[6] = (float3){ h,  h,  h};
-    b.positions[7] = (float3){-h,  h,  h};
 
-    for (u32 i = 0; i < 8; i++)
+    // Positions for 6 faces (4 vertices each)
+    const float3 positions[24] = {
+        
+        {-h, -h,  h}, { h, -h,  h}, { h,  h,  h}, {-h,  h,  h}, // Front (+Z)
+        { h, -h, -h}, {-h, -h, -h}, {-h,  h, -h}, { h,  h, -h}, // Back (-Z)
+        {-h,  h,  h}, { h,  h,  h}, { h,  h, -h}, {-h,  h, -h}, // Top (+Y)
+        {-h, -h, -h}, { h, -h, -h}, { h, -h,  h}, {-h, -h,  h}, // Bottom (-Y)
+        { h, -h,  h}, { h, -h, -h}, { h,  h, -h}, { h,  h,  h}, // Right (+X)
+        {-h, -h, -h}, {-h, -h,  h}, {-h,  h,  h}, {-h,  h, -h}  // Left (-X)
+    };
+
+    const float2 texCoords[4] = {
+        {0.0f, 0.0f}, {1.0f, 0.0f}, {1.0f, 1.0f}, {0.0f, 1.0f}
+    };
+
+    const float3 normals[6] = {
+        { 0.0f,  0.0f,  1.0f}, // Front
+        { 0.0f,  0.0f, -1.0f}, // Back
+        { 0.0f,  1.0f,  0.0f}, // Top
+        { 0.0f, -1.0f,  0.0f}, // Bottom
+        { 1.0f,  0.0f,  0.0f}, // Right
+        {-1.0f,  0.0f,  0.0f}  // Left
+    };
+
+    v128f tangents[6] = {
+        VecSetR( 1.0f,  0.0f,  0.0f, 1.0f), // Front
+        VecSetR(-1.0f,  0.0f,  0.0f, 1.0f), // Back
+        VecSetR( 1.0f,  0.0f,  0.0f, 1.0f), // Top
+        VecSetR( 1.0f,  0.0f,  0.0f, 1.0f), // Bottom
+        VecSetR( 0.0f,  0.0f, -1.0f, 1.0f), // Right
+        VecSetR( 0.0f,  0.0f,  1.0f, 1.0f)  // Left
+    };
+
+    for (u32 face = 0; face < 6; face++)
     {
-        b.normals[i] = F3Norm(b.positions[i]);
-        b.texCoords[i] = (float2){ 0, 0 };
-        b.tangents[i] = VecSetR(0, 0, 1, 0);
+        for (u32 v = 0; v < 4; v++)
+        {
+            u32 idx = face * 4 + v;
+            b.positions[idx] = positions[idx];
+            b.texCoords[idx] = texCoords[v];
+            b.normals[idx]   = normals[face];
+            b.tangents[idx]  = tangents[face];
+        }
     }
 
-    const u32 indexData[36] =
+    u32 indexData[36];
+    for (u32 face = 0; face < 6; face++)
     {
-        0, 4, 5, 0, 5, 1, // bottom
-        3, 2, 6, 3, 6, 7, // top
-        0, 1, 2, 0, 2, 3, // back
-        4, 7, 6, 4, 6, 5, // front
-        0, 3, 7, 0, 7, 4, // left
-        1, 5, 6, 1, 6, 2  // right
-    };
+        u32 vIdx = face * 4;
+        u32 iIdx = face * 6;
+        indexData[iIdx + 0] = vIdx + 0;
+        indexData[iIdx + 1] = vIdx + 1;
+        indexData[iIdx + 2] = vIdx + 2;
+        
+        indexData[iIdx + 3] = vIdx + 0;
+        indexData[iIdx + 4] = vIdx + 2;
+        indexData[iIdx + 5] = vIdx + 3;
+    }
     MemCopy(b.indices, indexData, sizeof(indexData));
     return b.bundle;
 }

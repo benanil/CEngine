@@ -985,8 +985,7 @@ static void SceneAddPrimitive(void* data)
 {
     Scene* scene = GetActiveScene();
     MeshType meshType = (MeshType)((u64)data);
-    u32 bundle = Scene_AddBundleCached(scene, GetUnitPrimitive(meshType), GetPrimitiveName(meshType));
-    Scene_Spawn(scene, bundle, VecZero(), QIdentity(), VecOne(), EntityFlags_ColliderEnabled);
+    Scene_SpawnPrimitive(scene, meshType, VecZero(), QIdentity(), VecOne(), EntityFlags_ColliderEnabled);
 }
 
 static bool SceneResolveSelectedObject(Scene* scene, RenderSet** outSet, PrimitiveGroup** outGroup, Entity** outEntity)

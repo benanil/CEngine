@@ -634,6 +634,12 @@ s32 Scene_RepackTextures(Scene* scene)
     return 1;
 }
 
+SparseData* Scene_SpawnPrimitive(Scene* scene, MeshType meshType, v128f position, v128f rotation, v128f scale, EntityFlags flags)
+{
+    u32 bundle = Scene_AddBundleCached(scene, GetUnitPrimitive(meshType), GetPrimitiveName(meshType));
+    return Scene_Spawn(scene, bundle, position, rotation, scale, flags);
+}
+
 SparseData* Scene_Spawn(Scene* scene, u32 bundleIdx, v128f position, v128f rotation, v128f scale, EntityFlags flags)
 {
     if (bundleIdx >= scene->numBundles || !scene->bundleRefs[bundleIdx].bundle) return 0;
