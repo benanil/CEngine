@@ -549,6 +549,11 @@ static inline void MemSet32(s32* p, s32 val, s32 len)
     for (s32 i = 0; i < len; i++) p[i] = val; // let compiler optimize
 }
 
+static inline void MemSet64(u64* p, u64 val, s32 len)
+{
+    for (s32 i = 0; i < len; i++) p[i] = val; // let compiler optimize
+}
+
 #if defined(__aarch64__) || defined(__arm__)
 #define HSum32_128(x) vaddvq_u32(x)
 #else

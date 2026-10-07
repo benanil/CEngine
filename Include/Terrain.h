@@ -115,6 +115,7 @@ typedef struct tFoliageParams_
 void Foliage_Init();
 void Foliage_Destroy();
 void Foliage_SetSeed(u32 seed);
+Scene* GetFoliageScene();
 
 // the scene foliage entities render into (separate from g_ActiveScene, drawn by an
 // explicit extra pass in RenderDepth/RenderSceneForward). NULL only before Foliage_Init

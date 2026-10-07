@@ -403,10 +403,10 @@ Texture Create64pxBitTexture(const u64 rows[64], u32 pixels[64 * 64], u32 color,
 
 Texture rImportTexture(const char* path, TexFlags flags, const char* label);
 
-Texture rCreateTexture(int width, int height, void* data, SDL_GPUTextureFormat format,
+Texture rCreateTexture(int width, int height, const void* data, SDL_GPUTextureFormat format,
                        TexFlags flags, SDL_GPUTextureUsageFlags usage, const char* label);
 
-Texture rCreateTexture2DArray(int width, int height, int layers, void* data, SDL_GPUTextureFormat format, 
+Texture rCreateTexture2DArray(int width, int height, int layers, const void* data, SDL_GPUTextureFormat format, 
                               TexFlags flags, SDL_GPUTextureUsageFlags usage, const char* label);
 
 SDL_GPUTexture* CreateSceneColorTexture(u32 drawablew, u32 drawableh, SDL_GPUSampleCount sampleCount);

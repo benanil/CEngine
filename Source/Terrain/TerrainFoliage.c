@@ -61,7 +61,7 @@ typedef struct tFoliageJob_
     // true for a chunk that has never had foliage decided (see tChunk.foliageBuilt): place
     // every currently-enabled type for it, not just the ones flagged paramsDirty this round.
     bool        placeAllEnabled;
-    u64         changedBundles; // this is for making sure we dont exceed 64bit
+    u64         changedBundles;
     u32         count;
     tFoliagePlacement placements[T_FOLIAGE_MAX_PER_CHUNK];
 } tFoliageJob;
@@ -87,7 +87,7 @@ typedef struct tFoliageState_
                                      // awaited within a single Foliage_Update call
 } tFoliageState;
 
-static tFoliageState gFoliage;
+static tFoliageState gFoliage = {0};
 
 Scene* GetFoliageScene() {
     return &gFoliage.scene;
@@ -569,11 +569,19 @@ void Foliage_ClearEntities()
 
 void Foliage_DestroyChunkFoliage(tChunk* chunk)
 {
-    if (!PTR_VALID(chunk) || chunk->foliageCount == 0) return;
+    if (!PTR_VALID(chunk)) return;
 
     RenderSet* set = &gFoliage.scene.surfaceSet;
     for (s32 j = 0; j < chunk->foliageCount; j++) 
-        RenderSet_RemoveEntityRangeStaged(set, chunk->foliageEntities[j].range);
+    {
+        FoliageEntity foliage = chunk->foliageEntities[j];
+        for (s32 k = 0; k < foliage.range.count; k++)
+        {
+            const Entity* entity = &set->entities[set->sparseData[foliage.range.start + k].id];
+            Scene_PhysicsDestroyEntityBody(&gFoliage.scene, entity);
+        }
+        RenderSet_RemoveEntityRangeStaged(set, foliage.range);
+    }
     
     chunk->foliageCount = 0u;
 }
@@ -588,7 +596,8 @@ static void IntegrateFinishedFoliage(u32 scheduledCount)
     tChunk** resolvedChunks = ArenaAllocGlobal(scheduledCount * sizeof(tChunk*));
     u32* primitiveCounts = ArenaAllocGlobal(set->numGroups * sizeof(u32));
     u32 totalEntityAdded = 0;
-    MemSet(primitiveCounts, 0, set->numGroups * sizeof(u32));
+    u32 totalEntityRemoved = 0;
+    MemSet32(primitiveCounts, 0, set->numGroups);
 
     for (u32 i = 0; i < scheduledCount; i++)
     {
@@ -602,15 +611,16 @@ static void IntegrateFinishedFoliage(u32 scheduledCount)
             FoliageEntity foliage = chunk->foliageEntities[j];
             if (!BitsetGet(&job->changedBundles, foliage.bundleId))
                 continue;
-
+        
             for (s32 k = 0; k < foliage.range.count; k++)
             {
                 const Entity* entity = &set->entities[set->sparseData[foliage.range.start + k].id];
                 Scene_PhysicsDestroyEntityBody(&gFoliage.scene, entity);
             }
-
-            chunk->foliageEntities[j--] = chunk->foliageEntities[chunk->foliageCount - 1]; // unordered remove
+        
+            chunk->foliageEntities[j--] = chunk->foliageEntities[--chunk->foliageCount]; // unordered remove
             RenderSet_RemoveEntityRangeStaged(set, foliage.range);
+            totalEntityRemoved += foliage.range.count;
         }
 
         for (u32 p = 0; p < job->count; p++)
@@ -619,15 +629,24 @@ static void IntegrateFinishedFoliage(u32 scheduledCount)
             totalEntityAdded += CountNumPrimitives(set, type->bundleIdx, 1, primitiveCounts, false);
         }
     }
-    RenderSet_CompactEntities(set);
 
-    u32 sparseStart = RenderSet_AllocateSparseIDRange(set, totalEntityAdded);
-    if (sparseStart == INVALID_ENTITY) {
-        ArenaPopGlobal(set->numGroups * sizeof(u32)); /* primitiveCounts */ 
-        ArenaPopGlobal(scheduledCount * sizeof(tChunk*)); /* resolvedChunks */ 
-        return; 
+    if (totalEntityRemoved)
+    {
+        RenderSet_CompactEntities(set);
+        gFoliage.scene.renderDataDirty = true;
     }
 
+    u32 sparseStart = RenderSet_AllocateSparseIDRange(set, totalEntityAdded);
+    if (sparseStart == INVALID_ENTITY || (totalEntityAdded + set->numEntities) > set->maxEntities) {
+        if (totalEntityAdded != 0)
+        {
+            AX_WARN("terrain sparse id alloc failed!");
+            ArenaPopGlobal(set->numGroups * sizeof(u32)); /* primitiveCounts */ 
+            ArenaPopGlobal(scheduledCount * sizeof(tChunk*)); /* resolvedChunks */ 
+        }
+        return; 
+    }
+  
     BatchLeaveSpacePrimitives(set, 0, set->numGroups, primitiveCounts, totalEntityAdded);
     
     u32 sparseCursor = sparseStart;
@@ -651,6 +670,7 @@ static void IntegrateFinishedFoliage(u32 scheduledCount)
             e.rotation = placement->rotation;
             e.scale    = EntityPackUniformWorldScale(finalScale);
             EntitySetFlags(&e, type->params.collider * EntityFlags_ColliderEnabled);
+            // RenderSet_AddSceneArray(set, type->bundleIdx, &e, 1, false);
             u32 numEntityAdded = AddBundleAsScene(set, type->bundleIdx, sparseCursor, &e, false);
             chunk->foliageEntities[chunk->foliageCount++] = (FoliageEntity){
                 (Range){ sparseCursor, numEntityAdded},
@@ -661,6 +681,8 @@ static void IntegrateFinishedFoliage(u32 scheduledCount)
     }
     ArenaPopGlobal(set->numGroups * sizeof(u32)); // primitiveCounts
     ArenaPopGlobal(scheduledCount * sizeof(tChunk*)); /* resolvedChunks */ 
+    RenderSet_Validate(set, "omassey");
+    gFoliage.scene.renderDataDirty = true;
 }
 
 void Foliage_Update(void)

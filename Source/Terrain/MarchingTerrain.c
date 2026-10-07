@@ -592,7 +592,6 @@ static void tLRURemapIndex(u32 oldIndex, u32 newIndex)
 
 static void tFreeChunkSlot(u32 index)
 {
-    if (index >= gMarchingTerrain.chunkCount) return;
     tChunk* chunk = &gMarchingTerrain.chunks[index];
     HMErase(&gMarchingTerrain.chunkLookup, tChunkKey(chunk->min));
     tDestroyChunkPhysics(chunk);

@@ -12,6 +12,7 @@
 #include "Include/Graphics.h"
 #include "Include/Camera.h"
 #include "Include/BVH.h"
+#include "Include/Terrain.h"
 #include "Math/Quaternion.h"
 #include "Math/Bitpack.h"
 #include "Math/Color.h"
@@ -1860,10 +1861,21 @@ void DrawSceneWindow(bool* open)
                     UITextU32("Bundles", scene->numBundles);
                     UITextU32("Materials", scene->numMaterials);
                     UITextU32("Static entities", scene->surfaceSet.numEntities);
-                    // UITextU32("Transparent entities", scene->transparentSet.numEntities);
                     UITextU32("Skinned entities", scene->skinnedSet.numEntities);
                     UITextU32("Primitive groups", scene->surfaceSet.numGroups + scene->skinnedSet.numGroups);
                     UITextU32("Triangles", RenderSet_CountTriangles(&scene->surfaceSet) + RenderSet_CountTriangles(&scene->skinnedSet));
+                    
+                    if (tGetEnabled())
+                    {
+                        Scene* foliageScene = GetFoliageScene();
+                        UIText("Foliage Scene");
+                        UITextU32("Bundles", foliageScene->numBundles);
+                        UITextU32("Materials", foliageScene->numMaterials);
+                        UITextU32("Static entities", foliageScene->surfaceSet.numEntities);
+                        UITextU32("Skinned entities", foliageScene->skinnedSet.numEntities);
+                        UITextU32("Primitive groups", foliageScene->surfaceSet.numGroups);
+                        UITextU32("Triangles", RenderSet_CountTriangles(&foliageScene->surfaceSet));
+                    }
                 }
             }
             UIDivider(CLAY_ID("SceneWindowDivider"));

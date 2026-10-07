@@ -468,7 +468,6 @@ SDL_GPUBuffer* CreateBuffer(
 
 void UpdateGPUBufferCycle(SDL_GPUBuffer* buffer, const void* data, size_t bufferSize, size_t offset, bool cycle)
 {
-    cycle = false;
     SDL_GPUTransferBufferCreateInfo transferBufferCreateInfo;
     transferBufferCreateInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
     transferBufferCreateInfo.size  = bufferSize;
@@ -758,9 +757,9 @@ Texture LoadTextureArray(const char* const* paths, u32 count, s32 size, bool srg
 }
 
 static Texture rCreateTextureEx(
-    int width, int height, int layers, void* data,
+    int width, int height, int layers, const void* data,
     SDL_GPUTextureFormat format, SDL_GPUTextureUsageFlags usage,
-    TexFlags flags, char* label)
+    TexFlags flags, const char* label)
 {
     bool isArray = layers > 1;
 
@@ -790,7 +789,7 @@ static Texture rCreateTextureEx(
     res.width  = width;
     res.height = height;
     res.format = format;
-    res.buffer = data;
+    res.buffer = (void*)data;
     res.mipLevels = mipLevels;
     res.handle = SDL_CreateGPUTexture(g_GPUDevice, &texDesc);
 	res.numLayers = layers;
@@ -878,13 +877,13 @@ static Texture rCreateTextureEx(
     return res;
 }
 
-Texture rCreateTexture(int width, int height, void* data, SDL_GPUTextureFormat format,
+Texture rCreateTexture(int width, int height, const void* data, SDL_GPUTextureFormat format,
                        TexFlags flags, SDL_GPUTextureUsageFlags usage, const char* label)
 {
     return rCreateTextureEx(width, height, 1, data, format, usage, flags, label);
 }
 
-Texture rCreateTexture2DArray(int width, int height, int layers, void* data, SDL_GPUTextureFormat format, 
+Texture rCreateTexture2DArray(int width, int height, int layers, const void* data, SDL_GPUTextureFormat format, 
                               TexFlags flags, SDL_GPUTextureUsageFlags usage, const char* label)
 {
     return rCreateTextureEx(width, height, layers, data, format, usage, flags, label);

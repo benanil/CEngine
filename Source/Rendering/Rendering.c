@@ -733,10 +733,15 @@ void Render(void)
         Scene* foliageScene = Foliage_GetScene();
         if (foliageScene && foliageScene->surfaceSet.numGroups > 0)
         {
-            UploadRenderSetStatics(&foliageScene->surfaceSet, &foliageScene->surfaceBuffers);
-            UploadRenderSetEntities(&foliageScene->surfaceSet, &foliageScene->surfaceBuffers);
+            if (foliageScene->renderDataDirty)
+            {
+                UploadRenderSetStatics(&foliageScene->surfaceSet, &foliageScene->surfaceBuffers);
+                UploadRenderSetEntities(&foliageScene->surfaceSet, &foliageScene->surfaceBuffers);
+            }
+
             DispatchCullDrawArgsCompute(cmd, &foliageScene->surfaceSet, &foliageScene->surfaceBuffers, &foliageScene->surfaceBuffers.draw,
                                         cameraFrustum, hiZViewProj, cullFlags, 1u, NULL);
+            foliageScene->renderDataDirty = 0;
         }
 
         RenderDepth(cmd, &(DepthPassContext){
