@@ -637,7 +637,7 @@ static void IntegrateFinishedFoliage(u32 scheduledCount)
     }
 
     u32 sparseStart = RenderSet_AllocateSparseIDRange(set, totalEntityAdded);
-    if (sparseStart == INVALID_ENTITY || (totalEntityAdded + set->numEntities) > set->maxEntities) {
+    if (sparseStart == INVALID_ENTITY) {
         if (totalEntityAdded != 0)
         {
             AX_WARN("terrain sparse id alloc failed!");

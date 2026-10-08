@@ -731,10 +731,10 @@
 								<Path>Source/Terrain/MarchingMesher.c</Path>
 							</File>
 							<File>
-								<Path>Source/Terrain/MarchingTerrain.c</Path>
+								<Path>Source/Terrain/TerrainMesh.c</Path>
 							</File>
 							<File>
-								<Path>Source/Terrain/TerrainMesh.c</Path>
+								<Path>Source/Terrain/MarchingTerrain.c</Path>
 							</File>
 						</Children>
 					</Folder>

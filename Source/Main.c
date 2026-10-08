@@ -107,11 +107,6 @@ static void MainLoopTick(void)
 
     EditorSceneHotkeys();
     
-    DemoScene_Update(PlatformCtx.DeltaTime);
-    Scene_Update(PlatformCtx.DeltaTime);
-    
-    Scene_SubmitLights();
-
     if (!TerrainEditorUpdate(&g_Camera) && !EditorGizmoUpdate(&g_Camera) && !EditorLightGizmoUpdate(&g_Camera))
         EditorPickingUpdate(&g_Camera);
 
@@ -120,9 +115,12 @@ static void MainLoopTick(void)
     tUpdate();
     Gameplay_Update();
     GraphicsEditorUI();
+    DemoScene_Update(PlatformCtx.DeltaTime);
+    Scene_Update(PlatformCtx.DeltaTime);
     
     CameraUpdate(&g_Camera, PlatformCtx.DeltaTime);
 
+    Scene_SubmitLights();
     if (!done) Render();
     // else emscripten_cancel_main_loop();
 

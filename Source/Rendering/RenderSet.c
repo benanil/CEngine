@@ -146,10 +146,12 @@ void RenderSet_FreeSparseIDRange(RenderSet* set, u32 sparseIdx, u32 count)
         return;
     }
 
-    // if (sparseIdx + count > set->maxEntities)
-    //     count = set->maxEntities - sparseIdx;
     BitsetSetRange(set->sparseSlots, sparseIdx, count, false);
-    MemSet32((u32*)set->sparseData + sparseIdx, 0x00FFFFFF, count);
+    for (s32 i = 0; i < count; i++)
+    {
+        set->sparseData[sparseIdx + i].id = INVALID_ENTITY;
+        set->sparseData[sparseIdx + i].gen++;
+    }
 }
 
 void RenderSet_FreeSparseID(RenderSet* set, u32 sparseIdx)
@@ -502,6 +504,7 @@ SparseData* RenderSet_AddSceneArray(RenderSet* set, u32 bundleIdx, const Entity*
     return set->sparseData + sparseStart;
 }
 
+// (optimization) we might do group boundary swaps instead of moving entire entities
 void RenderSet_CompactEntities(RenderSet* set)
 {
     u32 writeEntity = 0;

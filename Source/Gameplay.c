@@ -202,7 +202,8 @@ static void UpdateCharacter()
         grounded = false;
     }
 
-    b3Vec3 velocity = b3MulSV(characterSpeed, wish);
+    f32 runMul = (1.0f + GetKeyDown(SDLK_LSHIFT) * 2.0f);
+    b3Vec3 velocity = b3MulSV(characterSpeed * runMul, wish);
     velocity.y += verticalSpeed;
 
     b3Vec3 target = b3Add(EntityGetB3Pos(character), b3MulSV(dt, velocity));
@@ -262,14 +263,13 @@ static void UpdatePicking()
     v128f origin = Vec3Load(&g_Camera.position.x);
     v128f direction = VecNorm(Vec3Load(&g_Camera.front));
     hit.hit.t = FLT_MAX;
-
-    if (GetMouseDown(MouseButton_Left) && Scene_PhysicsRaycastPick(origin, direction, 10.0f, &hit, PhysBit_Foliage))
+    if ((left | right) && Scene_PhysicsRaycastPick(origin, direction, 10.0f, &hit, PhysBit_Foliage))
     {
         Scene* scene = Foliage_GetScene();
         float dt = GetDeltaTime();
         Entity* entity = RenderSet_GetEntity(&scene->surfaceSet, hit.entityID);
         Quaternion rotation = QMul(EntityGetRotation(entity), QFromYAngle(dt * 10.0f));
-        EntitySetRotation(entity, rotation);
+        EntitySetRotation(entity, QNorm(rotation));
         Entity_SyncPhysicsBody(scene, entity);
     }
 }

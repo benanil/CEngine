@@ -14,10 +14,6 @@
 // box3d's collider build (b3CreateMesh, BVH) runs synchronously on the main thread; terrain
 // past this radius is unreachable, so gate collider creation by distance, not draw distance
 #define T_PHYSICS_COLLIDER_RADIUS 64.0f
-// never evict terrain this close to the camera, regardless of visibility/age - protects
-// the immediate surroundings from ever popping out even under heavy cache pressure
-#define T_EVICT_PROTECT_RADIUS (T_MARCHING_DRAW_DISTANCE / 2.5f)
-
 typedef struct tMarchingTerrainState_
 {
     tDensityGenerator generator;
@@ -32,15 +28,10 @@ typedef struct tMarchingTerrainState_
     u32     numChunkDraws;
     u32     chunkCount;
     u32     builtThisFrame; // jobs scheduled this frame, capped by T_MAX_BUILDS_PER_FRAME
-    u32     cacheVertices;  // live + pending chunk vertices resident in GeometryBuffer_TerrainVertNew
-    u32     cacheIndices;   // live + pending chunk indices resident in GeometryBuffer_TerrainIndex2
-    u32     frameIndex;
     u32     culledChunks;
     u32     emptyChunks;
     u32     physicsSyncCursor;
-    u32     lruHead, lruTail; // residency LRU list ends, T_CHUNK_LRU_NONE-terminated
     SDL_AtomicInt physicsInvalidated;
-    SDL_AtomicInt heapPressure;
     u64    lastStatsTicks;
     float3 brushPos;
     f32    brushRadius;
@@ -53,8 +44,7 @@ extern Graphics gGFX; // geometry heap CPU mirrors (defined in Graphics.c)
 
 static tMarchingTerrain gMarchingTerrain;
 
-static void tPruneChunkCache(u32 targetVertices, u32 targetIndices, bool respectKeepFrames);
-static void tClearChunkCache(void);
+static void tClearChunks(void);
 
 static bool tAABBVisible(float3 aabbMin, float3 aabbMax, const FrustumPlanes* frustum)
 {
@@ -163,21 +153,12 @@ static void tAppendMeshSlotTriangles(tBuildJob* job)
     }
 }
 
-static void SaturatingSubtractU32(u32* value, u32 amount)
-{
-    if (*value >= amount) *value -= amount; else *value = 0u;
-}
-
 static void tFreeMeshHandle(tMeshHandle* mesh)
 {
-    if (mesh->vertices.heapPtr) {
+    if (mesh->vertices.heapPtr)
         GeometryHeapFree(GeometryBuffer_TerrainVert, mesh->vertices.heapPtr);
-        SaturatingSubtractU32(&gMarchingTerrain.cacheVertices, mesh->vertices.count);
-    }
-    if (mesh->indices.heapPtr) {
+    if (mesh->indices.heapPtr)
         GeometryHeapFree(GeometryBuffer_TerrainIndex, mesh->indices.heapPtr);
-        SaturatingSubtractU32(&gMarchingTerrain.cacheIndices, mesh->indices.count);
-    }
     DeAllocTLSF(mesh->physics.vertices);
     DeAllocTLSF(mesh->physics.indices);
     *mesh = (tMeshHandle){0};
@@ -253,15 +234,20 @@ static void tSetChunkPending(tChunk* chunk, PendingMeshState pendingState)
     tSetChunkState(chunk, CHUNK_PENDING);
 }
 
-// true once the camera's collider radius overlaps the chunk's AABB
-static bool tChunkWithinRadius(const tChunk* chunk, f32 radius)
+static bool tAABBWithinRadius(float3 aabbMin, float3 aabbMax, f32 radius)
 {
     float3 p = g_Camera.position;
-    f32 cx = Clampf32(p.x, chunk->aabbMin.x, chunk->aabbMax.x);
-    f32 cy = Clampf32(p.y, chunk->aabbMin.y, chunk->aabbMax.y);
-    f32 cz = Clampf32(p.z, chunk->aabbMin.z, chunk->aabbMax.z);
+    f32 cx = Clampf32(p.x, aabbMin.x, aabbMax.x);
+    f32 cy = Clampf32(p.y, aabbMin.y, aabbMax.y);
+    f32 cz = Clampf32(p.z, aabbMin.z, aabbMax.z);
     f32 dx = p.x - cx, dy = p.y - cy, dz = p.z - cz;
     return (dx * dx + dy * dy + dz * dz) <= (radius * radius);
+}
+
+// true once the camera is within the requested radius of the chunk AABB
+static bool tChunkWithinRadius(const tChunk* chunk, f32 radius)
+{
+    return tAABBWithinRadius(chunk->aabbMin, chunk->aabbMax, radius);
 }
 
 static bool tChunkNearCameraForPhysics(const tChunk* chunk)
@@ -280,8 +266,8 @@ static void tSyncChunkPhysics(tChunk* chunk)
     // owns its collider directly now (no shared slot pool/cap), so there's nothing to
     // acquire here - just create-or-update in place.
     if (!Physics_SyncTerrainChunkMesh(&chunk->physicsBody, &chunk->physicsMesh,
-                                           chunk->mesh.physics.vertices, chunk->mesh.physics.vertexCount,
-                                           chunk->mesh.physics.indices, chunk->mesh.physics.indexCount))
+                                      chunk->mesh.physics.vertices, chunk->mesh.physics.vertexCount,
+                                      chunk->mesh.physics.indices, chunk->mesh.physics.indexCount))
         tDestroyChunkPhysics(chunk);
 }
 
@@ -370,7 +356,6 @@ static bool UploadChunkMesh(tBuildJob* job)
         AX_WARN("heap alloc failed");
         if (first != GEOMETRY_ALLOC_FAIL) GeometryHeapFree(GeometryBuffer_TerrainVert, raw);
         if (idxFirst != GEOMETRY_ALLOC_FAIL) GeometryHeapFree(GeometryBuffer_TerrainIndex, idxRaw);
-        SDL_SetAtomicInt(&gMarchingTerrain.heapPressure, 1);
         return false;
     }
 
@@ -401,8 +386,8 @@ static void RunBuildJob(void* userData)
     tBuildJob* job = (tBuildJob*)userData;
     BeginBuildJob(job);
     bool failed = !PrepareBuildScratch(job) ||
-                  !GenerateChunkMesh(job) ||
-                  !UploadChunkMesh(job);
+        !GenerateChunkMesh(job) ||
+        !UploadChunkMesh(job);
     if (failed) FailBuildJob(job);
    
     FinishBuildJob(job);
@@ -428,12 +413,6 @@ static bool ScheduleChunkBuild(u32 chunkIndex, tChunk* chunk)
             tSetChunkState(chunk, CHUNK_QUEUED);
         return false;
     }
-    if (gMarchingTerrain.cacheVertices > T_VERTEX_CACHE_BUDGET ||
-        gMarchingTerrain.cacheIndices > T_INDEX_CACHE_BUDGET)
-    {
-        tPruneChunkCache(T_VERTEX_CACHE_TARGET, T_INDEX_CACHE_TARGET, true);
-    }
-
     tBuildJob* job = NULL;
     for (u32 i = 0; i < T_MAX_BUILD_JOBS; i++) {
         if (!gMarchingTerrain.buildJobs[i].busy) {
@@ -516,8 +495,6 @@ static void IntegrateFinishedBuilds(void)
 
         chunk->pendingMesh = job->mesh;
         tSetChunkPending(chunk, PENDING_MESH);
-        gMarchingTerrain.cacheVertices += job->mesh.vertices.count;
-        gMarchingTerrain.cacheIndices += job->mesh.indices.count;
         job->mesh = (tMeshHandle){0};
     }
 }
@@ -550,46 +527,6 @@ static void tRemapBuildJobChunkIndex(u32 oldIndex, u32 newIndex)
     }
 }
 
-#define T_CHUNK_LRU_NONE UINT32_MAX
-
-// unlink a chunk from wherever it sits in the residency LRU (safe no-op if unlinked)
-static void tLRUUnlink(u32 index)
-{
-    tChunk* chunk = &gMarchingTerrain.chunks[index];
-    if (chunk->lruPrev != T_CHUNK_LRU_NONE) gMarchingTerrain.chunks[chunk->lruPrev].lruNext = chunk->lruNext;
-    else gMarchingTerrain.lruHead = chunk->lruNext;
-    if (chunk->lruNext != T_CHUNK_LRU_NONE) gMarchingTerrain.chunks[chunk->lruNext].lruPrev = chunk->lruPrev;
-    else gMarchingTerrain.lruTail = chunk->lruPrev;
-    chunk->lruPrev = T_CHUNK_LRU_NONE;
-    chunk->lruNext = T_CHUNK_LRU_NONE;
-}
-
-// append as most-recently-touched; only valid for a chunk not currently linked
-static void tLRUPushTail(u32 index)
-{
-    tChunk* chunk = &gMarchingTerrain.chunks[index];
-    chunk->lruPrev = gMarchingTerrain.lruTail;
-    chunk->lruNext = T_CHUNK_LRU_NONE;
-    if (gMarchingTerrain.lruTail != T_CHUNK_LRU_NONE) gMarchingTerrain.chunks[gMarchingTerrain.lruTail].lruNext = index;
-    else gMarchingTerrain.lruHead = index;
-    gMarchingTerrain.lruTail = index;
-}
-
-static void tLRUTouch(u32 index) { tLRUUnlink(index); tLRUPushTail(index); }
-
-// swap-compact moved a chunk from oldIndex to newIndex (tFreeChunkSlot): its own
-// lruPrev/lruNext came along in the struct copy, but its neighbours (and head/tail)
-// still point at oldIndex - repoint them, mirroring tRemapBuildJobChunkIndex
-static void tLRURemapIndex(u32 oldIndex, u32 newIndex)
-{
-    (void)oldIndex;
-    tChunk* chunk = &gMarchingTerrain.chunks[newIndex];
-    if (chunk->lruPrev != T_CHUNK_LRU_NONE) gMarchingTerrain.chunks[chunk->lruPrev].lruNext = newIndex;
-    else gMarchingTerrain.lruHead = newIndex;
-    if (chunk->lruNext != T_CHUNK_LRU_NONE) gMarchingTerrain.chunks[chunk->lruNext].lruPrev = newIndex;
-    else gMarchingTerrain.lruTail = newIndex;
-}
-
 static void tFreeChunkSlot(u32 index)
 {
     tChunk* chunk = &gMarchingTerrain.chunks[index];
@@ -599,53 +536,55 @@ static void tFreeChunkSlot(u32 index)
     tFreePendingMesh(chunk);
     Foliage_DestroyChunkFoliage(chunk);
     DeAllocTLSF(chunk->density);
-    chunk->density = NULL;
-    tLRUUnlink(index);
 
     u32 lastIndex = gMarchingTerrain.chunkCount - 1u;
     if (index != lastIndex)
     {
         gMarchingTerrain.chunks[index] = gMarchingTerrain.chunks[lastIndex];
+
         u64 movedKey = tChunkKey(gMarchingTerrain.chunks[index].min);
         HMInsertOrAssign(&gMarchingTerrain.chunkLookup, movedKey, &index);
+
+        // Chunk indices are compacted, so keep any in-flight terrain build on
+        // the moved chunk pointed at its new slot.
         tRemapBuildJobChunkIndex(lastIndex, index);
-        tLRURemapIndex(lastIndex, index);
     }
 
     MemsetZero(&gMarchingTerrain.chunks[lastIndex], sizeof(gMarchingTerrain.chunks[lastIndex]));
     BitsetReset(gMarchingTerrain.occupiedChunksBitset, (s32)lastIndex);
     gMarchingTerrain.chunkCount--;
+
     if (gMarchingTerrain.physicsSyncCursor >= gMarchingTerrain.chunkCount)
         gMarchingTerrain.physicsSyncCursor = 0u;
 }
 
-// walks the residency LRU oldest-first (O(1) in the common case - anything still in
-// range got touched to the tail recently, so real candidates sit right at the head)
-static bool tFreeOldestChunkSlot(bool requireMesh, bool respectKeepFrames)
+// Residency is purely distance-based. A chunk currently being built is left
+// resident until the job finishes, then removed on the next frame if still out of range.
+static void tRemoveOutOfRangeChunks(void)
 {
-    for (u32 i = gMarchingTerrain.lruHead; i != T_CHUNK_LRU_NONE; )
-    {
-        tChunk* chunk = &gMarchingTerrain.chunks[i];
-        u32 next = chunk->lruNext;
-        bool chunkVisible = tAABBVisible(chunk->aabbMin, chunk->aabbMax, gMarchingTerrain.frustum);
-        bool okMesh = !requireMesh || chunk->mesh.vertices.heapPtr || chunk->pendingMesh.vertices.heapPtr;
-        bool okAge  = !respectKeepFrames || chunk->lastTouchedFrame + T_CACHE_KEEP_FRAMES < gMarchingTerrain.frameIndex;
-        bool tooClose = tChunkWithinRadius(chunk, T_EVICT_PROTECT_RADIUS);
-        if (!ChunkBuildInFlight(i) && !chunkVisible && !tooClose && okMesh && okAge)
+    u32 totalRemoved = 0;
+    IterateSetBits(gMarchingTerrain.occupiedChunksBitset, T_MAX_CHUNKS,
+        tChunk* chunk = &gMarchingTerrain.chunks[bitId];
+
+        if (!ChunkBuildInFlight(bitId) &&
+            !tChunkWithinRadius(chunk, T_MARCHING_DRAW_DISTANCE))
         {
-            tFreeChunkSlot(i);
-            return true;
+            tFreeChunkSlot(bitId);
+            totalRemoved++;
         }
-        i = next;
+    );
+    if (totalRemoved)
+    {
+        Scene* foliageScene = GetFoliageScene();
+        RenderSet_CompactEntities(&foliageScene->surfaceSet);
     }
-    return false;
 }
 
 u32 tGetChunkCount(void) { return gMarchingTerrain.chunkCount; }
 
 tChunk* tGetChunkByIndex(u32 index)
 {
-    return index < gMarchingTerrain.chunkCount ? &gMarchingTerrain.chunks[index] : NULL;
+    return &gMarchingTerrain.chunks[index];
 }
 
 tChunk* tFindChunkByMin(int3 min)
@@ -666,9 +605,8 @@ const u64* tGetOccupiedChunksBitset(void)
 
 static u32 tAllocChunkSlot(void)
 {
-    if (gMarchingTerrain.chunkCount >= T_MAX_CHUNKS) 
-        if (!tFreeOldestChunkSlot(false, false)) 
-            tClearChunkCache(); 
+    if (gMarchingTerrain.chunkCount >= T_MAX_CHUNKS)
+        return UINT32_MAX;
 
     s32 index = BitsetFindFirstEmpty(gMarchingTerrain.occupiedChunksBitset, (s32)T_MAX_CHUNKS);
     if (index < 0) return UINT32_MAX;
@@ -678,55 +616,32 @@ static u32 tAllocChunkSlot(void)
     return (u32)index;
 }
 
-static void tClearChunkCache(void)
+static void tClearChunks(void)
 {
-    AX_LOG("marching terrain chunk cache reset");
+    AX_LOG("marching terrain chunks reset");
     tDrainBuildJobs();
     RendererSetTerrainChunkDraws(NULL, 0);
-    IterateSetBits(gMarchingTerrain.occupiedChunksBitset, T_CHUNK_BITSET_WORDS * sizeof(u64),
+    IterateSetBits(gMarchingTerrain.occupiedChunksBitset, T_MAX_CHUNKS,
         tDestroyChunkPhysics(&gMarchingTerrain.chunks[bitId]);
         tFreeMeshHandle(&gMarchingTerrain.chunks[bitId].mesh);
         tFreePendingMesh(&gMarchingTerrain.chunks[bitId]);
+        Foliage_DestroyChunkFoliage(&gMarchingTerrain.chunks[bitId]);
         DeAllocTLSF(gMarchingTerrain.chunks[bitId].density);
         gMarchingTerrain.chunks[bitId].density = NULL;
     );
 
     gMarchingTerrain.chunkCount = 0;
-    gMarchingTerrain.cacheVertices = 0u;
-    gMarchingTerrain.cacheIndices = 0u;
     gMarchingTerrain.physicsSyncCursor = 0;
-    gMarchingTerrain.lruHead = T_CHUNK_LRU_NONE;
-    gMarchingTerrain.lruTail = T_CHUNK_LRU_NONE;
     if (gMarchingTerrain.occupiedChunksBitset)
         MemsetZero(gMarchingTerrain.occupiedChunksBitset, T_CHUNK_BITSET_WORDS * sizeof(u64));
     HMClear(&gMarchingTerrain.chunkLookup);
 }
 
-static void tPruneChunkCache(u32 targetVertices, u32 targetIndices, bool respectKeepFrames)
-{
-    int numFreed = 0;
-    while (numFreed < 8 && (gMarchingTerrain.cacheVertices > targetVertices || gMarchingTerrain.cacheIndices > targetIndices))
-    {
-        if (!tFreeOldestChunkSlot(true, respectKeepFrames))
-            break;
-        numFreed++;
-    }
-}
-
-static void tResolveHeapPressure(void)
-{
-    if (SDL_GetAtomicInt(&gMarchingTerrain.heapPressure) == 0)
-        return;
-    SDL_SetAtomicInt(&gMarchingTerrain.heapPressure, 0);
-    AX_WARN("marching terrain heap pressure; pruning chunk cache");
-    tPruneChunkCache(T_VERTEX_CACHE_TARGET / 2u, T_INDEX_CACHE_TARGET / 2u, false);
-}
-
 static void tPromotePendingMeshes(void)
 {
-    for (u32 i = 0; i < gMarchingTerrain.chunkCount; i++)
+    IterateSetBits(gMarchingTerrain.occupiedChunksBitset, T_MAX_CHUNKS,
     {
-        tChunk* chunk = &gMarchingTerrain.chunks[i];
+        tChunk* chunk = &gMarchingTerrain.chunks[bitId];
         if (chunk->pendingState == PENDING_NONE)
             continue;
 
@@ -747,7 +662,7 @@ static void tPromotePendingMeshes(void)
         chunk->pendingMesh = (tMeshHandle){0};
         tClearChunkPending(chunk);
         tSetChunkState(chunk, CHUNK_READY);
-    }
+    });
 }
 
 static void tSyncDirtyPhysics(void)
@@ -755,12 +670,12 @@ static void tSyncDirtyPhysics(void)
     if (SDL_GetAtomicInt(&gMarchingTerrain.physicsInvalidated) != 0)
     {
         SDL_SetAtomicInt(&gMarchingTerrain.physicsInvalidated, 0);
-        for (u32 i = 0; i < gMarchingTerrain.chunkCount; i++)
+        IterateSetBits(gMarchingTerrain.occupiedChunksBitset, T_MAX_CHUNKS,
         {
-            tChunk* chunk = &gMarchingTerrain.chunks[i];
+            tChunk* chunk = &gMarchingTerrain.chunks[bitId];
             if (chunk->physicsBody != 0u || (chunk->mesh.vertices.heapPtr && chunk->mesh.vertices.count >= 3u))
                 chunk->physicsDirty = true;
-        }
+        });
     }
 
     if (gMarchingTerrain.chunkCount == 0u) return;
@@ -799,8 +714,6 @@ static tChunk* GetOrCreateChunk(int3 min)
     tChunk* chunk = found ? &gMarchingTerrain.chunks[*found] : NULL;
     if (chunk)
     {
-        chunk->lastTouchedFrame = gMarchingTerrain.frameIndex;
-        tLRUTouch(*found);
         if (chunk->dirty && !ChunkBuildInFlight(*found) && chunk->pendingState == PENDING_NONE)
             ScheduleChunkBuild(*found, chunk);
         return chunk;
@@ -817,8 +730,6 @@ static tChunk* GetOrCreateChunk(int3 min)
         .buildState = CHUNK_UNBUILT,
         .pendingState = PENDING_NONE,
     };
-    chunk->lastTouchedFrame = gMarchingTerrain.frameIndex;
-    tLRUPushTail(index);
     chunk->aabbMin = ToFloat3(min);
     chunk->aabbMax = F3AddF(chunk->aabbMin, (f32)T_CHUNK_CELLS);
     HMInsert(&gMarchingTerrain.chunkLookup, tChunkKey(min), &index);
@@ -883,20 +794,21 @@ static bool tSubmitChunkColumn(s32 chunkX, s32 chunkZ, bool useFrustum)
         int3 min = { chunkX * step, y * step, chunkZ * step };
         float3 aabbMin = ToFloat3(min);
         float3 aabbMax = F3AddF(aabbMin, (f32)step);
+
+        // Distance controls residency. Frustum culling only controls drawing.
+        if (!tAABBWithinRadius(aabbMin, aabbMax, T_MARCHING_DRAW_DISTANCE))
+            continue;
+
+        tChunk* chunk = GetOrCreateChunk(min);
+        if (!chunk)
+            continue;
+
         if (useFrustum && !tAABBVisible(aabbMin, aabbMax, gMarchingTerrain.frustum))
         {
             gMarchingTerrain.culledChunks++;
-            // still in range, just not on screen this frame - keep it resident so
-            // turning away doesn't make it evictable and force a rebuild on turning back
-            tChunk* offscreen = tFindChunkByMin(min);
-            if (offscreen) {
-                offscreen->lastTouchedFrame = gMarchingTerrain.frameIndex;
-                tLRUTouch((u32)(offscreen - gMarchingTerrain.chunks));
-            }
             continue;
         }
 
-        tChunk* chunk = GetOrCreateChunk(min);
         if (!tChunkPresentable(chunk))
             continue;
         if (!tDrawChunk(chunk))
@@ -926,15 +838,15 @@ static void tSubmitTerrain(bool useFrustum)
 
 static void tLogStats(void)
 {
-#if T_ENABLE_STATS
+    #if T_ENABLE_STATS
     u64 now = SDL_GetTicks();
     if (now - gMarchingTerrain.lastStatsTicks < 1000u)
         return;
     gMarchingTerrain.lastStatsTicks = now;
-    AX_LOG("marching terrain : draws=%u built=%u cached=%u culled=%u empty=%u",
+    AX_LOG("marching terrain : draws=%u built=%u resident=%u culled=%u empty=%u",
            gMarchingTerrain.numChunkDraws, gMarchingTerrain.builtThisFrame,
            gMarchingTerrain.chunkCount, gMarchingTerrain.culledChunks, gMarchingTerrain.emptyChunks);
-#endif
+    #endif
 }
 
 static void BeginTerrainFrame(void)
@@ -950,8 +862,6 @@ bool tMarchingInit(void)
     if (gMarchingTerrain.initialized)
         return true;
     MemSet(&gMarchingTerrain, 0, sizeof(gMarchingTerrain));
-    gMarchingTerrain.lruHead = T_CHUNK_LRU_NONE;
-    gMarchingTerrain.lruTail = T_CHUNK_LRU_NONE;
 
     gMarchingTerrain.jobSystem = JobSystem_Create(0, 0);
     if (!gMarchingTerrain.jobSystem)
@@ -1003,16 +913,16 @@ void tUpdate(void)
     s64 tIntegrate = TimeNow();
     Foliage_Update();
     s64 tFoliage = TimeNow();
-    tResolveHeapPressure();
     tPromotePendingMeshes();
     s64 tPromote = TimeNow();
-    gMarchingTerrain.frameIndex++;
-    tPruneChunkCache(T_VERTEX_CACHE_TARGET, T_INDEX_CACHE_TARGET, true);
-    s64 tPrune = TimeNow();
+
     BeginTerrainFrame();
     mat4x4 viewProj = M44Multiply(g_Camera.view, g_Camera.projection);
     FrustumPlanes frustum = CreateFrustumPlanesRevZ(viewProj);
     gMarchingTerrain.frustum = &frustum;
+
+    tRemoveOutOfRangeChunks();
+    s64 tResidency = TimeNow();
 
     tSubmitTerrain(true);
     if (gMarchingTerrain.numChunkDraws == 0) {
@@ -1030,14 +940,14 @@ void tUpdate(void)
     s64 totalUs = TimeToMicroseconds(tEnd - tBegin);
     if (totalUs >= T_STALL_LOG_THRESHOLD_US)
     {
-        // AX_WARN("terrain frame stall %lldus [integrate=%lld foliage=%lld promote=%lld prune=%lld "
+        // AX_WARN("terrain frame stall %lldus [integrate=%lld foliage=%lld promote=%lld residency=%lld "
         //         "submit=%lld physics=%lld upload=%lld] newChunks=%u chunkCount=%u draws=%u",
         //         (long long)totalUs,
         //         (long long)TimeToMicroseconds(tIntegrate - tBegin),
         //         (long long)TimeToMicroseconds(tFoliage - tIntegrate),
         //         (long long)TimeToMicroseconds(tPromote - tFoliage),
-        //         (long long)TimeToMicroseconds(tPrune - tPromote),
-        //         (long long)TimeToMicroseconds(tSubmit - tPrune),
+        //         (long long)TimeToMicroseconds(tResidency - tPromote),
+        //         (long long)TimeToMicroseconds(tSubmit - tResidency),
         //         (long long)TimeToMicroseconds(tPhysics - tSubmit),
         //         (long long)TimeToMicroseconds(tEnd - tPhysics),
         //         gMarchingTerrain.chunkCount - chunkCountBefore,
@@ -1048,7 +958,7 @@ void tUpdate(void)
 void tInvalidateAll(void)
 {
     if (gMarchingTerrain.initialized)
-        tClearChunkCache();
+        tClearChunks();
 }
 
 void tInvalidateRegion(float3 mn, float3 mx)
@@ -1056,9 +966,9 @@ void tInvalidateRegion(float3 mn, float3 mx)
     if (!gMarchingTerrain.initialized)
         return;
 
-    for (u32 i = 0; i < gMarchingTerrain.chunkCount; i++)
+    IterateSetBits(gMarchingTerrain.occupiedChunksBitset, T_MAX_CHUNKS,
     {
-        tChunk* chunk = &gMarchingTerrain.chunks[i];
+        tChunk* chunk = &gMarchingTerrain.chunks[bitId];
         // the chunk's 19^3 sample grid reaches one voxel below aabbMin and two above
         // aabbMax, and gradients read one more; pad like TerrainRemeshRegion does
         f32 pad = 2.0f;
@@ -1070,7 +980,7 @@ void tInvalidateRegion(float3 mn, float3 mx)
         }
 
         chunk->dirty = true;
-    }
+    });
 }
 
 void tSetBrushCursor(float3 position, f32 radius, bool active)
@@ -1088,7 +998,7 @@ void tMarchingDestroy()
     }
 
     RendererSetTerrainChunkDraws(NULL, 0);
-    tClearChunkCache(); // drains in-flight builds first
+    tClearChunks(); // drains in-flight builds first
     HMDestroy(&gMarchingTerrain.chunkLookup);
     DeAllocTLSF(gMarchingTerrain.chunkDraws);
     DeAllocTLSF(gMarchingTerrain.occupiedChunksBitset);
