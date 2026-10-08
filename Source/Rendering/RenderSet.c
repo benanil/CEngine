@@ -535,12 +535,12 @@ void RenderSet_RemoveEntityStaged(RenderSet* set, u32 sparseId)
 
 void RenderSet_RemoveEntityRangeStaged(RenderSet* set, Range range)
 {
-    RenderSet_FreeSparseIDRange(set, range.start, range.count);
     for (u32 i = 0; i < range.count; i++)
     {
         Entity* entity = &set->entities[set->sparseData[range.start + i].id];
         EntitySetSparseID(entity, INVALID_ENTITY);
     }
+    RenderSet_FreeSparseIDRange(set, range.start, range.count);
 }
 
 static void ShiftEntitiesLeft(RenderSet* set, u32 firstRemoved, u32 count)
