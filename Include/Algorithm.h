@@ -4,12 +4,6 @@
 
 #include "SIMD.h"
 
-#define XSWAP(type, x, y) do { \
-    type SWAP_tmp = (x);      \
-    (x) = (y);                \
-    (y) = SWAP_tmp;           \
-} while (0)
-
 #if defined(__cplusplus)
 extern "C" {
 #endif

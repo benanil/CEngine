@@ -1,8 +1,16 @@
 #ifndef AX_QUEUE
 #define AX_QUEUE
 
-#include "../Math/Math.h"
-#include "Algorithm.h"
+#include "../Common.h"
+#include "../Memory.h"
+#ifdef TEST_QUEUE
+    // gcc -std=c99 -Wall -Wextra -I. TestQueue.c -o TestQueue
+    #include <stdlib.h>
+
+    void* AllocTLSF(size_t size) { return malloc(size); }
+    void* ReAllocTLSF(void* ptr, size_t size) { return realloc(ptr, size); }
+    void DeAllocTLSF(void* ptr) { free(ptr); }
+#endif
 
 #if defined(__cplusplus)
 extern "C" {
@@ -10,92 +18,105 @@ extern "C" {
 
 typedef struct Queue_
 {
-    void** ptr        ;
-    u32capacity ;  
-    u32front    ;
-    u32rear     ;
-    u32size     ;
+    void** ptr  ;
+    u32 capacity;  
+    u32 front   ;
+    u32 rear    ;
+    u32 size    ;
 } Queue;
 
+typedef enum PQCompare_
+{
+    PQCompare_Less    = 0,
+    PQCompare_Greater = 1
+} PQCompare;
 
-static inline void QueQueueConstruct(Queue* queue);
-static inline void QueQueueInit(Queue *queue, int _capacity);
-static inline void QueQueueClear(Queue *queue);
-static inline void QueQueueReset(Queue *queue);
+// Min Heap data structure
+typedef struct PriorityQueue_
+{
+    void**     heap     ;
+    int        size     ;
+    int        capacity ;
+    PQCompare  compare  ;
+} PriorityQueue;
 
-static inline bool QueAny(Queue *queue);
-static inline bool QueEmpty(Queue *queue);
-
-static inline void QueEnqueue(Queue *queue, const void* value);
-static inline void QueEnqueueRange(Queue *queue, const void** begin, const void* end);
-static inline bool QueTryDequeueArr(Queue *queue, void** result, u32count);
-static inline void QueDequeue(Queue *queue, void* result, u32count);
-static inline void* QueDequeue(Queue *queue);
-static inline bool QueTryDequeue(Queue *queue, void** out);
-static inline u32QueSize(Queue *queue);
-static inline u32QueIncrementIndex(Queue *queue, u32x);
-static inline void QueGrowIfNecessary(Queue *queue, u32_size);
-static inline void PriorityQueue(PriorityQueue* pq, int _size);
-static inline void PriorityQueueRange(PriorityQueue* pq, const void** begin, const void** end);
-
-static inline bool PQCompare(const void* a, const void* b)
-static inline void PQGrowIfNecessarry(PriorityQueue* pq, int adition);
-static inline void PQHeapifyUp(PriorityQueue* pq, int index, bool force = false);
-static inline void PQHeapifyDown(PriorityQueue* pq, int index);
-static inline bool PQEmpty(PriorityQueue* pq)
-static inline void PQClear(PriorityQueue* pq);
-static inline void PQPush(PriorityQueue* pq, const void* value);
-static inline void* PQRemoveAt(PriorityQueue* pq, int index);
-static inline void PQPop(PriorityQueue* pq);
-static inline void* PQTop(PriorityQueue* pq);
-
-
-static inline void QueQueueConstruct(Queue* queue)
+static inline void QueueConstruct(Queue* queue)
 {
     queue->capacity = 256;
     queue->front    = 0;
     queue->rear     = 0;
     queue->size     = 0;
-    queue->ptr      = AllocTLSF(queue->capacity * sizeof(void*));
+    queue->ptr      = (void**)AllocTLSF(queue->capacity * sizeof(void*));
 }
 
-static inline void QueQueueInit(Queue *queue, int _capacity)
+static inline void QueueInit(Queue *queue, int _capacity)
 {
-    queue->capacity = (NextPowerOf2_32(_capacity + 1)); 
-    queue->front = (0), queue->rear = (0), queue->size = (0);
-    queue->ptr = AllocTLSF(queue->capacity * sizeof(void*));
+    queue->capacity = NextPowerOf2_32(_capacity);
+    queue->front = 0;
+    queue->rear = 0;
+    queue->size = 0;
+    queue->ptr = (void**)AllocTLSF(queue->capacity * sizeof(void*));
 }
 
-static inline void QueQueueClear(Queue *queue)
+static inline void QueueClear(Queue *queue)
 {
     DeAllocTLSF(queue->ptr);
-    queue->ptr = 0; 
+    queue->ptr = NULL; 
     queue->capacity = queue->front = queue->rear = queue->size = 0;
 }
 
-static inline void QueQueueReset(Queue *queue)
+static inline void QueueReset(Queue *queue)
 {
     queue->front = queue->rear = queue->size = 0u;
 }
 
+static inline u32  QueSize(Queue *queue) { return queue->size; }
 static inline bool QueAny(Queue *queue)   { return QueSize(queue) > 0;  }
 static inline bool QueEmpty(Queue *queue) { return QueSize(queue) == 0; }
+
+static inline u32 QueIncrementIndex(Queue *queue, u32 x) 
+{
+    return (x + 1) & (queue->capacity-1);
+}
+    
+static inline void QueGrowIfNecessary(Queue* queue, u32 _size)
+{
+    u32 newCapacity = NextPowerOf2_32((int)(queue->size + _size));
+
+    if (AX_LIKELY(newCapacity <= queue->capacity))
+        return;
+
+    void** newPtr = (void**)AllocTLSF(newCapacity * sizeof(void*));
+
+    const u32 mask = queue->capacity - 1;
+
+    for (u32 i = 0; i < queue->size; ++i)
+        newPtr[i] = queue->ptr[(queue->rear + i) & mask];
+
+    DeAllocTLSF(queue->ptr);
+
+    queue->ptr      = newPtr;
+    queue->capacity = newCapacity;
+    queue->rear     = 0;
+    queue->front    = queue->size;
+}
 
 static inline void QueEnqueue(Queue *queue, const void* value)
 {
     QueGrowIfNecessary(queue, 1);
-    queue->ptr[queue->front & (queue->capacity - 1)] = value;
+    queue->ptr[queue->front & (queue->capacity - 1)] = (void*)value;
     queue->front = QueIncrementIndex(queue, queue->front);
     queue->size++;
 }
 
-static inline void QueEnqueueRange(Queue *queue, const void** begin, u32count)
+static inline void QueEnqueueRange(Queue *queue, const void** begin, const void* end)
 {
+    u32 count = (u32)(((const void**)end) - begin);
     QueGrowIfNecessary(queue, count);
-    u32f = queue->front & (queue->capacity - 1), e = queue->capacity-1;
-    for (u32i = 0; i < count; i++)
+    u32 f = queue->front & (queue->capacity - 1), e = queue->capacity-1;
+    for (u32 i = 0; i < count; i++)
     {
-        queue->ptr[f++] = begin[i];
+        queue->ptr[f++] = (void*)begin[i];
         f &= e;
     }
     queue->front += count;
@@ -104,39 +125,40 @@ static inline void QueEnqueueRange(Queue *queue, const void** begin, u32count)
 
 
 // returns true if size is enough
-static inline bool QueTryDequeueArr(Queue *queue, void** result, u32count)
+static inline bool QueTryDequeueArr(Queue *queue, void** result, u32 count)
 {
-    if (QueSize(queue) + count > queue->capacity)
+    if (QueSize(queue) < count)
     {
         return false;
     }
-    u32r = queue->rear, e = queue->capacity-1;
+    u32 r = queue->rear, e = queue->capacity-1;
     
-    for (u32i = 0; i < count; i++)
+    for (u32 i = 0; i < count; i++)
     {
         result[i] = queue->ptr[r++];
         r &= e;
     }
     queue->rear = r;
-    queue->size -= count;rr
+    queue->size -= count;
     return true;
 }
 
 static inline bool QueTryDequeue(Queue *queue, void** out)
 {
-    if (AX_UNLIKELY(queue->rear == queue->front)) 
+    if (AX_UNLIKELY(queue->size == 0))
         return false;
+
     *out = queue->ptr[queue->rear];
-    queue->rear = QueIncrementIndex(queue->rear);
+    queue->rear = QueIncrementIndex(queue, queue->rear);
     queue->size--;
     return true;
 }
 
-static inline void QueDequeueArr(Queue *queue, void** result, u32count)
+static inline void QueDequeueArr(Queue *queue, void** result, u32 count)
 {
-    ASSERT(QueSize(queue) + count <= queue->capacity);
-    u32r = queue->rear, e = queue->capacity-1;
-    for (u32i = 0; i < count; i++)
+    ASSERT(QueSize(queue) >= count);
+    u32 r = queue->rear, e = queue->capacity-1;
+    for (u32 i = 0; i < count; i++)
     {
         result[i] = queue->ptr[r++];
         r &= e; // better than modulo 
@@ -145,184 +167,158 @@ static inline void QueDequeueArr(Queue *queue, void** result, u32count)
     queue->size -= count;
 }
 
-static inline void* QueDequeue(Queue *queue)
-{    
-    ASSERT(queue->rear != queue->front);
+static inline void* QueDequeueSingle(Queue *queue)
+{
+    ASSERT(queue->size != 0);
+
     void* val = queue->ptr[queue->rear];
-    queue->rear = QueIncrementIndex(queue->rear);
+    queue->rear = QueIncrementIndex(queue, queue->rear);
     queue->size--;
-    return val; 
+    return val;
 }
 
-static inline u32QueSize(Queue *queue) { return queue->size; }
+// Routes `QueDequeue` to Array vs Single extraction based on number of arguments passed in `TestQueue.c`
+#define GET_QUE_DEQUEUE(_1, _2, _3, NAME, ...) NAME
+#define QueDequeue(...) GET_QUE_DEQUEUE(__VA_ARGS__, QueDequeueArr, DUMMY, QueDequeueSingle)(__VA_ARGS__)
 
-static inline u32QueIncrementIndex(Queue *queue,u32x) 
-{
-    return (x + 1) & (queue->capacity-1);
-}
-
-static inline void QueGrowIfNecessary(Queue *queue, u32_size)
-{
-    ASSERT(queue->capacity != (1 << 31)); // max size
-    u32newSize = NextPowerOf2_32((int)(queue->size + _size));
-    
-    if (AX_LIKELY(newSize <= queue->capacity))
-    {
-        return; // no need to grow
-    }
-    
-    const int initialSize = 256;
-    const u32newCapacity = newSize <= initialSize ? initialSize : newSize;
-    if (queue->ptr)  queue->ptr = ReAllocTLSF(ptr, newCapacity);
-    else      queue->ptr = AllocTLSF(newCapacity);
-    
-    // unify front and rear, if they are seperate.
-    if (queue->front < queue->rear)
-    {
-        for (u32i = 0; i < queue->front; i++)
-        {
-            queue->ptr[queue->capacity++] = queue->ptr[i];
-        }
-    }
-    // move everything to the right
-    for (u32i = 0; i < queue->size; ++i)
-    {
-        queue->ptr[newCapacity - 1 - i] = queue->ptr[queue->capacity - 1 - i];
-    }
-    queue->capacity = newCapacity;
-    
-    queue->rear     = 0;
-    queue->front    = newCapacity - queue->size;
-    queue->capacity = newCapacity;
-}
 
 ////////////                PriorityQueue                /////////////
 
-typedef enum PQCompare_
-{
-    PQCompare_Less    = 0,
-    PQCompare_Greater = 1
-} PQCompare;
 
-// https://github.com/lemire/FastPriorityQueue.js/blob/master/FastPriorityQueue.js
-// Min Heap data structure
-
-typedef struct PriorityQueue_
+static inline void PriorityQueueInit(PriorityQueue* pq, int _size)
 {
-    void**         heap ;
-    int        size     ;
-    int        capacity ;
-} PriorityQueue;
-
-static inline void PriorityQueue(PriorityQueue* pq, int _size)
-{
-    pq->size = (0);
+    pq->size = 0;
     pq->capacity = CalculateArrayGrowth(_size);
-    pq->heap = AllocTLSF(pq->capacity * sizeof(void*));
+    pq->heap = (void**)AllocTLSF(pq->capacity * sizeof(void*));
+    pq->compare = PQCompare_Less;
 }
 
-static inline void PriorityQueueRange(PriorityQueue* pq, const void** begin, const void** end)
-{
-    pq->heap = (NULL), pq->size = (0), pq->capacity = (0);
-    PQPush(begin, end); 
-}
+// Function macro ensures `PriorityQueue pq;` is safely treated as a type while `PriorityQueue(&pq, 10)` acts as a function.
+#define PriorityQueue(...) PriorityQueueInit(__VA_ARGS__)
 
-static inline static bool PQCompare(const void* a, const void* b)
-{
-    if (compare == PQCompare_Less)    return a < b;
-    if (compare == PQCompare_Greater) return a > b;
-    else { ASSERT(0); return 0; }
-}
+static inline bool PQEmpty(PriorityQueue* pq)  { return pq->size == 0; }
 
 static inline void PQGrowIfNecessarry(PriorityQueue* pq, int adition)
 {
-    if (pq->size + adition >= pq->capacity)
+    if (pq->size + adition > pq->capacity)
     {
         int newCapacity = pq->size + adition <= 256 ? 256 : CalculateArrayGrowth(pq->size + adition);
-        if (heap)
-            pq->heap = ReAllocTLSF(pq->heap, pq->capacity, newCapacity);
+        if (pq->heap)
+            pq->heap = (void**)ReAllocTLSF(pq->heap, newCapacity * sizeof(void*));
         else
-            pq->heap = AllocTLSF(newCapacity);
+            pq->heap = (void**)AllocTLSF(newCapacity * sizeof(void*));
         pq->capacity = newCapacity;
     }
 }
 
-static inline void PQHeapifyUp(PriorityQueue* pq, int index, bool force = false) 
+static inline bool PQCompareFn(PriorityQueue* pq, const void* a, const void* b)
 {
+    if (pq->compare == PQCompare_Less)    return a < b;
+    if (pq->compare == PQCompare_Greater) return a > b;
+    else { ASSERT(0); return 0; }
+}
+
+static inline void PQHeapifyUp(PriorityQueue* pq, int index, bool force)
+{
+    (void)force;
+
     while (index != 0)
     {
         int parent = (index - 1) >> 1;
-        
-        if (PQCompare(pq->heap[parent], pq->heap[index]))
+
+        if (PQCompareFn(pq, pq->heap[index], pq->heap[parent]))
         {
-            SWAP(pq->heap[parent], pq->heap[index]);
+            XSWAP(void*, pq->heap[parent], pq->heap[index]);
             index = parent;
         }
-        else break;
+        else
+            break;
     }
 }
 
-static inline void PQHeapifyDown(PriorityQueue* pq, int index) 
+static inline void PQHeapifyDown(PriorityQueue* pq, int index)
 {
     while (true)
     {
-        int leftChild  = (index << 1) + 1;
-        int rightChild = leftChild + 1;
-        int largest    = index;
+        int left  = (index << 1) + 1;
+        int right = left + 1;
+        int best  = index;
 
-        if (leftChild < pq->size && !PQCompare(pq->heap[leftChild], pq->heap[largest]))
-            largest = leftChild;
-
-        if (rightChild < size && !PQCompare(pq->heap[rightChild], pq->heap[largest]))
-            largest = rightChild;
-
-        if (largest != index) 
+        if (left < pq->size &&
+            PQCompareFn(pq, pq->heap[left], pq->heap[best]))
         {
-            SWAP(pq->heap[index], pq->heap[largest]);
-            index = largest;
+            best = left;
         }
-        else break;
+
+        if (right < pq->size &&
+            PQCompareFn(pq, pq->heap[right], pq->heap[best]))
+        {
+            best = right;
+        }
+
+        if (best == index)
+            break;
+
+        XSWAP(void*, pq->heap[index], pq->heap[best]);
+        index = best;
     }
 }
-
-static inline bool PQEmpty(PriorityQueue* pq)  { return pq->size == 0; }
 
 static inline void PQClear(PriorityQueue* pq)
 {
     if (pq->heap)
     {
         DeAllocTLSF(pq->heap);
-        pq->heap = null;
+        pq->heap = NULL;
         pq->size  = pq->capacity = 0;
     }
 }
 
 static inline void PQPush(PriorityQueue* pq, const void* value) 
 {
-    PQGrowIfNecessarry(1);
-    pq->heap[pq->size++] = value; 
-    PQHeapifyUp(pq->size - 1); 
+    PQGrowIfNecessarry(pq, 1);
+    pq->heap[pq->size++] = (void*)value; 
+    PQHeapifyUp(pq, pq->size - 1, false); 
+}
+
+static inline void PriorityQueueRange(PriorityQueue* pq, const void** begin, const void** end)
+{
+    pq->heap = NULL; pq->size = 0; pq->capacity = 0;
+    pq->compare = PQCompare_Less;
+    int count = (int)(end - begin);
+    PQGrowIfNecessarry(pq, count);
+    for(int i = 0; i < count; i++) {
+        PQPush(pq, begin[i]);
+    }
 }
 
 static inline void* PQRemoveAt(PriorityQueue* pq, int index)
 {
     ASSERT(!(index > pq->size - 1 || index < 0));
     void* res = pq->heap[index];
-    PQHeapifyUp(index, true);
+    pq->heap[index] = pq->heap[pq->size - 1]; // Correct basic array behavior before re-heapifying
     pq->size--;
+    if (index < pq->size) {
+        PQHeapifyUp(pq, index, true);
+        PQHeapifyDown(pq, index);
+    }
     return res;
 }
 
 static inline void PQPop(PriorityQueue* pq)
 {
-    ASSERT(!PQEmpty());
-    SWAP(pq->heap[0], pq->heap[--size]);
-    PQHeapifyDown(0);
+    ASSERT(!PQEmpty(pq));
+    --pq->size;
+    if (pq->size)
+    {
+        pq->heap[0] = pq->heap[pq->size];
+        PQHeapifyDown(pq, 0);
+    }
 }
 
 static inline void* PQTop(PriorityQueue* pq)
 {
-    ASSERT(!PQEmpty(), return pq->heap[0]);
+    ASSERT(!PQEmpty(pq));
     return pq->heap[0];
 }
 

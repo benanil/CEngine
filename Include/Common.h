@@ -12,7 +12,6 @@
 extern "C" {
 #endif
 
-
 #define KB 1024L
 #define MB (1024L * 1024L)
 #define GB (1024L * 1024L * 1024L)
@@ -445,6 +444,12 @@ purefn bool InRangeU32(u32 x, u32 start, u32 length) {
 
 //------------------------------------------------------------------------
 // Other Util
+
+#define XSWAP(type, x, y) do { \
+    type SWAP_tmp = (x);      \
+    (x) = (y);                \
+    (y) = SWAP_tmp;           \
+} while (0)
 
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
 
