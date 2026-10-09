@@ -327,6 +327,13 @@ void WEnd(AFile file, char* base, char* p) {
     AFileWrite(base, (u64)(p - base), file, 1); 
 }
 
+const char* RU16(const char* p, u16* v) {
+    s64 value = 0;
+    p = ParseNumberI64(p, &value);
+    *v = (u16)value;
+    return p;
+}
+
 const char* RU32(const char* p, u32* v) {
     s64 value = 0;
     p = ParseNumberI64(p, &value);

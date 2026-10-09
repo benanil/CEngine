@@ -76,6 +76,8 @@ char* WInt(char* p, s64 v);
 
 char* WFlt(char* p, float v);
 
+const char* RU16(const char* p, u16* v);
+
 const char* RU32(const char* p, u32* v);
 
 const char* RU64(const char* p, u64* v);

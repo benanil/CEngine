@@ -14,7 +14,7 @@
 #include "Include/ParallelFor.h"
 #include "Math/Bitpack.h"
 
-#define SCENE_FILE_VERSION 7
+#define SCENE_FILE_VERSION 8
 
 // first descriptors of a texture system are the built in defaults (TextureSystem.c)
 enum { SceneSer_DefaultDescriptors = 4 };
@@ -266,6 +266,8 @@ s32 SceneSerializer_Save(Scene* scene, const char* path)
             for (u32 e = 0; e < group->numEntities; e++)
             {
                 const Entity* entity = &set->entities[group->entityOffset + e];
+                u32 sparseId = EntityGetSparseID(entity);
+                SparseData* sparseData = &set->sparseData[sparseId];
                 AX_ALIGN(16) float position[4];
                 VecStore(position, entity->position);
 
@@ -275,8 +277,12 @@ s32 SceneSerializer_Save(Scene* scene, const char* path)
                 p = WInt(p, (s64)(u32)(entity->rotation & 0xFFFFFFFFull));
                 p = WInt(p, (s64)(u32)(entity->rotation >> 32u));
                 p = WInt(p, (s64)entity->scale);
-                p = WInt(p, (s64)EntityGetSparseID(entity));
+                p = WInt(p, (s64)sparseId);
                 p = WInt(p, (s64)EntityGetFlags(entity));
+                p = WInt(p, (s64)sparseData->subNodeCount);
+                for (s32 i = 0; i < sparseData->subNodeCount; i++)
+                    p = WInt(p, set->subNodes[sparseData->subNodeOffset + i]);
+                
                 WEnd(file, line, p);
             }
         }
@@ -325,6 +331,13 @@ s32 SceneSerializer_Save(Scene* scene, const char* path)
         }
     }
 
+    for (u32 s = 0; s < 2u; s++)
+    {
+        const RenderSet* set = s == 0u ? &scene->surfaceSet : &scene->skinnedSet;
+        for (s32 i = 0; i < set->numEntities; i++)
+            p = WInt(p, (s64)set->subNodes[i]);
+    }
+
     AFileClose(file);
     RemoveFile(path);
     RenameFile(tmpPath, path);
@@ -371,13 +384,14 @@ static s32 ParseSceneFile(const char* path, SceneFileData* data)
     }
 
     char baseDir[1024];
-    char line[2048];
+    const int lineSize = 1024 * 1024;
+    char* line = ArenaAllocGlobal(lineSize); // up to 65k integers in subNodes 
     const char* p;
     GetBaseDir(path, baseDir);
     s32 baseLen = StringLength(baseDir);
 
     u32 version = 0;
-    if (!(p = ReadRecord(file, line, sizeof(line), "axscene")))
+    if (!(p = ReadRecord(file, line, lineSize, "axscene")))
     {
         // tolerate a utf8 BOM in front of the first record (text mode writers add one)
         bool bom = line[0] == '\xEF' && line[1] == '\xBB' && line[2] == '\xBF' &&
@@ -393,14 +407,14 @@ static s32 ParseSceneFile(const char* path, SceneFileData* data)
         return 0;
     }
 
-    if (!(p = ReadRecord(file, line, sizeof(line), "sun"))) goto fail;
+    if (!(p = ReadRecord(file, line, lineSize, "sun"))) goto fail;
     p = RFlt(p, &data->sunYaw);
     RFlt(p, &data->sunPitch);
 
     for (u32 c = 0; c < TextureClass_Count; c++)
     {
         u32 classIdx = 0;
-        if (!(p = ReadRecord(file, line, sizeof(line), "atlas"))) goto fail;
+        if (!(p = ReadRecord(file, line, lineSize, "atlas"))) goto fail;
         p = RU32(p, &classIdx);
         p = RU32(p, &data->atlasLayers[c]);
         while (*p == ' ') p++;
@@ -416,7 +430,7 @@ static s32 ParseSceneFile(const char* path, SceneFileData* data)
         }
     }
 
-    if (!(p = ReadRecord(file, line, sizeof(line), "bundles"))) goto fail;
+    if (!(p = ReadRecord(file, line, lineSize, "bundles"))) goto fail;
     RU32(p, &data->numBundles);
     if (data->numBundles > MAX_SCENE_BUNDLES) goto fail;
     data->bundlePaths       = (char*)CDAllocTLSF((u64)Maxu32(data->numBundles, 1u) * 1024u);
@@ -426,7 +440,7 @@ static s32 ParseSceneFile(const char* path, SceneFileData* data)
     for (u32 b = 0; b < data->numBundles; b++)
     {
         u32 numMaterials = 0;
-        if (!(p = ReadRecord(file, line, sizeof(line), "bundle"))) 
+        if (!(p = ReadRecord(file, line, lineSize, "bundle"))) 
             goto fail;
         p = RU32(p, &data->bundleSkinned[b]);
         p = RU32(p, &data->bundleMaterialOff[b]);
@@ -455,7 +469,7 @@ static s32 ParseSceneFile(const char* path, SceneFileData* data)
         MemCopy(bundlePath, p, nameLen + 1);
     }
 
-    if (!(p = ReadRecord(file, line, sizeof(line), "descriptors")))
+    if (!(p = ReadRecord(file, line, lineSize, "descriptors")))
         goto fail;
     RU32(p, &data->numDescriptors);
     if (data->numDescriptors > MAX_TEXTURE_DESCRIPTORS) goto fail;
@@ -463,7 +477,7 @@ static s32 ParseSceneFile(const char* path, SceneFileData* data)
     for (u32 i = 0; i < data->numDescriptors; i++)
     {
         u32 page = 0, x = 0, y = 0, w = 0, h = 0, flags = 0;
-        if (!(p = ReadRecord(file, line, sizeof(line), "desc")))
+        if (!(p = ReadRecord(file, line, lineSize, "desc")))
             goto fail;
         p = RU32(p, &page);
         p = RU32(p, &x);
@@ -480,7 +494,7 @@ static s32 ParseSceneFile(const char* path, SceneFileData* data)
         desc->uvScale.y = (float)h / (float)TEXTURE_PAGE_SIZE;
     }
 
-    if (!(p = ReadRecord(file, line, sizeof(line), "materials")))
+    if (!(p = ReadRecord(file, line, lineSize, "materials")))
         goto fail;
     RU32(p, &data->materialWatermark);
     if (data->materialWatermark > MAX_GPU_MATERIALS) goto fail;
@@ -488,7 +502,7 @@ static s32 ParseSceneFile(const char* path, SceneFileData* data)
     for (u32 i = 0; i < data->materialWatermark; i++)
     {
         MaterialGPU* material = &data->materials[i];
-        if (!(p = ReadRecord(file, line, sizeof(line), "mat")))
+        if (!(p = ReadRecord(file, line, lineSize, "mat")))
             goto fail;
         u32 albedoDescriptor = 0u;
         u32 normalDescriptor = 0u;
@@ -506,7 +520,7 @@ static s32 ParseSceneFile(const char* path, SceneFileData* data)
         material->flags = (u16)flags;
     }
 
-    if (!(p = ReadRecord(file, line, sizeof(line), "lights")))
+    if (!(p = ReadRecord(file, line, lineSize, "lights")))
         goto fail;
     RU32(p, &data->numLights);
     if (data->numLights > MAX_SCENE_LIGHTS)
@@ -515,7 +529,7 @@ static s32 ParseSceneFile(const char* path, SceneFileData* data)
     for (u32 i = 0; i < data->numLights; i++)
     {
         LightGPU* light = &data->lights[i];
-        if (!(p = ReadRecord(file, line, sizeof(line), "light")))
+        if (!(p = ReadRecord(file, line, lineSize, "light")))
             goto fail;
         u32 type = 0u;
         u32 flags = 0u;
@@ -537,42 +551,46 @@ static s32 ParseSceneFile(const char* path, SceneFileData* data)
     for (u32 s = 0; s < 2; s++)
     {
         u32 setIdx = 0;
-        if (!(p = ReadRecord(file, line, sizeof(line), "entities")))
+        if (!(p = ReadRecord(file, line, lineSize, "entities")))
             goto fail;
         p = RU32(p, &setIdx);
         RU32(p, &data->numEntities[s]);
         if (setIdx != s || data->numEntities[s] > (s == 1u ? MAX_ANIM_INSTANCES : MAX_ENTITY)) goto fail;
         data->entities[s] = (SceneEntRecord*)AllocTLSF(Maxu32(data->numEntities[s], 1u) * sizeof(SceneEntRecord));
+        data->subNodes[s] = AllocTLSFArray(u16, data->numEntities[s]);
+        u32 subNodeOffset = 0;
         for (u32 i = 0; i < data->numEntities[s]; i++)
         {
             SceneEntRecord* record = &data->entities[s][i];
             u32 rotLo = 0, rotHi = 0;
-            if (!(p = ReadRecord(file, line, sizeof(line), "ent"))) 
+            if (!(p = ReadRecord(file, line, lineSize, "ent"))) 
                 goto fail;
             p = RU32(p, &record->primGroupIdx);
             if (version <= 6) record->primGroupIdx++;
             for (u32 k = 0; k < 3u; k++) p = RFlt(p, &record->position[k]);
             p = RU32(p, &rotLo);
             p = RU32(p, &rotHi);
+            record->rotation = (u64)rotLo | ((u64)rotHi << 32u);
             record->scale = 0;
-            if (version == 1)
-            {
-                u32 legacyScale = 0;
-                p = RU32(p, &legacyScale);
-                record->scale = EntityPackWorldScale(VecMulf(SceneUnpackLegacyScaleXY11Z10(legacyScale), ENTITY_MAX_SCALE));
-            }
-            if (version >= 2)
-                p = RU64(p, &record->scale);
+            p = RU64(p, &record->scale);
 
             p = RU32(p, &record->sparseIdx);
             record->flags = EntityFlags_ColliderEnabled;
-            if (version >= 5) 
-                p = RU32(p, &record->flags);
-            record->rotation = (u64)rotLo | ((u64)rotHi << 32u);
+            p = RU32(p, &record->flags);
+
+            if (version >= 8)
+            {
+                p = RU32(p, &record->subNodeCount);
+                record->subNodeOffset = subNodeOffset;
+                for (s32 k = 0; k < record->subNodeCount; k++)
+                    p = RU16(p, &data->subNodes[s][subNodeOffset++]);
+            }
+            else 
+                record->subNodeOffset = record->subNodeCount = 0;
         }
     }
 
-    if (!(p = ReadRecord(file, line, sizeof(line), "physics")))
+    if (!(p = ReadRecord(file, line, lineSize, "physics")))
         goto fail;
     RU32(p, &data->numPhysics);
     if (data->numPhysics > MAX_ENTITY) 
@@ -581,7 +599,7 @@ static s32 ParseSceneFile(const char* path, SceneFileData* data)
     for (u32 i = 0; i < data->numPhysics; i++)
     {
         ScenePhysicsRecord* rec = &data->physics[i];
-        if (!(p = ReadRecord(file, line, sizeof(line), "phys")))
+        if (!(p = ReadRecord(file, line, lineSize, "phys")))
             goto fail;
         p = RU32(p, &rec->sparseIdx);
         p = RU32(p, &rec->bodyType);
@@ -595,10 +613,11 @@ static s32 ParseSceneFile(const char* path, SceneFileData* data)
         p = RFlt(p, &rec->gravityScale);
         p = RFlt(p, &rec->sleepThreshold);
     }
-
+    ArenaPopGlobal(lineSize);
     AFileClose(file);
     return 1;
 fail:
+    ArenaPopGlobal(lineSize);
     AX_ERROR("scene file parse failed: %s", path);
     AFileClose(file);
     return 0;
@@ -731,6 +750,7 @@ s32 SceneSerializer_Load(Scene* scene, const char* path, SceneFileData* data)
     {
         bool isSkinned = s == 1u;
         RenderSet* set = s == 0u ? &scene->surfaceSet : &scene->skinnedSet;
+        MemCopy(set->subNodes, data->subNodes[s], data->numEntities[s] * sizeof(u16));
 
         u32* primitiveCounts = (u32*)ArenaAllocGlobal(set->numGroups * sizeof(u32));
         MemSet(primitiveCounts, 0, set->numGroups * sizeof(u32));
@@ -742,11 +762,13 @@ s32 SceneSerializer_Load(Scene* scene, const char* path, SceneFileData* data)
             if (record->primGroupIdx >= set->numGroups)
             {
                 AX_WARN("scene entity group out of range: %d >= %d", record->primGroupIdx, set->numGroups);
+                U16SetSetRange(set->subNodes, record->subNodeOffset, record->subNodeCount, 0);
                 continue;
             }
             if (record->sparseIdx >= set->maxEntities)
             {
                 AX_WARN("scene entity sparse id out of range: %d >= %d", record->sparseIdx, set->maxEntities);
+                U16SetSetRange(set->subNodes, record->subNodeOffset, record->subNodeCount, 0);
                 continue;
             }
             primitiveCounts[record->primGroupIdx]++;
@@ -787,7 +809,10 @@ s32 SceneSerializer_Load(Scene* scene, const char* path, SceneFileData* data)
 
             BitsetSet(set->sparseSlots, (s32)record->sparseIdx);
             // if (set->sparseData[record->sparseIdx].id == INVALID_ENTITY || denseIdx < set->sparseData[record->sparseIdx].id)
-            set->sparseData[record->sparseIdx].id = denseIdx;
+            SparseData* sparseData = &set->sparseData[record->sparseIdx];
+            sparseData->subNodeOffset = record->subNodeOffset;
+            sparseData->subNodeCount = record->subNodeCount;
+            sparseData->id = denseIdx;
 
             if (isSkinned)
             {

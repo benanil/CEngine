@@ -117,6 +117,46 @@ extern "C" {
     #define purefn static inline __attribute__((always_inline))
 #endif
 
+    // according to intel intrinsic, popcnt instruction is 3 cycle (equal to mulps, addps) 
+// throughput is even double of mulps and addps which is 1.0 (%100)
+// https://www.intel.com/content/www/us/en/docs/intrinsics-guide/index.html
+
+#if defined(__GNUC__) || defined(__clang__)
+    // covers arm/neon too, the compiler picks cnt/popcnt by target
+    #define PopCount32(x) ((uint32_t)__builtin_popcount(x))
+    #define PopCount64(x) ((uint64_t)__builtin_popcountll(x))
+#elif defined(AX_SUPPORT_SSE)
+    #define PopCount32(x) _mm_popcnt_u32(x)
+    #define PopCount64(x) _mm_popcnt_u64(x)
+#else
+
+    purefn uint32_t PopCount32(uint32_t x) {
+        x =  x - ((x >> 1) & 0x55555555);        // add pairs of bits
+        x = (x & 0x33333333) + ((x >> 2) & 0x33333333);  // quads
+        x = (x + (x >> 4)) & 0x0F0F0F0F;        // groups of 8
+        return (x * 0x01010101) >> 24;          // horizontal sum of bytes	
+    }
+
+    // standard popcount; from wikipedia
+    purefn uint64_t PopCount64(uint64_t x) {
+        x -= ((x >> 1) & 0x5555555555555555ull);
+        x = (x & 0x3333333333333333ull) + (x >> 2 & 0x3333333333333333ull);
+        return ((x + (x >> 4)) & 0xf0f0f0f0f0f0f0full) * 0x101010101010101ull >> 56;
+    }
+#endif
+
+#if defined(__GNUC__) || defined(__clang__)
+    #define LeadingZeroCount32(x) __builtin_clz(x)
+    #define LeadingZeroCount64(x) __builtin_clzll(x)
+#elif defined(_MSC_VER) && !defined(AX_ARM)
+    #define LeadingZeroCount32(x) _lzcnt_u32(x)
+    #define LeadingZeroCount64(x) _lzcnt_u64(x)
+#else
+    #error "LeadingZeroCount is not defined for this compiler"
+#endif
+
+#define LeadingZeroCountWord(x) (sizeof(unsigned long long) == 8 ? LeadingZeroCount64(x) : LeadingZeroCount32(x))
+
 #if defined(__GNUC__) || defined(__clang__)
     #define TrailingZeroCount32(x) __builtin_ctz(x)
     #define TrailingZeroCount64(x) __builtin_ctzll(x)
@@ -140,6 +180,9 @@ extern "C" {
     #define TrailingZeroCount64(x) PopCount64_fallback((x & -(x)) - 1ull)
 #endif
 
+
+// TrailingZeroCount32/64 are defined by SIMD.h (included above)
+#define TrailingZeroCountWord(x) (sizeof(unsigned long long) == 8 ? TrailingZeroCount64(x) : TrailingZeroCount32(x))
 
 #if defined(AX_SUPPORT_SSE) && !defined(AX_ARM)
 /*//////////////////////////////////////////////////////////////////////////*/
@@ -165,10 +208,6 @@ typedef __m128i v128u;
 #define VecLoadIU(x)             _mm_loadu_si128(x)
 #define VecStoreU(ptr, x)        _mm_storeu_si128((v128u*)ptr, x)
 #define VecStoreI(ptr, x)        _mm_store_si128((v128u*)ptr, x)
-#define VeciSet1_8(x)            _mm_set1_epi8(x)
-#define VeciCmpEq8(a, b)         _mm_cmpeq_epi8(a, b)
-#define VeciCmpGt8(a, b)         _mm_cmpgt_epi8(a, b)
-#define VeciMovemask8(a)         _mm_movemask_epi8(a)
                                 
 #define VecStore(ptr, x)         _mm_storeu_ps(ptr, x)
 #define VecStoreA(ptr, x)        _mm_store_ps(ptr, x)
@@ -375,8 +414,14 @@ purefn f32 VCALL Vec3DotfImpl(v128f a, v128f b) {
 #define VeciCmpLe8(a, b)            VeciNot(VeciCmpGt8(a, b))
 #define VeciCmpGe8(a, b)            VeciNot(VeciCmpLt8(a, b))
                                     
-#define VeciBlend(a, b, c)          _mm_blendv_epi8(a, b, c)
-#define VecFabs(x)                  VecAnd(x, VecFromInt1(0x7fffffff))
+#define VeciSet1_8(x)            _mm_set1_epi8(x)
+#define VeciCmpEq8(a, b)         _mm_cmpeq_epi8(a, b)
+#define VeciCmpGt8(a, b)         _mm_cmpgt_epi8(a, b)
+#define VeciCmpEq16(a, b)        _mm_cmpeq_epi16(a, b)
+#define VeciCmpGt16(a, b)        _mm_cmpgt_epi16(a, b)
+#define VeciMovemask8(a)         _mm_movemask_epi8(a)
+#define VeciBlend(a, b, c)       _mm_blendv_epi8(a, b, c)
+#define VecFabs(x)               VecAnd(x, VecFromInt1(0x7fffffff))
 
 #define VecFromInt(x, y, z, w)      _mm_castsi128_ps(_mm_setr_epi32(x, y, z, w))
 #define VecFromInt1(x)              _mm_castsi128_ps(_mm_set1_epi32(x))
@@ -448,7 +493,9 @@ typedef uint32x4_t v128u;
 #define VeciSet1_8(x)               vreinterpretq_u32_u8(vdupq_n_u8(x))
 #define VeciCmpEq8(a, b)            vreinterpretq_u32_u8(vceqq_u8(vreinterpretq_u8_u32(a), vreinterpretq_u8_u32(b)))
 #define VeciCmpGt8(a, b)            vreinterpretq_u32_u8(vcgtq_s8(vreinterpretq_s8_u32(a), vreinterpretq_s8_u32(b)))
-                                    
+#define VeciCmpEq16(a, b)           vreinterpretq_u32_u16(vceqq_u16(vreinterpretq_u16_u32(a), vreinterpretq_u16_u32(b)))
+#define VeciCmpGt16(a, b)           vreinterpretq_u32_u16(vcgtq_s16(vreinterpretq_s16_u32(a), vreinterpretq_s16_u32(b)))
+
 #define Vec3Load(x)                 ARMVector3Load(x)
                                     
 /* conversions match the documented SSE behavior exactly:

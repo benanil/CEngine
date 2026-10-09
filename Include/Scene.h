@@ -142,6 +142,8 @@ typedef struct SceneEntRecord_
     u32   primGroupIdx;
     u32   sparseIdx;
     u32   flags;
+    u32   subNodeOffset;
+    u32   subNodeCount;
 } SceneEntRecord;
 
 // internal no need to know its content
@@ -174,6 +176,7 @@ typedef struct SceneFileData_
 
     ScenePhysicsRecord* physics; // surface entities that override the default collider
     u32 numPhysics;
+    u16* subNodes[2];
 } SceneFileData;
 
 typedef enum SceneAsyncOp_

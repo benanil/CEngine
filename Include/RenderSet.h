@@ -30,35 +30,30 @@ struct Scene_;
 //     [*prim, prim, prim]
 //    *   Mesh        Mesh
 //  [*prim, prim] [prim, prim]
-//       P, S         P, 0       
-// P: hasPrim, S: HasSibling
+//       P, 0         P, 0       
+// P: hasPrim
 // each prim in same mesh has same transformation data we might use that for optimization
 // instead of transforming all primitives only one is enough
-
-// traverse(SparseData* sparse)
-//    do 
-//        entity = entities[sparse->dense];
-//        if (sparse.children) traverse(sparse + sparse->children);
-//        sparse++;
-//    while hasSibling or prim
 typedef struct SparseData_
 {
-    u32  id         : 24;
-    u32  gen        : 7;
-    u32  hasSibling : 1; // is entity after this is another mesh with primitives?
+    u32  id      : 24;
+    u32  gen     : 7;
+    u32  hasPrim : 1; // is entity after this is another primitive of this mesh?
  
     u16  parent; // 0 no parent, relative to this sparseId
-    u16  child ; // 0 no child,  relative to this sparseId, last bit hasPrim
+    u16  subNodeCount;  // numChildren
+    u32  subNodeOffset; // offset to buffer
 } SparseData;
 
-STATIC_ASSERT(sizeof(SparseData) == 8, "SparseData size missmatch");
+STATIC_ASSERT(sizeof(SparseData) == 12, "SparseData size missmatch");
 
 typedef struct RenderSet_
 {
     Entity*             entities;
     SparseData*         sparseData; // sparse to dense
     u64*                sparseSlots; // bitset for used sparse id's
-    
+    u16*                subNodes; // sparseID relative offsets 
+
     PrimitiveGroup*     primitiveGroups;
     Range*              bundlePrimRange;
     const SceneBundle** bundles;
@@ -139,8 +134,17 @@ bool  RenderSet_FindNodeEntity(const RenderSet* set, Range range, u32 meshIndex,
                                u32* outGroup, u32* outEntity);
 u32   RenderSet_AllocateSparseID(RenderSet* set);
 u32   RenderSet_AllocateSparseIDRange(RenderSet* set, int count);
-void  RenderSet_FreeSparseID(RenderSet* set, u32 sparseIdx);
-void  RenderSet_FreeSparseIDRange(RenderSet* set, u32 sparseIdx, u32 count);
+void  RenderSet_FreeSparseIDPtr(RenderSet* set, SparseData* sparse);
+void  RenderSet_FreeSparseIDRangePtr(RenderSet* set, SparseData* sparse, u32 count);
+
+inline void RenderSet_FreeSparseIDRange(RenderSet* set, u32 sparseIdx, u32 count) {
+    RenderSet_FreeSparseIDRangePtr(set, set->sparseData + sparseIdx, count);
+}
+
+inline void RenderSet_FreeSparseID(RenderSet* set, u32 sparseIdx) {
+    RenderSet_FreeSparseIDPtr(set, set->sparseData + sparseIdx);
+}
+
 u32   RenderSet_CountTriangles(const RenderSet* set);
 
 // debug validation for insertion/upload invariants. out: false when corruption is found.

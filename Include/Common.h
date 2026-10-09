@@ -12,10 +12,6 @@
 extern "C" {
 #endif
 
-#define KB 1024L
-#define MB (1024L * 1024L)
-#define GB (1024L * 1024L * 1024L)
-
 #if defined(__has_builtin)
     #define AX_COMPILER_HAS_BUILTIN(x) __has_builtin(x)
 #else
@@ -276,50 +272,6 @@ purefn uint64_t ByteSwap64(uint64_t x) {
 #endif
 
 #define ByteSwapWord(x) (sizeof(unsigned long long) == 8 ? ByteSwap64(x) : ByteSwap32(x))
-
-// according to intel intrinsic, popcnt instruction is 3 cycle (equal to mulps, addps) 
-// throughput is even double of mulps and addps which is 1.0 (%100)
-// https://www.intel.com/content/www/us/en/docs/intrinsics-guide/index.html
-
-#if defined(__GNUC__) || defined(__clang__)
-    // covers arm/neon too, the compiler picks cnt/popcnt by target
-    #define PopCount32(x) ((uint32_t)__builtin_popcount(x))
-    #define PopCount64(x) ((uint64_t)__builtin_popcountll(x))
-#elif defined(AX_SUPPORT_SSE)
-    #define PopCount32(x) _mm_popcnt_u32(x)
-    #define PopCount64(x) _mm_popcnt_u64(x)
-#else
-
-    purefn uint32_t PopCount32(uint32_t x) {
-        x =  x - ((x >> 1) & 0x55555555);        // add pairs of bits
-        x = (x & 0x33333333) + ((x >> 2) & 0x33333333);  // quads
-        x = (x + (x >> 4)) & 0x0F0F0F0F;        // groups of 8
-        return (x * 0x01010101) >> 24;          // horizontal sum of bytes	
-    }
-
-    // standard popcount; from wikipedia
-    purefn uint64_t PopCount64(uint64_t x) {
-        x -= ((x >> 1) & 0x5555555555555555ull);
-        x = (x & 0x3333333333333333ull) + (x >> 2 & 0x3333333333333333ull);
-        return ((x + (x >> 4)) & 0xf0f0f0f0f0f0f0full) * 0x101010101010101ull >> 56;
-    }
-#endif
-
-// TrailingZeroCount32/64 are defined by SIMD.h (included above)
-#define TrailingZeroCountWord(x) (sizeof(unsigned long long) == 8 ? TrailingZeroCount64(x) : TrailingZeroCount32(x))
-
-#if defined(__GNUC__) || defined(__clang__)
-    #define LeadingZeroCount32(x) __builtin_clz(x)
-    #define LeadingZeroCount64(x) __builtin_clzll(x)
-#elif defined(_MSC_VER) && !defined(AX_ARM)
-    #define LeadingZeroCount32(x) _lzcnt_u32(x)
-    #define LeadingZeroCount64(x) _lzcnt_u64(x)
-#else
-    #error "LeadingZeroCount is not defined for this compiler"
-#endif
-
-
-#define LeadingZeroCountWord(x) (sizeof(unsigned long long) == 8 ? LeadingZeroCount64(x) : LeadingZeroCount32(x))
 
 #if !AX_COMPILER_HAS_BUILTIN(__builtin_bit_cast)
     #define BitCast(to, from) (*(to*)(&from))
@@ -669,6 +621,41 @@ static inline int StringLengthSafe(const char* s, size_t maxLen)
         p++;
     }
     return 0; // unterminated
+}
+
+// capacity 
+static inline u32 U16SetGetEmptyRange(const u16* set, u32 capacity, u32 count)
+{
+    // if (count > capacity || capacity < 8)
+    //     return UINT32_MAX;
+    
+    // for (s32 i = 0, free_streak = 0; i < capacity; i++)
+    // {
+    //     if (set[i] != 0) {
+    //         if (free_streak++ == count) return i - count + 1;
+    //     } else free_streak = 0;
+    // }
+
+    u32 start = 0, pos = 0;
+    while (start + count <= capacity)
+    {
+        u32 base = Minu32(pos, capacity - 8);
+        u32 nonZero = (u32)~VeciMovemask8(VeciCmpEq16(VeciLoad(set + base), VeciZero())) & 0xFFFF;
+        nonZero >>= (pos - base) * 2;
+        u32 end = nonZero ? pos + (TrailingZeroCount32(nonZero) >> 1) : base + 8;
+        if (end - start >= count)
+            return start;
+        if (nonZero)
+            start = end + 1;
+        pos = nonZero ? start : end;
+    }
+    return UINT32_MAX;
+}
+
+static inline void U16SetSetRange(u16* set, u32 index, u32 count, u16 value)
+{
+    for (u32 i = 0; i < count; i++)
+        set[index + i] = value;
 }
 
 purefn const char* GetFileName(const char* path)
