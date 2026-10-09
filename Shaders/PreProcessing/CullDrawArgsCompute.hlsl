@@ -333,7 +333,7 @@ void main(uint3 tid : SV_DispatchThreadID)
     uint primitiveIdx = EntityGetPrimitiveID(entity);
     if (!(onlyTransparent == entityTransparent) || 
          (entityFlags & EntityFlags_NoMesh) != 0u || 
-         primitiveIdx == 0x0000ffffu)
+        primitiveIdx == 0x0000ffffu || primitiveIdx == 0)
         return;
 
     PrimitiveGroup group = primitiveGroups[primitiveIdx];

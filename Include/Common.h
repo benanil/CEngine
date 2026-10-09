@@ -375,6 +375,8 @@ purefn s32 Clamps32(s32 x, s32 min, s32 max) { return MMIN(max, MMAX(x, min)); }
 purefn u32 Clampu32(u32 x, u32 min, u32 max) { return MMIN(max, MMAX(x, min)); }
 purefn f32 Minf32(f32 a, f32 b) { return a < b ? a : b; }
 purefn f32 Maxf32(f32 a, f32 b) { return a > b ? a : b; }
+purefn u16 Minu16(u16 a, u16 b) { return a < b ? a : b; }
+purefn u16 Maxu16(u16 a, u16 b) { return a > b ? a : b; }
 purefn s32 Mins32(s32 a, s32 b) { return a < b ? a : b; }
 purefn s32 Maxs32(s32 a, s32 b) { return a > b ? a : b; }
 purefn u32 Minu32(u32 a, u32 b) { return a < b ? a : b; }

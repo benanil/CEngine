@@ -103,15 +103,15 @@ static void TestRestoreLoop(RenderSet* set, TestRestoreScratch* scratch, const T
         EntitySetSparseID(entity, record->sparseIdx);
 
         BitsetSet(set->sparseSlots, (s32)record->sparseIdx);
-        if (set->sparseData[record->sparseIdx].id == INVALID_ENTITY || denseIdx < set->sparseData[record->sparseIdx].id)
-            set->sparseData[record->sparseIdx].id = denseIdx;
+        if (set->sparseData[record->sparseIdx].dense == INVALID_ENTITY || denseIdx < set->sparseData[record->sparseIdx].dense)
+            set->sparseData[record->sparseIdx].dense = denseIdx;
     }
 }
 
 static void ResetRestoreTarget(RenderSet* set)
 {
     set->numEntities = 0;
-    memset(set->sparseData, 0x00FFFFFF, set->maxEntities * sizeof(u32));
+    MemSet64(set->sparseData, CLEAR_SPARSE_MASK, set->maxEntities);
     memset(set->sparseSlots, 0, ((set->maxEntities + 63u) >> 6) * sizeof(u64));
 }
 
@@ -123,9 +123,9 @@ static void InitRenderSetStorage(RenderSet* set, u32 maxEntities, u32 numGroups)
     set->numGroups = numGroups;
     set->entities = (Entity*)calloc(maxEntities, sizeof(Entity));
     set->primitiveGroups = (PrimitiveGroup*)calloc(numGroups, sizeof(PrimitiveGroup));
-    set->sparseData = (u32*)malloc(maxEntities * sizeof(u32));
+    set->sparseData = (u32*)malloc(maxEntities * sizeof(SparseData));
     set->sparseSlots = (u64*)calloc((maxEntities + 63u) >> 6, sizeof(u64));
-    memset(set->sparseData, 0x00FFffff, maxEntities * sizeof(u32));
+    MemSet64(set->sparseData, CLEAR_SPARSE_MASK, maxEntities);
 }
 
 static void FreeRenderSetStorage(RenderSet* set)

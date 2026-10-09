@@ -921,7 +921,7 @@ purefn f32 SmoothDamp(f32 current, f32 target, f32* currentVelocity, f32 smoothT
     f32 output = target + (change + temp) * exp;
 
     // Prevent overshooting
-    if (originalTo - current > 0.0f == output > originalTo)
+    if (((originalTo - current) > 0.0f) == (output > originalTo))
     {
         output = originalTo;
         *currentVelocity = (output - originalTo) / deltaTime;

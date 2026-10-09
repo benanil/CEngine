@@ -28,7 +28,7 @@ static void DrawRenderBufferDepth(SDL_GPUCommandBuffer* cmd, SDL_GPURenderPass* 
     const RenderSetBuffers*  buffers   = isSkinned ? &scene->skinnedBuffers : &scene->surfaceBuffers;
     const RenderSet*         renderSet = isSkinned ? &scene->skinnedSet     : &scene->surfaceSet;
     SDL_GPUGraphicsPipeline* pipeline  = isSkinned ? ctx->skinnedPipeline   : ctx->surfacePipeline;
-    if (renderSet->numGroups == 0) return;
+    if (renderSet->numGroups <= 1) return;
 
     SDL_BindGPUGraphicsPipeline(pass, pipeline);
     SDL_BindGPUVertexBuffers(pass, 0, &vertex_binding, 1);
@@ -77,7 +77,7 @@ void RenderDepth(SDL_GPUCommandBuffer* cmd, const DepthPassContext* ctx)
     // foliage: separate scene (own texture system/material buffers), same shared
     // vertex/index geometry heap, drawn as an extra pass in the same render pass
     Scene* foliageScene = Foliage_GetScene();
-    if (foliageScene && foliageScene->surfaceSet.numGroups > 0)
+    if (foliageScene && foliageScene->surfaceSet.numGroups > 1)
     {
         SDL_GPUTextureSamplerBinding foliageAlbedoSampler = {
             .texture = foliageScene->textureSystem.classes[TextureClass_Albedo].pages.handle,
@@ -115,7 +115,7 @@ static void DrawRenderBufferForward(SDL_GPUCommandBuffer* cmd, SDL_GPURenderPass
 {
     const SDL_GPUBufferBinding index_binding = { g_RenderState.indexBuffer, 0 };
 
-    if (renderSet->numGroups == 0 || !pipeline) return;
+    if (renderSet->numGroups <= 1 || !pipeline) return;
     SDL_BindGPUGraphicsPipeline(pass, pipeline);
     SDL_BindGPUVertexBuffers(pass, 0, &vertex_binding, 1);
     SDL_BindGPUIndexBuffer(pass, &index_binding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
@@ -222,7 +222,7 @@ void RenderSceneForward(SDL_GPUCommandBuffer* cmd, const ScenePassContext* ctx, 
     // foliage: separate scene (own texture system/material buffers, shares everything
     // else - shadows/AO/lights are global), same shared geometry heap
     Scene* foliageScene = Foliage_GetScene();
-    if (foliageScene && foliageScene->surfaceSet.numGroups > 0)
+    if (foliageScene && foliageScene->surfaceSet.numGroups > 1)
     {
         SDL_GPUTextureSamplerBinding foliageFragmentSamplers[8];
         MemCopy(foliageFragmentSamplers, fragmentSamplers, sizeof(fragmentSamplers));

@@ -14,7 +14,7 @@
 #include "Include/ParallelFor.h"
 #include "Math/Bitpack.h"
 
-#define SCENE_FILE_VERSION 6
+#define SCENE_FILE_VERSION 7
 
 // first descriptors of a texture system are the built in defaults (TextureSystem.c)
 enum { SceneSer_DefaultDescriptors = 4 };
@@ -550,6 +550,7 @@ static s32 ParseSceneFile(const char* path, SceneFileData* data)
             if (!(p = ReadRecord(file, line, sizeof(line), "ent"))) 
                 goto fail;
             p = RU32(p, &record->primGroupIdx);
+            if (version <= 6) record->primGroupIdx++;
             for (u32 k = 0; k < 3u; k++) p = RFlt(p, &record->position[k]);
             p = RU32(p, &rotLo);
             p = RU32(p, &rotHi);
@@ -785,8 +786,8 @@ s32 SceneSerializer_Load(Scene* scene, const char* path, SceneFileData* data)
             EntitySetFlags(entity, record->flags);
 
             BitsetSet(set->sparseSlots, (s32)record->sparseIdx);
-            if (set->sparseData[record->sparseIdx].id == INVALID_ENTITY || denseIdx < set->sparseData[record->sparseIdx].id)
-                set->sparseData[record->sparseIdx].id = denseIdx;
+            // if (set->sparseData[record->sparseIdx].id == INVALID_ENTITY || denseIdx < set->sparseData[record->sparseIdx].id)
+            set->sparseData[record->sparseIdx].id = denseIdx;
 
             if (isSkinned)
             {

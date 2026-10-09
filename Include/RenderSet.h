@@ -24,11 +24,34 @@ typedef struct PrimitiveGroupLOD_ PrimitiveGroupLOD;
 
 struct Scene_;
 
+// scene tree consists of entities and hierarchy info stored in sparseData
+// each prim below is an entity
+//          Mesh = ANode
+//     [*prim, prim, prim]
+//    *   Mesh        Mesh
+//  [*prim, prim] [prim, prim]
+//       P, S         P, 0       
+// P: hasPrim, S: HasSibling
+// each prim in same mesh has same transformation data we might use that for optimization
+// instead of transforming all primitives only one is enough
+
+// traverse(SparseData* sparse)
+//    do 
+//        entity = entities[sparse->dense];
+//        if (sparse.children) traverse(sparse + sparse->children);
+//        sparse++;
+//    while hasSibling or prim
 typedef struct SparseData_
 {
-    u32 id  : 24;
-    u32 gen : 8;
+    u32  id         : 24;
+    u32  gen        : 7;
+    u32  hasSibling : 1; // is entity after this is another mesh with primitives?
+ 
+    u16  parent; // 0 no parent, relative to this sparseId
+    u16  child ; // 0 no child,  relative to this sparseId, last bit hasPrim
 } SparseData;
+
+STATIC_ASSERT(sizeof(SparseData) == 8, "SparseData size missmatch");
 
 typedef struct RenderSet_
 {
@@ -140,7 +163,7 @@ SparseData* RenderSet_AddEntity(RenderSet* set, u32 primitiveIdx, const Entity* 
 
 SparseData* RenderSet_AddEntities(RenderSet* set, u32 primitiveIdx, u32 numAdded, const Entity* data);
 
-u32 CountNumPrimitives(const RenderSet* set, u32 bundleIdx, u32 numScenes, u32* primitiveCounts, bool wantSkinned);
+u32 CountNumEntities(const RenderSet* set, u32 bundleIdx, u32 numScenes, u32* primitiveCounts, bool wantSkinned);
 
 // returns num entity added
 u32 AddBundleAsScene(RenderSet* set, u32 bundleIdx, u32 sparseStart, const Entity* root, bool wantSkinned);

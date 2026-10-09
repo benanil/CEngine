@@ -626,7 +626,7 @@ static void IntegrateFinishedFoliage(u32 scheduledCount)
         for (u32 p = 0; p < job->count; p++)
         {
             FoliageType* type = &gFoliage.types[job->placements[p].typeIndex];
-            totalEntityAdded += CountNumPrimitives(set, type->bundleIdx, 1, primitiveCounts, false);
+            totalEntityAdded += CountNumEntities(set, type->bundleIdx, 1, primitiveCounts, false);
         }
     }
 
