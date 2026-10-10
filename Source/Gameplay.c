@@ -267,10 +267,44 @@ static void UpdatePicking()
     {
         Scene* scene = Foliage_GetScene();
         float dt = GetDeltaTime();
-        Entity* entity = RenderSet_GetEntity(&scene->surfaceSet, hit.entityID);
-        Quaternion rotation = QMul(EntityGetRotation(entity), QFromYAngle(dt * 10.0f));
+        RenderSet* rs = &scene->surfaceSet;
+        u32 sparseId = hit.entityID & 0x00FFFFFFu;
+        SparseData* sparse = &rs->sparseData[sparseId];
+        if (sparse->parent != 0)
+        {
+            sparseId -= sparse->parent;
+            sparse = &rs->sparseData[sparseId];
+        }
+
+        Entity* entity = &rs->entities[rs->sparseData[sparseId].id];
+        Quaternion rotation = QMul(EntityGetRotation(entity), QFromYAngle(0.05f));
         EntitySetRotation(entity, rotation);
         Entity_SyncPhysicsBody(scene, entity);
+
+        u16* subNodes = rs->subNodes + sparse->subNodeOffset;
+        for (s32 i = 0; i < sparse->subNodeCount; i++)
+        {
+            entity = &rs->entities[rs->sparseData[sparseId + subNodes[i]].id];
+            Quaternion rotation = QMul(EntityGetRotation(entity), QFromYAngle(dt * 10.0f));
+            EntitySetRotation(entity, rotation);
+            Entity_SyncPhysicsBody(scene, entity);
+
+            if (sparse > rs->sparseData && sparse[-1].hasPrim)
+            {
+                Entity* left = &rs->entities[sparse[-1].id];
+                EntitySetRotation(left, rotation);
+                EntitySetRotation(left, rotation);
+                Entity_SyncPhysicsBody(scene, left);
+            }
+
+            if (sparse < (rs->sparseData + rs->numEntities-1) && sparse[+1].hasPrim)
+            {
+                Entity* right = &rs->entities[sparse[+1].id];
+                EntitySetRotation(right, rotation);
+                EntitySetRotation(right, rotation);
+                Entity_SyncPhysicsBody(scene, right);
+            }
+        }
     }
 }
 

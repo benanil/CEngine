@@ -626,28 +626,12 @@ static inline int StringLengthSafe(const char* s, size_t maxLen)
 // capacity 
 static inline u32 U16SetGetEmptyRange(const u16* set, u32 capacity, u32 count)
 {
-    // if (count > capacity || capacity < 8)
-    //     return UINT32_MAX;
-    
-    // for (s32 i = 0, free_streak = 0; i < capacity; i++)
-    // {
-    //     if (set[i] != 0) {
-    //         if (free_streak++ == count) return i - count + 1;
-    //     } else free_streak = 0;
-    // }
-
-    u32 start = 0, pos = 0;
-    while (start + count <= capacity)
-    {
-        u32 base = Minu32(pos, capacity - 8);
-        u32 nonZero = (u32)~VeciMovemask8(VeciCmpEq16(VeciLoad(set + base), VeciZero())) & 0xFFFF;
-        nonZero >>= (pos - base) * 2;
-        u32 end = nonZero ? pos + (TrailingZeroCount32(nonZero) >> 1) : base + 8;
-        if (end - start >= count)
-            return start;
-        if (nonZero)
-            start = end + 1;
-        pos = nonZero ? start : end;
+    for (u32 i = 0, streak = 0; i < capacity; i++) {
+        if (set[i] == 0) {
+            if (++streak == count) 
+                return i - count + 1;
+        }
+        else streak = 0; 
     }
     return UINT32_MAX;
 }

@@ -203,12 +203,8 @@ v128f  B3ToQuat(b3Quat q) {
 
 b3Quat ToB3Quat(v128f q)
 {
-    f32 lenSq = VecGetX(VecLenSq(q));
-    if (!(lenSq > 1.0e-12f) || lenSq > 1.0e12f)
-        return b3Quat_identity;
-
-    q = VecDivf(q, Sqrtf(lenSq));
     b3Quat res;
+    q = QNorm(q);
     VecStore(&res.v.x, q);
     return res;
 }

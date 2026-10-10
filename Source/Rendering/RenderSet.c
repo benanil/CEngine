@@ -467,7 +467,6 @@ u32 AddBundleAsScene(RenderSet* set, u32 bundleIdx, u32 sparseStart, const Entit
             EntitySetSparseID(added, sparseId);
             set->entities[denseId] = *added;
             SparseData* sparseData = &set->sparseData[sparseId];
-            sparseData->parent = n - parent;
             sparseData->id = denseId;
             continue;
         }
@@ -496,7 +495,6 @@ u32 AddBundleAsScene(RenderSet* set, u32 bundleIdx, u32 sparseStart, const Entit
             set->entities[denseIdx] = prim;
 
             SparseData* sparseData = &set->sparseData[sparseId];
-            sparseData->parent = n - parent;
             sparseData->id = denseIdx;
             sparseData->hasPrim = p < mesh->numPrimitives - 1;
             // todo(anil) move this outside of loop (optimization)
@@ -512,6 +510,7 @@ u32 AddBundleAsScene(RenderSet* set, u32 bundleIdx, u32 sparseStart, const Entit
         SparseData* sparseData = &set->sparseData[sparseStart + sparseCursor2];
         sparseData->subNodeCount  = node->numChildren; 
         sparseData->subNodeOffset = U16SetGetEmptyRange(set->subNodes, set->numEntities, sparseData->subNodeCount);
+        sparseData->parent = node->parent == -1 ? 0 : sparseCursor2 - nodeSparseMapper[node->parent];
         for (s32 s = 0; s < sparseData->subNodeCount; s++)
         {
             set->subNodes[sparseData->subNodeOffset + s] = (u16)(nodeSparseMapper[node->children[s]] - sparseCursor2);
@@ -525,6 +524,7 @@ u32 AddBundleAsScene(RenderSet* set, u32 bundleIdx, u32 sparseStart, const Entit
 
     nodeEntities--;
     ArenaPopGlobal(((u32)numNodes + 1u) * sizeof(Entity)); // nodeEntities
+    ArenaPopGlobal(numNodes * sizeof(u16)); // nodesparseMapper
     return sparseCursor;
 }
 
