@@ -10,7 +10,7 @@
 		<IsFolder>false</IsFolder>
 		<UseVisualStudioEnvBat>false</UseVisualStudioEnvBat>
 		<CaptureExeOutput>false</CaptureExeOutput>
-		<AllowAutoErrorUnderlining>true</AllowAutoErrorUnderlining>
+		<AllowAutoErrorUnderlining_v3>true</AllowAutoErrorUnderlining_v3>
 		<Configurations>
 			<Configuration>Release</Configuration>
 			<Configuration>Debug</Configuration>
