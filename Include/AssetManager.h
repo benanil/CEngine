@@ -70,7 +70,8 @@ typedef struct MeshBuilder_
     float3* normals;
     v128f*  tangents;
     u32*    indices;
-    
+    const char* name;
+
     SceneBundle*   bundle;
     APrimitive*    primitive;
     Pow2Allocator* alloc;

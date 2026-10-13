@@ -11,8 +11,15 @@
 #include "Include/Camera.h"
 #include "Include/Rendering.h"
 #include "Include/Platform.h"
+#include "Include/Slug.h"
 #include "Math/Quaternion.h"
 #include "Math/Bitpack.h"
+#include "Math/Color.h"
+
+#define GIZMO_HOT_COLOR    0xFF00FFFFu
+#define GIZMO_CENTER_COLOR 0xFFCCCCCCu
+#define GIZMO_MAX_TARGETS 2048
+#define GIZMO_MAX_MEMBERS 2048
 
 typedef enum GizmoMode_
 {
@@ -21,8 +28,7 @@ typedef enum GizmoMode_
     GizmoMode_Scale
 } GizmoMode;
 
-enum
-{
+typedef enum GizmoAxis_ {
     GizmoAxis_None    = -1,
     GizmoAxis_X       = 0,
     GizmoAxis_Y       = 1,
@@ -31,12 +37,7 @@ enum
     GizmoAxis_PlaneX  = 4, // plane normal x, drags on yz
     GizmoAxis_PlaneY  = 5,
     GizmoAxis_PlaneZ  = 6
-};
-
-
-enum { GIZMO_MAX_TARGETS = 2048 };
-static EntityID gizmoTargets[GIZMO_MAX_TARGETS];
-static u32 gizmoNumTargets;
+} GizmoAxis;
 
 // one entity of the manipulated objects, captured fresh every idle frame and frozen
 // during a drag
@@ -51,11 +52,6 @@ typedef struct GizmoMember_
     v128f localCenter; // group aabb center in entity local space
     v128f startCenter; // world aabb center
 } GizmoMember;
-
-enum { GIZMO_MAX_MEMBERS = 2048 };
-static GizmoMember gizmoMembers[GIZMO_MAX_MEMBERS];
-static u32 gizmoNumMembers;
-static f32 gizmoFocusRadius; // rough world radius of the selection, for camera focus
 
 typedef struct GizmoState_
 {
@@ -72,11 +68,15 @@ typedef struct GizmoState_
 } GizmoState;
 
 static GizmoState gizmo = { .hotAxis = GizmoAxis_None };
+static GizmoMember gizmoMembers[GIZMO_MAX_MEMBERS];
+static u32 gizmoNumMembers;
+static f32 gizmoFocusRadius; // rough world radius of the selection, for camera focus
+static EntityID gizmoTargets[GIZMO_MAX_TARGETS];
+static u32 gizmoNumTargets;
 
 static const u32 kGizmoAxisColors[3] = { 0xFF0000FFu, 0xFF00FF00u, 0xFFFF0000u }; // r g b
-#define GIZMO_HOT_COLOR    0xFF00FFFFu
-#define GIZMO_CENTER_COLOR 0xFFCCCCCCu
 
+extern WindowState g_WindowState;
 /*//////////////////////////////////////////////////////////////////////////*/
 /*                                Targets                                   */
 /*//////////////////////////////////////////////////////////////////////////*/
@@ -140,6 +140,7 @@ bool EditorGizmoDuplicateSelected(void)
         else {
             Entity copy = *target;
             EntitySetPositionV(&copy, pos);
+            EntitySetSparseID(&copy, RenderSet_AllocateSparseID(set));
             sparse = RenderSet_AddEntity(set, EntityGetPrimitiveID(target), &copy);
         }
         newTargets[numNewTargets++] = EntityIDFromSparseData(scene, sparse);
@@ -413,7 +414,8 @@ static void GizmoApplyMembers(Scene* scene, const v128f axes[3], f32 mouseY)
 
             // the member's center orbits the shared pivot, then its own center pins
             // to that location: T = C' - R' * (localCenter * worldScale)
-            v128f newCenter = VecAdd(QMulVec3V(VecSub(startCenter, pivot), deltaQ), pivot);
+            v128f newPivot = gizmo.localSpace ? startCenter : pivot;
+            v128f newCenter = VecAdd(QMulVec3V(VecSub(startCenter, newPivot), deltaQ), newPivot);
             v128f worldScale = VecMulf(member->startScale01, 10.0f);
             EntitySetPositionV(entity, VecSub(newCenter, QMulVec3V(VecMul(localCenter, worldScale), newQ)));
         }
@@ -468,6 +470,8 @@ bool EditorGizmoUpdate(Camera* camera)
         EditorGizmoClear();
         return false;
     }
+    static float transientTime = 0.0f;
+    static char transientText[128] = { 0 };
 
     if (GetKeyPressed('1')) gizmo.mode = GizmoMode_Translate;
     if (GetKeyPressed('2')) gizmo.mode = GizmoMode_Rotate;
@@ -475,7 +479,19 @@ bool EditorGizmoUpdate(Camera* camera)
     if (GetKeyPressed('g'))
     {
         gizmo.localSpace = !gizmo.localSpace;
-        AX_LOG("gizmo space: %s", gizmo.localSpace ? "local" : "global");
+        transientTime = 2.0f;
+        const char* space = gizmo.localSpace ? "local\0" : "global\0";
+        AX_LOG("gizmo space: %s", space);
+        MemCopy(transientText, space, StringLength(space)+1);
+    }
+
+    if (transientTime > 0.0f)
+    {
+        transientTime -= GetDeltaTime();
+        u32 w = g_WindowState.prev_width, h = g_WindowState.prev_height;
+        s32 textLen = StringLength(transientText);
+        float2 txtSz = SlugCalcTextSizeN(NULL, transientText, textLen, 32.0f);
+        SlugAppendText2DN(NULL, transientText, textLen, (float2){ (w * 0.5f) - (txtSz.x * 0.5f), h * 0.8f }, 32.0f, UCOLOR_GREEN);
     }
 
     // while idle re-collect the members and the merged center every frame, a drag works

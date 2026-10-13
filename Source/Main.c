@@ -107,10 +107,10 @@ static void MainLoopTick(void)
 
     EditorSceneHotkeys();
     
+    UIBeginFrame();
+
     if (!TerrainEditorUpdate(&g_Camera) && !EditorGizmoUpdate(&g_Camera) && !EditorLightGizmoUpdate(&g_Camera))
         EditorPickingUpdate(&g_Camera);
-
-    UIBeginFrame();
 
     tUpdate();
     Gameplay_Update();

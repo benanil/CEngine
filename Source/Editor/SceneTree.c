@@ -78,7 +78,7 @@ static void SceneNodeTree(const RenderSet* set, SparseData* sparse, u32 depth)
     sceneTreeRowBudget--;
 
     EntityID entityId = EntityIDFromSparseData(set->hookScene, sparse);
-    Clay_ElementId id = Clay_GetElementIdWithIndex(CLAY_STRING("SceneTreeNode"), (u32)(u64)set * 0x10000u + (u32)entityId);
+    Clay_ElementId id = Clay_GetElementIdWithIndex(CLAY_STRING("SceneTreeNode"), (u32)(u64)set + (u32)(u64)sparse + (u32)entityId);
 
     u32 flags = 0u;
     if (sparse->subNodeCount <= 0) flags |= UITreeNodeFlags_Leaf;

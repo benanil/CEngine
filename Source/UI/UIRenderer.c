@@ -729,7 +729,6 @@ void UISectionHeader(const char* title)
     }));
 }
 
-
 void UIText(const char* text)
 {
     u32 len = (u32)StringLength(text);

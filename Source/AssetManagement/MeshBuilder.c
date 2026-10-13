@@ -1,7 +1,7 @@
 #include "Include/AssetManager.h"
 #include "Math/Quaternion.h"
 
-static APrimitive* PrepareSingleMeshBundle(SceneBundle* result, u32 numVertex, s32 numIndex)
+static APrimitive* PrepareSingleMeshBundle(SceneBundle* result, u32 numVertex, s32 numIndex, const char* name)
 {
     MemSet(result, 0x0, sizeof(SceneBundle));
     Pow2Allocator* allocator = AllocTLSF(sizeof(Pow2Allocator));
@@ -24,6 +24,7 @@ static APrimitive* PrepareSingleMeshBundle(SceneBundle* result, u32 numVertex, s
 
     result->numMeshes = 1;
     AMesh* mesh = result->meshes = (AMesh*)Pow2Alloc(allocator, sizeof(AMesh));
+    mesh->name = name;
     result->totalPrimitives = mesh->numPrimitives = 1;
     APrimitive* primitive = mesh->primitives = (APrimitive*)Pow2Alloc(allocator, sizeof(APrimitive));
     primitive->mode = 4; // triangle
@@ -33,11 +34,11 @@ static APrimitive* PrepareSingleMeshBundle(SceneBundle* result, u32 numVertex, s
     return primitive;
 }
 
-MeshBuilder MeshBuilder_Create(s32 numVertex, s32 numIndex)
+MeshBuilder MeshBuilder_Create(s32 numVertex, s32 numIndex, const char* name)
 {
     MeshBuilder b;
     b.bundle    = (SceneBundle*)AllocTLSF(sizeof(SceneBundle));
-    b.primitive = PrepareSingleMeshBundle(b.bundle, numVertex, numIndex);
+    b.primitive = PrepareSingleMeshBundle(b.bundle, numVertex, numIndex, name);
     b.alloc     = (Pow2Allocator*)b.bundle->allocator;
     b.positions = (float3*)(b.primitive->Attributes[AAttribIdx_POSITION]   = Pow2AllocArray(b.alloc, float3, numVertex));
     b.texCoords = (float2*)(b.primitive->Attributes[AAttribIdx_TEXCOORD_0] = Pow2AllocArray(b.alloc, float2, numVertex));
@@ -52,7 +53,7 @@ SceneBundle* GenerateGrid(float segmentSize, u32 ver, u32 hor)
 {
     const u32 numVertex = (ver + 1) * (hor + 1);
     const u32 numIndex  = ver * hor * 2 * 3;
-    MeshBuilder b = MeshBuilder_Create(numVertex, numIndex);
+    MeshBuilder b = MeshBuilder_Create(numVertex, numIndex, GetPrimitiveName(MeshType_Grid));
     for (u32 x = 0u; x <= ver; x++)
     {
         f32 uvX = (f32)x / (f32)(ver);
@@ -88,7 +89,7 @@ SceneBundle* GenerateCylinder(float radius, float height, u32 sliceCount)
 {
     const u32 numVertex = sliceCount * 2 + 2; // + 2 is up and down centers. * 2 is for top and bottom circles
     const u32 numIndex  = sliceCount * 12; 
-    MeshBuilder b = MeshBuilder_Create(numVertex, numIndex);
+    MeshBuilder b = MeshBuilder_Create(numVertex, numIndex, GetPrimitiveName(MeshType_Cylinder));
     // Bottom center
     b.positions[0] = F3Zero();
     b.texCoords[0] = (float2){ 0, 1.0f };
@@ -148,7 +149,7 @@ SceneBundle* GenerateCube(float size)
 {
     const u32 numVertex = 24, numIndex = 36;
     const f32 h = size * 0.5f;
-    MeshBuilder b = MeshBuilder_Create(numVertex, numIndex);
+    MeshBuilder b = MeshBuilder_Create(numVertex, numIndex, GetPrimitiveName(MeshType_Cube));
 
     // Positions for 6 faces (4 vertices each)
     const float3 positions[24] = {
@@ -216,7 +217,7 @@ SceneBundle* GenerateCone(float height, float radius, u32 sliceCount)
 {
     const u32 numVertex = 2 + sliceCount;
     const u32 numIndex = sliceCount * 3 * 2; // side + bottom
-    MeshBuilder b = MeshBuilder_Create(numVertex, numIndex);
+    MeshBuilder b = MeshBuilder_Create(numVertex, numIndex, GetPrimitiveName(MeshType_Cone));
     // Bottom center
     b.positions[0] = F3Zero();
     b.texCoords[0] = (float2){ 0, 1.0f };
@@ -266,7 +267,7 @@ SceneBundle* GenerateCapsule(float radius, float height, u32 sliceCount)
     const u32 numVertex = ringCount * sliceCount + 2;
     const u32 numIndex  = ringCount * sliceCount * 6;
     const f32 halfHeight = height * 0.5f;
-    MeshBuilder b = MeshBuilder_Create(numVertex, numIndex);
+    MeshBuilder b = MeshBuilder_Create(numVertex, numIndex, GetPrimitiveName(MeshType_Capsule));
 
     // Bottom pole
     b.positions[0] = (float3){ 0, -halfHeight - radius, 0 };
@@ -359,7 +360,7 @@ SceneBundle* GenerateSphere(float radius, u32 ringCount, u32 sliceCount)
     u32 ringVertexCount = sliceCount + 1;
     s32 numVertex = steps * ringVertexCount;
     s32 numIndex = (ringCount - 1) * sliceCount * 6;
-    MeshBuilder b = MeshBuilder_Create(numVertex, numIndex);
+    MeshBuilder b = MeshBuilder_Create(numVertex, numIndex, "Sphere");
     u32 vertIdx = 0;
     float dTheta = 2.0f * MATH_PI / (float)sliceCount;
 
