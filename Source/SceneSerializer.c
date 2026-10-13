@@ -14,7 +14,7 @@
 #include "Include/ParallelFor.h"
 #include "Math/Bitpack.h"
 
-#define SCENE_FILE_VERSION 8
+#define SCENE_FILE_VERSION 9
 
 // first descriptors of a texture system are the built in defaults (TextureSystem.c)
 enum { SceneSer_DefaultDescriptors = 4 };
@@ -98,7 +98,7 @@ static SceneBundle* ReadProceduralBundle(AFile file, s32 version, char* nameBuff
     ParsePositiveNumber(line, &numIndex);
     MeshBuilder builder = MeshBuilder_Create(numVertex, numIndex);
     s32 nameLen = AFileReadLine(nameBuffer, 1024, file);
-    nameBuffer[nameLen] = '/0';
+    nameBuffer[nameLen] = '\0';
     
     ReadPrimitiveBuffer(file, builder.positions);
     ReadPrimitiveBuffer(file, builder.texCoords);
@@ -140,7 +140,7 @@ s32 SceneSerializer_Save(Scene* scene, const char* path)
     AFile file = AFileOpen(tmpPath, AOpenFlag_WriteBinary);
     if (!AFileExist(file)) return 0;
 
-    char line[1024];
+    char* line = ArenaAllocGlobal(1024 * 1024);
     char* p;
 
     p = WStr(line, "axscene");
@@ -282,7 +282,7 @@ s32 SceneSerializer_Save(Scene* scene, const char* path)
                 p = WInt(p, (s64)sparseData->subNodeCount);
                 for (s32 i = 0; i < sparseData->subNodeCount; i++)
                     p = WInt(p, set->subNodes[sparseData->subNodeOffset + i]);
-                
+                p = WInt(p, (s64)sparseData->parent);
                 WEnd(file, line, p);
             }
         }
@@ -338,6 +338,7 @@ s32 SceneSerializer_Save(Scene* scene, const char* path)
             p = WInt(p, (s64)set->subNodes[i]);
     }
 
+    ArenaPopGlobal(1024 * 1024); // line
     AFileClose(file);
     RemoveFile(path);
     RenameFile(tmpPath, path);
@@ -587,6 +588,11 @@ static s32 ParseSceneFile(const char* path, SceneFileData* data)
             }
             else 
                 record->subNodeOffset = record->subNodeCount = 0;
+
+            if (version >= 9)
+                p = RU32(p, &record->parent);
+            else
+                record->parent = 0;
         }
     }
 
@@ -812,6 +818,7 @@ s32 SceneSerializer_Load(Scene* scene, const char* path, SceneFileData* data)
             SparseData* sparseData = &set->sparseData[record->sparseIdx];
             sparseData->subNodeOffset = record->subNodeOffset;
             sparseData->subNodeCount = record->subNodeCount;
+            sparseData->parent = (u16)record->parent;
             sparseData->id = denseIdx;
 
             if (isSkinned)

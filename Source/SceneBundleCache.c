@@ -3,6 +3,7 @@
 #include "Include/SceneSerializer.h"
 #include "Include/Scene.h"
 #include "Include/Async.h"
+#include "Include/ParallelFor.h"
 #include "Include/Graphics.h"
 #include "Include/Memory.h"
 #include "Include/Platform.h"

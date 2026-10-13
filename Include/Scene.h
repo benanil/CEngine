@@ -5,7 +5,9 @@
 #include "TextureSystem.h"
 #include "Animation.h"
 #include "Async.h"
+
 #include <SDL3/SDL_atomic.h>
+
 #include <box3d/id.h>
 #include <box3d/math_functions.h>
 #include <box3d/types.h>
@@ -142,6 +144,7 @@ typedef struct SceneEntRecord_
     u32   primGroupIdx;
     u32   sparseIdx;
     u32   flags;
+    u32   parent;
     u32   subNodeOffset;
     u32   subNodeCount;
 } SceneEntRecord;
@@ -323,6 +326,31 @@ bool FindCacheForSceneBundle(const Scene* scene, u32 bundleIdx, BundleCacheEntry
 
 bool SceneAsyncBegin(SceneAsyncOp op, const char* path, const char* taskName, SceneAsyncRequestCallback callback);
 
+static inline bool Scene_SparseDataIsSkinned(const Scene* scene, const SparseData* sparse)
+{
+    SparseData* skinnedSparse = scene->skinnedSet.sparseData;
+    return (sparse >= skinnedSparse) && 
+           (sparse < (skinnedSparse + scene->skinnedSet.maxEntities));
+}
+
+static inline EntityID EntityIDFromSparseData(const Scene* scene, const SparseData* sparse)
+{
+    bool isSkinned = Scene_SparseDataIsSkinned(scene, sparse);
+    const RenderSet* rs = isSkinned ? &scene->skinnedSet : &scene->surfaceSet;
+    return (u32)(sparse - rs->sparseData) | (sparse->gen << 24) | ((u32)isSkinned << 31);
+}
+
+static inline Entity* Scene_GetEntity(const Scene* scene, EntityID id)
+{
+    const RenderSet* rs = (id >> 31) ? &scene->skinnedSet : &scene->surfaceSet;
+    return RenderSet_GetEntity(rs, id);
+}
+
+static inline void Scene_RemoveEntity(Scene* scene, EntityID id)
+{
+    ASSERT(0);
+}
+
 /////////////////////////////
 //         PHYSICS         //
 /////////////////////////////
@@ -420,4 +448,3 @@ purefn b3Quat EntityGetB3Quat(const Entity* e) {
 }
 
 #endif // SCENE_H
-

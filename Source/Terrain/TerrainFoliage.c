@@ -597,7 +597,7 @@ static void IntegrateFinishedFoliage(u32 scheduledCount)
     u32* primitiveCounts = ArenaAllocGlobal(set->numGroups * sizeof(u32));
     u32 totalEntityAdded = 0;
     u32 totalEntityRemoved = 0;
-    MemSet32(primitiveCounts, 0, set->numGroups);
+    MemSet32((s32*)primitiveCounts, 0, set->numGroups);
 
     for (u32 i = 0; i < scheduledCount; i++)
     {
@@ -653,7 +653,7 @@ static void IntegrateFinishedFoliage(u32 scheduledCount)
     for (u32 i = 0; i < scheduledCount; i++)
     {
         tChunk* chunk = resolvedChunks[i];
-        if (!chunk || !chunk->foliageEntities) continue;
+        if (!chunk) continue;
         tFoliageJob* job = &gFoliage.jobs[i];
 
         for (u32 p = 0; p < job->count; p++)

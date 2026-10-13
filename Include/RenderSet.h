@@ -109,17 +109,30 @@ static inline void PrimitiveGroup_SetAABB(PrimitiveGroup* group, v128f aabbMin, 
     group->aabbMax = aabbMax;
 }
 
-static inline Entity* RenderSet_GetEntity(RenderSet* rs, EntityID entityID)
+static inline bool EntityIDIsSkinned(EntityID id) { return (id >> 31u); }
+
+static inline u32 EntityIDGen(EntityID id) { return (id >> 24) & 0x7u; }
+
+static inline u32 EntityIDSparse(EntityID id) { return id & 0x00FFFFFFu; }
+
+static inline bool RenderSet_EntityExpired(const RenderSet* rs, EntityID entityID)
+{
+    if (AX_UNLIKELY((entityID & INVALID_ENTITY) == INVALID_ENTITY)) return true;
+    SparseData sparse = rs->sparseData[entityID & 0x00FFFFFFu];
+    return sparse.id == INVALID_ENTITY || sparse.gen != EntityIDGen(entityID);
+}
+
+static inline Entity* RenderSet_GetEntity(const RenderSet* rs, EntityID entityID)
 {
     if (AX_UNLIKELY((entityID & INVALID_ENTITY) == INVALID_ENTITY)) return NULL;
     SparseData sparse = rs->sparseData[entityID & 0x00FFFFFFu];
-    if (sparse.id == INVALID_ENTITY || sparse.gen != (entityID >> 24)) return NULL; // unmapped entity likely deleted
+    if (sparse.id == INVALID_ENTITY || sparse.gen != EntityIDGen(entityID)) return NULL; // unmapped entity likely deleted
     return &rs->entities[sparse.id];
 }
 
-static inline EntityID EntityIDFromSparseData(RenderSet* rs, const SparseData* sparse)
+static inline u32 EntityGetBundleId(const RenderSet* rs, const Entity* entity)
 {
-    return (u32)(sparse - rs->sparseData) | (sparse->gen << 24);
+    return rs->primitiveGroups[EntityGetPrimitiveID(entity)].bundleIdx;
 }
 
 v128f RenderSet_GroupLocalCenter(const PrimitiveGroup* group);
