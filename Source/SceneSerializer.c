@@ -331,13 +331,6 @@ s32 SceneSerializer_Save(Scene* scene, const char* path)
         }
     }
 
-    for (u32 s = 0; s < 2u; s++)
-    {
-        const RenderSet* set = s == 0u ? &scene->surfaceSet : &scene->skinnedSet;
-        for (s32 i = 0; i < set->numEntities; i++)
-            p = WInt(p, (s64)set->subNodes[i]);
-    }
-
     ArenaPopGlobal(1024 * 1024); // line
     AFileClose(file);
     RemoveFile(path);
@@ -558,7 +551,7 @@ static s32 ParseSceneFile(const char* path, SceneFileData* data)
         RU32(p, &data->numEntities[s]);
         if (setIdx != s || data->numEntities[s] > (s == 1u ? MAX_ANIM_INSTANCES : MAX_ENTITY)) goto fail;
         data->entities[s] = (SceneEntRecord*)AllocTLSF(Maxu32(data->numEntities[s], 1u) * sizeof(SceneEntRecord));
-        data->subNodes[s] = AllocTLSFArray(u16, data->numEntities[s]);
+        data->subNodes[s] = AllocZeroTLSFGlobal(data->numEntities[s] * sizeof(u16));
         u32 subNodeOffset = 0;
         for (u32 i = 0; i < data->numEntities[s]; i++)
         {

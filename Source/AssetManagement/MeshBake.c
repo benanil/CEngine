@@ -108,6 +108,7 @@ static void IndicesForPrimitive(APrimitive* primitive, u32* currIndices, const u
         return;
     }
     const u8* beforeCopy = (const u8*)primitive->indices;
+    primitive->indices = currIndices;
     s32 indexSize = GraphicsTypeToSize(primitive->indexType);
 
     for (s32 i = 0; i < primitive->numIndices; i++)

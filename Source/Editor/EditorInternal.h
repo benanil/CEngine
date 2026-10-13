@@ -8,6 +8,21 @@
 extern "C" {
 #endif
 
+typedef struct SceneObjectSelection_
+{
+    bool valid;
+    u32 skinned;
+
+    u32 groupIdx;
+    u32 bundleIdx;
+    u32 entityIdx;
+
+    u32 animIdx;
+    f32 animTime;
+} SceneObjectSelection;
+
+extern u32 sceneSelectedEntity;
+
 // implemented in SceneEditor.c
 void DrawSceneWindow(bool* open);
 void DrawTexturesWindow(bool* open);
@@ -36,8 +51,8 @@ bool   EditorSceneViewPointVisible(float2 point); // screen point shows the scen
 
 // implemented in EditorGizmo.c, update returns true while the gizmo owns the mouse.
 // AddTarget toggles the object in the multi selection (ctrl click)
-void EditorGizmoSetTarget(u32 skinned, u32 groupIdx, u32 entityIdx);
-void EditorGizmoAddTarget(u32 skinned, u32 groupIdx, u32 entityIdx);
+void EditorGizmoSetTarget(u32 id);
+void EditorGizmoAddTarget(u32 id);
 void EditorGizmoClear(void);
 bool EditorGizmoDuplicateSelected(void);
 bool EditorGizmoDeleteSelected(void);
@@ -55,6 +70,26 @@ bool TerrainEditorUpdate(struct Camera_* camera);
 // recorded from startup even while the window is closed
 void EditorConsoleInit(void);
 void DrawConsoleWindow(bool* open);
+
+bool SceneRowRightClicked(Clay_ElementId id);
+bool EditorImportNeedsDetailWarning(const char* normalizedPath);
+
+void SceneSavePopup(void);
+void SceneSaveConfirmPopup(void);
+void SceneDeletePopup(void);
+
+void SceneTreeRender(struct Scene_* scene, Clay_ElementId windowId);
+
+void SceneInspectorUI(struct Scene_* scene);
+
+void SceneLightsUI(struct Scene_* scene);
+
+void SceneEventDeleteBundle(void* unused);
+void SceneEventDuplicateBundle(void* unused);
+void SceneEventDeleteNode(void* unused);
+void SceneDeleteSelectedObject(void);
+
+void SceneImportDetailPopup(void);
 
 #if defined(__cplusplus)
 }

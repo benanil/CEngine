@@ -221,9 +221,9 @@ void SetMouseWindowPos(float x, float y)
 }
 
 u8 AnyKeyDown()          { return PopCount512(DownKeys) > 0; }
-u8 GetKeyDown(s32 c)     { return BitsetGet(DownKeys    , GetRealKey(c) & 511); }
-u8 GetKeyReleased(s32 c) { return BitsetGet(ReleasedKeys, GetRealKey(c) & 511); }
-u8 GetKeyPressed(s32 c)  { return BitsetGet(PressedKeys , GetRealKey(c) & 511); }
+u8 GetKeyDown(SDLK c)     { return BitsetGet(DownKeys    , GetRealKey(c) & 511); }
+u8 GetKeyReleased(SDLK c) { return BitsetGet(ReleasedKeys, GetRealKey(c) & 511); }
+u8 GetKeyPressed(SDLK c)  { return BitsetGet(PressedKeys , GetRealKey(c) & 511); }
 
 float2 GetMovementAxis()
 {

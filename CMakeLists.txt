@@ -138,6 +138,12 @@ target_sources(${EXECUTABLE_NAME} PRIVATE
     Source/Editor/TerrainEditor.c
     Source/Editor/ConsoleEditor.c
     Source/Editor/EditorGizmo.c
+    Source/Editor/Lights.c
+    Source/Editor/Inspector.c
+    Source/Editor/SceneTree.c
+    Source/Editor/ImportDetail.c
+    Source/Editor/TexturesWindow.c
+    Source/Editor/PopupWindows.c
 
     Source/Rendering/Graphics.c
     Source/Rendering/Rendering.c
@@ -191,11 +197,15 @@ target_include_directories(${EXECUTABLE_NAME} PRIVATE
     Extern/basis_universal/transcoder
 )
 
-target_compile_options(${EXECUTABLE_NAME} PRIVATE
-    $<$<CXX_COMPILER_ID:Clang>:/arch:AVX2>
-    $<$<C_COMPILER_ID:Clang>:/arch:AVX2>
-    #$<$<CONFIG:Release>:/fsanitize=address>
-)
+if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
+    target_compile_options(${EXECUTABLE_NAME} PRIVATE -mavx2 -mf16c -mfma)
+elseif(MSVC)
+    target_compile_options(${EXECUTABLE_NAME} PRIVATE /arch:AVX2)
+endif()
+
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm")
+    target_compile_options(${EXECUTABLE_NAME} PRIVATE -mfpu=neon)
+endif()
 
 #target_link_options(${EXECUTABLE_NAME} PRIVATE $<$<CONFIG:Release>:/fsanitize=address>)
 
@@ -215,7 +225,6 @@ endif()
 # Link SDL to our executable. This also makes its include directory available to us. 
 if(WIN32)
     target_link_libraries(${EXECUTABLE_NAME} PUBLIC Dbghelp) # crash handler stack walk
-    target_link_options(${EXECUTABLE_NAME} PRIVATE /MAP)     # rva -> symbol mapping for release crashes
 endif()
 
 target_link_libraries(${EXECUTABLE_NAME} PUBLIC SDL3::SDL3) # If using satelite libraries, SDL must be the last item in the list.
@@ -228,3 +237,9 @@ target_link_libraries(${EXECUTABLE_NAME} PRIVATE box3d::box3d)
 set_property(TARGET ${EXECUTABLE_NAME} PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
 # on Visual Studio, set our app as the default project
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT "${EXECUTABLE_NAME}")
+
+# cmake --build Build/Clang --parallel
+# cmake -S . -B Build/Clang -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Release
+
+# cmake -S . -B Build/GCC -G Ninja -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DCMAKE_BUILD_TYPE=Release
+# cmake --build Build/GCC --parallel

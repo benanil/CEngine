@@ -33,16 +33,9 @@ enum
     GizmoAxis_PlaneZ  = 6
 };
 
-// one picked object, the sparse id resolves through groupIdx/entityIdx every frame
-typedef struct GizmoTarget_
-{
-    u32 skinned;
-    u32 groupIdx;
-    u32 entityIdx;
-} GizmoTarget;
 
 enum { GIZMO_MAX_TARGETS = 2048 };
-static GizmoTarget gizmoTargets[GIZMO_MAX_TARGETS];
+static EntityID gizmoTargets[GIZMO_MAX_TARGETS];
 static u32 gizmoNumTargets;
 
 // one entity of the manipulated objects, captured fresh every idle frame and frozen
@@ -51,7 +44,7 @@ typedef struct GizmoMember_
 {
     u32 skinned;
     u32 groupIdx;
-    u32 entityIdx;
+    EntityID entityID;
     v128f startPos;
     v128f startRot;
     v128f startScale01;  // stored 0..1 form
@@ -84,13 +77,6 @@ static const u32 kGizmoAxisColors[3] = { 0xFF0000FFu, 0xFF00FF00u, 0xFFFF0000u }
 #define GIZMO_HOT_COLOR    0xFF00FFFFu
 #define GIZMO_CENTER_COLOR 0xFFCCCCCCu
 
-typedef struct GizmoDuplicateRecord_
-{
-    u32 skinned;
-    u32 groupIdx;
-    Entity entity;
-} GizmoDuplicateRecord;
-
 /*//////////////////////////////////////////////////////////////////////////*/
 /*                                Targets                                   */
 /*//////////////////////////////////////////////////////////////////////////*/
@@ -104,44 +90,30 @@ void EditorGizmoClear(void)
     RendererClearOutlineTarget();
 }
 
-void EditorGizmoSetTarget(u32 skinned, u32 groupIdx, u32 entityIdx)
+void EditorGizmoSetTarget(EntityID id)
 {
     gizmoNumTargets = 1;
-    gizmoTargets[0] = (GizmoTarget){ skinned, groupIdx, entityIdx };
+    gizmoTargets[0] = id;
     gizmo.dragging = false;
     gizmo.hotAxis = GizmoAxis_None;
 }
 
-// out: the sparse id of a target, INVALID_ENTITY when it no longer resolves
-static u32 GizmoTargetSparseId(const Scene* scene, const GizmoTarget* target)
-{
-    const RenderSet* set = target->skinned ? &scene->skinnedSet : &scene->surfaceSet;
-    if (target->groupIdx >= set->numGroups) return INVALID_ENTITY;
-    const PrimitiveGroup* group = &set->primitiveGroups[target->groupIdx];
-    if (target->entityIdx >= group->numEntities) return INVALID_ENTITY;
-    return EntityGetSparseID(&set->entities[group->entityOffset + target->entityIdx]);
-}
-
 // ctrl click: toggles the object in the selection
-void EditorGizmoAddTarget(u32 skinned, u32 groupIdx, u32 entityIdx)
+void EditorGizmoAddTarget(EntityID id)
 {
     Scene* scene = GetActiveScene();
     if (!scene) return;
 
-    GizmoTarget added = (GizmoTarget){ skinned, groupIdx, entityIdx };
-    u32 addedSparse = GizmoTargetSparseId(scene, &added);
-    if (addedSparse == INVALID_ENTITY) return;
-
     for (u32 i = 0; i < gizmoNumTargets; i++)
     {
-        if (gizmoTargets[i].skinned == skinned && GizmoTargetSparseId(scene, &gizmoTargets[i]) == addedSparse)
+        if (gizmoTargets[i] == id)
         {
             gizmoTargets[i] = gizmoTargets[--gizmoNumTargets]; // toggle off
             return;
         }
     }
     if (gizmoNumTargets < GIZMO_MAX_TARGETS)
-        gizmoTargets[gizmoNumTargets++] = added;
+        gizmoTargets[gizmoNumTargets++] = id;
 }
 
 bool EditorGizmoDuplicateSelected(void)
@@ -149,61 +121,31 @@ bool EditorGizmoDuplicateSelected(void)
     Scene* scene = GetActiveScene();
     if (!scene || gizmoNumTargets == 0u) return false;
 
-    static GizmoDuplicateRecord records[GIZMO_MAX_MEMBERS];
-    static GizmoTarget newTargets[GIZMO_MAX_TARGETS];
+    static EntityID newTargets[GIZMO_MAX_TARGETS];
     u32 numNewTargets = 0u;
-    bool duplicated = false;
 
     for (u32 t = 0u; t < gizmoNumTargets && numNewTargets < GIZMO_MAX_TARGETS; t++)
     {
-        GizmoTarget target = gizmoTargets[t];
-        RenderSet* set = target.skinned ? &scene->skinnedSet : &scene->surfaceSet;
-        u32 sparseIdx = GizmoTargetSparseId(scene, &target);
-        if (sparseIdx == INVALID_ENTITY) continue;
+        Entity* target = Scene_GetEntity(scene, gizmoTargets[t]);
+        if (!target) { AX_LOG("cannot duplicate entity!"); continue; }
 
-        u32 numRecords = 0u;
-        for (u32 g = 0u; g < set->numGroups && numRecords < GIZMO_MAX_MEMBERS; g++)
-        {
-            const PrimitiveGroup* group = &set->primitiveGroups[g];
-            for (u32 e = 0u; e < group->numEntities && numRecords < GIZMO_MAX_MEMBERS; e++)
-            {
-                const Entity* entity = &set->entities[group->entityOffset + e];
-                if (EntityGetSparseID(entity) != sparseIdx) continue;
-                records[numRecords++] = (GizmoDuplicateRecord){ target.skinned, g, *entity };
-            }
-        }
-        if (numRecords == 0u) continue;
-        u32 newSparse = RenderSet_AllocateSparseID(set);
-        if (newSparse == INVALID_ENTITY) continue;
-        bool targetSet = false;
-        for (u32 i = 0u; i < numRecords; i++)
-        {
-            GizmoDuplicateRecord* record = &records[i];
-            EntitySetSparseID(&record->entity, newSparse);
-            record->entity.position = VecAdd(record->entity.position, VecSetR(1.0f, 0.0f, 0.0f, 0.0f));
-            SparseData* sparseData = RenderSet_AddEntity(set, record->groupIdx, &record->entity);
-            if (sparseData == NULL) continue;
-            u32 denseIdx = sparseData->id;
-            PrimitiveGroup* group = &set->primitiveGroups[record->groupIdx];
-            if (!targetSet && denseIdx >= group->entityOffset)
-            {
-                newTargets[numNewTargets++] = (GizmoTarget){ target.skinned, record->groupIdx, denseIdx - group->entityOffset };
-                targetSet = true;
-            }
-        }
-        duplicated |= targetSet;
-        if (!targetSet) RenderSet_FreeSparseID(set, newSparse);
+        v128f pos = VecAdd(target->position, VecSetR(1.0f, 0.0f, 0.0f, 0.0f));
+        RenderSet* set = EntityIDIsSkinned(gizmoTargets[t]) ? &scene->skinnedSet : &scene->surfaceSet;
 
-        if (target.skinned)
-        {
-            // Ensure the new sparse slot has a deterministic animation assignment.
-            GPUAnimationInstance instance = { 0 };
-            AnimationSystem_SetInstance(&scene->animSystem, newSparse, instance);
+        SparseData* sparse;
+        if (GetKeyDown(SDLK_LSHIFT)) {
+            sparse = Scene_Spawn(scene, EntityGetBundleId(set, target), pos, EntityGetRotation(target), 
+                                 EntityGetScaleV(target), EntityGetFlags(target));
         }
+        else {
+            Entity copy = *target;
+            EntitySetPositionV(&copy, pos);
+            sparse = RenderSet_AddEntity(set, EntityGetPrimitiveID(target), &copy);
+        }
+        newTargets[numNewTargets++] = EntityIDFromSparseData(scene, sparse);
     }
 
-    if (!duplicated) return false;
-    MemCopy(gizmoTargets, newTargets, numNewTargets * sizeof(GizmoTarget));
+    MemCopy(gizmoTargets, newTargets, numNewTargets * sizeof(EntityID));
     gizmoNumTargets = numNewTargets;
     gizmo.hotAxis = GizmoAxis_None;
     scene->renderDataDirty = 1;
@@ -215,54 +157,14 @@ bool EditorGizmoDeleteSelected(void)
     Scene* scene = GetActiveScene();
     if (!scene || gizmoNumTargets == 0u) return false;
 
-    u32 surfaceSparse[GIZMO_MAX_TARGETS];
-    u32 skinnedSparse[GIZMO_MAX_TARGETS];
-    u32 numSurface = 0u;
-    u32 numSkinned = 0u;
-
     for (u32 t = 0u; t < gizmoNumTargets; t++)
     {
-        GizmoTarget* target = &gizmoTargets[t];
-        u32 sparseIdx = GizmoTargetSparseId(scene, target);
-        if (sparseIdx == INVALID_ENTITY) continue;
-
-        u32* list = target->skinned ? skinnedSparse : surfaceSparse;
-        u32* count = target->skinned ? &numSkinned : &numSurface;
-        bool exists = false;
-        for (u32 i = 0u; i < *count; i++)
-            if (list[i] == sparseIdx) exists = true;
-        if (!exists && *count < GIZMO_MAX_TARGETS)
-            list[(*count)++] = sparseIdx;
+        Scene_RemoveEntity(scene, gizmoTargets[t]);
     }
 
-    bool removed = false;
-    for (u32 pass = 0u; pass < 2u; pass++)
-    {
-        RenderSet* set = pass == 0u ? &scene->surfaceSet : &scene->skinnedSet;
-        u32* sparseList = pass == 0u ? surfaceSparse : skinnedSparse;
-        u32 sparseCount = pass == 0u ? numSurface : numSkinned;
-        if (sparseCount == 0u) continue;
+    RenderSet_CompactEntities(&scene->surfaceSet);
+    RenderSet_CompactEntities(&scene->skinnedSet);
 
-        for (s32 g = (s32)set->numGroups - 1; g >= 0; g--)
-        {
-            PrimitiveGroup* group = &set->primitiveGroups[g];
-            for (s32 e = (s32)group->numEntities - 1; e >= 0; e--)
-            {
-                Entity* entity = &set->entities[group->entityOffset + (u32)e];
-                for (u32 i = 0u; i < sparseCount; i++)
-                {
-                    if (EntityGetSparseID(entity) == sparseList[i])
-                    {
-                        RenderSet_RemoveEntity(set, (u32)g, (u32)e);
-                        removed = true;
-                        break;
-                    }
-                }
-            }
-        }
-    }
-
-    if (!removed) return false;
     gizmoNumTargets = 0u;
     gizmo.dragging = false;
     gizmo.hotAxis = GizmoAxis_None;
@@ -283,43 +185,35 @@ static u32 GizmoCollectMembers(Scene* scene, v128f* outCenter)
 
     for (u32 t = 0; t < gizmoNumTargets; t++)
     {
-        const GizmoTarget* target = &gizmoTargets[t];
-        RenderSet* set = target->skinned ? &scene->skinnedSet : &scene->surfaceSet;
-        u32 sparseIdx = GizmoTargetSparseId(scene, target);
-        if (sparseIdx == INVALID_ENTITY) continue;
-
-        for (u32 g = 0; g < set->numGroups && gizmoNumMembers < GIZMO_MAX_MEMBERS; g++)
-        {
-            const PrimitiveGroup* group = &set->primitiveGroups[g];
-            v128f mn = group->aabbMin;
-            v128f mx = group->aabbMax;
-            v128f localCenter = VecMulf(VecAdd(mn, mx), 0.5f);
-            v128f localExtent = VecMulf(VecSub(mx, mn), 0.5f);
-            for (u32 e = 0; e < group->numEntities && gizmoNumMembers < GIZMO_MAX_MEMBERS; e++)
-            {
-                const Entity* entity = &set->entities[group->entityOffset + e];
-                if (EntityGetSparseID(entity) != sparseIdx) continue;
-
-                GizmoMember* member = &gizmoMembers[gizmoNumMembers++];
-                member->skinned = target->skinned;
-                member->groupIdx = g;
-                member->entityIdx = e;
-                member->startPos = entity->position;
-                member->startRot = EntityGetRotation(entity);
-                member->startScale01 = UnpackUnorm16x4(entity->scale);
-                member->localCenter = localCenter;
-
-                v128f worldScale = VecMulf(member->startScale01, 10.0f);
-                v128f rotation = member->startRot;
-                v128f center = VecAdd(QMulVec3V(VecMul(localCenter, worldScale), rotation), entity->position);
-                member->startCenter = center;
-                bmin = VecMin(bmin, center);
-                bmax = VecMax(bmax, center);
-
-                v128f worldExtent = VecMul(localExtent, worldScale);
-                gizmoFocusRadius = Maxf32(gizmoFocusRadius, Sqrtf(Vec3DotfV(worldExtent, worldExtent)));
-            }
-        }
+        EntityID target = gizmoTargets[t];
+        const RenderSet* set = EntityIDIsSkinned(target) ? &scene->skinnedSet : &scene->surfaceSet;
+        const Entity* entity = Scene_GetEntity(scene, target);
+        
+        if (entity == NULL) continue; // likely deleted
+        const PrimitiveGroup* group = &set->primitiveGroups[EntityGetPrimitiveID(entity)];
+        v128f mn = group->aabbMin;
+        v128f mx = group->aabbMax;
+        v128f localCenter = VecMulf(VecAdd(mn, mx), 0.5f);
+        v128f localExtent = VecMulf(VecSub(mx, mn), 0.5f);
+        
+        GizmoMember* member = &gizmoMembers[gizmoNumMembers++];
+        member->skinned = EntityIDIsSkinned(target);
+        member->groupIdx = EntityGetPrimitiveID(entity);
+        member->entityID = target;
+        member->startPos = EntityGetPosV(entity);
+        member->startRot = EntityGetRotation(entity);
+        member->startScale01 = UnpackUnorm16x4(entity->scale);
+        member->localCenter = localCenter;
+        
+        v128f worldScale = VecMulf(member->startScale01, 10.0f);
+        v128f rotation = member->startRot;
+        v128f center = VecAdd(QMulVec3V(VecMul(localCenter, worldScale), rotation), EntityGetPosV(entity));
+        member->startCenter = center;
+        bmin = VecMin(bmin, center);
+        bmax = VecMax(bmax, center);
+        
+        v128f worldExtent = VecMul(localExtent, worldScale);
+        gizmoFocusRadius = Maxf32(gizmoFocusRadius, Sqrtf(Vec3DotfV(worldExtent, worldExtent)));
     }
     if (gizmoNumMembers == 0) return 0;
 
@@ -497,7 +391,7 @@ static void GizmoApplyMembers(Scene* scene, const v128f axes[3], f32 mouseY)
         GizmoMember* member = &gizmoMembers[m];
         RenderSet* set = member->skinned ? &scene->skinnedSet : &scene->surfaceSet;
         const PrimitiveGroup* group = &set->primitiveGroups[member->groupIdx];
-        Entity* entity = &set->entities[group->entityOffset + member->entityIdx];
+        Entity* entity = Scene_GetEntity(scene, member->entityID); // &set->entities[group->entityOffset + member->entityIdx];
 
         v128f startPos    = member->startPos;
         v128f startRot    = member->startRot;
@@ -602,7 +496,7 @@ bool EditorGizmoUpdate(Camera* camera)
     // every member outlines, the whole selection highlights
     {
         for (u32 m = 0; m < gizmoNumMembers; m++)
-            gizmoOutlines[m] = (OutlineTarget){ gizmoMembers[m].skinned, gizmoMembers[m].groupIdx, gizmoMembers[m].entityIdx };
+            gizmoOutlines[m] = (OutlineTarget){ gizmoMembers[m].skinned, gizmoMembers[m].groupIdx, gizmoMembers[m].entityID };
         RendererSetOutlineTargets(gizmoOutlines, gizmoNumMembers);
     }
 
