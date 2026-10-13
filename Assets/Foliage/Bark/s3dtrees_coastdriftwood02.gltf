@@ -1,0 +1,138 @@
+{
+  "asset": {
+    "version": "2.0",
+    "generator": "convert_nif_trees_to_gltf.py"
+  },
+  "scene": 0,
+  "scenes": [
+    {
+      "nodes": [
+        0
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "name": "coastdriftwood02:1",
+      "mesh": 0
+    }
+  ],
+  "meshes": [
+    {
+      "name": "coastdriftwood02:1",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "TEXCOORD_0": 1
+          },
+          "indices": 2,
+          "mode": 4,
+          "material": 0
+        }
+      ]
+    }
+  ],
+  "buffers": [
+    {
+      "uri": "s3dtrees_coastdriftwood02.bin",
+      "byteLength": 46336
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteOffset": 0,
+      "byteLength": 18168,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 18168,
+      "byteLength": 12112,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 30280,
+      "byteLength": 16056,
+      "target": 34963
+    }
+  ],
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 1514,
+      "type": "VEC3",
+      "min": [
+        -20.08087158203125,
+        -11.592818260192871,
+        -28.23490333557129
+      ],
+      "max": [
+        201.4266357421875,
+        48.218502044677734,
+        140.79095458984375
+      ]
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 1514,
+      "type": "VEC2",
+      "min": [
+        0.004299163818359375,
+        0.01000213623046875
+      ],
+      "max": [
+        0.9755859375,
+        0.97607421875
+      ]
+    },
+    {
+      "bufferView": 2,
+      "componentType": 5123,
+      "count": 8028,
+      "type": "SCALAR",
+      "min": [
+        0
+      ],
+      "max": [
+        1513
+      ]
+    }
+  ],
+  "materials": [
+    {
+      "name": "s3dtrees_coastdriftwood02",
+      "pbrMetallicRoughness": {
+        "metallicFactor": 0.0,
+        "roughnessFactor": 0.85,
+        "baseColorTexture": {
+          "index": 0
+        }
+      },
+      "doubleSided": true,
+      "normalTexture": {
+        "index": 1
+      }
+    }
+  ],
+  "images": [
+    {
+      "uri": "Textures/s3dtrees_coastdriftwood02.png"
+    },
+    {
+      "uri": "Textures/s3dtrees_coastdriftwood02_n.png"
+    }
+  ],
+  "textures": [
+    {
+      "source": 0
+    },
+    {
+      "source": 1
+    }
+  ]
+}

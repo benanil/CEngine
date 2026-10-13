@@ -1,0 +1,138 @@
+{
+  "asset": {
+    "version": "2.0",
+    "generator": "convert_nif_trees_to_gltf.py"
+  },
+  "scene": 0,
+  "scenes": [
+    {
+      "nodes": [
+        0
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "name": "rockm01:7",
+      "mesh": 0
+    }
+  ],
+  "meshes": [
+    {
+      "name": "rockm01:7",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "TEXCOORD_0": 1
+          },
+          "indices": 2,
+          "mode": 4,
+          "material": 0
+        }
+      ]
+    }
+  ],
+  "buffers": [
+    {
+      "uri": "s3drockm01.bin",
+      "byteLength": 15400
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteOffset": 0,
+      "byteLength": 6504,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 6504,
+      "byteLength": 4336,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 10840,
+      "byteLength": 4560,
+      "target": 34963
+    }
+  ],
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 542,
+      "type": "VEC3",
+      "min": [
+        -1.264919891357422,
+        -0.10549578666687012,
+        -0.8988491058349609
+      ],
+      "max": [
+        1.1711414337158204,
+        1.1589405059814453,
+        0.7415425872802734
+      ]
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 542,
+      "type": "VEC2",
+      "min": [
+        0.0030994415283203125,
+        0.00830078125
+      ],
+      "max": [
+        0.9931640625,
+        0.9970703125
+      ]
+    },
+    {
+      "bufferView": 2,
+      "componentType": 5123,
+      "count": 2280,
+      "type": "SCALAR",
+      "min": [
+        0
+      ],
+      "max": [
+        541
+      ]
+    }
+  ],
+  "materials": [
+    {
+      "name": "s3drocks_rockm_02",
+      "pbrMetallicRoughness": {
+        "metallicFactor": 0.0,
+        "roughnessFactor": 0.85,
+        "baseColorTexture": {
+          "index": 0
+        }
+      },
+      "doubleSided": true,
+      "normalTexture": {
+        "index": 1
+      }
+    }
+  ],
+  "images": [
+    {
+      "uri": "Textures/s3drocks_rockm_02.png"
+    },
+    {
+      "uri": "Textures/s3drocks_rockm_02_N.png"
+    }
+  ],
+  "textures": [
+    {
+      "source": 0
+    },
+    {
+      "source": 1
+    }
+  ]
+}

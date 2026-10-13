@@ -1,0 +1,339 @@
+{
+  "asset": {
+    "version": "2.0",
+    "generator": "convert_skyrim_3d_trees.py"
+  },
+  "scene": 0,
+  "scenes": [
+    {
+      "nodes": [
+        0,
+        1,
+        2
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "name": "S3DTrees_treepineforest02_needlesNS",
+      "mesh": 0
+    },
+    {
+      "name": "S3DTrees_treepineforest02_needles",
+      "mesh": 1
+    },
+    {
+      "name": "S3DTrees_treepineforest02_trunk",
+      "mesh": 2
+    }
+  ],
+  "meshes": [
+    {
+      "name": "S3DTrees_treepineforest02_needlesNS",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "TEXCOORD_0": 1,
+            "NORMAL": 2
+          },
+          "indices": 3,
+          "mode": 4,
+          "material": 0
+        }
+      ]
+    },
+    {
+      "name": "S3DTrees_treepineforest02_needles",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 4,
+            "TEXCOORD_0": 5,
+            "NORMAL": 6
+          },
+          "indices": 7,
+          "mode": 4,
+          "material": 0
+        }
+      ]
+    },
+    {
+      "name": "S3DTrees_treepineforest02_trunk",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 8,
+            "TEXCOORD_0": 9,
+            "NORMAL": 10
+          },
+          "indices": 11,
+          "mode": 4,
+          "material": 1
+        }
+      ]
+    }
+  ],
+  "buffers": [
+    {
+      "uri": "s3dtrees_treepineforest02.bin",
+      "byteLength": 445718
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteOffset": 0,
+      "byteLength": 40560,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 40560,
+      "byteLength": 27040,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 67600,
+      "byteLength": 40560,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 108160,
+      "byteLength": 21840,
+      "target": 34963
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 130000,
+      "byteLength": 81948,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 211948,
+      "byteLength": 54632,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 266580,
+      "byteLength": 81948,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 348528,
+      "byteLength": 34716,
+      "target": 34963
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 383244,
+      "byteLength": 19416,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 402660,
+      "byteLength": 12944,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 415604,
+      "byteLength": 19416,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 435020,
+      "byteLength": 10698,
+      "target": 34963
+    }
+  ],
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 3380,
+      "type": "VEC3",
+      "min": [
+        -3.2404483032226565,
+        7.64373779296875,
+        -3.290765380859375
+      ],
+      "max": [
+        3.335299377441406,
+        25.097626953125,
+        3.0315386962890627
+      ]
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 3380,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 2,
+      "componentType": 5126,
+      "count": 3380,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 3,
+      "componentType": 5123,
+      "count": 10920,
+      "type": "SCALAR",
+      "min": [
+        0
+      ],
+      "max": [
+        3379
+      ]
+    },
+    {
+      "bufferView": 4,
+      "componentType": 5126,
+      "count": 6829,
+      "type": "VEC3",
+      "min": [
+        -2.966769104003906,
+        7.302703247070313,
+        -3.2336572265625
+      ],
+      "max": [
+        3.0213491821289065,
+        25.1639453125,
+        3.0845196533203127
+      ]
+    },
+    {
+      "bufferView": 5,
+      "componentType": 5126,
+      "count": 6829,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 6,
+      "componentType": 5126,
+      "count": 6829,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 7,
+      "componentType": 5123,
+      "count": 17358,
+      "type": "SCALAR",
+      "min": [
+        0
+      ],
+      "max": [
+        6828
+      ]
+    },
+    {
+      "bufferView": 8,
+      "componentType": 5126,
+      "count": 1618,
+      "type": "VEC3",
+      "min": [
+        -2.482802276611328,
+        -1.0068999481201173,
+        -2.6333987426757814
+      ],
+      "max": [
+        2.273468475341797,
+        24.600107421875002,
+        2.318147735595703
+      ]
+    },
+    {
+      "bufferView": 9,
+      "componentType": 5126,
+      "count": 1618,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 10,
+      "componentType": 5126,
+      "count": 1618,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 11,
+      "componentType": 5123,
+      "count": 5349,
+      "type": "SCALAR",
+      "min": [
+        0
+      ],
+      "max": [
+        1617
+      ]
+    }
+  ],
+  "materials": [
+    {
+      "name": "S3DTrees_leaves_pine_01",
+      "pbrMetallicRoughness": {
+        "metallicFactor": 0.0,
+        "roughnessFactor": 0.85,
+        "baseColorTexture": {
+          "index": 0
+        }
+      },
+      "doubleSided": true,
+      "normalTexture": {
+        "index": 1
+      },
+      "alphaMode": "MASK",
+      "alphaCutoff": 0.5
+    },
+    {
+      "name": "s3dtrees_bark_pine_01",
+      "pbrMetallicRoughness": {
+        "metallicFactor": 0.0,
+        "roughnessFactor": 0.85,
+        "baseColorTexture": {
+          "index": 2
+        }
+      },
+      "doubleSided": true,
+      "normalTexture": {
+        "index": 3
+      }
+    }
+  ],
+  "images": [
+    {
+      "uri": "Textures/s3dtrees_leaves_pine_01.png"
+    },
+    {
+      "uri": "Textures/s3dtrees_leaves_pine_01_n.png"
+    },
+    {
+      "uri": "Textures/s3dtrees_bark_pine_01.png"
+    },
+    {
+      "uri": "Textures/s3dtrees_bark_pine_01_n.png"
+    }
+  ],
+  "textures": [
+    {
+      "source": 0
+    },
+    {
+      "source": 1
+    },
+    {
+      "source": 2
+    },
+    {
+      "source": 3
+    }
+  ]
+}
