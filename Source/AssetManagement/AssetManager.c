@@ -1182,10 +1182,7 @@ s32 SaveGLTFBinary(const SceneBundle* gltf, const char* path)
                                    : (u32)((const AVertex*)gltf->allVertices - gGFX.SurfaceVertexBuffer);
     u32 bakedIndexBase  = (u32)((const u32*)gltf->allIndices - gGFX.IndexBuffer);
 
-    // This runs on a background thread (see the async cache-save task), so it must only READ the
-    // resident geometry. Delta-encode indices into a temp buffer instead of mutating the live index
-    // buffer, and use a per-call deflate state (the shared static one is not thread safe).
-    // layout: [deflate output (max(vtx,idx)) | delta-encoded indices (idx)]
+    // This runs on a background thread (see the async cache-save task), so it must only READ the resident geometry.
     u64 deflateSlotSize = Maxu64(allVertexSize, allIndexSize);
     char* compressedBuffer = (char*)AllocZeroTLSF(1ull, deflateSlotSize + allIndexSize + 64);
     struct sdefl* sdfl = (struct sdefl*)AllocZeroTLSF(1ull, sizeof(struct sdefl));
@@ -1206,7 +1203,10 @@ s32 SaveGLTFBinary(const SceneBundle* gltf, const char* path)
     AFileWrite(&afterCompSize, sizeof(u64), file, 1);
     AFileWrite(deflateOutput, afterCompSize, file, 1);
 
-    DeltaEncodingU32((const u32*)gltf->allIndices, gltf->totalIndices, deltaIndices, bakedVertexBase);
+    const u32* indices = (const u32*)gltf->allIndices;
+    for (u32 i = 0; i < gltf->totalIndices; i++)
+        deltaIndices[i] = indices[i] - bakedVertexBase;
+    
     afterCompSize = zsdeflate(sdfl, deflateOutput, deltaIndices, allIndexSize, 5);
     AFileWrite(&afterCompSize, sizeof(u64), file, 1);
     AFileWrite(deflateOutput, afterCompSize, file, 1);
@@ -1511,9 +1511,12 @@ s32 LoadSceneBundleBinary(const char* path, SceneBundle* gltf, void** outVertexH
         AFileRead(&compressedSize, sizeof(u64), file, 1);
         AFileRead(compressedBuffer, compressedSize, file, 1);
         zsinflate(gltf->allIndices, allIndexSize, compressedBuffer, compressedSize);
-        // index values were saved relative to the bundle's vertex base, the
-        // prefix sum seed rebases the whole stream to the allocated range
-        PrefixSumU32Inplace(gltf->allIndices, gltf->totalIndices, vertexBase);
+        // // index values were saved relative to the bundle's vertex base, the
+        // // prefix sum seed rebases the whole stream to the allocated range
+        // PrefixSumU32Inplace(gltf->allIndices, gltf->totalIndices, vertexBase);
+        u32* indices = (u32*)gltf->allIndices;
+        for (u32 i = 0; i < gltf->totalIndices; i++)
+            indices[i] += vertexBase;
 
         Rendering_QueueGeometryUpload(isSkined ? GeometryBuffer_SkinnedVertex : GeometryBuffer_SurfaceVertex,
                                       vertexBase, vertexBase + (u32)gltf->totalVertices);
