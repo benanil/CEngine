@@ -238,6 +238,23 @@ static u32 GizmoCollectMembers(Scene* scene, v128f* outCenter)
     return gizmoNumMembers;
 }
 
+
+static v128f GizmoGetMembersCenter(Scene* scene)
+{
+    v128f bmin = VecSet1(1.0e30f), bmax = VecSet1(-1.0e30f);
+    for (u32 t = 0; t < gizmoNumTargets; t++)
+    {
+        const RenderSet* set = Scene_EntityRenderSet(scene, gizmoTargets[t]);
+        const Entity* entity = Scene_GetEntity(scene, gizmoTargets[t]);
+        if (entity == NULL) continue; // likely deleted
+        const PrimitiveGroup* group = &set->primitiveGroups[EntityGetPrimitiveID(entity)];
+        v128f localCenter = VecMulf(VecAdd(group->aabbMin, group->aabbMax), 0.5f);
+        v128f center = VecAdd(QMulVec3V(VecMul(localCenter, EntityGetScaleV(entity)), EntityGetRotation(entity)), EntityGetPosV(entity));
+        bmin = VecMin(bmin, center);
+        bmax = VecMax(bmax, center);
+    }
+    return VecMulf(VecAdd(bmin, bmax), 0.5f);
+}
 /*//////////////////////////////////////////////////////////////////////////*/
 /*                              Intersection                                */
 /*//////////////////////////////////////////////////////////////////////////*/
@@ -699,28 +716,28 @@ bool EditorGizmoUpdate(Camera* camera)
     gizmoNumVerts = 0;
     gizmoCamPos = camPos;
     gizmoLineWidth = size * 0.02f;
+    v128f gizmoCenter = GizmoGetMembersCenter(scene);
     for (int i = 0; i < 3; i++)
     {
         u32 color = gizmo.hotAxis == i ? GIZMO_HOT_COLOR : kGizmoAxisColors[i];
-        if (gizmo.mode == GizmoMode_Translate)   GizmoDrawArrow(center, axes[i], size, color);
-        else if (gizmo.mode == GizmoMode_Rotate) GizmoDrawRing(center, axes[i], size, color);
-        else                                     GizmoDrawScaleHandle(center, axes[i], size, color);
+        if (gizmo.mode == GizmoMode_Translate)   GizmoDrawArrow(gizmoCenter, axes[i], size, color);
+        else if (gizmo.mode == GizmoMode_Rotate) GizmoDrawRing(gizmoCenter, axes[i], size, color);
+        else                                     GizmoDrawScaleHandle(gizmoCenter, axes[i], size, color);
     }
     if (gizmo.mode == GizmoMode_Translate)
     {
         for (int i = 0; i < 3; i++)
         {
             u32 color = gizmo.hotAxis == GizmoAxis_PlaneX + i ? GIZMO_HOT_COLOR : kGizmoAxisColors[i];
-            GizmoDrawPlane(center, axes[(i + 1) % 3], axes[(i + 2) % 3], size * 0.3f, size * 0.6f, color);
+            GizmoDrawPlane(gizmoCenter, axes[(i + 1) % 3], axes[(i + 2) % 3], size * 0.3f, size * 0.6f, color);
         }
     }
     if (gizmo.mode == GizmoMode_Scale)
     {
-        v128f camForward = Vec3NormV(VecSub(center, camPos));
-        GizmoDrawRing(center, camForward, size * 0.15f,
+        v128f camForward = Vec3NormV(VecSub(gizmoCenter, camPos));
+        GizmoDrawRing(gizmoCenter, camForward, size * 0.15f,
                       gizmo.hotAxis == GizmoAxis_Uniform ? GIZMO_HOT_COLOR : GIZMO_CENTER_COLOR);
     }
     RendererSetGizmoLines(gizmoVerts, gizmoNumVerts);
-
     return consumed;
 }
