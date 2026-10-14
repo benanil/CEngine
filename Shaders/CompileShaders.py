@@ -45,7 +45,6 @@ COMPUTE_SHADERS = [
     ("ReconstructNormalCompute", "main"),
     ("PreProcessing/BuildLightGridCompute", "main"),
     ("Animation/AnimationCompute", "main"),
-    ("Animation/AnimateVertices", "main"),
     ("PreProcessing/CullDrawArgsCompute", "main"),
     ("PreProcessing/HiZBuildCompute", "main"),
     ("PreProcessing/HiZDownscaleSPDCompute", "main"),
@@ -66,10 +65,7 @@ MSL_FIXUPS = {
     ],
     "TerrainForwardFrag": [
         ("NormalLayers [[texture(0)]]", "NormalLayers [[texture(1)]]"),
-    ],
-    "Animation/AnimateVertices": [
-        ("sSparseToDense [[buffer(7)]]", "sSparseToDense [[buffer(6)]]"),
-    ],
+    ]
 }
 
 
@@ -255,8 +251,8 @@ def compile_shader(
 
     script = Path(__file__)
     # [here]
-    if header.exists() and header.stat().st_mtime > max(hlsl.stat().st_mtime, script.stat().st_mtime):
-        return False
+    # if header.exists() and header.stat().st_mtime > max(hlsl.stat().st_mtime, script.stat().st_mtime):
+    #     return False
 
     print("Compiling {}.hlsl entry {} -> {}.{}...".format(src_name, entry, out_name, fmt))
 

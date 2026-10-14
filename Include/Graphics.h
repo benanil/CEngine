@@ -42,15 +42,26 @@
 #define TEX_SAMPLER        SDL_GPU_TEXTUREUSAGE_SAMPLER
 #define TEX_SMP_CNT1       SDL_GPU_SAMPLECOUNT_1
 
-#define TEX_FMT_D32_FLT  SDL_GPU_TEXTUREFORMAT_D32_FLOAT
-#define TEX_FMT_D32_FLT2 SDL_GPU_TEXTUREFORMAT_R32G32_UINT
-#define TEX_FMT_R32_FLT  SDL_GPU_TEXTUREFORMAT_R32_FLOAT
+#define TEX_FMT_D32_FLT    SDL_GPU_TEXTUREFORMAT_D32_FLOAT
+#define TEX_FMT_D32_FLT2   SDL_GPU_TEXTUREFORMAT_R32G32_UINT
+#define TEX_FMT_R32_FLT    SDL_GPU_TEXTUREFORMAT_R32_FLOAT
 #define TEX_FMT_HALF4      SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT
 #define TEX_FMT_R32_UINT   SDL_GPU_TEXTUREFORMAT_R32_UINT
 #define TEX_FMT_8UNORM4    SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM
 #define TEX_FMT_8UNORM2    SDL_GPU_TEXTUREFORMAT_R8G8_UNORM
 #define TEX_FMT_8UNORM1    SDL_GPU_TEXTUREFORMAT_R8_UNORM
 
+#define LIGHT_FLAG_SHADOWED (1u << 0)
+#define LIGHT_SHADOW_INDEX_INVALID 0xffu
+
+#define MATERIAL_FLAG_ALPHA_MASK       (1u << 0)
+#define MATERIAL_ALPHA_CUTOFF_SHIFT    8u
+#define MATERIAL_ALPHA_CUTOFF_MASK     (0xffu << MATERIAL_ALPHA_CUTOFF_SHIFT)
+
+// sub allocation of the cpu/gpu mega buffers. tlsf runs directly over the cpu
+// mirrors, allocations are over sized and rounded up to the element stride.
+// raw is the heap pointer, keep it to shrink or free
+#define GEOMETRY_ALLOC_FAIL 0xFFFFFFFFu
 
 #if defined(__cplusplus)
 extern "C" {
@@ -142,9 +153,6 @@ enum LightType_
 };
 typedef u32 LightType;
 
-#define LIGHT_FLAG_SHADOWED (1u << 0)
-#define LIGHT_SHADOW_INDEX_INVALID 0xffu
-
 typedef struct LightGPU_
 {
     f32 positionRadius[4];
@@ -225,9 +233,6 @@ typedef struct TextureDescriptor_
     u32 padding[2];
 } TextureDescriptor;
 
-#define MATERIAL_FLAG_ALPHA_MASK       (1u << 0)
-#define MATERIAL_ALPHA_CUTOFF_SHIFT    8u
-#define MATERIAL_ALPHA_CUTOFF_MASK     (0xffu << MATERIAL_ALPHA_CUTOFF_SHIFT)
 
 typedef struct MaterialGPU_
 {
@@ -291,7 +296,6 @@ typedef struct RenderSetShared_
     SDL_GPUGraphicsPipeline* pointShadowPipeline;
     SDL_GPUGraphicsPipeline* spotShadowPipeline;
     SDL_GPUBuffer*           vertexBuffer;
-    SDL_GPUBuffer*           animatedVertices; // skinned only
 } RenderSetShared;
 
 typedef struct RenderState
@@ -361,11 +365,6 @@ void CreateRenderSetBuffers(RenderSetBuffers* buffers, u32 maxEntities, u32 maxG
 void CreateDrawBuffers(DrawBuffers* draw, u32 maxEntities, u32 maxGroups);
 void DestroyRenderSetBuffers(RenderSetBuffers* buffers);
 void DestroyDrawBuffers(DrawBuffers* buffers);
-
-// sub allocation of the cpu/gpu mega buffers. tlsf runs directly over the cpu
-// mirrors, allocations are over sized and rounded up to the element stride.
-// raw is the heap pointer, keep it to shrink or free
-#define GEOMETRY_ALLOC_FAIL 0xFFFFFFFFu
 
 // out: element offset of count free elements, GEOMETRY_ALLOC_FAIL when full
 u32  GeometryHeapAlloc(GeometryBufferKind kind, u32 count, void** raw);

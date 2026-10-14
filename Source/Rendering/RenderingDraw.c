@@ -41,7 +41,7 @@ static void DrawRenderBufferDepth(SDL_GPUCommandBuffer* cmd, SDL_GPURenderPass* 
     storageBuffers[count++] = buffers->entity;
     storageBuffers[count++] = buffers->primitiveGroup;
     storageBuffers[count++] = buffers->draw.sparseIndices;
-    if (isSkinned) storageBuffers[count++] = g_RenderState.skinned.animatedVertices;
+    if (isSkinned) storageBuffers[count++] = scene->animSystem.boneBuffer;
     if (useShadow) storageBuffers[count++] = ctx->shadowMatrixBuffer;
     if (isSkinned) storageBuffers[count++] = buffers->primitiveGroupLOD;
     SDL_BindGPUVertexStorageBuffers(pass, 0, storageBuffers, count);
@@ -125,9 +125,8 @@ static void DrawRenderBufferForward(SDL_GPUCommandBuffer* cmd, SDL_GPURenderPass
     storageBuffers[count++] = buffers->entity;
     storageBuffers[count++] = buffers->primitiveGroup;
     storageBuffers[count++] = drawBuffers->sparseIndices;
-    if (isSkinned) storageBuffers[count++] = g_RenderState.skinned.animatedVertices;
-    storageBuffers[count++] = g_RenderState.shadowCascadeBuffer;
     if (isSkinned) storageBuffers[count++] = scene->animSystem.boneBuffer;
+    storageBuffers[count++] = g_RenderState.shadowCascadeBuffer;
     if (isSkinned) storageBuffers[count++] = buffers->primitiveGroupLOD;
     SDL_BindGPUVertexStorageBuffers(pass, 0, storageBuffers, count);
 

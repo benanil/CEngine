@@ -60,6 +60,7 @@ static const char* GetEntityMeshName(const RenderSet* set, EntityID id)
     const Scene* scene = set->hookScene;
     const Entity* entity = Scene_GetEntity(scene, id);
     u32 bundleId = EntityGetBundleId(set, entity);
+    if (!PTR_VALID(set->bundles[bundleId])) return "Custom"; // runtime
     Range range = set->bundlePrimRange[bundleId];
     u32 localId = EntityGetPrimitiveID(entity) - range.start;
 
@@ -140,7 +141,7 @@ void SceneTreeRender(Scene* scene, Clay_ElementId windowID)
     sceneTreeRowBudget = SCENE_TREE_MAX_NODES;
     CLAY(CLAY_ID("SceneWindowTree"), UIScrollPanelDeclaration(UIWindowRemainingHeight(windowID, CLAY_ID("SceneWindowTree"), 0.0f), 2u)) 
     {
-        SceneRenderSetTree(&scene->surfaceSet, false);
+        if (scene->surfaceSet.numEntities > 0) SceneRenderSetTree(&scene->surfaceSet, false);
         // SceneRenderSetTree(&scene->skinnedSet, false);
         
         if (sceneTreeRowBudget == 0u)

@@ -45,4 +45,22 @@ float3 AnimatedWorldPos(float3 modelPos, float4 insRot, float3 insScale, float3 
     return entityPos + QMulVec3F32(insRot, modelPos * insScale);
 }
 
+f16_3x4 VertexAnimate(StructuredBuffer<uint> sBoneMtx, uint boneStart, uint4 aJoints, uint aWeights)
+{
+    f16_4 weights;
+    weights.xyz = UnpackVec3XY11Z10Unorm(aWeights);
+    weights.w   = saturate(f16(1.0) - weights.x - weights.y - weights.z);
+    
+    f16_3x4 animMat = (f16_3x4)0;
+    [unroll]
+    for (int i = 0; i < 4; i++)
+    {
+        f16_3x4 bone = LoadBone(sBoneMtx, boneStart + aJoints[i]);
+        animMat[0] = mad(weights[i], bone[0], animMat[0]);
+        animMat[1] = mad(weights[i], bone[1], animMat[1]);
+        animMat[2] = mad(weights[i], bone[2], animMat[2]);
+    }
+    return animMat;
+}
+
 #endif // ANIMATED_TRANSFORM_HLSL

@@ -11,7 +11,6 @@
 #include "Shaders/msl/PreProcessing/BuildLightGridCompute.msl.h"
 #include "Shaders/msl/PreProcessing/CullDrawArgsCompute.msl.h"
 #include "Shaders/msl/Animation/AnimationCompute.msl.h"
-#include "Shaders/msl/Animation/AnimateVertices.msl.h"
 #include "Shaders/msl/LineDebugVert.msl.h"
 #include "Shaders/msl/LineDebugFrag.msl.h"
 #include "Shaders/msl/OutlineVert.msl.h"
@@ -51,7 +50,6 @@
 #include "Shaders/msl/Shadow/SkinnedSpotShadowDepthOnlyVert.msl.h"
 
 #define Shaders_AnimationCompute_spv Shaders_Animation_AnimationCompute_msl
-#define Shaders_AnimateVertices_spv Shaders_Animation_AnimateVertices_msl
 #define Shaders_CullDrawArgsCompute_spv Shaders_PreProcessing_CullDrawArgsCompute_msl
 #define Shaders_BuildLightGridCompute_spv Shaders_PreProcessing_BuildLightGridCompute_msl
 #define Shaders_TonemapCompute_spv Shaders_PostProcessing_TonemapCompute_msl
@@ -103,7 +101,6 @@ extern const unsigned char Shaders_TerrainDepthOnlyFrag_msl[];
 #include "Shaders/spv/PreProcessing/BuildLightGridCompute.spv.h"
 #include "Shaders/spv/PreProcessing/CullDrawArgsCompute.spv.h"
 #include "Shaders/spv/Animation/AnimationCompute.spv.h"
-#include "Shaders/spv/Animation/AnimateVertices.spv.h"
 #include "Shaders/spv/LineDebugVert.spv.h"
 #include "Shaders/spv/LineDebugFrag.spv.h"
 #include "Shaders/spv/TerrainChunkVert.spv.h"
@@ -145,8 +142,6 @@ extern const unsigned char Shaders_TerrainDepthOnlyFrag_msl[];
 #include "Shaders/spv/Shadow/SkinnedSpotShadowDepthOnlyVert.spv.h"
 #define Shaders_AnimationCompute_spv Shaders_Animation_AnimationCompute_spv
 #define Shaders_AnimationCompute_spv_size Shaders_Animation_AnimationCompute_spv_size
-#define Shaders_AnimateVertices_spv Shaders_Animation_AnimateVertices_spv
-#define Shaders_AnimateVertices_spv_size Shaders_Animation_AnimateVertices_spv_size
 #define Shaders_CullDrawArgsCompute_spv Shaders_PreProcessing_CullDrawArgsCompute_spv
 #define Shaders_CullDrawArgsCompute_spv_size Shaders_PreProcessing_CullDrawArgsCompute_spv_size
 #define Shaders_BuildLightGridCompute_spv Shaders_PreProcessing_BuildLightGridCompute_spv
@@ -228,7 +223,6 @@ SDL_CreateGPUShader(g_GPUDevice, &(SDL_GPUShaderCreateInfo){\
 .threadcount_z                 = _Z
 
 SDL_GPUComputePipeline* g_AnimComputePipeline            = NULL;
-SDL_GPUComputePipeline* g_AnimVerticesPipeline           = NULL;
 SDL_GPUComputePipeline* g_CullDrawArgsComputePipeline    = NULL;
 SDL_GPUComputePipeline* g_BuildLightGridComputePipeline  = NULL;
 SDL_GPUComputePipeline* g_ReconstructNormalComputePipeline = NULL;
@@ -251,11 +245,6 @@ static void InitComputePipelines(void)
         .num_uniform_buffers           = 1, .num_readonly_storage_buffers  = 7, .num_readwrite_storage_buffers = 1,
         THREAD_COUNT_XYZ(32, 1, 1)
     }); CHECK_CREATE(g_AnimComputePipeline, "Animation Compute Pipeline");
-
-    g_AnimVerticesPipeline = COMPUTE_DEF(Shaders_AnimateVertices_spv),
-        .num_uniform_buffers           = 1, .num_readonly_storage_buffers  = 8, .num_readwrite_storage_buffers = 1,
-        THREAD_COUNT_XYZ(1, 32, 1)
-    }); CHECK_CREATE(g_AnimVerticesPipeline, "Animation vertices Pipeline");
 
     g_CullDrawArgsComputePipeline = COMPUTE_DEF(Shaders_CullDrawArgsCompute_spv),
         .num_readonly_storage_textures = 1, .num_uniform_buffers = 1, .num_readonly_storage_buffers  = 3, .num_readwrite_storage_buffers = 8,
@@ -744,7 +733,7 @@ static void InitForwardPipelines(void)
     SDL_GPUShaderFormat shaderformat = AX_GPU_SHADER_FORMAT;
     SDL_GPUShader* sur_vert = PIPELINE_VERT_DEF(Shaders_SurfaceForwardVert_spv), .num_uniform_buffers = 1, .num_storage_buffers = 4 }); CHECK_CREATE(sur_vert, "Surface Forward Vertex Shader")
     SDL_GPUShader* sur_frag = PIPELINE_FRAG_DEF(Shaders_SurfaceForwardFrag_spv), .num_uniform_buffers = 1, .num_samplers = 8, .num_storage_buffers = 7 }); CHECK_CREATE(sur_frag, "Surface Forward Fragment Shader")
-    SDL_GPUShader* ski_vert = PIPELINE_VERT_DEF(Shaders_SkinnedForwardVert_spv), .num_uniform_buffers = 1, .num_storage_buffers = 7 }); CHECK_CREATE(ski_vert, "Skinned Forward Vertex Shader")
+    SDL_GPUShader* ski_vert = PIPELINE_VERT_DEF(Shaders_SkinnedForwardVert_spv), .num_uniform_buffers = 1, .num_storage_buffers = 6 }); CHECK_CREATE(ski_vert, "Skinned Forward Vertex Shader")
     SDL_GPUShader* ski_frag = PIPELINE_FRAG_DEF(Shaders_SkinnedForwardFrag_spv), .num_uniform_buffers = 1, .num_samplers = 8, .num_storage_buffers = 7 }); CHECK_CREATE(ski_frag, "Skinned Forward Fragment Shader")
 
     const SDL_GPUVertexAttribute sur_attributes[3] = {
@@ -967,7 +956,6 @@ void DestroyRenderPipelines(void)
     if (g_RenderState.transparentForwardPipeline) SDL_ReleaseGPUGraphicsPipeline(g_GPUDevice, g_RenderState.transparentForwardPipeline);
     
     if (g_AnimComputePipeline)             SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_AnimComputePipeline);
-    if (g_AnimVerticesPipeline)            SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_AnimVerticesPipeline);
     if (g_CullDrawArgsComputePipeline)     SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_CullDrawArgsComputePipeline);
     if (g_BuildLightGridComputePipeline)   SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_BuildLightGridComputePipeline);
     if (g_ReconstructNormalComputePipeline) SDL_ReleaseGPUComputePipeline(g_GPUDevice, g_ReconstructNormalComputePipeline);

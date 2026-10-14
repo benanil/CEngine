@@ -410,9 +410,6 @@ static void UploadDirtyGeometry(void)
 
 void InitBuffers(void)
 {
-    // AnimatedVert is position-only, 16/16/16 unorm in 2x u32 -> 512 MB at full provisioning.
-    // (Lever 2 / compaction by visible animated-vertex count reclaims this later.)
-    const size_t animatedVertexSize = sizeof(u32) * 2 * MAX_ANIMATED_VERTEX;
     g_RenderState.skinned.vertexBuffer     = CreateBuffer(NULL, MAX_SKINNED_SOURCE_VERTEX * sizeof(ASkinedVertex), BVertexBit | BReadCompute, "CPSkinnedVertexBuffer");
     g_RenderState.surface.vertexBuffer     = CreateBuffer(NULL, MAX_VERTEX * sizeof(AVertex), BVertexBit, "CPSurfaceVertexBuffer");
     g_RenderState.indexBuffer              = CreateBuffer(NULL, MAX_INDEX  * sizeof(int)    , SDL_GPU_BUFFERUSAGE_INDEX, "CPIndexBuffer");
@@ -437,7 +434,6 @@ void InitBuffers(void)
     });
     for (u32 i = 0; i < MAX_LIGHT_COUNT; i++)
         g_LightVisiblePrev[i] = 1u;
-    g_RenderState.skinned.animatedVertices = CreateBuffer(NULL, animatedVertexSize, BReadRasterBit | BWriteComputeBit, "CPAnimatedVertices");
 
     UploadDirtyGeometry();
     g_LightDebugInfo.maxLights = MAX_LIGHT_COUNT;
@@ -605,13 +601,6 @@ static void GatherSkinnedAnimationVisibility(SDL_GPUCommandBuffer* cmd, RenderSe
     }
 }
 
-static void AnimateSkinned(SDL_GPUCommandBuffer* cmd)
-{
-    Scene* scene = g_ActiveScene;
-    DispatchAnimationCompute(cmd, &scene->skinnedSet, &scene->skinnedBuffers, &scene->animSystem);
-    DispatchAnimateVerticesCompute(cmd, &scene->skinnedSet, &scene->skinnedBuffers, &scene->animSystem);
-}
-
 void Render(void)
 {
     g_RenderFrameIndex++;
@@ -711,7 +700,8 @@ void Render(void)
         AnimationSystem_FlushInstances(&scene->animSystem);
         GatherSkinnedAnimationVisibility(cmd, &scene->skinnedSet, &scene->skinnedBuffers,
                                          cameraFrustum, hiZViewProj, enableHiZ, &pointShadows, &spotShadows);
-        AnimateSkinned(cmd);
+        
+        DispatchAnimationCompute(cmd, &scene->skinnedSet, &scene->skinnedBuffers, &scene->animSystem);
 
         if (g_RenderSettings.enableLocalLights) {
             RenderShadows(cmd);
@@ -890,7 +880,6 @@ void DestroyPipeline(void)
 {
     ReleaseQueuedResizeTextures(true);
     if (g_RenderState.skinned.vertexBuffer)     SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.skinned.vertexBuffer);
-    if (g_RenderState.skinned.animatedVertices) SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.skinned.animatedVertices);
     if (g_RenderState.surface.vertexBuffer)     SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.surface.vertexBuffer);
     if (g_RenderState.indexBuffer)              SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.indexBuffer);
     if (g_RenderState.lineBuffer)               SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lineBuffer);

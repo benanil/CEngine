@@ -88,7 +88,6 @@ extern u32  g_LightVisiblePrev[MAX_LIGHT_COUNT];
 extern bool g_LightVisibilityGate;
 
 extern SDL_GPUComputePipeline* g_AnimComputePipeline;
-extern SDL_GPUComputePipeline* g_AnimVerticesPipeline;
 extern SDL_GPUComputePipeline* g_CullDrawArgsComputePipeline;
 extern SDL_GPUComputePipeline* g_BuildLightGridComputePipeline;
 extern SDL_GPUComputePipeline* g_ReconstructNormalComputePipeline;
@@ -141,7 +140,6 @@ void DispatchBloomCompute(SDL_GPUCommandBuffer* cmd, u32 width, u32 height);
 void DispatchTonemapCompute(SDL_GPUCommandBuffer* cmd, u32 width, u32 height, mat4x4 viewProj, u32 tilesX, bool tileHeatEnabled);
 void DispatchMLAACompute(SDL_GPUCommandBuffer* cmd, u32 width, u32 height, f32 threshold, bool showEdges);
 void DispatchAnimationCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet, RenderSetBuffers* buffers, AnimationSystem* anims);
-void DispatchAnimateVerticesCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet, RenderSetBuffers* buffers, AnimationSystem* anims);
 
 void RenderDepth(SDL_GPUCommandBuffer* cmd, const DepthPassContext* ctx);
 

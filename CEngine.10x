@@ -572,9 +572,6 @@
 						<Path>Shaders/SkinnedDepthOnly.hlsl</Path>
 					</File>
 					<File>
-						<Path>Shaders/AnimatedTransform.hlsl</Path>
-					</File>
-					<File>
 						<Path>Shaders/LocalLights.hlsl</Path>
 					</File>
 					<File>
@@ -614,6 +611,9 @@
 					</Folder>
 					<File>
 						<Path>Shaders/Entity.hlsl</Path>
+					</File>
+					<File>
+						<Path>Shaders/AnimatedTransform.hlsl</Path>
 					</File>
 				</Children>
 			</Folder>

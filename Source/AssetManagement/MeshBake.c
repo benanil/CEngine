@@ -441,13 +441,6 @@ static void GenerateSkinnedLODsForPrimitive(APrimitive* primitive, const u32* gl
         }
 
         u32 lodVertexOffset = *vertexCursor;
-        if (lodVertexOffset + compactVertexCount > MAX_SKINNED_VERTEX_PER_ANIM_INSTANCE)
-        {
-            AX_WARN("skinned lod generation skipped: animated vertex capacity exceeded lod=%d vertices=%d/%llu", lod,
-                    lodVertexOffset + compactVertexCount, (unsigned long long)MAX_SKINNED_VERTEX_PER_ANIM_INSTANCE);
-            continue;
-        }
-
         for (u32 v = 0; v < (u32)numVertices; v++)
         {
             u32 remapped = vertexRemap[v];
@@ -496,18 +489,6 @@ static void ValidatePrimitiveLODs(const SceneBundle* gltf, bool isSkinned, u32 v
                     AX_WARN("lod index range invalid mesh=%d primitive=%d lod=%d range=%d..%d total=%d",
                             m, p, lod, indexOffset, indexOffset + numIndices, indexEnd);
                     continue;
-                }
-
-                if (isSkinned)
-                {
-                    u32 animatedOffset = (u32)primitive->lodVertexOffset[lod];
-                    u32 numVertices = (u32)primitive->lodNumVertices[lod];
-                    if (animatedOffset + numVertices > MAX_SKINNED_VERTEX_PER_ANIM_INSTANCE)
-                    {
-                        AX_WARN("lod animated range invalid mesh=%d primitive=%d lod=%d range=%d..%d max=%llu",
-                                m, p, lod, animatedOffset, animatedOffset + numVertices,
-                                (unsigned long long)MAX_SKINNED_VERTEX_PER_ANIM_INSTANCE);
-                    }
                 }
 
                 for (u32 i = 0; i < numIndices; i++)
@@ -569,16 +550,6 @@ s32 BakeSceneMeshesAndAnimations(SceneBundle* gltf, void** outVertexHeapPtr, voi
     {
         AX_WARN("mesh bake failed: vertex/index buffer space exhausted vertices=%d indices=%d",
                 vertexCapacity, indexCapacity);
-        GeometryHeapFree(vertexKind, vertexRaw);
-        GeometryHeapFree(GeometryBuffer_Index, indexRaw);
-        return 0;
-    }
-
-    if (isSkinned && vertexBase + (u32)gltf->totalVertices > MAX_SKINNED_VERTEX_PER_ANIM_INSTANCE)
-    {
-        AX_WARN("mesh bake failed: skinned vertex offsets exceed animated capacity range=%d..%d max=%llu",
-                vertexBase, vertexBase + (u32)gltf->totalVertices,
-                (unsigned long long)MAX_SKINNED_VERTEX_PER_ANIM_INSTANCE);
         GeometryHeapFree(vertexKind, vertexRaw);
         GeometryHeapFree(GeometryBuffer_Index, indexRaw);
         return 0;

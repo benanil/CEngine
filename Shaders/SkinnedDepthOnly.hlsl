@@ -10,10 +10,10 @@ cbuffer vs_params : register(b0, space1)
     float4x4 uViewProj;
 };
 
-StructuredBuffer<Entity>         sEntities          : register(t0);
-StructuredBuffer<PrimitiveGroup> sPrimitiveGroups   : register(t1);
-StructuredBuffer<uint>           sDrawSparseIndices : register(t2);
-StructuredBuffer<AnimatedVert>   sAnimatedVert      : register(t3);
+StructuredBuffer<Entity>            sEntities           : register(t0);
+StructuredBuffer<PrimitiveGroup>    sPrimitiveGroups    : register(t1);
+StructuredBuffer<uint>              sDrawSparseIndices  : register(t2);
+StructuredBuffer<uint>              sBoneMtx            : register(t3);
 StructuredBuffer<PrimitiveGroupLOD> sPrimitiveGroupLODs : register(t4);
 
 StructuredBuffer<MaterialGPU> sMaterials : register(t1, space2);
@@ -22,8 +22,7 @@ StructuredBuffer<TextureDescriptor> sTextureDescriptors : register(t2, space2);
 Texture2DArray<float4> AlbedoPages : register(t0, space2);
 SamplerState           Sampler     : register(s0, space2);
 
-struct VSInput
-{
+struct VSInput {
     f16_4_io  aPos          : POSITION0;
     uint      aTangentSpace : TANGENT0;
     f16_2_io  aTexCoords    : TEXCOORD0;
@@ -31,8 +30,7 @@ struct VSInput
     uint      aWeights      : BLENDWEIGHT0;
 };
 
-struct VSOutput
-{
+struct VSOutput {
     float4 position : SV_Position;
     f16_2_io texCoords : TEXCOORD0;
     nointerpolation uint materialIndex : TEXCOORD1;
@@ -45,20 +43,16 @@ VSOutput vert(VSInput input, uint instanceID : SV_InstanceID,
     uint primitiveIdx = drawID / MESH_LOD_COUNT;
     uint lod = drawID - primitiveIdx * MESH_LOD_COUNT;
     PrimitiveGroup group = sPrimitiveGroups[primitiveIdx];
-    PrimitiveGroupLOD lodGroup = sPrimitiveGroupLODs[primitiveIdx];
     uint denseIdx  = sDrawSparseIndices[lod * uint(MAX_ANIM_INSTANCES) + PrimitiveGroup_EntityOffset(group) + instanceID];
-    uint localVertex = vertexId - lodGroup.lodVertexOffset[lod];
     uint sparse = EntityGetSparseID(sEntities[denseIdx]);
-    uint animatedVertex = sparse * uint(MAX_SKINNED_VERTEX_PER_ANIM_INSTANCE) + lodGroup.lodVertexOffset[lod] + localVertex;
-    AnimatedVert animated = sAnimatedVert[animatedVertex];
     Entity entity = sEntities[denseIdx];
-    float3 aabbMin = PrimitiveGroup_AABBMin(group);
-    float3 aabbMax = PrimitiveGroup_AABBMax(group);
 
     f16_4  insRot   = EntityGetRotation(entity);
     f16_3  insScale = EntityGetScale(entity);
-    float3 modelPos = UnpackAnimatedModelPos(uint2(animated.packed0, animated.packed1), aabbMin, aabbMax);
-    float3 finalWorldPos = AnimatedWorldPos(modelPos, float4(insRot), float3(insScale), entity.position.xyz);
+
+    f16_3x4 animMat = VertexAnimate(sBoneMtx, sparse * MAX_BONES, input.aJoints, input.aWeights);
+    float3 pos = float3(mul(animMat, f16_4(input.aPos.xyz, 1.0)));
+    float3 finalWorldPos = AnimatedWorldPos(pos, float4(insRot), float3(insScale), entity.position.xyz);
 
     VSOutput o;
     o.position = mul(uViewProj, float4(finalWorldPos, 1.0));

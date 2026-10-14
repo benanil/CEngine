@@ -31,9 +31,8 @@ cbuffer ps_params : register(b0, space3)
 StructuredBuffer<Entity>         sEntities            : register(t0);
 StructuredBuffer<PrimitiveGroup> sPrimitiveGroups     : register(t1);
 StructuredBuffer<uint>           sDrawSparseIndices   : register(t2);
-StructuredBuffer<AnimatedVert>   sAnimatedVert        : register(t3);
+StructuredBuffer<uint>           sBoneMtx             : register(t3);
 StructuredBuffer<ShadowCascadeBuffer> sShadowCascades : register(t4);
-StructuredBuffer<uint>           sBoneMtx             : register(t5);
 StructuredBuffer<PrimitiveGroupLOD> sPrimitiveGroupLODs : register(t6);
 
 Texture2DArray<float4> AlbedoPages            : register(t0, space2);
@@ -85,39 +84,20 @@ struct VSOutput
     nointerpolation float  handedness : TEXCOORD9;
 };
 
-VSOutput vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("DrawIndex")]] uint drawID : DRAWINDEX, uint vertexID : SV_VertexID)
+VSOutput vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("DrawIndex")]] uint drawID : DRAWINDEX)
 {
     uint primitiveIdx = drawID / MESH_LOD_COUNT;
     uint lod = drawID - primitiveIdx * MESH_LOD_COUNT;
     PrimitiveGroup group = sPrimitiveGroups[primitiveIdx];
-    PrimitiveGroupLOD lodGroup = sPrimitiveGroupLODs[primitiveIdx];
     uint denseIdx  = sDrawSparseIndices[lod * uint(MAX_ANIM_INSTANCES) + PrimitiveGroup_EntityOffset(group) + instanceID];
-    uint localVertex = vertexID - lodGroup.lodVertexOffset[lod];
     uint sparse = EntityGetSparseID(sEntities[denseIdx]);
-    uint animatedVertex = sparse * uint(MAX_SKINNED_VERTEX_PER_ANIM_INSTANCE) + lodGroup.lodVertexOffset[lod] + localVertex;
-    AnimatedVert animated = sAnimatedVert[animatedVertex];
     Entity entity = sEntities[denseIdx];
-    float3 aabbMin = PrimitiveGroup_AABBMin(group);
-    float3 aabbMax = PrimitiveGroup_AABBMax(group);
     f16_4  insRot   = EntityGetRotation(entity);
     f16_3  insScale = EntityGetScale(entity);
-    float3 modelPos = UnpackAnimatedModelPos(uint2(animated.packed0, animated.packed1), aabbMin, aabbMax);
-    float3 finalWorldPos = AnimatedWorldPos(modelPos, float4(insRot), float3(insScale), entity.position.xyz);
 
-    uint boneStart = sparse * MAX_BONES;
-    f16_4 weights;
-    weights.xyz = UnpackVec3XY11Z10Unorm(input.aWeights);
-    weights.w   = saturate(f16(1.0) - weights.x - weights.y - weights.z);
-
-    f16_3x4 animMat = (f16_3x4)0;
-    [unroll]
-    for (int i = 0; i < 4; i++)
-    {
-        f16_3x4 bone = LoadBone(sBoneMtx, boneStart + input.aJoints[i]);
-        animMat[0] = mad(weights[i], bone[0], animMat[0]);
-        animMat[1] = mad(weights[i], bone[1], animMat[1]);
-        animMat[2] = mad(weights[i], bone[2], animMat[2]);
-    }
+    f16_3x4 animMat = VertexAnimate(sBoneMtx, sparse * MAX_BONES, input.aJoints, input.aWeights);
+    float3 pos = float3(mul(animMat, f16_4(input.aPos.xyz, 1.0)));
+    float3 finalWorldPos = AnimatedWorldPos(pos, float4(insRot), float3(insScale), entity.position.xyz);
 
     f16_3 restNormal, restTangent;
     UnpackNormalTangent(input.aTangentSpace, restNormal, restTangent);
