@@ -20,11 +20,11 @@ static APrimitive* PrepareSingleMeshBundle(SceneBundle* result, u32 numVertex, s
     AScene* scene = result->scenes = (AScene*)Pow2Alloc(allocator, sizeof(AScene));
     result->numScenes = 1;
     scene->numNodes = 1;
-    scene->nodes = (u32*)Pow2Alloc(allocator, sizeof(u32));
+    scene->nodes = (s32*)Pow2Alloc(allocator, sizeof(s32));
 
     result->numMeshes = 1;
     AMesh* mesh = result->meshes = (AMesh*)Pow2Alloc(allocator, sizeof(AMesh));
-    mesh->name = name;
+    mesh->name = (char*)name;
     result->totalPrimitives = mesh->numPrimitives = 1;
     APrimitive* primitive = mesh->primitives = (APrimitive*)Pow2Alloc(allocator, sizeof(APrimitive));
     primitive->mode = 4; // triangle
@@ -455,6 +455,9 @@ SceneBundle* GetUnitPrimitive(MeshType type)
         case MeshType_Cylinder: return GetUnitCylinder();
         case MeshType_Cone:     return GetUnitCone();
         case MeshType_Sphere:   return GetUnitSphere();
+        case MeshType_Default:  
+        case MeshType_Runtime:  
+            return GetUnitCube();
     }
     return NULL;
 }

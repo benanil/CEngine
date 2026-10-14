@@ -93,7 +93,7 @@ typedef enum MeshType_
 // MeshBuilder b = MeshBuilder_Create(numVertex, numIndex);
 // set vertices, set indices -> Scene_AddBundle -> Scene_Spawn
 // cache the b.result and use it later
-MeshBuilder MeshBuilder_Create(s32 numVertex, s32 numIndex);
+MeshBuilder MeshBuilder_Create(s32 numVertex, s32 numIndex, const char* name);
 SceneBundle* GenerateSphere(float radius, u32 ringCount, u32 sliceCount);
 SceneBundle* GenerateCylinder(float radius, float height, u32 sliceCount);
 SceneBundle* GenerateCone(float height, float radius, u32 sliceCount);

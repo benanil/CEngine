@@ -165,7 +165,7 @@ void Scene_Update(float deltaTime)
     Scene* activeScene = GetActiveScene();
     if (activeScene == NULL) return;
     
-    Scene_UpdatePhysics(activeScene, deltaTime);
+    Physics_Update(activeScene, deltaTime);
 }
 
 extern void OpenSceneCallback(const char* path);

@@ -242,7 +242,7 @@ static bool PhysicsUserDataIsFoliage(void* userData)
     return ((uintptr_t)userData & PHYSICS_FOLIAGE_USERDATA) != 0;
 }
 
-void Scene_UpdatePhysics(Scene* scene, float deltaTime)
+void Physics_Update(Scene* scene, float deltaTime)
 {
     if (SDL_GetAtomicInt(&scene->physicsColliderBuildDone))
     {
@@ -314,7 +314,7 @@ static u32 PhysicsCountMeshes(Scene* scene)
     return count;
 }
 
-static b3MeshData* Scene_PhysicsEnsureGroupMesh(Scene* scene, u32 groupIdx)
+static b3MeshData* PhysicsEnsureGroupMesh(Scene* scene, u32 groupIdx)
 {
     RenderSet* renderset = &scene->surfaceSet;
     if (groupIdx >= renderset->numGroups) return NULL;
@@ -386,7 +386,7 @@ static b3MeshData* Scene_PhysicsEnsureGroupMesh(Scene* scene, u32 groupIdx)
     return mesh;
 }
 
-void Scene_PhysicsCreateEntityBody(Scene* scene, const Entity* entity)
+void PhysicsCreateEntityBody(Scene* scene, const Entity* entity)
 {
     EntityFlags entityFlags = EntityGetFlags(entity);
     bool colliderEnabled = (entityFlags & EntityFlags_ColliderEnabled) != 0;
@@ -396,7 +396,7 @@ void Scene_PhysicsCreateEntityBody(Scene* scene, const Entity* entity)
     u32 primitiveIdx = EntityGetPrimitiveID(entity);
     if (primitiveIdx >= scene->surfaceSet.numGroups) return;
     
-    b3MeshData* mesh = Scene_PhysicsEnsureGroupMesh(scene, primitiveIdx);
+    b3MeshData* mesh = PhysicsEnsureGroupMesh(scene, primitiveIdx);
     if (!mesh) return;
     
     b3BodyDef bd  = b3DefaultBodyDef();
@@ -438,7 +438,7 @@ void Entity_TogglePhysics(Scene* scene, Entity* entity, bool enabled)
     bool isEnabled = !B3_IS_NULL(body) && b3Body_IsEnabled(body);
     if (B3_IS_NULL(body))
     {
-        Scene_PhysicsCreateEntityBody(scene, entity);
+        PhysicsCreateEntityBody(scene, entity);
         body = scene->physicsBodies[sparseId];
     }
     if (B3_IS_NULL(body)) return;
@@ -454,7 +454,7 @@ void Entity_SyncPhysicsBody(Scene* scene, const Entity* entity)
     b3BodyId* slot = PhysicsEntitySlot(scene, entity);
     if (!slot || B3_IS_NULL(slot[0]))
     {
-        Scene_PhysicsCreateEntityBody(scene, entity);
+        PhysicsCreateEntityBody(scene, entity);
         return;
     }
     b3BodyId body = slot[0];
@@ -470,7 +470,7 @@ void Entity_SyncPhysicsBody(Scene* scene, const Entity* entity)
         b3Vec3 curScale = b3Shape_GetMesh(shape).scale;
         if (newScale.x != curScale.x || newScale.y != curScale.y || newScale.z != curScale.z)
         {
-            b3MeshData* mesh = Scene_PhysicsEnsureGroupMesh(scene, EntityGetPrimitiveID(entity));
+            b3MeshData* mesh = PhysicsEnsureGroupMesh(scene, EntityGetPrimitiveID(entity));
             if (mesh) b3Shape_SetMesh(shape, mesh, newScale);
         }
     }
@@ -572,7 +572,7 @@ bool Entity_SetPhysicsShape(Scene* scene,  const Entity* entity, b3ShapeType typ
     // Mesh restores the original triangle collider (rebuilt/cached per group).
     if (type == b3_meshShape)
     {
-        b3MeshData* mesh = Scene_PhysicsEnsureGroupMesh(scene, groupIdx);
+        b3MeshData* mesh = PhysicsEnsureGroupMesh(scene, groupIdx);
         if (!mesh) return false;
         b3Shape_SetMesh(shape, mesh, EntityGetB3Scale(entity));
         return true;
@@ -726,7 +726,7 @@ void Physics_ApplyPendingOverrides(Scene* scene)
     scene->numPendingPhysics = 0;
 }
 
-void Scene_PhysicsDestroyEntityBody(Scene* scene, const Entity* entity)
+void Physics_DestroyEntityBody(Scene* scene, const Entity* entity)
 {
     b3BodyId* slot = PhysicsEntitySlot(scene, entity);
     if (!slot) return;
@@ -734,7 +734,7 @@ void Scene_PhysicsDestroyEntityBody(Scene* scene, const Entity* entity)
     slot[0] = b3_nullBodyId;
 }
 
-static void Scene_PhysicsDestroyBodiesInRange(Scene* scene, u32 firstGroup, u32 groupCount)
+static void Physics_DestroyBodiesInRange(Scene* scene, u32 firstGroup, u32 groupCount)
 {
     if (!scene || groupCount == 0u) return;
     RenderSet* set = &scene->surfaceSet;
@@ -744,11 +744,11 @@ static void Scene_PhysicsDestroyBodiesInRange(Scene* scene, u32 firstGroup, u32 
     {
         PrimitiveGroup* group = &set->primitiveGroups[g];
         for (u32 e = 0; e < group->numEntities; e++)
-            Scene_PhysicsDestroyEntityBody(scene, &set->entities[group->entityOffset + e]);
+            Physics_DestroyEntityBody(scene, &set->entities[group->entityOffset + e]);
     }
 }
 
-static void Scene_PhysicsRemoveGroupMeshes(Scene* scene, u32 firstGroup, u32 groupCount)
+static void Physics_RemoveGroupMeshes(Scene* scene, u32 firstGroup, u32 groupCount)
 {
     if (!scene || groupCount == 0u) return;
     b3MeshData** meshes = scene->physicsMeshes;
@@ -776,7 +776,7 @@ void RenderSet_AddEntitiesCallback(RenderSet* set, u32 groupIdx, u32 localStartI
     PrimitiveGroup* group = &set->primitiveGroups[groupIdx];
     u32 cnt = group->numEntities - localStartIdx;
     for (u32 i = 0; i < cnt; i++)
-        Scene_PhysicsCreateEntityBody(set->hookScene, &set->entities[group->entityOffset + localStartIdx + i]);
+        PhysicsCreateEntityBody(set->hookScene, &set->entities[group->entityOffset + localStartIdx + i]);
 }
 
 void RenderSet_RemoveRangeCallback(RenderSet* set, u32 groupIdx, u32 localStartIdx, u32 count)
@@ -784,18 +784,18 @@ void RenderSet_RemoveRangeCallback(RenderSet* set, u32 groupIdx, u32 localStartI
     PrimitiveGroup* group = &set->primitiveGroups[groupIdx];
     u32 cnt = group->numEntities - localStartIdx;
     for (u32 i = 0; i < cnt; i++)
-        Scene_PhysicsDestroyEntityBody(set->hookScene, &set->entities[group->entityOffset + localStartIdx + i]);
+        Physics_DestroyEntityBody(set->hookScene, &set->entities[group->entityOffset + localStartIdx + i]);
 }
 
 void RenderSet_RemoveGroupsCallback(RenderSet* set, u32 firstGroup, u32 groupCount)
 {
-    Scene_PhysicsDestroyBodiesInRange(set->hookScene, firstGroup, groupCount);
-    Scene_PhysicsRemoveGroupMeshes(set->hookScene, firstGroup, groupCount);
+    Physics_DestroyBodiesInRange(set->hookScene, firstGroup, groupCount);
+    Physics_RemoveGroupMeshes(set->hookScene, firstGroup, groupCount);
 }
 
 void RenderSet_ClearEntitiesCallback(RenderSet* set)
 {
-    Scene_PhysicsDestroyBodiesInRange(set->hookScene, 0u, set->numGroups);
+    Physics_DestroyBodiesInRange(set->hookScene, 0u, set->numGroups);
 }
 
 // Builds one triangle-mesh collider per primitive group. This can run on the loader thread because
@@ -812,7 +812,7 @@ static void BuildColliderMeshesOfScene(Scene* scene)
             PrimitiveGroup* group = &set->primitiveGroups[g];
             if (group->numEntities == 0 || group->lodNumIndices[0] < 3 || group->lodNumVertices[0] == 0)
                 continue;
-            Scene_PhysicsEnsureGroupMesh(scene, g);
+            PhysicsEnsureGroupMesh(scene, g);
         }
     }
 }
@@ -835,12 +835,12 @@ static void BuildCollidersForScene(Scene* scene)
 
             Entity* ents = set->entities + group->entityOffset;
             for (u32 e = 0; e < group->numEntities; e++)
-                Scene_PhysicsCreateEntityBody(scene, &ents[e]);
+                PhysicsCreateEntityBody(scene, &ents[e]);
         }
     }
 }
 
-void Scene_BuildStaticColliders(Scene* scene)
+void Physics_BuildStaticColliders(Scene* scene)
 {
     PhysicsDestroyLiveStaticColliders(scene);
     if (!scene->physicsBodies) return;
@@ -866,7 +866,7 @@ static s32 BuildStaticColliderMeshesTask(void* data)
     return 1;
 }
 
-void Scene_BuildStaticCollidersAsync(Scene* scene, AsyncCallback callback)
+void Physics_BuildStaticCollidersAsync(Scene* scene, AsyncCallback callback)
 {
     if (SDL_GetAtomicInt(&scene->physicsColliderBuildRunning))
     {
@@ -885,7 +885,7 @@ void Scene_BuildStaticCollidersAsync(Scene* scene, AsyncCallback callback)
 // box3d picking against the static surface colliders. mirrors the BVHHit contract of the cpu-BVH
 // path so BVH_RaycastScene can keep whichever of (static physics, skinned cpu-BVH) hit is nearer.
 // only writes *hit when the physics hit is closer than the current hit->hit.t. out: 1 when written.
-s32 Scene_PhysicsRaycastPick(v128f origin, v128f dir, float rayLen, BVHHit* hit, u64 mask)
+s32 Physics_PhysicsRaycastPick(v128f origin, v128f dir, float rayLen, BVHHit* hit, u64 mask)
 {
     b3QueryFilter filter = b3DefaultQueryFilter();
     filter.maskBits = mask;

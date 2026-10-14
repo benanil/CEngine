@@ -90,12 +90,25 @@ void EditorGizmoClear(void)
     RendererClearOutlineTarget();
 }
 
+static void RecAddEntity(EntityID id, const RenderSet* set, const Scene* scene)
+{
+    gizmoTargets[gizmoNumTargets++] = id;
+    u32 sparseId = EntityIDSparse(id);
+    const SparseData* sparse = set->sparseData + sparseId;
+    for (s32 c = 0; c < sparse->subNodeCount; c++)
+    {
+        s32 child = sparseId + set->subNodes[sparse->subNodeOffset + c];
+        RecAddEntity(EntityIDFromSparseData(scene, &set->sparseData[child]), set, scene);
+    }
+}
+
 void EditorGizmoSetTarget(EntityID id)
 {
-    gizmoNumTargets = 1;
-    gizmoTargets[0] = id;
     gizmo.dragging = false;
     gizmo.hotAxis = GizmoAxis_None;
+    gizmoNumTargets = 0;
+    Scene* scene = GetActiveScene();
+    RecAddEntity(id, Scene_EntityRenderSet(scene, id), scene);
 }
 
 // ctrl click: toggles the object in the selection
@@ -130,7 +143,7 @@ bool EditorGizmoDuplicateSelected(void)
         if (!target) { AX_LOG("cannot duplicate entity!"); continue; }
 
         v128f pos = VecAdd(target->position, VecSetR(1.0f, 0.0f, 0.0f, 0.0f));
-        RenderSet* set = EntityIDIsSkinned(gizmoTargets[t]) ? &scene->skinnedSet : &scene->surfaceSet;
+        RenderSet* set = Scene_EntityRenderSet(scene, gizmoTargets[t]);
 
         SparseData* sparse;
         if (GetKeyDown(SDLK_LSHIFT)) {
@@ -160,7 +173,8 @@ bool EditorGizmoDeleteSelected(void)
 
     for (u32 t = 0u; t < gizmoNumTargets; t++)
     {
-        Scene_RemoveEntity(scene, gizmoTargets[t]);
+        RenderSet* set = Scene_EntityRenderSet(scene, gizmoTargets[t]);
+        RenderSet_RemoveEntityStaged(set, EntityIDSparse(gizmoTargets[t]));
     }
 
     RenderSet_CompactEntities(&scene->surfaceSet);
@@ -479,7 +493,7 @@ bool EditorGizmoUpdate(Camera* camera)
     if (GetKeyPressed('g'))
     {
         gizmo.localSpace = !gizmo.localSpace;
-        transientTime = 2.0f;
+        transientTime = 1.0f;
         const char* space = gizmo.localSpace ? "local\0" : "global\0";
         AX_LOG("gizmo space: %s", space);
         MemCopy(transientText, space, StringLength(space)+1);
@@ -487,11 +501,13 @@ bool EditorGizmoUpdate(Camera* camera)
 
     if (transientTime > 0.0f)
     {
-        transientTime -= GetDeltaTime();
+        transientTime -= GetDeltaTime() * 0.5f;
         u32 w = g_WindowState.prev_width, h = g_WindowState.prev_height;
         s32 textLen = StringLength(transientText);
         float2 txtSz = SlugCalcTextSizeN(NULL, transientText, textLen, 32.0f);
-        SlugAppendText2DN(NULL, transientText, textLen, (float2){ (w * 0.5f) - (txtSz.x * 0.5f), h * 0.8f }, 32.0f, UCOLOR_GREEN);
+        u32 color = MultiplyU32Colors(gizmo.localSpace ? UCOLOR_LIME : UCOLOR_BLUE,
+                                      MakeRGBAGrayScale(transientTime * transientTime * 255));
+        SlugAppendText2DN(NULL, transientText, textLen, (float2){ (w * 0.5f) - (txtSz.x * 0.5f), h * 0.8f }, 32.0f, color);
     }
 
     // while idle re-collect the members and the merged center every frame, a drag works

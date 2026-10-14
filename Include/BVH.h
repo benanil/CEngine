@@ -65,7 +65,7 @@ s32 BVH_RaycastScene(const struct Scene_* scene, v128f origin, v128f dir, BVHHit
 // box3d raycast against the static surface colliders, fills *hit in the same BVHHit contract when the
 // physics hit is nearer than hit->hit.t. implemented in Physics.c. out: 1 when *hit is written
 // mask: PhysBit_Surface | PhysBit_Terrain
-s32 Scene_PhysicsRaycastPick(v128f origin, v128f dir, float rayLen, BVHHit* hit, u64 mask);
+s32 Physics_PhysicsRaycastPick(v128f origin, v128f dir, float rayLen, BVHHit* hit, u64 mask);
 
 #if defined(__cplusplus)
 }

@@ -57,7 +57,7 @@ static void CharacterUI()
 
     static bool open = true;
     if (UIBeginWindowId(CLAY_ID("Character"), "Character",
-                        (float2) { 18.0f, 18.0f }, (float2) { 500.0f, 260.0f }, 
+                        (float2) { 800.0f, 30.0f }, (float2) { 500.0f, 260.0f }, 
                         &open, UIWindowFlags_NoClose))
     {
         UIText("Character Settings");
@@ -75,7 +75,6 @@ void OpenSceneCallback(const char* path)
     u32 capsuleId  = Scene_AddBundle(scene, capsuleBundle, "Character");
     SparseData* sparse = Scene_Spawn(scene, capsuleId, VecSetR(0.0f, 0.0f, 0.0f, 0.f), QIdentity(), VecOne(), EntityFlags_None);
     characterEntity = EntityIDFromSparseData(scene, sparse);
-    RenderSet_GetEntity(&scene->surfaceSet, characterEntity);
 }
 
 void BeforeDestroySceneCallback(Scene* scene)
@@ -87,7 +86,7 @@ static b3Capsule MakeMover(void)
 {
     return (b3Capsule){
         .center1 = (b3Vec3){ 0.0f, -0.85f, 0.0f },
-        .center2 = (b3Vec3){ 0.0f, 0.85f, 0.0f },
+        .center2 = (b3Vec3){ 0.0f,  0.85f, 0.0f },
         .radius = 0.5f
     };
 }
@@ -151,7 +150,7 @@ static void UpdateCharacter()
     if (GetKeyPressed(SDLK_J) || GetKeyPressed(SDLK_K))
     {
         characterActive = !characterActive;
-        character->position = VecSetR(0.0f, 10.0f, 0.0f, 0.0f);
+        EntitySetPositionV(character, VecSetR(0.0f, 10.0f, 0.0f, 0.0f));
         verticalSpeed = 0.0f;
         grounded = false;
         CameraMode wantedMode = GetKeyPressed(SDLK_K) ? CameraMode_FPS : CameraMode_TPS;
@@ -263,7 +262,7 @@ static void UpdatePicking()
     v128f direction = VecNorm(Vec3Load(&g_Camera.front));
     hit.hit.t = FLT_MAX;
 
-    if (GetMouseDown(MouseButton_Left) && Scene_PhysicsRaycastPick(origin, direction, 10.0f, &hit, PhysBit_Foliage))
+    if (GetMouseDown(MouseButton_Left) && Physics_PhysicsRaycastPick(origin, direction, 10.0f, &hit, PhysBit_Foliage))
     {
         Scene* scene = Foliage_GetScene();
         float dt = GetDeltaTime();

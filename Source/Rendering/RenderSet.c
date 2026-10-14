@@ -12,6 +12,9 @@
 
 extern Graphics gGFX;
 
+extern void PhysicsCreateEntityBody(struct Scene_* scene, const Entity* entity);
+extern void Physics_DestroyEntityBody(struct Scene_* scene, const Entity* entity);
+
 void RenderSet_InitSet(RenderSet* set, u32 maxEntities, u32 maxGroups, u32 maxBundles, bool skinned)
 {
     MemsetZero(set, sizeof(*set));
@@ -167,10 +170,7 @@ void RenderSet_FreeSparseIDPtr(RenderSet* set, SparseData* sparseData)
     u32 sparseIdx = (u32)(sparseData - set->sparseData);
     if (sparseIdx >= set->maxEntities) { AX_WARN("freeing sparse id range failed!"); return; }
 
-    U16SetSetRange(set->subNodes, sparseData->subNodeOffset, sparseData->subNodeCount, 0);
     BitsetReset(set->sparseSlots, (s32)sparseIdx);
-    sparseData->subNodeOffset = 0;
-    sparseData->subNodeCount = 0;
     sparseData->id = INVALID_ENTITY;
     sparseData->gen++;
 }
@@ -379,8 +379,6 @@ void BatchLeaveSpacePrimitives(RenderSet* set, u32 primitiveStart, u32 numPrimit
     set->numEntities += totalEntityAdded;
 }
 
-// make group0 for non meshes
-// todo(anil) count no meshes as well
 u32 CountNumEntities(const RenderSet* set, u32 bundleIdx, u32 numScenes, u32* primitiveCounts, bool wantSkinned)
 {
     const SceneBundle* bundle = set->bundles[bundleIdx];
@@ -392,6 +390,7 @@ u32 CountNumEntities(const RenderSet* set, u32 bundleIdx, u32 numScenes, u32* pr
         const ANode* node = bundle->nodes + m;
         if (!ANodeIsMesh(node, wantSkinned))
         {
+            // make group0 for non meshes
             if (set->skinned) continue;
             primitiveCounts[0] += numScenes;
             totalPrimAdded += numScenes;
@@ -498,7 +497,7 @@ u32 AddBundleAsScene(RenderSet* set, u32 bundleIdx, u32 sparseStart, const Entit
             sparseData->id = denseIdx;
             sparseData->hasPrim = p < mesh->numPrimitives - 1;
             // todo(anil) move this outside of loop (optimization)
-            Scene_PhysicsCreateEntityBody(set->hookScene, &set->entities[denseIdx]);
+            PhysicsCreateEntityBody(set->hookScene, &set->entities[denseIdx]);
             // RenderSet_AddEntitiesCallback(set, firstGroupIdx + p, localIdx, 1u);
         }
     }
@@ -588,7 +587,13 @@ void RenderSet_CompactEntities(RenderSet* set)
             Entity entity = set->entities[oldOffset + i];
             u32 sparse = EntityGetSparseID(&entity);
             if (sparse == INVALID_ENTITY)
+            {
+                SparseData* sparseData = &set->sparseData[sparse];
+                U16SetSetRange(set->subNodes, sparseData->subNodeOffset, sparseData->subNodeCount, 0);
+                sparseData->subNodeOffset = 0;
+                sparseData->subNodeCount = 0;
                 continue;
+            }
             set->sparseData[sparse].id = writeEntity;
             set->entities[writeEntity++] = entity;
         }
@@ -597,12 +602,35 @@ void RenderSet_CompactEntities(RenderSet* set)
     set->numEntities = writeEntity;
 }
 
+static void SparseDataRemoveFromParent(RenderSet* set, SparseData* sparseData)
+{
+    if (!sparseData->parent) return;
+    SparseData* parent = sparseData - sparseData->parent;
+    bool found = false;
+    u16* subNodes = set->subNodes + parent->subNodeOffset;
+    // remove this node from its parent
+    for (s32 i = 0; i < parent->subNodeCount; i++)
+    {
+        SparseData* child = parent + subNodes[i];
+        if (child == sparseData)
+        {
+            subNodes[i] = subNodes[--parent->subNodeCount]; // unordered remove
+            found = true;
+            break;
+        }
+    }
+    if (!found) AX_WARN("child couldn't found in parent");
+    sparseData->parent = 0;
+}
+
 void RenderSet_RemoveEntityStaged(RenderSet* set, u32 sparseId)
 {
     SparseData* sparseData = &set->sparseData[sparseId];
     Entity* entity = &set->entities[sparseData->id];
+    Physics_DestroyEntityBody(set->hookScene, entity);
     EntitySetSparseID(entity, INVALID_ENTITY);
     RenderSet_FreeSparseIDPtr(set, sparseData);
+    SparseDataRemoveFromParent(set, sparseData);
 }
 
 void RenderSet_RemoveEntityRangeStaged(RenderSet* set, Range range)
@@ -610,8 +638,15 @@ void RenderSet_RemoveEntityRangeStaged(RenderSet* set, Range range)
     for (u32 i = 0; i < range.count; i++)
     {
         SparseData* sparseData = &set->sparseData[range.start + i];
+        Physics_DestroyEntityBody(set->hookScene, &set->entities[sparseData->id]);
+    }
+
+    for (u32 i = 0; i < range.count; i++)
+    {
+        SparseData* sparseData = &set->sparseData[range.start + i];
         Entity* entity = &set->entities[sparseData->id];
         EntitySetSparseID(entity, INVALID_ENTITY);
+        SparseDataRemoveFromParent(set, sparseData);
     }
     RenderSet_FreeSparseIDRange(set, range.start, range.count);
 }

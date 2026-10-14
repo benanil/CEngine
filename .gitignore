@@ -30,6 +30,7 @@
 /Shaders/spv
 /Shaders/msl
 /Assets/Test
+/Assets/Meshes/GroveStreet
 
 *.spv
 *.opencode

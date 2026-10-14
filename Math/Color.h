@@ -23,9 +23,9 @@
 #define UCOLOR_DARK_GRAY   0xFF202020u
 #define UCOLOR_LIGHT_GRAY  0xFFC0C0C0u
 
-#define UCOLOR_DARK_RED    0xFF000080u
-#define UCOLOR_DARK_GREEN  0xFF008000u
-#define UCOLOR_DARK_BLUE   0xFF800000u
+#define UCOLOR_DARK_RED    0xFF0000F0u
+#define UCOLOR_DARK_GREEN  0xFF00F000u
+#define UCOLOR_DARK_BLUE   0xFFF00000u
 
 #define UCOLOR_GOLD        0xFF00D7FFu
 #define UCOLOR_SKY_BLUE    0xFFFFCC66u
@@ -88,6 +88,15 @@ purefn u32 MultiplyU32Colors(u32 a, u32 b)
     result |= ((a & 0xffu) * (b & 0xffu)) >> 8u;
     result |= ((((a >> 8u) & 0xffu) * ((b >> 8u) & 0xffu)) >> 8u) << 8u;
     result |= ((((a >> 16u) & 0xffu) * ((b >> 16u) & 0xffu)) >> 8u) << 16u;
+    return result;
+}
+
+purefn u32 MixU32Colors(u32 a, u32 b)
+{
+    u32 result = 0u;
+    result |= ((a & 0xffu) + (b & 0xffu)) >> 1u;
+    result |= ((((a >> 8u) & 0xffu) + ((b >> 8u) & 0xffu)) >> 1u) << 8u;
+    result |= ((((a >> 16u) & 0xffu) + ((b >> 16u) & 0xffu)) >> 1u) << 16u;
     return result;
 }
 

@@ -96,7 +96,7 @@ static SceneBundle* ReadProceduralBundle(AFile file, s32 version, char* nameBuff
     ParsePositiveNumber(line, &numVertex);
     if (!AFileReadLine(line, sizeof(line), file)) return NULL;
     ParsePositiveNumber(line, &numIndex);
-    MeshBuilder builder = MeshBuilder_Create(numVertex, numIndex);
+    MeshBuilder builder = MeshBuilder_Create(numVertex, numIndex, "RuntimeMesh");
     s32 nameLen = AFileReadLine(nameBuffer, 1024, file);
     nameBuffer[nameLen] = '\0';
     
@@ -854,7 +854,7 @@ s32 SceneSerializer_Load(Scene* scene, const char* path, SceneFileData* data)
 
     scene->physicsReady = false;
     // every mesh instance is static for now: give each a static rigid body with a triangle collider
-    Scene_BuildStaticCollidersAsync(scene, BuildColliderEndCallback);
+    Physics_BuildStaticCollidersAsync(scene, BuildColliderEndCallback);
 
     AX_LOG("scene loaded: %s bundles=%d entities=%d lights=%d baked=%d %.2fs",
            path, scene->numBundles, scene->surfaceSet.numEntities + scene->skinnedSet.numEntities,

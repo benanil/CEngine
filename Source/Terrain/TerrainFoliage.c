@@ -575,11 +575,6 @@ void Foliage_DestroyChunkFoliage(tChunk* chunk)
     for (s32 j = 0; j < chunk->foliageCount; j++) 
     {
         FoliageEntity foliage = chunk->foliageEntities[j];
-        for (s32 k = 0; k < foliage.range.count; k++)
-        {
-            const Entity* entity = &set->entities[set->sparseData[foliage.range.start + k].id];
-            Scene_PhysicsDestroyEntityBody(&gFoliage.scene, entity);
-        }
         RenderSet_RemoveEntityRangeStaged(set, foliage.range);
     }
     
@@ -611,12 +606,6 @@ static void IntegrateFinishedFoliage(u32 scheduledCount)
             FoliageEntity foliage = chunk->foliageEntities[j];
             if (!BitsetGet(&job->changedBundles, foliage.bundleId))
                 continue;
-        
-            for (s32 k = 0; k < foliage.range.count; k++)
-            {
-                const Entity* entity = &set->entities[set->sparseData[foliage.range.start + k].id];
-                Scene_PhysicsDestroyEntityBody(&gFoliage.scene, entity);
-            }
         
             chunk->foliageEntities[j--] = chunk->foliageEntities[--chunk->foliageCount]; // unordered remove
             RenderSet_RemoveEntityRangeStaged(set, foliage.range);

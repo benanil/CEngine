@@ -333,6 +333,11 @@ static inline bool Scene_SparseDataIsSkinned(const Scene* scene, const SparseDat
            (sparse < (skinnedSparse + scene->skinnedSet.maxEntities));
 }
 
+static inline RenderSet* Scene_EntityRenderSet(Scene* scene, EntityID id)
+{
+    return EntityIDIsSkinned(id) ? &scene->skinnedSet : &scene->surfaceSet;
+}
+
 static inline EntityID EntityIDFromSparseData(const Scene* scene, const SparseData* sparse)
 {
     bool isSkinned = Scene_SparseDataIsSkinned(scene, sparse);
@@ -346,9 +351,23 @@ static inline Entity* Scene_GetEntity(const Scene* scene, EntityID id)
     return RenderSet_GetEntity(rs, id);
 }
 
+static inline void Scene_RemoveEntityRec(Scene* scene, RenderSet* set, EntityID id)
+{
+    u32 sparseId = EntityIDSparse(id);
+    const SparseData* sparse = set->sparseData + sparseId;
+    for (s32 c = 0; c < sparse->subNodeCount; c++)
+    {
+        s32 child = sparseId + set->subNodes[sparse->subNodeOffset + c];
+        Scene_RemoveEntityRec(scene, set, EntityIDFromSparseData(scene, &set->sparseData[child]));
+    }
+    RenderSet_RemoveEntityStaged(set, sparseId);
+}
+
 static inline void Scene_RemoveEntity(Scene* scene, EntityID id)
 {
-    ASSERT(0);
+    RenderSet* set = Scene_EntityRenderSet(scene, id);
+    Scene_RemoveEntityRec(scene, set, id);
+    RenderSet_CompactEntities(set);
 }
 
 /////////////////////////////
@@ -378,7 +397,7 @@ b3WorldId Physics_GetWorld(void);
 
 void Scene_InitPhysics(Scene* scene);
 void Scene_DestroyPhysics(Scene* scene);
-void Scene_UpdatePhysics(Scene* scene, float deltaTime);
+void Physics_Update(Scene* scene, float deltaTime);
 
 // loads/saves g_PhysicsSettings from PhysicsSettings.txt (load is one-shot, cached).
 void Physics_Settings_Load(void);
@@ -388,8 +407,8 @@ void Physics_ApplyWorldSettings(void);
 
 // builds a static rigid body with a triangle-mesh collider for every static mesh instance in the
 // scene's surface render sets. call once after a scene finishes loading.
-void Scene_BuildStaticCollidersAsync(Scene* scene, AsyncCallback callback);
-void Scene_BuildStaticColliders(Scene* scene);
+void Physics_BuildStaticCollidersAsync(Scene* scene, AsyncCallback callback);
+void Physics_BuildStaticColliders(Scene* scene);
 // yea buddy
 b3BodyId Entity_GetPhysicsBody(Scene* scene, const Entity* entity);
 // after an entity moved call this to update its transformation in physics system
