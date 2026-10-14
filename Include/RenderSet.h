@@ -138,9 +138,6 @@ static inline u32 EntityGetBundleId(const RenderSet* rs, const Entity* entity)
 v128f RenderSet_GroupLocalCenter(const PrimitiveGroup* group);
 v128f RenderSet_EntityBoundsCenter(const PrimitiveGroup* group, const Entity* entity, v128f rotation, v128f worldScale);
 
-bool  RenderSet_ResolveEntity(RenderSet* set, u32 groupIdx, u32 entityIdx,
-                             PrimitiveGroup** outGroup, Entity** outEntity);
-
 // spawn order ordinal of a mesh node: static sparse ids are allocated sequentially per mesh node.
 s32   RenderSet_NodeSpawnOrdinal(const SceneBundle* bundle, s32 nodeIdx);
 bool  RenderSet_FindNodeEntity(const RenderSet* set, Range range, u32 meshIndex, u32 sparseIdx,

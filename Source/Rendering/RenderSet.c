@@ -67,16 +67,6 @@ v128f RenderSet_EntityBoundsCenter(const PrimitiveGroup* group, const Entity* en
     return VecAdd(QMulVec3V(VecMul(RenderSet_GroupLocalCenter(group), worldScale), rotation), entity->position);
 }
 
-bool RenderSet_ResolveEntity(RenderSet* set, u32 groupIdx, u32 entityIdx, PrimitiveGroup** outGroup, Entity** outEntity)
-{
-    if (!set || groupIdx >= set->numGroups) return false;
-    PrimitiveGroup* group = &set->primitiveGroups[groupIdx];
-    if (entityIdx >= group->numEntities) return false;
-    if (outGroup) *outGroup = group;
-    if (outEntity) *outEntity = &set->entities[group->entityOffset + entityIdx];
-    return true;
-}
-
 s32 RenderSet_NodeSpawnOrdinal(const SceneBundle* bundle, s32 nodeIdx)
 {
     s32 ordinal = 0;

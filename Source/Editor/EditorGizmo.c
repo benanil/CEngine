@@ -108,7 +108,7 @@ void EditorGizmoSetTarget(EntityID id)
     gizmo.hotAxis = GizmoAxis_None;
     gizmoNumTargets = 0;
     Scene* scene = GetActiveScene();
-    RecAddEntity(id, Scene_EntityRenderSet(scene, id), scene);
+    RecAddEntity(id, Scene_GetEntityRenderSet(scene, id), scene);
 }
 
 // ctrl click: toggles the object in the selection
@@ -143,7 +143,7 @@ bool EditorGizmoDuplicateSelected(void)
         if (!target) { AX_LOG("cannot duplicate entity!"); continue; }
 
         v128f pos = VecAdd(target->position, VecSetR(1.0f, 0.0f, 0.0f, 0.0f));
-        RenderSet* set = Scene_EntityRenderSet(scene, gizmoTargets[t]);
+        RenderSet* set = Scene_GetEntityRenderSet(scene, gizmoTargets[t]);
 
         SparseData* sparse;
         if (GetKeyDown(SDLK_LSHIFT)) {
@@ -173,7 +173,7 @@ bool EditorGizmoDeleteSelected(void)
 
     for (u32 t = 0u; t < gizmoNumTargets; t++)
     {
-        RenderSet* set = Scene_EntityRenderSet(scene, gizmoTargets[t]);
+        RenderSet* set = Scene_GetEntityRenderSet(scene, gizmoTargets[t]);
         RenderSet_RemoveEntityStaged(set, EntityIDSparse(gizmoTargets[t]));
     }
 
@@ -244,14 +244,13 @@ static v128f GizmoGetMembersCenter(Scene* scene)
     v128f bmin = VecSet1(1.0e30f), bmax = VecSet1(-1.0e30f);
     for (u32 t = 0; t < gizmoNumTargets; t++)
     {
-        const RenderSet* set = Scene_EntityRenderSet(scene, gizmoTargets[t]);
+        const RenderSet* set = Scene_GetEntityRenderSet(scene, gizmoTargets[t]);
         const Entity* entity = Scene_GetEntity(scene, gizmoTargets[t]);
         if (entity == NULL) continue; // likely deleted
         const PrimitiveGroup* group = &set->primitiveGroups[EntityGetPrimitiveID(entity)];
         v128f localCenter = VecMulf(VecAdd(group->aabbMin, group->aabbMax), 0.5f);
         v128f center = VecAdd(QMulVec3V(VecMul(localCenter, EntityGetScaleV(entity)), EntityGetRotation(entity)), EntityGetPosV(entity));
-        bmin = VecMin(bmin, center);
-        bmax = VecMax(bmax, center);
+        bmin = VecMin(bmin, center), bmax = VecMax(bmax, center);
     }
     return VecMulf(VecAdd(bmin, bmax), 0.5f);
 }

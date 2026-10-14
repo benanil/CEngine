@@ -80,7 +80,7 @@ static void OpenSceneFinish(SceneAsyncRequest* request)
     TerrainEditorSceneChanged();
 }
 
-static void SceneSelectObject(EntityID entityHandle)
+void SceneSelectObject(EntityID entityHandle)
 {
     Scene* scene = GetActiveScene();
     Entity* entity = Scene_GetEntity(scene, entityHandle);
@@ -89,7 +89,7 @@ static void SceneSelectObject(EntityID entityHandle)
     sceneObjectSelection = (SceneObjectSelection){
         .valid        = true,
         .skinned      = skinned,
-        .entityIdx    = entityHandle,
+        .entityId    = entityHandle,
         .animIdx      = 0u,
         .groupIdx     = EntityGetPrimitiveID(entity),
         .bundleIdx    = EntityGetBundleId(set, entity),

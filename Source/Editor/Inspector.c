@@ -76,9 +76,12 @@ void SceneEventDeleteBundle(void* unused)
 static bool SceneResolveSelectedObject(Scene* scene, RenderSet** outSet, PrimitiveGroup** outGroup, Entity** outEntity)
 {
     if (!scene || !sceneObjectSelection.valid) return false;
-    RenderSet* set = sceneObjectSelection.skinned ? &scene->skinnedSet : &scene->surfaceSet;
+    *outEntity = Scene_GetEntity(scene, sceneObjectSelection.entityId);
+    if (*outEntity == NULL) return false;
+    RenderSet* set = Scene_GetEntityRenderSet(scene, sceneObjectSelection.entityId);
     *outSet = set;
-    return RenderSet_ResolveEntity(set, sceneObjectSelection.groupIdx, sceneObjectSelection.entityIdx, outGroup, outEntity);
+    *outGroup = set->primitiveGroups + sceneObjectSelection.groupIdx;
+    return true;
 }
 
 void SceneDeleteSelectedObject(void)
@@ -91,7 +94,7 @@ void SceneDeleteSelectedObject(void)
     (void)group;
     (void)entity;
 
-    RenderSet_RemoveEntity(set, sceneObjectSelection.groupIdx, sceneObjectSelection.entityIdx);
+    RenderSet_RemoveEntity(set, sceneObjectSelection.groupIdx, sceneObjectSelection.entityId);
     scene->renderDataDirty = 1;
     sceneObjectSelection.valid = false;
     EditorGizmoClear();
@@ -102,7 +105,7 @@ static void SceneInspectorRefreshCache(const Entity* entity)
     sceneInspectorCache.valid       = true;
     sceneInspectorCache.skinned     = sceneObjectSelection.skinned;
     sceneInspectorCache.groupIdx    = sceneObjectSelection.groupIdx;
-    sceneInspectorCache.entityIdx   = sceneObjectSelection.entityIdx;
+    sceneInspectorCache.entityIdx   = sceneObjectSelection.entityId;
     sceneInspectorCache.position    = entity->position;
     sceneInspectorCache.rotation    = entity->rotation;
     sceneInspectorCache.scalePacked = entity->scale;
@@ -127,7 +130,7 @@ static void SceneInspectorValidateCache(const Entity* entity)
     if (!sceneInspectorCache.valid ||
         sceneInspectorCache.skinned != sceneObjectSelection.skinned ||
         sceneInspectorCache.groupIdx != sceneObjectSelection.groupIdx ||
-        sceneInspectorCache.entityIdx != sceneObjectSelection.entityIdx)
+        sceneInspectorCache.entityIdx != sceneObjectSelection.entityId)
     {
         SceneInspectorRefreshCache(entity);
         return;
@@ -213,7 +216,7 @@ static const char* UIPhysicsFmtV3(f32 x, f32 y, f32 z, int decimals)
 // type change is runtime-only and is reset to static on the next collider build.
 static void SceneInspectorPhysicsUI(Scene* scene, Entity* entity)
 {
-    if (sceneObjectSelection.skinned) return;
+    if (sceneObjectSelection.skinned || (EntityGetFlags(entity) & EntityFlags_NoMesh) != 0) return;
     u32 sparseId = EntityGetSparseID(entity);
     if (!scene->physicsBodies || sparseId >= scene->surfaceSet.maxEntities) return;
 
@@ -345,7 +348,7 @@ void SceneInspectorUI(Scene* scene)
     char* idText = UIFrameStringAlloc(96u);
     if (idText)
     {
-        s32 len = SDL_snprintf(idText, 96u, "Bundle %u Group %u Entity %u", sceneObjectSelection.bundleIdx, sceneObjectSelection.groupIdx, sceneObjectSelection.entityIdx);
+        s32 len = SDL_snprintf(idText, 96u, "Bundle %u Group %u Entity %u", sceneObjectSelection.bundleIdx, sceneObjectSelection.groupIdx, sceneObjectSelection.entityId);
         if (len < 0) len = 0;
         CLAY_TEXT(((Clay_String) { .isStaticallyAllocated = false, .length = len, .chars = idText }), CLAY_TEXT_CONFIG( {
             .fontSize = 13,

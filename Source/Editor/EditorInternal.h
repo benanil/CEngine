@@ -15,7 +15,7 @@ typedef struct SceneObjectSelection_
 
     u32 groupIdx;
     u32 bundleIdx;
-    u32 entityIdx;
+    u32 entityId;
 
     u32 animIdx;
     f32 animTime;
@@ -23,6 +23,8 @@ typedef struct SceneObjectSelection_
 
 extern u32 sceneSelectedEntity;
 
+struct Scene_* EditorNewScene(void);
+struct Camera_;
 // implemented in SceneEditor.c
 void DrawSceneWindow(bool* open);
 void DrawTexturesWindow(bool* open);
@@ -30,8 +32,6 @@ void EditorImportMeshToScene(const char* path);
 void EditorOpenImportDetail(const char* path);
 void EditorOpenScene(const char* path);
 void EditorSceneStartup(void);
-struct Scene_* EditorNewScene(void);
-struct Camera_;
 void EditorPickingUpdate(struct Camera_* camera);
 bool EditorLightGizmoUpdate(struct Camera_* camera);
 void DrawSceneLightGizmos(struct Camera_* camera);
@@ -77,6 +77,8 @@ bool EditorImportNeedsDetailWarning(const char* normalizedPath);
 void SceneSavePopup(void);
 void SceneSaveConfirmPopup(void);
 void SceneDeletePopup(void);
+
+void SceneSelectObject(u32 entityHandle);
 
 void SceneTreeRender(struct Scene_* scene, Clay_ElementId windowId);
 

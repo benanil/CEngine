@@ -40,6 +40,7 @@ static Clay_String SceneNodeLabel(const ANode* node, s32 nodeIdx)
 // every descendant mesh node of the same spawned instance become gizmo targets
 static void SceneSelectNodeInViewport(const Scene* scene, EntityID id)
 {
+    SceneSelectObject(id);
     EditorGizmoSetTarget(id);
 }
 

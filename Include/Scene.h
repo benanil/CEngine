@@ -333,7 +333,7 @@ static inline bool Scene_SparseDataIsSkinned(const Scene* scene, const SparseDat
            (sparse < (skinnedSparse + scene->skinnedSet.maxEntities));
 }
 
-static inline RenderSet* Scene_EntityRenderSet(Scene* scene, EntityID id)
+static inline RenderSet* Scene_GetEntityRenderSet(Scene* scene, EntityID id)
 {
     return EntityIDIsSkinned(id) ? &scene->skinnedSet : &scene->surfaceSet;
 }
@@ -365,7 +365,7 @@ static inline void Scene_RemoveEntityRec(Scene* scene, RenderSet* set, EntityID 
 
 static inline void Scene_RemoveEntity(Scene* scene, EntityID id)
 {
-    RenderSet* set = Scene_EntityRenderSet(scene, id);
+    RenderSet* set = Scene_GetEntityRenderSet(scene, id);
     Scene_RemoveEntityRec(scene, set, id);
     RenderSet_CompactEntities(set);
 }
