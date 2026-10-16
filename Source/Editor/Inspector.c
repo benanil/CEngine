@@ -360,10 +360,11 @@ void SceneInspectorUI(Scene* scene)
 
     if (UIEditFloatN("Position", sceneInspectorCache.positionUi, 3u, -100000.0f, 100000.0f, 3))
     {
-        EntitySetPositionV(entity, Vec3Load(sceneInspectorCache.positionUi));
+        v128f oldPos = EntityGetPosV(entity);
+        v128f diff = VecSub(Vec3Load(sceneInspectorCache.positionUi), oldPos);
+        Scene_AddPosRec(scene, entity, diff);
+
         sceneInspectorCache.position = entity->position;
-        if (!sceneObjectSelection.skinned)
-            Entity_SyncPhysicsBody(scene, entity);
         scene->renderDataDirty = 1;
     }
 
@@ -375,33 +376,26 @@ void SceneInspectorUI(Scene* scene)
         v128f q = VecNorm(QFromEuler((f32)sceneInspectorCache.rotationUi[0] * MATH_DegToRad,
                                      (f32)sceneInspectorCache.rotationUi[1] * MATH_DegToRad,
                                      (f32)sceneInspectorCache.rotationUi[2] * MATH_DegToRad));
-        EntitySetRotation(entity, q);
+       
+        Scene_RotateRec(scene, entity, QMul(QInverse(oldRot), q));
+        
         EntitySetPositionV(entity, VecSub(center, QMulVec3V(VecMul(RenderSet_GroupLocalCenter(group), oldScale), q)));
         sceneInspectorCache.position = entity->position;
         sceneInspectorCache.positionUi[0] = VecGetX(entity->position);
         sceneInspectorCache.positionUi[1] = VecGetY(entity->position);
         sceneInspectorCache.positionUi[2] = VecGetZ(entity->position);
         sceneInspectorCache.rotation = entity->rotation;
-        if (!sceneObjectSelection.skinned)
-            Entity_SyncPhysicsBody(scene, entity);
         scene->renderDataDirty = 1;
     }
 
     if (UIEditFloatN("Scale", sceneInspectorCache.scaleUi, 3u, 0.001f, 10.0f, 3))
     {
-        v128f rotation = EntityGetRotation(entity);
         v128f oldScale = EntityGetScaleV(entity);
-        v128f center = RenderSet_EntityBoundsCenter(group, entity, rotation, oldScale);
-        EntitySetScaleV(entity, Vec3Load(sceneInspectorCache.scaleUi));
-        v128f newScale = EntityGetScaleV(entity);
-        EntitySetPositionV(entity, VecSub(center, QMulVec3V(VecMul(RenderSet_GroupLocalCenter(group), newScale), rotation)));
-        sceneInspectorCache.position = entity->position;
-        sceneInspectorCache.positionUi[0] = VecGetX(entity->position);
-        sceneInspectorCache.positionUi[1] = VecGetY(entity->position);
-        sceneInspectorCache.positionUi[2] = VecGetZ(entity->position);
+        v128f newScale = VecMax(Vec3Load(sceneInspectorCache.scaleUi), VecSet1(0.001f));
+        EntitySetScaleV(entity, newScale);
+        Scene_ScaleRec(scene, entity, VecDiv(newScale, oldScale), true);
+
         sceneInspectorCache.scalePacked = entity->scale;
-        if (!sceneObjectSelection.skinned)
-            Entity_SyncPhysicsBody(scene, entity);
         scene->renderDataDirty = 1;
     }
 

@@ -43,8 +43,8 @@ purefn u32 EntityGetGen(const Entity* e) {
     return (VeciGetW(VecBitcastU32(e->position)) >> 24ull) & 0xFFu;
 }
 
-purefn EntityID MakeEntityID(u32 sparse, u32 gen) {
-    return (sparse & 0xFFFFFFu) | ((gen & 0xFFu) << 24u);
+purefn EntityID MakeEntityID(u32 sparse, u32 gen, bool skinned) {
+    return (sparse & 0xFFFFFFu) | ((gen & 0x7Fu) << 24u) | ((u32)skinned << 31u);
 }
 
 static inline void EntitySetSparseID(Entity* e, u32 id) {
@@ -89,6 +89,10 @@ static inline void EntitySetRotation(Entity* e, Quaternion rotation) {
     e->rotation = PackQuaternionS16NormRet(rotation);
 }
 
+static inline void EntityAddRotation(Entity* e, Quaternion rotation) {
+    e->rotation = PackQuaternionS16NormRet(QMul(EntityGetRotation(e), rotation));
+}
+
 purefn v128f EntityGetScaleV(const Entity* e) {
     return Unpack16x4Fixed(e->scale, ENTITY_MAX_SCALE);
 }
@@ -105,6 +109,14 @@ static inline void EntitySetScale(Entity* e, float3 scale) {
     EntitySetScaleV(e, Vec3Load(&scale.x));
 }
 
+static inline void EntityMulScaleV(Entity* e, v128f scale)  {
+    EntitySetScaleV(e, VecMul(EntityGetScaleV(e), scale));
+}
+
+static inline void EntityAddScaleV(Entity* e, v128f scale)  {
+    EntitySetScaleV(e, VecAdd(EntityGetScaleV(e), scale));
+}
+
 purefn v128f EntityGetPosV(const Entity* e) {
     return e->position;
 }
@@ -114,6 +126,12 @@ purefn float3 EntityGetPos(const Entity* e) {
 }
 
 static inline void EntitySetPositionV(Entity* e, v128f v) {
+    VecSetW(v, VecGetW(e->position));
+    e->position = v;
+}
+
+static inline void EntityAddPositionV(Entity* e, v128f v) {
+    v = VecAdd(v, e->position);
     VecSetW(v, VecGetW(e->position));
     e->position = v;
 }

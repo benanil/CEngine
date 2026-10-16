@@ -18,7 +18,6 @@
 #include <SDL3/SDL_atomic.h>
 #include <SDL3/SDL_cpuinfo.h>
 #include <SDL3/SDL_mutex.h>
-#include <string.h>
 
 
 #if !AX_GAME_BUILD

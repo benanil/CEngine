@@ -333,6 +333,13 @@ static inline bool Scene_SparseDataIsSkinned(const Scene* scene, const SparseDat
            (sparse < (skinnedSparse + scene->skinnedSet.maxEntities));
 }
 
+static inline bool Scene_EntityIsSkinned(const Scene* scene, const Entity* entity)
+{
+    Entity* entityStart = scene->skinnedSet.entities;
+    return (entity >= entityStart) && 
+        (entity < (entityStart + scene->skinnedSet.maxEntities));
+}
+
 static inline RenderSet* Scene_GetEntityRenderSet(Scene* scene, EntityID id)
 {
     return EntityIDIsSkinned(id) ? &scene->skinnedSet : &scene->surfaceSet;
@@ -464,6 +471,57 @@ purefn b3Vec3 EntityGetB3Scale(const Entity* e) {
 
 purefn b3Quat EntityGetB3Quat(const Entity* e) {
     return ToB3Quat(EntityGetRotation(e));
+}
+
+static inline void Scene_AddPosRec(Scene* scene, Entity* entity, v128f offset)
+{
+    bool skinned = Scene_EntityIsSkinned(scene, entity);
+    RenderSet* set = skinned ? &scene->skinnedSet : &scene->surfaceSet;
+    u32 sparseId = EntityGetSparseID(entity);
+    const SparseData* sparse = set->sparseData + sparseId;
+    EntityAddPositionV(&set->entities[sparse->id], offset);
+    if (!skinned) Entity_SyncPhysicsBody(scene, entity);
+    
+    for (s32 c = 0; c < sparse->subNodeCount; c++)
+    {
+        s32 child = sparseId + set->subNodes[sparse->subNodeOffset + c];
+        Entity* entity = &set->entities[set->sparseData[child].id];
+        Scene_AddPosRec(scene, entity, offset);
+    }
+}
+
+static inline void Scene_RotateRec(Scene* scene, Entity* entity, Quaternion rotation)
+{
+    bool skinned = Scene_EntityIsSkinned(scene, entity);
+    u32 sparseId = EntityGetSparseID(entity);
+    RenderSet* set = skinned ? &scene->skinnedSet : &scene->surfaceSet;
+    EntityAddRotation(entity, rotation);
+    if (!skinned) Entity_SyncPhysicsBody(scene, entity);
+    
+    const SparseData* sparse = set->sparseData + sparseId;
+    for (s32 c = 0; c < sparse->subNodeCount; c++)
+    {
+        s32 child = sparseId + set->subNodes[sparse->subNodeOffset + c];
+        Entity* entity = &set->entities[set->sparseData[child].id];
+        Scene_RotateRec(scene, entity, rotation);
+    }
+}
+
+static inline void Scene_ScaleRec(Scene* scene, Entity* entity, v128f scale, bool root)
+{
+    bool skinned = Scene_EntityIsSkinned(scene, entity);
+    u32 sparseId = EntityGetSparseID(entity);
+    RenderSet* set = skinned ? &scene->skinnedSet : &scene->surfaceSet;
+    if (!root) EntityMulScaleV(entity, scale);
+    if (!skinned) Entity_SyncPhysicsBody(scene, entity);
+    
+    const SparseData* sparse = set->sparseData + sparseId;
+    for (s32 c = 0; c < sparse->subNodeCount; c++)
+    {
+        s32 child = sparseId + set->subNodes[sparse->subNodeOffset + c];
+        Entity* entity = &set->entities[set->sparseData[child].id];
+        Scene_ScaleRec(scene, entity, scale, false);
+    }
 }
 
 #endif // SCENE_H
