@@ -211,16 +211,10 @@
 						<Path>Extern/sj.h</Path>
 					</File>
 					<File>
-						<Path>Extern/sinfl.h</Path>
-					</File>
-					<File>
 						<Path>Extern/tlsf.c</Path>
 					</File>
 					<File>
 						<Path>Extern/tlsf.h</Path>
-					</File>
-					<File>
-						<Path>Extern/sdefl.h</Path>
 					</File>
 					<File>
 						<Path>Extern/SmolAtlas.h</Path>
@@ -230,6 +224,12 @@
 					</File>
 					<File>
 						<Path>Extern/mikktspace.h</Path>
+					</File>
+					<File>
+						<Path>Extern/sdefl.h</Path>
+					</File>
+					<File>
+						<Path>Extern/sinfl.h</Path>
 					</File>
 				</Children>
 			</Folder>

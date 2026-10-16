@@ -20,7 +20,6 @@
 #include <SDL3/SDL_mutex.h>
 #include <string.h>
 
-// #include "Scene.h"
 
 #if !AX_GAME_BUILD
     #include "Extern/ufbx.h"
@@ -35,12 +34,7 @@
 #include "Include/BasisBinding.h"
 #include "Include/FastDelta.h"
 
-#define SINFL_IMPLEMENTATION
-#define SDEFL_IMPLEMENTATION
-#include "Extern/sdefl.h"
-#include "Extern/sinfl.h"
 #include "Include/DataStructures/Array.h"
-
 #include "Include/BasisCompressWrapper.h"
 
 extern Graphics gGFX;

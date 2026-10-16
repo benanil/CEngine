@@ -8,8 +8,12 @@
 #include "Include/DataStructures/HashMap.h"
 #include "Include/FileSystem.h"
 #include "Include/Platform.h"
+
+#define SDEFL_IMPLEMENTATION
+#define SINFL_IMPLEMENTATION
 #include "Extern/sdefl.h"
 #include "Extern/sinfl.h"
+
 #include <SDL3/SDL.h>
 
 #define TERRAIN_EDIT_VALUES (TERRAIN_EDIT_CELLS * TERRAIN_EDIT_CELLS * TERRAIN_EDIT_CELLS)
