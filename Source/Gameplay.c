@@ -70,6 +70,7 @@ static void CharacterUI()
 
 void OpenSceneCallback(const char* path)
 {
+    return;
     Scene* scene = GetActiveScene();
     if (!capsuleBundle) capsuleBundle  = GenerateCapsule(0.5f, 1.8f, 16u);
     u32 capsuleId  = Scene_AddBundle(scene, capsuleBundle, "Character");

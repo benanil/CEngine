@@ -308,15 +308,4 @@ void UnpackTangentSpace25(uint packed, out f16_3 normal, out f16_3 tangent, out 
     handedness = (packed & 0x1000000u) != 0u ? f16(-1.0) : f16(1.0);
 }
 
-// bone matrices are stored fp16 (12 halves / 6 u32); see WriteBone in AnimationCompute.hlsl.
-f16_3x4 LoadBone(StructuredBuffer<uint> boneMtx, uint idx)
-{
-    uint base = idx * MatrixNumInt32;
-    f16_3x4 bone;
-    bone[0] = f16_4(UnpackHalf2(boneMtx[base + 0]), UnpackHalf2(boneMtx[base + 1]));
-    bone[1] = f16_4(UnpackHalf2(boneMtx[base + 2]), UnpackHalf2(boneMtx[base + 3]));
-    bone[2] = f16_4(UnpackHalf2(boneMtx[base + 4]), UnpackHalf2(boneMtx[base + 5]));
-    return bone;
-}
-
 #endif

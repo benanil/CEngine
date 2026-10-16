@@ -14,9 +14,11 @@
 #include "Include/Animation.h" // maxBonePoses
 #include "Include/Memory.h"
 #include "Include/ParallelFor.h"
+
 #include <SDL3/SDL_atomic.h>
 #include <SDL3/SDL_cpuinfo.h>
 #include <SDL3/SDL_mutex.h>
+#include <string.h>
 
 // #include "Scene.h"
 
@@ -49,7 +51,6 @@ extern Graphics gGFX;
 /*//////////////////////////////////////////////////////////////////////////*/
 
 #if !AX_GAME_BUILD
-
 static u16 GetFBXTexture(const ufbx_material* umaterial, const ufbx_scene* uscene, ufbx_material_feature feature, ufbx_material_pbr_map pbr, ufbx_material_fbx_map fbx)
 {
     (void)uscene;
@@ -1182,45 +1183,31 @@ s32 SaveGLTFBinary(const SceneBundle* gltf, const char* path)
                                    : (u32)((const AVertex*)gltf->allVertices - gGFX.SurfaceVertexBuffer);
     u32 bakedIndexBase  = (u32)((const u32*)gltf->allIndices - gGFX.IndexBuffer);
 
-    // This runs on a background thread (see the async cache-save task), so it must only READ the resident geometry.
-    u64 deflateSlotSize = Maxu64(allVertexSize, allIndexSize);
-    char* compressedBuffer = (char*)AllocZeroTLSF(1ull, deflateSlotSize + allIndexSize + 64);
-    struct sdefl* sdfl = (struct sdefl*)AllocZeroTLSF(1ull, sizeof(struct sdefl));
-
-    if (!compressedBuffer || !sdfl)
-    {
-        AX_WARN("abm save alloc failed: %s", path);
-        if (compressedBuffer) DeAllocTLSF(compressedBuffer);
-        if (sdfl) DeAllocTLSF(sdfl);
-        AFileClose(file);
-        return 0;
-    }
-
-    char* deflateOutput = compressedBuffer;
-    u32*  deltaIndices  = (u32*)(compressedBuffer + deflateSlotSize);
-
-    u64 afterCompSize = zsdeflate(sdfl, deflateOutput, gltf->allVertices, allVertexSize, 5);
-    AFileWrite(&afterCompSize, sizeof(u64), file, 1);
-    AFileWrite(deflateOutput, afterCompSize, file, 1);
+    u64 writeSize = vertexSize * gltf->totalVertices;
+    AFileWrite(&writeSize, sizeof(u64), file, 1);
+    AFileWrite(gltf->allVertices, writeSize, file, 1);
 
     const u32* indices = (const u32*)gltf->allIndices;
+    u32* deltaIndices = (u32*)AllocTLSF(sizeof(u32) * gltf->totalIndices);
     for (u32 i = 0; i < gltf->totalIndices; i++)
+    {
+        ASSERT(indices[i] >= bakedVertexBase);
         deltaIndices[i] = indices[i] - bakedVertexBase;
+        ASSERT(deltaIndices[i] < gltf->totalVertices);
+    }
     
-    afterCompSize = zsdeflate(sdfl, deflateOutput, deltaIndices, allIndexSize, 5);
-    AFileWrite(&afterCompSize, sizeof(u64), file, 1);
-    AFileWrite(deflateOutput, afterCompSize, file, 1);
+    writeSize = sizeof(u32) * gltf->totalIndices;
+    AFileWrite(&writeSize, sizeof(u64), file, 1);
+    AFileWrite(deltaIndices, writeSize, file, 1);
 
-    DeAllocTLSF(sdfl);
-    DeAllocTLSF(compressedBuffer);
+    DeAllocTLSF(deltaIndices);
     // Cache stores runtime-ready mesh/animation data. Morph target animation is intentionally not serialized yet.
-
     for (s32 i = 0; i < gltf->numMeshes; i++)
     {
         AMesh mesh = gltf->meshes[i];
         WriteGLTFString(mesh.name, file);
         
-        AFileWrite(&mesh.numPrimitives  , sizeof(s32), file, 1);
+        AFileWrite(&mesh.numPrimitives, sizeof(s32), file, 1);
         
         for (s32 j = 0; j < mesh.numPrimitives; j++)
         {
@@ -1498,30 +1485,26 @@ s32 LoadSceneBundleBinary(const char* path, SceneBundle* gltf, void** outVertexH
         u64 allVertexSize = gltf->totalVertices * vertexSize;
         u64 allIndexSize  = gltf->totalIndices * sizeof(u32);
 
-        u64 deflateSlotSize = Maxu64(allVertexSize, allIndexSize);
-        u64 tempSize        = deflateSlotSize;
-        char* compressedBuffer = (char*)AllocTLSF(tempSize + 16);
-
         u64 compressedSize;
+        AFileRead(&compressedSize, sizeof(u64), file, 1);
+        AFileRead(gltf->allVertices, compressedSize, file, 1);
 
         AFileRead(&compressedSize, sizeof(u64), file, 1);
-        AFileRead(compressedBuffer, compressedSize, file, 1);
-        zsinflate(gltf->allVertices, allVertexSize, compressedBuffer, compressedSize);
+        AFileRead(gltf->allIndices, compressedSize, file, 1);
 
-        AFileRead(&compressedSize, sizeof(u64), file, 1);
-        AFileRead(compressedBuffer, compressedSize, file, 1);
-        zsinflate(gltf->allIndices, allIndexSize, compressedBuffer, compressedSize);
-        // // index values were saved relative to the bundle's vertex base, the
-        // // prefix sum seed rebases the whole stream to the allocated range
-        // PrefixSumU32Inplace(gltf->allIndices, gltf->totalIndices, vertexBase);
         u32* indices = (u32*)gltf->allIndices;
+        u32 idDiff = 0;
         for (u32 i = 0; i < gltf->totalIndices; i++)
+        {
+            if (indices[i] >= gltf->totalVertices) 
+                idDiff += indices[i] - gltf->totalVertices;
             indices[i] += vertexBase;
+        }
+        if (idDiff) AX_ERROR("id diff: %d", idDiff);
 
         Rendering_QueueGeometryUpload(isSkined ? GeometryBuffer_SkinnedVertex : GeometryBuffer_SurfaceVertex,
                                       vertexBase, vertexBase + (u32)gltf->totalVertices);
         Rendering_QueueGeometryUpload(GeometryBuffer_Index, indexBase, indexBase + (u32)gltf->totalIndices);
-        DeAllocTLSF(compressedBuffer);
     }
     
     char* currVertices = (char*)gltf->allVertices;

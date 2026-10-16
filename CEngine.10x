@@ -713,9 +713,6 @@
 								<Path>Source/Terrain/TerrainInternal.h</Path>
 							</File>
 							<File>
-								<Path>Source/Terrain/TransvoxelTables.h</Path>
-							</File>
-							<File>
 								<Path>Source/Terrain/Terrain.c</Path>
 							</File>
 							<File>
@@ -735,6 +732,9 @@
 							</File>
 							<File>
 								<Path>Source/Terrain/MarchingTerrain.c</Path>
+							</File>
+							<File>
+								<Path>Source/Terrain/MarchingTables.h</Path>
 							</File>
 						</Children>
 					</Folder>

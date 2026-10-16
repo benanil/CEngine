@@ -2,6 +2,7 @@
 #include "Include/Memory.h"
 #include "Include/Platform.h"
 #include "Include/Algorithm.h"
+#include "Include/FileSystem.h"
 #include "Math/Matrix.h"
 #include "Math/Color.h"
 #include "Math/Bitpack.h"
@@ -108,7 +109,6 @@ static void IndicesForPrimitive(APrimitive* primitive, u32* currIndices, const u
         return;
     }
     const u8* beforeCopy = (const u8*)primitive->indices;
-    primitive->indices = currIndices;
     s32 indexSize = GraphicsTypeToSize(primitive->indexType);
 
     for (s32 i = 0; i < primitive->numIndices; i++)
@@ -645,6 +645,7 @@ s32 BakeSceneMeshesAndAnimations(SceneBundle* gltf, void** outVertexHeapPtr, voi
     if (isSkinned) gGFX.NumSkinnedVertices += (u32)gltf->totalVertices;
     else           gGFX.NumSurfaceVertices += (u32)gltf->totalVertices;
     gGFX.NumIndices += (u32)gltf->totalIndices;
+
 
     Rendering_QueueGeometryUpload(isSkinned ? GeometryBuffer_SkinnedVertex : GeometryBuffer_SurfaceVertex,
                                   vertexBase, vertexBase + (u32)gltf->totalVertices);

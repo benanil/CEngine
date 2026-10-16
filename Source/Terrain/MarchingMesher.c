@@ -2,7 +2,7 @@
 #include "Include/Memory.h"
 #include "Math/Bitpack.h"
 #include "Source/Terrain/TerrainInternal.h"
-#include "TransvoxelTables.h"
+#include "MarchingTables.h"
 
 typedef struct tMarchingMesher_
 {

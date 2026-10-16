@@ -207,23 +207,6 @@ static inline void LightGPU_GetDirectionCone(const LightGPU* light, f32* directi
     Half4ToFloat4(directionCone, light->directionCone);
 }
 
-typedef struct GPUMesh_
-{
-    s32 numVertex, numIndex;
-    // unsigned because opengl accepts unsigned
-    u32 vertexLayoutHandle;
-    u32 indexHandle;
-    u32 indexType;  // ui3232, ui3264. GL_BYTE + indexType
-    u32 vertexHandle; // opengl handles for, POSITION, TexCoord...
-    // usefull for knowing which attributes are there
-    // POSITION, TexCoord... AAttribType_ bitmask
-    s32 attributes;
-    s32 stride; // size of an vertex of the mesh
-    
-    void* vertices;
-    void* indices;
-} GPUMesh;
-
 typedef struct TextureDescriptor_
 {
     float2 uvScale;
