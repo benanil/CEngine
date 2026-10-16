@@ -38,4 +38,5 @@
 *.bdc
 *.basis
 
+crash.txt
 Assets/Meshes/Bistro/Bistro.glb
