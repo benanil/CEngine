@@ -113,7 +113,7 @@ static void VisitFile(const char* path, void* data)
         .frequency    = 0.5,
         .groupIndex   = 0u,
         .enabled      = true, // off by default until placement/visuals are verified per type
-        .collider     = false,
+        .colliderEntity     = false,
         .sizeVariance = true,
     };
 }
@@ -154,6 +154,9 @@ void Foliage_Init()
         type->bundleIdx = bundleIdx;
         if (bundleIdx == INVALID_BUNDLE) continue;
 
+        type->params.colliderRadius = 1.0f;
+        type->params.colliderType   = b3_shapeTypeCount;
+        type->params.colliderEntity = 0;
         type->numEntities = CountNumEntities(set, bundleIdx, 1, NULL, false);
         Range range = set->bundlePrimRange[bundleIdx];
         if (range.count == 0u) continue;
@@ -238,10 +241,11 @@ void Foliage_SetParams(u32 index, const FoliageParams* params)
         }
     }
 }
-
+#define TERRAIN_FOLIAGE_VERSION 1
 void Foliage_Save(const char* path)
 {
     AFile file = AFileOpen(path, AOpenFlag_WriteText);
+    AFileWriteI32(TERRAIN_FOLIAGE_VERSION, file);
     AFileWrite("numFoliages:", StringLength("numFoliages:"), file, 1);
     AFileWriteI32(gFoliage.numTypes, file);
     AFileWrite("\n", 1, file, 1);
@@ -257,18 +261,20 @@ void Foliage_Save(const char* path)
         AFileWriteNamedF32(" groupIndex:", params.groupIndex, file);
         AFileWriteNamedF32(" frequency:" , params.frequency , file);
         AFileWriteNamedI32(" enabled:"     , params.enabled, file);
-        AFileWriteNamedI32(" collider:"    , params.collider, file);
+        AFileWriteNamedI32(" collider:"    , params.colliderType, file);
         AFileWriteNamedI32(" sizeVariance:", params.sizeVariance, file);
+        AFileWriteNamedI32(" colliderEntity:", (s32)params.colliderEntity, file);
+        AFileWriteNamedI32(" colliderRadius:", params.colliderRadius, file);
         AFileWrite("\n", 1, file, 1);
     }
     AFileClose(file);
 }
 
-void Foliage_Load(const char* path)
+void Foliage_Load(const char* filePath)
 {
-    char* txt = ReadAllTextAlloc(path, NULL, NULL);
+    char* txt = ReadAllTextAlloc(filePath, NULL, NULL);
     if (!txt) { AX_LOG("terrain foliage save file couldnt found"); return; }
-
+    s32 version = *txt++;
     int numFoliages = 0;
     const char* p = ParsePositiveNumber(txt, &numFoliages);
 
@@ -302,11 +308,12 @@ void Foliage_Load(const char* path)
         p = ParseFloat(p, &params->groupIndex);
         p = ParseFloat(p, &params->frequency );
         p = ParsePositiveNumber(p, &params->enabled);
-        p = ParsePositiveNumber(p, &params->collider);
+        p = ParsePositiveNumber(p, &params->colliderType);
         p = ParsePositiveNumber(p, &params->sizeVariance);
+        if (version == '1') p = ParseFloat(p, &params->colliderEntity);
+        if (version == '1') p = ParseFloat(p, &params->colliderRadius);
     }
-
-    FreeAllText(txt);
+    FreeAllText(--txt);
 }
 
 void Foliage_RandomizeParams(void)
@@ -574,6 +581,45 @@ void Foliage_DestroyChunkFoliage(tChunk* chunk)
     chunk->foliageCount = 0u;
 }
 
+static void SetFolliageCollider(const FoliageType* type, u32 numEntityAdded, RenderSet* set, u32 sparseCursor, float rise)
+{
+    if (type->params.colliderEntity >= numEntityAdded ||
+        type->params.colliderType == b3_compoundShape ||
+        type->params.colliderType == b3_heightShape   ||
+        type->params.colliderType == b3_shapeTypeCount)
+        return;
+    Entity* rootEntity = &set->entities[set->sparseData[sparseCursor + (u32)type->params.colliderEntity].id];
+    EntityAddFlags(rootEntity, EntityFlags_ColliderEnabled);
+
+    const PrimitiveGroup* group = &set->primitiveGroups[EntityGetPrimitiveID(rootEntity)];
+    v128f scaleV = EntityGetScaleV(rootEntity);
+    v128f localMin = VecMul(group->aabbMin, scaleV);
+    v128f localMax = VecMul(group->aabbMax, scaleV);
+    v128f center = VecMulf(VecAdd(localMin, localMax), 0.5f);
+    v128f half   = VecMax(VecMulf(VecSub(localMax, localMin), 0.5f), VecSet1(0.01f));
+    f32 hx = VecGetX(half), hy = VecGetY(half), hz = VecGetZ(half);
+    
+    b3Capsule capsule = {
+        .center1 = { 0.0f, rise, 0.0f },
+        .center2 = { 0.0f, rise + (hy * 2.0f), 0.0f },
+        .radius  = type->params.colliderRadius
+    };
+    b3Sphere sphere = { .center = v128fToB3Vec3(center), .radius = type->params.colliderRadius };
+    b3BoxHull box;
+    if (type->params.colliderType == b3_hullShape)
+        box = b3MakeOffsetBoxHull(hx, hy, hz, v128fToB3Vec3(center));
+
+    void* data;
+    switch (type->params.colliderType)
+    {
+        case b3_capsuleShape: data = &capsule; break;
+        case b3_hullShape:    data = &box;    break; 
+        case b3_sphereShape:  data = &sphere; break;
+        default: data = NULL;
+    }
+    PhysicsCreateEntityBody(set->hookScene, rootEntity, data, type->params.colliderType);
+}
+
 // Runs once per Foliage_Update burst after JobSystem_Wait.
 // Bulk-adds dirty placements via RenderSet_AddEntities per (type, render group).
 static void IntegrateFinishedFoliage(u32 scheduledCount)
@@ -643,13 +689,13 @@ static void IntegrateFinishedFoliage(u32 scheduledCount)
 
             float3 worldPos = F3Add(ToFloat3(job->chunkMin), Vec3Get(Unpack16x4Fixed(placement->localPos, (f32)T_CHUNK_CELLS)));
             f32 finalScale = type->params.size * placement->scale;
-            worldPos.y -= type->localBaseY * finalScale;
+            f32 rise = type->localBaseY * finalScale;
+            worldPos.y -= rise;
 
             Entity e = {0};
             e.position = VecSetR(worldPos.x, worldPos.y, worldPos.z, 0.0f);
             e.rotation = placement->rotation;
             e.scale    = EntityPackUniformWorldScale(finalScale);
-            EntitySetFlags(&e, type->params.collider * EntityFlags_ColliderEnabled);
             // RenderSet_AddSceneArray(set, type->bundleIdx, &e, 1, false);
             u32 sparseCursor = RenderSet_AllocateSparseIDRange(set, type->numEntities);
             if (AX_UNLIKELY(sparseCursor == INVALID_ENTITY)) break;
@@ -658,6 +704,8 @@ static void IntegrateFinishedFoliage(u32 scheduledCount)
                 (Range){ sparseCursor, numEntityAdded},
                 type->bundleIdx
             };
+
+            SetFolliageCollider(type, numEntityAdded, set, sparseCursor, rise);
         }
     }
     ArenaPopGlobal(set->numGroups * sizeof(u32)); // primitiveCounts

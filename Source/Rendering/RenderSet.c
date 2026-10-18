@@ -9,10 +9,11 @@
 #include "Math/Half.h"
 #include "Math/Matrix.h"
 #include "Math/Bitpack.h"
+#include <box3d/types.h> // b3ShapeType
 
 extern Graphics gGFX;
 
-extern void PhysicsCreateEntityBody(struct Scene_* scene, const Entity* entity);
+extern void PhysicsCreateEntityBody(struct Scene_* scene, const Entity* entity, void* data, b3ShapeType shapeType);
 extern void Physics_DestroyEntityBody(struct Scene_* scene, const Entity* entity);
 
 void RenderSet_InitSet(RenderSet* set, u32 maxEntities, u32 maxGroups, u32 maxBundles, bool skinned)
@@ -450,7 +451,7 @@ u32 AddBundleAsScene(RenderSet* set, u32 bundleIdx, u32 sparseStart, const Entit
             sparseData->id = denseIdx;
             sparseData->hasPrim = p < mesh->numPrimitives - 1;
             // todo(anil) move this outside of loop (optimization)
-            PhysicsCreateEntityBody(set->hookScene, &set->entities[denseIdx]);
+            PhysicsCreateEntityBody(set->hookScene, &set->entities[denseIdx], NULL, b3_meshShape);
             // RenderSet_AddEntitiesCallback(set, firstGroupIdx + p, localIdx, 1u);
         }
     }

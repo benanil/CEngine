@@ -44,6 +44,10 @@ PhysicsSettings g_PhysicsSettings = {
     .enableContinuous = true
 };
 
+static const char* shapeNames[] = { "Capsule", "Compound", "Height", "Hull", "Mesh", "Sphere", "None" };
+
+const char** Physics_ShapeNames() { return shapeNames; }
+
 void Physics_Settings_Save(void)
 {
     const PhysicsSettings* s = &g_PhysicsSettings;
@@ -57,7 +61,7 @@ void Physics_Settings_Save(void)
 
 void Physics_Settings_Load(void)
 {
-    static bool loaded;
+    static bool loaded = false;
     if (loaded) return;
     loaded = true;
     if (!FileExist(PHYSICS_SETTINGS_PATH)) return;
@@ -390,35 +394,40 @@ static b3MeshData* PhysicsEnsureGroupMesh(Scene* scene, u32 groupIdx)
     return mesh;
 }
 
-void PhysicsCreateEntityBody(Scene* scene, const Entity* entity)
+void PhysicsCreateEntityBody(Scene* scene, const Entity* entity, void* data, b3ShapeType shapeType)
 {
     EntityFlags entityFlags = EntityGetFlags(entity);
     bool colliderEnabled = (entityFlags & EntityFlags_ColliderEnabled) != 0;
     b3BodyId* slot = PhysicsEntitySlot(scene, entity);
-    if (!slot || B3_IS_NON_NULL(slot[0]) || !colliderEnabled) return;
-    if (entityFlags & EntityFlags_NoMesh) return;
+    if (!slot || B3_IS_NON_NULL(slot[0]) || !colliderEnabled || !!(entityFlags & EntityFlags_NoMesh)) return;
     u32 primitiveIdx = EntityGetPrimitiveID(entity);
     if (primitiveIdx >= scene->surfaceSet.numGroups || primitiveIdx == 0) return;
     
     b3MeshData* mesh = PhysicsEnsureGroupMesh(scene, primitiveIdx);
-    if (!b3IsValidMesh(mesh)) return;
+    if (!b3IsValidMesh(mesh) && !data) return; // if there is data this is not mesh collider don't return
     
     b3BodyDef bd  = b3DefaultBodyDef();
-    // Scene geometry is a triangle mesh (soup) collider. box3d mesh shapes carry
-    // no volume/mass and can only back a static body, so this stays static; a
-    // movable prop would need a convex hull/primitive shape instead.
     bd.type       = b3_staticBody;
     bd.position   = v128fToB3Vec3(entity->position);
     bd.rotation   = ToB3Quat(EntityGetRotation(entity));
-    u32 sparseID = EntityGetSparseID(entity);
+    u32 sparseID  = EntityGetSparseID(entity);
     SparseData sparseData = scene->surfaceSet.sparseData[sparseID];
     bd.userData   = (void*)PhysicsBodyUserData(sparseID | (sparseData.gen << 24), scene->isFoliageScene);
     b3BodyId body = b3CreateBody(gPhysicsWorld, &bd);
     b3ShapeDef sd = b3DefaultShapeDef();
     sd.filter.categoryBits = scene->isFoliageScene ? PhysBit_Foliage : PhysBit_Surface;
-    b3ShapeId shape = b3CreateMeshShape(body, &sd, mesh, EntityGetB3Scale(entity));
-    if (B3_IS_NULL(shape))
+    b3ShapeId shape;
+    
+    switch (shapeType)
     {
+        case b3_capsuleShape:  shape = b3CreateCapsuleShape(body, &sd, data); break;
+        case b3_hullShape:     shape = b3CreateHullShape(body, &sd, data); break;
+        case b3_meshShape:     shape = b3CreateMeshShape(body, &sd, mesh, EntityGetB3Scale(entity)); break;
+        case b3_sphereShape:   shape = b3CreateSphereShape(body, &sd, data); break;
+        default: shape = b3_nullShapeId; AX_WARN("unsupported physics shape1"); break; // compound / height
+    }
+
+    if (B3_IS_NULL(shape)) {
         b3DestroyBody(body);
         return;
     }
@@ -442,7 +451,7 @@ void Entity_TogglePhysics(Scene* scene, Entity* entity, bool enabled)
     bool isEnabled = !B3_IS_NULL(body) && b3Body_IsEnabled(body);
     if (B3_IS_NULL(body))
     {
-        PhysicsCreateEntityBody(scene, entity);
+        PhysicsCreateEntityBody(scene, entity, NULL, b3_meshShape);
         body = scene->physicsBodies[sparseId];
     }
     if (B3_IS_NULL(body)) return;
@@ -458,7 +467,7 @@ void Entity_SyncPhysicsBody(Scene* scene, const Entity* entity)
     b3BodyId* slot = PhysicsEntitySlot(scene, entity);
     if (!slot || B3_IS_NULL(slot[0]))
     {
-        PhysicsCreateEntityBody(scene, entity);
+        PhysicsCreateEntityBody(scene, entity, NULL, b3_meshShape);
         return;
     }
     b3BodyId body = slot[0];
@@ -563,7 +572,7 @@ void Entity_SetPhysicsBodyType(Scene* scene, Entity* entity, b3BodyType type)
         Physics_ApplyDefaultDynamicMass(body, shapeId);
 }
 
-bool Entity_SetPhysicsShape(Scene* scene,  const Entity* entity, b3ShapeType type)
+bool Entity_SetPhysicsShapeAuto(Scene* scene, const Entity* entity, b3ShapeType type)
 {
     b3BodyId* slot = PhysicsEntitySlot(scene, entity);
     RenderSet* set = &scene->surfaceSet;
@@ -586,13 +595,10 @@ bool Entity_SetPhysicsShape(Scene* scene,  const Entity* entity, b3ShapeType typ
     // primitive's model space scaled by the entity world scale, and box3d
     // primitives take no scale, so we fold the scale into their dimensions.
     PrimitiveGroup* group = &set->primitiveGroups[groupIdx];
-    if (group->bundleIdx >= scene->numBundles || !scene->bundleRefs[group->bundleIdx].bundle) return false;
-    const SceneBundle* bundle = scene->bundleRefs[group->bundleIdx].bundle;
-    const APrimitive* prim = &bundle->meshes[group->meshIndex].primitives[group->primitiveIndex];
     
     v128f scaleV = EntityGetScaleV(entity);
-    v128f localMin = VecMul(VecLoad(prim->min), scaleV);
-    v128f localMax = VecMul(VecLoad(prim->max), scaleV);
+    v128f localMin = VecMul(group->aabbMin, scaleV);
+    v128f localMax = VecMul(group->aabbMax, scaleV);
     v128f center = VecMulf(VecAdd(localMin, localMax), 0.5f);
     v128f half   = VecMax(VecMulf(VecSub(localMax, localMin), 0.5f), VecSet1(0.01f));
     f32 hx = VecGetX(half), hy = VecGetY(half), hz = VecGetZ(half);
@@ -626,6 +632,7 @@ bool Entity_SetPhysicsShape(Scene* scene,  const Entity* entity, b3ShapeType typ
             return true;
         }
         default:
+            AX_WARN("unsupported physics shape");
             return false; // compound / height are not supported from the inspector
     }
 }
@@ -694,7 +701,7 @@ void Physics_ApplyPendingOverrides(Scene* scene)
         
         // swap the shape first so the material/mass below act on the final shape
         if (rec->shapeType != (u32)b3_meshShape)
-            Entity_SetPhysicsShape(scene, entity, (b3ShapeType)rec->shapeType);
+            Entity_SetPhysicsShapeAuto(scene, entity, (b3ShapeType)rec->shapeType);
         
         b3ShapeId shape;
         bool hasShape = b3Body_GetShapes(body, &shape, 1) > 0;
@@ -779,7 +786,7 @@ void RenderSet_AddEntitiesCallback(RenderSet* set, u32 groupIdx, u32 localStartI
     PrimitiveGroup* group = &set->primitiveGroups[groupIdx];
     u32 cnt = group->numEntities - localStartIdx;
     for (u32 i = 0; i < cnt; i++)
-        PhysicsCreateEntityBody(set->hookScene, &set->entities[group->entityOffset + localStartIdx + i]);
+        PhysicsCreateEntityBody(set->hookScene, &set->entities[group->entityOffset + localStartIdx + i], NULL, b3_meshShape);
 }
 
 void RenderSet_RemoveRangeCallback(RenderSet* set, u32 groupIdx, u32 localStartIdx, u32 count)
@@ -838,7 +845,7 @@ static void BuildCollidersForScene(Scene* scene)
 
             Entity* ents = set->entities + group->entityOffset;
             for (u32 e = 0; e < group->numEntities; e++)
-                PhysicsCreateEntityBody(scene, &ents[e]);
+                PhysicsCreateEntityBody(scene, &ents[e], NULL, b3_meshShape);
         }
     }
 }

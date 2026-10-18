@@ -79,6 +79,7 @@ void OpenSceneCallback(const char* path)
 
 void BeforeDestroySceneCallback(Scene* scene)
 {
+    if (characterEntity != INVALID_ENTITY) Scene_RemoveEntity(GetActiveScene(), characterEntity);
     characterEntity = INVALID_ENTITY;
 }
 

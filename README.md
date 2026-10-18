@@ -23,7 +23,7 @@
 - Forward+ lighting.
 - GPU compute draw call recording with HI-Z oclussion culling + frustum culling + lod selection
 - Directional cascaded + point and spot light shadows.
-- Animation compute and animated-vertex generation.
+- Animation compute shader
 - HBAO, MLAA, MSAA, tonemapping, god rays, procedural sky, height fog, Screen Space Shadows.
 - Precompiled shader outputs for SPIR-V and Metal (`spv/`, `msl/`).
 

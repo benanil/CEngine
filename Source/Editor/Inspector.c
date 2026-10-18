@@ -252,11 +252,10 @@ static void SceneInspectorPhysicsUI(Scene* scene, Entity* entity)
     // Mesh restores the original triangle collider; compound/height are no-ops.
     if (hasShape)
     {
-        static const char* shapeTypes[] = { "Capsule", "Compound", "Height", "Hull", "Mesh", "Sphere" };
         u32 shapeType = (u32)b3Shape_GetType(shapeId);
-        if (shapeType >= ARRAY_SIZE(shapeTypes)) shapeType = 0u;
-        if (UIDropdown("Shape", shapeTypes, ARRAY_SIZE(shapeTypes), &shapeType))
-            Entity_SetPhysicsShape(scene, entity, (b3ShapeType)shapeType);
+        if (shapeType >= b3_shapeTypeCount) shapeType = 0u;
+        if (UIDropdown("Shape", Physics_ShapeNames(), b3_shapeTypeCount, &shapeType))
+            Entity_SetPhysicsShapeAuto(scene, entity, (b3ShapeType)shapeType);
     }
 
     // Mass properties and velocities are simulation output -> read-only.

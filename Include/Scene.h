@@ -412,6 +412,8 @@ void Physics_Settings_Save(void);
 // pushes g_PhysicsSettings (gravity/sleep/continuous) onto the shared physics world.
 void Physics_ApplyWorldSettings(void);
 
+const char** Physics_ShapeNames(); // b3ShapeType
+
 // builds a static rigid body with a triangle-mesh collider for every static mesh instance in the
 // scene's surface render sets. call once after a scene finishes loading.
 void Physics_BuildStaticCollidersAsync(Scene* scene, AsyncCallback callback);
@@ -425,7 +427,7 @@ bool Entity_IsPhysicsEnabled(Scene* scene, Entity* entity);
 // kinematic, dynamic, static
 void Entity_SetPhysicsBodyType(Scene* scene, Entity* entity, b3BodyType type);
 // sphere, box, hull, mesh
-bool Entity_SetPhysicsShape(Scene* scene, const Entity* entity, b3ShapeType type);
+bool Entity_SetPhysicsShapeAuto(Scene* scene, const Entity* entity, b3ShapeType type);
 
 // terrain colliders are owned per-chunk (u64 stored body id + mesh pointer live on tChunk),
 // not by the scene - no shared slot pool/cap, just the global physics world. inOutBody/
@@ -446,7 +448,7 @@ void Physics_ApplyPendingOverrides(Scene* scene);
 
 void PhysicsDestroyEntityBody(Scene* scene, const Entity* entity);
 
-void PhysicsCreateEntityBody(Scene* scene, const Entity* entity);
+void PhysicsCreateEntityBody(Scene* scene, const Entity* entity, const void* data, b3ShapeType shapeType);
 
 static inline b3Vec3 v128fToB3Vec3(v128f v)   { return (b3Vec3){ VecGetX(v), VecGetY(v), VecGetZ(v) }; }
 static inline b3Vec3 Float3ToB3Vec3(float3 v) { return (b3Vec3){ v.x, v.y, v.z }; }

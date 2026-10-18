@@ -393,10 +393,19 @@ static void TerrainFoliageUI(void)
 
         bool edited = false;
         edited |= UICheckboxS32ID("Enabled", i, &params.enabled);
-        edited |= UICheckboxS32ID("Collider", i, &params.collider);
-        edited |= UICheckboxS32ID("Size variance (+-20%)", i, &params.sizeVariance);
-        edited |= UIEditFloatID("Size", i, &params.size, 0.05f, 10.0f, 0.05f, 2);
-        edited |= UIEditIntID("Group", i, &params.groupIndex, 0, 63);
+        if (params.enabled)
+        {
+            edited |= UIDropdownID("Collider", i, Physics_ShapeNames(), (u32)b3_shapeTypeCount + 1, &params.colliderType);
+            if (params.colliderType != b3_shapeTypeCount)
+            {
+                edited |= UIEditIntID("ColliderEntity", i, &params.colliderEntity, 0, 10);
+                edited |= UIEditFloatID("ColliderRadius", i, &params.colliderRadius, 0.0f, 10.0f, 0.05f, 3);
+            }
+            edited |= UICheckboxS32ID("Size variance (+-20%)", i, &params.sizeVariance);
+            edited |= UIEditFloatID("Size", i, &params.size, 0.05f, 10.0f, 0.05f, 2);
+            edited |= UIEditIntID("Group", i, &params.groupIndex, 0, 63);
+        }
+     
         s32 isBaseType = Foliage_BaseTypeOfGroup(params.groupIndex) == i;
         // these parameters only need to be shown with base types
         if (isBaseType)

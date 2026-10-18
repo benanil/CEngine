@@ -102,14 +102,16 @@ typedef struct TerrainStats_
 // worker jobs and attached to the resident terrain chunks. TerrainFoliage.c owns this.
 typedef struct tFoliageParams_
 {
-    f32  density;      // meters between placement grid samples, smaller = denser
-    f32  rarity;       // 0..1, higher = sparser (noise gate threshold)
-    f32  size;         // uniform scale multiplier, 1.0 = native mesh size
-    f32  groupIndex;   // we can group trees, ferns that'll look better instead of uniformly scattering
-    f32  frequency;    // default value is 1.0 cant be 0
+    f32 density;      // meters between placement grid samples, smaller = denser
+    f32 rarity;       // 0..1, higher = sparser (noise gate threshold)
+    f32 size;         // uniform scale multiplier, 1.0 = native mesh size
+    f32 groupIndex;   // we can group trees, ferns that'll look better instead of uniformly scattering
+    f32 frequency;    // default value is 1.0 cant be 0
     s32 enabled;
-    s32 collider;      // spawn a static physics collider per instance
-    s32 sizeVariance;  // +-30% random scale spread on top of size, when enabled
+    s32 sizeVariance;   // +-30% random scale spread on top of size, when enabled
+    f32 colliderEntity; // the all other entities will stick to this
+    u32 colliderType;   // mesh, sphere, capsule
+    f32 colliderRadius;
 } FoliageParams;
 
 void Foliage_Init();
@@ -121,22 +123,22 @@ Scene* GetFoliageScene();
 // explicit extra pass in RenderDepth/RenderSceneForward). NULL only before Foliage_Init
 struct Scene_* Foliage_GetScene(void);
 
+u32 Foliage_NumTypes(void);
 // one folliage type per mesh discovered under Assets/Foliage. index is stable for the
 // process lifetime (load order), used by the editor to bind per-type UI and params
-u32         Foliage_NumTypes(void);
 // display label for the editor: file name without directory/extension
 const char* Foliage_TypeName(u32 index);
-bool        Foliage_GetParams(u32 index, FoliageParams* out);
+bool Foliage_GetParams(u32 index, FoliageParams* out);
 // bumps the type's generation: every resident chunk rebuilds its foliage set (not its
 // terrain mesh) over the next few frames, throttled the same way chunk streaming is
-void        Foliage_SetParams(u32 index, const FoliageParams* params);
+void Foliage_SetParams(u32 index, const FoliageParams* params);
 // randomizes density and rarity for every type while preserving all other settings
-void        Foliage_RandomizeParams(void);
-s32         Foliage_BaseTypeOfGroup(s32 group);
-void        Foliage_ClearEntities();
-
-void        Foliage_Save(const char* path);
-void        Foliage_Load(const char* path);
+void Foliage_RandomizeParams(void);
+s32  Foliage_BaseTypeOfGroup(s32 group);
+void Foliage_ClearEntities();
+     
+void Foliage_Save(const char* path);
+void Foliage_Load(const char* path);
 
 void tUpdate(void);
 void tInvalidateAll(void);
