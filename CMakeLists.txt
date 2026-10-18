@@ -224,7 +224,7 @@ endif()
 
 # Link SDL to our executable. This also makes its include directory available to us. 
 if(WIN32)
-    target_link_libraries(${EXECUTABLE_NAME} PUBLIC Dbghelp) # crash handler stack walk
+    target_link_libraries(${EXECUTABLE_NAME} PUBLIC Dbghelp dwmapi) # crash handler stack walk
 endif()
 
 target_link_libraries(${EXECUTABLE_NAME} PUBLIC SDL3::SDL3) # If using satelite libraries, SDL must be the last item in the list.

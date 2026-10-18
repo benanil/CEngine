@@ -23,6 +23,20 @@ extern Graphics gGFX; // cpu mega buffers, declared per translation unit as else
 #define PHYSICS_TERRAIN_USERDATA (1ull << 32ull)
 #define PHYSICS_FOLIAGE_USERDATA (((u64)PhysBit_Foliage) << 32ull)
 
+// single global box3d world, independent of any Scene's lifetime. bodies from every
+// scene (including gFoliage's private one) live here so they can physically interact.
+static b3WorldId gPhysicsWorld = { 0 };
+static JobSystem* gPhysicsJobSystem = NULL;
+
+static void PhysicsDestroyMeshStorage(Scene* scene);
+static void PhysicsDestroyLiveStaticColliders(Scene* scene);
+static u32 PhysicsCountMeshes(Scene* scene);
+static void BuildCollidersForScene(Scene* scene);
+
+extern bool b3IsValidMesh(const b3MeshData* meshData);
+
+b3WorldId Physics_GetWorld(void) { return gPhysicsWorld; }
+
 PhysicsSettings g_PhysicsSettings = {
     .gravity = { 0.0f, -9.81f, 0.0f },
     .substepCount = 4,
@@ -70,12 +84,6 @@ void Physics_Settings_Load(void)
     FreeAllText(text);
 }
 
-// single global box3d world, independent of any Scene's lifetime. bodies from every
-// scene (including gFoliage's private one) live here so they can physically interact.
-static b3WorldId gPhysicsWorld = { 0 };
-static JobSystem* gPhysicsJobSystem = NULL;
-
-b3WorldId Physics_GetWorld(void) { return gPhysicsWorld; }
 
 void Physics_ApplyWorldSettings(void)
 {
@@ -167,8 +175,6 @@ void Scene_InitPhysics(Scene* scene)
         AX_WARN("physics: body slot allocation failed");
 }
 
-static void PhysicsDestroyMeshStorage(Scene* scene);
-static void PhysicsDestroyLiveStaticColliders(Scene* scene);
 
 void Scene_DestroyPhysics(Scene* scene)
 {
@@ -211,8 +217,6 @@ b3Quat ToB3Quat(v128f q)
 
 u64 B3QuatToEntityRotation(b3Quat q) { return PackQuaternionS16NormRet(VecSetR(q.v.x, q.v.y, q.v.z, q.s)); }
 
-static u32 PhysicsCountMeshes(Scene* scene);
-static void BuildCollidersForScene(Scene* scene);
 
 // Resolves the body slot for an entity, or NULL when the entity/slot is out of
 // range. The slot's body may still be null (no body created yet).
@@ -317,9 +321,9 @@ static u32 PhysicsCountMeshes(Scene* scene)
 static b3MeshData* PhysicsEnsureGroupMesh(Scene* scene, u32 groupIdx)
 {
     RenderSet* renderset = &scene->surfaceSet;
-    if (groupIdx >= renderset->numGroups) return NULL;
+    if (groupIdx >= renderset->numGroups || groupIdx == 0) return NULL;
     b3MeshData** meshes = scene->physicsMeshes;
-    if (meshes[groupIdx]) return meshes[groupIdx];
+    if (b3IsValidMesh(meshes[groupIdx])) return meshes[groupIdx];
     
     PrimitiveGroup* group = &renderset->primitiveGroups[groupIdx];
     if (group->lodNumIndices[0] < 3 || group->lodNumVertices[0] == 0) return NULL;
@@ -392,12 +396,12 @@ void PhysicsCreateEntityBody(Scene* scene, const Entity* entity)
     bool colliderEnabled = (entityFlags & EntityFlags_ColliderEnabled) != 0;
     b3BodyId* slot = PhysicsEntitySlot(scene, entity);
     if (!slot || B3_IS_NON_NULL(slot[0]) || !colliderEnabled) return;
-    if (EntityGetFlags(entity) & EntityFlags_NoMesh) return;
+    if (entityFlags & EntityFlags_NoMesh) return;
     u32 primitiveIdx = EntityGetPrimitiveID(entity);
-    if (primitiveIdx >= scene->surfaceSet.numGroups) return;
+    if (primitiveIdx >= scene->surfaceSet.numGroups || primitiveIdx == 0) return;
     
     b3MeshData* mesh = PhysicsEnsureGroupMesh(scene, primitiveIdx);
-    if (!mesh) return;
+    if (!b3IsValidMesh(mesh)) return;
     
     b3BodyDef bd  = b3DefaultBodyDef();
     // Scene geometry is a triangle mesh (soup) collider. box3d mesh shapes carry
@@ -752,7 +756,6 @@ static void Physics_RemoveGroupMeshes(Scene* scene, u32 firstGroup, u32 groupCou
 {
     if (!scene || groupCount == 0u) return;
     b3MeshData** meshes = scene->physicsMeshes;
-    if (!meshes) return;
     RenderSet* set = &scene->surfaceSet;
     groupCount = Minu32(groupCount, set->maxGroups - firstGroup);
     u32 afterRemoved = firstGroup + groupCount;

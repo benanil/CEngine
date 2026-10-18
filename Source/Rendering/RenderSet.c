@@ -24,19 +24,15 @@ void RenderSet_InitSet(RenderSet* set, u32 maxEntities, u32 maxGroups, u32 maxBu
     set->skinned     = skinned ? 1u : 0u;
     set->numGroups   = 1; // nomesh 
 
-    set->entities         = AllocTLSFArray(Entity, maxEntities);
-    set->sparseData       = AllocTLSFArray(SparseData, maxEntities);
-    set->subNodes         = AllocTLSFArray(u16, maxBundles);
-    set->primitiveGroups  = AllocTLSFArray(PrimitiveGroup, maxGroups);
-    set->bundlePrimRange  = AllocTLSFArray(Range, maxBundles);
-    set->sparseSlots      = (u64*)AllocZeroTLSF((maxEntities + 63u) >> 6, sizeof(u64));
-    set->bundles          = (const SceneBundle**)AllocTLSF(maxBundles * sizeof(SceneBundle*));
-    set->bundleSlots      = (u64*)AllocZeroTLSF((maxBundles + 63u) >> 6, sizeof(u64));
+    set->entities         = AllocAligned(sizeof(Entity) * maxEntities, sizeof(v128f));
+    set->sparseData       = CAllocTLSFArray(SparseData, maxEntities);
+    set->subNodes         = CAllocTLSFArray(u16, maxEntities);
+    set->primitiveGroups  = CAllocTLSFArray(PrimitiveGroup, maxGroups);
+    set->bundlePrimRange  = CAllocTLSFArray(Range, maxBundles);
+    set->sparseSlots      = CAllocTLSFArray(u64, (maxEntities + 63u) >> 6);
+    set->bundles          = CAllocTLSFArray(const SceneBundle*, maxBundles);
+    set->bundleSlots      = CAllocTLSFArray(u64, (maxBundles + 63u) >> 6);
     
-    MemSet(set->subNodes, 0, maxBundles * sizeof(u16));
-    MemSet(set->entities, 0, maxEntities * sizeof(Entity));
-    MemSet(set->primitiveGroups, 0, maxGroups * sizeof(PrimitiveGroup));
-    MemSet(set->sparseData, 0, maxEntities * sizeof(SparseData));
     for (s32 i = 0; i < maxEntities; i++)
         set->sparseData[i].id = INVALID_ENTITY;
 }
@@ -44,9 +40,9 @@ void RenderSet_InitSet(RenderSet* set, u32 maxEntities, u32 maxGroups, u32 maxBu
 void RenderSet_Destroy(RenderSet* set)
 {
     FreeAligned(set->entities);
-    FreeAligned(set->sparseData); 
+    DeAllocTLSF(set->sparseData); 
     DeAllocTLSF(set->sparseSlots);
-    FreeAligned(set->primitiveGroups);
+    DeAllocTLSF(set->primitiveGroups);
     DeAllocTLSF(set->bundlePrimRange);
     DeAllocTLSF(set->bundles);
     DeAllocTLSF(set->bundleSlots);
@@ -65,39 +61,6 @@ v128f RenderSet_GroupLocalCenter(const PrimitiveGroup* group) {
 v128f RenderSet_EntityBoundsCenter(const PrimitiveGroup* group, const Entity* entity, v128f rotation, v128f worldScale)
 {
     return VecAdd(QMulVec3V(VecMul(RenderSet_GroupLocalCenter(group), worldScale), rotation), entity->position);
-}
-
-s32 RenderSet_NodeSpawnOrdinal(const SceneBundle* bundle, s32 nodeIdx)
-{
-    s32 ordinal = 0;
-    for (s32 i = 0; i < bundle->numNodes; i++)
-    {
-        const ANode* node = &bundle->nodes[i];
-        if (node->type != 0 || node->index < 0) continue;
-        if (i == nodeIdx) return ordinal;
-        ordinal++;
-    }
-    return -1;
-}
-
-bool RenderSet_FindNodeEntity(const RenderSet* set, Range range, u32 meshIndex, u32 sparseIdx,
-                              u32* outGroup, u32* outEntity)
-{
-    for (u32 g = range.start; g < range.start + range.count; g++)
-    {
-        const PrimitiveGroup* group = &set->primitiveGroups[g];
-        if (group->meshIndex != meshIndex) continue;
-        for (u32 e = 0; e < group->numEntities; e++)
-        {
-            if (EntityGetSparseID(&set->entities[group->entityOffset + e]) == sparseIdx)
-            {
-                *outGroup = g;
-                *outEntity = e;
-                return true;
-            }
-        }
-    }
-    return false;
 }
 
 u32 RenderSet_CountTriangles(const RenderSet* set)
@@ -382,7 +345,7 @@ u32 CountNumEntities(const RenderSet* set, u32 bundleIdx, u32 numScenes, u32* pr
         {
             // make group0 for non meshes
             if (set->skinned) continue;
-            primitiveCounts[0] += numScenes;
+            if (primitiveCounts) primitiveCounts[0] += numScenes;
             totalPrimAdded += numScenes;
             continue;
         }
@@ -392,7 +355,7 @@ u32 CountNumEntities(const RenderSet* set, u32 bundleIdx, u32 numScenes, u32* pr
 
         for (u32 p = 0; p < (u32)mesh->numPrimitives; p++)
         {
-            primitiveCounts[range.start + (u32)mesh->primitiveOffset + p] += numScenes;
+            if (primitiveCounts) primitiveCounts[range.start + (u32)mesh->primitiveOffset + p] += numScenes;
             totalPrimAdded += numScenes;
         }
     }
@@ -500,7 +463,9 @@ u32 AddBundleAsScene(RenderSet* set, u32 bundleIdx, u32 sparseStart, const Entit
         sparseData->subNodeCount  = node->numChildren; 
         sparseData->subNodeOffset = U16SetGetEmptyRange(set->subNodes, set->numEntities, sparseData->subNodeCount);
         sparseData->parent = node->parent == -1 ? 0 : sparseCursor2 - nodeSparseMapper[node->parent];
-        for (s32 s = 0; s < sparseData->subNodeCount; s++)
+        
+        if (sparseData->subNodeCount != 0 && sparseData->subNodeOffset == UINT32_MAX) { AX_ERROR("subnode allocation failed!"); }
+        else for (s32 s = 0; s < sparseData->subNodeCount; s++)
         {
             set->subNodes[sparseData->subNodeOffset + s] = (u16)(nodeSparseMapper[node->children[s]] - sparseCursor2);
         }
@@ -577,13 +542,7 @@ void RenderSet_CompactEntities(RenderSet* set)
             Entity entity = set->entities[oldOffset + i];
             u32 sparse = EntityGetSparseID(&entity);
             if (sparse == INVALID_ENTITY)
-            {
-                SparseData* sparseData = &set->sparseData[sparse];
-                U16SetSetRange(set->subNodes, sparseData->subNodeOffset, sparseData->subNodeCount, 0);
-                sparseData->subNodeOffset = 0;
-                sparseData->subNodeCount = 0;
                 continue;
-            }
             set->sparseData[sparse].id = writeEntity;
             set->entities[writeEntity++] = entity;
         }
@@ -638,7 +597,7 @@ void RenderSet_RemoveEntityRangeStaged(RenderSet* set, Range range)
         EntitySetSparseID(entity, INVALID_ENTITY);
         SparseDataRemoveFromParent(set, sparseData);
     }
-    RenderSet_FreeSparseIDRange(set, range.start, range.count);
+    RenderSet_FreeSparseIDRangePtr(set, set->sparseData + range.start, range.count);
 }
 
 static void ShiftEntitiesLeft(RenderSet* set, u32 firstRemoved, u32 count)
@@ -783,8 +742,9 @@ void RenderSet_ClearEntities(RenderSet* set)
 {
     RenderSet_ClearEntitiesCallback(set);
     MemsetZero(set->entities, set->maxEntities * sizeof(Entity));
-    MemSet(set->sparseData, 0, set->maxEntities * sizeof(u16));
+    MemSet(set->sparseData, 0, set->maxEntities * sizeof(SparseData));
     MemSet64(set->sparseSlots, 0, ((set->maxEntities + 63u) >> 6));
+    MemSet(set->subNodes, 0, set->maxEntities * sizeof(u16));
 
     for (s32 i = 0; i < set->maxEntities; i++)
         set->sparseData[i].id = INVALID_ENTITY;
@@ -806,12 +766,13 @@ void RenderSet_Clear(RenderSet* set)
     set->numGroups   = 0;
     set->numBundles  = 0;
     
-    MemSet(set->sparseData, 0, set->maxEntities * sizeof(u16));
+    MemSet(set->sparseData, 0, set->maxEntities * sizeof(SparseData));
     for (s32 i = 0; i < set->maxEntities; i++)
         set->sparseData[i].id = INVALID_ENTITY;
 
     MemSet64(set->sparseSlots, 0, ((set->maxEntities + 63u) >> 6));
     MemSet(set->entities, 0, set->maxEntities * sizeof(Entity));
+    MemSet(set->subNodes, 0, set->maxEntities * sizeof(u16));
     MemsetZero(set->primitiveGroups, set->maxGroups * sizeof(PrimitiveGroup));
     MemsetZero(set->bundlePrimRange, set->maxBundles * sizeof(Range));
     MemsetZero(set->bundles, set->maxBundles * sizeof(SceneBundle*));

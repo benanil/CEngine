@@ -1,0 +1,16 @@
+axscene 9
+sun 116.565002 74.857147
+atlas 0 0 -
+atlas 1 0 -
+atlas 2 0 -
+bundles 0
+descriptors 4
+desc 0 0 0 16 16 1
+desc 0 0 0 16 16 1
+desc 0 0 0 16 16 2
+desc 0 0 0 16 16 4
+materials 0
+lights 0
+entities 0 0
+entities 1 0
+physics 0

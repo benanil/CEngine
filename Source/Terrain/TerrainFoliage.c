@@ -31,10 +31,7 @@ typedef struct tFoliageType_
     char  path[T_FOLIAGE_MAX_PATH];
     char  name[T_FOLIAGE_NAME_LEN]; // display label: file name, no directory/extension
     u32   bundleIdx; // in foliage scene
-    // todo(anil): remove these two
-    u32   groupIdx;      
-    u32   groupCount;    
-                         
+    u32   numEntities;   // num nodes, CountNumEntities
     f32   localBaseY;    // lowest local-space point across all primitive groups
     f32   normalAlign;   // terrain-normal tilt amount; slender meshes stay mostly upright
     b3HullData* hull;    // native-scale convex hull, built lazily on first collider request
@@ -149,6 +146,7 @@ void Foliage_Init()
         stages[i].skinned   = false;
     }
     ParallelFor(gFoliage.numTypes, 1u, SceneStageRange, &(SceneStageRangeCtx){ stages, false });
+    RenderSet* set = &gFoliage.scene.surfaceSet;
 
     for (u32 i = 0; i < gFoliage.numTypes; i++)
     {
@@ -158,15 +156,16 @@ void Foliage_Init()
         type->bundleIdx = bundleIdx;
         if (bundleIdx == INVALID_BUNDLE) continue;
 
-        Range range = gFoliage.scene.surfaceSet.bundlePrimRange[bundleIdx];
+        type->numEntities = CountNumEntities(set, bundleIdx, 1, NULL, false);
+        Range range = set->bundlePrimRange[bundleIdx];
         if (range.count == 0u) continue;
         
-        PrimitiveGroup* firstGroup = &gFoliage.scene.surfaceSet.primitiveGroups[range.start];
+        const PrimitiveGroup* firstGroup = &set->primitiveGroups[range.start];
         v128f localBoundsMin = firstGroup->aabbMin;
         v128f localBoundsMax = firstGroup->aabbMax;
         for (u32 g = range.start + 1; g < range.start + range.count; g++)
         {
-            PrimitiveGroup* group = &gFoliage.scene.surfaceSet.primitiveGroups[g];
+            const PrimitiveGroup* group = &set->primitiveGroups[g];
             localBoundsMin = VecMin(localBoundsMin, group->aabbMin);
             localBoundsMax = VecMax(localBoundsMax, group->aabbMax);
         }
@@ -545,7 +544,7 @@ static void RunFoliageJob(void* userData)
                 placement->rotation = PackQuaternionS16NormRet(CreateFoliageRotation(normal, yaw, type->normalAlign));
                 placement->scale = scale;
                 placement->typeIndex = foliageIndex;
-                BitsetSet(&job->changedBundles, foliageIndex);
+                BitsetSet(&job->changedBundles, type->bundleIdx);
             }
         }
     }
@@ -604,12 +603,14 @@ static void IntegrateFinishedFoliage(u32 scheduledCount)
         for (s32 j = 0; j < chunk->foliageCount; j++)
         {
             FoliageEntity foliage = chunk->foliageEntities[j];
-            if (!BitsetGet(&job->changedBundles, foliage.bundleId))
-                continue;
-        
-            chunk->foliageEntities[j--] = chunk->foliageEntities[--chunk->foliageCount]; // unordered remove
-            RenderSet_RemoveEntityRangeStaged(set, foliage.range);
-            totalEntityRemoved += foliage.range.count;
+            FoliageType* type = &gFoliage.types[foliage.bundleId];
+            bool removed = type->params.enabled == false;
+            if (removed || BitsetGet(&job->changedBundles, foliage.bundleId))
+            {
+                chunk->foliageEntities[j--] = chunk->foliageEntities[--chunk->foliageCount]; // unordered remove
+                RenderSet_RemoveEntityRangeStaged(set, foliage.range);
+                totalEntityRemoved += foliage.range.count;
+            }
         }
 
         for (u32 p = 0; p < job->count; p++)
@@ -625,20 +626,16 @@ static void IntegrateFinishedFoliage(u32 scheduledCount)
         gFoliage.scene.renderDataDirty = true;
     }
 
-    u32 sparseStart = RenderSet_AllocateSparseIDRange(set, totalEntityAdded);
-    if (sparseStart == INVALID_ENTITY) {
-        if (totalEntityAdded != 0)
-        {
-            AX_WARN("terrain sparse id alloc failed!");
-            ArenaPopGlobal(set->numGroups * sizeof(u32)); /* primitiveCounts */ 
-            ArenaPopGlobal(scheduledCount * sizeof(tChunk*)); /* resolvedChunks */ 
-        }
-        return; 
+    if (!BitsetHasAtLeastEmptyBits(set->sparseSlots, set->maxEntities, totalEntityAdded)) {
+        AX_WARN("popcount: %d", BitsetPopCount(set->sparseSlots, set->maxEntities));
+        AX_WARN("terrain sparse id alloc failed!");
+        ArenaPopGlobal(set->numGroups * sizeof(u32)); /* primitiveCounts */ 
+        ArenaPopGlobal(scheduledCount * sizeof(tChunk*)); /* resolvedChunks */ 
+        return;
     }
   
     BatchLeaveSpacePrimitives(set, 0, set->numGroups, primitiveCounts, totalEntityAdded);
     
-    u32 sparseCursor = sparseStart;
     for (u32 i = 0; i < scheduledCount; i++)
     {
         tChunk* chunk = resolvedChunks[i];
@@ -660,12 +657,13 @@ static void IntegrateFinishedFoliage(u32 scheduledCount)
             e.scale    = EntityPackUniformWorldScale(finalScale);
             EntitySetFlags(&e, type->params.collider * EntityFlags_ColliderEnabled);
             // RenderSet_AddSceneArray(set, type->bundleIdx, &e, 1, false);
+            u32 sparseCursor = RenderSet_AllocateSparseIDRange(set, type->numEntities);
+            if (AX_UNLIKELY(sparseCursor == INVALID_ENTITY)) break;
             u32 numEntityAdded = AddBundleAsScene(set, type->bundleIdx, sparseCursor, &e, false);
             chunk->foliageEntities[chunk->foliageCount++] = (FoliageEntity){
                 (Range){ sparseCursor, numEntityAdded},
                 type->bundleIdx
             };
-            sparseCursor += numEntityAdded;
         }
     }
     ArenaPopGlobal(set->numGroups * sizeof(u32)); // primitiveCounts

@@ -76,7 +76,7 @@ v128f EntityGetScaleV(in Entity e) {
 }
 
 f16_3 EntityGetScale(in Entity e) {
-    return Unpack16x4Fixed(e.scale, ENTITY_MAX_SCALE).xyz;
+    return f16_3(Unpack16x4Fixed(e.scale, ENTITY_MAX_SCALE).xyz);
 }
 
 void EntitySetScale(inout Entity e, float3 scale) {

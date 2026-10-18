@@ -535,6 +535,7 @@ static void tFreeChunkSlot(u32 index)
     tFreeMeshHandle(&chunk->mesh);
     tFreePendingMesh(chunk);
     Foliage_DestroyChunkFoliage(chunk);
+    chunk->foliageCount = 0;
     DeAllocTLSF(chunk->density);
 
     u32 lastIndex = gMarchingTerrain.chunkCount - 1u;
@@ -575,8 +576,7 @@ static void tRemoveOutOfRangeChunks(void)
     );
     if (totalRemoved)
     {
-        Scene* foliageScene = GetFoliageScene();
-        RenderSet_CompactEntities(&foliageScene->surfaceSet);
+        RenderSet_CompactEntities(&GetFoliageScene()->surfaceSet);
     }
 }
 
@@ -621,19 +621,20 @@ static void tClearChunks(void)
     AX_LOG("marching terrain chunks reset");
     tDrainBuildJobs();
     RendererSetTerrainChunkDraws(NULL, 0);
+    Foliage_ClearEntities();
     IterateSetBits(gMarchingTerrain.occupiedChunksBitset, T_MAX_CHUNKS,
-        tDestroyChunkPhysics(&gMarchingTerrain.chunks[bitId]);
-        tFreeMeshHandle(&gMarchingTerrain.chunks[bitId].mesh);
-        tFreePendingMesh(&gMarchingTerrain.chunks[bitId]);
-        Foliage_DestroyChunkFoliage(&gMarchingTerrain.chunks[bitId]);
-        DeAllocTLSF(gMarchingTerrain.chunks[bitId].density);
-        gMarchingTerrain.chunks[bitId].density = NULL;
+        tChunk* chunk = &gMarchingTerrain.chunks[bitId];
+        tDestroyChunkPhysics(chunk);
+        tFreeMeshHandle(&chunk->mesh);
+        tFreePendingMesh(chunk);
+        DeAllocTLSF(chunk->density);
+        chunk->density = NULL;
+        chunk->foliageCount = 0;
     );
 
     gMarchingTerrain.chunkCount = 0;
     gMarchingTerrain.physicsSyncCursor = 0;
-    if (gMarchingTerrain.occupiedChunksBitset)
-        MemsetZero(gMarchingTerrain.occupiedChunksBitset, T_CHUNK_BITSET_WORDS * sizeof(u64));
+    MemsetZero(gMarchingTerrain.occupiedChunksBitset, T_CHUNK_BITSET_WORDS * sizeof(u64));
     HMClear(&gMarchingTerrain.chunkLookup);
 }
 
