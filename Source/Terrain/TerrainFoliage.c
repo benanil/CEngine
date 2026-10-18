@@ -36,9 +36,6 @@ typedef struct tFoliageType_
     f32   normalAlign;   // terrain-normal tilt amount; slender meshes stay mostly upright
     b3HullData* hull;    // native-scale convex hull, built lazily on first collider request
     FoliageParams params;
-    bool  paramsDirty;   // set by Foliage_SetParams; only this type's chunks get torn down
-                         // and rebuilt on the next Foliage_Update, every other type's
-                         // instances stay untouched in the RenderSet
 } FoliageType;
 
 extern Graphics gGFX; // cpu mega buffers, declared per translation unit as elsewhere (BVH.c, Physics.c)
@@ -58,7 +55,6 @@ typedef struct tFoliageJob_
     // true for a chunk that has never had foliage decided (see tChunk.foliageBuilt): place
     // every currently-enabled type for it, not just the ones flagged paramsDirty this round.
     bool        placeAllEnabled;
-    u64         changedBundles;
     u32         count;
     tFoliagePlacement placements[T_FOLIAGE_MAX_PER_CHUNK];
 } tFoliageJob;
@@ -79,6 +75,8 @@ typedef struct tFoliageState_
     u32   numTypes;
     PCG   pcg;
     u32   seed;
+    u64   changedGroups;
+
     FoliageType types[T_MAX_FOLIAGE_SCENE];
     tFoliageJob  jobs[T_MAX_CHUNKS]; // one slot per resident chunk, all dispatched and
                                      // awaited within a single Foliage_Update call
@@ -177,8 +175,8 @@ void Foliage_Init()
         f32 aspect = height / Maxf32(horizontal, 1.0e-3f);
         f32 tallness = Maxf32(aspect, 1.0f);
         type->normalAlign = Clampf32(1.0f / (tallness * tallness * tallness), 0.03f, 0.75f);
-        type->paramsDirty = true; // build this type's foliage on the first update
     }
+    gFoliage.changedGroups = ~0ull;
     DeAllocTLSF(stages);
 }
 
@@ -224,8 +222,9 @@ void Foliage_SetParams(u32 index, const FoliageParams* params)
     if (!params || index >= gFoliage.numTypes) return;
     FoliageType* type = &gFoliage.types[index];
     type->params = *params;
-    type->paramsDirty = true; // only this type and its group rebuilds next Foliage_Update
-    bool isBaseType = Foliage_BaseTypeOfGroup(params->groupIndex) == params->groupIndex;
+    u32 group = Foliage_BaseTypeOfGroup(params->groupIndex);
+    BitsetSet(&gFoliage.changedGroups, params->groupIndex);
+    bool isBaseType = group == params->groupIndex;
     if (!isBaseType) return;
 
     for (int i = 0; i < gFoliage.numTypes; i++)
@@ -236,7 +235,6 @@ void Foliage_SetParams(u32 index, const FoliageParams* params)
             gFoliage.types[i].params.density   = params->density;
             gFoliage.types[i].params.rarity    = params->rarity;
             gFoliage.types[i].params.frequency = params->frequency;
-            gFoliage.types[i].paramsDirty = true;
         }
     }
 }
@@ -318,8 +316,8 @@ void Foliage_RandomizeParams(void)
         FoliageType* type = &gFoliage.types[i];
         type->params.density = RepeatMinMaxF32(PCGNext(&gFoliage.pcg), 3.5f, 8.0f);
         type->params.rarity = RepeatMinMaxF32(PCGNext(&gFoliage.pcg), 0.85f, 0.95f);
-        type->paramsDirty = true;
     }
+    gFoliage.changedGroups = ~0ull;
 }
 
 // inverse of TerrainDensity_Quantize (>0 air, <0 solid). NOT T_DENSITY_DECODE_SCALE -
@@ -454,8 +452,11 @@ static u8 GetFoliageGroups(u8 group, u8 foliages[T_MAX_FOLIAGE_SCENE])
 {
     u8 activeGroups = 0;
     for (u32 t = 0; t < gFoliage.numTypes; t++)
-        if (gFoliage.types[t].params.groupIndex == group)
+    {
+        const FoliageType* type = &gFoliage.types[t];
+        if (type->params.groupIndex == group && type->bundleIdx != INVALID_BUNDLE && type->params.enabled)
             foliages[activeGroups++] = t; 
+    }
     return activeGroups;
 }
 
@@ -467,7 +468,6 @@ static void RunFoliageJob(void* userData)
 {
     tFoliageJob* job = (tFoliageJob*)userData;
     job->count = 0u;
-    job->changedBundles = 0ull;
     ALIGNSIMD s32 rnd[T_NOISE_AXIS_MAX * T_NOISE_AXIS_MAX * 5];
     ALIGNSIMD f32 cx[T_NOISE_AXIS_MAX * T_NOISE_AXIS_MAX];
     ALIGNSIMD f32 cz[T_NOISE_AXIS_MAX * T_NOISE_AXIS_MAX];
@@ -478,7 +478,8 @@ static void RunFoliageJob(void* userData)
         u8 foliages[T_MAX_FOLIAGE_SCENE] = {0};
         u8 numFoliages = GetFoliageGroups(group, foliages);
         const FoliageType* baseType = &gFoliage.types[foliages[0]];
-        if (numFoliages == 0) continue;
+        bool changed = BitsetGet(&gFoliage.changedGroups, g) || job->placeAllEnabled;
+        if (numFoliages == 0 || !changed) continue;
         
         u32 seed = WangHash(gFoliage.seed + (u32)job->chunkMin.x * 73856093u ^ (u32)job->chunkMin.z * 19349663u ^ (group * 83492791u + 1u));
         f32 density = Maxf32(baseType->params.density, T_MIN_DENSITY);
@@ -504,12 +505,6 @@ static void RunFoliageJob(void* userData)
             {
                 u32 foliageIndex = foliages[Abss32(rnd[rId] + iz) % numFoliages];
                 const FoliageType* type = &gFoliage.types[foliageIndex];
-                // normally only types whose params just changed get (re)placed - every other
-                // type's chunks are left completely alone, both here and in IntegrateFinishedFoliage.
-                // a chunk that has never had foliage decided (placeAllEnabled) is the exception:
-                // every enabled type gets placed for it once, dirty or not.
-                if (!type->params.enabled || type->bundleIdx == INVALID_BUNDLE) continue;
-                if (!job->placeAllEnabled && !type->paramsDirty) continue;
                 if (job->count >= T_FOLIAGE_MAX_PER_CHUNK) return;
                 
                 f32 worldX = (f32)job->chunkMin.x + x;
@@ -544,7 +539,6 @@ static void RunFoliageJob(void* userData)
                 placement->rotation = PackQuaternionS16NormRet(CreateFoliageRotation(normal, yaw, type->normalAlign));
                 placement->scale = scale;
                 placement->typeIndex = foliageIndex;
-                BitsetSet(&job->changedBundles, type->bundleIdx);
             }
         }
     }
@@ -605,7 +599,7 @@ static void IntegrateFinishedFoliage(u32 scheduledCount)
             FoliageEntity foliage = chunk->foliageEntities[j];
             FoliageType* type = &gFoliage.types[foliage.bundleId];
             bool removed = type->params.enabled == false;
-            if (removed || BitsetGet(&job->changedBundles, foliage.bundleId))
+            if (removed || BitsetGet(&gFoliage.changedGroups, type->params.groupIndex))
             {
                 chunk->foliageEntities[j--] = chunk->foliageEntities[--chunk->foliageCount]; // unordered remove
                 RenderSet_RemoveEntityRangeStaged(set, foliage.range);
@@ -677,17 +671,13 @@ void Foliage_Update(void)
     JobSystem* js = tGetTerrainJobSystem();
     if (!js) return;
 
-    bool anyDirty = false;
-    for (u32 t = 0; t < gFoliage.numTypes; t++)
-        if (gFoliage.types[t].paramsDirty) { anyDirty = true; break; }
-
     // Always walk residents (ignoring anyDirty) so streamed-in chunks get an initial foliage pass.
     // Uses the occupied-chunks bitset instead of trusting chunkCount density.
     const u64* occupied = tGetOccupiedChunksBitset();
     u32 scheduledCount = 0u;
+    bool anyDirty = gFoliage.changedGroups > 0ull;
     IterateSetBits(occupied, T_CHUNK_BITSET_WORDS * 64,
     {
-        if (scheduledCount >= T_MAX_CHUNKS) continue;
         tChunk* chunk = tGetChunkByIndex(bitId);
         if (!chunk || chunk->buildState != CHUNK_READY || !chunk->mesh.vertices.heapPtr) continue;
         if (!chunk->density) continue; // no cached density grid yet, nothing to sample
@@ -706,8 +696,5 @@ void Foliage_Update(void)
         IntegrateFinishedFoliage(scheduledCount);
     }
 
-    // every type considered dirty at the start of this burst has now been fully
-    // re-evaluated across every resident chunk - clear them, leave the rest untouched
-    for (u32 t = 0; t < gFoliage.numTypes; t++)
-        gFoliage.types[t].paramsDirty = false;
+    gFoliage.changedGroups = 0ull;
 }

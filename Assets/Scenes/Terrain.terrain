@@ -1,14 +1,14 @@
 numFoliages:12
 Assets/Foliage/Trees/s3dtrees_treepineforest01.gltf
-density:6.000 rarity:0.864 size:1.000 groupIndex:0.000 frequency:0.500 enabled:1 collider:0 sizeVariance:1
+density:7.781 rarity:0.864 size:1.000 groupIndex:0.000 frequency:0.500 enabled:1 collider:0 sizeVariance:1
 Assets/Foliage/Trees/s3dtrees_treepineforest02.gltf
-density:6.000 rarity:0.864 size:1.000 groupIndex:0.000 frequency:0.500 enabled:1 collider:0 sizeVariance:1
+density:7.781 rarity:0.864 size:1.000 groupIndex:0.000 frequency:0.500 enabled:1 collider:0 sizeVariance:1
 Assets/Foliage/Trees/s3dtrees_treepineforest05.gltf
-density:6.000 rarity:0.864 size:1.000 groupIndex:0.000 frequency:0.500 enabled:1 collider:0 sizeVariance:1
+density:7.781 rarity:0.864 size:1.000 groupIndex:0.000 frequency:0.500 enabled:1 collider:0 sizeVariance:1
 Assets/Foliage/Rocks/s3drockm01.gltf
-density:9.295 rarity:0.890 size:1.000 groupIndex:1.000 frequency:0.500 enabled:1 collider:0 sizeVariance:1
+density:9.295 rarity:0.890 size:1.549 groupIndex:1.000 frequency:0.500 enabled:1 collider:0 sizeVariance:1
 Assets/Foliage/Rocks/s3drocks02.gltf
-density:9.352 rarity:0.827 size:1.000 groupIndex:2.000 frequency:0.500 enabled:1 collider:0 sizeVariance:1
+density:9.352 rarity:0.827 size:1.999 groupIndex:2.000 frequency:0.500 enabled:1 collider:0 sizeVariance:1
 Assets/Foliage/Plants/columbinebush.gltf
 density:9.576 rarity:0.855 size:3.000 groupIndex:3.000 frequency:0.500 enabled:1 collider:0 sizeVariance:0
 Assets/Foliage/Plants/s3dplants_mountainflower01red.gltf
@@ -22,4 +22,4 @@ density:7.781 rarity:0.864 size:1.000 groupIndex:6.000 frequency:0.500 enabled:1
 Assets/Foliage/Bark/s3dtrees_coastdriftwood02.gltf
 density:7.781 rarity:0.864 size:1.000 groupIndex:11.000 frequency:0.500 enabled:0 collider:0 sizeVariance:1
 Assets/Foliage/Bark/s3dtrees_treepineforestlog02blank.gltf
-density:6.000 rarity:0.864 size:1.000 groupIndex:0.000 frequency:0.500 enabled:1 collider:0 sizeVariance:1
+density:7.781 rarity:0.864 size:1.000 groupIndex:0.000 frequency:0.500 enabled:1 collider:0 sizeVariance:1
