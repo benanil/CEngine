@@ -220,7 +220,7 @@ static void SceneInspectorPhysicsUI(Scene* scene, Entity* entity)
     u32 sparseId = EntityGetSparseID(entity);
     if (!scene->physicsBodies || sparseId >= scene->surfaceSet.maxEntities) return;
 
-    b3BodyId body = Entity_GetPhysicsBody(scene, entity);
+    b3BodyId body = Physics_GetPhysicsBody(scene, entity);
     UIDivider(CLAY_ID("InspectorPhysicsDivider"));
     scenePhysicsOpen ^= UICollapsingHeader(CLAY_ID("InspectorPhysicsHeader"), CLAY_STRING("Physics Body"), scenePhysicsOpen);
     if (!scenePhysicsOpen) return;

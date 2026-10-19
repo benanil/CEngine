@@ -263,48 +263,19 @@ static void UpdatePicking()
     v128f direction = VecNorm(Vec3Load(&g_Camera.front));
     hit.hit.t = FLT_MAX;
 
-    if (GetMouseDown(MouseButton_Left) && Physics_PhysicsRaycastPick(origin, direction, 10.0f, &hit, PhysBit_Foliage))
+    if (GetMousePressed(MouseButton_Left) && Physics_PhysicsRaycastPick(origin, direction, 10.0f, &hit, PhysBit_Foliage))
     {
-        Scene* scene = Foliage_GetScene();
-        float dt = GetDeltaTime();
-        RenderSet* rs = &scene->surfaceSet;
-        u32 sparseId = hit.entityID & 0x00FFFFFFu;
-        SparseData* sparse = &rs->sparseData[sparseId];
-        if (sparse->parent != 0)
-        {
-            sparseId -= sparse->parent;
-            sparse = &rs->sparseData[sparseId];
-        }
+        RenderSet* rs = &Foliage_GetScene()->surfaceSet;
+        SparseData* sparse = &rs->sparseData[hit.entityID & 0x00FFFFFFu];
+        if (sparse->parent) sparse -= sparse->parent;
+        Entity* entity = &rs->entities[sparse->id];
+        b3BodyId body = Physics_GetPhysicsBody(Foliage_GetScene(), entity);
 
-        Entity* entity = &rs->entities[rs->sparseData[sparseId].id];
-        Quaternion rotation = QMul(EntityGetRotation(entity), QFromYAngle(0.05f));
-        EntitySetRotation(entity, rotation);
-        Entity_SyncPhysicsBody(scene, entity);
-
-        u16* subNodes = rs->subNodes + sparse->subNodeOffset;
-        for (s32 i = 0; i < sparse->subNodeCount; i++)
-        {
-            entity = &rs->entities[rs->sparseData[sparseId + subNodes[i]].id];
-            Quaternion rotation = QMul(EntityGetRotation(entity), QFromYAngle(dt * 10.0f));
-            EntitySetRotation(entity, rotation);
-            Entity_SyncPhysicsBody(scene, entity);
-
-            if (sparse > rs->sparseData && sparse[-1].hasPrim)
-            {
-                Entity* left = &rs->entities[sparse[-1].id];
-                EntitySetRotation(left, rotation);
-                EntitySetRotation(left, rotation);
-                Entity_SyncPhysicsBody(scene, left);
-            }
-
-            if (sparse < (rs->sparseData + rs->numEntities-1) && sparse[+1].hasPrim)
-            {
-                Entity* right = &rs->entities[sparse[+1].id];
-                EntitySetRotation(right, rotation);
-                EntitySetRotation(right, rotation);
-                Entity_SyncPhysicsBody(scene, right);
-            }
-        }
+        b3ShapeId shapeId;
+        b3Body_GetShapes(body, &shapeId, 1);
+        b3Body_SetType(body, b3_dynamicBody);
+        Physics_ApplyDefaultDynamicMass(body, shapeId);
+        b3Body_ApplyForceToCenter(body, (b3Vec3){0.0f, 150.0f, 1.0f}, true);
     }
 }
 

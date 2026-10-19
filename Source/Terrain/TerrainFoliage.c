@@ -588,7 +588,8 @@ static void SetFolliageCollider(const FoliageType* type, u32 numEntityAdded, Ren
         type->params.colliderType == b3_heightShape   ||
         type->params.colliderType == b3_shapeTypeCount)
         return;
-    Entity* rootEntity = &set->entities[set->sparseData[sparseCursor + (u32)type->params.colliderEntity].id];
+    u32 colliderEntity = type->params.colliderEntity;
+    Entity* rootEntity = &set->entities[set->sparseData[sparseCursor + colliderEntity].id];
     EntityAddFlags(rootEntity, EntityFlags_ColliderEnabled);
 
     const PrimitiveGroup* group = &set->primitiveGroups[EntityGetPrimitiveID(rootEntity)];
@@ -617,6 +618,32 @@ static void SetFolliageCollider(const FoliageType* type, u32 numEntityAdded, Ren
         case b3_sphereShape:  data = &sphere; break;
         default: data = NULL;
     }
+
+    Entity* firstEntity = &set->entities[set->sparseData[sparseCursor].id];
+    EntitySetSparseID(firstEntity, sparseCursor + colliderEntity);
+    EntitySetSparseID(rootEntity, sparseCursor);
+    // swap first entity with root
+    XSWAP(SparseData, set->sparseData[sparseCursor + colliderEntity], set->sparseData[sparseCursor]);
+    SparseData* rootSparse  = &set->sparseData[sparseCursor];
+    XSWAP(b3BodyId, set->hookScene->physicsBodies[sparseCursor + colliderEntity], 
+                    set->hookScene->physicsBodies[sparseCursor]);
+    
+    // unparent all entities
+    for (s32 i = 1; i < numEntityAdded; i++)
+    {
+        SparseData* sparse = &set->sparseData[sparseCursor + i];
+        sparse->subNodeCount  = 0;
+        sparse->subNodeOffset = 0;
+        sparse->parent = i; // set to root
+    }
+    rootSparse->subNodeOffset = U16SetGetEmptyRange(set->subNodes, set->maxEntities, numEntityAdded - 1);
+    rootSparse->subNodeCount = numEntityAdded - 1;
+    if (rootSparse->subNodeOffset == UINT32_MAX) { AX_WARN("subnode allocation failed foliage"); }
+    else for (s32 i = 1; i < numEntityAdded; i++)
+    {
+        set->subNodes[rootSparse->subNodeOffset + i - 1] = i;
+    }
+    end_phys:{}
     PhysicsCreateEntityBody(set->hookScene, rootEntity, data, type->params.colliderType);
 }
 

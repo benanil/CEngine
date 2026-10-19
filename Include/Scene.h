@@ -419,7 +419,7 @@ const char** Physics_ShapeNames(); // b3ShapeType
 void Physics_BuildStaticCollidersAsync(Scene* scene, AsyncCallback callback);
 void Physics_BuildStaticColliders(Scene* scene);
 // yea buddy
-b3BodyId Entity_GetPhysicsBody(Scene* scene, const Entity* entity);
+b3BodyId Physics_GetPhysicsBody(Scene* scene, const Entity* entity);
 // after an entity moved call this to update its transformation in physics system
 void Entity_SyncPhysicsBody(Scene* scene, const Entity* entity);
 void Entity_TogglePhysics(Scene* scene, Entity* entity, bool enabled);
@@ -455,9 +455,19 @@ static inline b3Vec3 Float3ToB3Vec3(float3 v) { return (b3Vec3){ v.x, v.y, v.z }
 static inline float3 B3VecToFloat3(b3Pos p)   { return (float3){p.x, p.y, p.z }; }
 static inline v128f  B3VecTov128f(b3Pos p)    { return VecSetR(p.x, p.y, p.z, 0.0f); }
 
-v128f  B3ToQuat(b3Quat q);
-b3Quat ToB3Quat(v128f q);
-u64    B3QuatToEntityRotation(b3Quat q);
+purefn v128f B3ToQuat(b3Quat q) {
+    return VecSetR(q.v.x, q.v.y, q.v.z, q.s); 
+}
+
+purefn b3Quat ToB3Quat(v128f q)
+{
+    b3Quat res;
+    q = QNorm(q);
+    VecStore(&res.v.x, q);
+    return res;
+}
+
+purefn u64 B3QuatToEntityRotation(b3Quat q) { return PackQuaternionS16NormRet(VecSetR(q.v.x, q.v.y, q.v.z, q.s)); }
 
 purefn b3Vec3 b3ProjectOnPlane(b3Vec3 v, b3Vec3 n) {
     return b3Sub(v, b3MulSV(b3Dot(v, n), n));

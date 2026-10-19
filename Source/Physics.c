@@ -179,7 +179,6 @@ void Scene_InitPhysics(Scene* scene)
         AX_WARN("physics: body slot allocation failed");
 }
 
-
 void Scene_DestroyPhysics(Scene* scene)
 {
     // Scene_BuildStaticCollidersAsync may still be running on a worker thread holding a raw
@@ -206,21 +205,6 @@ void Scene_DestroyPhysics(Scene* scene)
     scene->physicsColliderBuildCallback = NULL;
     scene->physicsColliderBuildResult = 0;
 }
-
-v128f  B3ToQuat(b3Quat q) {
-    return VecSetR(q.v.x, q.v.y, q.v.z, q.s); 
-}
-
-b3Quat ToB3Quat(v128f q)
-{
-    b3Quat res;
-    q = QNorm(q);
-    VecStore(&res.v.x, q);
-    return res;
-}
-
-u64 B3QuatToEntityRotation(b3Quat q) { return PackQuaternionS16NormRet(VecSetR(q.v.x, q.v.y, q.v.z, q.s)); }
-
 
 // Resolves the body slot for an entity, or NULL when the entity/slot is out of
 // range. The slot's body may still be null (no body created yet).
@@ -277,14 +261,18 @@ void Physics_Update(Scene* scene, float deltaTime)
     for (int i = 0; i < events.moveCount; i++)
     {
         const b3BodyMoveEvent* move = &events.moveEvents[i];
-        RenderSet* set = &scene->surfaceSet;
+        Scene* opScene = PhysicsUserDataIsFoliage(move->userData) ? GetFoliageScene() : scene;
+        RenderSet* set = &opScene->surfaceSet;
         u32 sparseIdx = PhysicsUserDataEntity(move->userData);
         u32 dense = set->sparseData[sparseIdx].id;
         Entity* entity = &set->entities[dense];
-        EntitySetPositionV(entity, B3VecTov128f(move->transform.p));
-        EntitySetRotation(entity, B3ToQuat(move->transform.q));
+        v128f pos = B3VecTov128f(move->transform.p);
+        v128f oldRot = EntityGetRotation(entity);
+        v128f rot = B3ToQuat(move->transform.q);
+        Scene_AddPosRec(opScene, entity, VecSub(pos, entity->position));
+        Scene_RotateRec(opScene, entity, QMul(QInverse(oldRot), rot));
+        opScene->renderDataDirty |= 1;
     }
-    scene->renderDataDirty |= events.moveCount > 0;
 }
 
 static void PhysicsDestroyBodies(b3BodyId* bodies, u32 maxEntities)
@@ -557,14 +545,14 @@ bool Physics_SyncTerrainChunkMesh(u64* inOutBody, struct b3MeshData** inOutMesh,
     return true;
 }
 
-b3BodyId Entity_GetPhysicsBody(Scene* scene, const Entity* entity)
+b3BodyId Physics_GetPhysicsBody(Scene* scene, const Entity* entity)
 {
     return scene->physicsBodies[EntityGetSparseID(entity) ];
 }
 
 void Entity_SetPhysicsBodyType(Scene* scene, Entity* entity, b3BodyType type)
 {
-    b3BodyId body = Entity_GetPhysicsBody(scene, entity);
+    b3BodyId body = Physics_GetPhysicsBody(scene, entity);
     b3ShapeId shapeId;
     bool hasShape = b3Body_GetShapes(body, &shapeId, 1) > 0;
     b3Body_SetType(body, type);
