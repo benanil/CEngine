@@ -774,10 +774,10 @@
 						<Path>Source/RedBlackTree.c</Path>
 					</File>
 					<File>
-						<Path>Source/Animation.c</Path>
+						<Path>Source/AnimationBake.c</Path>
 					</File>
 					<File>
-						<Path>Source/AnimationBake.c</Path>
+						<Path>Source/Animation.c</Path>
 					</File>
 					<File>
 						<Path>Source/Scene.c</Path>
@@ -817,6 +817,9 @@
 					</File>
 					<File>
 						<Path>Source/Gameplay.c</Path>
+					</File>
+					<File>
+						<Path>Source/CharacterController.c</Path>
 					</File>
 				</Children>
 			</Folder>

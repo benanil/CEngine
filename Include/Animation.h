@@ -11,36 +11,6 @@
 extern "C" {
 #endif
 
-enum eAnimLocation_
-{
-    aLeft, aMiddle, aRight
-};
-
-enum eAnimTriggerOpt_
-{
-    eAnimTriggerOpt_None = 0,
-    // allows sword slash while walking,
-    // Enable if you want to play different animations on lower and upper body
-    eAnimTriggerOpt_Standing   = 1,
-    // reverse the animation when transitionning out instead of lerping to previous animation
-    eAnimTriggerOpt_ReverseOut = 2
-};
-
-enum eAnimControllerState_
-{
-    AnimState_None           = 0,
-    AnimState_Update         = 1,
-    AnimState_TriggerIn      = 2,
-    AnimState_TriggerOut     = 4,
-    AnimState_TriggerPlaying = 8,
-    AnimState_TriggerMask = AnimState_TriggerIn | AnimState_TriggerOut | AnimState_TriggerPlaying
-};
-
-typedef s32 eAnimTriggerOpt;
-typedef s32 eAnimLocation;
-typedef s32 eAnimState;
-typedef s32 eAnimControllerState;
-
 typedef struct half3x4_ {
     f16 x[4];
     f16 y[4];
@@ -57,11 +27,6 @@ typedef struct Pose_ {
     v128f rotation;
 } Pose;
 
-typedef struct HalfPose_ {
-    u64 position;
-    u64 rotation;
-} HalfPose;
-
 typedef struct AnimNode_
 {
     uint8_t numChildren;
@@ -70,8 +35,11 @@ typedef struct AnimNode_
 
 typedef struct GPUAnimationInstance_
 {
-    u32 animIdx;
-    f32 timeOffset;
+    u32 animIdx2;
+    u32 animRatio2;
+    u16  blend;
+    u16  padding;
+    u32  padding2;
 } GPUAnimationInstance;
 
 typedef struct GPUAnimationData_
@@ -150,6 +118,38 @@ s32 SceneBundleInitAnimations(const SceneBundle* prefab, Pose pose[MAX_BONES]);
 // use negative normTime to sample animation reversely
 void SampleSkinnedAnimationPose(const SceneBundle* bundle, Pose pose[MAX_BONES], s32 animIdx, f32 normTime);
 
+s32 FindAnimIndex(SceneBundle* prefab, const char* name);
+
+enum eAnimLocation_
+{
+    aLeft, aMiddle, aRight
+};
+
+enum eAnimTriggerOpt_
+{
+    eAnimTriggerOpt_None = 0,
+    // allows sword slash while walking,
+    // Enable if you want to play different animations on lower and upper body
+    eAnimTriggerOpt_Standing   = 1,
+    // reverse the animation when transitionning out instead of lerping to previous animation
+    eAnimTriggerOpt_ReverseOut = 2
+};
+
+enum eAnimControllerState_
+{
+    AnimState_None           = 0,
+    AnimState_Update         = 1,
+    AnimState_TriggerIn      = 2,
+    AnimState_TriggerOut     = 4,
+    AnimState_TriggerPlaying = 8,
+    AnimState_TriggerMask = AnimState_TriggerIn | AnimState_TriggerOut | AnimState_TriggerPlaying
+};
+
+typedef s32 eAnimTriggerOpt;
+typedef s32 eAnimLocation;
+typedef s32 eAnimState;
+typedef s32 eAnimControllerState;
+
 // this is here for reference not used now
 typedef struct AnimatedCharacter_
 {
@@ -181,13 +181,6 @@ typedef struct AnimatedCharacter_
     f32 mNeckYAngle;
     f32 mSpineXAngle; // < will rotate around this axis (normalized) default vec3::up
     f32 mNeckXAngle;  // < will rotate around this axis (normalized) default vec3::up
-    
-    float2 mAnimTime;
-
-    Pose mAnimPoseB[MAX_BONES]; // < blend target
-    // two posses for blending
-    Pose mAnimPoseC[MAX_BONES]; // < Trigerred animations result
-    Pose mAnimPoseD[MAX_BONES]; // < Trigerred Animations blend target
 
     // animation indexes to blend coordinates
     // Given xy blend coordinates, we will blend animations.
@@ -201,6 +194,9 @@ typedef struct AnimatedCharacter_
     
 } AnimatedCharacter;
 
+void AnimatedSetAnim(AnimatedCharacter* animated, s32 x, s32 y, s32 index);
+
+s32 AnimatedGetAnim(const AnimatedCharacter* animated, s32 x, s32 y);
 
 #if defined(__cplusplus)
 }

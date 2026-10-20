@@ -26,8 +26,9 @@ static void RandomizeAnimInstances(void)
         if (ordinal == 0 && anims->numAnimations > 1) ordinal = 1; // skip the bind pose
         u32 animIdx = AnimationSystem_GetNthUsedAnim(anims, ordinal);
         instances[i] = (GPUAnimationInstance){
-            .animIdx = animIdx,
-            .timeOffset = NextFloat01(hash) * anims->animData[animIdx].duration,
+            .animIdx2   = animIdx,
+            .animRatio2 = PackUnorm16(hash & 0xFFFF),
+            .blend      = ZeroFP16
         };
     }
     AnimationSystem_UpdateInstances(anims, instances, MAX_ANIM_INSTANCES);

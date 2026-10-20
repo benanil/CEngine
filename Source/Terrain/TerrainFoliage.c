@@ -625,8 +625,6 @@ static void SetFolliageCollider(const FoliageType* type, u32 numEntityAdded, Ren
     // swap first entity with root
     XSWAP(SparseData, set->sparseData[sparseCursor + colliderEntity], set->sparseData[sparseCursor]);
     SparseData* rootSparse  = &set->sparseData[sparseCursor];
-    XSWAP(b3BodyId, set->hookScene->physicsBodies[sparseCursor + colliderEntity], 
-                    set->hookScene->physicsBodies[sparseCursor]);
     
     // unparent all entities
     for (s32 i = 1; i < numEntityAdded; i++)
@@ -643,7 +641,6 @@ static void SetFolliageCollider(const FoliageType* type, u32 numEntityAdded, Ren
     {
         set->subNodes[rootSparse->subNodeOffset + i - 1] = i;
     }
-    end_phys:{}
     PhysicsCreateEntityBody(set->hookScene, rootEntity, data, type->params.colliderType);
 }
 

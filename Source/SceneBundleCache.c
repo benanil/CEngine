@@ -98,10 +98,6 @@ bool SceneAsyncBegin(SceneAsyncOp op, const char* path, const char* taskName, Sc
     request->op = op;
 
     NormalizePath(path, request->path, StringLength(path)+1);
-    if (request->path[0] == '\0') {
-        AX_WARN("scene async request invalid path");
-        return false;
-    }
     AsyncRun(taskName, SceneAsyncProbe, SceneAsyncDone, request);
     sceneAsyncRequest = request;
     return true;

@@ -5,6 +5,7 @@
 #include "Include/Platform.h"
 #include "Include/UIWindow.h"
 #include "Include/AssetManager.h"
+#include "Include/Animation.h"
 
 #include <box3d/box3d.h>
 
@@ -415,11 +416,17 @@ void SceneInspectorUI(Scene* scene)
     if (animLocal >= numOptions) animLocal = 0u;
 
     bool changed = UIDropdown("Animation", options, numOptions, &animLocal);
-    changed |= UISliderFloatValue("Time offset", &sceneObjectSelection.animTime, 0.0f, 10.0f, 2);
+    changed |= UISliderFloatValue("Time offset", &sceneObjectSelection.animTime, 0.0f, 1.0f, 3);
     if (changed)
     {
         sceneObjectSelection.animIdx = animLocal;
-        GPUAnimationInstance instance = { .animIdx = ref->animOffset + animLocal, .timeOffset = sceneObjectSelection.animTime };
+        GPUAnimationInstance instance = {
+            .animIdx2   = ref->animAlloc.animOffset + animLocal, 
+            .animRatio2 = PackUnorm16(sceneObjectSelection.animTime), 
+            .blend = ZeroFP16
+        };
+        instance.animIdx2   |= instance.animIdx2   << 16; 
+        instance.animRatio2 |= instance.animRatio2 << 16;
         AnimationSystem_SetInstance(&scene->animSystem, EntityGetSparseID(entity), instance);
     }
 }

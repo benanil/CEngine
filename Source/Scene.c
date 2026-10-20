@@ -352,7 +352,6 @@ u32 Scene_AddBundleBakedFinalize(Scene* scene, SceneBundleStage* stage)
     ref->bundle         = bundle;
     ref->renderIdx      = renderIdx;
     ref->materialOffset = materialOffset;
-    ref->animOffset     = animAlloc.animOffset;
     ref->animAlloc      = animAlloc;
     ref->skinned        = skinned;
     ref->cacheKey       = stage->cacheKey;
@@ -426,7 +425,6 @@ u32 Scene_AddBundleFinalize(Scene* scene, SceneBundleStage* stage)
     ref->bundle             = bundle;
     ref->renderIdx          = renderIdx;
     ref->materialOffset     = materialOffset;
-    ref->animOffset         = animAlloc.animOffset;
     ref->animAlloc          = animAlloc;
     ref->skinned            = stage->skinned;
     ref->cacheKey           = stage->cacheKey;
@@ -525,7 +523,7 @@ u32 Scene_DefaultAnimation(const Scene* scene, u32 bundleIdx)
     const SceneBundleRef* ref = &scene->bundleRefs[bundleIdx];
     u32 numAnims = ref->bundle ? (u32)ref->bundle->numAnimations : 0u;
     if (numAnims == 0u) return 0u;
-    return ref->animOffset + (numAnims > 1u ? 1u : 0u);
+    return ref->animAlloc.animOffset + (numAnims > 1u ? 1u : 0u);
 }
 
 u32 Scene_FindBundleForRenderGroup(const Scene* scene, bool skinned, u32 groupIdx)
@@ -654,7 +652,11 @@ SparseData* Scene_Spawn(Scene* scene, u32 bundleIdx, v128f position, v128f rotat
 
     if (skinned && added != NULL && oldCounts)
     {
-        GPUAnimationInstance instance = { .animIdx = Scene_DefaultAnimation(scene, bundleIdx), .timeOffset = 0.0f };
+        GPUAnimationInstance instance;
+        instance.animIdx2   = Scene_DefaultAnimation(scene, bundleIdx);
+        instance.animRatio2 = 0.0f;
+        instance.blend      = ZeroFP16;
+
         for (u32 i = 0; i < range.count; i++)
         {
             PrimitiveGroup* group = &set->primitiveGroups[range.start + i];

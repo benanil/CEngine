@@ -820,8 +820,9 @@ s32 SceneSerializer_Load(Scene* scene, const char* path, SceneFileData* data)
                 if (bundleIdx != INVALID_BUNDLE)
                 {
                     GPUAnimationInstance instance = {
-                        .animIdx = Scene_DefaultAnimation(scene, bundleIdx),
-                        .timeOffset = 0.0f
+                        .animIdx2   = Scene_DefaultAnimation(scene, bundleIdx),
+                        .animRatio2 = 0,
+                        .blend      = ZeroFP16
                     };
 
                     AnimationSystem_SetInstance(&scene->animSystem, record->sparseIdx, instance);

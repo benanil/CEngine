@@ -130,6 +130,11 @@ static inline Entity* RenderSet_GetEntity(const RenderSet* rs, EntityID entityID
     return &rs->entities[sparse.id];
 }
 
+static inline u32 SparseIDFromSparseData(const RenderSet* rs, const SparseData* sparse)
+{
+    return (u32)(sparse - rs->sparseData);
+}
+
 static inline u32 EntityGetBundleId(const RenderSet* rs, const Entity* entity)
 {
     return rs->primitiveGroups[EntityGetPrimitiveID(entity)].bundleIdx;

@@ -17,8 +17,10 @@ struct AnimNode {
 };
 
 struct AnimationInstance {
-    uint animIdx;
-    float timeOffset;
+    uint  animIdx2;   // u16x2
+    uint  animRatio2; // unorm16x2
+    uint  blend; // f16
+    uint  padding;
 };
 
 struct AnimationData {
@@ -42,12 +44,11 @@ StructuredBuffer<uint>               inverseBindMatrices   : register(t4); // pe
 StructuredBuffer<AnimationInstance>  animInstances         : register(t5); // per instance 
 StructuredBuffer<uint>               visibleSparseIndices  : register(t6); // invisible animations are not calculated nice optimization
 
-RWStructuredBuffer<uint> outBoneMtx          : register(u0, space1); // per instance * bone
+RWStructuredBuffer<uint> outBoneMtx : register(u0, space1); // per instance * bone
 
 cbuffer params : register(b0, space2)
 {
-    float timeSinceStartup;
-    int   numInstances;
+    int numInstances;
 };
 
 // Bone matrices are stored fp16 (12 halves / 6 u32) to keep the skinning gather at half bandwidth
@@ -84,15 +85,6 @@ f16_2x4 LoadPose(int i, int frameOffset, int frame)
     result[0] = GetHalf4(animPoses, pose + 0);
     result[1] = GetHalf4(animPoses, pose + 2);
     return result;
-}
-
-AnimNode GetAnimNode(int idx, uint hierarchyOffset)
-{
-    u16 packed = animHierarchy[hierarchyOffset + idx];
-    AnimNode node;
-    node.childrenStartIndex = packed & 0xFF;
-    node.numChildren        = (packed >> 8) & 0xFF;
-    return node;
 }
 
 u16 GetParentIndex(u16 idx, uint hierarchyOffset) { return (u16)(animHierarchy[hierarchyOffset + idx] & 0xFFFF); }
@@ -138,10 +130,10 @@ void main(uint3 GlobalInvocationID : SV_DispatchThreadID)
         return;
 
     AnimationInstance anim = animInstances[instanceIdx];
-    AnimationData     data = animData[anim.animIdx];
-    
-    float animRatio = Fractf((timeSinceStartup + anim.timeOffset) / data.duration);
-    float animT     = animRatio * float(data.numFrames);
+    AnimationData     data = animData[anim.animIdx2 & 0xFFFFu];
+
+    f16 animRatio = UnpackUnorm16(anim.animRatio2);
+    f16 animT     = animRatio * float(data.numFrames);
     int frameAIdx   = int(Floorf(animT));
     int frameBIdx   = int(Ceilf(animT)) % int(data.numFrames);
     
@@ -153,6 +145,23 @@ void main(uint3 GlobalInvocationID : SV_DispatchThreadID)
         f16_2x4 b = LoadPose(i, int(data.frameOffset), frameBIdx);
         poses[i].translation = VecLerp(a[0], b[0], animProgress);
         poses[i].rotation    = QNlerp(a[1], b[1], animProgress);
+    }
+    
+    data = animData[anim.animIdx2 >> 16];
+    animRatio = UnpackUnorm16(anim.animRatio2 >> 16);
+    animT     = animRatio * float(data.numFrames);
+    frameAIdx = int(Floorf(animT));
+    frameBIdx = int(Ceilf(animT)) % int(data.numFrames);
+    
+    animProgress = f16(Fractf(animT));
+    f16 blend = UnpackHalf(anim.blend);
+    // merge animations
+    for (int i = 0; i < data.numNodes; i++)
+    {
+        f16_2x4 a = LoadPose(i, int(data.frameOffset), frameAIdx);
+        f16_2x4 b = LoadPose(i, int(data.frameOffset), frameBIdx);
+        poses[i].translation = VecLerp(poses[i].translation,  VecLerp(a[0], b[0], animProgress), blend);
+        poses[i].rotation    = QNlerp(poses[i].rotation    ,  QNlerp(a[1], b[1], animProgress), blend);
     }
 
     FlattenBoneMatrices(data.numNodes, data.hierarchyOffset, poses);

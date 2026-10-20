@@ -106,6 +106,7 @@ target_sources(${EXECUTABLE_NAME} PRIVATE
 
     Source/Animation.c
     Source/Gameplay.c
+    Source/CharacterController.c
     Source/Algorithm.c
     Source/Async.c
     Source/JobSystem.c

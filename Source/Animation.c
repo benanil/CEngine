@@ -339,6 +339,16 @@ u32 AnimationSystem_GetNthUsedAnim(const AnimationSystem* anims, u32 ordinal)
     return 0u;
 }
 
+s32 FindAnimIndex(SceneBundle* prefab, const char* name)
+{
+    s32 len = StringLength(name);
+    for (s32 i = 0; i < prefab->numAnimations; i++)
+        if (StringEqual(prefab->animations[i].name, name, len))
+            return i;
+    AX_WARN("couldn't find animation from name %s", name);
+    return 0;
+}
+
 void SampleSkinnedAnimationPose(const SceneBundle* bundle, Pose pose[MAX_BONES], s32 animIdx, f32 normTime)
 {
     const AAnimation* animation = &bundle->animations[animIdx];
@@ -393,6 +403,41 @@ void SampleSkinnedAnimationPose(const SceneBundle* bundle, Pose pose[MAX_BONES],
     }
 }
 
+void AnimatedSetAnim(AnimatedCharacter* animated, s32 x, s32 y, s32 index)
+{
+    if (y >= 0) animated->mLocomotionIndices[y][x] = index;
+    else        animated->mLocomotionIndicesInv[Abss32(y-1)][x] = index;
+}
+
+s32 AnimatedGetAnim(const AnimatedCharacter* animated, s32 x, s32 y)
+{
+    if (y >= 0) return animated->mLocomotionIndices[y][x];
+    else        return animated->mLocomotionIndicesInv[Abss32(y)-1][x];
+}
+
+void AnimatedEvaluateLocomotion(AnimatedCharacter* animated, f32 x, f32 y, f32 animSpeed)
+{
+    // play and blend walking and running anims
+    y = Absf32(y); 
+    s32 yi = (s32)y;
+    // sample y anim
+    ASSERTR(yi <= 3, return); // must be between 1 and 4
+    int yIndex = AnimatedGetAnim(animated, aMiddle, 0);
+    if (Absf32(y) > MATH_Epsilon)
+    {
+        yIndex = AnimatedGetAnim(animated, aMiddle, yi);
+        f32 yBlend = Fractf32(y);
+
+        bool shouldAnimBlendY = yi != 3 && yBlend > 0.00002f;
+        if (shouldAnimBlendY)
+        {
+            yIndex = AnimatedGetAnim(animated, aMiddle, yi + 1);
+            
+            // SampleAnimationPose(mAnimPoseB, yIndex, mAnimTime.y);
+            // MergeAnims(mAnimPoseA, mAnimPoseB, EaseOut(yBlend), mNumNodes);
+        }
+    }
+}
 
 ////////            ANIMATED CHARACTER            ////////
 // I can use this for more advenced animation

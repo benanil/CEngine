@@ -766,11 +766,9 @@ void DispatchAnimationCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet, R
     CHECK_CREATE(g_AnimComputePipeline, "Animation Compute Pipeline")
 
     struct {
-        float timeSinceStartup;
-        int   numInstances;
+        int numInstances;
     } params;
-    params.timeSinceStartup = (float)TimeSinceStartup();
-    params.numInstances     = (int)renderSet->numEntities;
+    params.numInstances = (int)renderSet->numEntities;
 
     SDL_GPUStorageBufferReadWriteBinding rw_bindings[1] = {
         { anims->boneBuffer }
