@@ -122,20 +122,17 @@ void FlattenBoneMatrices(uint numNodes, uint hierarchyOffset, inout Pose poses[M
 void main(uint3 GlobalInvocationID : SV_DispatchThreadID)
 {
     uint visibleIdx = GlobalInvocationID.x;
-    if (visibleIdx >= uint(numInstances))
-        return;
-
+    if (visibleIdx >= uint(numInstances)) return;
+    
     uint instanceIdx = visibleSparseIndices[visibleIdx];
-    if (instanceIdx >= uint(MAX_ANIM_INSTANCES))
-        return;
-
+    if (instanceIdx >= uint(MAX_ANIM_INSTANCES)) return;
     AnimationInstance anim = animInstances[instanceIdx];
     AnimationData     data = animData[anim.animIdx2 & 0xFFFFu];
 
     f16 animRatio = UnpackUnorm16(anim.animRatio2);
     f16 animT     = animRatio * float(data.numFrames);
-    int frameAIdx   = int(Floorf(animT));
-    int frameBIdx   = int(Ceilf(animT)) % int(data.numFrames);
+    int frameAIdx = int(Floorf(animT));
+    int frameBIdx = int(Ceilf(animT)) % int(data.numFrames);
     
     Pose poses[MAX_BONES];
     f16 animProgress = f16(Fractf(animT));
@@ -146,26 +143,28 @@ void main(uint3 GlobalInvocationID : SV_DispatchThreadID)
         poses[i].translation = VecLerp(a[0], b[0], animProgress);
         poses[i].rotation    = QNlerp(a[1], b[1], animProgress);
     }
-    
-    data = animData[anim.animIdx2 >> 16];
-    animRatio = UnpackUnorm16(anim.animRatio2 >> 16);
-    animT     = animRatio * float(data.numFrames);
-    frameAIdx = int(Floorf(animT));
-    frameBIdx = int(Ceilf(animT)) % int(data.numFrames);
-    
-    animProgress = f16(Fractf(animT));
+
     f16 blend = UnpackHalf(anim.blend);
-    // merge animations
-    for (int i = 0; i < data.numNodes; i++)
+    if (blend > 0.005f)
     {
-        f16_2x4 a = LoadPose(i, int(data.frameOffset), frameAIdx);
-        f16_2x4 b = LoadPose(i, int(data.frameOffset), frameBIdx);
-        poses[i].translation = VecLerp(poses[i].translation,  VecLerp(a[0], b[0], animProgress), blend);
-        poses[i].rotation    = QNlerp(poses[i].rotation    ,  QNlerp(a[1], b[1], animProgress), blend);
+        data = animData[anim.animIdx2 >> 16];
+        animRatio = UnpackUnorm16(anim.animRatio2 >> 16);
+        animT     = animRatio * float(data.numFrames);
+        frameAIdx = int(Floorf(animT));
+        frameBIdx = int(Ceilf(animT)) % int(data.numFrames);
+        
+        animProgress = f16(Fractf(animT));
+        // merge animations
+        for (int i = 0; i < data.numNodes; i++)
+        {
+            f16_2x4 a = LoadPose(i, int(data.frameOffset), frameAIdx);
+            f16_2x4 b = LoadPose(i, int(data.frameOffset), frameBIdx);
+            poses[i].translation = VecLerp(poses[i].translation,  VecLerp(a[0], b[0], animProgress), blend);
+            poses[i].rotation    = QNlerp(poses[i].rotation    ,  QNlerp(a[1], b[1], animProgress), blend);
+        }
     }
 
     FlattenBoneMatrices(data.numNodes, data.hierarchyOffset, poses);
-
     int numJoints = int(data.numJoints);
     for (s16 i = 0; i < numJoints; i++)
     {

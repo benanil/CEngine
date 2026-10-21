@@ -37,9 +37,9 @@ typedef struct GPUAnimationInstance_
 {
     u32 animIdx2;
     u32 animRatio2;
-    u16  blend;
-    u16  padding;
-    u32  padding2;
+    u16 blend;
+    u16 padding;
+    u32 padding2;
 } GPUAnimationInstance;
 
 typedef struct GPUAnimationData_
@@ -118,85 +118,7 @@ s32 SceneBundleInitAnimations(const SceneBundle* prefab, Pose pose[MAX_BONES]);
 // use negative normTime to sample animation reversely
 void SampleSkinnedAnimationPose(const SceneBundle* bundle, Pose pose[MAX_BONES], s32 animIdx, f32 normTime);
 
-s32 FindAnimIndex(SceneBundle* prefab, const char* name);
-
-enum eAnimLocation_
-{
-    aLeft, aMiddle, aRight
-};
-
-enum eAnimTriggerOpt_
-{
-    eAnimTriggerOpt_None = 0,
-    // allows sword slash while walking,
-    // Enable if you want to play different animations on lower and upper body
-    eAnimTriggerOpt_Standing   = 1,
-    // reverse the animation when transitionning out instead of lerping to previous animation
-    eAnimTriggerOpt_ReverseOut = 2
-};
-
-enum eAnimControllerState_
-{
-    AnimState_None           = 0,
-    AnimState_Update         = 1,
-    AnimState_TriggerIn      = 2,
-    AnimState_TriggerOut     = 4,
-    AnimState_TriggerPlaying = 8,
-    AnimState_TriggerMask = AnimState_TriggerIn | AnimState_TriggerOut | AnimState_TriggerPlaying
-};
-
-typedef s32 eAnimTriggerOpt;
-typedef s32 eAnimLocation;
-typedef s32 eAnimState;
-typedef s32 eAnimControllerState;
-
-// this is here for reference not used now
-typedef struct AnimatedCharacter_
-{
-    // lower body bones are starting from 60th with Brute character and 58 with mixamo Paladin Character
-    // used for animating diferrent animations for legs and uper body
-    // this value can change from character to character. 
-    // uncomment lines with vBoneIdx in the vertex debug path to visualize lower body as white
-    // Maybe Add: automatic detect.
-    s32 lowerBodyIdxStart; 
-
-    s32 mSpineNodeIdx; // < upper body root bone 
-    s32 mNeckNodeIdx;
- 
-    s32 mTriggerredAnim;
-    s32 mLastAnim;
-   
-    f32 mTrigerredNorm;
-    f32 mTransitionTime; // trigger transition time
-    f32 mTransitionOutTime;
-    f32 mCurTransitionTime;
-
-    eAnimTriggerOpt mTriggerOpt;
-    eAnimState mState;
-
-    // angle's recomended values are between (-PI/3, PI/3)
-    // calculate the angle between target and player, then clamp the value between the limits
-    // to enable spine or neck additive rotation you just have to set angle's any value which is not zero
-    f32 mSpineYAngle;
-    f32 mNeckYAngle;
-    f32 mSpineXAngle; // < will rotate around this axis (normalized) default vec3::up
-    f32 mNeckXAngle;  // < will rotate around this axis (normalized) default vec3::up
-
-    // animation indexes to blend coordinates
-    // Given xy blend coordinates, we will blend animations.
-    // in typical animation system, the diagram should be like the diagran below.
-    //  #  #  #  <- DiagonalRun , ForwardRun , DiagonalRun
-    //  #  #  #  <- DiagonalJog , ForwardJog , DiagonalJog
-    //  #  #  #  <- DiagonalWalk, ForwardWalk, DiagonalWalk
-    //  #  #  #  <- StrafeLeft  , Idle       , StrafeRight 
-    s32 mLocomotionIndices   [4][3];
-    s32 mLocomotionIndicesInv[3][3]; 
-    
-} AnimatedCharacter;
-
-void AnimatedSetAnim(AnimatedCharacter* animated, s32 x, s32 y, s32 index);
-
-s32 AnimatedGetAnim(const AnimatedCharacter* animated, s32 x, s32 y);
+u16 FindAnimIndex(const SceneBundle* prefab, const char* name);
 
 #if defined(__cplusplus)
 }
