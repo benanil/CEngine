@@ -11,12 +11,6 @@
 extern "C" {
 #endif
 
-typedef struct half3x4_ {
-    f16 x[4];
-    f16 y[4];
-    f16 z[4];
-} half3x4;
-
 typedef struct DualQuaternionHalf_ {
     f16 real[4];
     f16 dual[4];
@@ -33,14 +27,19 @@ typedef struct AnimNode_
     uint8_t childrenStartIndex;
 } AnimNode;
 
+
 typedef struct GPUAnimationInstance_
 {
     u32 animIdx2;
     u32 animRatio2;
     u16 blend;
-    u16 padding;
-    u32 padding2;
+    u8  anim1StartBone;
+    u8  anim1EndBone;
+    s16 neckAngle; 
+    s16 spineAngle;
 } GPUAnimationInstance;
+
+STATIC_ASSERT(sizeof(GPUAnimationInstance) == 16, "gpu animation instance should be 16 byte");
 
 typedef struct GPUAnimationData_
 {
@@ -53,16 +52,20 @@ typedef struct GPUAnimationData_
     u32 jointOffset;
     u32 invBindOffset;
     u32 hierarchyOffset;
-    u32 padding;
+    u16 neckNode;
+    u16 spineNode;
 } GPUAnimationData;
 
 typedef struct AnimationBundleAlloc_
 {
-    u32 animOffset;
-    u32 animCount;
     u32 frameOffset;
     u32 frameCount;
-    u32 skinSlot;
+    u16 skinSlot;
+    u16 animOffset;
+    u16 animCount;
+    u16 neckNode;
+    u16 spineNode;
+    u16 numNodes;
 } AnimationBundleAlloc;
 
 // per scene animation state, owned by Scene. gpu buffers are created lazily on the

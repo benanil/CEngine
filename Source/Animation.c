@@ -115,16 +115,15 @@ static int AnimationGetGPUData(AnimationSystem* anims, const SceneBundle* bundle
                         (size_t)frameOffset * MAX_BONES * ANIM_POSE_NUM_INT32 * sizeof(u32));
     ArenaRestore(&GlobalArena, mark);
     anims->animData[animSlot] = (GPUAnimationData){
-        .frameOffset   = frameOffset,
-        .numFrames     = (u32)numFrames,
-        .rootNodeIndex = (u32)bundle->rootNode,
-        .numJoints     = (u32)skin->numJoints,
-        .numNodes      = (u32)bundle->numNodes,
-        .duration      = animation->duration,
-        .jointOffset   = jointOffset,
-        .invBindOffset = invBindOffset,
+        .frameOffset     = frameOffset,
+        .numFrames       = (u32)numFrames,
+        .rootNodeIndex   = (u32)bundle->rootNode,
+        .numJoints       = (u32)skin->numJoints,
+        .duration        = animation->duration,
+        .jointOffset     = jointOffset,
+        .invBindOffset   = invBindOffset,
         .hierarchyOffset = hierarchyOffset,
-        .padding       = 0u,
+        .numNodes        = (u16)bundle->numNodes
     };
     return numFrames;
 }
@@ -277,6 +276,10 @@ s32 AnimationSystem_AppendBundle(AnimationSystem* anims, const SceneBundle* bund
         RangeAlloc_Free(&anims->frameAllocator, frameOffset, frameCount);
         return 0;
     }
+    s32 neckNode  = Prefab_FindNodeFromName(bundle, "mixamorig:Neck");  if (neckNode == -1)  AX_WARN("neck node null");
+    s32 spineNode = Prefab_FindNodeFromName(bundle, "mixamorig:Spine"); if (spineNode == -1) AX_WARN("spine node null");
+    neckNode  = neckNode  != -1 ? neckNode  : 0;
+    spineNode = spineNode != -1 ? spineNode : 0;
 
     u32 frameCursor = frameOffset;
     for (u32 animIdx = 0; animIdx < bundle->numAnimations; animIdx++)
@@ -285,6 +288,9 @@ s32 AnimationSystem_AppendBundle(AnimationSystem* anims, const SceneBundle* bund
         numFrames = AnimationGetGPUData(anims, bundle, poses, (int)animIdx,
                                         (u32)animOffset + animIdx, frameCursor,
                                         jointOffset, invBindOffset, hierarchyOffset);
+        anims->animData[animIdx].neckNode  = (u16)neckNode;
+        anims->animData[animIdx].spineNode = (u16)spineNode;
+
         if (numFrames == 0)
         {
             AnimationSystem_RemoveBundle(anims, (AnimationBundleAlloc){ (u32)animOffset, animCount, frameOffset, frameCount, (u32)skinSlot });
@@ -298,17 +304,19 @@ s32 AnimationSystem_AppendBundle(AnimationSystem* anims, const SceneBundle* bund
                         animCount * sizeof(GPUAnimationData),
                         (u32)animOffset * sizeof(GPUAnimationData));
 
+
     anims->numAnimations += animCount;
-    if (outAlloc)
-    {
-        *outAlloc = (AnimationBundleAlloc){
-            .animOffset = (u32)animOffset,
-            .animCount = animCount,
-            .frameOffset = frameOffset,
-            .frameCount = frameCount,
-            .skinSlot = (u32)skinSlot,
-        };
-    }
+    
+    *outAlloc = (AnimationBundleAlloc){
+        .animOffset  = (u32)animOffset,
+        .animCount   = animCount,
+        .frameOffset = frameOffset,
+        .frameCount  = frameCount,
+        .skinSlot    = (u16)skinSlot,
+        .neckNode    = (u16)bundle->neckNode,
+        .spineNode   = (u16)bundle->spineNode,
+        .numNodes    = (u32)bundle->numNodes
+    };
     AX_LOG("num animation: %d", anims->numAnimations);
     return 1;
 }
@@ -316,7 +324,7 @@ s32 AnimationSystem_AppendBundle(AnimationSystem* anims, const SceneBundle* bund
 void AnimationSystem_RemoveBundle(AnimationSystem* anims, AnimationBundleAlloc alloc)
 {
     if (!anims || alloc.skinSlot >= MAX_SKIN_COUNT) return;
-    BitsetSetRange(anims->usedAnimSlots, alloc.animOffset, alloc.animCount, false);
+    BitsetSetRange(anims->usedAnimSlots, alloc.animOffset, (u32)alloc.animCount, false);
     BitsetReset(anims->usedSkinSlots, (s32)alloc.skinSlot);
     RangeAlloc_Free(&anims->frameAllocator, alloc.frameOffset, alloc.frameCount);
     if (alloc.animCount > 0u)
@@ -324,8 +332,8 @@ void AnimationSystem_RemoveBundle(AnimationSystem* anims, AnimationBundleAlloc a
         MemsetZero(anims->animData + alloc.animOffset, alloc.animCount * sizeof(GPUAnimationData));
         if (anims->dataBuffer)
             UpdateGPUBuffer(anims->dataBuffer, anims->animData + alloc.animOffset,
-                            alloc.animCount * sizeof(GPUAnimationData),
-                            alloc.animOffset * sizeof(GPUAnimationData));
+                            sizeof(GPUAnimationData) * (size_t)alloc.animCount ,
+                            sizeof(GPUAnimationData) * (size_t)alloc.animOffset);
         anims->numAnimations = anims->numAnimations >= alloc.animCount ? anims->numAnimations - alloc.animCount : 0u;
     }
 }
@@ -414,15 +422,6 @@ void SampleSkinnedAnimationPose(const SceneBundle* bundle, Pose pose[MAX_BONES],
 // static inline void RotateNode(Pose* node, float xAngle, float yAngle)
 // {
 //     node->rotation = QMul(QMul(QFromXAngle(xAngle), QFromYAngle(yAngle)), node->rotation);
-// }
-// 
-// static void MergeAnims(Pose pose0[MAX_BONES], const Pose pose1[MAX_BONES], float animBlend, s32 numNodes)
-// {
-//     for (s32 i = 0; i < numNodes; i++)
-//     {
-//         pose0[i].rotation    = QNLerp(pose0[i].rotation, pose1[i].rotation, animBlend); // slerp+norm?
-//         pose0[i].translation = VecLerp(pose0[i].translation, pose1[i].translation, animBlend);
-//     }
 // }
 // 
 // static void CopyPoses(Pose* destination, const Pose* pose, s32 begin, s32 numPoses)

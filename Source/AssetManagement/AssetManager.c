@@ -1076,7 +1076,7 @@ s32 LoadBundleMeshCached(const char* path, SceneBundle* bundle, void** outVertex
 // 80: surface (static) AVertex.position quantized to xyz unorm16 vs the primitive AABB
 // 81: skinned animation uses lod vertex offsets directly
 // 82: unindexed primitives store mega-buffer-relative generated indices
-const s32 ABMMeshVersion = 82;
+const s32 ABMMeshVersion = 83;
 
 u8 IsABMLastVersion(const char* path)
 {
@@ -1364,6 +1364,14 @@ s32 SaveGLTFBinary(const SceneBundle* gltf, const char* path)
     }
     
     AFileWrite(&gltf->rootNode, sizeof(int), file, 1);
+
+    AFileWrite(&gltf->neckNode , sizeof(u16), file, 1);
+    AFileWrite(&gltf->spineNode, sizeof(u16), file, 1);
+    AFileWrite(&gltf->leftFoot , sizeof(u16), file, 1);
+    AFileWrite(&gltf->rightFoot, sizeof(u16), file, 1);
+    AFileWrite(&gltf->leftHand , sizeof(u16), file, 1);
+    AFileWrite(&gltf->rightHand, sizeof(u16), file, 1);
+    
     AFileClose(file);
     AX_LOG("abm save complete: %s vertices=%d indices=%d", path, gltf->totalVertices, gltf->totalIndices);
 #endif
@@ -1713,6 +1721,16 @@ s32 LoadSceneBundleBinary(const char* path, SceneBundle* gltf, void** outVertexH
     }
     
     AFileRead(&gltf->rootNode, sizeof(int), file, 1);
+
+    if (version >= 83)
+    {
+        AFileRead(&gltf->neckNode , sizeof(u16), file, 1);
+        AFileRead(&gltf->spineNode, sizeof(u16), file, 1);
+        AFileRead(&gltf->leftFoot , sizeof(u16), file, 1);
+        AFileRead(&gltf->rightFoot, sizeof(u16), file, 1);
+        AFileRead(&gltf->leftHand , sizeof(u16), file, 1);
+        AFileRead(&gltf->rightHand, sizeof(u16), file, 1);
+    }
 
     AFileClose(file);
     gltf->allocator = allocator;

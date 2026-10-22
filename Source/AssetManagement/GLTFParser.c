@@ -1503,9 +1503,7 @@ int Prefab_FindNodeFromName(const SceneBundle* prefab, const char* name)
 {
     int len = StringLength(name);
     for (int i = 0; i < prefab->numNodes; i++)
-    {
         if (StringEqual(prefab->nodes[i].name, name, len))
             return i;
-    }
     return -1;
 }

@@ -423,7 +423,7 @@ void SceneInspectorUI(Scene* scene)
         GPUAnimationInstance instance = {
             .animIdx2   = ref->animAlloc.animOffset + animLocal, 
             .animRatio2 = PackUnorm16(sceneObjectSelection.animTime), 
-            .blend = ZeroFP16
+            .blend      = ZeroFP16
         };
         instance.animIdx2   |= instance.animIdx2   << 16; 
         instance.animRatio2 |= instance.animRatio2 << 16;

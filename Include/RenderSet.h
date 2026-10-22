@@ -178,25 +178,25 @@ SparseData* RenderSet_AddEntity(RenderSet* set, u32 primitiveIdx, const Entity* 
 
 SparseData* RenderSet_AddEntities(RenderSet* set, u32 primitiveIdx, u32 numAdded, const Entity* data);
 
-u32 CountNumEntities(const RenderSet* set, u32 bundleIdx, u32 numScenes, u32* primitiveCounts, bool wantSkinned);
+u32  CountNumEntities(const RenderSet* set, u32 bundleIdx, u32 numScenes, u32* primitiveCounts, bool wantSkinned);
 
 // returns num entity added
-u32 AddBundleAsScene(RenderSet* set, u32 bundleIdx, u32 sparseStart, const Entity* root, bool wantSkinned);
+u32  AddBundleAsScene(RenderSet* set, u32 bundleIdx, u32 sparseStart, const Entity* root, bool wantSkinned);
 
 void BatchLeaveSpacePrimitives(RenderSet* set, u32 primitiveStart, u32 numPrimitives, u32* primitiveCounts, u32 totalEntityAdded);
 
-void  RenderSet_Clear(RenderSet* set);
+void RenderSet_Clear(RenderSet* set);
 
 // removes all entities, keeps registered bundles and primitive groups
-void  RenderSet_ClearEntities(RenderSet* set);
+void RenderSet_ClearEntities(RenderSet* set);
 
-u32   RenderSet_RemoveEntity(RenderSet* set, u32 groupIdx, u32 localEntityIdx);
+u32  RenderSet_RemoveEntity(RenderSet* set, u32 groupIdx, u32 localEntityIdx);
 
-u32   RenderSet_RemoveEntities(RenderSet* set, u32 groupIdx, u32 localStartIdx, u32 count);
+u32  RenderSet_RemoveEntities(RenderSet* set, u32 groupIdx, u32 localStartIdx, u32 count);
 
-u32   RenderSet_RemoveSceneBundle(RenderSet* set, u32 bundleIdx);
+u32  RenderSet_RemoveSceneBundle(RenderSet* set, u32 bundleIdx);
 
-void  RenderSet_CompactEntities(RenderSet* set);
+void RenderSet_CompactEntities(RenderSet* set);
 
 void RenderSet_RemoveEntityStaged(RenderSet* set, u32 sparseId);
 

@@ -124,6 +124,15 @@ f16_4x4 M44PositionRotationVec(f16_4 position, f16_4 rotation)
     return res; 
 }
 
+f16_4 QFromXAngle(f32 angle)
+{
+    return f16_4(sin(0.5f * angle), 0.0f, 0.0f, cos(0.5f * angle));
+}
+
+f16_4 QFromYAngle(f32 angle)
+{
+    return f16_4(0.0f, sin(0.5f * angle), 0.0f, cos(0.5f * angle));
+}
 
 #define M44Multiply(a, b) mul(a, b)
 

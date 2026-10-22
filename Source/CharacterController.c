@@ -20,6 +20,7 @@ typedef struct Character_
 {
     SceneBundle* characterBundle;
     SparseData*  characterSparse;
+    AnimationBundleAlloc* animAlloc;
 
     b3Vec3 groundNormal;
     b3Vec3 position;
@@ -56,6 +57,8 @@ typedef struct Character_
     
     u16 lastAnimation;
     u16 trigerAnim;
+    u8  anim1BoneStart;
+    u8  anim1BoneEnd;
 
     bool grounded;
     bool characterActive;
@@ -88,9 +91,10 @@ static void SpawnCharacter()
     ch.characterSpeed  = 8.0f;
     ch.verticalSpeed   = 0.0f;
     ch.grounded = ch.characterActive = ch.jumped = false;
-
+    
+    ch.animAlloc = &scene->bundleRefs[characterId].animAlloc;
     // also these anims exist: "StrafeLeft", "StrafeRight"
-    u32 animOffset = scene->bundleRefs[characterId].animAlloc.animOffset;
+    u16 animOffset = ch.animAlloc->animOffset;
     ch.idle         = animOffset + FindAnimIndex(ch.characterBundle, "Idle");
     ch.walk         = animOffset + FindAnimIndex(ch.characterBundle, "Walk");
     ch.jogRun       = animOffset + FindAnimIndex(ch.characterBundle, "Run");
@@ -108,6 +112,8 @@ static void SpawnCharacter()
     ch.transitionTime = ch.trigerTime      = 0.0f;
     ch.animSpeed      = ch.transitionSpeed = 1.0f;
     ch.anim0Start     = ch.anim1Start      = TimeSinceStartup();
+    ch.anim1BoneStart = 0;
+    ch.anim1BoneEnd = ch.animAlloc->numNodes;
 }
 
 static void CharacterLoaded(SceneAsyncRequest* request)
@@ -320,12 +326,16 @@ static void CharacterUI()
     }
 }
 
-void TriggerAnim(u16 anim, f32 transitionTime)
+void TriggerAnim(u16 anim, f32 transitionTime, u8 boneStart, u8 boneEnd)
 {
-    ch.trigerAnim = anim;
-    ch.transitionTime = 1.0f;
+    ch.trigerAnim      = anim;
+    ch.transitionTime  = 1.0f;
     ch.transitionSpeed = 1.0f / transitionTime;
-    ch.anim1Start = TimeSinceStartup();
+    ch.anim1Start      = TimeSinceStartup();
+    ch.anim1BoneStart  = boneStart;
+    ch.anim1BoneEnd    = (u8)Minu16((u16)boneEnd, ch.animAlloc->numNodes);
+    u16 animations[3] = { ch.idle, ch.walk, ch.jogRun };
+    ch.lastAnimation = animations[Minu32((u32)Ceilf(ch.currentSpeed), 2)];
 }
 
 static void Animate()
@@ -334,21 +344,44 @@ static void Animate()
     Entity* character = RenderSet_GetEntity(&scene->skinnedSet, ch.characterEntity);
     if (character == NULL) return;
     
+    u16 numNodes = ch.animAlloc->numNodes;
+    if (GetKeyDown(SDLK_K))     TriggerAnim(ch.kick, 0.05f, 0, numNodes);
+    if (GetKeyDown(SDLK_SPACE)) TriggerAnim(ch.jump, 0.05f, 0, numNodes);
+    if (GetMouseDown(MouseButton_Left)) TriggerAnim(ch.atack, 0.05f, 0, ch.animAlloc->spineNode);
+
     f32 timeSinceStartup = TimeSinceStartup();
     f32 dt = GetDeltaTime();
     
     u32 anim0 = ch.idle, anim1 = ch.walk;
     GPUAnimationInstance instance;
     instance.blend = FloatToHalf(Fractf32(ch.currentSpeed));
-    if (ch.currentSpeed >= 1.0f) {
+    instance.anim1StartBone = ch.anim1BoneStart;
+    instance.anim1EndBone   = ch.anim1BoneEnd;
+
+    if (ch.currentSpeed > 1.01f) {
         anim0 = ch.walk;
         anim1 = ch.jogRun;
     }
 
     if (ch.trigerTime > 0.0f) {
-        anim0 = ch.trigerAnim;
-        instance.blend = ZeroFP16;
+        if (ch.anim1BoneStart == 0 && ch.anim1BoneEnd == ch.animAlloc->numNodes) {
+            anim0 = ch.trigerAnim;
+            instance.blend = ZeroFP16;
+        }
+        else
+        {
+            // upper lower body different animations
+            anim0 = ch.lastAnimation;
+            anim1 = ch.trigerAnim;
+            instance.blend = OneFP16;
+        }
+
         ch.trigerTime -= dt;
+        if (ch.trigerTime < 0.0f)
+        {
+            ch.anim1BoneStart = 0;
+            ch.anim1BoneEnd   = ch.animAlloc->numNodes;
+        }
     }
 
     if (ch.transitionTime > 0.0f) {
@@ -364,6 +397,8 @@ static void Animate()
         }
     }
 
+    instance.neckAngle  = PackSnorm16(Sin(timeSinceStartup));
+    instance.spineAngle = 0;
     const GPUAnimationData* anim0Data = &scene->animSystem.animData[anim0];
     const GPUAnimationData* anim1Data = &scene->animSystem.animData[anim1];
     f32 anim0t = Fractf32(((timeSinceStartup - ch.anim0Start) * ch.animSpeed) / anim0Data->duration);
@@ -398,10 +433,6 @@ static void Animate()
 
 void UpdateCharacter()
 {
-    if (GetKeyDown(SDLK_K))     TriggerAnim(ch.kick, 0.5f);
-    if (GetKeyDown(SDLK_SPACE)) TriggerAnim(ch.jump, 0.25f);
-    if (GetMouseDown(MouseButton_Left)) TriggerAnim(ch.atack, 0.5f);
-    
     Animate();
     CharacterMovement();
     CharacterUI();

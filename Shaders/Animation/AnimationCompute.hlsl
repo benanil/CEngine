@@ -1,5 +1,5 @@
 #define INT16_SUPPORTED 0
-#define FLOAT16_SUPPORTED 0
+#define FLOAT16_SUPPORTED 1
 
 #include "../../Include/RenderLimits.h"
 #include "../Bitpack.hlsl"
@@ -19,21 +19,21 @@ struct AnimNode {
 struct AnimationInstance {
     uint  animIdx2;   // u16x2
     uint  animRatio2; // unorm16x2
-    uint  blend; // f16
-    uint  padding;
+    uint  blend; // f16, u8 anim1BoneBegin, u8 anim1BoneEnd
+    uint  neckSpineAngle;
 };
 
 struct AnimationData {
     uint frameOffset;
     uint numFrames;
-    uint rootNodeIndex;
-    uint numJoints;
-    uint numNodes;
-    float duration;
-    uint jointOffset;
+    uint rootNodeIndex; // u16
+    uint numJoints;     // u16
+    uint numNodes;      // u16
+    float duration;     
+    uint jointOffset;  
     uint invBindOffset;
     uint hierarchyOffset;
-    uint padding;
+    uint neckSpineNodes;
 };
 
 StructuredBuffer<uint>               animPoses             : register(t0); // per bone * frame
@@ -55,9 +55,9 @@ cbuffer params : register(b0, space2)
 // and fp16-friendly registers. The metre-scale translation column quantizes to ~1 mm; to keep that
 // from showing as swim, bake the bounds center into the translation before packing (needs the
 // per-instance center plumbed in) - it is currently subtracted later in AnimateVertices.
-void WriteBone(f16_3x4 bone, int idx)
+void WriteBone(f16_3x4 bone, uint idx)
 {
-    int base = MatrixNumInt32 * idx;
+    uint base = MatrixNumInt32 * idx;
     outBoneMtx[base + 0] = PackHalf2(VecXY(bone[0]));
     outBoneMtx[base + 1] = PackHalf2(VecZW(bone[0]));
     outBoneMtx[base + 2] = PackHalf2(VecXY(bone[1]));
@@ -71,29 +71,23 @@ f16_4 GetHalf4(StructuredBuffer<uint> buffer, uint idx)
     return VecCombine(UnpackHalf2(buffer[idx]), UnpackHalf2(buffer[idx + 1]));
 }
 
-float4 GetFloat4(StructuredBuffer<uint> buffer, uint idx)
+f16_2x4 LoadPose(uint i, uint frameOffset, uint frame)
 {
-    return float4(asfloat(buffer[idx + 0]), asfloat(buffer[idx + 1]),
-                  asfloat(buffer[idx + 2]), asfloat(buffer[idx + 3]));
-}
-
-f16_2x4 LoadPose(int i, int frameOffset, int frame)
-{
-    const int AnimPoseSize = 4;
-    int pose = ((frameOffset + frame) * MAX_BONES + i) * AnimPoseSize;
+    const uint AnimPoseSize = 4u;
+    uint pose = ((frameOffset + frame) * MAX_BONES + i) * AnimPoseSize;
     f16_2x4 result;
     result[0] = GetHalf4(animPoses, pose + 0);
     result[1] = GetHalf4(animPoses, pose + 2);
     return result;
 }
 
-u16 GetParentIndex(u16 idx, uint hierarchyOffset) { return (u16)(animHierarchy[hierarchyOffset + idx] & 0xFFFF); }
+u16 GetParentIndex(u16 idx, uint hierarchyOffset) { 
+    return (u16)(animHierarchy[hierarchyOffset + idx] & 0xFFFF); 
+}
 
-// inverse-bind matrices are stored fp32 (16 floats / 4x4) - large bind-pose translations bias every
-// bone, so half precision here is a constant positional error fed into every vertex.
-f16_4x4 LoadMatrix(int idx, uint invBindOffset)
+f16_4x4 LoadMatrix(uint idx, uint invBindOffset)
 {
-    int mtx = int(invBindOffset + idx) * ANIM_MATRIX_NUM_INT32;
+    uint mtx = uint(invBindOffset + idx) * ANIM_MATRIX_NUM_INT32;
     f16_4x4 result;
     result[0] = GetHalf4(inverseBindMatrices, mtx + 0);
     result[1] = GetHalf4(inverseBindMatrices, mtx + 2);
@@ -105,11 +99,10 @@ f16_4x4 LoadMatrix(int idx, uint invBindOffset)
 void FlattenBoneMatrices(uint numNodes, uint hierarchyOffset, inout Pose poses[MAX_BONES])
 {
     // 0 is root node
-    for (u16 idx = 1; idx < numNodes; idx++)
+    for (uint idx = 1; idx < numNodes; idx++)
     {
-        u16 parentIdx = GetParentIndex(idx, hierarchyOffset);
         // if (parentIdx == 0xFFFFu) continue;
-        Pose parent = poses[parentIdx];
+        Pose parent = poses[GetParentIndex(idx, hierarchyOffset)];
         Pose pose = poses[idx];
         f16_4 t = QMulVec3V(parent.rotation, pose.translation);
         pose.translation = VecAdd(t, parent.translation);
@@ -129,17 +122,15 @@ void main(uint3 GlobalInvocationID : SV_DispatchThreadID)
     AnimationInstance anim = animInstances[instanceIdx];
     AnimationData     data = animData[anim.animIdx2 & 0xFFFFu];
 
-    f16 animRatio = UnpackUnorm16(anim.animRatio2);
-    f16 animT     = animRatio * float(data.numFrames);
-    int frameAIdx = int(Floorf(animT));
-    int frameBIdx = int(Ceilf(animT)) % int(data.numFrames);
+    f32 animT = UnpackUnorm16(anim.animRatio2) * float(data.numFrames);
+    uint2 frameABIdx = uint2(uint(Floorf(animT)), uint(Ceilf(animT)) % uint(data.numFrames));
     
     Pose poses[MAX_BONES];
     f16 animProgress = f16(Fractf(animT));
     for (int i = 0; i < data.numNodes; i++)
     {
-        f16_2x4 a = LoadPose(i, int(data.frameOffset), frameAIdx);
-        f16_2x4 b = LoadPose(i, int(data.frameOffset), frameBIdx);
+        f16_2x4 a = LoadPose(i, int(data.frameOffset), frameABIdx.x);
+        f16_2x4 b = LoadPose(i, int(data.frameOffset), frameABIdx.y);
         poses[i].translation = VecLerp(a[0], b[0], animProgress);
         poses[i].rotation    = QNlerp(a[1], b[1], animProgress);
     }
@@ -147,31 +138,43 @@ void main(uint3 GlobalInvocationID : SV_DispatchThreadID)
     f16 blend = UnpackHalf(anim.blend);
     if (blend > 0.005f)
     {
-        data = animData[anim.animIdx2 >> 16];
-        animRatio = UnpackUnorm16(anim.animRatio2 >> 16);
-        animT     = animRatio * float(data.numFrames);
-        frameAIdx = int(Floorf(animT));
-        frameBIdx = int(Ceilf(animT)) % int(data.numFrames);
+        data  = animData[anim.animIdx2 >> 16];
+        animT = UnpackUnorm16(anim.animRatio2 >> 16) * float(data.numFrames);
+        frameABIdx = uint2(uint(Floorf(animT)), uint(Ceilf(animT)) % uint(data.numFrames));
         
         animProgress = f16(Fractf(animT));
+        uint anim1BoneStart = (anim.blend >> 16) & 0xff;
+        uint anim1BoneEnd   = (anim.blend >> 24) & 0xff;
         // merge animations
-        for (int i = 0; i < data.numNodes; i++)
+        for (uint i = anim1BoneStart; i < anim1BoneEnd; i++)
         {
-            f16_2x4 a = LoadPose(i, int(data.frameOffset), frameAIdx);
-            f16_2x4 b = LoadPose(i, int(data.frameOffset), frameBIdx);
+            f16_2x4 a = LoadPose(i, data.frameOffset, frameABIdx.x);
+            f16_2x4 b = LoadPose(i, data.frameOffset, frameABIdx.y);
             poses[i].translation = VecLerp(poses[i].translation,  VecLerp(a[0], b[0], animProgress), blend);
             poses[i].rotation    = QNlerp(poses[i].rotation    ,  QNlerp(a[1], b[1], animProgress), blend);
         }
     }
+    
+    u32 neckNode  = data.neckSpineNodes & 0xFFFFu;
+    u32 spineNode = (data.neckSpineNodes >> 16u) & 0xFFFFu;
+    f16 neckAngle  = Unpack16Snorm(anim.neckSpineAngle & 0xFFFFu);
+    f16 spineAngle = Unpack16Snorm(anim.neckSpineAngle >> 16u);
+    
+    if (abs(neckAngle) > 0.05f)
+        poses[neckNode].rotation = QMul(QFromYAngle(neckAngle), poses[neckNode].rotation);
+    
+    if (abs(spineAngle) > 0.05f)
+        poses[spineNode].rotation = QMul(QFromXAngle(spineAngle), poses[spineNode].rotation);
 
     FlattenBoneMatrices(data.numNodes, data.hierarchyOffset, poses);
+
     int numJoints = int(data.numJoints);
-    for (s16 i = 0; i < numJoints; i++)
+    for (u32 i = 0; i < numJoints; i++)
     {
         Pose pose = poses[joints[data.jointOffset + i]];
         f16_4x4 mat = M44PositionRotationVec(pose.translation, pose.rotation);
         mat = M44Multiply(LoadMatrix(i, data.invBindOffset), mat);
-        int outIdx = instanceIdx * MAX_BONES + i;
+        uint outIdx = instanceIdx * MAX_BONES + i;
         WriteBone((f16_3x4)M44Transpose(mat), outIdx);
     }
 }

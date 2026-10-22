@@ -71,6 +71,10 @@ f16_4 UnpackRGBA16Snorm(uint xy, uint zw) {
     ) * f16(1.0 / 32767.0);
 }
 
+f16 Unpack16Snorm(uint x) {
+    return f16((int(x << 16u) >> 16)) * f16(1.0 / 32767.0);
+}
+
 f16_4 UnpackRGBA16Unorm(uint2 p) {
     uint4 u = (p.xxyy >> uint4(0u, 16u, 0u, 16u)) & 0xFFFFu;
     return f16_4(float4(u) * (1.0 / 65534.0));

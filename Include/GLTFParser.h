@@ -325,6 +325,9 @@ typedef struct SceneBundle_
     int numSkins;
     int rootNode;
     int totalPrimitives;
+    short neckNode, spineNode;
+    short leftFoot, rightFoot;
+    short leftHand, rightHand;
 
     AErrorType error;
 
