@@ -95,10 +95,10 @@ f16_4x4 LoadMatrix(int idx, uint invBindOffset)
 {
     int mtx = int(invBindOffset + idx) * ANIM_MATRIX_NUM_INT32;
     f16_4x4 result;
-    result[0] = f16_4(GetFloat4(inverseBindMatrices, mtx + 0));
-    result[1] = f16_4(GetFloat4(inverseBindMatrices, mtx + 4));
-    result[2] = f16_4(GetFloat4(inverseBindMatrices, mtx + 8));
-    result[3] = f16_4(GetFloat4(inverseBindMatrices, mtx + 12));
+    result[0] = GetHalf4(inverseBindMatrices, mtx + 0);
+    result[1] = GetHalf4(inverseBindMatrices, mtx + 2);
+    result[2] = GetHalf4(inverseBindMatrices, mtx + 4);
+    result[3] = GetHalf4(inverseBindMatrices, mtx + 6);
     return result;
 }
 

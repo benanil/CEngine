@@ -27,7 +27,10 @@ extern SDL_GPUDevice* g_GPUDevice;
 
 static void StoreHalf4(u32* dst, v128f src)
 {
-    Float4ToHalf4V((u64*)dst, src);
+    u64 res;
+    Float4ToHalf4V(&res, src);
+    dst[0] = (u32)(res & 0xFFFFFFFFull);
+    dst[1] = (u32)(res >> 32);
 }
 
 // fp32 store for bone / inverse-bind matrices (poses stay half via StoreHalf4)
@@ -155,10 +158,10 @@ static bool StoreBundleSkinGPUData(AnimationSystem* anims, const SceneBundle* bu
     for (int i = 0; i < skin->numJoints; i++)
     {
         u32* outMtx = invBind + (i * ANIM_MATRIX_NUM_INT32);
-        StoreFloat4(outMtx + 0,  inv[i].r[0]);
-        StoreFloat4(outMtx + 4,  inv[i].r[1]);
-        StoreFloat4(outMtx + 8,  inv[i].r[2]);
-        StoreFloat4(outMtx + 12, inv[i].r[3]);
+        StoreHalf4(outMtx + 0, inv[i].r[0]);
+        StoreHalf4(outMtx + 2, inv[i].r[1]);
+        StoreHalf4(outMtx + 4, inv[i].r[2]);
+        StoreHalf4(outMtx + 6, inv[i].r[3]);
     }
 
     if (bundle->numNodes > 0)
