@@ -291,7 +291,7 @@ void CreateRenderSetBuffers(RenderSetBuffers* buffers, u32 maxEntities, u32 maxG
     buffers->visibilityMask    = CreateBuffer(NULL, maxEntities * sizeof(u32), BWriteComputeBit, "CPVisibilityMask");
     buffers->visibleCount      = CreateBuffer(NULL, sizeof(u32), BWriteComputeBit, "CPVisibleCount");
     buffers->dispatchArgs      = CreateBuffer(NULL, sizeof(u32) * 6, BIndirectBit | BWriteComputeBit, "CPDispatchArgs");
-    buffers->visibleSparseIndices = CreateBuffer(NULL, maxEntities * sizeof(u32), BWriteComputeBit, "CPVisibleSparseIndices");
+    buffers->visibleSparseIndices = CreateBuffer(NULL, maxEntities * sizeof(u32) * 3, BWriteComputeBit, "CPVisibleSparseIndices");
 }
 
 // re-uploads the render set data that only changes when entities or bundles are added/removed

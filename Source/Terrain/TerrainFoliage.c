@@ -521,11 +521,8 @@ static void RunFoliageJob(void* userData)
                 if (cell.x > rarityGate) continue;
                 if (TerrainDensity_IslandMask(worldX, worldZ) > 0.02f) continue;
                 
-                u32 yawSeed = WangHash(
-                    seed ^
-                    (u32)(job->chunkMin.x + x) * 0x9e3779b9u ^
-                    (u32)(job->chunkMin.z + z) * 0x85ebca6bu
-                );
+                u32 yawSeed = WangHash(seed ^ (u32)(job->chunkMin.x + x) * 0x9e3779b9u ^
+                                              (u32)(job->chunkMin.z + z) * 0x85ebca6bu);
 
                 f32 jitterX = (NextFloat01(yawSeed) * 2.0f - 1.0f) * density * 0.46f;
                 f32 jitterZ = (NextFloat01(rnd[rId++]) * 2.0f - 1.0f) * density * 0.46f;
@@ -537,7 +534,6 @@ static void RunFoliageJob(void* userData)
                 if (!tFoliageFindSurfaceY(job->density, localX, localZ, &localY, &normal)) continue;
                 
                 f32 scale = baseType->params.sizeVariance ? RepeatMinMaxF32(rnd[rId++], 0.8f, 1.2f) : 1.0f;
-                
                 float3 localPos = F3Sub((float3){ localX, localY, localZ }, F3MulF(normal, T_FOLIAGE_GROUND_SNAP_OFFSET));
 
                 f32 yaw = NextFloat01(yawSeed) * (2.0f * MATH_PI);

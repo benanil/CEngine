@@ -42,18 +42,9 @@ typedef struct Character_
     EntityID characterEntity;
     u32 numCharacterEntities;
     
-    s16 atack;
-    s16 combo;
-    s16 idle2;
-    s16 jump;
-    s16 impact;
-    s16 kick;
-    s16 turnLeft90;
-    s16 turnRight90;
-    s16 turn180;
-    u16 idle;
-    u16 walk;
-    u16 jogRun;
+    s16 atack  , combo, idle2     , jump;
+    s16 impact , kick , turnLeft90, turnRight90;
+    u16 turn180, idle , walk      , jogRun;
     
     u16 lastAnimation;
     u16 trigerAnim;
@@ -255,9 +246,9 @@ static void CharacterMovement()
         ch.grounded = false;
     }
 
-    float speedTarget = Maxf32(Absf32(axis.y), Absf32(axis.x));
+    float speedTarget = Maxf32(Absf32(axis.y-MATH_Epsilon), Absf32(axis.x-MATH_Epsilon));
     if (GetKeyDown(SDLK_LSHIFT)) speedTarget *= 2.0f;
-    ch.currentSpeed = Lerpf32(ch.currentSpeed, speedTarget, dt * 10.0f); // SmoothDamp(ch.currentSpeed, axis.y, &ch.smoothVel, smoothTime, 2.0f, dt);
+    ch.currentSpeed = MoveTowards(ch.currentSpeed, speedTarget, dt * 5.0f); // SmoothDamp(ch.currentSpeed, axis.y, &ch.smoothVel, smoothTime, 2.0f, dt);
     
     b3Vec3 velocity = b3MulSV(ch.currentSpeed * ch.characterSpeed, wish);
     velocity.y += ch.verticalSpeed;
@@ -335,7 +326,7 @@ void TriggerAnim(u16 anim, f32 transitionTime, u8 boneStart, u8 boneEnd)
     ch.anim1BoneStart  = boneStart;
     ch.anim1BoneEnd    = (u8)Minu16((u16)boneEnd, ch.animAlloc->numNodes);
     u16 animations[3] = { ch.idle, ch.walk, ch.jogRun };
-    ch.lastAnimation = animations[Minu32((u32)Ceilf(ch.currentSpeed), 2)];
+    ch.lastAnimation = animations[Minu32((u32)Roundf32(ch.currentSpeed), 2)];
 }
 
 static void Animate()
@@ -347,7 +338,7 @@ static void Animate()
     u16 numNodes = ch.animAlloc->numNodes;
     if (GetKeyDown(SDLK_K))     TriggerAnim(ch.kick, 0.05f, 0, numNodes);
     if (GetKeyDown(SDLK_SPACE)) TriggerAnim(ch.jump, 0.05f, 0, numNodes);
-    if (GetMouseDown(MouseButton_Left)) TriggerAnim(ch.atack, 0.05f, 0, ch.animAlloc->spineNode);
+    if (GetMouseDown(MouseButton_Left)) TriggerAnim(ch.atack, 0.05f, 6, ch.animAlloc->spineNode);
 
     f32 timeSinceStartup = TimeSinceStartup();
     f32 dt = GetDeltaTime();

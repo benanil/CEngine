@@ -887,6 +887,13 @@ purefn f32 SmoothStep(f32 edge0, f32 edge1, f32 x) {
     return t * t * (3.0f - t * 2.0f);
 }
 
+purefn f32 MoveTowards(f32 current, f32 target, f32 maxDelta)
+{
+    f32 diff = target - current;
+    if (Absf32(diff) <= maxDelta) return target;
+    return current + Signf(diff) * maxDelta;
+}
+
 purefn f32 EaseInSine(f32 x) {
     return 1.0f - Cos((x * MATH_PI) * 0.5f);
 }
