@@ -4,11 +4,13 @@
 
 #include "Include/GLTFParser.h"
 #include "Include/FileSystem.h"
-#include "Include/BasisBinding.h"
 #include "Include/Algorithm.h"
 #include "Include/Graphics.h"
 #include "Include/Async.h"
 #include "Include/Platform.h"
+#include "Include/ParallelFor.h"
+#include "Include/BasisBinding.h"
+#include "Include/BasisCompressWrapper.h"
 
 // one image's basis-compress job: resolved path/type up front (pass 1), compressed in
 // parallel (pass 2), metadata written back out in original order (pass 3)

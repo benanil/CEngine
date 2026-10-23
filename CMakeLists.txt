@@ -161,6 +161,7 @@ target_sources(${EXECUTABLE_NAME} PRIVATE
     Source/UI/UIWindow.c
 
     Source/AssetManagement/GLTFParser.c
+    Source/AssetManagement/FBX.c
     Source/AssetManagement/SceneNormalize.c
     Source/AssetManagement/MeshBake.c
     Source/AssetManagement/ImageBake.c
@@ -240,8 +241,8 @@ set_property(TARGET ${EXECUTABLE_NAME} PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "$
 # on Visual Studio, set our app as the default project
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT "${EXECUTABLE_NAME}")
 
-# cmake --build Build/Clang --parallel
 # cmake -S . -B Build/Clang -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Release
+# cmake --build Build/Clang --parallel
 
 # cmake -S . -B Build/GCC -G Ninja -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DCMAKE_BUILD_TYPE=Release
 # cmake --build Build/GCC --parallel

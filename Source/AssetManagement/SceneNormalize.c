@@ -2,6 +2,7 @@
 #include "Include/Animation.h"
 #include "Include/Memory.h"
 #include "Include/Platform.h"
+#include "Include/Algorithm.h"
 
 #define CHECK_RETURN(cond, message)   if (cond) { message; return; }
 #define CHECK_CONTINUE(cond, message) if (cond) { message; continue; }

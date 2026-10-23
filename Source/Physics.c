@@ -382,7 +382,7 @@ static b3MeshData* PhysicsEnsureGroupMesh(Scene* scene, u32 groupIdx)
     return mesh;
 }
 
-void PhysicsCreateEntityBody(Scene* scene, const Entity* entity, void* data, b3ShapeType shapeType)
+void PhysicsCreateEntityBody(Scene* scene, const Entity* entity, const void* data, b3ShapeType shapeType)
 {
     EntityFlags entityFlags = EntityGetFlags(entity);
     bool colliderEnabled = (entityFlags & EntityFlags_ColliderEnabled) != 0;
