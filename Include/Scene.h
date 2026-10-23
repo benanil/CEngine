@@ -4,13 +4,7 @@
 #include "RenderSet.h"
 #include "TextureSystem.h"
 #include "Animation.h"
-#include "Async.h"
-
-#include <SDL3/SDL_atomic.h>
-
-#include <box3d/id.h>
-#include <box3d/math_functions.h>
-#include <box3d/types.h>
+#include "Physics.h"
 
 #define MAX_SCENE_BUNDLES 1024u
 #define MAX_SCENE_LIGHTS  256u
@@ -47,31 +41,6 @@ typedef struct BundleCacheEntry
     int          numBvhTris;
 } BundleCacheEntry;
 
-// persisted physics overrides for a single surface entity. only entities that deviate
-// from the default static-mesh collider are saved; body/shape stored as b3BodyType /
-// b3ShapeType, lockBits packs the six b3MotionLocks (linear xyz then angular xyz).
-typedef struct ScenePhysicsRecord_
-{
-    u32 sparseIdx;
-    u32 bodyType;
-    u32 shapeType;
-    u32 lockBits;
-    f32 friction, restitution, density;
-    f32 linearDamping, angularDamping, gravityScale, sleepThreshold;
-} ScenePhysicsRecord;
-
-// global (not per-scene) physics world settings, persisted to PhysicsSettings.txt at the
-// working directory root. applied to each scene's world on creation and on edit.
-typedef struct PhysicsSettings_
-{
-    f32  gravity[3];
-    u32  substepCount;
-    bool enableSleep;
-    bool enableContinuous;
-} PhysicsSettings;
-
-extern PhysicsSettings g_PhysicsSettings;
-
 // a scene owns one render set for skinned meshes, one for static geometry, their gpu
 // buffers, its own texture system and animation system. all gpu resources stay resident,
 // activating and deactivating scenes only changes the active list
@@ -85,7 +54,10 @@ typedef struct Scene_
 
     TextureSystem    textureSystem;
     AnimationSystem  animSystem;
-    float            ambientBoost; // default 1.0f, max 4.0f
+    PhysicsSystem    physics;
+
+    bool isFoliageScene;
+    f32  ambientBoost; // default 1.0f, max 4.0f
 
     SceneBundleRef*  bundleRefs;   // fixed MAX_SCENE_BUNDLES allocation. bundle indices are stable
                                    // handles, removing one never shifts the others
@@ -99,22 +71,6 @@ typedef struct Scene_
     u32 numMaterials;    // material slot watermark, offsets stay stable while occupied
     u32 renderDataDirty; // static render set buffers need re-upload, consumed by Render
     u32 texturesBaked;   // pages came from a baked atlas, packer state is unusable until a repack
-
-    bool physicsReady;
-    bool isFoliageScene;
-    // static collision mesh handles, one per primitive group of each static render set. shapes
-    // reference these (box3d does not copy mesh data), so they must outlive the world.
-    struct b3MeshData*   physicsMeshes[MAX_GROUP];
-    b3BodyId*            physicsBodies;
-    SDL_AtomicInt        physicsColliderBuildRunning;
-    SDL_AtomicInt        physicsColliderBuildDone;
-    AsyncCallback        physicsColliderBuildCallback;
-    s32                  physicsColliderBuildResult;
-    // physics overrides parsed from a .scene file, applied once the async collider
-    // build finishes (bodies do not exist until then). tlsf-owned, freed on apply.
-    ScenePhysicsRecord* pendingPhysics;
-    u32                 numPendingPhysics;
-    AsyncTask*          physicsBuildTask;
 } Scene;
 
 // One staged bundle load: mesh acquire (BundleCacheAcquire) plus cached-texture decode/GPU
@@ -377,113 +333,6 @@ static inline void Scene_RemoveEntity(Scene* scene, EntityID id)
     RenderSet_CompactEntities(set);
 }
 
-/////////////////////////////
-//         PHYSICS         //
-/////////////////////////////
-
-// collision categories for static geometry. scene picking filters to surface only, matching the
-// old cpu-BVH picking 
-enum PhysBit_
-{
-    PhysBit_Surface  = 1ull,
-    PhysBit_Terrain  = 2ull,
-    PhysBit_Player   = 4ull,
-    PhysBit_Foliage  = 8ull
-};
-typedef u32 PhysBit;
-
-#define PHYS_PICK_MAX_DIST   1.0e5f
-
-// the box3d world is a single global, scene independent instance (Physics_Init creates
-// it lazily on first use) so bodies from different scenes - including gFoliage's private
-// scene - can physically interact. Scene_InitPhysics/Scene_PhysicsDestroy only manage the
-// scene's own body/mesh bookkeeping inside that shared world.
-void Physics_Init(void);
-void Physics_Destroy(void);
-b3WorldId Physics_GetWorld(void);
-
-void Scene_InitPhysics(Scene* scene);
-void Scene_DestroyPhysics(Scene* scene);
-void Physics_Update(Scene* scene, float deltaTime);
-
-// loads/saves g_PhysicsSettings from PhysicsSettings.txt (load is one-shot, cached).
-void Physics_Settings_Load(void);
-void Physics_Settings_Save(void);
-// pushes g_PhysicsSettings (gravity/sleep/continuous) onto the shared physics world.
-void Physics_ApplyWorldSettings(void);
-
-const char** Physics_ShapeNames(); // b3ShapeType
-
-// builds a static rigid body with a triangle-mesh collider for every static mesh instance in the
-// scene's surface render sets. call once after a scene finishes loading.
-void Physics_BuildStaticCollidersAsync(Scene* scene, AsyncCallback callback);
-void Physics_BuildStaticColliders(Scene* scene);
-// yea buddy
-b3BodyId Physics_GetPhysicsBody(Scene* scene, const Entity* entity);
-// after an entity moved call this to update its transformation in physics system
-void Entity_SyncPhysicsBody(Scene* scene, const Entity* entity);
-void Entity_TogglePhysics(Scene* scene, Entity* entity, bool enabled);
-bool Entity_IsPhysicsEnabled(Scene* scene, Entity* entity);
-// kinematic, dynamic, static
-void Entity_SetPhysicsBodyType(Scene* scene, Entity* entity, b3BodyType type);
-// sphere, box, hull, mesh
-bool Entity_SetPhysicsShapeAuto(Scene* scene, const Entity* entity, b3ShapeType type);
-
-// terrain colliders are owned per-chunk (u64 stored body id + mesh pointer live on tChunk),
-// not by the scene - no shared slot pool/cap, just the global physics world. inOutBody/
-// inOutMesh are read (0/NULL means "none yet") and written back by these calls.
-bool Physics_SyncTerrainChunkMesh(u64* inOutBody, struct b3MeshData** inOutMesh,
-                                  b3Vec3* vertices, u32 vertexCount,
-                                  s32* indices, u32 indexCount);
-void Physics_DestroyTerrainChunk(u64* inOutBody, struct b3MeshData** inOutMesh);
-
-// Gives a dynamic body a default box mass from the shape AABB so it responds to gravity
-// (mesh shapes compute zero mass). Shared by the inspector and the scene loader.
-void Physics_ApplyDefaultDynamicMass(b3BodyId body, b3ShapeId shape);
-// Reads the surface body at sparseIdx into *out; returns false when it matches the default
-// static-mesh collider (nothing to persist). Used by the serializer to save only overrides.
-bool Physics_GetEntityOverride(const Scene* scene, u32 sparseIdx, ScenePhysicsRecord* out);
-// Applies scene->pendingPhysics onto the freshly built bodies, then frees the buffer.
-void Physics_ApplyPendingOverrides(Scene* scene);
-
-void PhysicsDestroyEntityBody(Scene* scene, const Entity* entity);
-
-void PhysicsCreateEntityBody(Scene* scene, const Entity* entity, const void* data, b3ShapeType shapeType);
-
-static inline b3Vec3 v128fToB3Vec3(v128f v)   { return (b3Vec3){ VecGetX(v), VecGetY(v), VecGetZ(v) }; }
-static inline b3Vec3 Float3ToB3Vec3(float3 v) { return (b3Vec3){ v.x, v.y, v.z }; }
-static inline float3 B3VecToFloat3(b3Pos p)   { return (float3){p.x, p.y, p.z }; }
-static inline v128f  B3VecTov128f(b3Pos p)    { return VecSetR(p.x, p.y, p.z, 0.0f); }
-
-purefn v128f B3ToQuat(b3Quat q) {
-    return VecSetR(q.v.x, q.v.y, q.v.z, q.s); 
-}
-
-purefn b3Quat ToB3Quat(v128f q)
-{
-    b3Quat res;
-    q = QNorm(q);
-    VecStore(&res.v.x, q);
-    return res;
-}
-
-purefn u64 B3QuatToEntityRotation(b3Quat q) { return PackQuaternionS16NormRet(VecSetR(q.v.x, q.v.y, q.v.z, q.s)); }
-
-purefn b3Vec3 b3ProjectOnPlane(b3Vec3 v, b3Vec3 n) {
-    return b3Sub(v, b3MulSV(b3Dot(v, n), n));
-}
-
-purefn b3Vec3 EntityGetB3Pos(const Entity* e) {
-    return v128fToB3Vec3(EntityGetPosV(e));
-}
-
-purefn b3Vec3 EntityGetB3Scale(const Entity* e) {
-    return Float3ToB3Vec3(EntityGetScale(e));
-}
-
-purefn b3Quat EntityGetB3Quat(const Entity* e) {
-    return ToB3Quat(EntityGetRotation(e));
-}
 
 static inline void Scene_AddPosRec(Scene* scene, Entity* entity, v128f offset)
 {

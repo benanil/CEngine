@@ -115,7 +115,7 @@ extern void BeforeDestroySceneCallback(Scene* scene);
 void Scene_Destroy(Scene* scene)
 {
     BeforeDestroySceneCallback(scene);
-    if (scene->physicsBuildTask) AsyncWait(scene->physicsBuildTask);
+    if (scene->physics.buildTask) AsyncWait(scene->physics.buildTask);
     Scene_DestroyPhysics(scene);
     Scene_Deactivate(scene);
     for (u32 i = 0; i < scene->numBundles; i++)

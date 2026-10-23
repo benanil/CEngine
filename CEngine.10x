@@ -369,6 +369,9 @@
 					<File>
 						<Path>Include/Entity.h</Path>
 					</File>
+					<File>
+						<Path>Include/Physics.h</Path>
+					</File>
 				</Children>
 			</Folder>
 			<Folder>

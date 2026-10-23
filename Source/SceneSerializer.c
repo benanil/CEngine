@@ -626,7 +626,7 @@ static void BuildColliderEndCallback(void* data, s32 result)
 {
     Scene* scene = (Scene*)data;
     Physics_ApplyPendingOverrides(scene); // no-op when nothing was persisted
-    scene->physicsReady = true;
+    scene->physics.ready = true;
 }
 
 void SceneFileData_Destroy(SceneFileData* data)
@@ -840,20 +840,20 @@ s32 SceneSerializer_Load(Scene* scene, const char* path, SceneFileData* data)
     g_RenderSettings.sunPitch = data->sunPitch;
     scene->renderDataDirty = 1;
 
-    if (scene->pendingPhysics) DeAllocTLSF(scene->pendingPhysics);
-    scene->pendingPhysics = NULL;
-    scene->numPendingPhysics = 0;
+    if (scene->physics.pending) DeAllocTLSF(scene->physics.pending);
+    scene->physics.pending = NULL;
+    scene->physics.numPending = 0;
     if (data->numPhysics > 0)
     {
-        scene->pendingPhysics = AllocTLSFArray(ScenePhysicsRecord, data->numPhysics);
-        if (scene->pendingPhysics)
+        scene->physics.pending = AllocTLSFArray(ScenePhysicsRecord, data->numPhysics);
+        if (scene->physics.pending)
         {
-            MemCopy(scene->pendingPhysics, data->physics, data->numPhysics * sizeof(ScenePhysicsRecord));
-            scene->numPendingPhysics = data->numPhysics;
+            MemCopy(scene->physics.pending, data->physics, data->numPhysics * sizeof(ScenePhysicsRecord));
+            scene->physics.numPending = data->numPhysics;
         }
     }
 
-    scene->physicsReady = false;
+    scene->physics.ready = false;
     // every mesh instance is static for now: give each a static rigid body with a triangle collider
     Physics_BuildStaticCollidersAsync(scene, BuildColliderEndCallback);
 

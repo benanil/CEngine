@@ -219,7 +219,7 @@ static void SceneInspectorPhysicsUI(Scene* scene, Entity* entity)
 {
     if (sceneObjectSelection.skinned || (EntityGetFlags(entity) & EntityFlags_NoMesh) != 0) return;
     u32 sparseId = EntityGetSparseID(entity);
-    if (!scene->physicsBodies || sparseId >= scene->surfaceSet.maxEntities) return;
+    if (!scene->physics.bodies || sparseId >= scene->surfaceSet.maxEntities) return;
 
     b3BodyId body = Physics_GetPhysicsBody(scene, entity);
     UIDivider(CLAY_ID("InspectorPhysicsDivider"));
@@ -230,7 +230,7 @@ static void SceneInspectorPhysicsUI(Scene* scene, Entity* entity)
     if (UICheckbox("Enabled", &isEnabled))
     {
         Entity_TogglePhysics(scene, entity, isEnabled);
-        body = scene->physicsBodies[sparseId];
+        body = scene->physics.bodies[sparseId];
     }
 
     if (B3_IS_NULL(body)) return;
