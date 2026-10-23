@@ -33,9 +33,6 @@ s32 SaveGLTFBinary(const SceneBundle* gltf, const char* path);
 s32 LoadSceneBundleBinary(const char* path, SceneBundle* gltf, void** outVertexHeapPtr, void** outIndexHeapPtr);
 
 s32 LoadBundleMeshCached(const char* path, SceneBundle* bundle, void** outVertexHeapPtr, void** outIndexHeapPtr, bool* outBaked);
-// Fans the per-image transcode+GPU upload out across worker threads via ParallelFor (each
-// image is an independent create/submit/fence-wait round trip through SDL_GPU - the slow part).
-s32 LoadBundleImagesFromCache(const char* gltfPath, SceneBundle* bundle, Texture* staging);
 
 // ABM = AX binary mesh
 u8 IsABMLastVersion(const char* path);
@@ -44,7 +41,6 @@ u8 IsMeshPath(const char* path);
 /* Mesh baking */
 // returns 0 on not enough memory
 s32 BakeSceneMeshesAndAnimations(SceneBundle* gltf, void** outVertexHeapPtr, void** outIndexHeapPtr);
-
 
 /* Animation baking */
 void BakeGLTFAnimations(SceneBundle* gltf);
@@ -57,10 +53,6 @@ u8 IsTextureLastVersion(const char* path);
 void SaveSceneImages(SceneBundle* scene, const char* savePath, bool deleteRemaining);
 
 void SaveSceneImagesAsync(SceneBundle* scene, const char* savePath, bool deleteRemaining, AsyncCallback callback);
-
-// returns: 0 = noFile, 1 = success, 2 = missingImages, 3 = fileNumImage missmatch
-s32 LoadSceneImages(const char* texturePath, Texture* textures, s32 numImages);
-
 
 // MeshBuilder.c
 typedef struct MeshBuilder_

@@ -372,6 +372,9 @@
 					<File>
 						<Path>Include/Physics.h</Path>
 					</File>
+					<File>
+						<Path>Include/ImageBake.h</Path>
+					</File>
 				</Children>
 			</Folder>
 			<Folder>

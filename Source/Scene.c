@@ -17,6 +17,7 @@
 #include "Include/GLTFParser.h"
 #include "Include/BVH.h"
 #include "Include/Camera.h"
+#include "Include/ImageBake.h"
 #include "Include/DataStructures/HashMap.h"
 #include "Math/Quaternion.h"
 
