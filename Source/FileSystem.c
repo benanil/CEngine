@@ -587,7 +587,7 @@ void FreeAllText(char* text)
     DeAllocTLSF(text);
 }
 
-void WriteAllBytes(const char *filename, const char *bytes, unsigned long size) 
+void WriteAllBytes(const char *filename, const char *bytes, u64 size) 
 {
     // Open the file for writing in binary mode
     AFile file = AFileOpen(filename, AOpenFlag_WriteBinary);

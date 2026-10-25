@@ -66,6 +66,11 @@ void WriteBone(f16_3x4 bone, uint idx)
     outBoneMtx[base + 5] = PackHalf2(VecZW(bone[2]));
 }
 
+f16_4 GetHalf4(StructuredBuffer<uint> buffer, uint idx)
+{
+    return VecCombine(UnpackHalf2(buffer[idx]), UnpackHalf2(buffer[idx + 1]));
+}
+
 f16_4x4 LoadMatrix(uint idx, uint invBindOffset)
 {
     uint mtx = uint(invBindOffset + idx) * ANIM_MATRIX_NUM_INT32;
@@ -75,11 +80,6 @@ f16_4x4 LoadMatrix(uint idx, uint invBindOffset)
     result[2] = GetHalf4(inverseBindMatrices, mtx + 4);
     result[3] = GetHalf4(inverseBindMatrices, mtx + 6);
     return result;
-}
-
-f16_4 GetHalf4(StructuredBuffer<uint> buffer, uint idx)
-{
-    return VecCombine(UnpackHalf2(buffer[idx]), UnpackHalf2(buffer[idx + 1]));
 }
 
 f16_2x4 LoadPose(uint i, uint frameOffset, uint frame)
