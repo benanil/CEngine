@@ -771,6 +771,41 @@ void UISpacing(Clay_ElementId id, f32 pixels)
     }) {}
 }
 
+// A dimmed "label  value" row
+void UIReadonlyRow(Clay_ElementId id, const char* label, const char* value)
+{
+    CLAY(id, {
+        .layout = {
+            .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(24.0f) },
+            .childGap = 8,
+            .layoutDirection = CLAY_LEFT_TO_RIGHT,
+            .childAlignment = { .y = CLAY_ALIGN_Y_CENTER }
+        }
+    }) {
+        CLAY_TEXT(UIStr(label), CLAY_TEXT_CONFIG({ .fontSize = 14, .textColor = UIGetClayColor(UIColor_Text) }));
+        // element spacer, never a whitespace-only CLAY_TEXT (that corrupts the text batch)
+        CLAY(CLAY_ID_LOCAL("Spacer"), { .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(1.0f) } } }) {}
+        CLAY_TEXT(UIStr(value), CLAY_TEXT_CONFIG({ .fontSize = 14, .textColor = UIGetClayColor(UIColor_SubText) }));
+    }
+}
+
+// formats into a per-frame string; safe to pass straight to UIPhysicsReadonlyRow
+const char* UIFmtF(f32 v, int decimals)
+{
+    char* s = UIFrameStringAlloc(32u);
+    if (!s) return "";
+    FloatToString(s, v, decimals);
+    return s;
+}
+
+const char* UIFmtV3(f32* x, int decimals)
+{
+    char* s = UIFrameStringAlloc(96u);
+    if (!s) return "";
+    SDL_snprintf(s, 96u, "%.*f, %.*f, %.*f", decimals, x[0], decimals, x[1], decimals, x[2]);
+    return s;
+}
+
 Clay_ElementDeclaration UIScrollPanelDeclaration(f32 height, u16 childGap)
 {
     // horizontal clip keeps wide children from inflating the panel and its scissor rect

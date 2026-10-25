@@ -16,9 +16,7 @@
 extern Graphics gGFX; // cpu mega buffers, declared per translation unit as elsewhere (BVH.c)
 
 // finite segment length for picking rays; the ray dir is unit length so fraction*length is world t
-
 #define PHYSICS_SETTINGS_PATH "PhysicsSettings.txt"
-
 
 #define PHYSICS_TERRAIN_USERDATA (1ull << 32ull)
 #define PHYSICS_FOLIAGE_USERDATA (((u64)PhysBit_Foliage) << 32ull)

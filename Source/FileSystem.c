@@ -782,7 +782,7 @@ void NormalizePath(const char* path, char* out, u32 outSize)
 // Unlike ChangeExtension (keeps path's dot, expects a bare extension after it, e.g. "abm"),
 // `extension` here already carries its own dot (e.g. "_albedo.ctex") and replaces the original
 // extension including its dot - else it doubles up ("name.scene" -> "name._albedo.ctex").
-void ChangeExtensionAndCopy(const char* path, const char* extension, char* out, u32 outSize)
+void ChangeExtAndCopy(const char* path, const char* extension, char* out, u32 outSize)
 {
     MemsetZero(out, outSize);
     int len = StringLength(path);

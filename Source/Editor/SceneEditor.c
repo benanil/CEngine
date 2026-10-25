@@ -218,7 +218,7 @@ void SceneDeleteWithDependencies(const char* path)
     for (u32 i = 0u; i < TextureClass_Count; i++)
     {
         char atlasPath[512];
-        ChangeExtensionAndCopy(path, kEditorSceneAtlasSuffix[i], atlasPath, sizeof(atlasPath));
+        ChangeExtAndCopy(path, kEditorSceneAtlasSuffix[i], atlasPath, sizeof(atlasPath));
         if (atlasPath[0] && FileExist(atlasPath)) RemoveFile(atlasPath);
     }
     RemoveFile(path);

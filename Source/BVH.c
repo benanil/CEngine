@@ -46,13 +46,8 @@ static inline void BVH_PrimitiveDecode(const APrimitive* prim, v128f* outMin, v1
 // static positions are xyz unorm16 vs the primitive AABB; skinned store the bind pose as halves
 static v128f BVH_Position(bool skinned, u32 index, v128f decodeMin, v128f decodeExtent)
 {
-    if (!skinned)
-    {
-        const AVertex* v = gGFX.SurfaceVertexBuffer + index;
-        return VecAdd(decodeMin, VecMul(UnpackUnorm16x4(v->position), decodeExtent));
-    }
-    const ASkinedVertex* v = gGFX.SkinnedVertexBuffer + index;
-    return Half4ToFloat4Vec(&v->positionXY);
+    if (skinned) return Half4ToFloat4Vec(&gGFX.SkinnedVertexBuffer[index].positionXY); 
+    return VecAdd(decodeMin, VecMul(UnpackUnorm16x4(gGFX.SurfaceVertexBuffer[index].position), decodeExtent));
 }
 
 static void BVH_UpdateNodeBounds(BVHBuild* build, BVHNode* node)

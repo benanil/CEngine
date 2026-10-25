@@ -37,7 +37,6 @@ const char* GetActiveScenePath()
     return g_ActiveScenePath;
 }
 
-
 static void SceneTerrainPath(const char* scenePath, char* out, u32 outSize)
 {
     NormalizePath(scenePath, out, outSize);
@@ -104,11 +103,11 @@ void Scene_Init(Scene* scene)
     TextureSystem_Init(&scene->textureSystem);
     AnimationSystem_Init(&scene->animSystem);
     Scene_InitPhysics(scene);
-    scene->ambientBoost = 1.0f;
-    scene->lights = (LightGPU*)AllocZeroTLSF(MAX_SCENE_LIGHTS, sizeof(LightGPU));
-    scene->materialSlots = (u64*)AllocZeroTLSF((MAX_GPU_MATERIALS + 63u) >> 6, sizeof(u64));
-    scene->usedBundleBits   = (u64*)AllocZeroTLSF((MAX_SCENE_BUNDLES + 63u) >> 6, sizeof(u64));
-    scene->bundleRefs    = (SceneBundleRef*)AllocZeroTLSF(MAX_SCENE_BUNDLES, sizeof(SceneBundleRef));
+    scene->ambientBoost   = 1.0f;
+    scene->lights         = (LightGPU*)AllocZeroTLSF(MAX_SCENE_LIGHTS, sizeof(LightGPU));
+    scene->materialSlots  = (u64*)AllocZeroTLSF((MAX_GPU_MATERIALS + 63u) >> 6, sizeof(u64));
+    scene->usedBundleBits = (u64*)AllocZeroTLSF((MAX_SCENE_BUNDLES + 63u) >> 6, sizeof(u64));
+    scene->bundleRefs     = (SceneBundleRef*)AllocZeroTLSF(MAX_SCENE_BUNDLES, sizeof(SceneBundleRef));
 }
 
 extern void BeforeDestroySceneCallback(Scene* scene);

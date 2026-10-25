@@ -122,7 +122,7 @@ s32 SceneSerializer_Save(Scene* scene, const char* path)
     {
         for (u32 c = 0; c < TextureClass_Count; c++)
         {
-            ChangeExtensionAndCopy(path, kAtlasSuffix[c], atlasPath[c], sizeof(atlasPath[c]));
+            ChangeExtAndCopy(path, kAtlasSuffix[c], atlasPath[c], sizeof(atlasPath[c]));
             atlasBaked[c] = TextureSystem_SaveBakedClass(ts, c, atlasPath[c]);
         }
     }

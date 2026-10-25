@@ -145,24 +145,6 @@ static void SceneInspectorValidateCache(const Entity* entity)
         SceneInspectorRefreshCache(entity);
 }
 
-// A dimmed "label  value" row for physics properties that are simulation output
-// (mass, velocities, center of mass) and cannot be edited from the inspector.
-static void UIPhysicsReadonlyRow(Clay_ElementId id, const char* label, const char* value)
-{
-    CLAY(id, {
-        .layout = {
-            .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(24.0f) },
-            .childGap = 8,
-            .layoutDirection = CLAY_LEFT_TO_RIGHT,
-            .childAlignment = { .y = CLAY_ALIGN_Y_CENTER }
-        }
-    }) {
-        CLAY_TEXT(UIStr(label), CLAY_TEXT_CONFIG({ .fontSize = 14, .textColor = UIGetClayColor(UIColor_Text) }));
-        // element spacer, never a whitespace-only CLAY_TEXT (that corrupts the text batch)
-        CLAY(CLAY_ID_LOCAL("Spacer"), { .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(1.0f) } } }) {}
-        CLAY_TEXT(UIStr(value), CLAY_TEXT_CONFIG({ .fontSize = 14, .textColor = UIGetClayColor(UIColor_SubText) }));
-    }
-}
 
 // A per-axis lock row: a leading label followed by three checkboxes (X/Y/Z)
 // laid out horizontally rather than stacked. Returns true when any axis toggled.
@@ -191,23 +173,6 @@ static bool UIPhysicsLockRow(Clay_ElementId rowId, Clay_String label,
         changed |= UICheckboxID("Z", rowId.id * 2 + 2, z);
     }
     return changed;
-}
-
-// formats into a per-frame string; safe to pass straight to UIPhysicsReadonlyRow
-static const char* UIPhysicsFmtF(f32 v, int decimals)
-{
-    char* s = UIFrameStringAlloc(32u);
-    if (!s) return "";
-    SDL_snprintf(s, 32u, "%.*f", decimals, v);
-    return s;
-}
-
-static const char* UIPhysicsFmtV3(f32 x, f32 y, f32 z, int decimals)
-{
-    char* s = UIFrameStringAlloc(96u);
-    if (!s) return "";
-    SDL_snprintf(s, 96u, "%.*f, %.*f, %.*f", decimals, x, decimals, y, decimals, z);
-    return s;
 }
 
 // Visualizes and edits the box3d body attached to the selected entity.
@@ -261,19 +226,16 @@ static void SceneInspectorPhysicsUI(Scene* scene, Entity* entity)
 
     // Mass properties and velocities are simulation output -> read-only.
     UISectionHeader("State");
-    UIPhysicsReadonlyRow(CLAY_ID("InspectorPhysicsMass"), "Mass", UIPhysicsFmtF(b3Body_GetMass(body), 3));
+    UIReadonlyRow(CLAY_ID("InspectorPhysicsMass"), "Mass", UIFmtF(b3Body_GetMass(body), 3));
 
     b3Pos com = b3Body_GetMassData(body).center;
-    UIPhysicsReadonlyRow(CLAY_ID("InspectorPhysicsCom"), "Center of Mass",
-                         UIPhysicsFmtV3((f32)com.x, (f32)com.y, (f32)com.z, 3));
+    UIReadonlyRow(CLAY_ID("InspectorPhysicsCom"), "Center of Mass", UIFmtV3(&com.x, 3));
     
     b3Vec3 linVel = b3Body_GetLinearVelocity(body);
-    UIPhysicsReadonlyRow(CLAY_ID("InspectorPhysicsLinVel"), "Linear Velocity",
-                         UIPhysicsFmtV3(linVel.x, linVel.y, linVel.z, 3));
+    UIReadonlyRow(CLAY_ID("InspectorPhysicsLinVel"), "Linear Velocity", UIFmtV3(&linVel.x, 3));
 
     b3Vec3 angVel = b3Body_GetAngularVelocity(body);
-    UIPhysicsReadonlyRow(CLAY_ID("InspectorPhysicsAngVel"), "Angular Velocity",
-                         UIPhysicsFmtV3(angVel.x, angVel.y, angVel.z, 3));
+    UIReadonlyRow(CLAY_ID("InspectorPhysicsAngVel"), "Angular Velocity", UIFmtV3(&angVel.x, 3));
 
     // Integration scalars: each edit is pushed straight to the body.
     UISectionHeader("Dynamics");

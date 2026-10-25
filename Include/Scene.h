@@ -6,8 +6,8 @@
 #include "Animation.h"
 #include "Physics.h"
 
-#define MAX_SCENE_BUNDLES 1024u
-#define MAX_SCENE_LIGHTS  256u
+#define MAX_SCENE_BUNDLES  1024u
+#define MAX_SCENE_LIGHTS   256u
 #define MAX_THROWN_SPHERES 512u
 
 // one bundle registered in a scene
@@ -332,7 +332,6 @@ static inline void Scene_RemoveEntity(Scene* scene, EntityID id)
     Scene_RemoveEntityRec(scene, set, id);
     RenderSet_CompactEntities(set);
 }
-
 
 static inline void Scene_AddPosRec(Scene* scene, Entity* entity, v128f offset)
 {

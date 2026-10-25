@@ -196,6 +196,10 @@ void UIText(const char* text);
 void UITextU32(const char* label, u32 value);
 void UIDivider(Clay_ElementId id);
 void UISpacing(Clay_ElementId id, f32 pixels);
+void UIReadonlyRow(Clay_ElementId id, const char* label, const char* value);
+
+const char* UIFmtF (f32  v, s32 decimals);
+const char* UIFmtV3(f32* x, s32 decimals);
 
 // vertical scrollable panel, height <= 0 grows to fill the remaining space.
 // must be evaluated inside the CLAY() macro of the panel element, the scroll

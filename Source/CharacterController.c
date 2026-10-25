@@ -19,26 +19,27 @@ typedef struct PlaneCapture
 
 typedef struct Character_
 {
-    SceneBundle* characterBundle;
-    SparseData*  characterSparse;
+    v128f center;
+    SceneBundle* bundle;
+    SparseData*  sparse;
     AnimationBundleAlloc* animAlloc;
-
+    
     b3Vec3 groundNormal;
     b3Vec3 position;
-
-    f32  verticalSpeed;
-    f32  characterSpeed;
-    f32  jumpSpeed;
-    f32  maxSpeed;
-    f32  acceleration;
-    f32  decceleration;
-    f32  currentSpeed; // [0, 1]
-    f32  trigerTime;
-    f32  transitionTime;
-    f32  transitionSpeed;
-    f32  animSpeed;
-    f32  anim0Start;
-    f32  anim1Start;
+        
+    f32 verticalSpeed;
+    f32 characterSpeed;
+    f32 jumpSpeed;
+    f32 maxSpeed;
+    f32 acceleration;
+    f32 decceleration;
+    f32 currentSpeed; // [0, 1]
+    f32 trigerTime;
+    f32 transitionTime;
+    f32 transitionSpeed;
+    f32 animSpeed;
+    f32 anim0Start;
+    f32 anim1Start;
 
     EntityID characterEntity;
     u32 numCharacterEntities;
@@ -62,20 +63,29 @@ static const float groundMinNormalY = 0.7f;
 static const float snapDistance = 0.3f;
 static const float moveTolerance = 0.001f;
 
+static float3 cameraOffset = { 0.0f, 1.6f, 0.0f };
+static float cameraXRotation = MATH_PI;
+
 static Character ch;
 extern Camera g_Camera;
 
 static void SpawnCharacter()
 {
     Scene* scene = GetActiveScene();
-    u32 characterId  = Scene_BundleIdx(scene, ch.characterBundle);
+    u32 characterId  = Scene_BundleIdx(scene, ch.bundle);
     u32 numEntity = scene->skinnedSet.numEntities;
-    ch.characterSparse = Scene_Spawn(scene, characterId, VecSetR(0.0f, 0.0f, 0.0f, 0.f), QIdentity(), VecSet1(0.1f), EntityFlags_None);
+    ch.sparse = Scene_Spawn(scene, characterId, VecSetR(0.0f, 0.0f, 0.0f, 0.f), QIdentity(), VecSet1(0.1f), EntityFlags_None);
     ch.numCharacterEntities = scene->skinnedSet.numEntities - numEntity;
-    ch.characterEntity = EntityIDFromSparseData(scene, ch.characterSparse);
+    ch.characterEntity = EntityIDFromSparseData(scene, ch.sparse);
     
-    ch.groundNormal    = (b3Vec3){ 0.0f, 1.0f, 0.0f };
-    ch.position        = (b3Vec3){0.0f, 10.0f, 0.0f}; 
+    EntityID entityID = EntityIDFromSparseData(scene, ch.sparse + 1);
+    Entity* entity = Scene_GetEntity(scene, entityID);
+    RenderSet* rs = Scene_GetEntityRenderSet(scene, entityID);
+    ch.center = VecMulf(RenderSet_GroupLocalCenter(rs->primitiveGroups + EntityGetPrimitiveID(entity)), 0.1f);
+    VecSetY(ch.center, 0.0f);
+
+    ch.groundNormal    = (b3Vec3){ 0.0f,  1.0f, 0.0f };
+    ch.position        = (b3Vec3){ 0.0f, 10.0f, 0.0f }; 
     ch.jumpSpeed       = 10.0f;
     ch.maxSpeed        = 10.0f;
     ch.acceleration    = 20.0f;
@@ -87,18 +97,18 @@ static void SpawnCharacter()
     ch.animAlloc = &scene->bundleRefs[characterId].animAlloc;
     // also these anims exist: "StrafeLeft", "StrafeRight"
     u16 animOffset = ch.animAlloc->animOffset;
-    ch.idle         = animOffset + FindAnimIndex(ch.characterBundle, "Idle");
-    ch.walk         = animOffset + FindAnimIndex(ch.characterBundle, "Walk");
-    ch.jogRun       = animOffset + FindAnimIndex(ch.characterBundle, "Run");
-    ch.atack        = animOffset + FindAnimIndex(ch.characterBundle, "Slash2");
-    ch.combo        = animOffset + FindAnimIndex(ch.characterBundle, "SwordCombo");
-    ch.idle2        = animOffset + FindAnimIndex(ch.characterBundle, "Idle2");
-    ch.jump         = animOffset + FindAnimIndex(ch.characterBundle, "Jump");
-    ch.impact       = animOffset + FindAnimIndex(ch.characterBundle, "Impact");
-    ch.kick         = animOffset + FindAnimIndex(ch.characterBundle, "Kick");
-    ch.turnLeft90   = animOffset + FindAnimIndex(ch.characterBundle, "TurnLeft90");
-    ch.turnRight90  = animOffset + FindAnimIndex(ch.characterBundle, "TurnRight90");
-    ch.turn180      = animOffset + FindAnimIndex(ch.characterBundle, "Turn180");
+    ch.idle         = animOffset + FindAnimIndex(ch.bundle, "Idle");
+    ch.walk         = animOffset + FindAnimIndex(ch.bundle, "Walk");
+    ch.jogRun       = animOffset + FindAnimIndex(ch.bundle, "Run");
+    ch.atack        = animOffset + FindAnimIndex(ch.bundle, "Slash2");
+    ch.combo        = animOffset + FindAnimIndex(ch.bundle, "SwordCombo");
+    ch.idle2        = animOffset + FindAnimIndex(ch.bundle, "Idle2");
+    ch.jump         = animOffset + FindAnimIndex(ch.bundle, "Jump");
+    ch.impact       = animOffset + FindAnimIndex(ch.bundle, "Impact");
+    ch.kick         = animOffset + FindAnimIndex(ch.bundle, "Kick");
+    ch.turnLeft90   = animOffset + FindAnimIndex(ch.bundle, "TurnLeft90");
+    ch.turnRight90  = animOffset + FindAnimIndex(ch.bundle, "TurnRight90");
+    ch.turn180      = animOffset + FindAnimIndex(ch.bundle, "Turn180");
     
     ch.trigerAnim     = ch.lastAnimation   = ch.idle;
     ch.transitionTime = ch.trigerTime      = 0.0f;
@@ -116,7 +126,7 @@ static void CharacterLoaded(SceneAsyncRequest* request)
         AX_ERROR("import to scene failed: %s", request->path);
         return;
     }
-    ch.characterBundle = scene->bundleRefs[bundleIdx].bundle;
+    ch.bundle = scene->bundleRefs[bundleIdx].bundle;
     SpawnCharacter();
 }
 
@@ -186,39 +196,15 @@ static bool FindGround(b3WorldId worldId, b3Pos origin, b3Capsule* mover, b3Quer
     return found;
 }
 
-static void CharacterMovement()
+static void CharacterMovement(Scene* scene, Entity* character)
 {
-    Scene* scene = GetActiveScene();
-    Entity* character = RenderSet_GetEntity(&scene->skinnedSet, ch.characterEntity);
-    if (character == NULL) 
-        return;
-
-    if (GetKeyPressed(SDLK_J) || GetKeyPressed(SDLK_K))
-    {
-        ch.characterActive = !ch.characterActive;
-        ch.position = (b3Vec3){ 0.0f, 10.0f, 0.0f };
-        ch.verticalSpeed = 0.0f;
-        ch.grounded = false;
-        CameraMode wantedMode = GetKeyPressed(SDLK_K) ? CameraMode_FPS : CameraMode_TPS;
-        wantedMode = ch.characterActive ? wantedMode : CameraMode_Fly;
-        CameraSwitchMode(&g_Camera, wantedMode);
-        EntityFlags entityFlags = EntityGetFlags(character);
-        entityFlags &= ~EntityFlags_NoMesh;
-        // only fps mode entity is not visible
-        entityFlags |= (ch.characterActive && wantedMode == CameraMode_FPS) * EntityFlags_NoMesh; // toggle visibility of capsule
-        EntitySetFlags(character, entityFlags);
-
-        if (ch.characterActive == false)
-            g_Camera.position = F3Sub(g_Camera.position, F3MulF(g_Camera.front, 6.0f));
-    }
     if (!ch.characterActive) return;
-
-    float dt = GetDeltaTime();
+    f32 dt = GetDeltaTime();
     b3WorldId worldId = Physics_GetWorld();
     b3Capsule mover = MakeMover();
     b3QueryFilter filter = MakeFilter();
 
-    float2 axis = GetMovementAxis();
+    float2 axis = F2NormSafe(GetMovementAxis());
     b3Vec3 forward = Float3ToB3Vec3(g_Camera.front);
     forward.y = 0.0f;
     forward = b3Normalize(forward);
@@ -227,7 +213,7 @@ static void CharacterMovement()
     right = b3Normalize(right);
 
     b3Vec3 wish = b3Add(b3MulSV(axis.y, forward), b3MulSV(axis.x, right));
-    float wishLength = b3Length(wish);
+    f32 wishLength = b3Length(wish);
     if (wishLength > 1.0f)
     {
         wish = b3MulSV(1.0f / wishLength, wish);
@@ -246,8 +232,7 @@ static void CharacterMovement()
         ch.verticalSpeed = ch.jumpSpeed;
         ch.grounded = false;
     }
-
-    float speedTarget = Maxf32(Absf32(axis.y-MATH_Epsilon), Absf32(axis.x-MATH_Epsilon));
+    f32 speedTarget = Absf32(F2Len(axis) - MATH_Epsilon);
     if (GetKeyDown(SDLK_LSHIFT)) speedTarget *= 2.0f;
     ch.currentSpeed = MoveTowards(ch.currentSpeed, speedTarget, dt * 5.0f); // SmoothDamp(ch.currentSpeed, axis.y, &ch.smoothVel, smoothTime, 2.0f, dt);
     
@@ -257,7 +242,7 @@ static void CharacterMovement()
     b3Vec3 target = b3Add(ch.position, b3MulSV(dt, velocity));
     b3Vec3 start = ch.position;
 
-    for (int iteration = 0; iteration < 5; ++iteration)
+    for (s32 iteration = 0; iteration < 5; ++iteration)
     {
         b3Pos origin = ch.position;
 
@@ -298,8 +283,40 @@ static void CharacterMovement()
     }
     
     ch.groundNormal = ch.grounded ? normal : (b3Vec3){ 0.0f, 1.0f, 0.0f };
+
+    Quaternion mRotation;
+    if (g_Camera.mode == CameraMode_TPS)
+    {
+        f32 x = g_Camera.yaw * -MATH_DegToRad;
+        f32 inputAngle = ATan2(axis.y, -axis.x);
+        f32 movementValue = F2LenSq(axis);
+        if (movementValue < 0.001f) inputAngle = 0.0f;
+        x += -inputAngle;
+    
+        mRotation = EntityGetRotation(character);
+        if (movementValue > 0.1f)
+        {
+            const float rotationSpeed = 12.0f;
+            mRotation = QSlerp(mRotation, QFromYAngle(x + MATH_PI), GetDeltaTime() * rotationSpeed);
+        }
+    }
+    else
+    {
+        mRotation = QFromYAngle(g_Camera.yaw * -MATH_DegToRad + cameraXRotation);
+    }
+
+    v128f position = VecAdd(Vec3Load(&ch.position.x), VecSetR(0.0f, -1.3f, 0.0f, 0.0f));
+    position = VecSub(position, QMulVec3V(ch.center, mRotation));
+
+    for (s32 i = 0; i < ch.numCharacterEntities; i++)
+    {
+        Entity* mesh = &scene->skinnedSet.entities[ch.sparse[i].id];
+        EntitySetPositionV(mesh, position);
+        EntitySetRotation(mesh, mRotation);
+    }
+
     g_Camera.position = B3VecToFloat3(ch.position);
-    g_Camera.position.y += 1.6f;
+    g_Camera.position = F3Add(g_Camera.position, cameraOffset);
     g_Camera.target = g_Camera.position;
 }
 
@@ -314,6 +331,8 @@ static void CharacterUI()
         UIEditFloat("speed", &ch.characterSpeed, 0.0f, 100.0f, 0.2f, 2);
         UIEditFloat("jump force", &ch.jumpSpeed, 0.0f, 100.0f, 0.2f, 2);
         UIEditFloat("maxSpeed", &ch.maxSpeed, 0.0f, 100.0f, 0.1f, 2);
+        UIEditFloatN("cameraOffset", &cameraOffset.x, 3, -4.0f, 4.0f, 3);
+        UIEditFloat("cameraXRot", &cameraXRotation, 0.0f, 100.0f, 0.1f, 3);
         UIEndWindow();
     }
 }
@@ -326,21 +345,10 @@ void TriggerAnim(u16 anim, f32 transitionTime, u8 boneStart, u8 boneEnd)
     ch.anim1Start      = TimeSinceStartup();
     ch.anim1BoneStart  = boneStart;
     ch.anim1BoneEnd    = (u8)Minu16((u16)boneEnd, ch.animAlloc->numNodes);
-    u16 animations[3] = { ch.idle, ch.walk, ch.jogRun };
-    ch.lastAnimation = animations[Minu32((u32)Roundf32(ch.currentSpeed), 2)];
 }
 
-static void Animate()
+static void Animate(Scene* scene)
 {
-    Scene* scene = GetActiveScene();
-    Entity* character = RenderSet_GetEntity(&scene->skinnedSet, ch.characterEntity);
-    if (character == NULL) return;
-    
-    u16 numNodes = ch.animAlloc->numNodes;
-    if (GetKeyDown(SDLK_K))     TriggerAnim(ch.kick, 0.05f, 0, numNodes);
-    if (GetKeyDown(SDLK_SPACE)) TriggerAnim(ch.jump, 0.05f, 0, numNodes);
-    if (GetMouseDown(MouseButton_Left)) TriggerAnim(ch.atack, 0.05f, 6, ch.animAlloc->spineNode);
-
     f32 timeSinceStartup = TimeSinceStartup();
     f32 dt = GetDeltaTime();
     
@@ -363,6 +371,8 @@ static void Animate()
         else
         {
             // upper lower body different animations
+            u16 animations[3] = { ch.idle, ch.walk, ch.jogRun };
+            ch.lastAnimation = animations[Minu32((u32)Roundf32(ch.currentSpeed), 2)];
             anim0 = ch.lastAnimation;
             anim1 = ch.trigerAnim;
             instance.blend = OneFP16;
@@ -389,7 +399,7 @@ static void Animate()
         }
     }
 
-    instance.neckAngle  = PackSnorm16(Sin(timeSinceStartup));
+    instance.neckAngle  = 0; // FloatToHalf(Clampf32((g_Camera.yaw * MATH_DegToRad) / MATH_PI, -1.0f, 1.0f));
     instance.spineAngle = 0;
     const GPUAnimationData* anim0Data = &scene->animSystem.animData[anim0];
     const GPUAnimationData* anim1Data = &scene->animSystem.animData[anim1];
@@ -398,34 +408,50 @@ static void Animate()
     instance.animRatio2  = (u32)PackUnorm16(anim0t) | ((u32)PackUnorm16(anim1t) << 16);
     instance.animIdx2    = anim0 | (anim1 << 16);
 
-    float2 targetMovement = GetMovementAxis();
-    f32 x = g_Camera.yaw * -MATH_DegToRad;
-    f32 inputAngle = ATan2(targetMovement.y, -targetMovement.x);
-    f32 movementValue = F2LenSq(targetMovement);
-    if (movementValue < 0.001f) inputAngle = 0.0f;
-    x += -inputAngle;
-
-    Quaternion mRotation = EntityGetRotation(character);
-    if (movementValue > 0.1f)
-    {
-        const float rotationSpeed = 12.0f;
-        mRotation = QSlerp(mRotation, QFromYAngle(x + MATH_PI), GetDeltaTime() * rotationSpeed);
-    }
-
-    u32 charSparse = SparseIDFromSparseData(&scene->skinnedSet, ch.characterSparse);
-    v128f position = VecAdd(Vec3Load(&ch.position.x), VecSetR(0.0f, -1.3f, 0.0f, 0.0f));
+    u32 charSparse = SparseIDFromSparseData(&scene->skinnedSet, ch.sparse);
     for (s32 i = 0; i < ch.numCharacterEntities; i++)
     {
-        Entity* mesh = &scene->skinnedSet.entities[ch.characterSparse[i].id];
-        EntitySetPositionV(mesh, position);
-        EntitySetRotation(mesh, mRotation);
         AnimationSystem_SetInstance(&scene->animSystem, charSparse + i, instance);
     }
 }
 
+static void HandleInputs()
+{
+    u16 numNodes = ch.animAlloc->numNodes;
+    if (GetKeyDown(SDLK_K))     TriggerAnim(ch.kick, 0.05f, 0, numNodes); 
+    if (GetKeyDown(SDLK_SPACE)) TriggerAnim(ch.jump, 0.05f, 0, numNodes);
+    if (GetMouseDown(MouseButton_Left)) TriggerAnim(ch.atack, 0.05f, 6, ch.animAlloc->spineNode);
+
+    if (GetKeyPressed(SDLK_J) || GetKeyPressed(SDLK_K))
+    {
+        ch.characterActive = !ch.characterActive;
+        ch.position = (b3Vec3){ 0.0f, 10.0f, 0.0f };
+        ch.verticalSpeed = 0.0f;
+        ch.grounded = false;
+        CameraMode wantedMode = GetKeyPressed(SDLK_K) ? CameraMode_FPS : CameraMode_TPS;
+        wantedMode = ch.characterActive ? wantedMode : CameraMode_Fly;
+        CameraSwitchMode(&g_Camera, wantedMode);
+
+        if (ch.characterActive == false)
+            g_Camera.position = F3Sub(g_Camera.position, F3MulF(g_Camera.front, 6.0f));
+    }
+
+    float shift = GetKeyDown(SDLK_LSHIFT) ? -1.0f : 1.0f;
+    const float delta = 0.01f;
+    if (GetKeyDown(SDLK_KP_1)) cameraOffset.x += delta * shift;
+    if (GetKeyDown(SDLK_KP_2)) cameraOffset.y += delta * shift;
+    if (GetKeyDown(SDLK_KP_3)) cameraOffset.z += delta * shift;
+    if (GetKeyDown(SDLK_KP_4)) cameraXRotation += delta * shift * MATH_PI;
+}
+
 void UpdateCharacter()
 {
-    Animate();
-    CharacterMovement();
+    Scene* scene = GetActiveScene();
+    Entity* character = RenderSet_GetEntity(&scene->skinnedSet, ch.characterEntity);
+    if (character == NULL) return;
+
+    HandleInputs();
+    CharacterMovement(scene, character);
+    Animate(scene);
     CharacterUI();
 }
