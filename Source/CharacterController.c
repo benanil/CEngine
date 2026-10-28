@@ -43,6 +43,8 @@ typedef struct Character_
     f32 animSpeed;
     f32 anim0Start;
     f32 anim1Start;
+    u32 upperJoints[3];
+    u32 anim1Joints[3];
 
     EntityID characterEntity;
     u32 numCharacterEntities;
@@ -56,12 +58,10 @@ typedef struct Character_
     u16 jointOffset;
     u16 rightHandJoint;
 
-    u8  anim1BoneStart;
-    u8  anim1BoneEnd;
-
     bool grounded;
     bool characterActive;
     bool jumped;
+    bool upperLower;
 } Character;
 
 static const float gravity = -25.0f;
@@ -70,7 +70,7 @@ static const float snapDistance = 0.3f;
 static const float moveTolerance = 0.001f;
 
 static Character ch;
-static float3 cameraOffset = { 0.0f, -1.3, 0.15f };
+static float3 cameraOffset = { 0.0f, -1.3, 0.145f };
 static float cameraXRotation = MATH_HalfPI;
 
 static SDL_GPUTransferBuffer* boneTransfer = NULL;
@@ -82,6 +82,22 @@ extern SDL_GPUDevice* g_GPUDevice;
 
 static EntityID sphereID = INVALID_ENTITY;
 static const float characterScale = 1.0f;
+
+static void GetUpperJoints(u32 joints[3], const SceneBundle* characterBundle)
+{
+    s32 numNodes = Mins32(characterBundle->numNodes, 96);
+    for (s32 i = 0; i < numNodes; i++)
+    {
+        const ANode* node = &characterBundle->nodes[i];
+        bool upper = StringContains(node->name, "Head");
+        upper |= StringContains(node->name, "Arm");
+        upper |= StringContains(node->name, "Shoulder");
+        upper |= StringContains(node->name, "Hand");
+        upper |= StringContains(node->name, "Neck");
+        upper |= StringContains(node->name, "Spine");
+        BitsetSet32Val(joints, i, (u32)upper);
+    }
+}
 
 static void SpawnCharacter()
 {
@@ -105,11 +121,12 @@ static void SpawnCharacter()
     ch.animAlloc = &scene->bundleRefs[characterId].animAlloc;
     ch.jointOffset = ch.animAlloc->skinSlot * MAX_BONES;
 
-    SceneBundle* characterBundle = scene->bundleRefs[characterId].bundle;
-    u16* nodeToJoint = characterBundle->skins[0].nodeToJoint;
+    const SceneBundle* characterBundle = scene->bundleRefs[characterId].bundle;
+    const u16* nodeToJoint = characterBundle->skins[0].nodeToJoint;
 
     ch.headJoint      = ch.jointOffset + nodeToJoint[Maxs32(FindANodeFromName(characterBundle, "Head"), 0)];
     ch.rightHandJoint = ch.jointOffset + nodeToJoint[Maxs32(FindANodeFromName(characterBundle, "RightHand"), 0)];
+    GetUpperJoints(ch.upperJoints, characterBundle);
 
     ch.groundNormal    = (b3Vec3){ 0.0f,  1.0f, 0.0f };
     ch.position        = (b3Vec3){ 0.0f, 10.0f, 0.0f }; 
@@ -135,8 +152,7 @@ static void SpawnCharacter()
     ch.transitionSpeed = 1.0f;
     ch.animSpeed       = 2.0f;
     ch.anim0Start      = ch.anim1Start      = TimeSinceStartup();
-    ch.anim1BoneStart  = 0;
-    ch.anim1BoneEnd    = ch.animAlloc->numNodes;
+    MemSet(ch.anim1Joints, 0xFF, sizeof(u32) * 3);
 
     boneTransfer = SDL_CreateGPUTransferBuffer(g_GPUDevice, &(SDL_GPUTransferBufferCreateInfo){
         .usage = SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD,
@@ -367,14 +383,15 @@ static void CharacterUI()
     }
 }
 
-void TriggerAnim(u16 anim, f32 transitionTime, u8 boneStart, u8 boneEnd)
+void TriggerAnim(u16 anim, f32 transitionTime, bool upperLower)
 {
     ch.trigerAnim      = anim;
     ch.transitionTime  = 1.0f;
     ch.transitionSpeed = 1.0f / transitionTime;
     ch.anim1Start      = TimeSinceStartup();
-    ch.anim1BoneStart  = boneStart;
-    ch.anim1BoneEnd    = (u8)Minu16((u16)boneEnd, ch.animAlloc->numNodes);
+    ch.upperLower = upperLower;
+    if (upperLower) MemCopy(ch.anim1Joints, ch.upperJoints, sizeof(u32) * 3);
+    else MemSet(ch.anim1Joints, 0xFF, sizeof(u32) * 3);
 }
 
 static void Animate(Scene* scene)
@@ -385,16 +402,15 @@ static void Animate(Scene* scene)
     u32 anim0 = ch.idle, anim1 = ch.walk;
     GPUAnimationInstance instance;
     instance.blend = FloatToHalf(Fractf32(ch.currentSpeed));
-    instance.anim1StartBone = ch.anim1BoneStart;
-    instance.anim1EndBone   = ch.anim1BoneEnd;
-
+    MemCopy(instance.anim1Joints, ch.anim1Joints, sizeof(u32) * 3);
+    
     if (ch.currentSpeed > 1.01f) {
         anim0 = ch.walk;
         anim1 = ch.jogRun;
     }
 
     if (ch.trigerTime > 0.0f) {
-        if (ch.anim1BoneStart == 0 && ch.anim1BoneEnd == ch.animAlloc->numNodes) {
+        if (!ch.upperLower) {
             anim0 = ch.trigerAnim;
             instance.blend = ZeroFP16;
         }
@@ -411,8 +427,7 @@ static void Animate(Scene* scene)
         ch.trigerTime -= dt * ch.animSpeed;
         if (ch.trigerTime < 0.0f)
         {
-            ch.anim1BoneStart = 0;
-            ch.anim1BoneEnd   = ch.animAlloc->numNodes;
+            MemSet(ch.anim1Joints, 0xFF, sizeof(u32) * 3);
         }
     }
 
@@ -436,7 +451,7 @@ static void Animate(Scene* scene)
     f32 anim0t = Fractf32(((timeSinceStartup - ch.anim0Start) * ch.animSpeed) / anim0Data->duration);
     f32 anim1t = Fractf32(((timeSinceStartup - ch.anim1Start) * ch.animSpeed) / anim1Data->duration);
     instance.animRatio2  = (u32)PackUnorm16(anim0t) | ((u32)PackUnorm16(anim1t) << 16);
-    instance.animIdx2    = anim0 | (anim1 << 16);
+    instance.animIdx2    = anim0 | (anim1 << 8);
 
     u32 charSparse = SparseIDFromSparseData(&scene->skinnedSet, ch.sparse);
     for (s32 i = 0; i < ch.numCharacterEntities; i++)
@@ -449,8 +464,8 @@ static void HandleInputs()
 {
     u16 numNodes = ch.animAlloc->numNodes;
     // if (GetKeyDown(SDLK_L))     TriggerAnim(ch.kick, 0.05f, 0, numNodes); 
-    if (GetKeyDown(SDLK_SPACE)) TriggerAnim(ch.jump, 0.05f, 0, numNodes);
-    if (GetMouseDown(MouseButton_Left)) TriggerAnim(ch.atack, 0.05f, ch.animAlloc->spineJoint, ch.animAlloc->neckJoint);
+    if (GetKeyDown(SDLK_SPACE)) TriggerAnim(ch.jump, 0.05f, false);
+    if (GetMouseDown(MouseButton_Left)) TriggerAnim(ch.atack, 0.05f, true);
 
     if (GetKeyPressed(SDLK_J) || GetKeyPressed(SDLK_K))
     {

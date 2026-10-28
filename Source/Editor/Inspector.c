@@ -387,7 +387,7 @@ void SceneInspectorUI(Scene* scene)
             .animRatio2 = PackUnorm16(sceneObjectSelection.animTime), 
             .blend      = ZeroFP16
         };
-        instance.animIdx2   |= instance.animIdx2   << 16; 
+        instance.animIdx2   |= instance.animIdx2   << 8; 
         instance.animRatio2 |= instance.animRatio2 << 16;
         AnimationSystem_SetInstance(&scene->animSystem, EntityGetSparseID(entity), instance);
     }

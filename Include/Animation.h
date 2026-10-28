@@ -27,19 +27,17 @@ typedef struct AnimNode_
     uint8_t childrenStartIndex;
 } AnimNode;
 
-
 typedef struct GPUAnimationInstance_
 {
-    u32 animIdx2;
+    u32 anim1Joints[3]; // bitset 96 joint
     u32 animRatio2;
+    u16 animIdx2;
     u16 blend;
-    u8  anim1StartBone;
-    u8  anim1EndBone;
-    s16 neckAngle; 
+    s16 neckAngle;
     s16 spineAngle;
 } GPUAnimationInstance;
 
-STATIC_ASSERT(sizeof(GPUAnimationInstance) == 16, "gpu animation instance should be 16 byte");
+STATIC_ASSERT(sizeof(GPUAnimationInstance) == 24, "gpu animation instance should be 16 byte");
 
 typedef struct GPUAnimationData_
 {

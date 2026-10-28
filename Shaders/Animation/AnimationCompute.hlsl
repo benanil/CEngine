@@ -17,9 +17,9 @@ struct AnimNode {
 };
 
 struct AnimationInstance {
-    uint  animIdx2;   // u16x2
+    uint  anim1Joints[3];
     uint  animRatio2; // unorm16x2
-    uint  blend; // f16, u8 anim1BoneBegin, u8 anim1BoneEnd
+    uint  animIdx2Blend;   // u16x2
     uint  neckSpineAngle;
 };
 
@@ -74,6 +74,11 @@ float4 GetFloat4(StructuredBuffer<uint> buffer, uint idx)
                   asfloat(buffer[idx + 2]), asfloat(buffer[idx + 3]));
 }
 
+bool IsJointActive(in AnimationInstance instance, u32 i)
+{
+    return (instance.anim1Joints[i >> 5] >> (i & 31)) & 1u;
+}
+
 f16_4x4 LoadInvBind(uint idx, uint invBindOffset)
 {
     uint mtx = uint(invBindOffset + idx) * INV_BIND_NUM_INT32;
@@ -120,7 +125,7 @@ void main(uint3 GlobalInvocationID : SV_DispatchThreadID)
     uint instanceIdx = GlobalInvocationID.x;
     if (instanceIdx >= numInstances) return;
     AnimationInstance anim = animInstances[instanceIdx];
-    AnimationData     data = animData[anim.animIdx2 & 0xFFFFu];
+    AnimationData     data = animData[anim.animIdx2Blend & 0xFFu];
 
     f32 animT = UnpackUnorm16(anim.animRatio2) * float(data.numFrames);
     uint2 frameABIdx = uint2(uint(Floorf(animT)), uint(Ceilf(animT)) % uint(data.numFrames));
@@ -135,19 +140,18 @@ void main(uint3 GlobalInvocationID : SV_DispatchThreadID)
         poses[i].rotation    = QNlerp(a[1], b[1], animProgress);
     }
 
-    f16 blend = UnpackHalf(anim.blend);
+    f16 blend = UnpackHalf(anim.animIdx2Blend >> 16);
     if (blend > 0.005f)
     {
-        data  = animData[anim.animIdx2 >> 16];
+        data  = animData[(anim.animIdx2Blend >> 8u) & 0xFFu];
         animT = UnpackUnorm16(anim.animRatio2 >> 16) * float(data.numFrames);
         frameABIdx = uint2(uint(Floorf(animT)), uint(Ceilf(animT)) % uint(data.numFrames));
         
         animProgress = f16(Fractf(animT));
-        uint anim1BoneStart = (anim.blend >> 16) & 0xff;
-        uint anim1BoneEnd   = (anim.blend >> 24) & 0xff;
         // merge animations
-        for (uint i = anim1BoneStart; i < anim1BoneEnd; i++)
+        for (uint i = 0; i < data.numNodes; i++)
         {
+            if (!IsJointActive(anim, i)) continue;
             f16_2x4 a = LoadPose(i, data.frameOffset, frameABIdx.x);
             f16_2x4 b = LoadPose(i, data.frameOffset, frameABIdx.y);
             poses[i].translation = VecLerp(poses[i].translation,  VecLerp(a[0], b[0], animProgress), blend);

@@ -24,6 +24,26 @@ static inline void BitsetReset(u64* bits, s32 idx) {
     bits[idx / 64] &= ~(1ull << (idx & 63));
 }
 
+static inline void BitsetSet32Val(u32* bits, s32 idx, u32 val) {
+    bits[idx >> 5] |= (val << (idx & 31));
+}
+
+static inline void BitsetSet32(u32* bits, s32 idx) {
+    bits[idx >> 5] |= (1u << (idx & 31));
+}
+
+static inline bool BitsetGet32(const u32* bits, s32 idx) {
+    return (bits[idx >> 5] >> (idx & 31)) & 1u;
+}
+ 
+static inline void BitsetFlip32(u32* bits, s32 idx) {
+    bits[idx >> 5] ^= (1u << (idx & 31));
+}
+
+static inline void BitsetReset32(u32* bits, s32 idx) {
+    bits[idx >> 5] &= ~(1u << (idx & 31));
+}
+
 static inline s32 FindFirstSet(u64 bits) {
     if (bits == 0) return -1;
     return (s32)TrailingZeroCount64(bits);
@@ -70,7 +90,6 @@ static inline void Not256(u64* res, const u64* a)
     VecStoreU(res + 2, VeciNot(VeciLoad(a + 2)));
     #endif
 }
-
 
 #if defined(__aarch64__) || defined(__arm__)
 purefn v128u VCALL PopCount128(v128u x)
