@@ -256,11 +256,12 @@ typedef struct GLTFBuffer_
 
 typedef struct ASkin_
 {
-    int skeleton; // < index of the root node
-    int numJoints;
     float *inverseBindMatrices; // matrix4x4 * numJoints
     int   *joints; // < indices of bone nodes 
     char  *name;
+    int skeleton; // < index of the root node
+    int numJoints;
+    unsigned short nodeToJoint[96];
 } ASkin;
 
 enum AAnimTargetPath_ {
@@ -325,18 +326,13 @@ typedef struct SceneBundle_
     int numSkins;
     int rootNode;
     int totalPrimitives;
-    short neckNode, spineNode;
-    short leftFoot, rightFoot;
-    short leftHand, rightHand;
-
+    int totalVertices;
+    int totalIndices;
+    float scale;
     AErrorType error;
 
     void* allVertices;
     void* allIndices;
-
-    int   totalVertices;
-    int   totalIndices;
-    float scale;
 
     GLTFBuffer* buffers;
 
@@ -364,7 +360,7 @@ const char* ParsedSceneGetError(AErrorType error);
 
 int Prefab_FindAnimRootNodeIndex(const SceneBundle* prefab);
 
-int Prefab_FindNodeFromName(const SceneBundle* prefab, const char* name);
+int FindANodeFromName(const SceneBundle* prefab, const char* name);
 
 /* Scene normalization */
 void SceneBundle_BuildParentIndices(SceneBundle* scene);

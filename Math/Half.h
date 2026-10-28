@@ -274,10 +274,10 @@ static forceinline void RandomHalf4Positive(u64* result, u64 hash, float mn, flo
 
 static forceinline void HalfToFloatN(f32* res, const f16* x, const s32 n) 
 {   
-    for (s32 i = 0; i < n; i += 8, x += 8, res += 8)
-        Half8ToFloat8(res, x);
+    // for (s32 i = 0; i < n; i += 8, x += 8, res += 8)
+    //     Half8ToFloat8(res, x);
  
-    for (s32 i = 0; i < (n & 7); i++, res++, x++)
+    for (s32 i = 0; i < n; i++, res++, x++)
         *res = HalfToFloat(*x);
 }
 

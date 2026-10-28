@@ -59,8 +59,7 @@ static void SceneSaveTerrainSidecar(const char* scenePath)
 static u32 Scene_AllocBundleSlot(Scene* scene)
 {
     s32 slot = BitsetFindFirstEmpty(scene->usedBundleBits, (s32)MAX_SCENE_BUNDLES);
-    if (slot < 0)
-    {
+    if (slot < 0) {
         AX_WARN("maximum scene bundle count reached: %d", MAX_SCENE_BUNDLES);
         return INVALID_BUNDLE;
     }

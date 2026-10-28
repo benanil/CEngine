@@ -1,5 +1,6 @@
 
 #include <box3d/box3d.h>
+#include <SDL3/SDL_gpu.h>
 
 #include "Math/Bitpack.h"
 #include "Math/Half.h"
@@ -9,6 +10,7 @@
 #include "Include/Animation.h"
 #include "Include/UIRenderer.h"
 #include "Include/Camera.h"
+#include "Include/Rendering.h"
 
 typedef struct PlaneCapture
 {
@@ -23,7 +25,8 @@ typedef struct Character_
     SceneBundle* bundle;
     SparseData*  sparse;
     AnimationBundleAlloc* animAlloc;
-    
+    const mat4x4* invBind;
+
     b3Vec3 groundNormal;
     b3Vec3 position;
         
@@ -44,12 +47,14 @@ typedef struct Character_
     EntityID characterEntity;
     u32 numCharacterEntities;
     
-    s16 atack  , combo, idle2     , jump;
-    s16 impact , kick , turnLeft90, turnRight90;
-    u16 turn180, idle , walk      , jogRun;
+    s16 atack, idle2, jump;
+    u16 idle , walk, jogRun;
     
     u16 lastAnimation;
     u16 trigerAnim;
+    u16 headJoint;
+    u16 rightHandJoint;
+
     u8  anim1BoneStart;
     u8  anim1BoneEnd;
 
@@ -63,26 +68,41 @@ static const float groundMinNormalY = 0.7f;
 static const float snapDistance = 0.3f;
 static const float moveTolerance = 0.001f;
 
-static float3 cameraOffset = { 0.0f, 1.6f, 0.0f };
-static float cameraXRotation = MATH_PI;
-
 static Character ch;
+static float3 cameraOffset = { 0.0f, -1.3, 0.15f };
+static float cameraXRotation = MATH_HalfPI;
+
+static SDL_GPUTransferBuffer* boneTransfer = NULL;
+static SDL_GPUFence* boneFence = NULL;
+static mat4x4 boneMat;
+
 extern Camera g_Camera;
+extern SDL_GPUDevice* g_GPUDevice;
+
+static EntityID sphereID = INVALID_ENTITY;
 
 static void SpawnCharacter()
 {
     Scene* scene = GetActiveScene();
-    u32 characterId  = Scene_BundleIdx(scene, ch.bundle);
+    u32 characterId = Scene_BundleIdx(scene, ch.bundle);
     u32 numEntity = scene->skinnedSet.numEntities;
-    ch.sparse = Scene_Spawn(scene, characterId, VecSetR(0.0f, 0.0f, 0.0f, 0.f), QIdentity(), VecSet1(0.1f), EntityFlags_None);
+    ch.sparse = Scene_Spawn(scene, characterId, VecSetR(0.0f, 0.0f, 0.0f, 0.f), QIdentity(), VecSet1(1.0f), EntityFlags_None);
     ch.numCharacterEntities = scene->skinnedSet.numEntities - numEntity;
     ch.characterEntity = EntityIDFromSparseData(scene, ch.sparse);
-    
+    u32 bundleID = Scene_AddBundleCached(scene, GetUnitSphere(), "head bone");
+    sphereID = EntityIDFromSparseData(scene,
+                                      Scene_Spawn(scene, bundleID, VecZero(), QIdentity(), VecOne(), EntityFlags_None));
+
     EntityID entityID = EntityIDFromSparseData(scene, ch.sparse + 1);
     Entity* entity = Scene_GetEntity(scene, entityID);
     RenderSet* rs = Scene_GetEntityRenderSet(scene, entityID);
-    ch.center = VecMulf(RenderSet_GroupLocalCenter(rs->primitiveGroups + EntityGetPrimitiveID(entity)), 0.1f);
+    ch.center = VecMulf(RenderSet_GroupLocalCenter(rs->primitiveGroups + EntityGetPrimitiveID(entity)), 1.0f);
     VecSetY(ch.center, 0.0f);
+    ch.invBind = (const mat4x4 *)scene->bundleRefs[EntityGetBundleId(&scene->skinnedSet, entity)].bundle->skins[0].inverseBindMatrices;
+    
+    SceneBundle* characterBundle = scene->bundleRefs[characterId].bundle;
+    ch.headJoint      = characterBundle->skins[0].nodeToJoint[Maxs32(FindANodeFromName(characterBundle, "Head"), 0)];
+    ch.rightHandJoint = characterBundle->skins[0].nodeToJoint[Maxs32(FindANodeFromName(characterBundle, "RightHand"), 0)];
 
     ch.groundNormal    = (b3Vec3){ 0.0f,  1.0f, 0.0f };
     ch.position        = (b3Vec3){ 0.0f, 10.0f, 0.0f }; 
@@ -97,25 +117,25 @@ static void SpawnCharacter()
     ch.animAlloc = &scene->bundleRefs[characterId].animAlloc;
     // also these anims exist: "StrafeLeft", "StrafeRight"
     u16 animOffset = ch.animAlloc->animOffset;
-    ch.idle         = animOffset + FindAnimIndex(ch.bundle, "Idle");
+    ch.idle         = animOffset + FindAnimIndex(ch.bundle, "Idle1");
     ch.walk         = animOffset + FindAnimIndex(ch.bundle, "Walk");
     ch.jogRun       = animOffset + FindAnimIndex(ch.bundle, "Run");
-    ch.atack        = animOffset + FindAnimIndex(ch.bundle, "Slash2");
-    ch.combo        = animOffset + FindAnimIndex(ch.bundle, "SwordCombo");
-    ch.idle2        = animOffset + FindAnimIndex(ch.bundle, "Idle2");
+    ch.atack        = animOffset + FindAnimIndex(ch.bundle, "Shash");
+    ch.idle2        = animOffset + FindAnimIndex(ch.bundle, "Idle");
     ch.jump         = animOffset + FindAnimIndex(ch.bundle, "Jump");
-    ch.impact       = animOffset + FindAnimIndex(ch.bundle, "Impact");
-    ch.kick         = animOffset + FindAnimIndex(ch.bundle, "Kick");
-    ch.turnLeft90   = animOffset + FindAnimIndex(ch.bundle, "TurnLeft90");
-    ch.turnRight90  = animOffset + FindAnimIndex(ch.bundle, "TurnRight90");
-    ch.turn180      = animOffset + FindAnimIndex(ch.bundle, "Turn180");
     
-    ch.trigerAnim     = ch.lastAnimation   = ch.idle;
-    ch.transitionTime = ch.trigerTime      = 0.0f;
-    ch.animSpeed      = ch.transitionSpeed = 1.0f;
-    ch.anim0Start     = ch.anim1Start      = TimeSinceStartup();
-    ch.anim1BoneStart = 0;
-    ch.anim1BoneEnd = ch.animAlloc->numNodes;
+    ch.trigerAnim      = ch.lastAnimation   = ch.idle;
+    ch.transitionTime  = ch.trigerTime      = 0.0f;
+    ch.transitionSpeed = 1.0f;
+    ch.animSpeed       = 1.0f;
+    ch.anim0Start      = ch.anim1Start      = TimeSinceStartup();
+    ch.anim1BoneStart  = 0;
+    ch.anim1BoneEnd    = ch.animAlloc->numNodes;
+
+    boneTransfer = SDL_CreateGPUTransferBuffer(g_GPUDevice, &(SDL_GPUTransferBufferCreateInfo){
+        .usage = SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD,
+        .size  = sizeof(u32) * MatrixNumInt32
+    });
 }
 
 static void CharacterLoaded(SceneAsyncRequest* request)
@@ -132,13 +152,16 @@ static void CharacterLoaded(SceneAsyncRequest* request)
 
 void OpenSceneCallback(const char* path)
 {
-    SceneAsyncBegin(SceneAsyncOp_ImportMesh, "Assets/Meshes/Paladin/Paladin.gltf", "LoadPaladin", CharacterLoaded);
+    SceneAsyncBegin(SceneAsyncOp_ImportMesh, "Assets/Meshes/Character/Character.gltf", "LoadCharacter", CharacterLoaded);
 }
 
 void BeforeDestroySceneCallback(Scene* scene)
 {
     if (ch.characterEntity != INVALID_ENTITY) Scene_RemoveEntity(GetActiveScene(), ch.characterEntity);
+    if (sphereID != INVALID_ENTITY) Scene_RemoveEntity(GetActiveScene(), sphereID);
+    if (boneTransfer) SDL_ReleaseGPUTransferBuffer(g_GPUDevice, boneTransfer);
     ch.characterEntity = INVALID_ENTITY;
+    boneTransfer = NULL;
 }
 
 static b3Capsule MakeMover(void)
@@ -315,8 +338,8 @@ static void CharacterMovement(Scene* scene, Entity* character)
         EntitySetRotation(mesh, mRotation);
     }
 
-    g_Camera.position = B3VecToFloat3(ch.position);
-    g_Camera.position = F3Add(g_Camera.position, cameraOffset);
+    g_Camera.position = F3Add(B3VecToFloat3(ch.position), QMulVec3(cameraOffset, mRotation));
+    g_Camera.position = F3Add(M44ExtractPosition(boneMat), g_Camera.position);
     g_Camera.target = g_Camera.position;
 }
 
@@ -333,6 +356,7 @@ static void CharacterUI()
         UIEditFloat("maxSpeed", &ch.maxSpeed, 0.0f, 100.0f, 0.1f, 2);
         UIEditFloatN("cameraOffset", &cameraOffset.x, 3, -4.0f, 4.0f, 3);
         UIEditFloat("cameraXRot", &cameraXRotation, 0.0f, 100.0f, 0.1f, 3);
+        
         UIEndWindow();
     }
 }
@@ -418,9 +442,9 @@ static void Animate(Scene* scene)
 static void HandleInputs()
 {
     u16 numNodes = ch.animAlloc->numNodes;
-    if (GetKeyDown(SDLK_K))     TriggerAnim(ch.kick, 0.05f, 0, numNodes); 
+    // if (GetKeyDown(SDLK_L))     TriggerAnim(ch.kick, 0.05f, 0, numNodes); 
     if (GetKeyDown(SDLK_SPACE)) TriggerAnim(ch.jump, 0.05f, 0, numNodes);
-    if (GetMouseDown(MouseButton_Left)) TriggerAnim(ch.atack, 0.05f, 6, ch.animAlloc->spineNode);
+    if (GetMouseDown(MouseButton_Left)) TriggerAnim(ch.atack, 0.05f, ch.animAlloc->spineJoint, ch.animAlloc->neckJoint);
 
     if (GetKeyPressed(SDLK_J) || GetKeyPressed(SDLK_K))
     {
@@ -438,10 +462,58 @@ static void HandleInputs()
 
     float shift = GetKeyDown(SDLK_LSHIFT) ? -1.0f : 1.0f;
     const float delta = 0.01f;
-    if (GetKeyDown(SDLK_KP_1)) cameraOffset.x += delta * shift;
-    if (GetKeyDown(SDLK_KP_2)) cameraOffset.y += delta * shift;
-    if (GetKeyDown(SDLK_KP_3)) cameraOffset.z += delta * shift;
+    if (GetKeyDown(SDLK_KP_1)) cameraOffset.x  += delta * shift;
+    if (GetKeyDown(SDLK_KP_2)) cameraOffset.y  += delta * shift;
+    if (GetKeyDown(SDLK_KP_3)) cameraOffset.z  += delta * shift;
     if (GetKeyDown(SDLK_KP_4)) cameraXRotation += delta * shift * MATH_PI;
+}
+
+static mat4x4 GetBone(u32 buffer[8])
+{
+    float2 a0 = UnpackHalf2(buffer[0]);
+    float2 a1 = UnpackHalf2(buffer[1]);
+    float2 a2 = UnpackHalf2(buffer[2]);
+    float2 a3 = UnpackHalf2(buffer[3]);
+    float2 a4 = UnpackHalf2(buffer[4]);
+    return (mat4x4) {
+        VecSetR(a0.x, a0.y, a1.x, 0.0f),
+        VecSetR(a1.y, a2.x, a2.y, 0.0f),
+        VecSetR(a3.x, a3.y, a4.x, 0.0f),
+        VecSetR(BitCast(float, buffer[5]), BitCast(float, buffer[6]), BitCast(float, buffer[7]), 1.0f)
+    };
+}
+
+static void GetHeadBone(Scene* scene, Entity* character)
+{
+    u32 headNode = ch.headJoint;
+
+    if (boneTransfer && boneFence && SDL_QueryGPUFence(g_GPUDevice, boneFence))
+    {
+        void* mapped = SDL_MapGPUTransferBuffer(g_GPUDevice, boneTransfer, false);
+        if (mapped)
+        {
+            ALIGNSIMD u32 buffer[8];
+            MemCopy(buffer, mapped, sizeof(buffer));
+            boneMat = GetBone(buffer);
+            mat4x4 bindMatrix = M44Inverse(ch.invBind[headNode]);
+            boneMat = M44Multiply(bindMatrix, boneMat);
+            boneMat = M44Multiply(boneMat, M44FromQuaternionV(EntityGetRotation(character)));
+            SDL_UnmapGPUTransferBuffer(g_GPUDevice, boneTransfer);
+        }
+        SDL_ReleaseGPUFence(g_GPUDevice, boneFence);
+    }
+
+    SDL_GPUCommandBuffer* cmd = SDL_AcquireGPUCommandBuffer(g_GPUDevice);
+    SDL_GPUCopyPass* copyPass = SDL_BeginGPUCopyPass(cmd);
+    u32 dense = ch.sparse->id;
+    u32 base = sizeof(u32) * dense * MAX_BONES * MatrixNumInt32;
+    SDL_DownloadFromGPUBuffer(copyPass,
+                              &(SDL_GPUBufferRegion){ .buffer = scene->animSystem.boneBuffer, 
+                              .offset = base + (sizeof(u32) * MatrixNumInt32 * headNode), 
+                                                      .size   = sizeof(u32) * MatrixNumInt32 },
+                              &(SDL_GPUTransferBufferLocation){ .transfer_buffer = boneTransfer, .offset = 0 });
+    SDL_EndGPUCopyPass(copyPass);
+    boneFence = SDL_SubmitGPUCommandBufferAndAcquireFence(cmd);
 }
 
 void UpdateCharacter()
@@ -449,9 +521,32 @@ void UpdateCharacter()
     Scene* scene = GetActiveScene();
     Entity* character = RenderSet_GetEntity(&scene->skinnedSet, ch.characterEntity);
     if (character == NULL) return;
-
+    
+    GetHeadBone(scene, character);
     HandleInputs();
     CharacterMovement(scene, character);
     Animate(scene);
     CharacterUI();
+
+    Entity* sphereEntity = Scene_GetEntity(scene, sphereID);
+    if (sphereEntity)
+    {
+        v128f neckPos = VecAdd(EntityGetPosV(character), M44ExtractPositionV(boneMat));
+        EntitySetPositionV(sphereEntity, neckPos);
+        EntitySetScaleV(sphereEntity, VecSet1(0.07f));
+        LightGPU light;
+        MemsetZero(&light, sizeof(LightGPU));
+        neckPos = VecAddf(neckPos, 2.4f); 
+        Vec3Store(light.positionRadius, neckPos);
+        light.positionRadius[3] = 7.0f;
+        f32 directionCone[4] = { 0.0f, -1.0f, 0.0f, 0.0f };
+        f32 color[3] = { 1.0f, 0.9f, 0.75f };
+        LightGPU_SetDirectionCone(&light, directionCone);
+        LightGPU_SetColor3(&light, color);
+        LightGPU_SetIntensity(&light, 12.5f);
+        light.type = LightType_Point;
+        light.flags = LIGHT_FLAG_SHADOWED;
+        light.shadowIndex = 0;
+        RendererSetLights(&light, 1);
+    }
 }

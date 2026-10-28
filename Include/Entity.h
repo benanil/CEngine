@@ -2,7 +2,7 @@
 #define ENTITY_H
 
 #include "Math/Bitpack.h"
-#include "Math/Quaternion.h"
+#include "Math/Matrix.h"
 
 #define INVALID_ENTITY  (0x00FFFFFFu)
 #define ENTITY_MAX_SCALE 10.0f
@@ -138,6 +138,18 @@ static inline void EntityAddPositionV(Entity* e, v128f v) {
 
 static inline void EntitySetPosition(Entity* e, float3 pos) {
     EntitySetPositionV(e, Vec3Load(&pos.x));
+}
+
+purefn mat4x4 EntityGetMatrix(const Entity* e)
+{
+    return M44PositionRotationScaleVec(EntityGetPosV(e), EntityGetRotation(e), EntityGetScaleV(e));
+}
+
+static inline void EntitySetMatrix(Entity* e, mat4x4 mat)
+{
+    EntitySetPositionV(e, M44ExtractPositionV(mat));
+    EntitySetRotation(e, M44ExtractRotation(mat));
+    EntitySetScaleV(e, M44ExtractScaleV(mat));
 }
 
 #endif // ENTITY_H

@@ -190,6 +190,7 @@ bool UIColorEdit3(const char* label, f32* rgb);
 
 // wraps a null terminated c string, the string must stay alive until UIEndLayout
 Clay_String UIStr(const char* chars);
+Clay_String UIStrLn(const char* chars, s32 ln);
 
 void UISectionHeader(const char* title);
 void UIText(const char* text);

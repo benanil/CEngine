@@ -301,7 +301,7 @@ static bool PrimitiveIsTransparent(const SceneBundle* bundle, const APrimitive* 
     AMaterialAlphaMode alphaMode = AMaterialAlphaMode_Opaque;
     if (primitive->material < (u32)bundle->numMaterials)
         alphaMode = bundle->materials[primitive->material].alphaMode;
-    return alphaMode == AMaterialAlphaMode_Blend;
+    return alphaMode == AMaterialAlphaMode_Blend && bundle->numSkins == 0;
 }
 
 // totalEntityAdded = SumU32(primitiveCounts, numPrimitives)

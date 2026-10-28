@@ -7,7 +7,7 @@
 
 // caller owned tree expansion state, node bits start closed,
 // bundle flags are stored inverted so bundle rows start open
-#define SCENE_TREE_MAX_NODES MAX_ENTITY
+#define SCENE_TREE_MAX_NODES (2048) /* (MAX_ENTITY )*/
 static u64 sceneNodeOpenBits[2][SCENE_TREE_MAX_NODES / 64];
 static u8  sceneBundleClosed[2];
 
@@ -88,7 +88,7 @@ static void SceneNodeTree(const RenderSet* set, SparseData* sparse, u32 depth)
     
     bool open = SceneNodeIsOpen(entityId);
     bool selected = entityId == sceneSelectedEntity;
-    if (UITreeNode(id, UIStr(GetEntityMeshName(set, entityId)), depth, flags, open, &selected))
+    if (UITreeNode(id, UIStrLn(GetEntityMeshName(set, entityId), 32), depth, flags, open, &selected))
     {
         SceneNodeFlipOpen(entityId);
         open = !open;
@@ -142,7 +142,7 @@ void SceneTreeRender(Scene* scene, Clay_ElementId windowID)
     CLAY(CLAY_ID("SceneWindowTree"), UIScrollPanelDeclaration(UIWindowRemainingHeight(windowID, CLAY_ID("SceneWindowTree"), 0.0f), 2u)) 
     {
         if (scene->surfaceSet.numEntities > 0) SceneRenderSetTree(&scene->surfaceSet, false);
-        // SceneRenderSetTree(&scene->skinnedSet, false);
+        if (scene->skinnedSet.numEntities > 0) SceneRenderSetTree(&scene->skinnedSet, true);
         
         if (sceneTreeRowBudget == 0u)
         {

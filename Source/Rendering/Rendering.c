@@ -1,3 +1,4 @@
+#include "Include/Rendering.h"
 #include "RenderingInternal.h"
 #include "Include/Slug.h"
 #include "Include/UIRenderer.h"
@@ -11,7 +12,11 @@
 #include "Include/Terrain.h"
 #include "Source/Terrain/TerrainInternal.h"
 
+
 #define RESIZE_RELEASE_DELAY 4u
+// geometry ranges loaders queued for upload, flushed once the gpu buffers exist.
+// element units, bundles can land anywhere in the mega buffers now
+#define GEOMETRY_DIRTY_MAX 32u
 
 typedef struct FrameTextureSet_
 {
@@ -68,7 +73,7 @@ RenderSettings g_RenderSettings = {
     .hbaoPower                   = 2.0f,
     .SSSBilinearThreshold        = 0.025f,
     .SSSThickness                = 0.005f,
-    .SSSIntensity                = 0.75f,
+    .SSSIntensity                = 0.25f,
     .SSSContrast                 = 4.0f,
     .mlaaThreshold               = 0.08f,
     .bloomThreshold              = 0.9f,
@@ -94,7 +99,7 @@ RenderSettings g_RenderSettings = {
     .shadowMaxDistance           = SHADOW_MAX_DISTANCE,
     .shadowCameraDistance        = SHADOW_CAMERA_DISTANCE,
     .shadowCasterDepthMargin     = SHADOW_CASTER_DEPTH_MARGIN,
-    .shadowCascadeOverlap        = SHADOW_CASCADE_OVERLAP,
+    .shadowCascadeOverlap        = 0.0f,
     .shadowSplitNearDistance     = SHADOW_SPLIT_NEAR_DISTANCE,
     .shadowPSSMLambda            = SHADOW_PSSM_LAMBDA,
     .maxVisiblePointShadows      = 8.0f,
@@ -103,11 +108,6 @@ RenderSettings g_RenderSettings = {
 
 static u64 g_RenderFrameIndex;
 static SDL_GPUTexture* g_RenderFinalTexture;
-
-SDL_GPUTexture* RenderGetFinalTexture(void)
-{
-    return g_RenderFinalTexture;
-}
 
 static RenderLightDebugInfo g_LightDebugInfo;
 static FrameTextureSet g_ResizeReleaseQueue[RESIZE_RELEASE_DELAY];
@@ -119,6 +119,19 @@ OutlineTarget g_OutlineTargets[MAX_OUTLINE_TARGETS];
 u32           g_NumOutlineTargets;
 ALineVertex   g_GizmoVertices[MAX_GIZMO_VERTICES];
 u32           g_NumGizmoVertices;
+
+typedef struct GeometryDirtyRange_ { u32 begin, end; } GeometryDirtyRange;
+static GeometryDirtyRange g_GeometryDirty[GeometryBuffer_Count][GEOMETRY_DIRTY_MAX];
+static u32 g_NumGeometryDirty[GeometryBuffer_Count];
+// Editor mesh import bakes on a worker thread and queues its uploads from there, so the queue is
+// shared with the main thread's per-frame drain. The critical sections are tiny (push a range /
+// snapshot+clear the queue), so a spinlock is enough.
+static SDL_SpinLock g_GeometryUploadLock;
+
+SDL_GPUTexture* RenderGetFinalTexture(void)
+{
+    return g_RenderFinalTexture;
+}
 
 static void ReleaseFrameTextureSet(FrameTextureSet* set)
 {
@@ -288,10 +301,8 @@ void CreateRenderSetBuffers(RenderSetBuffers* buffers, u32 maxEntities, u32 maxG
     buffers->primitiveGroupLOD = CreateBuffer(NULL, groupLODBytes, BReadCompute, "CPPrimitiveGroupLODs");
     buffers->sparseToDense     = CreateBuffer(NULL, maxEntities * sizeof(u32), BReadCompute, "CPSparseToDense");
     buffers->entity            = CreateBuffer(NULL, entityBytes, BReadRasterBit | BReadCompute, "CPEntities");
-    buffers->visibilityMask    = CreateBuffer(NULL, maxEntities * sizeof(u32), BWriteComputeBit, "CPVisibilityMask");
     buffers->visibleCount      = CreateBuffer(NULL, sizeof(u32), BWriteComputeBit, "CPVisibleCount");
     buffers->dispatchArgs      = CreateBuffer(NULL, sizeof(u32) * 6, BIndirectBit | BWriteComputeBit, "CPDispatchArgs");
-    buffers->visibleSparseIndices = CreateBuffer(NULL, maxEntities * sizeof(u32) * 3, BWriteComputeBit, "CPVisibleSparseIndices");
 }
 
 // re-uploads the render set data that only changes when entities or bundles are added/removed
@@ -330,18 +341,6 @@ static void UploadRenderSetStatics(const RenderSet* set, RenderSetBuffers* buffe
     UpdateGPUBuffer(buffers->sparseToDense, set->sparseData, set->maxEntities * sizeof(u32), 0);
     ArenaRestore(&GlobalArena, mark);
 }
-
-// geometry ranges loaders queued for upload, flushed once the gpu buffers exist.
-// element units, bundles can land anywhere in the mega buffers now
-#define GEOMETRY_DIRTY_MAX 32u
-
-typedef struct GeometryDirtyRange_ { u32 begin, end; } GeometryDirtyRange;
-static GeometryDirtyRange g_GeometryDirty[GeometryBuffer_Count][GEOMETRY_DIRTY_MAX];
-static u32 g_NumGeometryDirty[GeometryBuffer_Count];
-// Editor mesh import bakes on a worker thread and queues its uploads from there, so the queue is
-// shared with the main thread's per-frame drain. The critical sections are tiny (push a range /
-// snapshot+clear the queue), so a spinlock is enough.
-static SDL_SpinLock g_GeometryUploadLock;
 
 void Rendering_QueueGeometryUpload(GeometryBufferKind kind, u32 begin, u32 end)
 {
@@ -870,8 +869,6 @@ void DestroyRenderSetBuffers(RenderSetBuffers* buffers)
     if (buffers->primitiveGroup)       SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->primitiveGroup);
     if (buffers->primitiveGroupLOD)    SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->primitiveGroupLOD);
     if (buffers->sparseToDense)        SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->sparseToDense);
-    if (buffers->visibleSparseIndices) SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->visibleSparseIndices);
-    if (buffers->visibilityMask)       SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->visibilityMask);
     if (buffers->visibleCount)         SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->visibleCount);
     if (buffers->dispatchArgs)         SDL_ReleaseGPUBuffer(g_GPUDevice, buffers->dispatchArgs);
 }
@@ -884,15 +881,15 @@ void DestroyPipeline(void)
     if (g_RenderState.indexBuffer)              SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.indexBuffer);
     if (g_RenderState.lineBuffer)               SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lineBuffer);
     if (g_RenderState.lineDrawArgsBuffer)       SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lineDrawArgsBuffer);
-    if (g_RenderState.terrainVertexBuffer) SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.terrainVertexBuffer);
-    if (g_RenderState.terrainIndexBuffer)  SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.terrainIndexBuffer);
+    if (g_RenderState.terrainVertexBuffer)      SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.terrainVertexBuffer);
+    if (g_RenderState.terrainIndexBuffer)       SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.terrainIndexBuffer);
     if (g_RenderState.terrainDrawArgsBuffer)    SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.terrainDrawArgsBuffer);
     if (g_RenderState.terrainChunkLocationBuffer) SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.terrainChunkLocationBuffer);
-    if (g_RenderState.lightBuffer)              SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lightBuffer);
-    if (g_RenderState.lightVisibilityBuffer)    SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lightVisibilityBuffer);
-    if (g_RenderState.lightGridBuffer)          SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lightGridBuffer);
-    if (g_RenderState.lightIndexBuffer)         SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lightIndexBuffer);
-    if (g_RenderState.lightIndexCounter)        SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lightIndexCounter);
+    if (g_RenderState.lightBuffer)                SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lightBuffer);
+    if (g_RenderState.lightVisibilityBuffer)      SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lightVisibilityBuffer);
+    if (g_RenderState.lightGridBuffer)            SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lightGridBuffer);
+    if (g_RenderState.lightIndexBuffer)           SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lightIndexBuffer);
+    if (g_RenderState.lightIndexCounter)          SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.lightIndexCounter);
     if (g_LightVisFence)                        SDL_ReleaseGPUFence(g_GPUDevice, g_LightVisFence);
     if (g_LightVisTransfer)                     SDL_ReleaseGPUTransferBuffer(g_GPUDevice, g_LightVisTransfer);
     if (g_RenderState.uiShapeBuffer)            SDL_ReleaseGPUBuffer(g_GPUDevice, g_RenderState.uiShapeBuffer);

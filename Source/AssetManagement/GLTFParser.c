@@ -1499,11 +1499,11 @@ int Prefab_FindAnimRootNodeIndex(const SceneBundle* prefab)
     return skeletonNode;
 }
 
-int Prefab_FindNodeFromName(const SceneBundle* prefab, const char* name)
+int FindANodeFromName(const SceneBundle* prefab, const char* name)
 {
     int len = StringLength(name);
     for (int i = 0; i < prefab->numNodes; i++)
-        if (StringEqual(prefab->nodes[i].name, name, len))
+        if (StringContains(prefab->nodes[i].name, name))
             return i;
     return -1;
 }

@@ -62,12 +62,26 @@ uint PackHalf2(f16_2 v)
     #endif
 }
 
+uint2 PackRGBA16Snorm(float4 v)
+{
+    int4 s = int4(round(clamp(v, -1.0, 1.0) * 32767.0));
+    return uint2((uint(s.x) & 0xFFFFu) | (uint(s.y) << 16u),
+                 (uint(s.z) & 0xFFFFu) | (uint(s.w) << 16u));
+}
+
 f16_4 UnpackRGBA16Snorm(uint xy, uint zw) {
     return f16_4(
         f16(int(xy << 16u) >> 16),
         f16(int(xy)        >> 16),
         f16(int(zw << 16u) >> 16),
         f16(int(zw)        >> 16)
+    ) * f16(1.0 / 32767.0);
+}
+
+f16_2 UnpackRG16Snorm(uint xy) {
+    return f16_2(
+        f16(int(xy << 16u) >> 16),
+        f16(int(xy)        >> 16)
     ) * f16(1.0 / 32767.0);
 }
 

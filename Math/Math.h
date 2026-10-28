@@ -574,12 +574,11 @@ purefn f32 Expf(f32 f) {
     const s32 IEEE_FLT_MANTISSA_BITS  =	23;
     const s32 IEEE_FLT_EXPONENT_BITS  =	8;
     const s32 IEEE_FLT_EXPONENT_BIAS  =	127;
-    const s32 IEEE_FLT_SIGN_BIT       =	31;
     
     f32 x = f * 1.44269504088896340f; // multiply with ( 1 / log( 2 ) )
     
     s32 i = BitCast(s32, x);
-    s32 s = ( i >> IEEE_FLT_SIGN_BIT );
+    s32 s = ( i >> 31 );
     s32 e = ( ( i >> IEEE_FLT_MANTISSA_BITS ) & ( ( 1 << IEEE_FLT_EXPONENT_BITS ) - 1 ) ) - IEEE_FLT_EXPONENT_BIAS;
     s32 m = ( i & ( ( 1 << IEEE_FLT_MANTISSA_BITS ) - 1 ) ) | ( 1 << IEEE_FLT_MANTISSA_BITS );
     i = ( ( m >> ( IEEE_FLT_MANTISSA_BITS - e ) ) & ~( e >> 31 ) ) ^ s;
@@ -596,6 +595,35 @@ purefn f32 Expf(f32 f) {
     f32 q = 20.8189237930062f + x2;
     x = y * ( q + p ) / ( q - p );
     return x;
+}
+
+/* https://github.com/akohlmey/fastermath */
+static inline f32 Exp2f(f32 x)
+{
+    static const float fm_exp2f_p[7] = {
+        1.535336188319500e-4f,
+        1.339887440266574e-3f,
+        9.618437357674640e-3f,
+        5.550332471162809e-2f,
+        2.402264791363012e-1f,
+        6.931472028550421e-1f,
+        1.000000000000000f
+    };
+
+    f32 ipart, fpart;
+    union { f32 f; s32 i; } epart;
+    ipart = Floorf32(x + 0.5f);
+    fpart = x - ipart;
+    /* generate 2**num in floating point by bitshifting */
+    epart.i = (((s32)ipart) + 127) << 23;
+    x = fm_exp2f_p[0];
+    x = x * fpart + fm_exp2f_p[1];
+    x = x * fpart + fm_exp2f_p[2];
+    x = x * fpart + fm_exp2f_p[3];
+    x = x * fpart + fm_exp2f_p[4];
+    x = x * fpart + fm_exp2f_p[5];
+    x = x * fpart + fm_exp2f_p[6];
+    return epart.f * x;
 }
 
 // https://martin.ankerl.com/2012/01/25/optimized-approximative-pow-in-c-and-cpp/

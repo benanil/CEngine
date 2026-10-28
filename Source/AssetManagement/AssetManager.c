@@ -110,7 +110,7 @@ s32 LoadBundleMeshCached(const char* path, SceneBundle* bundle, void** outVertex
 // 80: surface (static) AVertex.position quantized to xyz unorm16 vs the primitive AABB
 // 81: skinned animation uses lod vertex offsets directly
 // 82: unindexed primitives store mega-buffer-relative generated indices
-const s32 ABMMeshVersion = 83;
+const s32 ABMMeshVersion = 84;
 
 u8 IsABMLastVersion(const char* path)
 {
@@ -359,6 +359,7 @@ s32 SaveGLTFBinary(const SceneBundle* gltf, const char* path)
         AFileWrite(&skin.numJoints, sizeof(s32), file, 1);
         AFileWrite(skin.inverseBindMatrices, sizeof(mat4x4) * skin.numJoints, file, 1);
         AFileWrite(skin.joints, sizeof(s32) * skin.numJoints, file, 1);
+        AFileWrite(skin.nodeToJoint, Mins32(gltf->numNodes, 96) * sizeof(u16), file, 1);
     }
     
     s32 totalAnimSamplerInput = 0;
@@ -399,13 +400,6 @@ s32 SaveGLTFBinary(const SceneBundle* gltf, const char* path)
     
     AFileWrite(&gltf->rootNode, sizeof(int), file, 1);
 
-    AFileWrite(&gltf->neckNode , sizeof(u16), file, 1);
-    AFileWrite(&gltf->spineNode, sizeof(u16), file, 1);
-    AFileWrite(&gltf->leftFoot , sizeof(u16), file, 1);
-    AFileWrite(&gltf->rightFoot, sizeof(u16), file, 1);
-    AFileWrite(&gltf->leftHand , sizeof(u16), file, 1);
-    AFileWrite(&gltf->rightHand, sizeof(u16), file, 1);
-    
     AFileClose(file);
     AX_LOG("abm save complete: %s vertices=%d indices=%d", path, gltf->totalVertices, gltf->totalIndices);
 #endif
@@ -711,6 +705,7 @@ s32 LoadSceneBundleBinary(const char* path, SceneBundle* gltf, void** outVertexH
         skin->joints = Pow2Alloc_Uninitialized(allocator, skin->numJoints * sizeof(s32));
         AFileRead(skin->inverseBindMatrices, sizeof(mat4x4) * skin->numJoints, file, 1);
         AFileRead(skin->joints, sizeof(s32) * skin->numJoints, file, 1);
+        if (version > 83) AFileRead(skin->nodeToJoint, sizeof(u16) * gltf->numNodes, file, 1);
     }
 
     s32 totalAnimSamplerInput = 0;
@@ -756,14 +751,9 @@ s32 LoadSceneBundleBinary(const char* path, SceneBundle* gltf, void** outVertexH
     
     AFileRead(&gltf->rootNode, sizeof(int), file, 1);
 
-    if (version >= 83)
+    if (version == 83 && gltf->numSkins > 0)
     {
-        AFileRead(&gltf->neckNode , sizeof(u16), file, 1);
-        AFileRead(&gltf->spineNode, sizeof(u16), file, 1);
-        AFileRead(&gltf->leftFoot , sizeof(u16), file, 1);
-        AFileRead(&gltf->rightFoot, sizeof(u16), file, 1);
-        AFileRead(&gltf->leftHand , sizeof(u16), file, 1);
-        AFileRead(&gltf->rightHand, sizeof(u16), file, 1);
+        MemsetZero(gltf->skins[0].nodeToJoint, sizeof(u16) * Mins32(gltf->numNodes, 96));
     }
 
     AFileClose(file);

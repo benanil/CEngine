@@ -10,31 +10,37 @@ float3 AnimatedWorldPos(float3 modelPos, float4 insRot, float3 insScale, float3 
     return entityPos + QMulVec3F32(insRot, modelPos * insScale);
 }
 
-// bone matrices are stored fp16 (12 halves / 6 u32); see WriteBone in AnimationCompute.hlsl.
-f16_3x4 LoadBone(StructuredBuffer<uint> boneMtx, uint idx)
+float4x3 SkinPosition(StructuredBuffer<uint> sBoneMtx, uint boneIdx)
 {
-    uint base = idx * MatrixNumInt32;
-    f16_3x4 bone;
-    bone[0] = f16_4(UnpackHalf2(boneMtx[base + 0]), UnpackHalf2(boneMtx[base + 1]));
-    bone[1] = f16_4(UnpackHalf2(boneMtx[base + 2]), UnpackHalf2(boneMtx[base + 3]));
-    bone[2] = f16_4(UnpackHalf2(boneMtx[base + 4]), UnpackHalf2(boneMtx[base + 5]));
-    return bone;
+    uint base = boneIdx * MatrixNumInt32;
+    float2 a0 = UnpackHalf2(sBoneMtx[base + 0]);
+    float2 a1 = UnpackHalf2(sBoneMtx[base + 1]);
+    float2 a2 = UnpackHalf2(sBoneMtx[base + 2]);
+    float2 a3 = UnpackHalf2(sBoneMtx[base + 3]);
+    float2 a4 = UnpackHalf2(sBoneMtx[base + 4]);
+    return float4x3(
+        float3(a0.x, a0.y, a1.x),
+        float3(a1.y, a2.x, a2.y),
+        float3(a3.x, a3.y, a4.x),
+        float3(asfloat(sBoneMtx[base + 5]), asfloat(sBoneMtx[base + 6]), asfloat(sBoneMtx[base + 7]))
+    );
 }
 
-f16_3x4 VertexAnimate(StructuredBuffer<uint> sBoneMtx, uint boneStart, uint4 aJoints, uint aWeights)
+float4x3 VertexAnimate(StructuredBuffer<uint> sBoneMtx, uint boneStart, uint4 aJoints, uint aWeights)
 {
     f16_4 weights;
     weights.xyz = UnpackVec3XY11Z10Unorm(aWeights);
     weights.w   = saturate(f16(1.0) - weights.x - weights.y - weights.z);
     
-    f16_3x4 animMat = (f16_3x4)0;
+    float4x3 animMat = (float4x3)0;
     [unroll]
     for (int i = 0; i < 4; i++)
     {
-        f16_3x4 bone = LoadBone(sBoneMtx, boneStart + aJoints[i]);
+        float4x3 bone = SkinPosition(sBoneMtx, boneStart + aJoints[i]);
         animMat[0] = mad(weights[i], bone[0], animMat[0]);
         animMat[1] = mad(weights[i], bone[1], animMat[1]);
         animMat[2] = mad(weights[i], bone[2], animMat[2]);
+        animMat[3] = mad(weights[i], bone[3], animMat[3]);
     }
     return animMat;
 }

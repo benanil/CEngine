@@ -31,19 +31,17 @@
 Texture2D<float>                 hiZTexture            : register(t0);
 StructuredBuffer<Entity>         entities              : register(t1);
 StructuredBuffer<PrimitiveGroup> primitiveGroups       : register(t2);
-StructuredBuffer<PrimitiveGroupLOD> primitiveGroupLODs : register(t3);
+StructuredBuffer<PrimitiveGroupLOD> primitiveGroupLODs : register(t3); 
 
-RWStructuredBuffer<uint>                drawSparseIndices    : register(u0, space1);
-RWStructuredBuffer<IndexedDrawCommand>  drawArgs             : register(u1, space1);
-RWStructuredBuffer<LineVertex>          lineVertices         : register(u2, space1);
-RWStructuredBuffer<IndirectDrawCommand> lineDrawCommand      : register(u3, space1);
-RWStructuredBuffer<uint>                visibleSparseIndices : register(u4, space1);
-RWStructuredBuffer<uint>                visibilityMask       : register(u5, space1); // 0 or 1 of sparse index
-RWStructuredBuffer<uint>                visibleCount         : register(u6, space1); // one value not an array
+RWStructuredBuffer<uint>                drawSparseIndices : register(u0, space1);
+RWStructuredBuffer<IndexedDrawCommand>  drawArgs          : register(u1, space1);
+RWStructuredBuffer<LineVertex>          lineVertices      : register(u2, space1);
+RWStructuredBuffer<IndirectDrawCommand> lineDrawCommand   : register(u3, space1);
+RWStructuredBuffer<uint>                visibleCount      : register(u4, space1); // one value not an array
 // two dispatch args
 // numVisible / 32 = dispatchArgs[0].groupCountX = dispatchArgs[1].groupCountY
 // maxVertexOfAnyMesh / 32 = dispatchArgs[1].groupCountZ 
-RWStructuredBuffer<IndirectDispatchCommand> dispatchArgs     : register(u7, space1); //
+RWStructuredBuffer<IndirectDispatchCommand> dispatchArgs     : register(u5, space1); 
 
 cbuffer params : register(b0, space2)
 {
@@ -295,20 +293,10 @@ void Initialize(uint idx, uint flags)
         if ((flags & visibilityOutReset) == visibilityOutReset)
         {
             visibleCount[0] = 0;
-
             dispatchArgs[0].groupCountX = 0;
             dispatchArgs[0].groupCountY = 1;
             dispatchArgs[0].groupCountZ = 1;
-
-            dispatchArgs[1].groupCountX = numPrimitiveGroups * MESH_LOD_COUNT;
-            dispatchArgs[1].groupCountY = 0;
-            dispatchArgs[1].groupCountZ = 0;
         }
-    }
-
-    if ((flags & visibilityOutReset) == visibilityOutReset && idx < maxEntityID)
-    {
-        visibilityMask[idx] = 0;
     }
 }
 
@@ -411,19 +399,8 @@ void main(uint3 tid : SV_DispatchThreadID)
 
     if ((flags & CULL_DRAW_FLAG_VISIBILITY_OUTPUT) != 0u)
     {
-        uint visibleSparse = EntityGetSparseID(entities[dense]);
-        uint old;
-        InterlockedCompareExchange(visibilityMask[visibleSparse], 0, 1, old);
-        InterlockedMax(dispatchArgs[1].groupCountZ, (lodGroup.lodNumVertices[lod] + 31u) / 32u);
-
-        if (old == 0u)
-        {
-            uint visibleSlot;
-            InterlockedAdd(visibleCount[0], 1, visibleSlot);
-        
-            visibleSparseIndices[visibleSlot] = visibleSparse;
-            InterlockedMax(dispatchArgs[1].groupCountY, (visibleSlot + 32u) / 32u);
-            dispatchArgs[0].groupCountX = dispatchArgs[1].groupCountY;
-        }
+        uint visibleSlot;
+        InterlockedAdd(visibleCount[0], 1, visibleSlot);
+        InterlockedMax(dispatchArgs[0].groupCountX, (visibleSlot + 32u) / 32u);
     }
 }

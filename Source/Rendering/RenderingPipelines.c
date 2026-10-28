@@ -242,12 +242,12 @@ static void InitComputePipelines(void)
 {
     SDL_GPUShaderFormat shaderformat = AX_GPU_SHADER_FORMAT;
     g_AnimComputePipeline = COMPUTE_DEF(Shaders_AnimationCompute_spv),
-        .num_uniform_buffers           = 1, .num_readonly_storage_buffers  = 7, .num_readwrite_storage_buffers = 1,
+        .num_uniform_buffers           = 1, .num_readonly_storage_buffers  = 6, .num_readwrite_storage_buffers = 1,
         THREAD_COUNT_XYZ(32, 1, 1)
     }); CHECK_CREATE(g_AnimComputePipeline, "Animation Compute Pipeline");
 
     g_CullDrawArgsComputePipeline = COMPUTE_DEF(Shaders_CullDrawArgsCompute_spv),
-        .num_readonly_storage_textures = 1, .num_uniform_buffers = 1, .num_readonly_storage_buffers  = 3, .num_readwrite_storage_buffers = 8,
+        .num_readonly_storage_textures = 1, .num_uniform_buffers = 1, .num_readonly_storage_buffers  = 3, .num_readwrite_storage_buffers = 6,
         THREAD_COUNT_XYZ(64, 1, 1)
     }); CHECK_CREATE(g_CullDrawArgsComputePipeline, "Cull Draw Args Compute Pipeline");
 

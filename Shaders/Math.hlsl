@@ -124,6 +124,14 @@ f16_4x4 M44PositionRotationVec(f16_4 position, f16_4 rotation)
     return res; 
 }
 
+f16_4x4 M44FromScalef(f16 scale)
+{
+    return f16_4x4(f16_4(scale, 0.0, 0.0, 0.0),
+                   f16_4(0.0, scale, 0.0, 0.0),
+                   f16_4(0.0, 0.0, scale, 0.0),
+                   f16_4(0.0, 0.0, 0.0, 1.0)); 
+}
+
 f16_4 QFromXAngle(f32 angle)
 {
     return f16_4(sin(0.5f * angle), 0.0f, 0.0f, cos(0.5f * angle));

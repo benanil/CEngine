@@ -562,6 +562,7 @@ static inline u32 SumU32(const u32* p, s32 len)
     // http://www.lrdev.com/lr/c/strlen.c
     purefn int StringLength(char const* s)
     {
+        if (!s || !s[0]) return 0;
         char const* p = s;
         const uint64_t m = 0x7efefefefefefeffull; 
         const uint64_t n = ~m;

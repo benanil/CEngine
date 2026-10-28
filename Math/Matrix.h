@@ -597,6 +597,11 @@ purefn mat4x4 M44PositionRotationScalePtr(const f32* position, const f32* rotati
     return res; 
 }
 
+purefn v128f VCALL M44ExtractPositionV(mat4x4 matrix)
+{
+    return matrix.r[3];
+}
+
 purefn float3 VCALL M44ExtractPosition(mat4x4 matrix)
 {
     float3 res;
@@ -604,7 +609,7 @@ purefn float3 VCALL M44ExtractPosition(mat4x4 matrix)
     return res;
 }
     
-purefn Quaternion VCALL M44ExtractRotation(mat4x4 M, u8 rowNormalize) 
+purefn Quaternion VCALL M44ExtractRotation(mat4x4 M) 
 {
     Quaternion res;
     QuaternionFromMatrix((f32*)&res, &M.m[0][0], 4);
@@ -706,6 +711,15 @@ purefn mat4x4 M44RotationZ(f32 angleRadians) {
     out_matrix.m[1][0] = -s;
     out_matrix.m[1][1] = c;
     return out_matrix;
+}
+
+purefn mat4x4 ExpandMat4x3ToMat4x4(const float* data12) {
+    mat4x4 result;
+    result.r[0] = VecLoad(data12 + 0);
+    result.r[1] = VecLoad(data12 + 4);
+    result.r[2] = VecLoad(data12 + 8);
+    result.r[3] = VecSetR(0.0f, 0.0f, 0.0f, 1.0f);
+    return result;
 }
 
 purefn FrustumPlanes VCALL CreateFrustumPlanes(mat4x4 viewProjection)

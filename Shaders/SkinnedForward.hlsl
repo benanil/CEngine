@@ -43,6 +43,7 @@ Texture2DArray<float>  PointShadowTexture     : register(t4, space2);
 Texture2DArray<float>  SpotShadowTexture      : register(t5, space2);
 Texture2D<float>       AmbientOcclusion       : register(t6, space2);
 Texture2D<float>       ContactShadow          : register(t7, space2);
+
 SamplerState           Sampler                : register(s0, space2);
 SamplerState           ShadowSampler          : register(s3, space2);
 SamplerState           PointShadowSampler     : register(s4, space2);
@@ -90,13 +91,12 @@ VSOutput vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("Dra
     uint lod = drawID - primitiveIdx * MESH_LOD_COUNT;
     PrimitiveGroup group = sPrimitiveGroups[primitiveIdx];
     uint denseIdx  = sDrawSparseIndices[lod * uint(MAX_ANIM_INSTANCES) + PrimitiveGroup_EntityOffset(group) + instanceID];
-    uint sparse = EntityGetSparseID(sEntities[denseIdx]);
     Entity entity = sEntities[denseIdx];
     f16_4  insRot   = EntityGetRotation(entity);
     f16_3  insScale = EntityGetScale(entity);
 
-    f16_3x4 animMat = VertexAnimate(sBoneMtx, sparse * MAX_BONES, input.aJoints, input.aWeights);
-    float3 pos = float3(mul(animMat, f16_4(input.aPos.xyz, 1.0)));
+    float4x3 animMat = VertexAnimate(sBoneMtx, denseIdx * MAX_BONES, input.aJoints, input.aWeights);
+    float3 pos = mul(float4(input.aPos.xyz, 1.0), animMat);
     float3 finalWorldPos = AnimatedWorldPos(pos, float4(insRot), float3(insScale), entity.position.xyz);
 
     f16_3 restNormal, restTangent;

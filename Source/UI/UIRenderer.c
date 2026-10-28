@@ -22,7 +22,7 @@ static UIShape              g_UIShapeStorage[UI_MAX_SHAPES];
 static UIImageCommand       g_UIImageStorage[UI_MAX_IMAGES];
 static UIOrderedTextCommand g_UITextStorage[UI_MAX_TEXTS];
 static UIBatch              g_UIBatchStorage[UI_MAX_BATCHES];
-static u8                   g_UILayoutMemory[8u * 1024u * 1024u];
+static u8                   g_UILayoutMemory[16u * 1024u * 1024u];
 static char                 g_UIFrameStringMemory[128u * 1024u];
 static Arena                g_UIFrameStringArena;
 
@@ -73,6 +73,7 @@ static void UILayoutInit(void)
     Clay_Arena arena = Clay_CreateArenaWithCapacityAndMemory(sizeof(g_UILayoutMemory), g_UILayout.memory);
     Clay_Initialize(arena, (Clay_Dimensions){ (f32)Maxu32(g_WindowState.prev_width, 1u), (f32)Maxu32(g_WindowState.prev_height, 1u) },
                            (Clay_ErrorHandler){ UILayoutHandleError });
+    Clay_SetMaxElementCount(Clay__defaultMaxElementCount * 2);
     Clay_SetMeasureTextFunction(UIMeasureText, NULL);
     g_UILayout.initialized = true;
 }
@@ -717,6 +718,15 @@ Clay_String UIStr(const char* chars)
     return (Clay_String){
         .isStaticallyAllocated = false, 
         .length = (s32)StringLength(chars),
+        .chars = chars 
+    };
+}
+
+Clay_String UIStrLn(const char* chars, s32 ln)
+{
+    return (Clay_String){
+        .isStaticallyAllocated = false, 
+        .length = Mins32(StringLength(chars), ln),
         .chars = chars 
     };
 }

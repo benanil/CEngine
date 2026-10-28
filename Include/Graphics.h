@@ -263,7 +263,6 @@ typedef struct RenderSetBuffers_
     SDL_GPUBuffer* primitiveGroupLOD;
     SDL_GPUBuffer* sparseToDense;
     SDL_GPUBuffer* entity;
-    SDL_GPUBuffer* visibleSparseIndices;
     SDL_GPUBuffer* visibilityMask;
     SDL_GPUBuffer* visibleCount;
     SDL_GPUBuffer* dispatchArgs;

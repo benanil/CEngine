@@ -1,5 +1,5 @@
 #define INT16_SUPPORTED 0
-#define FLOAT16_SUPPORTED 1
+#define FLOAT16_SUPPORTED 0
 
 #include "../../Include/RenderLimits.h"
 #include "../Bitpack.hlsl"
@@ -24,16 +24,16 @@ struct AnimationInstance {
 };
 
 struct AnimationData {
-    uint frameOffset;
-    uint numFrames;
-    uint rootNodeIndex; // u16
-    uint numJoints;     // u16
-    uint numNodes;      // u16
+    uint  frameOffset;
+    uint  numFrames;
+    float invRotScale; // u16
+    uint  numJoints; // u16
+    uint  numNodes;  // u16
     float duration;     
-    uint jointOffset;  
-    uint invBindOffset;
-    uint hierarchyOffset;
-    uint neckSpineNodes;
+    uint  jointOffset;  
+    uint  invBindOffset;
+    uint  hierarchyOffset;
+    uint  neckSpineNodes;
 };
 
 StructuredBuffer<uint>               animPoses             : register(t0); // per bone * frame
@@ -42,7 +42,6 @@ StructuredBuffer<AnimationData>      animData              : register(t2); // pe
 StructuredBuffer<uint>               joints                : register(t3); // per instance * bone
 StructuredBuffer<uint>               inverseBindMatrices   : register(t4); // per skin * bone
 StructuredBuffer<AnimationInstance>  animInstances         : register(t5); // per instance 
-StructuredBuffer<uint>               visibleSparseIndices  : register(t6); // invisible animations are not calculated nice optimization
 
 RWStructuredBuffer<uint> outBoneMtx : register(u0, space1); // per instance * bone
 
@@ -55,15 +54,17 @@ cbuffer params : register(b0, space2)
 // and fp16-friendly registers. The metre-scale translation column quantizes to ~1 mm; to keep that
 // from showing as swim, bake the bounds center into the translation before packing (needs the
 // per-instance center plumbed in) - it is currently subtracted later in AnimateVertices.
-void WriteBone(f16_3x4 bone, uint idx)
+void WriteBone(mat4x4 bone, uint idx)
 {
     uint base = MatrixNumInt32 * idx;
-    outBoneMtx[base + 0] = PackHalf2(VecXY(bone[0]));
-    outBoneMtx[base + 1] = PackHalf2(VecZW(bone[0]));
-    outBoneMtx[base + 2] = PackHalf2(VecXY(bone[1]));
-    outBoneMtx[base + 3] = PackHalf2(VecZW(bone[1]));
-    outBoneMtx[base + 4] = PackHalf2(VecXY(bone[2]));
-    outBoneMtx[base + 5] = PackHalf2(VecZW(bone[2]));
+    outBoneMtx[base + 0] = PackHalf2(f16_2(bone[0][0], bone[0][1]));
+    outBoneMtx[base + 1] = PackHalf2(f16_2(bone[0][2], bone[1][0]));
+    outBoneMtx[base + 2] = PackHalf2(f16_2(bone[1][1], bone[1][2]));
+    outBoneMtx[base + 3] = PackHalf2(f16_2(bone[2][0], bone[2][1]));
+    outBoneMtx[base + 4] = PackHalf2(f16_2(bone[2][2], 0.0));
+    outBoneMtx[base + 5] = asuint(bone[3].x);
+    outBoneMtx[base + 6] = asuint(bone[3].y);
+    outBoneMtx[base + 7] = asuint(bone[3].z);
 }
 
 f16_4 GetHalf4(StructuredBuffer<uint> buffer, uint idx)
@@ -71,15 +72,28 @@ f16_4 GetHalf4(StructuredBuffer<uint> buffer, uint idx)
     return VecCombine(UnpackHalf2(buffer[idx]), UnpackHalf2(buffer[idx + 1]));
 }
 
-f16_4x4 LoadMatrix(uint idx, uint invBindOffset)
+float2 UnpackSnorm2x16Fp32(uint v)
 {
-    uint mtx = uint(invBindOffset + idx) * ANIM_MATRIX_NUM_INT32;
-    f16_4x4 result;
-    result[0] = GetHalf4(inverseBindMatrices, mtx + 0);
-    result[1] = GetHalf4(inverseBindMatrices, mtx + 2);
-    result[2] = GetHalf4(inverseBindMatrices, mtx + 4);
-    result[3] = GetHalf4(inverseBindMatrices, mtx + 6);
-    return result;
+    int2 s = int2((int)(v << 16) >> 16, (int)v >> 16);
+    return max(float2(s) * (1.0 / 32767.0), -1.0);
+}
+
+mat4x4 LoadInvBind(uint i, float rotScale)
+{
+    uint base = i * ANIM_MATRIX_NUM_INT32;
+    float2 a0 = UnpackSnorm2x16Fp32(inverseBindMatrices[base + 0]);
+    float2 a1 = UnpackSnorm2x16Fp32(inverseBindMatrices[base + 1]);
+    float2 a2 = UnpackSnorm2x16Fp32(inverseBindMatrices[base + 2]);
+    float2 a3 = UnpackSnorm2x16Fp32(inverseBindMatrices[base + 3]);
+    float2 a4 = UnpackSnorm2x16Fp32(inverseBindMatrices[base + 4]);
+
+    return mat4x4(
+        float4(float3(a0.x, a0.y, a1.x) * rotScale, 0.0),
+        float4(float3(a1.y, a2.x, a2.y) * rotScale, 0.0),
+        float4(float3(a3.x, a3.y, a4.x) * rotScale, 0.0),
+        float4(asfloat(inverseBindMatrices[base + 5]),
+               asfloat(inverseBindMatrices[base + 6]),
+               asfloat(inverseBindMatrices[base + 7]), 1.0));
 }
 
 f16_2x4 LoadPose(uint i, uint frameOffset, uint frame)
@@ -113,12 +127,9 @@ void FlattenBoneMatrices(uint numNodes, uint hierarchyOffset, inout Pose poses[M
 
 [numthreads(32, 1, 1)]
 void main(uint3 GlobalInvocationID : SV_DispatchThreadID)
-{
-    uint visibleIdx = GlobalInvocationID.x;
-    if (visibleIdx >= uint(numInstances)) return;
-    
-    uint instanceIdx = visibleSparseIndices[visibleIdx];
-    if (instanceIdx >= uint(MAX_ANIM_INSTANCES)) return;
+{ 
+    uint instanceIdx = GlobalInvocationID.x;
+    if (instanceIdx >= numInstances) return;
     AnimationInstance anim = animInstances[instanceIdx];
     AnimationData     data = animData[anim.animIdx2 & 0xFFFFu];
 
@@ -172,9 +183,10 @@ void main(uint3 GlobalInvocationID : SV_DispatchThreadID)
     for (u32 i = 0; i < numJoints; i++)
     {
         Pose pose = poses[joints[data.jointOffset + i]];
-        f16_4x4 mat = M44PositionRotationVec(pose.translation, pose.rotation);
-        mat = M44Multiply(LoadMatrix(i, data.invBindOffset), mat);
+        mat4x4 mat = M44PositionRotationVec(pose.translation, pose.rotation);
+        mat = M44Multiply(LoadInvBind(i + data.invBindOffset, data.invRotScale), mat);
+        
         uint outIdx = instanceIdx * MAX_BONES + i;
-        WriteBone((f16_3x4)M44Transpose(mat), outIdx);
+        WriteBone(mat, outIdx);
     }
 }

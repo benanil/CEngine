@@ -35,13 +35,12 @@ float4 vert(VSInput input,
     uint lod = drawID - primitiveIdx * MESH_LOD_COUNT;
     PrimitiveGroup group = sPrimitiveGroups[primitiveIdx];
     uint denseIdx  = sDrawSparseIndices[lod * uint(MAX_ANIM_INSTANCES) + PrimitiveGroup_EntityOffset(group) + instanceID];
-    uint sparse = EntityGetSparseID(sEntities[denseIdx]);
     Entity entity = sEntities[denseIdx];
     f16_4 insRot = EntityGetRotation(entity);
     f16_3 insScale = EntityGetScale(entity);
 
-    f16_3x4 animMat = VertexAnimate(sBoneMtx, sparse * MAX_BONES, input.aJoints, input.aWeights);
-    float3 pos = float3(mul(animMat, f16_4(input.aPos.xyz, 1.0)));
+    float4x3 animMat = VertexAnimate(sBoneMtx, denseIdx * MAX_BONES, input.aJoints, input.aWeights);
+    float3 pos = mul(float4(input.aPos.xyz, 1.0), animMat);
     float3 finalWorldPos = AnimatedWorldPos(pos, float4(insRot), float3(insScale), entity.position.xyz);
 
     return MulShadowCascade(sShadowCascades[0], uCascadeIndex, float4(finalWorldPos, 1.0));

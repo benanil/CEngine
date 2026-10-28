@@ -45,7 +45,7 @@ typedef struct GPUAnimationData_
 {
     u32 frameOffset;
     u32 numFrames;
-    u32 rootNodeIndex;
+    f32 invRotScale;
     u32 numJoints;
     u32 numNodes;
     f32 duration;
@@ -63,8 +63,8 @@ typedef struct AnimationBundleAlloc_
     u16 skinSlot;
     u16 animOffset;
     u16 animCount;
-    u16 neckNode;
-    u16 spineNode;
+    u16 neckJoint;
+    u16 spineJoint;
     u16 numNodes;
 } AnimationBundleAlloc;
 

@@ -61,13 +61,11 @@ void DispatchCullDrawArgsCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet
         buffers->primitiveGroup,
         buffers->primitiveGroupLOD
     };
-    SDL_GPUStorageBufferReadWriteBinding rw_bindings[8] = {
+    SDL_GPUStorageBufferReadWriteBinding rw_bindings[6] = {
         { drawBuffers->sparseIndices },
         { drawBuffers->args },
         { g_RenderState.lineBuffer },
         { g_RenderState.lineDrawArgsBuffer },
-        { buffers->visibleSparseIndices },
-        { buffers->visibilityMask },
         { buffers->visibleCount },
         { buffers->dispatchArgs }
     };
@@ -774,14 +772,13 @@ void DispatchAnimationCompute(SDL_GPUCommandBuffer* cmd, RenderSet* renderSet, R
         { anims->boneBuffer }
     };
 
-    SDL_GPUBuffer* buffers[7] = {
+    SDL_GPUBuffer* buffers[6] = {
         anims->poseBuffer,
         anims->hierarchyBuffer,
         anims->dataBuffer,
         anims->jointsBuffer,
         anims->invBindBuffer,
-        anims->instanceBuffer,
-        setBuffers->visibleSparseIndices
+        anims->instanceBuffer
     };
 
     SDL_GPUComputePass* pass = SDL_BeginGPUComputePass(cmd, NULL, 0, rw_bindings, SDL_arraysize(rw_bindings));

@@ -10,10 +10,10 @@
 
 #define SHADOW_MAP_SIZE            (1024u * 3u)
 #define SHADOW_CASCADE_COUNT       3u
-#define SHADOW_MAX_DISTANCE        160.0f
+#define SHADOW_MAX_DISTANCE        90.0f
 #define SHADOW_NEAR_PLANE          1.0f
 #define SHADOW_CAMERA_DISTANCE     200.0f
-#define SHADOW_CASTER_DEPTH_MARGIN 150.0f
+#define SHADOW_CASTER_DEPTH_MARGIN 450.0f
 #define SHADOW_CASCADE_OVERLAP     1.0f
 #define SHADOW_SPLIT_NEAR_DISTANCE 40.0f
 #define SHADOW_PSSM_LAMBDA         0.5f
@@ -29,7 +29,7 @@
 #define SPOT_SHADOW_MAX_LIGHTS     16u
 #define SPOT_SHADOW_NEAR_PLANE     0.05f
 
-#define MatrixNumInt32          6 /* fp16 3x4 bone matrix (12 halves / 6 u32) */
+#define MatrixNumInt32          8 /* fp16 3x4 bone matrix (12 halves / 6 u32) */
 #define MAX_BONES               96u
 #define MaxBoneDepth            32
 // 1024 animation is 512mb memory on gpu

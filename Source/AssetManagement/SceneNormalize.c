@@ -54,15 +54,6 @@ void SceneBundle_BuildParentIndices(SceneBundle* scene)
     }
 }
 
-static u16 FindNodeFromName(const SceneBundle* prefab, const char* name)
-{
-    int len = StringLength(name);
-    for (u16 i = 0; i < prefab->numNodes; i++)
-        if (StringEqual(prefab->nodes[i].name, name, len))
-            return i;
-    return 0;
-}
-
 void SceneBundle_FlattenNodes(SceneBundle* scene)
 {
     const s32 numNodes = scene->numNodes;
@@ -82,13 +73,6 @@ void SceneBundle_FlattenNodes(SceneBundle* scene)
     s32* nodeRemap  = (s32*)ArenaPushGlobal(numNodes * sizeof(s32));
     s32* oldFromNew = (s32*)ArenaPushGlobal(numNodes * sizeof(s32));
     s32* stack      = (s32*)ArenaPushGlobal(numNodes * sizeof(s32));
-
-    scene->neckNode  = FindNodeFromName(scene, "mixamorig:Neck");
-    scene->spineNode = FindNodeFromName(scene, "mixamorig:Spine");
-    scene->leftFoot  = FindNodeFromName(scene, "mixamorig:LeftFoot");
-    scene->rightFoot = FindNodeFromName(scene, "mixamorig:RightFoot");
-    scene->leftHand  = FindNodeFromName(scene, "mixamorig:LeftHand");
-    scene->rightHand = FindNodeFromName(scene, "mixamorig:RightHand");
 
     for (s32 i = 0; i < numNodes; i++)
     {
@@ -133,21 +117,28 @@ void SceneBundle_FlattenNodes(SceneBundle* scene)
     scene->rootNode = nodeRemap[scene->rootNode];
 
     for (s32 s = 0; s < scene->numScenes; s++)
+    {
         for (s32 i = 0; i < scene->scenes[s].numNodes; i++)
         {
             s32 node = scene->scenes[s].nodes[i];
             scene->scenes[s].nodes[i] = node >= 0 && node < numNodes ? nodeRemap[node] : -1;
         }
+    }
 
     for (s32 s = 0; s < scene->numSkins; s++)
     {
         ASkin* skin = &scene->skins[s];
         if (skin->skeleton >= 0)
             skin->skeleton = skin->skeleton < numNodes ? nodeRemap[skin->skeleton] : -1;
+        
         for (s32 i = 0; i < skin->numJoints; i++)
         {
             s32 joint = skin->joints[i];
             skin->joints[i] = joint >= 0 && joint < numNodes ? nodeRemap[joint] : -1;
+            if (skin->joints[i] == nodeRemap[joint])
+            {
+                skin->nodeToJoint[nodeRemap[joint]] = i;
+            }
         }
     }
 
