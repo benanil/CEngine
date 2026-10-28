@@ -174,7 +174,7 @@ static void CharacterLoaded(SceneAsyncRequest* request)
 
 void OpenSceneCallback(const char* path)
 {
-    SceneAsyncBegin(SceneAsyncOp_ImportMesh, "Assets/Meshes/Character/Character. gltf", "LoadCharacter", CharacterLoaded);
+    SceneAsyncBegin(SceneAsyncOp_ImportMesh, "Assets/Meshes/Character/Character.gltf", "LoadCharacter", CharacterLoaded);
 }
 
 void BeforeDestroySceneCallback(Scene* scene)
