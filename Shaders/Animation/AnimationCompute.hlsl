@@ -50,10 +50,6 @@ cbuffer params : register(b0, space2)
     int numInstances;
 };
 
-// Bone matrices are stored fp16 (12 halves / 6 u32) to keep the skinning gather at half bandwidth
-// and fp16-friendly registers. The metre-scale translation column quantizes to ~1 mm; to keep that
-// from showing as swim, bake the bounds center into the translation before packing (needs the
-// per-instance center plumbed in) - it is currently subtracted later in AnimateVertices.
 void WriteBone(mat4x4 bone, uint idx)
 {
     uint base = MatrixNumInt32 * idx;
@@ -72,28 +68,21 @@ f16_4 GetHalf4(StructuredBuffer<uint> buffer, uint idx)
     return VecCombine(UnpackHalf2(buffer[idx]), UnpackHalf2(buffer[idx + 1]));
 }
 
-float2 UnpackSnorm2x16Fp32(uint v)
+float4 GetFloat4(StructuredBuffer<uint> buffer, uint idx)
 {
-    int2 s = int2((int)(v << 16) >> 16, (int)v >> 16);
-    return max(float2(s) * (1.0 / 32767.0), -1.0);
+    return float4(asfloat(buffer[idx + 0]), asfloat(buffer[idx + 1]),
+                  asfloat(buffer[idx + 2]), asfloat(buffer[idx + 3]));
 }
 
-mat4x4 LoadInvBind(uint i, float rotScale)
+f16_4x4 LoadInvBind(uint idx, uint invBindOffset)
 {
-    uint base = i * ANIM_MATRIX_NUM_INT32;
-    float2 a0 = UnpackSnorm2x16Fp32(inverseBindMatrices[base + 0]);
-    float2 a1 = UnpackSnorm2x16Fp32(inverseBindMatrices[base + 1]);
-    float2 a2 = UnpackSnorm2x16Fp32(inverseBindMatrices[base + 2]);
-    float2 a3 = UnpackSnorm2x16Fp32(inverseBindMatrices[base + 3]);
-    float2 a4 = UnpackSnorm2x16Fp32(inverseBindMatrices[base + 4]);
-
-    return mat4x4(
-        float4(float3(a0.x, a0.y, a1.x) * rotScale, 0.0),
-        float4(float3(a1.y, a2.x, a2.y) * rotScale, 0.0),
-        float4(float3(a3.x, a3.y, a4.x) * rotScale, 0.0),
-        float4(asfloat(inverseBindMatrices[base + 5]),
-               asfloat(inverseBindMatrices[base + 6]),
-               asfloat(inverseBindMatrices[base + 7]), 1.0));
+    uint mtx = uint(invBindOffset + idx) * INV_BIND_NUM_INT32;
+    f16_4x4 result;
+    result[0] = f16_4(GetFloat4(inverseBindMatrices, mtx + 0));
+    result[1] = f16_4(GetFloat4(inverseBindMatrices, mtx + 4));
+    result[2] = f16_4(GetFloat4(inverseBindMatrices, mtx + 8));
+    result[3] = f16_4(GetFloat4(inverseBindMatrices, mtx + 12));
+    return result;
 }
 
 f16_2x4 LoadPose(uint i, uint frameOffset, uint frame)
@@ -183,9 +172,8 @@ void main(uint3 GlobalInvocationID : SV_DispatchThreadID)
     for (u32 i = 0; i < numJoints; i++)
     {
         Pose pose = poses[joints[data.jointOffset + i]];
-        mat4x4 mat = M44PositionRotationVec(pose.translation, pose.rotation);
-        mat = M44Multiply(LoadInvBind(i + data.invBindOffset, data.invRotScale), mat);
-        
+        mat4x4 mat = (mat4x4)M44PositionRotationVec(pose.translation, pose.rotation);
+        mat = M44Multiply(LoadInvBind(i, data.invBindOffset), mat);
         uint outIdx = instanceIdx * MAX_BONES + i;
         WriteBone(mat, outIdx);
     }

@@ -24,6 +24,16 @@ f16_3 UnpackVec3XY11Z10Unorm(uint packed) {
     );
 }
 
+float3 UnpackVec3XY11Z10Unormf32(uint packed) {
+    const f32 scale11 = f32(1.0 / 2047.0);
+    const f32 scale10 = f32(1.0 / 1023.0);
+    return float3(
+        float( packed        & 0x7FFu) * scale11,
+        float((packed >> 11) & 0x7FFu) * scale11,
+        float( packed >> 22          ) * scale10
+    );
+}
+
 f16 UnpackHalf(uint packed)
 {
     #if INT16_SUPPORTED
@@ -47,6 +57,14 @@ f16_2 UnpackHalf2(uint packed) {
     return asfloat16(uint16_t2(u16(packed), u16(packed >> 16)));
     #else
     return f16_2(f16tof32(packed), f16tof32(packed >> 16));
+    #endif
+}
+
+float2 UnpackHalf2_f32(uint packed) {
+    #if INT16_SUPPORTED
+    return asfloat16(uint16_t2(u16(packed), u16(packed >> 16)));
+    #else
+    return float2(f16tof32(packed), f16tof32(packed >> 16));
     #endif
 }
 
@@ -76,6 +94,15 @@ f16_4 UnpackRGBA16Snorm(uint xy, uint zw) {
         f16(int(zw << 16u) >> 16),
         f16(int(zw)        >> 16)
     ) * f16(1.0 / 32767.0);
+}
+
+float4 UnpackRGBA16Snormf32(uint xy, uint zw) {
+    return float4(
+        f32(int(xy << 16u) >> 16),
+        f32(int(xy)        >> 16),
+        f32(int(zw << 16u) >> 16),
+        f32(int(zw)        >> 16)
+    ) * f32(1.0f / 32767.0f);
 }
 
 f16_2 UnpackRG16Snorm(uint xy) {

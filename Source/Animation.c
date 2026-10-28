@@ -74,7 +74,7 @@ static void AnimationSystem_EnsureBuffers(AnimationSystem* anims)
     const size_t poseBytes       = (size_t)MAX_BONES * MAX_GPU_ANIM_FRAMES * ANIM_POSE_NUM_INT32 * sizeof(u32);
     const size_t hierarchyBytes  = (size_t)MAX_SKIN_COUNT * ANIM_NODE_COUNT * sizeof(u32);
     const size_t jointBytes      = (size_t)MAX_BONES * MAX_SKIN_COUNT * sizeof(u32);
-    const size_t invBindBytes    = (size_t)MAX_BONES * MAX_SKIN_COUNT * ANIM_MATRIX_NUM_INT32 * sizeof(u32);
+    const size_t invBindBytes    = (size_t)MAX_BONES * MAX_SKIN_COUNT * INV_BIND_NUM_INT32 * sizeof(u32);
     anims->boneBuffer      = CreateBuffer(NULL, maxBoneMatrices, BReadRasterBit | BWriteComputeBit, "CPJointMatrices");
     anims->poseBuffer      = CreateBuffer(NULL, poseBytes      , BReadCompute, "CPAnimPoses");
     anims->hierarchyBuffer = CreateBuffer(NULL, hierarchyBytes , BReadCompute, "CPAnimHierarchy");
@@ -85,7 +85,7 @@ static void AnimationSystem_EnsureBuffers(AnimationSystem* anims)
 }
 
 static int AnimationGetGPUData(AnimationSystem* anims, const SceneBundle* bundle, Pose poses[MAX_BONES], int animIdx,
-                               u32 animSlot, u32 frameOffset, u32 jointOffset, u32 invBindOffset, u32 hierarchyOffset, f32 invRotScale)
+                               u32 animSlot, u32 frameOffset, u32 jointOffset, u32 invBindOffset, u32 hierarchyOffset)
 {
     const AAnimation* animation = &bundle->animations[animIdx];
     const ASkin*      skin      = &bundle->skins[0];
@@ -117,7 +117,7 @@ static int AnimationGetGPUData(AnimationSystem* anims, const SceneBundle* bundle
     anims->animData[animSlot] = (GPUAnimationData){
         .frameOffset     = frameOffset,
         .numFrames       = (u32)numFrames,
-        .invRotScale     = invRotScale,// (u32)bundle->rootNode,
+        .rootNode        = (u32)bundle->rootNode,
         .numJoints       = (u32)skin->numJoints,
         .duration        = animation->duration,
         .jointOffset     = jointOffset,
@@ -128,37 +128,7 @@ static int AnimationGetGPUData(AnimationSystem* anims, const SceneBundle* bundle
     return numFrames;
 }
 
-typedef struct PackedInvBind_ {
-    uint32_t r[5];
-    float t[3];
-} PackedInvBind;
-
-PackedInvBind PackInvBind(const float m[16], float rotScale)
-{
-    uint16_t h[10] = {};
-    for (int c = 0; c < 3; ++c)
-        for (int r = 0; r < 3; ++r)
-            h[c * 3 + r] = PackSnorm16(m[c * 4 + r] / rotScale);
-
-    PackedInvBind out;
-    MemCopy(out.r, h, sizeof(h));
-    out.t[0] = m[12];
-    out.t[1] = m[13];
-    out.t[2] = m[14];
-    return out;
-}
-
-float ComputeRotScale(const float* mats, size_t count)
-{
-    float mx = 1.0;
-    for (size_t i = 0; i < count; ++i)
-        for (int c = 0; c < 3; ++c)
-            for (int r = 0; r < 3; ++r)
-                mx = Maxf32(mx, Absf32(mats[i * 16 + c * 4 + r]));
-    return Exp2f(Ceilf(Log2f(mx)));
-}
-
-static f32 StoreBundleSkinGPUData(AnimationSystem* anims, const SceneBundle* bundle, u32 jointOffset, u32 invBindOffset, u32 hierarchyOffset)
+static bool StoreBundleSkinGPUData(AnimationSystem* anims, const SceneBundle* bundle, u32 jointOffset, u32 invBindOffset, u32 hierarchyOffset)
 {
     const ASkin* skin = &bundle->skins[0];
     if (jointOffset + (u32)skin->numJoints > MAX_BONES * MAX_SKIN_COUNT ||
@@ -166,13 +136,13 @@ static f32 StoreBundleSkinGPUData(AnimationSystem* anims, const SceneBundle* bun
         hierarchyOffset + (u32)bundle->numNodes > MAX_SKIN_COUNT * ANIM_NODE_COUNT)
     {
         AX_WARN("animation skin GPU data capacity exceeded joints=%d hierarchy=%d", jointOffset, hierarchyOffset);
-        return 0.0f;
+        return false;
     }
 
     ArenaMark mark = ArenaSave(&GlobalArena);
     u32* hierarchy = (u32*)ArenaAllocZero(&GlobalArena, (size_t)bundle->numNodes * sizeof(u32));
     u32* joints    = (u32*)ArenaAllocZero(&GlobalArena, (size_t)skin->numJoints * sizeof(u32));
-    u32* invBind   = (u32*)ArenaAllocZero(&GlobalArena, (size_t)skin->numJoints * ANIM_MATRIX_NUM_INT32 * sizeof(u32));
+    u32* invBind   = (u32*)ArenaAllocZero(&GlobalArena, (size_t)skin->numJoints * INV_BIND_NUM_INT32 * sizeof(u32));
 
     for (int i = 0; i < bundle->numNodes; i++)
     {
@@ -184,12 +154,7 @@ static f32 StoreBundleSkinGPUData(AnimationSystem* anims, const SceneBundle* bun
         joints[i] = (u32)skin->joints[i];
 
     const mat4x4* inv = (const mat4x4*)skin->inverseBindMatrices;
-    f32 rotScale = ComputeRotScale((const f32*)inv, skin->numJoints);
-    for (u32 i = 0; i < skin->numJoints; i++)
-    {
-        PackedInvBind packed = PackInvBind((const f32*)&inv[i], rotScale);
-        MemCopy(invBind + i * ANIM_MATRIX_NUM_INT32, &packed, sizeof(packed));
-    }
+    MemCopy(invBind, inv, sizeof(mat4x4) * skin->numJoints);
 
     if (bundle->numNodes > 0)
         UpdateGPUBuffer(anims->hierarchyBuffer, hierarchy, (size_t)bundle->numNodes * sizeof(u32),
@@ -198,11 +163,11 @@ static f32 StoreBundleSkinGPUData(AnimationSystem* anims, const SceneBundle* bun
     {
         UpdateGPUBuffer(anims->jointsBuffer, joints, (size_t)skin->numJoints * sizeof(u32),
                         (size_t)jointOffset * sizeof(u32));
-        UpdateGPUBuffer(anims->invBindBuffer, invBind, (size_t)skin->numJoints * ANIM_MATRIX_NUM_INT32 * sizeof(u32),
-                        (size_t)invBindOffset * ANIM_MATRIX_NUM_INT32 * sizeof(u32));
+        UpdateGPUBuffer(anims->invBindBuffer, invBind, (size_t)skin->numJoints * INV_BIND_NUM_INT32 * sizeof(u32),
+                        (size_t)invBindOffset * INV_BIND_NUM_INT32 * sizeof(u32));
     }
     ArenaRestore(&GlobalArena, mark);
-    return rotScale;
+    return true;
 }
 
 void AnimationSystem_UpdateInstances(AnimationSystem* anims, const GPUAnimationInstance* instances, u32 count)
@@ -294,8 +259,7 @@ s32 AnimationSystem_AppendBundle(AnimationSystem* anims, const SceneBundle* bund
     u32 jointOffset = (u32)skinSlot * MAX_BONES;
     u32 invBindOffset = (u32)skinSlot * MAX_BONES;
     u32 hierarchyOffset = (u32)skinSlot * ANIM_NODE_COUNT;
-    f32 invRotScale = StoreBundleSkinGPUData(anims, bundle, jointOffset, invBindOffset, hierarchyOffset);
-    if (invRotScale < MATH_Epsilon)
+    if (!StoreBundleSkinGPUData(anims, bundle, jointOffset, invBindOffset, hierarchyOffset))
     {
         BitsetSetRange(anims->usedAnimSlots, (u32)animOffset, animCount, false);
         BitsetReset(anims->usedSkinSlots, skinSlot);
@@ -312,7 +276,7 @@ s32 AnimationSystem_AppendBundle(AnimationSystem* anims, const SceneBundle* bund
         s32 numFrames = (s32)(bundle->animations[animIdx].duration * ANIM_NUM_FRAMES);
         numFrames = AnimationGetGPUData(anims, bundle, poses, (int)animIdx,
                                         (u32)animOffset + animIdx, frameCursor,
-                                        jointOffset, invBindOffset, hierarchyOffset, invRotScale);
+                                        jointOffset, invBindOffset, hierarchyOffset);
         anims->animData[animIdx].neckNode  = (u16)neckNode;
         anims->animData[animIdx].spineNode = (u16)spineNode;
 

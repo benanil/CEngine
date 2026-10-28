@@ -82,7 +82,6 @@ struct VSOutput
     float3   worldPos   : TEXCOORD11;
     nointerpolation float3 cascadeSplits : TEXCOORD7;
     nointerpolation uint   materialIndex : TEXCOORD8;
-    nointerpolation float  handedness : TEXCOORD9;
 };
 
 VSOutput vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("DrawIndex")]] uint drawID : DRAWINDEX)
@@ -103,9 +102,10 @@ VSOutput vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("Dra
     UnpackNormalTangent(input.aTangentSpace, restNormal, restTangent);
     f16 tangentHandedness = UnpackTangentHandedness(input.aTangentSpace);
 
+    f16_3x3 rotMat = transpose((f16_3x3)animMat);
     f16_3x3 tbn;
-    tbn[2] = normalize(QMulVec3(insRot, mul(animMat, f16_4(restNormal,  f16(0.0)))));
-    tbn[1] = normalize(Orthonormalize(QMulVec3(insRot, mul(animMat, f16_4(restTangent, f16(0.0)))), tbn[2]));
+    tbn[2] = normalize(QMulVec3(insRot, mul(rotMat, f16_4(restNormal,  f16(0.0)))));
+    tbn[1] = normalize(Orthonormalize(QMulVec3(insRot, mul(rotMat, f16_4(restTangent, f16(0.0)))), tbn[2]));
 
     VSOutput o;
     o.position  = mul(uViewProj, float4(finalWorldPos, 1.0));
@@ -121,7 +121,6 @@ VSOutput vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("Dra
     o.viewDepth = dot(finalWorldPos - uCameraPosition.xyz, uCameraForward.xyz);
     o.cascadeSplits = cascades.splitDistances.xyz;
     o.materialIndex = PrimitiveGroup_MaterialIndex(group);
-    o.handedness = float(tangentHandedness);
     return o;
 }
 

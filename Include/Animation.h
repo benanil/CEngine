@@ -44,9 +44,9 @@ STATIC_ASSERT(sizeof(GPUAnimationInstance) == 16, "gpu animation instance should
 typedef struct GPUAnimationData_
 {
     u32 frameOffset;
-    u32 numFrames;
-    f32 invRotScale;
-    u32 numJoints;
+    u32 numFrames; 
+    u32 rootNode;  // useless, 0 is root node
+    u32 numJoints; //u8
     u32 numNodes;
     f32 duration;
     u32 jointOffset;

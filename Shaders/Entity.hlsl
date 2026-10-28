@@ -67,6 +67,10 @@ f16_4 EntityGetRotation(in Entity entity) {
     return UnpackRGBA16Snorm(entity.rotation.x, entity.rotation.y);
 }
 
+float4 EntityGetRotationf32(in Entity entity) {
+    return UnpackRGBA16Snormf32(entity.rotation.x, entity.rotation.y);
+}
+
 void EntitySetRotation(inout Entity e, float4 rotation) {
     e.rotation = PackSnorm16x4(rotation);
 }
@@ -77,6 +81,10 @@ v128f EntityGetScaleV(in Entity e) {
 
 f16_3 EntityGetScale(in Entity e) {
     return f16_3(Unpack16x4Fixed(e.scale, ENTITY_MAX_SCALE).xyz);
+}
+
+float3 EntityGetScalef32(in Entity e) {
+    return Unpack16x4Fixed(e.scale, ENTITY_MAX_SCALE).xyz;
 }
 
 void EntitySetScale(inout Entity e, float3 scale) {

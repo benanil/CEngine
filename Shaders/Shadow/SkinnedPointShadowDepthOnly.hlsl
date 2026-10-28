@@ -61,9 +61,9 @@ VSOutput vert(VSInput input,
     f16_4 insRot = EntityGetRotation(entity);
     f16_3 insScale = EntityGetScale(entity);
 
-    float4x3 animMat = VertexAnimate(sBoneMtx, denseIdx * MAX_BONES, input.aJoints, input.aWeights);
-    float3 pos = mul(float4(input.aPos.xyz, 1.0), animMat);
-    float3 finalWorldPos = AnimatedWorldPos(pos, float4(insRot), float3(insScale), entity.position.xyz);
+    f16_4x3 animMat = VertexAnimatef16(sBoneMtx, denseIdx * MAX_BONES, input.aJoints, input.aWeights);
+    f16_3 pos = mul(f16_4(input.aPos.xyz, 1.0), animMat);
+    float3 finalWorldPos = AnimatedWorldPos(float3(pos), float4(insRot), float3(insScale), entity.position.xyz);
 
     float4 clip = MulPointShadowSide(sPointShadowSides[uShadowSideIndex + face], float4(finalWorldPos, 1.0));
     return MakeAtlasOutput(clip, face);

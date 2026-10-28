@@ -80,13 +80,14 @@ extern Camera g_Camera;
 extern SDL_GPUDevice* g_GPUDevice;
 
 static EntityID sphereID = INVALID_ENTITY;
+static const float characterScale = 1.0f;
 
 static void SpawnCharacter()
 {
     Scene* scene = GetActiveScene();
     u32 characterId = Scene_BundleIdx(scene, ch.bundle);
     u32 numEntity = scene->skinnedSet.numEntities;
-    ch.sparse = Scene_Spawn(scene, characterId, VecSetR(0.0f, 0.0f, 0.0f, 0.f), QIdentity(), VecSet1(1.0f), EntityFlags_None);
+    ch.sparse = Scene_Spawn(scene, characterId, VecSetR(0.0f, 0.0f, 0.0f, 0.f), QIdentity(), VecSet1(characterScale), EntityFlags_None);
     ch.numCharacterEntities = scene->skinnedSet.numEntities - numEntity;
     ch.characterEntity = EntityIDFromSparseData(scene, ch.sparse);
     u32 bundleID = Scene_AddBundleCached(scene, GetUnitSphere(), "head bone");
@@ -96,7 +97,7 @@ static void SpawnCharacter()
     EntityID entityID = EntityIDFromSparseData(scene, ch.sparse + 1);
     Entity* entity = Scene_GetEntity(scene, entityID);
     RenderSet* rs = Scene_GetEntityRenderSet(scene, entityID);
-    ch.center = VecMulf(RenderSet_GroupLocalCenter(rs->primitiveGroups + EntityGetPrimitiveID(entity)), 1.0f);
+    ch.center = VecMulf(RenderSet_GroupLocalCenter(rs->primitiveGroups + EntityGetPrimitiveID(entity)), characterScale);
     VecSetY(ch.center, 0.0f);
     ch.invBind = (const mat4x4 *)scene->bundleRefs[EntityGetBundleId(&scene->skinnedSet, entity)].bundle->skins[0].inverseBindMatrices;
     
@@ -127,7 +128,7 @@ static void SpawnCharacter()
     ch.trigerAnim      = ch.lastAnimation   = ch.idle;
     ch.transitionTime  = ch.trigerTime      = 0.0f;
     ch.transitionSpeed = 1.0f;
-    ch.animSpeed       = 1.0f;
+    ch.animSpeed       = 2.0f;
     ch.anim0Start      = ch.anim1Start      = TimeSinceStartup();
     ch.anim1BoneStart  = 0;
     ch.anim1BoneEnd    = ch.animAlloc->numNodes;
@@ -152,7 +153,7 @@ static void CharacterLoaded(SceneAsyncRequest* request)
 
 void OpenSceneCallback(const char* path)
 {
-    SceneAsyncBegin(SceneAsyncOp_ImportMesh, "Assets/Meshes/Character/Character.gltf", "LoadCharacter", CharacterLoaded);
+    SceneAsyncBegin(SceneAsyncOp_ImportMesh, "Assets/Meshes/Character/Character. gltf", "LoadCharacter", CharacterLoaded);
 }
 
 void BeforeDestroySceneCallback(Scene* scene)
@@ -168,7 +169,7 @@ static b3Capsule MakeMover(void)
 {
     return (b3Capsule){
         .center1 = (b3Vec3){ 0.0f, -0.85f, 0.0f },
-        .center2 = (b3Vec3){ 0.0f,  0.85f, 0.0f },
+        .center2 = (b3Vec3){ 0.0f,  0.55f, 0.0f },
         .radius = 0.5f
     };
 }
@@ -402,7 +403,7 @@ static void Animate(Scene* scene)
             instance.blend = OneFP16;
         }
 
-        ch.trigerTime -= dt;
+        ch.trigerTime -= dt * ch.animSpeed;
         if (ch.trigerTime < 0.0f)
         {
             ch.anim1BoneStart = 0;
@@ -413,7 +414,7 @@ static void Animate(Scene* scene)
     if (ch.transitionTime > 0.0f) {
         anim0 = ch.lastAnimation;
         anim1 = ch.trigerAnim;
-        instance.blend = FloatToHalf(ch.transitionTime);
+        instance.blend = FloatToHalf((1.0f - ch.transitionTime));
         ch.transitionTime -= dt * ch.transitionSpeed;
         ch.anim1Start = timeSinceStartup;
         if (ch.transitionTime < 0.0f)
@@ -497,7 +498,7 @@ static void GetHeadBone(Scene* scene, Entity* character)
             boneMat = GetBone(buffer);
             mat4x4 bindMatrix = M44Inverse(ch.invBind[headNode]);
             boneMat = M44Multiply(bindMatrix, boneMat);
-            boneMat = M44Multiply(boneMat, M44FromQuaternionV(EntityGetRotation(character)));
+            boneMat = M44Multiply(boneMat, M44PositionRotationScaleVec(VecZero(), EntityGetRotation(character), VecSet1(characterScale)));
             SDL_UnmapGPUTransferBuffer(g_GPUDevice, boneTransfer);
         }
         SDL_ReleaseGPUFence(g_GPUDevice, boneFence);

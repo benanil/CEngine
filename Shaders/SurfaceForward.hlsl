@@ -81,7 +81,6 @@ struct VSOutput
     nointerpolation f16_4_io vertexColor : COLOR0;
     nointerpolation float3  cascadeSplits : TEXCOORD7;
     nointerpolation uint    materialIndex : TEXCOORD8;
-    nointerpolation f16_io  handedness    : TEXCOORD9;
     #if LOD_VISUALIZE == 1
     nointerpolation uint lod : TEXCOORD10;
     #endif
@@ -128,7 +127,6 @@ VSOutput vert(VSInput input, uint instanceID : SV_InstanceID, [[vk::builtin("Dra
     o.viewDepth = dot(finalWorldPos - uCameraPosition.xyz, uCameraForward.xyz);
     o.cascadeSplits = cascades.splitDistances.xyz;
     o.materialIndex = PrimitiveGroup_MaterialIndex(group);
-    o.handedness = float(tangentHandedness);
     return o;
 }
 
