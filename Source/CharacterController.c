@@ -53,6 +53,7 @@ typedef struct Character_
     u16 lastAnimation;
     u16 trigerAnim;
     u16 headJoint;
+    u16 jointOffset;
     u16 rightHandJoint;
 
     u8  anim1BoneStart;
@@ -99,11 +100,16 @@ static void SpawnCharacter()
     RenderSet* rs = Scene_GetEntityRenderSet(scene, entityID);
     ch.center = VecMulf(RenderSet_GroupLocalCenter(rs->primitiveGroups + EntityGetPrimitiveID(entity)), characterScale);
     VecSetY(ch.center, 0.0f);
+
     ch.invBind = (const mat4x4 *)scene->bundleRefs[EntityGetBundleId(&scene->skinnedSet, entity)].bundle->skins[0].inverseBindMatrices;
-    
+    ch.animAlloc = &scene->bundleRefs[characterId].animAlloc;
+    ch.jointOffset = ch.animAlloc->skinSlot * MAX_BONES;
+
     SceneBundle* characterBundle = scene->bundleRefs[characterId].bundle;
-    ch.headJoint      = characterBundle->skins[0].nodeToJoint[Maxs32(FindANodeFromName(characterBundle, "Head"), 0)];
-    ch.rightHandJoint = characterBundle->skins[0].nodeToJoint[Maxs32(FindANodeFromName(characterBundle, "RightHand"), 0)];
+    u16* nodeToJoint = characterBundle->skins[0].nodeToJoint;
+
+    ch.headJoint      = ch.jointOffset + nodeToJoint[Maxs32(FindANodeFromName(characterBundle, "Head"), 0)];
+    ch.rightHandJoint = ch.jointOffset + nodeToJoint[Maxs32(FindANodeFromName(characterBundle, "RightHand"), 0)];
 
     ch.groundNormal    = (b3Vec3){ 0.0f,  1.0f, 0.0f };
     ch.position        = (b3Vec3){ 0.0f, 10.0f, 0.0f }; 
@@ -115,7 +121,6 @@ static void SpawnCharacter()
     ch.verticalSpeed   = 0.0f;
     ch.grounded = ch.characterActive = ch.jumped = false;
     
-    ch.animAlloc = &scene->bundleRefs[characterId].animAlloc;
     // also these anims exist: "StrafeLeft", "StrafeRight"
     u16 animOffset = ch.animAlloc->animOffset;
     ch.idle         = animOffset + FindAnimIndex(ch.bundle, "Idle1");
@@ -469,21 +474,6 @@ static void HandleInputs()
     if (GetKeyDown(SDLK_KP_4)) cameraXRotation += delta * shift * MATH_PI;
 }
 
-static mat4x4 GetBone(u32 buffer[8])
-{
-    float2 a0 = UnpackHalf2(buffer[0]);
-    float2 a1 = UnpackHalf2(buffer[1]);
-    float2 a2 = UnpackHalf2(buffer[2]);
-    float2 a3 = UnpackHalf2(buffer[3]);
-    float2 a4 = UnpackHalf2(buffer[4]);
-    return (mat4x4) {
-        VecSetR(a0.x, a0.y, a1.x, 0.0f),
-        VecSetR(a1.y, a2.x, a2.y, 0.0f),
-        VecSetR(a3.x, a3.y, a4.x, 0.0f),
-        VecSetR(BitCast(float, buffer[5]), BitCast(float, buffer[6]), BitCast(float, buffer[7]), 1.0f)
-    };
-}
-
 static void GetHeadBone(Scene* scene, Entity* character)
 {
     u32 headNode = ch.headJoint;
@@ -495,8 +485,8 @@ static void GetHeadBone(Scene* scene, Entity* character)
         {
             ALIGNSIMD u32 buffer[8];
             MemCopy(buffer, mapped, sizeof(buffer));
-            boneMat = GetBone(buffer);
-            mat4x4 bindMatrix = M44Inverse(ch.invBind[headNode]);
+            boneMat = UnpackGPUBone(buffer);
+            mat4x4 bindMatrix = M44Inverse(ch.invBind[ch.headJoint - ch.jointOffset]);
             boneMat = M44Multiply(bindMatrix, boneMat);
             boneMat = M44Multiply(boneMat, M44PositionRotationScaleVec(VecZero(), EntityGetRotation(character), VecSet1(characterScale)));
             SDL_UnmapGPUTransferBuffer(g_GPUDevice, boneTransfer);
@@ -537,14 +527,14 @@ void UpdateCharacter()
         EntitySetScaleV(sphereEntity, VecSet1(0.07f));
         LightGPU light;
         MemsetZero(&light, sizeof(LightGPU));
-        neckPos = VecAddf(neckPos, 2.4f); 
+        neckPos = VecAddf(neckPos, 3.4f); 
         Vec3Store(light.positionRadius, neckPos);
         light.positionRadius[3] = 7.0f;
         f32 directionCone[4] = { 0.0f, -1.0f, 0.0f, 0.0f };
         f32 color[3] = { 1.0f, 0.9f, 0.75f };
         LightGPU_SetDirectionCone(&light, directionCone);
         LightGPU_SetColor3(&light, color);
-        LightGPU_SetIntensity(&light, 12.5f);
+        LightGPU_SetIntensity(&light, 16.5f);
         light.type = LightType_Point;
         light.flags = LIGHT_FLAG_SHADOWED;
         light.shadowIndex = 0;

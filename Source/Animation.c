@@ -33,12 +33,6 @@ static void StoreHalf4(u32* dst, v128f src)
     dst[1] = (u32)(res >> 32);
 }
 
-// fp32 store for bone / inverse-bind matrices (poses stay half via StoreHalf4)
-static void StoreFloat4(u32* dst, v128f src)
-{
-    VecStore((f32*)dst, src);
-}
-
 static u32 AnimationBundleFrameCount(const SceneBundle* bundle)
 {
     u32 frameCount = 0u;
@@ -308,6 +302,21 @@ s32 AnimationSystem_AppendBundle(AnimationSystem* anims, const SceneBundle* bund
     };
     AX_LOG("num animation: %d", anims->numAnimations);
     return 1;
+}
+
+mat4x4 UnpackGPUBone(u32 buffer[8])
+{
+    float2 a0 = UnpackHalf2(buffer[0]);
+    float2 a1 = UnpackHalf2(buffer[1]);
+    float2 a2 = UnpackHalf2(buffer[2]);
+    float2 a3 = UnpackHalf2(buffer[3]);
+    float2 a4 = UnpackHalf2(buffer[4]);
+    return (mat4x4) {
+        VecSetR(a0.x, a0.y, a1.x, 0.0f),
+        VecSetR(a1.y, a2.x, a2.y, 0.0f),
+        VecSetR(a3.x, a3.y, a4.x, 0.0f),
+        VecSetR(BitCast(float, buffer[5]), BitCast(float, buffer[6]), BitCast(float, buffer[7]), 1.0f)
+    };
 }
 
 void AnimationSystem_RemoveBundle(AnimationSystem* anims, AnimationBundleAlloc alloc)
