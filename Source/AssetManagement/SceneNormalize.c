@@ -130,7 +130,10 @@ void SceneBundle_FlattenNodes(SceneBundle* scene)
         ASkin* skin = &scene->skins[s];
         if (skin->skeleton >= 0)
             skin->skeleton = skin->skeleton < numNodes ? nodeRemap[skin->skeleton] : -1;
-        
+
+        for (s32 i = 0; i < 96; i++)
+            skin->nodeToJoint[i] = UINT16_MAX;
+
         for (s32 i = 0; i < skin->numJoints; i++)
         {
             s32 joint = skin->joints[i];

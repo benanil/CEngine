@@ -240,7 +240,6 @@ typedef struct ASampler_
     char wrapT; //       10497               33071                 33069                 33648
 } ASampler;
 
-
 typedef struct AScene_
 {
     char* name;

@@ -86,15 +86,17 @@ static const float characterScale = 1.0f;
 static void GetUpperJoints(u32 joints[3], const SceneBundle* characterBundle)
 {
     s32 numNodes = Mins32(characterBundle->numNodes, 96);
-    for (s32 i = 0; i < numNodes; i++)
+    joints[0] = joints[1] = joints[2] = 0u;
+
+    for (s32 i = 1; i < numNodes; i++) // 0 is root node skip it
     {
         const ANode* node = &characterBundle->nodes[i];
-        bool upper = StringContains(node->name, "Head");
-        upper |= StringContains(node->name, "Arm");
-        upper |= StringContains(node->name, "Shoulder");
-        upper |= StringContains(node->name, "Hand");
-        upper |= StringContains(node->name, "Neck");
-        upper |= StringContains(node->name, "Spine");
+        bool upper = StringContains(node->name, "Head")
+        || (StringContains(node->name, "Arm") && !StringContains(node->name, "Armature"))
+        || StringContains(node->name, "Shoulder")
+        || StringContains(node->name, "Hand")
+        || StringContains(node->name, "Neck")
+        || StringContains(node->name, "Spine");
         BitsetSet32Val(joints, i, (u32)upper);
     }
 }

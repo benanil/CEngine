@@ -1,5 +1,6 @@
 #define INT16_SUPPORTED 0
-#define FLOAT16_SUPPORTED 0
+#define FLOAT16_SUPPORTED 1
+#pragma pack_matrix(row_major)
 
 #include "../../Include/RenderLimits.h"
 #include "../Bitpack.hlsl"
@@ -40,7 +41,7 @@ StructuredBuffer<uint>               animPoses             : register(t0); // pe
 StructuredBuffer<uint>               animHierarchy         : register(t1); // per skin * bone
 StructuredBuffer<AnimationData>      animData              : register(t2); // per animation
 StructuredBuffer<uint>               joints                : register(t3); // per instance * bone
-StructuredBuffer<uint>               inverseBindMatrices   : register(t4); // per skin * bone
+StructuredBuffer<mat4x4>             inverseBindMatrices   : register(t4); // per skin * bone
 StructuredBuffer<AnimationInstance>  animInstances         : register(t5); // per instance 
 
 RWStructuredBuffer<uint> outBoneMtx : register(u0, space1); // per instance * bone
@@ -68,26 +69,14 @@ f16_4 GetHalf4(StructuredBuffer<uint> buffer, uint idx)
     return VecCombine(UnpackHalf2(buffer[idx]), UnpackHalf2(buffer[idx + 1]));
 }
 
-float4 GetFloat4(StructuredBuffer<uint> buffer, uint idx)
-{
-    return float4(asfloat(buffer[idx + 0]), asfloat(buffer[idx + 1]),
-                  asfloat(buffer[idx + 2]), asfloat(buffer[idx + 3]));
-}
-
 bool IsJointActive(in AnimationInstance instance, u32 i)
 {
     return (instance.anim1Joints[i >> 5] >> (i & 31)) & 1u;
 }
 
-f16_4x4 LoadInvBind(uint idx, uint invBindOffset)
+mat4x4 LoadInvBind(uint idx, uint invBindOffset)
 {
-    uint mtx = uint(invBindOffset + idx) * INV_BIND_NUM_INT32;
-    f16_4x4 result;
-    result[0] = f16_4(GetFloat4(inverseBindMatrices, mtx + 0));
-    result[1] = f16_4(GetFloat4(inverseBindMatrices, mtx + 4));
-    result[2] = f16_4(GetFloat4(inverseBindMatrices, mtx + 8));
-    result[3] = f16_4(GetFloat4(inverseBindMatrices, mtx + 12));
-    return result;
+    return (inverseBindMatrices[invBindOffset + idx]);
 }
 
 f16_2x4 LoadPose(uint i, uint frameOffset, uint frame)

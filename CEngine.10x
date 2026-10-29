@@ -914,9 +914,6 @@
 				<IncludeFilesWithoutExt>false</IncludeFilesWithoutExt>
 				<Children></Children>
 			</Folder>
-			<File>
-				<Path>_msvc_env.bat</Path>
-			</File>
 		</Children>
 	</Workspace>
 </N10X>

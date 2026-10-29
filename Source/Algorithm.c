@@ -408,83 +408,22 @@ int aCountIf(const void* arr, const void* val, int n, size_t elemSize, int (*cmp
 bool StringContains(const char* name, const char* search)
 {
     if (!*search) return true;
-
-    const char* nameStart = name;
     u64 nameLen = StringLength(name);
     u64 searchLen = StringLength(search);
     if (searchLen > nameLen) return false;
 
     char s0Lower = ToLower(*search);
-    v128u firstChar = VeciSet1_8((u8)s0Lower);
-    v128u zero = VeciZero();
-
-    u64 safeVectorLen = (nameLen >= 16) ? (nameLen - 16) : 0;
-    u64 offset = 0;
-
-    for (; offset <= safeVectorLen; offset += 16)
-    {
-        v128u chunk = VeciLoad(name + offset);
-        v128u lower = VeciToLowerASCII(chunk);
-        
-        u32 matchMask = (u32)VeciMovemask8(VeciCmpEq8(lower, firstChar));
-        u32 zeroMask  = (u32)VeciMovemask8(VeciCmpEq8(chunk, zero));
-
-        // If a null terminator is present in this chunk, ignore any matches that appear AFTER the null terminator.
-        if (zeroMask)
-        {
-            u32 zeroIdx = TrailingZeroCount32(zeroMask);
-            matchMask &= (1u << zeroIdx) - 1u; 
-        }
-
-        while (matchMask)
-        {
-            u32 idx = TrailingZeroCount32(matchMask);
-            const char* a = name + offset + idx;
-            const char* b = search;
-            u64 remaining = searchLen;
-            u64 nameOffset = (u64)(a - nameStart);
-
-            if (nameLen - nameOffset >= searchLen)
-            {
-                while (remaining >= 16 && StrCmp16Lower(a, b, 16))
-                {
-                    a += 16; b += 16; remaining -= 16;
-                }
-
-                while (remaining && ToLower(*a) == ToLower(*b))
-                {
-                    a++; b++; remaining--;
-                }
-                if (remaining == 0) return true;
-            }
-
-            matchMask &= matchMask - 1u;
-        }
-
-        // If we hit a null-terminator in this chunk, we are done looking.
-        if (zeroMask) return false;
-    }
-
-    // Handles the remaining tail of the string (< 16 bytes) safely without page-faulting
-    for (; offset < nameLen; offset++)
+    for (u32 offset = 0; offset <= nameLen - searchLen; offset++)
     {
         if (ToLower(name[offset]) == s0Lower)
         {
-            const char* a = name + offset;
-            const char* b = search;
-            u64 remaining = searchLen;
+            s32 i = 1;
+            for (; i < searchLen; i++) 
+                if (ToLower(name[offset + i]) != ToLower(search[i])) break;
 
-            if (nameLen - offset >= searchLen)
-            {
-                while (remaining && ToLower(*a) == ToLower(*b))
-                {
-                    a++; b++; remaining--;
-                }
-                if (remaining == 0) return true;
-            }
+            if (i == searchLen) return true;
         }
     }
-
     return false;
 }
 
