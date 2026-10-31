@@ -4,6 +4,7 @@
 
 #include "Math/Bitpack.h"
 #include "Math/Half.h"
+#include "Math/Noise.h"
 #include "Include/Scene.h"
 #include "Include/UIWindow.h"
 #include "Include/AssetManager.h"
@@ -367,6 +368,72 @@ static void CharacterMovement(Scene* scene, Entity* character)
     g_Camera.target = g_Camera.position;
 }
 
+static void CharacterUI2()
+{
+    static bool open = true;
+    static SDL_GPUTexture* noiseTex = NULL;
+    static float noiseScale = 0.002f;
+
+    UIImageData noisePreviewImage = (UIImageData){ .texture = noiseTex };
+
+    Clay_ElementId windowID = CLAY_ID("Noise");
+    static bool updated = false;
+    
+    if (!noiseTex || updated)
+    {
+        updated = false;
+        #define TexSize 512
+        if (!noiseTex)
+            noiseTex = CreateTexture2D(TexSize, TexSize, SDL_GPU_TEXTUREFORMAT_R8_UNORM,
+                                       SDL_GPU_TEXTUREUSAGE_SAMPLER | SDL_GPU_TEXTUREUSAGE_COLOR_TARGET,
+                                       SDL_GPU_SAMPLECOUNT_1, 1u, "TextureNoisePreview");
+        Texture texture;
+        texture.handle = noiseTex;
+        texture.width  = texture.height = TexSize;
+        texture.format = SDL_GPU_TEXTUREFORMAT_R8_UNORM;
+        u8 noise[TexSize * TexSize];
+        const v128f lane = VecSetR(0.0f, 1.0f, 2.0f, 3.0f);
+        for (int py = 0; py < TexSize; py++)
+        {
+            for (int px = 0; px < TexSize; px += 4)
+            {
+                Vec2W pos = (Vec2W){
+                    VecMulf(VecAddf(lane, (f32)px), noiseScale),
+                    VecSet1((f32)py * noiseScale)
+                };
+                v128f res = PerlinNoiseW(pos, 8, 0.5f, 2.0f, 42u);
+                res = VecClamp01(VecMulf(VecAddf(res, 1.0f), 0.5f));
+                int idx = py * TexSize + px;
+                noise[idx + 0] = (u8)(VecGetX(res) * 255.0f);
+                noise[idx + 1] = (u8)(VecGetY(res) * 255.0f);
+                noise[idx + 2] = (u8)(VecGetZ(res) * 255.0f);
+                noise[idx + 3] = (u8)(VecGetW(res) * 255.0f);
+            }
+        }
+        UploadTextureRegion(texture, 0, 0, 0, TexSize, TexSize, TexSize, TexSize, noise);
+        #undef TexSize
+    }
+
+    if (UIBeginWindowId(windowID, "Noise",
+                        (float2) { 800.0f, 40.0f }, (float2) { 500.0f, 260.0f }, 
+                        &open, UIWindowFlags_NoClose))
+    {
+        UIWindow* window = UIGetWindow(windowID);
+        f32 side = window ? window->scale.x - 48.0f : 256.0f;
+
+        if (noisePreviewImage.texture)
+        {
+            CLAY(CLAY_ID("TexturePagePreview"), {
+                .layout = { .sizing = { CLAY_SIZING_FIXED(side), CLAY_SIZING_FIXED(side) } },
+                .image  = { .imageData = &noisePreviewImage },
+                .border = { .color = UIGetClayColor(UIColor_Border), .width = CLAY_BORDER_ALL(1) }
+            }) {}
+        }
+        updated = UIEditFloat("noiseScale", &noiseScale, 0.005f, 1.0f, 0.001f, 4);
+        UIEndWindow();
+    }
+}
+
 static void CharacterUI()
 {
     static bool open = true;
@@ -534,7 +601,7 @@ void UpdateCharacter()
     HandleInputs();
     CharacterMovement(scene, character);
     Animate(scene);
-    CharacterUI();
+    CharacterUI2();
 
     Entity* sphereEntity = Scene_GetEntity(scene, sphereID);
     if (sphereEntity)

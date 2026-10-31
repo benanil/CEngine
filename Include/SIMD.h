@@ -387,8 +387,11 @@ purefn f32 VCALL Vec3DotfImpl(v128f a, v128f b) {
 #define VecIdentityR3               _mm_setr_ps(0.0f, 0.0f, 0.0f, 1.0f)
                                     
 #define VeciAdd(a, b)               _mm_add_epi32(a, b)
+#define VeciAddi(a, b)              _mm_add_epi32(a, VeciSet1(b))
 #define VeciSub(a, b)               _mm_sub_epi32(a, b)
+#define VeciSubi(a, b)              _mm_sub_epi32(a, VeciSet1(b))
 #define VeciMul(a, b)               _mm_mullo_epi32(a, b)
+#define VeciMuli(a, b)              _mm_mullo_epi32(a, VeciSet1(b))
 #define VeciAdd8(a, b)              _mm_add_epi8(a, b)
 #define VeciMin(a, b)               _mm_min_epu32(a, b)
 #define VeciMax(a, b)               _mm_max_epu32(a, b)
@@ -431,7 +434,7 @@ purefn f32 VCALL Vec3DotfImpl(v128f a, v128f b) {
 #define VeciBitcastF32(x)           _mm_castsi128_ps(x)
                                     
 #define VecF32ToI32(x)              _mm_cvtps_epi32(x)                         /* f32[4] -> i32[4] round to nearest */
-#define VecF32ToU32(x)              _mm_cvttps_epi32(x)                         /* f32[4] -> i32[4] truncate toward zero */
+#define VecF32ToU32(x)              _mm_cvttps_epi32(x)                        /* f32[4] -> i32[4] truncate toward zero */
 #define VecI32ToF32(x)              _mm_cvtepi32_ps(x)                         /* i32[4] -> f32[4] */
 
 /* u32[4] -> f32[4]. _mm_cvtepu32_ps is avx512, split halves to stay on sse/avx2 */
@@ -683,8 +686,11 @@ VecSetR( \
 #define VeciSetW(v, w)       ((v) = vsetq_lane_u32(w, v, 3))
 
 #define VeciAdd(a, b)               vaddq_u32(a, b)
+#define VeciAddi(a, b)              vaddq_n_u32(a, b)
 #define VeciSub(a, b)               vsubq_u32(a, b)
+#define VeciSub(a, b)               vsubq_n_u32(a, b)
 #define VeciMul(a, b)               vmulq_u32(a, b)
+#define VeciMuli(a, b)              vmulq_n_u32(a, b)
 #define VeciAdd8(a, b)              vreinterpretq_u32_u8(vaddq_u8(vreinterpretq_u8_u32(a), vreinterpretq_u8_u32(b)))
 #define VeciMin(a, b)               vminq_u32(a, b)
 #define VeciMax(a, b)               vmaxq_u32(a, b)

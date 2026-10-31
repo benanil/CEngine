@@ -298,7 +298,7 @@ void GraphicsInit(bool msaa)
     winstate->tex_spot_shadow_color  = CreateTexture2DArray(SPOT_SHADOW_SIZE , SPOT_SHADOW_SIZE , POINT_SHADOW_LAYER_COUNT, TEX_FMT_R32_FLT, TEX_COLOR_TARGET | TEX_SAMPLER, "Spot Shadow Depth Texture");
     wGetWindowSize((s32*)&winstate->prev_width, (s32*)&winstate->prev_height);
 
-    g_RenderState.skyNoise3D = Create3DNoise3DTexture(64u);
+    g_RenderState.skyNoise3D = CreateNoise3DTexture(64u);
     // 64-byte base alignment keeps every power-of-two element stride aligned in the
     // heaps above, so heap pointers are directly usable for SIMD-typed elements
     gGFX.SkinnedVertexBuffer = OSAllocAligned(sizeof(ASkinedVertex) * MAX_SKINNED_SOURCE_VERTEX, 64);
@@ -572,7 +572,7 @@ SDL_GPUTexture* CreateTexture2DArray(u32 width, u32 height, u32 layers, SDL_GPUT
     return result;
 }
 
-SDL_GPUTexture* Create3DNoise3DTexture(u32 size)
+SDL_GPUTexture* CreateNoise3DTexture(u32 size)
 {
     SDL_GPUTextureCreateInfo createinfo = {
         .type = SDL_GPU_TEXTURETYPE_2D_ARRAY,

@@ -14,6 +14,7 @@
 #include "Math/Noise.h"
 #include "Math/Quaternion.h"
 #include "Math/Bitpack.h"
+#include "Include/UIWindow.h"
 #include <box3d/box3d.h>
 
 // discrete procedural foliage: one entity per placement, placed by worker jobs and
@@ -427,7 +428,7 @@ static void GetCellular(s32 chunkX, s32 chunkZ, f32 density, s32 axis, f32 frequ
     for (s32 i = 0; i < axis; i++)
     {
         v128f worldX = VecAddf(VecSet1(((f32)chunkX + density * ((f32)i + 0.5f)) * frequency), offsetX);
-        
+
         for (s32 j = 0; j < axis; j += 4)
         {
             v128f jIdx = VecAddf(laneOffset, (f32)j);                    // j+0.5 .. j+3.5
@@ -519,7 +520,7 @@ static void RunFoliageJob(void* userData)
                 
                 float2 cell = { cx[ix * noiseAxis + iz], cz[ix * noiseAxis + iz] };
                 if (cell.x > rarityGate) continue;
-                if (TerrainDensity_IslandMask(worldX, worldZ) > 0.02f) continue;
+                //if (TerrainDensity_IslandMask(worldX, worldZ) > 0.02f) continue;
                 
                 u32 yawSeed = WangHash(seed ^ (u32)(job->chunkMin.x + x) * 0x9e3779b9u ^
                                               (u32)(job->chunkMin.z + z) * 0x85ebca6bu);

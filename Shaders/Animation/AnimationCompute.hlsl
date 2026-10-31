@@ -1,4 +1,4 @@
-#define INT16_SUPPORTED 0
+#define INT16_SUPPORTED   0
 #define FLOAT16_SUPPORTED 1
 #pragma pack_matrix(row_major)
 

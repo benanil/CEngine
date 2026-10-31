@@ -48,7 +48,7 @@ static void UpdateDemoLights(void)
     for (u32 i = 0; i < 0u; i++)
     {
         u32 seed = WangHash(0x9e3779b9u + i * 0x85ebca6bu);
-        f32 x = f32_(i) * 0.7f + RepeatMinMaxF32(WangHash(seed + 1u), -2.0f, 2.0f);
+        f32 x = (f32)(i) * 0.7f + RepeatMinMaxF32(WangHash(seed + 1u), -2.0f, 2.0f);
         f32 y = 2.0f + RepeatMinMaxF32(WangHash(seed + 2u), -0.5f, 0.5f);
         f32 z = RepeatMinMaxF32(WangHash(seed + 3u), -2.0f, 2.0f);
         f32 baseYaw = RepeatMinMaxF32(WangHash(seed + 4u), 0.0f, MATH_TwoPI);
@@ -117,7 +117,7 @@ s32 DemoScene_Create(void)
     for (s32 i = 0; i < numCharacters; i++)
     {
         u64 hash = MurmurHash((u64)i + 123);
-        v128f pos = VecMulf(VecSetR(f32_(i % charGridStride), 0.0f, f32_(i / charGridStride), 4.0f), 1.5f);
+        v128f pos = VecMulf(VecSetR((f32)(i % charGridStride), 0.0f, (f32)(i / charGridStride), 4.0f), 1.5f);
         v128f rot = QFromAxisAngle(F3Up(), (float)(NextDouble01(hash) * 2.0 * MATH_PI));
         v128f scale = VecSet1(0.01f);
 
@@ -129,7 +129,7 @@ s32 DemoScene_Create(void)
     const int surfaceGridStride = (int)Ceilf(Sqrtf((float)numSurface));
     for (s32 i = 0; i < numSurface; i++)
     {
-        v128f pos = VecMulf(VecSetR(0.02f+f32_(i % surfaceGridStride), -0.0f, f32_(i / surfaceGridStride) -0.0f, 0.0f), 150.0f);
+        v128f pos = VecMulf(VecSetR(0.02f+(f32)(i % surfaceGridStride), -0.0f, (f32)(i / surfaceGridStride) -0.0f, 0.0f), 150.0f);
         v128f rot = QIdentity();
         v128f scale = VecSet1(0.1f);
         if (!Scene_Spawn(&g_DemoScene, g_BistroBundle, pos, rot, scale, EntityFlags_None))

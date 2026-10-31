@@ -429,7 +429,7 @@ SDL_GPUTexture* CreateHBAOTexture(u32 hbaoWidth, u32 hbaoHeight);
 
 SDL_GPUTexture* CreateHiZTexture(u32 drawablew, u32 drawableh, u32* mipCount);
 
-SDL_GPUTexture* Create3DNoise3DTexture(u32 size);
+SDL_GPUTexture* CreateNoise3DTexture(u32 size);
 
 #if defined(__cplusplus)
 }

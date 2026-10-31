@@ -296,6 +296,11 @@ purefn v128f VCALL VecLerp(v128f x, v128f y, f32 t)
     return VecFmadd(VecSub(y, x), VecSet1(t), x);
 }
 
+purefn v128f VCALL VecLerpV(v128f x, v128f y, v128f t)
+{
+    return VecFmadd(VecSub(y, x), t, x);
+}
+
 purefn v128f VCALL VecStep(v128f edge, v128f x)
 {
     return VecBlend(VecZero(), VecOne(), VecCmpGt(x, edge));
@@ -307,6 +312,76 @@ purefn v128f VCALL VecFract(v128f x)
 }
 
 //------------------------------------------------------------------------------
+
+purefn float SinFast(float x) 
+{
+    union fi32 { float f; int i; } u = {x};
+    
+    int lz = 0, gtpi = 0;
+    lz = u.i >> 31; // get less than zero
+    u.i &= 0x7fffffff; // make positive
+    gtpi = u.f > MATH_PI;
+    
+    u.f -= gtpi * MATH_PI; // subtract pi if greater than pi
+    u.f *= 0.63655f; // constant founded using desmos
+    u.f *= 2.0f - u.f;
+    u.f *= 0.225f * u.f + 0.775f; 
+    
+    u.i |= gtpi << 31; // negate if was bigger than PI
+    u.i ^= lz << 31; // flip sign if was negative
+    return u.f; 
+}
+
+// Accepts input between -TwoPi and TwoPi, use CosR if value is bigger than this range  
+purefn float CosFast(float a)
+{
+    int lz = 0, greater = 0;
+    lz = a < 0.0f;
+    a *= -2.0f * lz + 1.0f; // make positive
+    greater = a > MATH_PI;
+    
+    a -= MATH_PI * greater;
+    a *= 0.159f;
+    a = 1.0f - 32.0f * a * a * (0.75f - a);
+    return greater ? -a : a; // sqrt(1.0f - (Sin(a)*Sin(a))); // for better approximation
+}
+
+purefn v128f VCALL VecSinFast(v128f x)
+{
+    v128f sign = VecAnd(x, VecNegZero());
+    x = VecAndNot(VecNegZero(), x);
+
+    v128f gtpiMask = VecCmpGt(x, VecSet1(MATH_PI));
+    v128f gtpi = VecAnd(gtpiMask, VecOne());
+
+    x = VecSub(x, VecMulf(gtpi, MATH_PI));
+    x = VecMulf(x, 0.63655f);
+    x = VecMul(x, VecSub(VecSet1(2.0f), x));
+    x = VecMul(x, VecFmadd(x, VecSet1(0.225f), VecSet1(0.775f)));
+
+    v128f flip = VecAnd(gtpiMask, VecNegZero());
+    return VecXor(x, VecXor(sign, flip));
+}
+
+purefn v128f VCALL VecCosFast(v128f x)
+{
+    x = VecAndNot(VecNegZero(), x);
+
+    v128f gtpiMask = VecCmpGt(x, VecSet1(MATH_PI));
+    v128f gtpi = VecAnd(gtpiMask, VecOne());
+
+    x = VecSub(x, VecMulf(gtpi, MATH_PI));
+    x = VecMulf(x, 0.159f);
+
+    v128f x2 = VecMul(x, x);
+    v128f result = VecFmadd(
+        VecMulf(x2, -32.0f),
+        VecSub(VecSet1(0.75f), x),
+        VecOne()
+    );
+
+    return VecXor(result, VecAnd(gtpiMask, VecNegZero()));
+}
 
 purefn v128f VCALL VecModAngles(v128f angles)
 {
