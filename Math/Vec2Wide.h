@@ -32,6 +32,9 @@ purefn iVec2W VCALL iOr2W(iVec2W a, iVec2W b)  { return (iVec2W) { VeciOr(a.x, b
 purefn iVec2W VCALL iXor2W(iVec2W a, iVec2W b) { return (iVec2W) { VeciXor(a.x, b.x), VeciXor(a.y, b.y) }; }
 
 // f32
+purefn Vec2W Vec2WFromF(f32 x, f32 y) { return (Vec2W) { VecSet1(x), VecSet1(y) }; }
+purefn Vec2W Vec2WFromV(v128f x, v128f y) { return (Vec2W) { x, y }; }
+
 purefn Vec2W VCALL Vec2WAdd(Vec2W  a, Vec2W b)  { return (Vec2W) { VecAdd (a.x, b.x), VecAdd (a.y, b.y) }; }
 purefn Vec2W VCALL Vec2WAddv(Vec2W a, v128f b)  { return (Vec2W) { VecAdd (a.x, b),   VecAdd (a.y, b)   }; }
 purefn Vec2W VCALL Vec2WAdd2(Vec2W a, float2 b) { return (Vec2W) { VecAddf(a.x, b.x), VecAddf(a.y, b.y) }; }

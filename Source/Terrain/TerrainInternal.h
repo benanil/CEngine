@@ -318,17 +318,17 @@ void TerrainInitMaterialTextures(void);
 void tTerrainMaterial(float3 worldPos, float3 normal, u32* materials, u32* blend);
 
 // procedural density field, pure and thread safe (TerrainDensity.c)
-f32  TerrainDensity_SDF(f32 x, f32 y, f32 z);
+v128f TerrainDensity_SDF(v128f x, v128f y, v128f z);
 void TerrainDensity_SampleChunk(s32 cx, s32 cy, s32 cz, s8* out /*19^3*/);
 // world vertical band that can contain surface, chunks outside it are never created
 void TerrainDensity_GetYRange(f32* outMin, f32* outMax);
 
 // analytic column surface height (heightfield term, before the 3D carve). a good seed
 // for the vertical surface march below.
-f32  TerrainDensity_Height(f32 x, f32 z);
+v128f TerrainDensity_HeightV(v128f x, v128f z);
 // island falloff mask 0..1: 0 on the island proper, ramping to 1 out on the open sea
 // plane (always 0 when island mode is off). lets grass stay on the island, off the beach.
-f32  TerrainDensity_IslandMask(f32 x, f32 z);
+v128f  TerrainDensity_IslandFadeV(v128f x, v128f z);
 // signed field at a world point, sculpt edits included: > 0 air, < 0 solid, 0 = surface.
 f32  TerrainDensity_At(f32 x, f32 y, f32 z);
 // nearest surface world Y at column (x,z), marched from startY (Newton on the sdf, whose

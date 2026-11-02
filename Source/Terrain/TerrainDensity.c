@@ -5,6 +5,7 @@
 // Terrain_ApplyGenParams). noise functions below are ported from Dodisoft.NewTerrain.
 #include "TerrainInternal.h"
 #include "Include/Terrain.h"
+#include "Math/Noise.h"
 
 #define TD_START_HEIGHT 0.38f
 #define TD_WEIGHT       0.5f
@@ -16,6 +17,20 @@
 // extra mountain height toward the island center (island mode only). elevation above the
 // base is scaled by up to (1 + this) at the center, tapering to 1 at the coast.
 #define TD_CENTER_GAIN  0.75f
+// seed turns into a large noise domain offset, world coords stay near the origin
+// so the s8 quantization and chunk keys are unaffected
+static f32 td_SeedOffsetX, td_SeedOffsetZ;
+
+static const int plnOctav = 1;
+static const int plnPersistency = 0.5f;
+static const int plnLacunarity = 2.0f;
+static const int plnSeed = 2.0f;
+
+static const int slxOctav = 1;
+static const int slxPersistency = 0.5f;
+static const int slxLacunarity = 2.0f;
+static const int slxSeed = 2.0f;
+
 
 static TerrainGenParams td_Params = {
     .seed           = 1.0f,
@@ -32,233 +47,8 @@ static TerrainGenParams td_Params = {
     .islandFalloff  = 100.0f,
     .island         = true
 };
-// seed turns into a large noise domain offset, world coords stay near the origin
-// so the s8 quantization and chunk keys are unaffected
-static f32 td_SeedOffsetX, td_SeedOffsetZ;
 
-static f32 TerrainNoisePerlin2(f32 x, f32 y)
-{
-    f32 fx = Fractf32(x);
-    f32 fy = Fractf32(y);
-    f32 px = Floorf32(x);
-    f32 py = Floorf32(y);
-    f32 v = px + py * 1000.0f;
-    v128f r = VecAdd(VecSet1(v), VecSetR(0.0f, 1.0f, 1000.0f, 1001.0f));
-    r = VecFract(VecMulf(VecSin(VecMulf(r, 0.001f)), 10000.0f));
-    fx = fx * fx * (3.0f - 2.0f * fx);
-    fy = fy * fy * (3.0f - 2.0f * fy);
-    f32 r0 = VecGetX(r); f32 r1 = VecGetY(r);
-    f32 r2 = VecGetZ(r); f32 r3 = VecGetW(r);
-    f32 a = r0 + (r1 - r0) * fx;
-    f32 b = r2 + (r3 - r2) * fx;
-    return 2.0f * (a + (b - a) * fy) - 1.0f;
-}
-
-static v128f TerrainNoisePerlin2V(v128f x, v128f y)
-{
-    v128f fx = VecFract(x);
-    v128f fy = VecFract(y);
-    v128f px = VecFloor(x);
-    v128f py = VecFloor(y);
-    v128f v  = VecFmadd(py, VecSet1(1000.0f), px);
-    v128f r0 = VecFract(VecMulf(VecSin(VecMulf(VecAddf(v, 0.0f), 0.001f)), 10000.0f));
-    v128f r1 = VecFract(VecMulf(VecSin(VecMulf(VecAddf(v, 1.0f), 0.001f)), 10000.0f));
-    v128f r2 = VecFract(VecMulf(VecSin(VecMulf(VecAddf(v, 1000.0f), 0.001f)), 10000.0f));
-    v128f r3 = VecFract(VecMulf(VecSin(VecMulf(VecAddf(v, 1001.0f), 0.001f)), 10000.0f));
-    fx = VecMul(VecMul(fx, fx), VecSub(VecSet1(3.0f), VecMulf(fx, 2.0f)));
-    fy = VecMul(VecMul(fy, fy), VecSub(VecSet1(3.0f), VecMulf(fy, 2.0f)));
-    v128f a = VecFmadd(VecSub(r1, r0), fx, r0);
-    v128f b = VecFmadd(VecSub(r3, r2), fx, r2);
-    return VecSub(VecMulf(VecFmadd(VecSub(b, a), fy, a), 2.0f), VecOne());
-}
-
-static void TerrainNoiseHash2V(v128f x, v128f y, v128f* outX, v128f* outY)
-{
-    v128f p3x = VecFract(VecMulf(x, 0.1031f));
-    v128f p3y = VecFract(VecMulf(y, 0.1031f));
-    v128f p3z = VecFract(VecMulf(x, 0.0973f));
-    v128f d = VecAdd(VecAdd(VecMul(p3x, VecAddf(p3y, 33.33f)),
-                            VecMul(p3y, VecAddf(p3z, 33.33f))),
-                            VecMul(p3z, VecAddf(p3x, 33.33f)));
-    p3x = VecAdd(p3x, d); p3y = VecAdd(p3y, d); p3z = VecAdd(p3z, d);
-    *outX = VecSub(VecMulf(VecFract(VecMul(VecAdd(p3x, p3y), p3z)), 2.0f), VecOne());
-    *outY = VecSub(VecMulf(VecFract(VecMul(VecAdd(p3x, p3z), p3y)), 2.0f), VecOne());
-}
-
-static void TerrainNoiseHash2(f32 x, f32 y, f32* outX, f32* outY)
-{
-    v128f vX, vY;
-    TerrainNoiseHash2V(VecSet1(x), VecSet1(y), &vX, &vY);
-    *outX = VecGetX(vX);
-    *outY = VecGetX(vY);
-}
-
-static f32 TerrainNoiseSimplex2(f32 x, f32 y)
-{
-    const f32 K1 = 0.366025404f;
-    const f32 K2 = 0.211324865f;
-
-    f32 iX = Floorf32(x + (x + y) * K1);
-    f32 iY = Floorf32(y + (x + y) * K1);
-    f32 aX = x - iX + (iX + iY) * K2;
-    f32 aY = y - iY + (iX + iY) * K2;
-
-    f32 m = aY <= aX ? 1.0f : 0.0f;
-    f32 oX = m;
-    f32 oY = 1.0f - m;
-
-    f32 bX = aX - oX + K2;
-    f32 bY = aY - oY + K2;
-    f32 cX = aX - 1.0f + 2.0f * K2;
-    f32 cY = aY - 1.0f + 2.0f * K2;
-
-    f32 h0 = Maxf32(0.5f - (aX * aX + aY * aY), 0.0f);
-    f32 h1 = Maxf32(0.5f - (bX * bX + bY * bY), 0.0f);
-    f32 h2 = Maxf32(0.5f - (cX * cX + cY * cY), 0.0f);
-
-    h0 = h0 * h0 * h0 * h0;
-    h1 = h1 * h1 * h1 * h1;
-    h2 = h2 * h2 * h2 * h2;
-
-    v128f hashX, hashY;
-    TerrainNoiseHash2V(
-        VecSetR(iX,      iX + oX, iX + 1.0f, 0.0f),
-        VecSetR(iY,      iY + oY, iY + 1.0f, 0.0f),
-        &hashX,
-        &hashY
-    );
-    v128f cornerX = VecSetR(aX, bX, cX, 0.0f);
-    v128f cornerY = VecSetR(aY, bY, cY, 0.0f);
-    v128f weight  = VecSetR(h0, h1, h2, 0.0f);
-    v128f n = VecMul(weight, VecAdd(VecMul(cornerX, hashX), VecMul(cornerY, hashY)));
-    return 70.0f * (VecGetX(n) + VecGetY(n) + VecGetZ(n));
-}
-
-static v128f TerrainNoiseSimplex2V(v128f x, v128f y)
-{
-    const f32 K1 = 0.366025404f;
-    const f32 K2 = 0.211324865f;
-    v128f xy = VecAdd(x, y);
-    v128f iX = VecFloor(VecFmadd(xy, VecSet1(K1), x));
-    v128f iY = VecFloor(VecFmadd(xy, VecSet1(K1), y));
-    v128f iXYK2 = VecMulf(VecAdd(iX, iY), K2);
-    v128f aX = VecAdd(VecSub(x, iX), iXYK2);
-    v128f aY = VecAdd(VecSub(y, iY), iXYK2);
-    v128f m  = VecBlend(VecZero(), VecOne(), VecCmpLe(aY, aX));
-    v128f oX = m;
-    v128f oY = VecSub(VecOne(), m);
-    v128f bX = VecAddf(VecSub(aX, oX), K2), bY = VecAddf(VecSub(aY, oY), K2);
-    v128f cX = VecAddf(aX, -1.0f + 2.0f * K2), cY = VecAddf(aY, -1.0f + 2.0f * K2);
-
-    v128f h0 = VecMax(VecSub(VecSet1(0.5f), VecAdd(VecMul(aX, aX), VecMul(aY, aY))), VecZero());
-    v128f h1 = VecMax(VecSub(VecSet1(0.5f), VecAdd(VecMul(bX, bX), VecMul(bY, bY))), VecZero());
-    v128f h2 = VecMax(VecSub(VecSet1(0.5f), VecAdd(VecMul(cX, cX), VecMul(cY, cY))), VecZero());
-    h0 = VecMul(VecMul(h0, h0), VecMul(h0, h0));
-    h1 = VecMul(VecMul(h1, h1), VecMul(h1, h1));
-    h2 = VecMul(VecMul(h2, h2), VecMul(h2, h2));
-
-    v128f hx, hy;
-    TerrainNoiseHash2V(iX, iY, &hx, &hy);
-    v128f n0 = VecMul(h0, VecAdd(VecMul(aX, hx), VecMul(aY, hy)));
-    TerrainNoiseHash2V(VecAdd(iX, oX), VecAdd(iY, oY), &hx, &hy);
-    v128f n1 = VecMul(h1, VecAdd(VecMul(bX, hx), VecMul(bY, hy)));
-    TerrainNoiseHash2V(VecAddf(iX, 1.0f), VecAddf(iY, 1.0f), &hx, &hy);
-    v128f n2 = VecMul(h2, VecAdd(VecMul(cX, hx), VecMul(cY, hy)));
-    return VecMulf(VecAdd(VecAdd(n0, n1), n2), 70.0f);
-}
-
-static void TerrainNoiseMatMul(f32* x, f32* y)
-{
-    f32 ox = *x, oy = *y;
-    *x = 1.6f * ox + 1.2f * oy;
-    *y = -1.2f * ox + 1.6f * oy;
-}
-
-static f32 TerrainNoiseSimplexRidgedSimple(f32 x, f32 y)
-{
-    f32 f = 0.5000f * Absf32(TerrainNoiseSimplex2(x, y));
-    TerrainNoiseMatMul(&x, &y);
-    f += 0.2500f * Absf32(TerrainNoiseSimplex2(x, y));
-    return Clampf32(0.68f - f, 0.05f, 1.0f);
-}
-
-static v128f TerrainNoiseSimplexRidgedSimpleV(v128f x, v128f y)
-{
-    v128f f = VecMulf(VecFabs(TerrainNoiseSimplex2V(x, y)), 0.5000f);
-    v128f ox = x, oy = y;
-    x = VecAdd(VecMulf(ox, 1.6f), VecMulf(oy, 1.2f));
-    y = VecAdd(VecMulf(ox, -1.2f), VecMulf(oy, 1.6f));
-    f = VecFmadd(VecFabs(TerrainNoiseSimplex2V(x, y)), VecSet1(0.2500f), f);
-    return VecClamp(VecSub(VecSet1(0.68f), f), VecSet1(0.05f), VecOne());
-}
-
-static f32 TerrainNoisePerlinTerrain(f32 x, f32 y, int freq, f32 h, f32 w, f32 m)
-{
-    for (int i = 0; i < freq; i++)
-    {
-        h += w * TerrainNoisePerlin2(x * m, y * m);
-        w *= 0.5f;
-        m *= 2.0f;
-    }
-    return Clampf32(h * 0.68f + 0.1f, 0.04f, 1.0f);
-}
-
-static v128f TerrainNoisePerlinTerrainV(v128f x, v128f y, int freq, f32 h, f32 w, f32 m)
-{
-    v128f hv = VecSet1(h);
-    for (int i = 0; i < freq; i++)
-    {
-        hv = VecFmadd(TerrainNoisePerlin2V(VecMulf(x, m), VecMulf(y, m)), VecSet1(w), hv);
-        w *= 0.5f;
-        m *= 2.0f;
-    }
-    return VecClamp(VecAddf(VecMulf(hv, 0.68f), 0.1f), VecSet1(0.04f), VecOne());
-}
-
-static f32 TerrainNoiseDensity01(f32 x, f32 z)
-{
-    f32 noiseScale = Clampf32(td_Params.hillFrequency, 0.05f, 4.0f);
-    f32 lowlandScale = Clampf32(td_Params.hillAmplitude, 0.25f, 8.0f);
-    f32 mountainScale = Clampf32(td_Params.ridgeFrequency, 0.05f, 2.0f);
-    f32 cx = (x + td_SeedOffsetX) / T_CHUNK_CELLS * noiseScale;
-    f32 cz = (z + td_SeedOffsetZ) / T_CHUNK_CELLS * noiseScale;
-    f32 mountain = TerrainNoiseSimplexRidgedSimple(cx * mountainScale, cz * mountainScale) *
-                   TerrainNoisePerlinTerrain(cx * lowlandScale * 4.0f, cz * lowlandScale * 4.0f, 2, TD_START_HEIGHT, TD_WEIGHT, TD_MULT);
-    f32 lowland = TerrainNoisePerlinTerrain(cx * lowlandScale, cz * lowlandScale, 4, TD_START_HEIGHT, TD_WEIGHT, TD_MULT);
-    return lowland + (mountain - lowland) * 0.64f;
-}
-
-static v128f TerrainNoiseDensity01V(v128f x, v128f z)
-{
-    f32 noiseScale    = Clampf32(td_Params.hillFrequency , 0.05f, 4.0f);
-    f32 lowlandScale  = Clampf32(td_Params.hillAmplitude , 0.25f, 8.0f);
-    f32 mountainScale = Clampf32(td_Params.ridgeFrequency, 0.05f, 2.0f);
-    v128f cx = VecMulf(VecAddf(x, td_SeedOffsetX), noiseScale / (f32)T_CHUNK_CELLS);
-    v128f cz = VecMulf(VecAddf(z, td_SeedOffsetZ), noiseScale / (f32)T_CHUNK_CELLS);
-    v128f mountain = VecMul(TerrainNoiseSimplexRidgedSimpleV(VecMulf(cx, mountainScale), VecMulf(cz, mountainScale)),
-                            TerrainNoisePerlinTerrainV(VecMulf(cx, lowlandScale * 4.0f), VecMulf(cz, lowlandScale * 4.0f), 2, TD_START_HEIGHT, TD_WEIGHT, TD_MULT));
-    v128f lowland = TerrainNoisePerlinTerrainV(VecMulf(cx, lowlandScale), VecMulf(cz, lowlandScale), 4, TD_START_HEIGHT, TD_WEIGHT, TD_MULT);
-    return VecFmadd(VecSub(mountain, lowland), VecSet1(0.64f), lowland);
-}
-
-static f32 TerrainDensity_IslandFade(f32 x, f32 z)
-{
-    if (!td_Params.island) return 0.0f;
-    f32 dist = Sqrtf(x * x + z * z);
-    f32 t = Clampf32((dist - td_Params.islandRadius) / Maxf32(td_Params.islandFalloff, 1.0f), 0.0f, 1.0f);
-    return t * t * (3.0f - 2.0f * t);
-}
-
-static v128f TerrainDensity_IslandFadeV(v128f x, v128f z)
-{
-    if (!td_Params.island) return VecZero();
-    v128f dist = VecSqrt(VecAdd(VecMul(x, x), VecMul(z, z)));
-    v128f t = VecClamp(VecDivf(VecSubf(dist, td_Params.islandRadius), Maxf32(td_Params.islandFalloff, 1.0f)), VecZero(), VecOne());
-    return VecMul(VecMul(t, t), VecSub(VecSet1(3.0f), VecMulf(t, 2.0f)));
-}
-
-TerrainGenParams Terrain_DefaultGenParams(void)
-{
+TerrainGenParams Terrain_DefaultGenParams(void) {
     TerrainGenParams defaults = {
         .seed           = 1.0f,
         .seaLevel       = -25.0f,
@@ -277,44 +67,69 @@ TerrainGenParams Terrain_DefaultGenParams(void)
     return defaults;
 }
 
-void TerrainDensity_SetParams(const TerrainGenParams* params)
-{
+void TerrainDensity_SetParams(const TerrainGenParams* params) {
     td_Params = *params;
     u32 h = params->seed * 0x9E3779B9u;
     td_SeedOffsetX = (f32)(h & 0xFFFFu) * 0.731f;
     td_SeedOffsetZ = (f32)((h >> 16) & 0xFFFFu) * 0.617f;
 }
 
-const TerrainGenParams* TerrainDensity_GetParams(void)
+const TerrainGenParams* TerrainDensity_GetParams(void) { return &td_Params; }
+
+static v128f TerrainNoisePerlin2V(v128f x, v128f y)
 {
-    return &td_Params;
+    return PerlinNoiseW(Vec2WFromV(x, y), plnOctav, plnPersistency, plnLacunarity, plnSeed);
 }
 
-f32 TerrainDensity_IslandMask(f32 x, f32 z)
+static v128f TerrainNoiseSimplex2V(v128f x, v128f y)
 {
-    return TerrainDensity_IslandFade(x, z);
+    return SimplexNoiseW(Vec2WFromV(x, y), slxOctav, slxPersistency, slxLacunarity, slxSeed);
 }
 
-f32 TerrainDensity_Height(f32 x, f32 z)
+static v128f TerrainNoiseSimplexRidgedSimpleV(v128f x, v128f y)
 {
-    f32 density = TerrainNoiseDensity01(x, z);
-    f32 heightScale = Clampf32(td_Params.ridgeAmplitude, 0.25f, 2.0f);
-    f32 elev = ((density * 255.0f - 7.0f) * 0.3333333f + 9.666667f) * heightScale;
+    v128f f = VecMulf(VecFabs(TerrainNoiseSimplex2V(x, y)), 0.5000f);
+    v128f ox = x, oy = y;
+    x = VecAdd(VecMulf(ox, 1.6f), VecMulf(oy, 1.2f));
+    y = VecAdd(VecMulf(ox, -1.2f), VecMulf(oy, 1.6f));
+    f = VecFmadd(VecFabs(TerrainNoiseSimplex2V(x, y)), VecSet1(0.2500f), f);
+    return VecClamp(VecSub(VecSet1(0.68f), f), VecSet1(0.05f), VecOne());
+}
 
-    if (td_Params.island)
+static v128f TerrainNoisePerlinTerrainV(v128f x, v128f y, int freq, f32 h, f32 w, f32 m)
+{
+    v128f hv = VecSet1(h);
+    for (int i = 0; i < freq; i++)
     {
-        f32 t = TerrainDensity_IslandFade(x, z);
-        // taller mountains toward the center (fade 0), tapering to normal at the coast
-        elev *= 1.0f + (1.0f - t) * TD_CENTER_GAIN;
-        f32 height = td_Params.baseHeight + elev;
-        // far from the island keep streaming, but generate a flat sea-level plane
-        // instead of sinking the whole field below the water line
-        return height * (1.0f - t) + td_Params.seaLevel * t;
+        hv = VecFmadd(TerrainNoisePerlin2V(VecMulf(x, m), VecMulf(y, m)), VecSet1(w), hv);
+        w *= 0.5f;
+        m *= 2.0f;
     }
-    return td_Params.baseHeight + elev;
+    return VecClamp(VecAddf(VecMulf(hv, 0.68f), 0.1f), VecSet1(0.04f), VecOne());
 }
 
-static v128f TerrainDensity_HeightV(v128f x, v128f z)
+static v128f TerrainNoiseDensity01V(v128f x, v128f z)
+{
+    f32 noiseScale    = Clampf32(td_Params.hillFrequency , 0.05f, 4.0f);
+    f32 lowlandScale  = Clampf32(td_Params.hillAmplitude , 0.25f, 8.0f);
+    f32 mountainScale = Clampf32(td_Params.ridgeFrequency, 0.05f, 2.0f);
+    v128f cx = VecMulf(VecAddf(x, td_SeedOffsetX), noiseScale / (f32)T_CHUNK_CELLS);
+    v128f cz = VecMulf(VecAddf(z, td_SeedOffsetZ), noiseScale / (f32)T_CHUNK_CELLS);
+    v128f mountain = VecMul(TerrainNoiseSimplexRidgedSimpleV(VecMulf(cx, mountainScale), VecMulf(cz, mountainScale)),
+                            TerrainNoisePerlinTerrainV(VecMulf(cx, lowlandScale * 4.0f), VecMulf(cz, lowlandScale * 4.0f), 2, TD_START_HEIGHT, TD_WEIGHT, TD_MULT));
+    v128f lowland = TerrainNoisePerlinTerrainV(VecMulf(cx, lowlandScale), VecMulf(cz, lowlandScale), 4, TD_START_HEIGHT, TD_WEIGHT, TD_MULT);
+    return VecFmadd(VecSub(mountain, lowland), VecSet1(0.64f), lowland);
+}
+
+v128f TerrainDensity_IslandFadeV(v128f x, v128f z)
+{
+    if (!td_Params.island) return VecZero();
+    v128f dist = VecSqrt(VecAdd(VecMul(x, x), VecMul(z, z)));
+    v128f t = VecClamp(VecDivf(VecSubf(dist, td_Params.islandRadius), Maxf32(td_Params.islandFalloff, 1.0f)), VecZero(), VecOne());
+    return VecMul(VecMul(t, t), VecSub(VecSet1(3.0f), VecMulf(t, 2.0f)));
+}
+
+v128f TerrainDensity_HeightV(v128f x, v128f z)
 {
     v128f density = TerrainNoiseDensity01V(x, z);
     f32 heightScale = Clampf32(td_Params.ridgeAmplitude, 0.25f, 2.0f);
@@ -330,14 +145,6 @@ static v128f TerrainDensity_HeightV(v128f x, v128f z)
     return VecAddf(elev, td_Params.baseHeight);
 }
 
-static f32 TerrainDensity_Carve(f32 x, f32 y, f32 z)
-{
-    f32 freq = td_Params.carveFrequency;
-    return td_Params.carveAmplitude *
-           TerrainNoiseSimplex2((x + td_SeedOffsetX) * freq + y * freq * 0.37f,
-                                (z + td_SeedOffsetZ) * freq - y * freq * 0.19f);
-}
-
 static v128f TerrainDensity_CarveV(v128f x, v128f y, v128f z)
 {
     f32 freq = td_Params.carveFrequency;
@@ -348,23 +155,23 @@ static v128f TerrainDensity_CarveV(v128f x, v128f y, v128f z)
 
 // raw analytic field: terrain heightfield + 3D carve, no bedrock floor, no sculpt. the
 // floor is a min applied by the callers as their final step so sculpt can never defeat it.
-static f32 TerrainDensity_Raw(f32 x, f32 y, f32 z)
+static v128f VCALL TerrainDensity_RawV(v128f x, v128f y, v128f z)
 {
-    f32 islandFade = TerrainDensity_IslandFade(x, z);
-    f32 carve = TerrainDensity_Carve(x, y, z) * (1.0f - islandFade);
-    return (y - TerrainDensity_Height(x, z)) + carve;
+    v128f islandFade = TerrainDensity_IslandFadeV(x, z);
+    v128f carve = VecMul(TerrainDensity_CarveV(x, y, z), VecSub(VecOne(), islandFade));
+    return VecAdd(VecSub(y, TerrainDensity_HeightV(x, z)), carve);
 }
 
-f32 TerrainDensity_SDF(f32 x, f32 y, f32 z)
+v128f TerrainDensity_SDF(v128f x, v128f y, v128f z)
 {
     // solid bedrock floor: min with (y - surface) keeps integer samples at/below
     // TERRAIN_BEDROCK_Y negative (solid), so the world has no bottom to fall through
-    return Minf32(TerrainDensity_Raw(x, y, z), y - TERRAIN_BEDROCK_SURFACE_Y);
+    return VecMax(TerrainDensity_RawV(x, y, z), VecSubf(y, TERRAIN_BEDROCK_SURFACE_Y));
 }
 
 f32 TerrainDensity_At(f32 x, f32 y, f32 z)
 {
-    f32 density = TerrainDensity_Raw(x, y, z);
+    f32 density = VecGetX(TerrainDensity_RawV(VecSet1(x), VecSet1(y), VecSet1(z)));
     // sculpt edits raise/lower the field so grass follows painted/sculpted terrain, added
     // BEFORE the floor min so a dig can never punch through the bedrock (floor always wins).
     // skip the map probe when nothing is edited.
@@ -419,12 +226,9 @@ void TerrainDensity_GetYRange(f32* outMin, f32* outMax)
 // sample bit-matches the fine sample at the same position (see TERRAIN_SDF_CLAMP)
 static s8 TerrainDensity_Quantize(f32 sdf)
 {
-    f32 q = sdf * (127.0f / TERRAIN_SDF_CLAMP);
-    if (q >  127.0f) q =  127.0f;
-    if (q < -127.0f) q = -127.0f;
+    f32 q = Clampf32(sdf * (127.0f / TERRAIN_SDF_CLAMP), -127.0f, 127.0f);
     s32 v = (s32)(q >= 0.0f ? q + 0.5f : q - 0.5f);
-    if (v == 0) v = q < 0.0f ? -1 : 1;
-    return (s8)v;
+    return v == 0 ? (s8)Signf(q) : (s8)v;
 }
 
 void TerrainDensity_SampleChunk(s32 cx, s32 cy, s32 cz, s8* out)
