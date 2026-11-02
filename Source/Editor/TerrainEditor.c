@@ -197,7 +197,9 @@ static bool TerrainEditorSave(void)
         AX_WARN("terrain save skipped: active scene has no saved .scene path");
         return false;
     }
-    return Terrain_SaveWorld(terrainUI.savePath);
+    char terrainPath[512];
+    SceneTerrainPath(terrainUI.savePath, terrainPath, sizeof(terrainPath));
+    return Terrain_SaveWorld(terrainPath);
 }
 
 static bool TerrainEditorLoad(void)

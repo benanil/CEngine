@@ -202,6 +202,10 @@ typedef __m128i v128u;
                                  
 #define VecSet(x, y, z, w)       _mm_set_ps(x, y, z, w)  /* -> {w, z, y, x} */
 #define VecSetR(x, y, z, w)      _mm_setr_ps(x, y, z, w) /* -> {x, y, z, w} */
+#define Vec0123()                _mm_setr_ps(0.0f, 1.0f, 2.0f, 3.0f)
+#define Vec1234()                _mm_setr_ps(1.0f, 2.0f, 3.0f, 4.0f)
+#define Veci0123()               _mm_setr_epi32(0, 1, 2, 3)
+#define Veci1234()               _mm_setr_epi32(1, 2, 3, 4)
 #define VecLoad(x)               _mm_loadu_ps(x)
 #define VecLoadA(x)              _mm_load_ps(x)
 #define VecLoadI(x)              _mm_load_si128(x)
@@ -484,6 +488,10 @@ typedef uint32x4_t v128u;
 #define VecSet1(x)                  vdupq_n_f32(x)
 #define VecSet(x, y, z, w)          ARMCreateVec(w, z, y, x) /* -> {w, z, y, x} */
 #define VecSetR(x, y, z, w)         ARMCreateVec(x, y, z, w) /* -> {x, y, z, w} */
+#define Vec0123()                   ARMCreateVec(0.0f, 1.0f, 2.0f, 3.0f)
+#define Vec1234()                   ARMCreateVec(1.0f, 2.0f, 3.0f, 4.0f)
+#define Veci0123()                  ARMCreateVecI(0, 1, 2, 3)
+#define Veci1234()                  ARMCreateVecI(1, 2, 3, 4)
 #define VecLoad(x)                  vld1q_f32(x)
 #define VecLoadA(x)                 vld1q_f32(x)
 #define VecLoadI(x)                 vld1q_u32((const u32*)x)

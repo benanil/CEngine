@@ -46,6 +46,29 @@ static tMarchingTerrain gMarchingTerrain;
 
 static void tClearChunks(void);
 
+u32 tGetChunkCount(void) { return gMarchingTerrain.chunkCount; }
+
+tChunk* tGetChunkByIndex(u32 index) {
+    return &gMarchingTerrain.chunks[index];
+}
+
+tChunk* tGetAllChunks() {
+    return gMarchingTerrain.chunks;
+}
+
+tChunk* tFindChunkByMin(int3 min) {
+    u32* found = (u32*)HMFind(&gMarchingTerrain.chunkLookup, tChunkKey(min));
+    return found ? &gMarchingTerrain.chunks[*found] : NULL;
+}
+
+JobSystem* tGetTerrainJobSystem(void) {
+    return tMarchingInit() ? gMarchingTerrain.jobSystem : NULL;
+}
+
+const u64* tGetOccupiedChunksBitset(void) {
+    return gMarchingTerrain.occupiedChunksBitset;
+}
+
 static bool tAABBVisible(float3 aabbMin, float3 aabbMax, const FrustumPlanes* frustum)
 {
     return CheckAABBCulled(Vec3Load(&aabbMin.x), Vec3Load(&aabbMax.x), frustum->planes);
@@ -580,29 +603,6 @@ static void tRemoveOutOfRangeChunks(void)
     }
 }
 
-u32 tGetChunkCount(void) { return gMarchingTerrain.chunkCount; }
-
-tChunk* tGetChunkByIndex(u32 index)
-{
-    return &gMarchingTerrain.chunks[index];
-}
-
-tChunk* tFindChunkByMin(int3 min)
-{
-    u32* found = (u32*)HMFind(&gMarchingTerrain.chunkLookup, tChunkKey(min));
-    return found ? &gMarchingTerrain.chunks[*found] : NULL;
-}
-
-JobSystem* tGetTerrainJobSystem(void)
-{
-    return tMarchingInit() ? gMarchingTerrain.jobSystem : NULL;
-}
-
-const u64* tGetOccupiedChunksBitset(void)
-{
-    return gMarchingTerrain.occupiedChunksBitset;
-}
-
 static u32 tAllocChunkSlot(void)
 {
     if (gMarchingTerrain.chunkCount >= T_MAX_CHUNKS)
@@ -902,7 +902,6 @@ bool tMarchingInit(void)
 
 void tUpdate(void)
 {
-    return;
     if (!tMarchingInit() || !tGetEnabled()) {
         RendererSetTerrainChunkDraws(NULL, 0);
         return;

@@ -71,7 +71,7 @@ static const float snapDistance = 0.3f;
 static const float moveTolerance = 0.001f;
 
 static Character ch;
-static float3 cameraOffset = { 0.0f, -1.3, 0.145f };
+static float3 cameraOffset = { 0.0f, -1.33, 0.3f };
 static float cameraXRotation = MATH_HalfPI;
 
 static SDL_GPUTransferBuffer* boneTransfer = NULL;
@@ -82,7 +82,7 @@ extern Camera g_Camera;
 extern SDL_GPUDevice* g_GPUDevice;
 
 static EntityID sphereID = INVALID_ENTITY;
-static const float characterScale = 1.2f;
+static const float characterScale = 1.8f;
 
 static void GetUpperJoints(u32 joints[3], const SceneBundle* characterBundle)
 {
@@ -540,7 +540,7 @@ void UpdateCharacter()
     if (sphereEntity)
     {
         v128f neckPos = VecAdd(EntityGetPosV(character), M44ExtractPositionV(boneMat));
-        EntitySetPositionV(sphereEntity, neckPos);
+        // EntitySetPositionV(sphereEntity, neckPos);
         EntitySetScaleV(sphereEntity, VecSet1(0.07f));
         LightGPU light;
         MemsetZero(&light, sizeof(LightGPU));

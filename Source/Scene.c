@@ -37,7 +37,7 @@ const char* GetActiveScenePath()
     return g_ActiveScenePath;
 }
 
-static void SceneTerrainPath(const char* scenePath, char* out, u32 outSize)
+void SceneTerrainPath(const char* scenePath, char* out, u32 outSize)
 {
     NormalizePath(scenePath, out, outSize);
     ChangeExtension(out, 512, "terrain");

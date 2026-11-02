@@ -79,6 +79,17 @@ purefn f32 NextFloat01(u32 next) {
     return (f32)(next >> 8) / (f32)(1 << 24);
 }
 
+purefn f32 NextFloat(u32 next) {
+    return ((f32)(next >> 8) / (f32)(1 << 24)) * 2.0f - 1.0f;
+}
+
+purefn v128f VecNextFloat(v128u next)
+{
+    v128f res = VecI32ToF32(VeciSrl32(next, 8));
+    res = VecDivf(res, (f32)(1 << 24));
+    return VecSubf(VecMulf(res, 2.0f), 1.0f);
+}
+
 purefn f32 RepeatMinMaxF32(u32 next, f32 min, f32 max) {
     return min + (NextFloat01(next) * Absf32(min - max));
 }

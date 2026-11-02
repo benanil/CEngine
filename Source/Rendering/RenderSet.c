@@ -552,7 +552,7 @@ void RenderSet_CompactEntities(RenderSet* set)
     set->numEntities = writeEntity;
 }
 
-static void SparseDataRemoveFromParent(RenderSet* set, SparseData* sparseData)
+void SparseDataRemoveFromParent(RenderSet* set, SparseData* sparseData)
 {
     if (!sparseData->parent) return;
     SparseData* parent = sparseData - sparseData->parent;

@@ -200,6 +200,8 @@ Scene* GetActiveScene(void);
 
 const char* GetActiveScenePath();
 
+void SceneTerrainPath(const char* scenePath, char* out, u32 outSize);
+
 bool Entity_IsTransparent(const Entity* entity);
 
 // per-frame scene tick: pumps async loads and steps physics for the active scene

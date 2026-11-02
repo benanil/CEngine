@@ -27,6 +27,9 @@
 #define T_MAX_FOLIAGE_GROUPS    64 // WARNING used with bitset if you go above 64 be aware
 #define T_FOLIAGE_GROUND_SNAP_OFFSET 0.1f
 
+#define T_MIN_DENSITY 0.25f
+#define T_NOISE_AXIS_MAX (int)(T_CHUNK_CELLS * (1.0f / T_MIN_DENSITY)) 
+
 typedef struct tFoliageType_
 {
     char  path[T_FOLIAGE_MAX_PATH];
@@ -84,6 +87,10 @@ typedef struct tFoliageState_
 } tFoliageState;
 
 static tFoliageState gFoliage = {0};
+static f32 densityNoiseScale = 1.0f / T_CHUNK_CELLS; 
+static f32 densityVary = 0.5f;
+static f32 rarityNoiseScale = 1.0f / (T_CHUNK_CELLS * 4.0f);
+static f32 rarityVary = 0.1f;
 
 Scene* GetFoliageScene() {
     return &gFoliage.scene;
@@ -411,33 +418,59 @@ static bool tFoliageFindSurfaceY(const s8* density, f32 x, f32 z, f32* outY, flo
 
 // fills rnd[0..count) with a chained WangHashx4 stream, 4 lanes/store. count must be a
 // multiple of 4 (noiseAxis is forced to one, and noiseAxis*noiseAxis*4 stays one too).
-static void GetRandom(v128u seed, s32 count, s32* rnd)
+static void GetRandom(u32 s, s32 count, f32* rnd)
 {
+    v128u seed = VeciMul(VeciSet1(s), VeciSetR(1, 234097, 12345, 314159265));
     for (s32 i = 0; i < count; i += 4) {
         seed = WangHashx4(seed);
-        VecStoreI(rnd + i, seed);
+        VecStore(rnd + i, VecNextFloat(seed));
     }
 }
-// Fills a noise grid of NoiseCellular2D results (one per row) matching the placement loop's steps.
-// Uses SIMD where worldX is broadcast and worldZ varies across consecutive lanes.
-static void GetCellular(s32 chunkX, s32 chunkZ, f32 density, s32 axis, f32 frequency,
-                        f32 offsetX, f32 offsetZ, f32* cx, f32* cz)
+
+static void GetCellular(s32 chunkX, s32 chunkZ, f32 density, s32 axis, f32 frequency, u32 typeNoiseSeed, f32* cx)
 {
+    f32 offsetX = RepeatMinMaxF32(WangHash(typeNoiseSeed ^ 0xa511e9b3u), 0.0f, 289.0f);
+    f32 offsetZ = RepeatMinMaxF32(WangHash(typeNoiseSeed ^ 0x63d83595u), 0.0f, 289.0f);
     const v128f laneOffset = VecSetR(0.5f, 1.5f, 2.5f, 3.5f); // j+0.5 .. j+3.5
-    
     for (s32 i = 0; i < axis; i++)
     {
         v128f worldX = VecAddf(VecSet1(((f32)chunkX + density * ((f32)i + 0.5f)) * frequency), offsetX);
-
         for (s32 j = 0; j < axis; j += 4)
         {
-            v128f jIdx = VecAddf(laneOffset, (f32)j);                    // j+0.5 .. j+3.5
+            v128f jIdx = VecAddf(laneOffset, (f32)j), tmp; // j+0.5 .. j+3.5
             v128f worldZ = VecAddf(VecMulf(VecAddf(VecMulf(jIdx, density), (f32)chunkZ), frequency), offsetZ);
-            
-            v128f rx, ry;
-            NoiseCellular2Dx4(worldX, worldZ, &rx, &ry);
-            VecStore(cx + i * axis + j, rx);
-            VecStore(cz + i * axis + j, ry);
+            NoiseCellular2Dx4(worldX, worldZ, (v128f*)(cx + i * axis + j), &tmp);
+        }
+    }
+}
+
+static void GetDensityPerlin(s32 chunkX, s32 chunkZ, v128f density, s32 axis, u32 typeNoiseSeed, f32* dpx, f32* dpz)
+{
+    v128f densityVaryV = VecMulf(density, densityVary);
+    for (s32 i = 0; i < axis; i += 4)
+    {
+        v128f worldX = VecMulf(VecAdd(VecSet1(chunkX + i), Vec0123()), densityNoiseScale);
+        v128f worldZ = VecMulf(VecAdd(VecSet1(chunkZ + i), Vec0123()), densityNoiseScale);
+        v128f px = PerlinNoise1DOctav(worldX, VeciSet1(typeNoiseSeed));
+        v128f pz = PerlinNoise1DOctav(worldZ, VeciSet1(typeNoiseSeed + 123u));
+        px = VecMax(VecFmadd(px, densityVaryV, density), VecSet1(T_MIN_DENSITY));
+        pz = VecMax(VecFmadd(pz, densityVaryV, density), VecSet1(T_MIN_DENSITY));
+        VecStore(dpx + i, VecLerp(px, pz, 0.25f)); // make x,z densities a bit closer
+        VecStore(dpz + i, VecLerp(pz, px, 0.25f));
+    }
+}
+
+static void GetRarityGate(s32 chunkX, s32 chunkZ, s32 axis, f32 rarity, f32* r)
+{
+    for (s32 x = 0; x < axis; x++)
+    {
+        v128f worldX = VecMulf(VecSet1(chunkX + x), rarityNoiseScale);
+        for (s32 z = 0; z < axis; z += 4)
+        {
+            v128f worldZ = VecMulf(VecAdd(VecSet1(chunkZ + z), Vec0123()), rarityNoiseScale);
+            v128f sr = SimplexNoiseFBM(Vec2WFromV(worldX, worldZ), 2, 0.5f, 2.0f);
+            sr = VecFmadd(sr, VecSet1(rarityVary), VecSet1(rarity));
+            VecStore(r + x * axis + z, VecClamp01(sr));
         }
     }
 }
@@ -468,17 +501,17 @@ static u8 GetFoliageGroups(u8 group, u8 foliages[T_MAX_FOLIAGE_SCENE])
     return activeGroups;
 }
 
-#define T_MIN_DENSITY 0.25f
-#define T_NOISE_AXIS_MAX (int)(T_CHUNK_CELLS * (1.0f / T_MIN_DENSITY)) 
 // worker thread: pure placement, touches only this job slot's output and the read-only
 // foliage type table. no RenderSet/physics access happens here (main-thread only)
 static void RunFoliageJob(void* userData)
 {
     tFoliageJob* job = (tFoliageJob*)userData;
     job->count = 0u;
-    ALIGNSIMD s32 rnd[T_NOISE_AXIS_MAX * T_NOISE_AXIS_MAX * 5];
+    ALIGNSIMD f32 rnd[T_NOISE_AXIS_MAX * T_NOISE_AXIS_MAX * 5];
     ALIGNSIMD f32 cx[T_NOISE_AXIS_MAX * T_NOISE_AXIS_MAX];
-    ALIGNSIMD f32 cz[T_NOISE_AXIS_MAX * T_NOISE_AXIS_MAX];
+    ALIGNSIMD f32 sr[T_NOISE_AXIS_MAX * T_NOISE_AXIS_MAX];
+    ALIGNSIMD f32 dx[T_NOISE_AXIS_MAX];
+    ALIGNSIMD f32 dz[T_NOISE_AXIS_MAX];
     
     for (u8 g = 0; g < T_MAX_FOLIAGE_GROUPS; g++)
     {
@@ -491,57 +524,39 @@ static void RunFoliageJob(void* userData)
         
         u32 seed = WangHash(gFoliage.seed + (u32)job->chunkMin.x * 73856093u ^ (u32)job->chunkMin.z * 19349663u ^ (group * 83492791u + 1u));
         f32 density = Maxf32(baseType->params.density, T_MIN_DENSITY);
-        f32 rarityGate = Clampf32(1.0f - baseType->params.rarity, 0.05f, 1.0f) * 1.5f;
-        v128u s4 = VeciSet(seed, seed * 234097, seed * 12345, seed * 314159265);
+        f32 rarityGate = Clampf32((1.0f - baseType->params.rarity) * 1.5f, 0.05f, 1.0f);
         u32 typeNoiseSeed = WangHash((group + 1u) * 0x9e3779b9u);
         f32 noiseFrequency = baseType->params.frequency * 0.05f;
-        f32 noiseOffsetX = RepeatMinMaxF32(WangHash(typeNoiseSeed ^ 0xa511e9b3u), 0.0f, 289.0f);
-        f32 noiseOffsetZ = RepeatMinMaxF32(WangHash(typeNoiseSeed ^ 0x63d83595u), 0.0f, 289.0f);
         
         s32 noiseAxis = (s32)((f32)T_CHUNK_CELLS / density);
-        noiseAxis = (noiseAxis + 3) & ~3;
-        noiseAxis = Clamps32(noiseAxis, 4, T_NOISE_AXIS_MAX);
+        noiseAxis = Clamps32((noiseAxis + 3) & ~3, 4, T_NOISE_AXIS_MAX);
 
-        GetRandom(s4, noiseAxis * noiseAxis * 4, rnd);
-        GetCellular(job->chunkMin.x, job->chunkMin.z, density, noiseAxis, noiseFrequency,
-                    noiseOffsetX, noiseOffsetZ, cx, cz);
-        s32 rId = 0, ix = 0;
-        for (f32 x = density * 0.5f; x < T_CHUNK_CELLS; x += density, ix++)
+        GetRandom(seed, noiseAxis * noiseAxis * 6, rnd);
+        GetCellular(job->chunkMin.x, job->chunkMin.z, density, noiseAxis, noiseFrequency, typeNoiseSeed, cx);
+        GetDensityPerlin(job->chunkMin.x, job->chunkMin.z, VecSet1(density), noiseAxis, typeNoiseSeed, dx, dz);
+        GetRarityGate(job->chunkMin.x, job->chunkMin.z, noiseAxis, rarityGate, sr);
+        s32 rId = 0, ix = 0, iz = 0;
+        for (f32 x = density * 0.5f; x < T_CHUNK_CELLS; x += dx[ix], ix++)
         {
-            s32 iz = 0;
-            for (f32 z = density * 0.5f; z < T_CHUNK_CELLS; z += density, iz++)
+            iz = 0;
+            for (f32 z = density * 0.5f; z < T_CHUNK_CELLS; z += dz[iz], iz++)
             {
-                u32 foliageIndex = foliages[Abss32(rnd[rId] + iz) % numFoliages];
-                const FoliageType* type = &gFoliage.types[foliageIndex];
+                u32 noiseIdx = ix * noiseAxis + iz;
                 if (job->count >= T_FOLIAGE_MAX_PER_CHUNK) return;
+                if (cx[noiseIdx] > sr[noiseIdx]) break;
+                u32 foliageIndex = foliages[(u32)Floorf32((rnd[rId] + 1.0f) * (numFoliages-1) * 0.5f)];
+                const FoliageType* type = &gFoliage.types[foliageIndex];
                 
-                f32 worldX = (f32)job->chunkMin.x + x;
-                f32 worldZ = (f32)job->chunkMin.z + z;
-                
-                float2 cell = { cx[ix * noiseAxis + iz], cz[ix * noiseAxis + iz] };
-                if (cell.x > rarityGate) continue;
-                //if (TerrainDensity_IslandMask(worldX, worldZ) > 0.02f) continue;
-                
-                u32 yawSeed = WangHash(seed ^ (u32)(job->chunkMin.x + x) * 0x9e3779b9u ^
-                                              (u32)(job->chunkMin.z + z) * 0x85ebca6bu);
-
-                f32 jitterX = (NextFloat01(yawSeed) * 2.0f - 1.0f) * density * 0.46f;
-                f32 jitterZ = (NextFloat01(rnd[rId++]) * 2.0f - 1.0f) * density * 0.46f;
-                f32 localX = Clampf32(x + jitterX, 0.0f, T_CHUNK_CELLS);
-                f32 localZ = Clampf32(z + jitterZ, 0.0f, T_CHUNK_CELLS);
-                
-                f32 localY;
-                float3 normal;
+                f32 localX = Clampf32(rnd[rId++] * density * 0.2f + x, 0.0f, T_CHUNK_CELLS);
+                f32 localZ = Clampf32(rnd[rId++] * density * 0.2f + z, 0.0f, T_CHUNK_CELLS);
+                f32 localY; float3 normal;
                 if (!tFoliageFindSurfaceY(job->density, localX, localZ, &localY, &normal)) continue;
                 
-                f32 scale = baseType->params.sizeVariance ? RepeatMinMaxF32(rnd[rId++], 0.8f, 1.2f) : 1.0f;
                 float3 localPos = F3Sub((float3){ localX, localY, localZ }, F3MulF(normal, T_FOLIAGE_GROUND_SNAP_OFFSET));
-
-                f32 yaw = NextFloat01(yawSeed) * (2.0f * MATH_PI);
                 tFoliagePlacement* placement = &job->placements[job->count++];
-                placement->localPos = Pack16x4Fixed(VecSetR(localPos.x, localPos.y, localPos.z, 0.0f), (f32)T_CHUNK_CELLS);
-                placement->rotation = PackQuaternionS16NormRet(CreateFoliageRotation(normal, yaw, type->normalAlign));
-                placement->scale = scale;
+                placement->localPos = Pack16x4Fixed(Vec3Load(&localPos.x), (f32)T_CHUNK_CELLS);
+                placement->rotation = PackQuaternionS16NormRet(CreateFoliageRotation(normal, rnd[rId++] * MATH_PI, type->normalAlign));
+                placement->scale = 1.0f + (baseType->params.sizeVariance * rnd[rId++] * 0.25f);
                 placement->typeIndex = foliageIndex;
             }
         }
@@ -627,10 +642,10 @@ static void SetFolliageCollider(const FoliageType* type, u32 numEntityAdded, Ren
     for (s32 i = 1; i < numEntityAdded; i++)
     {
         SparseData* sparse = &set->sparseData[sparseCursor + i];
-        sparse->subNodeCount  = 0;
-        sparse->subNodeOffset = 0;
+        SparseDataRemoveFromParent(set, sparse);
         sparse->parent = i; // set to root
     }
+
     rootSparse->subNodeOffset = U16SetGetEmptyRange(set->subNodes, set->maxEntities, numEntityAdded - 1);
     rootSparse->subNodeCount = numEntityAdded - 1;
     if (rootSparse->subNodeOffset == UINT32_MAX) { AX_WARN("subnode allocation failed foliage"); }
@@ -735,11 +750,92 @@ static void IntegrateFinishedFoliage(u32 scheduledCount)
     gFoliage.scene.renderDataDirty = true;
 }
 
+static void NoiseUI()
+{
+    static bool open = true;
+    static SDL_GPUTexture* noiseTex = NULL;
+    static float noiseScale = 0.002f;
+
+    UIImageData noisePreviewImage = (UIImageData){ .texture = noiseTex };
+
+    Clay_ElementId windowID = CLAY_ID("Noise");
+    static bool updated = false;
+    
+    if (!noiseTex || updated)
+    {
+        updated = false;
+        #define TexSize 512
+        if (!noiseTex)
+            noiseTex = CreateTexture2D(TexSize, TexSize, SDL_GPU_TEXTUREFORMAT_R8_UNORM,
+                                       SDL_GPU_TEXTUREUSAGE_SAMPLER | SDL_GPU_TEXTUREUSAGE_COLOR_TARGET,
+                                       SDL_GPU_SAMPLECOUNT_1, 1u, "TextureNoisePreview");
+        Texture texture;
+        texture.handle = noiseTex;
+        texture.width  = texture.height = TexSize;
+        texture.format = SDL_GPU_TEXTUREFORMAT_R8_UNORM;
+        u8 noise[TexSize * TexSize];
+        for (int py = 0; py < TexSize; py++)
+        {
+            for (int px = 0; px < TexSize; px += 4)
+            {
+                Vec2W pos = (Vec2W){
+                    VecMulf(VecAddf(Vec0123(), (f32)px), noiseScale),
+                    VecSet1((f32)py * noiseScale)
+                };
+
+                Vec2W res = CeullularNoiseFBM(pos, 4, 0.5f, 2.0f);
+                // res = VecClamp01(VecMulf(VecAddf(res, 1.0f), 0.5f));
+                int idx = py * TexSize + px;
+                noise[idx + 0] = (u8)(VecGetX(res.x) * 255.0f);
+                noise[idx + 1] = (u8)(VecGetY(res.x) * 255.0f);
+                noise[idx + 2] = (u8)(VecGetZ(res.x) * 255.0f);
+                noise[idx + 3] = (u8)(VecGetW(res.x) * 255.0f);
+            }
+        }
+        UploadTextureRegion(texture, 0, 0, 0, TexSize, TexSize, TexSize, TexSize, noise);
+        #undef TexSize
+    }
+
+    if (UIBeginWindowId(windowID, "Noise",
+                        (float2) { 800.0f, 40.0f }, (float2) { 500.0f, 260.0f }, 
+                        &open, UIWindowFlags_NoClose))
+    {
+        UIWindow* window = UIGetWindow(windowID);
+        f32 side = window ? window->scale.x - 48.0f : 256.0f;
+
+        if (noisePreviewImage.texture)
+        {
+            CLAY(CLAY_ID("TexturePagePreview"), {
+                .layout = { .sizing = { CLAY_SIZING_FIXED(side), CLAY_SIZING_FIXED(side) } },
+                .image  = { .imageData = &noisePreviewImage },
+                .border = { .color = UIGetClayColor(UIColor_Border), .width = CLAY_BORDER_ALL(1) }
+            }) {}
+        }
+        
+        updated = UIEditFloat("noiseScale", &noiseScale, 0.005f, 1.0f, 0.001f, 4);
+        
+        bool noiseChanged = UIEditFloat("densityNoise", &densityNoiseScale, 0.000f, 4.0f, 0.001f, 4);
+        noiseChanged |= UIEditFloat("densityVary", &densityVary, 0.000f, 1.0f, 0.001f, 4);
+        noiseChanged |= UIEditFloat("rarityNoise", &rarityNoiseScale, 0.000f, 1.0f, 0.001f, 4);
+        noiseChanged |= UIEditFloat("rarityVary", &rarityVary, 0.000f, 1.0f, 0.001f, 4);
+
+        if (noiseChanged)
+        {
+            gFoliage.changedGroups = ~0ull;
+            Scene_ClearEntities(&gFoliage.scene);
+            tChunk* allChunks = tGetAllChunks();
+            for (s32 c = 0; c < T_MAX_CHUNKS; c++)
+                allChunks[c].foliageCount = 0;
+        }
+
+        UIEndWindow();
+    }
+}
+
 void Foliage_Update(void)
 {
     JobSystem* js = tGetTerrainJobSystem();
     if (!js) return;
-
     // Always walk residents (ignoring anyDirty) so streamed-in chunks get an initial foliage pass.
     // Uses the occupied-chunks bitset instead of trusting chunkCount density.
     const u64* occupied = tGetOccupiedChunksBitset();
@@ -766,4 +862,6 @@ void Foliage_Update(void)
     }
 
     gFoliage.changedGroups = 0ull;
+    NoiseUI();
 }
+

@@ -29,8 +29,6 @@ static const int plnSeed = 2.0f;
 static const int slxOctav = 1;
 static const int slxPersistency = 0.5f;
 static const int slxLacunarity = 2.0f;
-static const int slxSeed = 2.0f;
-
 
 static TerrainGenParams td_Params = {
     .seed           = 1.0f,
@@ -78,12 +76,12 @@ const TerrainGenParams* TerrainDensity_GetParams(void) { return &td_Params; }
 
 static v128f TerrainNoisePerlin2V(v128f x, v128f y)
 {
-    return PerlinNoiseW(Vec2WFromV(x, y), plnOctav, plnPersistency, plnLacunarity, plnSeed);
+    return PerlinNoiseFBM(Vec2WFromV(x, y), plnOctav, plnPersistency, plnLacunarity, plnSeed);
 }
 
 static v128f TerrainNoiseSimplex2V(v128f x, v128f y)
 {
-    return SimplexNoiseW(Vec2WFromV(x, y), slxOctav, slxPersistency, slxLacunarity, slxSeed);
+    return SimplexNoiseFBM(Vec2WFromV(x, y), slxOctav, slxPersistency, slxLacunarity);
 }
 
 static v128f TerrainNoiseSimplexRidgedSimpleV(v128f x, v128f y)
@@ -244,7 +242,7 @@ void TerrainDensity_SampleChunk(s32 cx, s32 cy, s32 cz, s8* out)
     for (s32 z = 0; z < T_SAMPLES_AXIS; z++)
     for (s32 x = 0; x < T_SAMPLES_AXIS; x += 4)
     {
-        v128f wx = VecAdd(VecSet1(ox + (f32)(x - 1) * voxel), VecMulf(VecSetR(0.0f, 1.0f, 2.0f, 3.0f), voxel));
+        v128f wx = VecAdd(VecSet1(ox + (f32)(x - 1) * voxel), VecMulf(Vec0123(), voxel));
         v128f wz = VecSet1(oz + (f32)(z - 1) * voxel);
         f32 h[4];
         VecStore(h, TerrainDensity_HeightV(wx, wz));
@@ -257,7 +255,7 @@ void TerrainDensity_SampleChunk(s32 cx, s32 cy, s32 cz, s8* out)
     for (s32 y = 0; y < T_SAMPLES_AXIS; y++)
     for (s32 x = 0; x < T_SAMPLES_AXIS; x += 4)
     {
-        v128f wx = VecAdd(VecSet1(ox + (f32)(x - 1) * voxel), VecMulf(VecSetR(0.0f, 1.0f, 2.0f, 3.0f), voxel));
+        v128f wx = VecAdd(VecSet1(ox + (f32)(x - 1) * voxel), VecMulf(Vec0123(), voxel));
         v128f wy = VecSet1(oy + (f32)(y - 1) * voxel);
         v128f wz = VecSet1(oz + (f32)(z - 1) * voxel);
         f32 h[4] = {0};

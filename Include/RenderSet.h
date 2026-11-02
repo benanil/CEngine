@@ -178,6 +178,8 @@ SparseData* RenderSet_AddEntity(RenderSet* set, u32 primitiveIdx, const Entity* 
 
 SparseData* RenderSet_AddEntities(RenderSet* set, u32 primitiveIdx, u32 numAdded, const Entity* data);
 
+void SparseDataRemoveFromParent(RenderSet* set, SparseData* sparseData);
+
 u32  CountNumEntities(const RenderSet* set, u32 bundleIdx, u32 numScenes, u32* primitiveCounts, bool wantSkinned);
 
 // returns num entity added

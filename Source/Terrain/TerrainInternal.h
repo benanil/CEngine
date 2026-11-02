@@ -243,6 +243,7 @@ typedef struct tChunk_
 // indices are NOT stable across evictions, callers must re-resolve by position after
 // yielding a frame - tFindChunkByMin is the stable lookup)
 u32     tGetChunkCount(void);
+tChunk* tGetAllChunks();
 tChunk* tGetChunkByIndex(u32 index);
 tChunk* tFindChunkByMin(int3 min);
 JobSystem* tGetTerrainJobSystem(void);

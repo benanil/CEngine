@@ -10,6 +10,9 @@ typedef struct Vec2W_ {
     v128f x, y;
 } Vec2W;
 
+purefn iVec2W iVec2WZero() { return (iVec2W) { VeciZero(), VeciZero() }; }
+purefn Vec2W  Vec2WZero()  { return  (Vec2W) {  VecZero(), VecZero()  }; }
+
 purefn iVec2W VCALL iVec2WAdd(iVec2W  a, iVec2W b) { return (iVec2W) { VeciAdd (a.x, b.x), VeciAdd (a.y, b.y) }; }
 purefn iVec2W VCALL iVec2WAddv(iVec2W a, v128u b)  { return (iVec2W) { VeciAdd (a.x, b),   VeciAdd (a.y, b)   }; }
 purefn iVec2W VCALL iVec2WAdd2(iVec2W a, int2 b)   { return (iVec2W) { VeciAddi(a.x, b.x), VeciAddi(a.y, b.y) }; }
@@ -32,7 +35,7 @@ purefn iVec2W VCALL iOr2W(iVec2W a, iVec2W b)  { return (iVec2W) { VeciOr(a.x, b
 purefn iVec2W VCALL iXor2W(iVec2W a, iVec2W b) { return (iVec2W) { VeciXor(a.x, b.x), VeciXor(a.y, b.y) }; }
 
 // f32
-purefn Vec2W Vec2WFromF(f32 x, f32 y) { return (Vec2W) { VecSet1(x), VecSet1(y) }; }
+purefn Vec2W Vec2WFromF(f32   x, f32   y) { return (Vec2W) { VecSet1(x), VecSet1(y) }; }
 purefn Vec2W Vec2WFromV(v128f x, v128f y) { return (Vec2W) { x, y }; }
 
 purefn Vec2W VCALL Vec2WAdd(Vec2W  a, Vec2W b)  { return (Vec2W) { VecAdd (a.x, b.x), VecAdd (a.y, b.y) }; }
@@ -68,6 +71,7 @@ purefn Vec2W VCALL Sqrt2W(Vec2W a)  { return (Vec2W) { VecSqrt(a.x),  VecSqrt(a.
 purefn Vec2W VCALL RSqrt2W(Vec2W a) { return (Vec2W) { VecRSqrt(a.x), VecRSqrt(a.y) }; }
 
 purefn v128f Vec2WDot(Vec2W a, Vec2W b) { return VecFmadd(a.x, b.x, VecMul(a.y, b.y)); }
+purefn v128f Vec2WSqrLen(Vec2W a)       { return VecFmadd(a.x, a.x, VecMul(a.y, a.y)); }
 
 purefn v128f Vec2WLen(Vec2W a) { return VecSqrt(Vec2WDot(a, a)); }
 

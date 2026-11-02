@@ -222,7 +222,6 @@ purefn Vec2W VCALL RGrad2W(Vec2W p, v128f rot) {
     return (Vec2W){ VecCosFast(u), VecSinFast(u) };
 }
 
-// SIMPLEX NOISE CORE FUNCTION
 purefn v128f VCALL PSRNoise(Vec2W pos) {
     const v128f F2 = VecSet1(0.366025403f);
     const v128f G2 = VecSet1(0.211324865f);
@@ -255,20 +254,19 @@ purefn v128f VCALL PSRNoise(Vec2W pos) {
     v128f n0 = Vec2WDot(g0, d0);
     v128f n1 = Vec2WDot(g1, d1);
     v128f n2 = Vec2WDot(g2, d2);
-
+    
     v128f w0 = VecMax(VecSub(half, Vec2WDot(d0, d0)), VecZero());
     v128f w1 = VecMax(VecSub(half, Vec2WDot(d1, d1)), VecZero());
     v128f w2 = VecMax(VecSub(half, Vec2WDot(d2, d2)), VecZero());
     w0 = VecMul(w0, w0); w0 = VecMul(w0, w0);
     w1 = VecMul(w1, w1); w1 = VecMul(w1, w1);
     w2 = VecMul(w2, w2); w2 = VecMul(w2, w2);
-
     v128f result = VecFmadd(w0, n0, VecFmadd(w1, n1, VecMul(w2, n2)));
     return VecMulf(result, 99.0f);
 }
 
 // https://www.shadertoy.com/view/NlSGDz
-static inline v128f PerlinNoiseW(Vec2W position, int octaveCount, float persistence, float lacunarity, u32 seed) {
+static inline v128f PerlinNoiseFBM(Vec2W position, int octaveCount, float persistence, float lacunarity, u32 seed) {
     v128f value = VecZero();
     v128f amplitude = VecOne();
     for (int i = 0; i < octaveCount; i++) {
@@ -280,7 +278,7 @@ static inline v128f PerlinNoiseW(Vec2W position, int octaveCount, float persiste
     return value;
 }
 
-static inline v128f PerlinNoise1DW(v128f position, int octaveCount, float persistence, float lacunarity, u32 seed) {
+static inline v128f PerlinNoise1DFBM(v128f position, int octaveCount, float persistence, float lacunarity, u32 seed) {
     v128f value = VecZero();
     v128f amplitude = VecOne();
     for (int i = 0; i < octaveCount; i++) {
@@ -292,11 +290,25 @@ static inline v128f PerlinNoise1DW(v128f position, int octaveCount, float persis
     return value;
 }
 
-static inline v128f SimplexNoiseW(Vec2W position, int octaveCount, f32 persistence, f32 lacunarity, u32 seed) {
+static inline v128f SimplexNoiseFBM(Vec2W position, int octaveCount, f32 persistence, f32 lacunarity) {
     v128f value = VecZero();
     v128f amplitude = VecOne();
     for (int i = 0; i < octaveCount; i++) {
         value     = VecFmadd(PSRNoise(position), amplitude, value);
+        amplitude = VecMulf(amplitude, persistence);
+        position  = Vec2WMulf(position, lacunarity);
+    }
+    return value;
+}
+
+static inline Vec2W CeullularNoiseFBM(Vec2W position, int octaveCount, f32 persistence, f32 lacunarity) {
+    Vec2W value = Vec2WZero();
+    v128f amplitude = VecOne();
+    for (int i = 0; i < octaveCount; i++) {
+        Vec2W c;
+        NoiseCellular2Dx4(position.x, position.y, &c.x, &c.y);
+        value.x   = VecFmadd(c.x, amplitude, value.x);
+        value.y   = VecFmadd(c.y, amplitude, value.y);
         amplitude = VecMulf(amplitude, persistence);
         position  = Vec2WMulf(position, lacunarity);
     }
