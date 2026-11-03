@@ -261,6 +261,7 @@ typedef __m128i v128u;
 
 #define VecNeg(a)                _mm_sub_ps(_mm_setzero_ps(), a) /* -a */
 #define VecRcp(a)                _mm_rcp_ps(a) /* 1.0f / a */
+#define Vec1Minus(a)             _mm_sub_ps(VecOne(), a) /* 1.0f / a */
 #define VecSqrt(a)               _mm_sqrt_ps(a)
 #define VecRSqrt(a)              _mm_rsqrt_ps(a)
                                  
@@ -451,16 +452,19 @@ purefn __m128 VCALL VecU32ToF32(__m128i v) {
 #define VecZipLo32(a, b)            _mm_unpacklo_epi32(a, b)                   /* interleave low i32: [a0 b0 a1 b1] | NEON: vzip1q_s32 */
 #define VecZipLo16(a, b)            _mm_unpacklo_epi16(a, b)                   /* interleave low i16  | NEON: vzip1q_s16 */
 #define VecZipHi16(a, b)            _mm_unpackhi_epi16(a, b)                   /* interleave high i16 | NEON: vzip2q_s16 */
-                                    
-#define VecUnpackLo32(x)            _mm_unpacklo_epi16(x, _mm_setzero_si128()) /* zero-extend low 4 i16 -> i32 | NEON: vmovl_s16(vget_low_s16) */
-#define VecUnpackHi32(x)            _mm_unpackhi_epi16(x, _mm_setzero_si128()) /* zero-extend high 4 i16 -> i32 | NEON: vmovl_s16(vget_high_s16) */
+
+#define VecUnpackLo(a, b)            _mm_unpacklo_ps(a, b)
+#define VecUnpackHi(a, b)            _mm_unpackhi_ps(a, b)
+
+#define VeciUnpackLo32(x)            _mm_unpacklo_epi16(x, _mm_setzero_si128()) /* zero-extend low 4 i16 -> i32 | NEON: vmovl_s16(vget_low_s16) */
+#define VeciUnpackHi32(x)            _mm_unpackhi_epi16(x, _mm_setzero_si128()) /* zero-extend high 4 i16 -> i32 | NEON: vmovl_s16(vget_high_s16) */
                                     
 #define VecPack16(x)                _mm_packus_epi32((x), _mm_setzero_si128()) /* narrow u32 -> u16 (sat) | NEON: vqmovn_u32 */
 #define VecPack16S(x)               _mm_packs_epi32((x), _mm_setzero_si128())  /* narrow i32 -> i16 (signed sat) | NEON: vqmovn_s32 */
 
-/* sign-extend variants, VecUnpackLo32/Hi32 zero-extend and destroy negative i16 values */
-#define VecUnpackLo32S(x)           _mm_srai_epi32(_mm_unpacklo_epi16(_mm_setzero_si128(), x), 16)
-#define VecUnpackHi32S(x)           _mm_srai_epi32(_mm_unpackhi_epi16(_mm_setzero_si128(), x), 16)
+/* sign-extend variants, VeciUnpackLo32/Hi32 zero-extend and destroy negative i16 values */
+#define VeciUnpackLo32S(x)           _mm_srai_epi32(_mm_unpacklo_epi16(_mm_setzero_si128(), x), 16)
+#define VeciUnpackHi32S(x)           _mm_srai_epi32(_mm_unpackhi_epi16(_mm_setzero_si128(), x), 16)
                                     
 #define VecStoreLo64(p, v)          _mm_storel_pi((__m64*)(p), _mm_castsi128_ps(v)) /* store lower 64 bits | NEON: vst1 */
 #define VecStoreHi64(p, v)          _mm_storeh_pi((__m64*)(p), _mm_castsi128_ps(v)) /* store lower 64 bits | NEON: vst1 */
@@ -520,17 +524,19 @@ typedef uint32x4_t v128u;
 #define VecZipLo16(a, b)            vreinterpretq_u32_u16(vzip1q_u16(vreinterpretq_u16_u32(a), vreinterpretq_u16_u32(b)))
 #define VecZipHi16(a, b)            vreinterpretq_u32_u16(vzip2q_u16(vreinterpretq_u16_u32(a), vreinterpretq_u16_u32(b)))
 
+#define VecUnpackLo(a, b)            vzip1q_f32( a, b )
+#define VecUnpackHi(a, b)            vzip2q_f32( a, b )
 /* zero-extend like the sse unpack with zero */
-#define VecUnpackLo32(x)            vmovl_u16(vget_low_u16(vreinterpretq_u16_u32(x)))   /* zero-extend low 4 u16 -> u32 */
-#define VecUnpackHi32(x)            vmovl_u16(vget_high_u16(vreinterpretq_u16_u32(x)))  /* zero-extend high 4 u16 -> u32 */
+#define VeciUnpackLo32(x)            vmovl_u16(vget_low_u16(vreinterpretq_u16_u32(x)))   /* zero-extend low 4 u16 -> u32 */
+#define VeciUnpackHi32(x)            vmovl_u16(vget_high_u16(vreinterpretq_u16_u32(x)))  /* zero-extend high 4 u16 -> u32 */
 
 /* sse packus: input treated signed, saturated to [0, 65535], high half zeroed */
 #define VecPack16(x)                vreinterpretq_u32_u16(vcombine_u16(vqmovun_s32(vreinterpretq_s32_u32(x)), vdup_n_u16(0)))
 #define VecPack16S(x)               vreinterpretq_u32_s16(vcombine_s16(vqmovn_s32(vreinterpretq_s32_u32(x)), vdup_n_s16(0)))
 
 /* sign-extend variants */
-#define VecUnpackLo32S(x)           vreinterpretq_u32_s32(vmovl_s16(vget_low_s16(vreinterpretq_s16_u32(x))))
-#define VecUnpackHi32S(x)           vreinterpretq_u32_s32(vmovl_s16(vget_high_s16(vreinterpretq_s16_u32(x))))
+#define VeciUnpackLo32S(x)           vreinterpretq_u32_s32(vmovl_s16(vget_low_s16(vreinterpretq_s16_u32(x))))
+#define VeciUnpackHi32S(x)           vreinterpretq_u32_s32(vmovl_s16(vget_high_s16(vreinterpretq_s16_u32(x))))
 #define VecStoreLo64(p, v)          vst1_u32((u32*)(p), vget_low_u32(v))  /* store lower 64 bits */
 #define VecStoreHi64(p, v)          vst1_u32((u32*)(p), vget_high_u32(v)) /* store higher 64 bits */
 #define VecLoadLo64(p, v)           vcombine_f32(vld1_f32((float*)(p)), vget_high_f32(v)) /* load lower 64 bits */
@@ -577,6 +583,7 @@ typedef uint32x4_t v128u;
 #define VecHadd(a, b)               vpaddq_f32(a, b)
 #define VecSqrt(a)                  vsqrtq_f32(a)
 #define VecRcp(a)                   vrecpeq_f32(a)
+#define Vec1Minus(a)                VecSub(VecOne(), a)
 #define VecRSqrt(a)                 vrsqrteq_f32(a)
 #define VecNeg(a)                   vnegq_f32(a)
                                     
@@ -1035,10 +1042,9 @@ purefn float VCALL VecGetN(v128f v, int n)
     return ((float*)&v)[n & 3];
 }
 
-purefn v128f VCALL VecSetN(v128f v, int n, float f)
+static inline void VCALL VecSetN(v128f* v, int n, float f)
 {
     ((float*)&v)[n & 3] = f;
-    return v;
 }
 
 purefn int VCALL VeciGetN(v128u v, int n)
@@ -1046,10 +1052,9 @@ purefn int VCALL VeciGetN(v128u v, int n)
     return ((int*)&v)[n & 3];
 }
 
-purefn v128u VCALL VeciSetN(v128u v, int n, int i)
+static inline void VCALL VeciSetN(v128u* v, int n, int i)
 {
-    ((int*)&v)[n & 3] = i;
-    return v;
+    ((int*)v)[n & 3] = i;
 }
 #endif 
 

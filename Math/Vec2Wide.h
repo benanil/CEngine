@@ -21,7 +21,7 @@ purefn iVec2W VCALL iVec2WAddi(iVec2W a, s32 b)    { return (iVec2W) { VeciAddi(
 purefn iVec2W VCALL iVec2WSub(iVec2W  a, iVec2W b) { return (iVec2W) { VeciSub (a.x, b.x), VeciSub (a.y, b.y) }; }
 purefn iVec2W VCALL iVec2WSubv(iVec2W a, v128u b)  { return (iVec2W) { VeciSub (a.x, b),   VeciSub (a.y, b)   }; }
 purefn iVec2W VCALL iVec2WSub2(iVec2W a, int2 b)   { return (iVec2W) { VeciSubi(a.x, b.x), VeciSubi(a.y, b.y) }; }
-purefn iVec2W VCALL iVec2WSubi(iVec2W a, f32 b)    { return (iVec2W) { VeciSubi(a.x, b),   VeciSubi(a.y, b)   }; }
+purefn iVec2W VCALL iVec2WSubi(iVec2W a, s32 b)    { return (iVec2W) { VeciSubi(a.x, b),   VeciSubi(a.y, b)   }; }
 
 purefn iVec2W VCALL iVec2WMul(iVec2W  a, iVec2W b) { return (iVec2W) { VeciMul (a.x, b.x), VeciMul (a.y, b.y) }; }
 purefn iVec2W VCALL iVec2WMulv(iVec2W a, v128u b)  { return (iVec2W) { VeciMul (a.x, b),   VeciMul (a.y, b)   }; }
@@ -70,13 +70,13 @@ purefn Vec2W VCALL Rcp2W(Vec2W a)   { return (Vec2W) { VecRcp(a.x),   VecRcp(a.y
 purefn Vec2W VCALL Sqrt2W(Vec2W a)  { return (Vec2W) { VecSqrt(a.x),  VecSqrt(a.y)  }; }
 purefn Vec2W VCALL RSqrt2W(Vec2W a) { return (Vec2W) { VecRSqrt(a.x), VecRSqrt(a.y) }; }
 
-purefn v128f Vec2WDot(Vec2W a, Vec2W b) { return VecFmadd(a.x, b.x, VecMul(a.y, b.y)); }
-purefn v128f Vec2WSqrLen(Vec2W a)       { return VecFmadd(a.x, a.x, VecMul(a.y, a.y)); }
+purefn v128f VCALL Vec2WDot(Vec2W a, Vec2W b) { return VecFmadd(a.x, b.x, VecMul(a.y, b.y)); }
+purefn v128f VCALL Vec2WSqrLen(Vec2W a)       { return VecFmadd(a.x, a.x, VecMul(a.y, a.y)); }
 
-purefn v128f Vec2WLen(Vec2W a) { return VecSqrt(Vec2WDot(a, a)); }
+purefn v128f VCALL Vec2WLen(Vec2W a) { return VecSqrt(Vec2WDot(a, a)); }
 
-purefn Vec2W Vec2WNorm(Vec2W a)    { return Vec2WDivv(a, VecSqrt(Vec2WDot(a, a))); }
-purefn Vec2W Vec2WNormEst(Vec2W a) { return Vec2WMulv(a, VecRSqrt(Vec2WDot(a, a))); }
+purefn Vec2W VCALL Vec2WNorm(Vec2W a)    { return Vec2WDivv(a, VecSqrt(Vec2WDot(a, a))); }
+purefn Vec2W VCALL Vec2WNormEst(Vec2W a) { return Vec2WMulv(a, VecRSqrt(Vec2WDot(a, a))); }
 
 purefn iVec2W VCALL ToiVec2W(Vec2W a) { return (iVec2W) { VecF32ToI32(a.x), VecF32ToI32(a.y) }; }
 

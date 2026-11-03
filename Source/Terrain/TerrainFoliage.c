@@ -544,7 +544,7 @@ static void RunFoliageJob(void* userData)
                 u32 noiseIdx = ix * noiseAxis + iz;
                 if (job->count >= T_FOLIAGE_MAX_PER_CHUNK) return;
                 if (cx[noiseIdx] > sr[noiseIdx]) break;
-                u32 foliageIndex = foliages[(u32)Floorf32((rnd[rId] + 1.0f) * (numFoliages-1) * 0.5f)];
+                u32 foliageIndex = foliages[(u32)((rnd[rId] + 1.0f) * (numFoliages-1) * 0.5f)];
                 const FoliageType* type = &gFoliage.types[foliageIndex];
                 
                 f32 localX = Clampf32(rnd[rId++] * density * 0.2f + x, 0.0f, T_CHUNK_CELLS);

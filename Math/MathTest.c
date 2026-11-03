@@ -312,9 +312,9 @@ static void TestVecOps(void)
 
     // documented SSE semantics that the NEON side must match
     v128u i16 = VeciSetR((u32)(u16)-100 | ((u32)(u16)200 << 16), (u32)(u16)-30000 | ((u32)(u16)30000 << 16), 0, 0);
-    v128u lo = VecUnpackLo32S(i16);
+    v128u lo = VeciUnpackLo32S(i16);
     CHECK((s32)VeciGetX(lo) == -100 && (s32)VeciGetY(lo) == 200 && (s32)VeciGetZ(lo) == -30000 && (s32)VeciGetW(lo) == 30000,
-          "VecUnpackLo32S %d %d %d %d", (s32)VeciGetX(lo), (s32)VeciGetY(lo), (s32)VeciGetZ(lo), (s32)VeciGetW(lo));
+          "VeciUnpackLo32S %d %d %d %d", (s32)VeciGetX(lo), (s32)VeciGetY(lo), (s32)VeciGetZ(lo), (s32)VeciGetW(lo));
 
     v128u packIn = VeciSetR((u32)-5, 70000, 12345, 0);
     v128u packed = VecPack16(packIn); // packus: signed input, saturate to [0, 65535]

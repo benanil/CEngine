@@ -5,6 +5,7 @@
 #include "Include/Memory.h"
 #include "Include/JobSystem.h"
 #include "Include/Scene.h"
+#include "Math/Vec3Wide.h"
 
 #define GRASS_PER_METER        4
 #define GRASS_PER_ROW          (GRASS_PER_METER * T_CHUNK_CELLS)     // 64 blades per chunk axis
@@ -124,6 +125,13 @@ typedef struct MaterialBlend_
     u8 secondary;
     u8 primaryWeight;
 } MaterialBlend;
+
+typedef struct MaterialBlendW_
+{
+    v128u primary;
+    v128u secondary;
+    v128u primaryWeight;
+} MaterialBlendW;
 
 typedef struct tVertexData_
 {
@@ -316,7 +324,8 @@ inline void tCoordsFromKey(u64 key, s32* x, s32* y, s32* z)
 }
 
 void TerrainInitMaterialTextures(void);
-void tTerrainMaterial(float3 worldPos, float3 normal, u32* materials, u32* blend);
+
+v128u VCALL tTerrainMaterial(Vec3W worldPos, Vec3W normal, v128f oreNoise, v128f seaLevelNoise);
 
 // procedural density field, pure and thread safe (TerrainDensity.c)
 v128f TerrainDensity_SDF(v128f x, v128f y, v128f z);
@@ -329,7 +338,7 @@ void TerrainDensity_GetYRange(f32* outMin, f32* outMax);
 v128f TerrainDensity_HeightV(v128f x, v128f z);
 // island falloff mask 0..1: 0 on the island proper, ramping to 1 out on the open sea
 // plane (always 0 when island mode is off). lets grass stay on the island, off the beach.
-v128f  TerrainDensity_IslandFadeV(v128f x, v128f z);
+v128f TerrainDensity_IslandFadeV(v128f x, v128f z);
 // signed field at a world point, sculpt edits included: > 0 air, < 0 solid, 0 = surface.
 f32  TerrainDensity_At(f32 x, f32 y, f32 z);
 // nearest surface world Y at column (x,z), marched from startY (Newton on the sdf, whose

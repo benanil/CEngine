@@ -487,29 +487,26 @@ purefn mat4x4 PerspectiveFovRH_ReverseZ(f32 fov, f32 width, f32 height, f32 zNea
     return M;
 }
 
+//[x, y, z, w]      [x, x, x, x]
+//[x, y, z, w]  ->  [y, y, y, y]
+//[x, y, z, w]      [z, z, z, z]
+//[x, y, z, w]      [w, w, w, w]
+static inline void VCALL M44TransposeV(v128f r0, v128f r1, v128f r2, v128f r3, v128f* r)
+{
+    v128f t0 = VecUnpackLo(r0, r2);
+    v128f t1 = VecUnpackLo(r1, r3);
+    v128f t2 = VecUnpackHi(r0, r2);
+    v128f t3 = VecUnpackHi(r1, r3);
+    r[0] = VecUnpackLo(t0, t1); 
+    r[1] = VecUnpackHi(t0, t1);
+    r[2] = VecUnpackLo(t2, t3);
+    r[3] = VecUnpackHi(t2, t3);
+}
+
 purefn mat4x4 VCALL M44Transpose(mat4x4 M)
 {
-    mat4x4 mResult;
-    #ifdef AX_ARM
-    float32x4x2_t P0 = vzipq_f32(M.r[0], M.r[2]);
-    float32x4x2_t P1 = vzipq_f32(M.r[1], M.r[3]);
-    float32x4x2_t T0 = vzipq_f32(P0.val[0], P1.val[0]);
-    float32x4x2_t T1 = vzipq_f32(P0.val[1], P1.val[1]);
-    mResult.r[0] = T0.val[0];
-    mResult.r[1] = T0.val[1];
-    mResult.r[2] = T1.val[0];
-    mResult.r[3] = T1.val[1];
-    #else
-    v128f vTemp1 = VecShuffleR(M.r[0], M.r[1], 1, 0, 1, 0);
-    v128f vTemp3 = VecShuffleR(M.r[0], M.r[1], 3, 2, 3, 2);
-    v128f vTemp2 = VecShuffleR(M.r[2], M.r[3], 1, 0, 1, 0);
-    v128f vTemp4 = VecShuffleR(M.r[2], M.r[3], 3, 2, 3, 2);
-    mResult.r[0] = VecShuffleR(vTemp1, vTemp2, 2, 0, 2, 0);
-    mResult.r[1] = VecShuffleR(vTemp1, vTemp2, 3, 1, 3, 1);
-    mResult.r[2] = VecShuffleR(vTemp3, vTemp4, 2, 0, 2, 0);
-    mResult.r[3] = VecShuffleR(vTemp3, vTemp4, 3, 1, 3, 1);
-    #endif
-    return mResult;
+    M44TransposeV(M.r[0], M.r[1], M.r[2], M.r[3], M.r);
+    return M;
 }
 
 purefn mat4x4 VCALL M44LookAtRHVec(v128f EyePosition, v128f Center, v128f UpDirection)

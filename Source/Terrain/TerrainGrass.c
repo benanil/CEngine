@@ -83,8 +83,9 @@ u32 Terrain_BuildChunkGrass(int3 chunkMin, GrassInstance* out, float3* outMin, f
         if (wy < seaLevel + GRASS_BEACH_BAND) continue;
         if (normal.y < 0.55f) continue;
 
-        float2 cell = NoiseCellular2D((float2){ wx * 0.15f, wz * 0.15f });
-        if (cell.x > GRASS_PATCH_THRESHOLD) continue;
+        v128f cell, tmp;
+        NoiseCellular2Dx4(VecSet1(wx * 0.15f), VecSet1(wz * 0.15f), &cell, &tmp);
+        if (VecGetX(cell) > GRASS_PATCH_THRESHOLD) continue;
 
         out[count].positionXY = MakeHalf2(FloatToHalf(wx - originX), FloatToHalf(wy));
         out[count].positionZChunkIndex = (u32)FloatToHalf(wz - originZ);

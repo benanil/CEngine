@@ -8,6 +8,7 @@
 #include "Include/JobSystem.h"
 #include "Include/DataStructures/HashMap.h"
 #include "Include/Bitset.h"
+#include "Math/Noise.h"
 #include "Math/Bitpack.h"
 
 #define T_MARCHING_DRAW_DISTANCE 400.0f
@@ -130,22 +131,39 @@ static void tAppendMeshSlotTriangles(tBuildJob* job)
     u32 base = job->buildVertexCount;
 
     v128f offset = VecI32ToF32(VeciLoad((const u32*)&job->min.x));
-    f32 chunkSize = (f32)(T_CHUNK_CELLS);
-    for (size_t v = 0; v < vertexCount; v++)
+    const f32 chunkSize = (f32)(T_CHUNK_CELLS);
+    
+    u32 iterCount = Minu32(vertexCount + (vertexCount & 3), T_CHUNK_VERTEX_CAP-4);
+    for (u32 v = 0; v < iterCount; v += 4)
     {
-        v128f local = UnpackXY11Z10UnormFixed(mesh->vertices[v].position, chunkSize);
-        v128f p = VecAdd(local, offset);
-        // Safe normalize: flat or nearly collapsed triangles can leave zero-length
-        // normals; a plain normalize would spray NaN colors.
-        float3 world = Vec3Get(p);
-        float3 n = Vec3Get(tUnpackNormal(mesh->vertices[v].normal));
-        u32 materials, blend;
-        tTerrainMaterial(world, n, &materials, &blend);
-        tVertex vertex = {0};
-        vertex.position  = mesh->vertices[v].position;
-        vertex.normal    = mesh->vertices[v].normal;
-        vertex.materials = materials | (blend << 16);
-        job->buildVertices[job->buildVertexCount++] = vertex;
+        Vec3W position = Vec3WFromVTranspose(
+            VecAdd(UnpackXY11Z10UnormFixed(mesh->vertices[v + 0].position, chunkSize), offset),
+            VecAdd(UnpackXY11Z10UnormFixed(mesh->vertices[v + 1].position, chunkSize), offset),
+            VecAdd(UnpackXY11Z10UnormFixed(mesh->vertices[v + 2].position, chunkSize), offset),
+            VecAdd(UnpackXY11Z10UnormFixed(mesh->vertices[v + 3].position, chunkSize), offset)
+        );
+        
+        Vec3W normal = Vec3WFromVTranspose(
+            tUnpackNormal(mesh->vertices[v + 0].normal),
+            tUnpackNormal(mesh->vertices[v + 1].normal),
+            tUnpackNormal(mesh->vertices[v + 2].normal),
+            tUnpackNormal(mesh->vertices[v + 3].normal)
+        );
+
+        const float oreNoiseScale = 1.0f / 32.0f;
+        Vec2W seaLevelPos = Vec2WMulf(Vec2WFromV(position.x, position.z), oreNoiseScale);
+        v128f oreNoise = PerlinNoiseFBM3(Vec3WMulf(position, oreNoiseScale), 2, 0.5, 2.0f, 38u);
+        v128f seaLevelNoise = PerlinNoiseFBM(seaLevelPos, 2, 0.5, 2.0f, 123u);
+        v128u materials = tTerrainMaterial(position, normal, oreNoise, seaLevelNoise);
+        
+        for (s32 i = 0; i < 4 && v + i < vertexCount; i++)
+        {
+            tVertex vertex = {0};
+            vertex.position  = mesh->vertices[v + i].position;
+            vertex.normal    = mesh->vertices[v + i].normal;
+            vertex.materials = VeciGetN(materials, i);
+            job->buildVertices[job->buildVertexCount++] = vertex;
+        }
     }
 
     for (size_t i = 0; i + 2 < indexCount; i += 3)

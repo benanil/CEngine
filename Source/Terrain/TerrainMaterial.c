@@ -1,5 +1,6 @@
 #include "TerrainInternal.h"
 #include "Include/Terrain.h"
+#include "Math/Color.h"
 
 #define T_GRASS_LAYER 0u
 #define T_DIRT_LAYER  1u
@@ -10,84 +11,73 @@
 #define T_GRASS_START 3.0f
 #define T_GRASS_FADE  8.0f
 
-static void CalculateProceduralMaterial(float3 worldPos, float3 normal, f32 weights[4], f32* seaLevel)
+static void CalculateProceduralMaterial(Vec3W worldPos, Vec3W normal, v128f weights[4], v128f seaLevel)
+{
+    v128f slope = normal.y;
+    v128f steepRock = Vec1Minus(VecClamp01(VecMulf(VecSubf(slope, 0.55f), 4.0f)));
+    v128f highBlend = VecClamp01(VecMulf(VecSubf(worldPos.y, 34.0f), 0.08f));
+    v128f rockBlend = VecMax(steepRock, highBlend);
+    v128f grassHeight = VecClamp01(VecMulf(VecSubf(VecSub(worldPos.y, seaLevel), T_GRASS_START), 1.0f / T_GRASS_FADE));
+    v128f grassAmount = VecMul(Vec1Minus(rockBlend), grassHeight);
+    
+    M44TransposeV(
+        VecMul(grassAmount, Vec1Minus(rockBlend)),
+        VecMul(Vec1Minus(grassAmount), Vec1Minus(rockBlend)),
+        rockBlend,
+        VecZero(),
+        weights
+    );
+}
+
+static MaterialBlendW SelectDominantLayers(const v128f weights[4])
+{
+    MaterialBlendW o = {};
+    for (s32 i = 0; i < 4; i++)
+    {
+        u32 primary = T_GRASS_LAYER;
+        u32 secondary = T_DIRT_LAYER;
+        const f32* w = (const f32*)&weights[i];
+        for (u32 layer = T_DIRT_LAYER; layer <= T_ROCK_LAYER; layer++)
+        {
+            if (w[layer] > w[primary])
+            {
+                secondary = primary;
+                primary = layer;
+            }
+            else if (layer != primary && w[layer] > w[secondary])
+            {
+                secondary = layer;
+            }
+        }
+        f32 total = w[primary] + w[secondary];
+        u32 primaryWeight = (u32)Clampf32(w[primary] / Maxf32(total, 1.0e-4f) * 255.0f + 0.5f, 0.0f, 255.0f);
+        VeciSetN(&o.primary, i, primary);
+        VeciSetN(&o.secondary, i, secondary);
+        VeciSetN(&o.primaryWeight, i, primaryWeight);
+    }
+    return o; 
+}
+
+static v128u ApplyMaterialOverrides(Vec3W worldPosSoa, v128f seaLevel, MaterialBlendW* blend)
+{
+    v128f sandBlend = VecSub(VecAddf(seaLevel, T_SAND_TOP), worldPosSoa.y);
+    sandBlend = VecClamp01(VecMulf(sandBlend, (1.0f / T_SAND_FADE)));
+    // mat4x4 worldPos = M44TransposeV(worldPosSoa.x, worldPosSoa.y, worldPosSoa.z, VecZero());
+    v128u isSand     = VecF32ToU32(VecCmpGt(sandBlend, VecSet1(0.002f)));
+    blend->primary   = VeciBlend(blend->primary  , VeciSet1(T_SAND_LAYER), isSand); 
+    blend->secondary = VeciBlend(blend->secondary, VeciSet1(T_DIRT_LAYER), isSand);
+    blend->primaryWeight = VeciBlend(blend->primaryWeight, VecF32ToU32(VecMulf(sandBlend, 255.0f)), isSand);
+    
+    return VeciOr(VeciOr(blend->primary, VeciSll32(blend->secondary, 8)), VeciSll32(blend->primaryWeight, 16));
+    // TerrainEdit_MaterialWeights(Vec3Get(worldPos.r[i]), matIndex, matWeight);
+}
+
+v128u VCALL tTerrainMaterial(Vec3W worldPos, Vec3W normal, v128f oreNoise, v128f seaLevelNoise)
 {
     const TerrainGenParams* params = Terrain_GetGenParams();
-    *seaLevel = params ? params->seaLevel : 0.0f;
-
-    f32 slope = normal.y;
-    f32 steepRock = 1.0f - Saturatef32((slope - 0.55f) * 4.0f);
-    f32 highBlend = Saturatef32((worldPos.y - 34.0f) * 0.08f);
-    f32 rockBlend = Maxf32(steepRock, highBlend);
-    f32 grassHeight = Saturatef32((worldPos.y - *seaLevel - T_GRASS_START) * (1.0f / T_GRASS_FADE));
-    f32 grassAmount = (1.0f - rockBlend) * grassHeight;
-
-    weights[T_GRASS_LAYER] = grassAmount * (1.0f - rockBlend);
-    weights[T_DIRT_LAYER] = (1.0f - grassAmount) * (1.0f - rockBlend);
-    weights[T_ROCK_LAYER] = rockBlend;
-    weights[T_SAND_LAYER] = 0.0f;
-}
-
-static MaterialBlend SelectDominantLayers(const f32 weights[4])
-{
-    u32 primary = T_GRASS_LAYER;
-    u32 secondary = T_DIRT_LAYER;
-    for (u32 layer = T_DIRT_LAYER; layer <= T_ROCK_LAYER; layer++)
-    {
-        if (weights[layer] > weights[primary])
-        {
-            secondary = primary;
-            primary = layer;
-        }
-        else if (layer != primary && weights[layer] > weights[secondary])
-        {
-            secondary = layer;
-        }
-    }
-
-    f32 total = weights[primary] + weights[secondary];
-    u32 primaryWeight = (u32)Clampf32(weights[primary] / Maxf32(total, 1.0e-4f) * 255.0f + 0.5f, 0.0f, 255.0f);
-    return (MaterialBlend){ (u8)primary, (u8)secondary, (u8)primaryWeight };
-}
-
-static void ApplyMaterialOverrides(float3 worldPos, f32 seaLevel, MaterialBlend* blend)
-{
-    f32 sandBlend = Saturatef32((seaLevel + T_SAND_TOP - worldPos.y) * (1.0f / T_SAND_FADE));
-
-    u8 matIndex[2];
-    u8 matWeight[2];
-    TerrainEdit_MaterialWeights(worldPos, matIndex, matWeight);
-
-    if (matIndex[0] == 0u && matIndex[1] == 0u)
-    {
-        if (sandBlend > 0.002f)
-        {
-            blend->primary = T_SAND_LAYER;
-            blend->secondary = T_DIRT_LAYER;
-            blend->primaryWeight = (u8)Clampf32(sandBlend * 255.0f + 0.5f, 0.0f, 255.0f);
-        }
-    }
-    else
-    {
-        u32 procDominant = blend->primaryWeight >= 128u ? blend->primary : blend->secondary;
-        blend->primary = (u8)procDominant;
-        if (matIndex[0] != 0u)
-            blend->primary = (u8)Minu32((u32)matIndex[0] - 1u, T_SAND_LAYER);
-        blend->secondary = (u8)procDominant;
-        if (matIndex[1] != 0u)
-            blend->secondary = (u8)Minu32((u32)matIndex[1] - 1u, T_SAND_LAYER);
-        blend->primaryWeight = matWeight[0];
-    }
-}
-
-void tTerrainMaterial(float3 worldPos, float3 normal, u32* materials, u32* blend)
-{
-    f32 weights[4];
-    f32 seaLevel;
-    CalculateProceduralMaterial(worldPos, normal, weights, &seaLevel);
-    MaterialBlend material = SelectDominantLayers(weights);
-    ApplyMaterialOverrides(worldPos, seaLevel, &material);
-
-    *materials = (u32)material.primary | ((u32)material.secondary << 8);
-    *blend = material.primaryWeight;
+    v128f weights[4];
+    v128f seaLevel = VecFmadd(seaLevelNoise, VecSet1(15.0f), VecSet1(params->seaLevel)); 
+    CalculateProceduralMaterial(worldPos, normal, weights, seaLevel);
+    MaterialBlendW material = SelectDominantLayers(weights);
+    return ApplyMaterialOverrides(worldPos, seaLevel, &material);
 }
