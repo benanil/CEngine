@@ -32,13 +32,11 @@ typedef struct TerrainEditorState_
     f32 seed;
     f32 seaLevel;
     f32 baseHeight;
-    f32 hillAmplitude;
+    f32 lowlandScale;
     f32 hillFrequency;
-    f32 ridgeAmplitude;
-    f32 ridgeFrequency;
+    f32 mountainFrequency;
     f32 caveAmplitude;
     f32 caveFrequency;
-    f32 fixedWorldSize;
     f32 islandRadius;
     f32 islandFalloff;
     f32 brushRadius;
@@ -78,14 +76,11 @@ static void TerrainEditorInit(void)
     TerrainSyncScenePath();
     terrainUI.seed           = 1.0f;
     terrainUI.seaLevel       = -25.0f;
-    terrainUI.baseHeight     = -40.0f;
-    terrainUI.hillAmplitude  = 0.4f;
-    terrainUI.hillFrequency  = 0.5f;
-    terrainUI.ridgeAmplitude = 0.5f;
-    terrainUI.ridgeFrequency = 0.2f;
+    terrainUI.baseHeight     = -60.0f;
+    terrainUI.lowlandScale   = 0.3f;
+    terrainUI.mountainFrequency = 0.35f;
     terrainUI.caveAmplitude  = 0.3f;
     terrainUI.caveFrequency  = 0.045f;
-    terrainUI.fixedWorldSize = (f32)TERRAIN_FIXED_WORLD_DEFAULT_SIZE;
     terrainUI.islandRadius   = 260.0f;
     terrainUI.islandFalloff  = 100.0f;
     terrainUI.brushRadius    = 6.0f;
@@ -101,13 +96,10 @@ static TerrainGenParams TerrainEditorBuildParams(void)
     params.seed           = (u32)terrainUI.seed;
     params.seaLevel       = terrainUI.seaLevel;
     params.baseHeight     = terrainUI.baseHeight;
-    params.hillAmplitude  = Clampf32(terrainUI.hillAmplitude, 0.1f, 4.0f);
-    params.hillFrequency  = Clampf32(terrainUI.hillFrequency, 0.05f, 4.0f);
-    params.ridgeAmplitude = Clampf32(terrainUI.ridgeAmplitude, 0.25f, 2.0f);
-    params.ridgeFrequency = Clampf32(terrainUI.ridgeFrequency, 0.05f, 2.0f);
+    params.lowlandFreq  = Clampf32(terrainUI.lowlandScale, 0.01f, 4.0f);
+    params.mountainFreq = Clampf32(terrainUI.mountainFrequency, 0.05f, 2.0f);
     params.carveAmplitude = Clampf32(terrainUI.caveAmplitude, 0.0f, 32.0f);
-    params.carveFrequency = Clampf32(terrainUI.caveFrequency, 0.0001f, 0.2f);
-    params.fixedWorldSize = (u32)Clamps32((s32)terrainUI.fixedWorldSize, TERRAIN_FIXED_WORLD_MIN_SIZE, TERRAIN_FIXED_WORLD_MAX_SIZE);
+    params.carveFreq = Clampf32(terrainUI.caveFrequency, 0.0001f, 0.2f);
     params.island         = terrainUI.island;
     params.islandRadius   = terrainUI.islandRadius;
     params.islandFalloff  = terrainUI.islandFalloff;
@@ -119,13 +111,10 @@ static void TerrainEditorApplyParams(const TerrainGenParams* params)
     terrainUI.seed           = (f32)params->seed;
     terrainUI.seaLevel       = params->seaLevel;
     terrainUI.baseHeight     = params->baseHeight;
-    terrainUI.hillAmplitude  = params->hillAmplitude;
-    terrainUI.hillFrequency  = params->hillFrequency;
-    terrainUI.ridgeAmplitude = params->ridgeAmplitude;
-    terrainUI.ridgeFrequency = params->ridgeFrequency;
+    terrainUI.lowlandScale  = params->lowlandFreq;
+    terrainUI.mountainFrequency = params->mountainFreq;
     terrainUI.caveAmplitude  = params->carveAmplitude;
-    terrainUI.caveFrequency  = params->carveFrequency;
-    terrainUI.fixedWorldSize = (f32)params->fixedWorldSize;
+    terrainUI.caveFrequency  = params->carveFreq;
     terrainUI.island         = params->island;
     terrainUI.islandRadius   = params->islandRadius;
     terrainUI.islandFalloff  = params->islandFalloff;
@@ -306,16 +295,12 @@ static void TerrainNoiseUI(void)
     }
     bool edited = false;
     edited |= UICheckbox("Fixed chunk size, do not stream with movement", &terrainUI.fixedChunkSize);
-    if (terrainUI.fixedChunkSize)
-        edited |= UIEditFloat("Fixed world size", &terrainUI.fixedWorldSize, (f32)TERRAIN_FIXED_WORLD_MIN_SIZE, (f32)TERRAIN_FIXED_WORLD_MAX_SIZE, 16.0f, 0);
     edited |= UICheckbox("Island mask, center area above sea level", &terrainUI.island);
     edited |= UIEditFloat("Seed", &terrainUI.seed, 0.0f, 999999.0f, 1.0f, 0);
     edited |= UIEditFloat("Sea level", &terrainUI.seaLevel, -200.0f, 200.0f, 1.0f, 2);
     edited |= UIEditFloat("Base height", &terrainUI.baseHeight, -200.0f, 200.0f, 1.0f, 2);
-    edited |= UIEditFloat("Lowland scale", &terrainUI.hillAmplitude, 0.25f, 8.0f, 0.1f, 2);
-    edited |= UIEditFloat("Noise scale", &terrainUI.hillFrequency, 0.05f, 4.0f, 0.05f, 2);
-    edited |= UIEditFloat("Height scale", &terrainUI.ridgeAmplitude, 0.25f, 2.0f, 0.05f, 2);
-    edited |= UIEditFloat("Mountain scale", &terrainUI.ridgeFrequency, 0.05f, 2.0f, 0.05f, 2);
+    edited |= UIEditFloat("Lowland scale", &terrainUI.lowlandScale, 0.015f, 10.0f, 0.1f, 2);
+    edited |= UIEditFloat("Mountain scale", &terrainUI.mountainFrequency, 0.015f, 10.0f, 0.05f, 2);
     edited |= UIEditFloat("Carve amplitude", &terrainUI.caveAmplitude, 0.0f, 32.0f, 0.5f, 2);
     edited |= UIEditFloat("Carve frequency", &terrainUI.caveFrequency, 0.0001f, 0.2f, 0.001f, 5);
     if (edited)
@@ -425,7 +410,12 @@ static void TerrainFoliageUI(void)
     }
 
     if (anyEdited)
+    {
+        char foliagePath[512];
+        SmallMemCpy(foliagePath, terrainUI.savePath, StringLength(terrainUI.savePath));
+        ChangeExtension(foliagePath, StringLength(terrainUI.savePath), "foliage");
         Foliage_Save(terrainUI.savePath);
+    }
 }
 
 static void TerrainStatsUI(void)

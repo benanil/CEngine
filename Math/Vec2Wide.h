@@ -35,7 +35,7 @@ purefn iVec2W VCALL iOr2W(iVec2W a, iVec2W b)  { return (iVec2W) { VeciOr(a.x, b
 purefn iVec2W VCALL iXor2W(iVec2W a, iVec2W b) { return (iVec2W) { VeciXor(a.x, b.x), VeciXor(a.y, b.y) }; }
 
 // f32
-purefn Vec2W Vec2WFromF(f32   x, f32   y) { return (Vec2W) { VecSet1(x), VecSet1(y) }; }
+purefn Vec2W Vec2WFromf(f32   x, f32   y) { return (Vec2W) { VecSet1(x), VecSet1(y) }; }
 purefn Vec2W Vec2WFromV(v128f x, v128f y) { return (Vec2W) { x, y }; }
 
 purefn Vec2W VCALL Vec2WAdd(Vec2W  a, Vec2W b)  { return (Vec2W) { VecAdd (a.x, b.x), VecAdd (a.y, b.y) }; }
@@ -52,6 +52,7 @@ purefn Vec2W VCALL Vec2WMul(Vec2W  a, Vec2W b)  { return (Vec2W) { VecMul (a.x, 
 purefn Vec2W VCALL Vec2WMulv(Vec2W a, v128f b)  { return (Vec2W) { VecMul (a.x, b),   VecMul (a.y, b)   }; }
 purefn Vec2W VCALL Vec2WMul2(Vec2W a, float2 b) { return (Vec2W) { VecMulf(a.x, b.x), VecMulf(a.y, b.y) }; }
 purefn Vec2W VCALL Vec2WMulf(Vec2W a, f32 b)    { return (Vec2W) { VecMulf(a.x, b),   VecMulf(a.y, b)   }; }
+purefn Vec2W VCALL Vec2WFmaf(Vec2W a, f32 b, f32 c)    { return (Vec2W) { VecFmadd(a.x, VecSet1(b), VecSet1(c)),   VecFmadd(a.y, VecSet1(b), VecSet1(c)) }; }
 
 purefn Vec2W VCALL Vec2WDiv(Vec2W  a, Vec2W b)  { return (Vec2W) { VecDiv (a.x, b.x), VecDiv (a.y, b.y) }; }
 purefn Vec2W VCALL Vec2WDivv(Vec2W a, v128f b)  { return (Vec2W) { VecDiv (a.x, b),   VecDiv (a.y, b)   }; }

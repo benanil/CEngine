@@ -75,17 +75,16 @@ u32 Terrain_BuildChunkGrass(int3 chunkMin, GrassInstance* out, float3* outMin, f
     {
         f32 wx = originX + NextFloat01(PCG2Next(&seed)) * size0;
         f32 wz = originZ + NextFloat01(PCG2Next(&seed)) * size0;
-        if (VecGetX(TerrainDensity_IslandFadeV(VecSet1(wx), VecSet1(wz))) > GRASS_ISLAND_MAX) continue;
+        if (VecGetX(TD_IslandFadeV(VecSet1(wx), VecSet1(wz))) > GRASS_ISLAND_MAX) continue;
 
         float3 normal;
-        f32 wy = TerrainDensity_SurfaceY(wx, wz, VecGetX(TerrainDensity_HeightV(VecSet1(wx), VecSet1(wz))), &normal);
+        f32 wy = TD_SurfaceY(wx, wz, VecGetX(TD_HeightV(VecSet1(wx), VecSet1(wz))), &normal);
         if (wy < originY || wy >= originY + size0) continue;
         if (wy < seaLevel + GRASS_BEACH_BAND) continue;
         if (normal.y < 0.55f) continue;
 
-        v128f cell, tmp;
-        NoiseCellular2Dx4(VecSet1(wx * 0.15f), VecSet1(wz * 0.15f), &cell, &tmp);
-        if (VecGetX(cell) > GRASS_PATCH_THRESHOLD) continue;
+        Vec2W cellular = Cellular2(Vec2WFromf(wx * 0.15f, wz * 0.15f));
+        if (VecGetX(cellular.x) > GRASS_PATCH_THRESHOLD) continue;
 
         out[count].positionXY = MakeHalf2(FloatToHalf(wx - originX), FloatToHalf(wy));
         out[count].positionZChunkIndex = (u32)FloatToHalf(wz - originZ);

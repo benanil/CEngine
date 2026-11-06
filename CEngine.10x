@@ -385,7 +385,56 @@
 				<Recursive>true</Recursive>
 				<ShowEmptyFolders>true</ShowEmptyFolders>
 				<IncludeFilesWithoutExt>false</IncludeFilesWithoutExt>
-				<Children></Children>
+				<Children>
+					<File>
+						<Path>Math/Bitpack.h</Path>
+					</File>
+					<File>
+						<Path>Math/Color.h</Path>
+					</File>
+					<File>
+						<Path>Math/Half.h</Path>
+					</File>
+					<File>
+						<Path>Math/Math.h</Path>
+					</File>
+					<File>
+						<Path>Math/MathTest.c</Path>
+					</File>
+					<File>
+						<Path>Math/Matrix.h</Path>
+					</File>
+					<File>
+						<Path>Math/Quaternion.h</Path>
+					</File>
+					<File>
+						<Path>Math/SOAMath.h</Path>
+					</File>
+					<File>
+						<Path>Math/Vector.h</Path>
+					</File>
+					<File>
+						<Path>Math/Vec2Wide.h</Path>
+					</File>
+					<File>
+						<Path>Math/Vec3Wide.h</Path>
+					</File>
+					<File>
+						<Path>Math/Noise.h</Path>
+					</File>
+					<File>
+						<Path>Math/Perlin.h</Path>
+					</File>
+					<File>
+						<Path>Math/Simplex.h</Path>
+					</File>
+					<File>
+						<Path>Math/Cellular.h</Path>
+					</File>
+					<File>
+						<Path>Math/NoiseShared.h</Path>
+					</File>
+				</Children>
 			</Folder>
 			<Folder>
 				<Path>Shaders</Path>

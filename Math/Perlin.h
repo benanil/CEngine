@@ -1,12 +1,10 @@
 #ifndef PERLIN_NOISE
 #define PERLIN_NOISE
-
+// adopted from shadertoy, s32eger hash for better uniformity and no fp32 problems
+// https://www.shadertoy.com/view/slB3z3
+// https://www.shadertoy.com/view/NlSGDz
 #include "Vec2Wide.h"
 #include "Vec3Wide.h"
-
-purefn v128f VCALL Interpolate2W(v128f value1, v128f value2, v128f value3, v128f value4, Vec2W t) {
-    return VecLerpV(VecLerpV(value1, value2, t.x), VecLerpV(value3, value4, t.x), t.y);
-}
 
 purefn v128f VCALL Interpolate3W(v128f v000, v128f v100, v128f v010, v128f v110,
                                  v128f v001, v128f v101, v128f v011, v128f v111, Vec3W t) {
@@ -15,14 +13,19 @@ purefn v128f VCALL Interpolate3W(v128f v000, v128f v100, v128f v010, v128f v110,
     return VecLerpV(a, b, t.z);
 }
 
-purefn Vec2W Fade(Vec2W t) {
-    // 6t^5 - 15t^4 + 10t^3
-	return Vec2WMul(t, Vec2WMul(t, Vec2WMul(t,
-                        Vec2WAddf(Vec2WMul(t, Vec2WSubf(Vec2WMulf(t, 6.0f), 15.0f)), 10.0f))));
+purefn v128f VCALL Interpolate2W(v128f value1, v128f value2, v128f value3, v128f value4, Vec2W t) {
+    return VecLerpV(VecLerpV(value1, value2, t.x), VecLerpV(value3, value4, t.x), t.y);
 }
+
 purefn Vec3W Fade3W(Vec3W t) {
     return Vec3WMul(t, Vec3WMul(t, Vec3WMul(t,
                 Vec3WAddf(Vec3WMul(t, Vec3WSubf(Vec3WMulf(t, 6.0f), 15.0f)), 10.0f))));
+}
+
+purefn Vec2W Fade2W(Vec2W t) {
+    // 6t^5 - 15t^4 + 10t^3
+    return Vec2WMul(t, Vec2WMul(t, Vec2WMul(t,
+                        Vec2WAddf(Vec2WMul(t, Vec2WSubf(Vec2WMulf(t, 6.0f), 15.0f)), 10.0f))));
 }
 
 purefn v128f VCALL Fade1D(v128f t) {
@@ -75,18 +78,24 @@ purefn v128f VCALL GradSigned(v128u h, v128f dx, v128f dy) {
 purefn v128f VCALL GradSigned1D(v128u h, v128f d) {
     return VeciBitcastF32(VeciXor(VecBitcastU32(d), VeciSll32(h, 31)));
 }
- 
+
 purefn v128f VCALL GradSigned3(v128u h, v128f dx, v128f dy, v128f dz) {
+    v128u one  = VeciSet1(1), zero = VeciZero();
+    v128u h2 = VeciSrl32(h, 2);
+    v128u h3 = VeciSrl32(h, 3);
     v128u sx = VeciSll32(h, 31);
     v128u sy = VeciSll32(VeciAnd(h, VeciSet1(2)), 30);
-    v128u sz = VeciSll32(VeciAnd(h, VeciSet1(4)), 29);
-    v128f gx = VeciBitcastF32(VeciXor(VecBitcastU32(dx), sx));
-    v128f gy = VeciBitcastF32(VeciXor(VecBitcastU32(dy), sy));
-    v128f gz = VeciBitcastF32(VeciXor(VecBitcastU32(dz), sz));
+    v128u sz = VeciSll32(VeciXor(h, VeciSrl32(h, 1)), 31);
+    v128u kx = VeciSub(zero, VeciAnd(VeciOr(h2, h3), one));
+    v128u ky = VeciSub(zero, VeciAnd(VeciOr(VeciXor(h2, one), h3), one));
+    v128u kz = VeciSub(zero, VeciXor(VeciAnd(h3, one), one));
+    v128f gx = VeciBitcastF32(VeciAnd(VeciXor(VecBitcastU32(dx), sx), kx));
+    v128f gy = VeciBitcastF32(VeciAnd(VeciXor(VecBitcastU32(dy), sy), ky));
+    v128f gz = VeciBitcastF32(VeciAnd(VeciXor(VecBitcastU32(dz), sz), kz));
     return VecAdd(VecAdd(gx, gy), gz);
 }
  
-static inline v128f PerlinNoiseOctav3(Vec3W position, v128u seed) {
+purefn v128f Perlin3(Vec3W position, v128u seed) {
     Vec3W floorPosition = Floor3W(position);
     Vec3W fractPosition = Vec3WSub(position, floorPosition);
     iVec3W c = ToiVec3W(floorPosition);
@@ -122,7 +131,7 @@ static inline v128f PerlinNoiseOctav3(Vec3W position, v128u seed) {
     return Interpolate3W(v000, v100, v010, v110, v001, v101, v011, v111, Fade3W(fractPosition));
 }
 
-static inline v128f PerlinNoiseOctav(Vec2W position, v128u seed) {
+purefn v128f Perlin2(Vec2W position, v128u seed) {
     Vec2W floorPosition = Floor2W(position);
     Vec2W fractPosition = Vec2WSub(position, floorPosition);
     iVec2W c = ToiVec2W(floorPosition);
@@ -142,10 +151,10 @@ static inline v128f PerlinNoiseOctav(Vec2W position, v128u seed) {
     v128f value3 = GradSigned(HashFinish(hx0, ky1), x0, y1);
     v128f value4 = GradSigned(HashFinish(hx1, ky1), x1, y1);
 
-    return Interpolate2W(value1, value2, value3, value4, Fade(fractPosition));
+    return Interpolate2W(value1, value2, value3, value4, Fade2W(fractPosition));
 }
 
-static inline v128f PerlinNoise1DOctav(v128f position, v128u seed) {
+purefn v128f Perlin1(v128f position, v128u seed) {
     v128f floorPosition = VecFloor(position);
     v128f t = VecSub(position, floorPosition);
     v128u c = VecF32ToU32(floorPosition);
@@ -156,41 +165,71 @@ static inline v128f PerlinNoise1DOctav(v128f position, v128u seed) {
     return VecLerpV(value0, value1, Fade1D(t));
 }
 
-// https://www.shadertoy.com/view/NlSGDz
-static inline v128f PerlinNoiseFBM(Vec2W position, int octaveCount, float persistence, float lacunarity, u32 seed) {
+purefn v128f Perlin3FBM(Vec3W position, s32 octaveCount, f32 persistence, f32 lacunarity, u32 seed) {
     v128f value = VecZero();
     v128f amplitude = VecOne();
-    for (int i = 0; i < octaveCount; i++) {
-        v128u  s = Hash1D(VeciSet1(i), VeciSet1(seed)); 
-        value     = VecFmadd(PerlinNoiseOctav(position, s), amplitude, value);
+    for (s32 i = 0; i < octaveCount; i++) {
+        v128u  s = Hash1D(VeciSet1(i), VeciSet1(seed));
+        value     = VecFmadd(Perlin3(position, s), amplitude, value);
         amplitude = VecMulf(amplitude, persistence);
-        position  = Vec2WMulf(position, lacunarity);
+        position  = Vec3WMulf(position, lacunarity);
     }
     return value;
 }
 
-static inline v128f PerlinNoise1DFBM(v128f position, int octaveCount, float persistence, float lacunarity, u32 seed) {
+purefn v128f Perlin2FBM(Vec2W position, s32 octaveCount,
+                        f32 persistence, f32 lacunarity, u32 seed) {
     v128f value = VecZero();
     v128f amplitude = VecOne();
-    for (int i = 0; i < octaveCount; i++) {
+    for (s32 i = 0; i < octaveCount; i++) {
+        v128u  s = Hash1D(VeciSet1(i), VeciSet1(seed)); 
+        value     = VecFmadd(Perlin2(position, s), amplitude, value);
+        amplitude = VecMulf(amplitude, persistence);
+        position  = Vec2WMulf(position, lacunarity);
+    }
+    return VecClampf(value, -1.0f, 1.0f);
+}
+
+purefn v128f Perlin1FBM(v128f position, s32 octaveCount, f32 persistence, f32 lacunarity, u32 seed) {
+    v128f value = VecZero();
+    v128f amplitude = VecOne();
+    for (s32 i = 0; i < octaveCount; i++) {
         v128u s = Hash1D(VeciSet1((u32)i), VeciSet1(seed));
-        value     = VecFmadd(PerlinNoise1DOctav(position, s), amplitude, value);
+        value     = VecFmadd(Perlin1(position, s), amplitude, value);
         amplitude = VecMulf(amplitude, persistence);
         position  = VecMulf(position, lacunarity);
     }
     return value;
 }
 
-static inline v128f PerlinNoiseFBM3(Vec3W position, int octaveCount, float persistence, float lacunarity, u32 seed) {
-    v128f value = VecZero();
-    v128f amplitude = VecOne();
-    for (int i = 0; i < octaveCount; i++) {
-        v128u  s = Hash1D(VeciSet1(i), VeciSet1(seed));
-        value     = VecFmadd(PerlinNoiseOctav3(position, s), amplitude, value);
-        amplitude = VecMulf(amplitude, persistence);
-        position  = Vec3WMulf(position, lacunarity);
-    }
-    return value;
+purefn v128f PerlinDistinct2FBM(Vec2W pos, f32 scale, u32 seed)
+{
+    v128f fine, coarse, absence, blend;
+    v128u s4 = HashKey(VeciAdd(VeciSet1(seed), VeciSetR(87, 65, 43, 21)));
+
+    fine    = Perlin2FBM(Vec2WMulf(pos, scale * 1.2f), 2, 0.5f, 2.0f, VeciGetX(s4));
+    coarse  = Perlin2FBM(Vec2WMulf(pos, scale * 0.8f), 2, 0.5f, 2.0f, VeciGetY(s4));
+    absence = Perlin2(Vec2WMulf(pos, scale * 0.15f), VeciSplatZ(s4));
+    blend   = Perlin2(Vec2WMulf(pos, scale * 0.07f), VeciSplatW(s4));
+    
+    blend   = SmoothstepV(blend, -0.25f, 0.0f); // %60 coarse
+    coarse  = Remap01V(VecLerpV(fine, coarse, blend));
+    return VecMul(coarse, SmoothstepV(absence, -0.65f, -0.25f));// %20 absence
+}
+
+purefn v128f PerlinDistinct2(Vec2W pos, f32 scale, u32 seed)
+{
+    v128f fine, coarse, absence, blend;
+    v128u s4 = HashKey(VeciAdd(VeciSet1(seed), VeciSetR(12, 34, 56, 78)));
+    
+    fine    = Perlin2(Vec2WMulf(pos, scale * 1.20f), VeciSplatX(s4));
+    coarse  = Perlin2(Vec2WMulf(pos, scale * 0.80f), VeciSplatY(s4));
+    absence = Perlin2(Vec2WMulf(pos, scale * 0.15f), VeciSplatZ(s4));
+    blend   = Perlin2(Vec2WMulf(pos, scale * 0.07f), VeciSplatW(s4));
+
+    blend   = SmoothstepV(blend, -0.25f, 0.0f); // %65 coarse
+    coarse  = Remap01V(VecLerpV(fine, coarse, blend));
+    return VecMul(coarse, SmoothstepV(absence, -0.65f, -0.25f)); // %20 absence
 }
 
 #endif

@@ -186,7 +186,7 @@ static inline void CameraUpdateFly(Camera* camera, f32 dt, float2 mousePos)
     if (!camera) return;
     
     bool pressing = GetMouseDown(MouseButton_Right);
-    f32 speed = dt * (1.0f + GetKeyDown(SDLK_LSHIFT) * 6.0f) * camera->speed;
+    f32 speed = dt * (1.0f + GetKeyDown(SDLK_LSHIFT) * 16.0f) * camera->speed;
 
     if (!pressing)
     {

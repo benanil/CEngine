@@ -427,40 +427,41 @@ static void GetRandom(u32 s, s32 count, f32* rnd)
     }
 }
 
-static void GetCellular(s32 chunkX, s32 chunkZ, f32 density, s32 axis, f32 frequency, u32 typeNoiseSeed, f32* cx)
+static void GetExistance(s32 chunkX, s32 chunkZ, s32 axis, f32 frequency, u32 seed, f32* cx)
 {
-    f32 offsetX = RepeatMinMaxF32(WangHash(typeNoiseSeed ^ 0xa511e9b3u), 0.0f, 289.0f);
-    f32 offsetZ = RepeatMinMaxF32(WangHash(typeNoiseSeed ^ 0x63d83595u), 0.0f, 289.0f);
-    const v128f laneOffset = VecSetR(0.5f, 1.5f, 2.5f, 3.5f); // j+0.5 .. j+3.5
-    for (s32 i = 0; i < axis; i++)
+    u32 hash = WangHash(seed ^ 0xA511E9B3U);
+    f32 offsetX = (f32)(hash & 0xFFFFu) * 0.481632f;
+    f32 offsetZ = (f32)(hash >> 16) * 0.34579f;
+    for (s32 x = 0; x < axis; x++)
     {
-        v128f worldX = VecAddf(VecSet1(((f32)chunkX + density * ((f32)i + 0.5f)) * frequency), offsetX);
-        for (s32 j = 0; j < axis; j += 4)
+        v128f worldX = VecSet1(chunkX + x + offsetX);
+        for (s32 z = 0; z < axis; z += 4)
         {
-            v128f jIdx = VecAddf(laneOffset, (f32)j), tmp; // j+0.5 .. j+3.5
-            v128f worldZ = VecAddf(VecMulf(VecAddf(VecMulf(jIdx, density), (f32)chunkZ), frequency), offsetZ);
-            NoiseCellular2Dx4(worldX, worldZ, (v128f*)(cx + i * axis + j), &tmp);
+            v128f worldZ = VecAdd(VecSet1(chunkZ + z + offsetZ), Vec0123());
+            Vec2W worldXZ = (Vec2W){ worldX, worldZ };
+            v128f p = PerlinDistinct2FBM(worldXZ, frequency, seed ^ 0xFDA548Eu);
+            VecStore(cx + x * axis + z, p);
         }
     }
 }
 
-static void GetDensityPerlin(s32 chunkX, s32 chunkZ, v128f density, s32 axis, u32 typeNoiseSeed, f32* dpx, f32* dpz)
+static void GetDensityPerlin(s32 chunkX, s32 chunkZ, v128f density, s32 axis, u32 seed, f32* dpx, f32* dpz)
 {
     v128f densityVaryV = VecMulf(density, densityVary);
     for (s32 i = 0; i < axis; i += 4)
     {
         v128f worldX = VecMulf(VecAdd(VecSet1(chunkX + i), Vec0123()), densityNoiseScale);
         v128f worldZ = VecMulf(VecAdd(VecSet1(chunkZ + i), Vec0123()), densityNoiseScale);
-        v128f px = PerlinNoise1DOctav(worldX, VeciSet1(typeNoiseSeed));
-        v128f pz = PerlinNoise1DOctav(worldZ, VeciSet1(typeNoiseSeed + 123u));
-        px = VecMax(VecFmadd(px, densityVaryV, density), VecSet1(T_MIN_DENSITY));
-        pz = VecMax(VecFmadd(pz, densityVaryV, density), VecSet1(T_MIN_DENSITY));
+        v128f px = Perlin1(worldX, VeciSet1(seed));
+        v128f pz = Perlin1(worldZ, VeciSet1(seed + 123u));
+        px = VecClampf(VecFmadd(px, densityVaryV, density), T_MIN_DENSITY, T_CHUNK_CELLS-1.0f);
+        pz = VecClampf(VecFmadd(pz, densityVaryV, density), T_MIN_DENSITY, T_CHUNK_CELLS-1.0f);
         VecStore(dpx + i, VecLerp(px, pz, 0.25f)); // make x,z densities a bit closer
         VecStore(dpz + i, VecLerp(pz, px, 0.25f));
     }
 }
 
-static void GetRarityGate(s32 chunkX, s32 chunkZ, s32 axis, f32 rarity, f32* r)
+static void GetRarityGate(s32 chunkX, s32 chunkZ, s32 axis, f32 rarity, f32* r, u32 seed)
 {
     for (s32 x = 0; x < axis; x++)
     {
@@ -468,7 +469,7 @@ static void GetRarityGate(s32 chunkX, s32 chunkZ, s32 axis, f32 rarity, f32* r)
         for (s32 z = 0; z < axis; z += 4)
         {
             v128f worldZ = VecMulf(VecAdd(VecSet1(chunkZ + z), Vec0123()), rarityNoiseScale);
-            v128f sr = SimplexNoiseFBM(Vec2WFromV(worldX, worldZ), 2, 0.5f, 2.0f);
+            v128f sr = Perlin2FBM(Vec2WFromV(worldX, worldZ), 2, 0.5f, 2.0f, seed);
             sr = VecFmadd(sr, VecSet1(rarityVary), VecSet1(rarity));
             VecStore(r + x * axis + z, VecClamp01(sr));
         }
@@ -507,44 +508,45 @@ static void RunFoliageJob(void* userData)
 {
     tFoliageJob* job = (tFoliageJob*)userData;
     job->count = 0u;
-    ALIGNSIMD f32 rnd[T_NOISE_AXIS_MAX * T_NOISE_AXIS_MAX * 5];
-    ALIGNSIMD f32 cx[T_NOISE_AXIS_MAX * T_NOISE_AXIS_MAX];
-    ALIGNSIMD f32 sr[T_NOISE_AXIS_MAX * T_NOISE_AXIS_MAX];
-    ALIGNSIMD f32 dx[T_NOISE_AXIS_MAX];
-    ALIGNSIMD f32 dz[T_NOISE_AXIS_MAX];
+    ALIGNSIMD f32 rnd[T_NOISE_AXIS_MAX * T_NOISE_AXIS_MAX * 6];
+    ALIGNSIMD f32 existance[T_NOISE_AXIS_MAX * T_NOISE_AXIS_MAX];
+    ALIGNSIMD f32 rarity[T_NOISE_AXIS_MAX * T_NOISE_AXIS_MAX];
+    ALIGNSIMD f32 densityX[T_NOISE_AXIS_MAX];
+    ALIGNSIMD f32 densityY[T_NOISE_AXIS_MAX];
     
     for (u8 g = 0; g < T_MAX_FOLIAGE_GROUPS; g++)
     {
         u8 group = g;
         u8 foliages[T_MAX_FOLIAGE_SCENE] = {0};
         u8 numFoliages = GetFoliageGroups(group, foliages);
-        const FoliageType* baseType = &gFoliage.types[foliages[0]];
         bool changed = BitsetGet(&gFoliage.changedGroups, g) || job->placeAllEnabled;
         if (numFoliages == 0 || !changed) continue;
         
+        const FoliageType* baseType = &gFoliage.types[foliages[0]];
         u32 seed = WangHash(gFoliage.seed + (u32)job->chunkMin.x * 73856093u ^ (u32)job->chunkMin.z * 19349663u ^ (group * 83492791u + 1u));
         f32 density = Maxf32(baseType->params.density, T_MIN_DENSITY);
-        f32 rarityGate = Clampf32((1.0f - baseType->params.rarity) * 1.5f, 0.05f, 1.0f);
-        u32 typeNoiseSeed = WangHash((group + 1u) * 0x9e3779b9u);
+        f32 rarityGate = Clampf32(baseType->params.rarity, 0.05f, 1.0f);
+        u32 typeNoiseSeed = WangHash((group + 1u) * 0x9e3779b9u + gFoliage.seed);
         f32 noiseFrequency = baseType->params.frequency * 0.05f;
         
         s32 noiseAxis = (s32)((f32)T_CHUNK_CELLS / density);
         noiseAxis = Clamps32((noiseAxis + 3) & ~3, 4, T_NOISE_AXIS_MAX);
 
         GetRandom(seed, noiseAxis * noiseAxis * 6, rnd);
-        GetCellular(job->chunkMin.x, job->chunkMin.z, density, noiseAxis, noiseFrequency, typeNoiseSeed, cx);
-        GetDensityPerlin(job->chunkMin.x, job->chunkMin.z, VecSet1(density), noiseAxis, typeNoiseSeed, dx, dz);
-        GetRarityGate(job->chunkMin.x, job->chunkMin.z, noiseAxis, rarityGate, sr);
+        GetExistance(job->chunkMin.x, job->chunkMin.z, noiseAxis, noiseFrequency, typeNoiseSeed, existance);
+        GetDensityPerlin(job->chunkMin.x, job->chunkMin.z, VecSet1(density), noiseAxis, typeNoiseSeed, densityX, densityY);
+        GetRarityGate(job->chunkMin.x, job->chunkMin.z, noiseAxis, rarityGate, rarity, typeNoiseSeed);
         s32 rId = 0, ix = 0, iz = 0;
-        for (f32 x = density * 0.5f; x < T_CHUNK_CELLS; x += dx[ix], ix++)
+        for (f32 x = density * 0.5f; x < T_CHUNK_CELLS && ix < noiseAxis; x += densityX[ix], ix++)
         {
             iz = 0;
-            for (f32 z = density * 0.5f; z < T_CHUNK_CELLS; z += dz[iz], iz++)
+            for (f32 z = density * 0.5f; z < T_CHUNK_CELLS && iz < noiseAxis; z += densityY[iz], iz++)
             {
                 u32 noiseIdx = ix * noiseAxis + iz;
                 if (job->count >= T_FOLIAGE_MAX_PER_CHUNK) return;
-                if (cx[noiseIdx] > sr[noiseIdx]) break;
-                u32 foliageIndex = foliages[(u32)((rnd[rId] + 1.0f) * (numFoliages-1) * 0.5f)];
+                if (existance[noiseIdx] < rarity[noiseIdx]) continue;
+                u32 foliageIndex = (u32)Clampf32((rnd[rId] + 1.0f) * numFoliages * 0.5f, 0.0f, numFoliages-1.0f); 
+                foliageIndex = foliages[foliageIndex];
                 const FoliageType* type = &gFoliage.types[foliageIndex];
                 
                 f32 localX = Clampf32(rnd[rId++] * density * 0.2f + x, 0.0f, T_CHUNK_CELLS);
@@ -556,7 +558,7 @@ static void RunFoliageJob(void* userData)
                 tFoliagePlacement* placement = &job->placements[job->count++];
                 placement->localPos = Pack16x4Fixed(Vec3Load(&localPos.x), (f32)T_CHUNK_CELLS);
                 placement->rotation = PackQuaternionS16NormRet(CreateFoliageRotation(normal, rnd[rId++] * MATH_PI, type->normalAlign));
-                placement->scale = 1.0f + (baseType->params.sizeVariance * rnd[rId++] * 0.25f);
+                placement->scale = 1.0f + (type->params.sizeVariance * rnd[rId++] * 0.25f);
                 placement->typeIndex = foliageIndex;
             }
         }
@@ -773,26 +775,16 @@ static void NoiseUI()
         texture.handle = noiseTex;
         texture.width  = texture.height = TexSize;
         texture.format = SDL_GPU_TEXTUREFORMAT_R8_UNORM;
-        u8 noise[TexSize * TexSize];
-        for (int py = 0; py < TexSize; py++)
-        {
-            for (int px = 0; px < TexSize; px += 4)
-            {
-                Vec2W pos = (Vec2W){
-                    VecMulf(VecAddf(Vec0123(), (f32)px), noiseScale),
-                    VecSet1((f32)py * noiseScale)
-                };
-
-                Vec2W res = CeullularNoiseFBM(pos, 4, 0.5f, 2.0f);
-                // res = VecClamp01(VecMulf(VecAddf(res, 1.0f), 0.5f));
-                int idx = py * TexSize + px;
-                noise[idx + 0] = (u8)(VecGetX(res.x) * 255.0f);
-                noise[idx + 1] = (u8)(VecGetY(res.x) * 255.0f);
-                noise[idx + 2] = (u8)(VecGetZ(res.x) * 255.0f);
-                noise[idx + 3] = (u8)(VecGetW(res.x) * 255.0f);
-            }
-        }
-        UploadTextureRegion(texture, 0, 0, 0, TexSize, TexSize, TexSize, TexSize, noise);
+        static f32 noise[TexSize * TexSize];
+        static f32 rarity[TexSize * TexSize];
+        
+        GetExistance(0, 0, TexSize, 0.005f, Seed32(), noise);
+        GetRarityGate(0, 0, TexSize, 0.6f, rarity, 325u);
+        
+        u8 result[TexSize * TexSize];
+        for (s32 i = 0; i < TexSize * TexSize; i++)
+            result[i] = (u8)((noise[i] > (rarity[i] * 0.2f + 0.5f)) * 128.0f);
+        UploadTextureRegion(texture, 0, 0, 0, TexSize, TexSize, TexSize, TexSize, result);
         #undef TexSize
     }
 

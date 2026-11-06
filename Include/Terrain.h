@@ -10,6 +10,12 @@
 extern "C" {
 #endif
 
+#define TERRAIN_FIXED_WORLD_MIN_SIZE     16u
+#define TERRAIN_FIXED_WORLD_DEFAULT_SIZE 128u
+#define TERRAIN_FIXED_WORLD_MAX_SIZE     512u
+
+#define TERRAIN_MAX_LAYERS 8u
+
 // streamed voxel terrain meshed with the Transvoxel algorithm (https://transvoxel.org/).
 // chunks generate on worker threads from a procedural density field and render through
 // a dedicated pipeline, independent from the scene render sets
@@ -21,20 +27,43 @@ typedef struct TerrainGenParams_
     u32  seed;           // offsets the noise domain, 0 keeps the legacy field
     f32  seaLevel;       // world y reference for the island mask
     f32  baseHeight;
-    f32  hillAmplitude,  hillFrequency;
-    f32  ridgeAmplitude, ridgeFrequency;
-    f32  carveAmplitude, carveFrequency;  // 3d term, gives overhangs and caves
+    f32  lowlandFreq;
+    f32  mountainFreq;
+    f32  carveAmplitude;
+    f32  carveFreq;  // 3d term, gives overhangs and caves
     bool island;         // fade terrain to a flat sea-level plane outside the island radius
-    f32  islandRadius, islandFalloff;
+    f32  islandRadius;
+    f32  islandFalloff;
     bool fixedArea;      // freeze the chunk rings where they were created, no streaming
-    u32  fixedWorldSize; // horizontal fixed terrain size in meters, clamped by TERRAIN_FIXED_WORLD_MAX_SIZE
+    f32  offsetX, offsetZ;
 } TerrainGenParams;
 
-#define TERRAIN_FIXED_WORLD_MIN_SIZE     16u
-#define TERRAIN_FIXED_WORLD_DEFAULT_SIZE 128u
-#define TERRAIN_FIXED_WORLD_MAX_SIZE     512u
+typedef struct TerrainStats_
+{
+    u32 liveChunks;     // chunks holding a mesh or known empty
+    u32 emptyChunks;    // chunks with no surface crossing
+    u32 queuedChunks;   // waiting for a worker
+    u32 jobsInFlight;
+    u32 drawnChunks;    // after frustum culling, last g-buffer pass
+    u32 numVertices;    // resident in the terrain vertex heap
+    u32 numIndices;
+} TerrainStats;
 
-#define TERRAIN_MAX_LAYERS 8u
+// discrete procedural foliage (trees/rocks/props): one entity per placement, built by
+// worker jobs and attached to the resident terrain chunks. TerrainFoliage.c owns this.
+typedef struct tFoliageParams_
+{
+    f32 density;      // meters between placement grid samples, smaller = denser
+    f32 rarity;       // 0..1, higher = sparser (noise gate threshold)
+    f32 size;         // uniform scale multiplier, 1.0 = native mesh size
+    f32 groupIndex;   // we can group trees, ferns that'll look better instead of uniformly scattering
+    f32 frequency;    // default value is 1.0 cant be 0
+    s32 enabled;
+    s32 sizeVariance;   // +-30% random scale spread on top of size, when enabled
+    f32 colliderEntity; // the all other entities will stick to this
+    u32 colliderType;   // mesh, sphere, capsule
+    f32 colliderRadius;
+} FoliageParams;
 
 typedef struct TerrainLayerDesc_
 {
@@ -86,33 +115,6 @@ bool Terrain_SaveEditChunks(const char* path);
 bool Terrain_LoadEditChunks(const char* path);
 bool Terrain_SaveWorld(const char* path);
 void Terrain_LoadWorld(const char* path);
-
-typedef struct TerrainStats_
-{
-    u32 liveChunks;     // chunks holding a mesh or known empty
-    u32 emptyChunks;    // chunks with no surface crossing
-    u32 queuedChunks;   // waiting for a worker
-    u32 jobsInFlight;
-    u32 drawnChunks;    // after frustum culling, last g-buffer pass
-    u32 numVertices;    // resident in the terrain vertex heap
-    u32 numIndices;
-} TerrainStats;
-
-// discrete procedural foliage (trees/rocks/props): one entity per placement, built by
-// worker jobs and attached to the resident terrain chunks. TerrainFoliage.c owns this.
-typedef struct tFoliageParams_
-{
-    f32 density;      // meters between placement grid samples, smaller = denser
-    f32 rarity;       // 0..1, higher = sparser (noise gate threshold)
-    f32 size;         // uniform scale multiplier, 1.0 = native mesh size
-    f32 groupIndex;   // we can group trees, ferns that'll look better instead of uniformly scattering
-    f32 frequency;    // default value is 1.0 cant be 0
-    s32 enabled;
-    s32 sizeVariance;   // +-30% random scale spread on top of size, when enabled
-    f32 colliderEntity; // the all other entities will stick to this
-    u32 colliderType;   // mesh, sphere, capsule
-    f32 colliderRadius;
-} FoliageParams;
 
 void Foliage_Init();
 void Foliage_Destroy();

@@ -980,6 +980,11 @@ purefn f32 EaseOut(f32 x) {
     return 1.0f - (r * r); 
 }
 
+purefn v128f EaseOutV(v128f x) { 
+    v128f r = Vec1Minus(x);
+    return Vec1Minus(VecMul(r, r)); 
+}
+
 purefn f32 EaseInOut(f32 x) {
     return x < 0.5f ? 2.0f * x * x : 1.0f - Sqrf(-2.0f * x + 2.0f) / 2.0f;
 }
@@ -988,6 +993,12 @@ purefn f32 EaseInOut(f32 x) {
 purefn f32 SmoothStep(f32 edge0, f32 edge1, f32 x) {
     f32 t = Saturatef32((x - edge0) / (edge1 - edge0));
     return t * t * (3.0f - t * 2.0f);
+}
+
+purefn v128f VCALL SmoothstepV(v128f x, f32 edge0, f32 edge1)
+{
+    v128f t = VecClamp01(VecDivf(VecSubf(x, edge0), edge1 - edge0));
+    return VecMul(VecMul(t, t), VecSub(VecSet1(3.0f), VecMulf(t, 2.0f)));
 }
 
 purefn f32 MoveTowards(f32 current, f32 target, f32 maxDelta)
@@ -1043,6 +1054,16 @@ purefn f32 SmoothDamp(f32 current, f32 target, f32* currentVelocity, f32 smoothT
 purefn f32 Remap(f32 in, f32 inMin, f32 inMax, f32 outMin, f32 outMax)
 {
     return outMin + (in - inMin) * (outMax - outMin) / (inMax - inMin);
+}
+
+purefn v128f VCALL RemapV(v128f in, f32 inMin, f32 inMax, f32 outMin, f32 outMax)
+{
+    return VecMulf(VecAddf(VecSubf(in, inMin), outMin), (outMax - outMin) / (inMax - inMin));
+}
+
+purefn v128f VCALL Remap01V(v128f n)
+{
+    return VecFmadd(n, VecSet1(0.5f), VecSet1(0.5f));
 }
 
 purefn f32 Repeat(f32 t, f32 length)

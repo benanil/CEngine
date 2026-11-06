@@ -328,27 +328,27 @@ void TerrainInitMaterialTextures(void);
 v128u VCALL tTerrainMaterial(Vec3W worldPos, Vec3W normal, v128f oreNoise, v128f seaLevelNoise);
 
 // procedural density field, pure and thread safe (TerrainDensity.c)
-v128f TerrainDensity_SDF(v128f x, v128f y, v128f z);
-void TerrainDensity_SampleChunk(s32 cx, s32 cy, s32 cz, s8* out /*19^3*/);
+v128f TD_SDF(v128f x, v128f y, v128f z);
+void TD_SampleChunk(s32 cx, s32 cy, s32 cz, s8* out /*19^3*/);
 // world vertical band that can contain surface, chunks outside it are never created
-void TerrainDensity_GetYRange(f32* outMin, f32* outMax);
+void TD_GetYRange(f32* outMin, f32* outMax);
 
 // analytic column surface height (heightfield term, before the 3D carve). a good seed
 // for the vertical surface march below.
-v128f TerrainDensity_HeightV(v128f x, v128f z);
+v128f TD_HeightV(v128f x, v128f z);
 // island falloff mask 0..1: 0 on the island proper, ramping to 1 out on the open sea
 // plane (always 0 when island mode is off). lets grass stay on the island, off the beach.
-v128f TerrainDensity_IslandFadeV(v128f x, v128f z);
+v128f TD_IslandFadeV(v128f x, v128f z);
 // signed field at a world point, sculpt edits included: > 0 air, < 0 solid, 0 = surface.
-f32  TerrainDensity_At(f32 x, f32 y, f32 z);
+f32  TD_At(f32 x, f32 y, f32 z);
 // nearest surface world Y at column (x,z), marched from startY (Newton on the sdf, whose
 // d/dy is ~1). outNormal, when non-null, gets the up-facing surface normal. lets grass and
 // anything else sample the surface directly from the density field without a meshed chunk.
-f32  TerrainDensity_SurfaceY(f32 x, f32 z, f32 startY, float3* outNormal);
+f32  TD_SurfaceY(f32 x, f32 z, f32 startY, float3* outNormal);
 
 struct TerrainGenParams_;
-void TerrainDensity_SetParams(const struct TerrainGenParams_* params);
-const struct TerrainGenParams_* TerrainDensity_GetParams(void);
+void TD_SetParams(const struct TerrainGenParams_* params);
+const struct TerrainGenParams_* TD_GetParams(void);
 
 bool tMeshDataInit(tMeshData* data);
 void tMeshDataDestroy(tMeshData* data);

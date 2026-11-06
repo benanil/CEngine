@@ -80,7 +80,7 @@ void tInit(void)
     Foliage_Init();
     tp.genParams = Terrain_DefaultGenParams();
     TerrainAuthoringDefaults(&tp.authoring);
-    TerrainDensity_SetParams(&tp.genParams);
+    TD_SetParams(&tp.genParams);
     TerrainEdit_Init();
     TerrainInitMaterialTextures();
     tp.initialized = true;
@@ -108,9 +108,8 @@ void Terrain_ApplyGenParams(const TerrainGenParams* params) {
     if (!params) return;
     if (!tp.initialized) tInit();
     tp.genParams = *params;
-    tp.genParams.fixedWorldSize = (u32)Clamps32((s32)tp.genParams.fixedWorldSize, TERRAIN_FIXED_WORLD_MIN_SIZE, TERRAIN_FIXED_WORLD_MAX_SIZE);
     Foliage_SetSeed(tp.genParams.seed);
-    TerrainDensity_SetParams(&tp.genParams);
+    TD_SetParams(&tp.genParams);
     tInvalidateAll();
 }
 
@@ -165,7 +164,7 @@ s32 tRaycastField(float3 origin, float3 dir, f32 maxDist, BVHHit* hit)
         f32 px = origin.x + dir.x * t;
         f32 py = origin.y + dir.y * t;
         f32 pz = origin.z + dir.z * t;
-        f32 sdf = TerrainDensity_At(px, py, pz);
+        f32 sdf = TD_At(px, py, pz);
         if (sdf < 0.0f)
         {
             f32 lo = lastT;
@@ -176,7 +175,7 @@ s32 tRaycastField(float3 origin, float3 dir, f32 maxDist, BVHHit* hit)
                 f32 mx = origin.x + dir.x * mid;
                 f32 my = origin.y + dir.y * mid;
                 f32 mz = origin.z + dir.z * mid;
-                if (TerrainDensity_At(mx, my, mz) < 0.0f) hi = mid; else lo = mid;
+                if (TD_At(mx, my, mz) < 0.0f) hi = mid; else lo = mid;
             }
             hit->hit.t = lo;
             hit->hit.u = 0.0f;
@@ -237,17 +236,14 @@ bool Terrain_SaveWorld(const char* path) {
     TerrainAuthoring* authoring = &tp.authoring;
     char* p = text;
     p = WStr(p, "terrain 1\n");
-    p = ParseWriteF32(p, "fixed_world_size", (f32)params->fixedWorldSize, 0);
     p = ParseWriteBool(p, "island", params->island);
     p = ParseWriteF32(p, "seed", (f32)params->seed, 0);
     p = ParseWriteF32(p, "sea_level", params->seaLevel, 3);
     p = ParseWriteF32(p, "base_height"    , params->baseHeight, 3);
-    p = ParseWriteF32(p, "hill_amplitude" , params->hillAmplitude, 3);
-    p = ParseWriteF32(p, "hill_frequency" , params->hillFrequency, 6);
-    p = ParseWriteF32(p, "ridge_amplitude", params->ridgeAmplitude, 3);
-    p = ParseWriteF32(p, "ridge_frequency", params->ridgeFrequency, 6);
+    p = ParseWriteF32(p, "lowland_Scale" , params->lowlandFreq, 3);
+    p = ParseWriteF32(p, "mountain_frequency", params->mountainFreq, 6);
     p = ParseWriteF32(p, "cave_amplitude" , params->carveAmplitude, 3);
-    p = ParseWriteF32(p, "cave_frequency" , params->carveFrequency, 6);
+    p = ParseWriteF32(p, "cave_frequency" , params->carveFreq, 6);
     p = ParseWriteF32(p, "island_radius"  , params->islandRadius, 3);
     p = ParseWriteF32(p, "island_falloff" , params->islandFalloff, 3);
 
@@ -281,19 +277,16 @@ void Terrain_LoadWorld(const char* path) {
         bool hadNewline = *next == '\n';
         *next = '\0';
 
-        if      (ParseKeyIs(line, "fixed_world_size", &value)) { f32 f; ParseFloat(value, &f); params.fixedWorldSize = (u32)Clamps32((s32)f, TERRAIN_FIXED_WORLD_MIN_SIZE, TERRAIN_FIXED_WORLD_MAX_SIZE); }
-        else if (ParseKeyIs(line, "island"          , &value)) params.island = value[0] == '1';
+             if (ParseKeyIs(line, "island"          , &value)) params.island = value[0] == '1';
         else if (ParseKeyIs(line, "seed"            , &value)) { f32 f; ParseFloat(value, &f); params.seed = (u32)f; }
         else if (ParseKeyIs(line, "sea_level"       , &value)) ParseFloat(value, &params.seaLevel);
         else if (ParseKeyIs(line, "base_height"     , &value)) ParseFloat(value, &params.baseHeight);
-        else if (ParseKeyIs(line, "hill_amplitude"  , &value)) ParseFloat(value, &params.hillAmplitude);
-        else if (ParseKeyIs(line, "hill_frequency"  , &value)) ParseFloat(value, &params.hillFrequency);
-        else if (ParseKeyIs(line, "ridge_amplitude" , &value)) ParseFloat(value, &params.ridgeAmplitude);
-        else if (ParseKeyIs(line, "ridge_frequency" , &value)) ParseFloat(value, &params.ridgeFrequency);
-        else if (ParseKeyIs(line, "cave_amplitude"  , &value)) ParseFloat(value, &params.carveAmplitude);
-        else if (ParseKeyIs(line, "cave_frequency"  , &value)) ParseFloat(value, &params.carveFrequency);
-        else if (ParseKeyIs(line, "island_radius"   , &value)) ParseFloat(value, &params.islandRadius);
-        else if (ParseKeyIs(line, "island_falloff"  , &value)) ParseFloat(value, &params.islandFalloff);
+        else if (ParseKeyIs(line, "lowland_Scale"  , &value)) ParseFloat(value, &params.lowlandFreq);
+        else if (ParseKeyIs(line, "mountain_freq"  , &value)) ParseFloat(value, &params.mountainFreq);
+        else if (ParseKeyIs(line, "cave_amplitude" , &value)) ParseFloat(value, &params.carveAmplitude);
+        else if (ParseKeyIs(line, "cave_freq"      , &value)) ParseFloat(value, &params.carveFreq);
+        else if (ParseKeyIs(line, "island_radius"  , &value)) ParseFloat(value, &params.islandRadius);
+        else if (ParseKeyIs(line, "island_falloff" , &value)) ParseFloat(value, &params.islandFalloff);
 
         line = hadNewline ? next + 1 : NULL;
     }

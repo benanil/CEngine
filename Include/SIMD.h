@@ -229,10 +229,15 @@ typedef __m128i v128u;
 #define VecGetZ(v)               _mm_cvtss_f32(VecSplatZ(v))  /* return v.z */
 #define VecGetW(v)               _mm_cvtss_f32(VecSplatW(v))  /* return v.w */
 
-#define VeciGetX(v)    ((u32)_mm_cvtsi128_si32(v))
-#define VeciGetY(v)    ((u32)_mm_cvtsi128_si32(_mm_shuffle_epi32((v), _MM_SHUFFLE(1,1,1,1))))
-#define VeciGetZ(v)    ((u32)_mm_cvtsi128_si32(_mm_shuffle_epi32((v), _MM_SHUFFLE(2,2,2,2))))
-#define VeciGetW(v)    ((u32)_mm_cvtsi128_si32(_mm_shuffle_epi32((v), _MM_SHUFFLE(3,3,3,3))))
+#define VeciGetX(v)      ((u32)_mm_cvtsi128_si32(v))
+#define VeciGetY(v)      ((u32)_mm_cvtsi128_si32(_mm_shuffle_epi32((v), _MM_SHUFFLE(1,1,1,1))))
+#define VeciGetZ(v)      ((u32)_mm_cvtsi128_si32(_mm_shuffle_epi32((v), _MM_SHUFFLE(2,2,2,2))))
+#define VeciGetW(v)      ((u32)_mm_cvtsi128_si32(_mm_shuffle_epi32((v), _MM_SHUFFLE(3,3,3,3))))
+
+#define VeciSplatX(v)    (_mm_shuffle_epi32((v), _MM_SHUFFLE(0,0,0,0)))
+#define VeciSplatY(v)    (_mm_shuffle_epi32((v), _MM_SHUFFLE(1,1,1,1)))
+#define VeciSplatZ(v)    (_mm_shuffle_epi32((v), _MM_SHUFFLE(2,2,2,2)))
+#define VeciSplatW(v)    (_mm_shuffle_epi32((v), _MM_SHUFFLE(3,3,3,3)))
 
 // SSE4.1                 
 #define VecSetX(v, x)     ((v) = _mm_move_ss  ((v), _mm_set_ss(x)))
@@ -557,6 +562,11 @@ typedef uint32x4_t v128u;
 #define VeciGetY(v)                 vgetq_lane_u32((v), 1)
 #define VeciGetZ(v)                 vgetq_lane_u32((v), 2)
 #define VeciGetW(v)                 vgetq_lane_u32((v), 3)
+
+#define VeciSplatX(v)               vdupq_lane_u32(vget_low_u32(v), 0)
+#define VeciSplatY(v)               vdupq_lane_u32(vget_low_u32(v), 1)
+#define VeciSplatZ(v)               vdupq_lane_u32(vget_high_u32(v), 0)
+#define VeciSplatW(v)               vdupq_lane_u32(vget_high_u32(v), 1)
 
 #define VecSetX(v, x)               ((v) = vsetq_lane_f32(x, v, 0))
 #define VecSetY(v, y)               ((v) = vsetq_lane_f32(y, v, 1))
@@ -1024,6 +1034,12 @@ purefn v128f VCALL VecClamp(v128f v, v128f vmin, v128f vmax)
 {
     v = VecSelect(v, vmax, VecCmpGt(v, vmax));
     return VecSelect(v, vmin, VecCmpLt(v, vmin));
+}
+
+purefn v128f VCALL VecClampf(v128f v, f32 vmin, f32 vmax)
+{
+    v = VecSelect(v, VecSet1(vmax), VecCmpGt(v, VecSet1(vmax)));
+    return VecSelect(v, VecSet1(vmin), VecCmpLt(v, VecSet1(vmin)));
 }
 
 purefn u32 VCALL VecMaxElement(v128f a)

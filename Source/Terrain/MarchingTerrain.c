@@ -81,7 +81,7 @@ static bool tAABBVisible(float3 aabbMin, float3 aabbMax, const FrustumPlanes* fr
 // TerrainDensity_At = SDF + sculpt edits, so editor manipulation shows up in the mesh.
 static f32 tDensityNoise(f32 x, f32 y, f32 z, void* userData) {
     (void)userData;
-    return y - TerrainDensity_At(x, y, z);
+    return y - TD_At(x, y, z);
 }
 
 // thread safe: TerrainDensity_SampleChunk is pure + edit overlay is mutex guarded
@@ -92,7 +92,7 @@ static void tBuildDensity(int3 chunkMin, s8* out)
     s32 cy = chunkMin.y / T_CHUNK_CELLS;
     s32 cz = chunkMin.z / T_CHUNK_CELLS;
     s8 samples[T_SAMPLES_TOTAL];
-    TerrainDensity_SampleChunk(cx, cy, cz, samples);
+    TD_SampleChunk(cx, cy, cz, samples);
 
     for (s32 x = 0; x < T_SAMPLES_AXIS; x++)
     for (s32 y = 0; y < T_SAMPLES_AXIS; y++)
@@ -152,9 +152,9 @@ static void tAppendMeshSlotTriangles(tBuildJob* job)
 
         const float oreNoiseScale = 1.0f / 32.0f;
         Vec2W seaLevelPos = Vec2WMulf(Vec2WFromV(position.x, position.z), oreNoiseScale);
-        v128f oreNoise = PerlinNoiseFBM3(Vec3WMulf(position, oreNoiseScale), 2, 0.5, 2.0f, 38u);
-        v128f seaLevelNoise = PerlinNoiseFBM(seaLevelPos, 2, 0.5, 2.0f, 123u);
-        v128u materials = tTerrainMaterial(position, normal, oreNoise, seaLevelNoise);
+        v128f oreNoise    = Perlin3FBM(Vec3WMulf(position, oreNoiseScale), 2, 0.5, 2.0f, 38u);
+        v128f seaLevel    = Perlin2FBM(seaLevelPos, 2, 0.5, 2.0f, 123u);
+        v128u materials   = tTerrainMaterial(position, normal, oreNoise, seaLevel);
         
         for (s32 i = 0; i < 4 && v + i < vertexCount; i++)
         {
@@ -797,7 +797,7 @@ static bool tChunkPresentable(const tChunk* chunk)
 static void tChunkYRange(s32 step, s32* chunkYMin, s32* chunkYMax)
 {
     f32 yMin, yMax;
-    TerrainDensity_GetYRange(&yMin, &yMax);
+    TD_GetYRange(&yMin, &yMax);
     *chunkYMin = (s32)Floorf32(yMin / (f32)step);
     *chunkYMax = (s32)Floorf32(yMax / (f32)step);
 }
