@@ -27,8 +27,7 @@ typedef struct TerrainGenParams_
     u32  seed;           // offsets the noise domain, 0 keeps the legacy field
     f32  seaLevel;       // world y reference for the island mask
     f32  baseHeight;
-    f32  lowlandFreq;
-    f32  mountainFreq;
+    f32  landFreq;
     f32  carveAmplitude;
     f32  carveFreq;  // 3d term, gives overhangs and caves
     bool island;         // fade terrain to a flat sea-level plane outside the island radius

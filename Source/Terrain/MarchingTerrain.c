@@ -151,9 +151,8 @@ static void tAppendMeshSlotTriangles(tBuildJob* job)
         );
 
         const float oreNoiseScale = 1.0f / 32.0f;
-        Vec2W seaLevelPos = Vec2WMulf(Vec2WFromV(position.x, position.z), oreNoiseScale);
         v128f oreNoise    = Perlin3FBM(Vec3WMulf(position, oreNoiseScale), 2, 0.5, 2.0f, 38u);
-        v128f seaLevel    = Perlin2FBM(seaLevelPos, 2, 0.5, 2.0f, 123u);
+        v128f seaLevel    = PerlinDistinct2(Vec2WFromV(position.x, position.z), oreNoiseScale, 0.1f, 0x623ECCu);
         v128u materials   = tTerrainMaterial(position, normal, oreNoise, seaLevel);
         
         for (s32 i = 0; i < 4 && v + i < vertexCount; i++)

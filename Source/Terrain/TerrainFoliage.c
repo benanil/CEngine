@@ -439,7 +439,7 @@ static void GetExistance(s32 chunkX, s32 chunkZ, s32 axis, f32 frequency, u32 se
         {
             v128f worldZ = VecAdd(VecSet1(chunkZ + z + offsetZ), Vec0123());
             Vec2W worldXZ = (Vec2W){ worldX, worldZ };
-            v128f p = PerlinDistinct2FBM(worldXZ, frequency, seed ^ 0xFDA548Eu);
+            v128f p = PerlinDistinct2FBM(worldXZ, frequency, 0.0f, seed ^ 0xFDA548Eu);
             VecStore(cx + x * axis + z, p);
         }
     }

@@ -240,8 +240,7 @@ bool Terrain_SaveWorld(const char* path) {
     p = ParseWriteF32(p, "seed", (f32)params->seed, 0);
     p = ParseWriteF32(p, "sea_level", params->seaLevel, 3);
     p = ParseWriteF32(p, "base_height"    , params->baseHeight, 3);
-    p = ParseWriteF32(p, "lowland_Scale" , params->lowlandFreq, 3);
-    p = ParseWriteF32(p, "mountain_frequency", params->mountainFreq, 6);
+    p = ParseWriteF32(p, "land_Freq" , params->landFreq, 3);
     p = ParseWriteF32(p, "cave_amplitude" , params->carveAmplitude, 3);
     p = ParseWriteF32(p, "cave_frequency" , params->carveFreq, 6);
     p = ParseWriteF32(p, "island_radius"  , params->islandRadius, 3);
@@ -277,12 +276,11 @@ void Terrain_LoadWorld(const char* path) {
         bool hadNewline = *next == '\n';
         *next = '\0';
 
-             if (ParseKeyIs(line, "island"          , &value)) params.island = value[0] == '1';
-        else if (ParseKeyIs(line, "seed"            , &value)) { f32 f; ParseFloat(value, &f); params.seed = (u32)f; }
-        else if (ParseKeyIs(line, "sea_level"       , &value)) ParseFloat(value, &params.seaLevel);
-        else if (ParseKeyIs(line, "base_height"     , &value)) ParseFloat(value, &params.baseHeight);
-        else if (ParseKeyIs(line, "lowland_Scale"  , &value)) ParseFloat(value, &params.lowlandFreq);
-        else if (ParseKeyIs(line, "mountain_freq"  , &value)) ParseFloat(value, &params.mountainFreq);
+             if (ParseKeyIs(line, "island"         , &value)) params.island = value[0] == '1';
+        else if (ParseKeyIs(line, "seed"           , &value)) { f32 f; ParseFloat(value, &f); params.seed = (u32)f; }
+        else if (ParseKeyIs(line, "sea_level"      , &value)) ParseFloat(value, &params.seaLevel);
+        else if (ParseKeyIs(line, "base_height"    , &value)) ParseFloat(value, &params.baseHeight);
+        else if (ParseKeyIs(line, "land_Freq"      , &value)) ParseFloat(value, &params.landFreq);
         else if (ParseKeyIs(line, "cave_amplitude" , &value)) ParseFloat(value, &params.carveAmplitude);
         else if (ParseKeyIs(line, "cave_freq"      , &value)) ParseFloat(value, &params.carveFreq);
         else if (ParseKeyIs(line, "island_radius"  , &value)) ParseFloat(value, &params.islandRadius);

@@ -5,6 +5,7 @@
 // see (Terrain_ApplyGenParams).
 #include "TerrainInternal.h"
 #include "Include/Terrain.h"
+#include "Include/Random.h"
 #include "Math/Noise.h"
 
 // TERRAIN_BEDROCK_Y is deliberately NOT a multiple of the lod chunk sizes (16/32/64/128):
@@ -23,8 +24,7 @@ static TerrainGenParams td_Params = {
     .seed            = 1.0f,
     .seaLevel        = -45.0f,
     .baseHeight      = -30.0f,
-    .lowlandFreq     = 0.23f,
-    .mountainFreq    = 0.4f,
+    .landFreq        = 0.43f,
     .carveAmplitude  = 0.3f,
     .carveFreq       = 0.045f,
     .islandRadius    = 260.0f,
@@ -39,8 +39,7 @@ TerrainGenParams Terrain_DefaultGenParams(void) {
         .seed           = 1.0f,
         .seaLevel       = -45.0f,
         .baseHeight     = -30.0f,
-        .lowlandFreq    = 0.23f,
-        .mountainFreq   = 0.4f,
+        .landFreq       = 0.23f,
         .carveAmplitude = 0.3f,
         .carveFreq      = 0.045f,
         .islandRadius   = 260.0f,
@@ -62,26 +61,54 @@ void TD_SetParams(const TerrainGenParams* params) {
 
 const TerrainGenParams* TD_GetParams(void) { return &td_Params; }
 
+static inline v128f Ridge(v128f n)
+{
+    v128f a = VecFmadd(VecNeg(n), n, VecOne());
+    return VecMul(a, a);
+}
+
+// https://www.shadertoy.com/view/sXVSWt
 static v128f NoiseDensity01V(v128f x, v128f z)
 {
     const TerrainGenParams* p = &td_Params;
-
+    const f32 f = p->landFreq * 0.1f;
     Vec2W pos = (Vec2W) {
-        VecMulf(VecAddf(x, p->offsetX), 0.2f / (f32)T_CHUNK_CELLS),
-        VecMulf(VecAddf(z, p->offsetZ), 0.2f / (f32)T_CHUNK_CELLS)
+        VecMulf(VecAddf(x, p->offsetX), f),
+        VecMulf(VecAddf(z, p->offsetZ), f)
     };
 
-    v128f finalBlend = PerlinDistinct2(pos, 0.018f, p->seed + 10978u);
-    v128f lowland = VecZero(); 
-    v128f mountain = VecZero();
+    const v128u base = VeciSet1(p->seed ^ 0x687453u);
+    const v128u s4 = HashKey(VeciAdd(base, VeciSetR(12, 34, 56, 78)));
+    const v128u s5 = HashKey(s4);
 
-    if (VecMovemask(VecCmpLt(finalBlend, VecSet1(1.0f))))
-    lowland = VecMulf(PerlinDistinct2FBM(pos, p->lowlandFreq, p->seed ^ 0xAF3E6ACDu), 0.5f);
-    
-    if (VecMovemask(VecCmpGt(finalBlend, VecSet1(0.0f))))
-    mountain = VecFmadd(PerlinDistinct2FBM(pos, p->mountainFreq, p->seed ^ 0x6A4DAFDEu), VecSet1(0.7f), VecSet1(0.3f));
+    Vec2W qc = Vec2WMulf(pos, 0.01f);
+    Vec2W pc = (Vec2W) {
+        VecFmadd(Perlin2(qc, VeciSplatY(s4)), VecSet1(14.0f), pos.x),
+        VecFmadd(Perlin2(qc, VeciSplatX(s4)), VecSet1(14.0f), pos.y)
+    };
 
-    return VecLerpV(mountain, lowland, finalBlend);
+    v128f inland = SmoothstepV(Perlin2(Vec2WMulf(pc, 0.016f), VeciSplatX(s5)), -0.3f, 0.4f);
+    v128f ridgeLine = Vec1Minus(VecFabs(Perlin2(Vec2WMulf(pc, 0.011f), VeciSplatY(s5))));
+    v128f chain = VecMul(SmoothstepV(ridgeLine, 0.72f, 0.94f), inland);
+
+    Vec2W q = Vec2WMulf(pos, 0.025f);
+    pos.x = VecFmadd(Perlin2(q, VeciSplatX(s4)), VecSet1(3.5f), pos.x);
+    pos.y = VecFmadd(Perlin2(q, VeciSplatY(s4)), VecSet1(3.5f), pos.y);
+
+    v128f r    = Perlin2(Vec2WMulf(pos, 0.035f), VeciSplatZ(s4));
+    v128f t    = VecMul(SmoothstepV(r, -0.4f, 0.0f), inland);
+    v128f mask = VecMul(SmoothstepV(r, -0.4f, 0.3f), chain);
+
+    v128f fine  = VecFmadd(Perlin2(Vec2WMulf(pos, 0.25f), VeciSplatX(s4)), VecSet1(0.4f), VecSet1(0.6f));
+    v128f plain = VecFmadd(Perlin2(Vec2WMulf(pos, 0.07f), VeciSplatY(s4)), VecSet1(0.275f), VecSet1(0.275f));
+    v128f peaks = Ridge(Perlin2FBM(Vec2WMulf(pos, 0.08f), 2, 0.5f, 2.0f, VeciGetZ(s5)));
+
+    v128f land = VecLerpV(plain, fine, t);
+    v128f low  = VecMulf(land, 0.5f);
+    v128f mt   = VecFmadd(land, VecSet1(0.15f), VecMulf(peaks, 0.85f));
+    v128f high = VecFmadd(mt, VecSet1(0.5f), VecSet1(0.5f));
+
+    return VecLerpV(low, high, mask);
 }
 
 v128f TD_IslandFadeV(v128f x, v128f z)

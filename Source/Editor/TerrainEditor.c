@@ -34,7 +34,6 @@ typedef struct TerrainEditorState_
     f32 baseHeight;
     f32 lowlandScale;
     f32 hillFrequency;
-    f32 mountainFrequency;
     f32 caveAmplitude;
     f32 caveFrequency;
     f32 islandRadius;
@@ -75,10 +74,9 @@ static void TerrainEditorInit(void)
     terrainUI.mode = TerrainEditorMode_Manipulate;
     TerrainSyncScenePath();
     terrainUI.seed           = 1.0f;
-    terrainUI.seaLevel       = -25.0f;
+    terrainUI.seaLevel       = -45.0f;
     terrainUI.baseHeight     = -60.0f;
     terrainUI.lowlandScale   = 0.3f;
-    terrainUI.mountainFrequency = 0.35f;
     terrainUI.caveAmplitude  = 0.3f;
     terrainUI.caveFrequency  = 0.045f;
     terrainUI.islandRadius   = 260.0f;
@@ -96,8 +94,7 @@ static TerrainGenParams TerrainEditorBuildParams(void)
     params.seed           = (u32)terrainUI.seed;
     params.seaLevel       = terrainUI.seaLevel;
     params.baseHeight     = terrainUI.baseHeight;
-    params.lowlandFreq  = Clampf32(terrainUI.lowlandScale, 0.01f, 4.0f);
-    params.mountainFreq = Clampf32(terrainUI.mountainFrequency, 0.05f, 2.0f);
+    params.landFreq  = Clampf32(terrainUI.lowlandScale, 0.01f, 4.0f);
     params.carveAmplitude = Clampf32(terrainUI.caveAmplitude, 0.0f, 32.0f);
     params.carveFreq = Clampf32(terrainUI.caveFrequency, 0.0001f, 0.2f);
     params.island         = terrainUI.island;
@@ -111,8 +108,7 @@ static void TerrainEditorApplyParams(const TerrainGenParams* params)
     terrainUI.seed           = (f32)params->seed;
     terrainUI.seaLevel       = params->seaLevel;
     terrainUI.baseHeight     = params->baseHeight;
-    terrainUI.lowlandScale  = params->lowlandFreq;
-    terrainUI.mountainFrequency = params->mountainFreq;
+    terrainUI.lowlandScale  = params->landFreq;
     terrainUI.caveAmplitude  = params->carveAmplitude;
     terrainUI.caveFrequency  = params->carveFreq;
     terrainUI.island         = params->island;
@@ -299,8 +295,7 @@ static void TerrainNoiseUI(void)
     edited |= UIEditFloat("Seed", &terrainUI.seed, 0.0f, 999999.0f, 1.0f, 0);
     edited |= UIEditFloat("Sea level", &terrainUI.seaLevel, -200.0f, 200.0f, 1.0f, 2);
     edited |= UIEditFloat("Base height", &terrainUI.baseHeight, -200.0f, 200.0f, 1.0f, 2);
-    edited |= UIEditFloat("Lowland scale", &terrainUI.lowlandScale, 0.015f, 10.0f, 0.1f, 2);
-    edited |= UIEditFloat("Mountain scale", &terrainUI.mountainFrequency, 0.015f, 10.0f, 0.05f, 2);
+    edited |= UIEditFloat("land scale", &terrainUI.lowlandScale, 0.015f, 10.0f, 0.1f, 2);
     edited |= UIEditFloat("Carve amplitude", &terrainUI.caveAmplitude, 0.0f, 32.0f, 0.5f, 2);
     edited |= UIEditFloat("Carve frequency", &terrainUI.caveFrequency, 0.0001f, 0.2f, 0.001f, 5);
     if (edited)

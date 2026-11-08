@@ -202,34 +202,39 @@ purefn v128f Perlin1FBM(v128f position, s32 octaveCount, f32 persistence, f32 la
     return value;
 }
 
-purefn v128f PerlinDistinct2FBM(Vec2W pos, f32 scale, u32 seed)
+// https://www.shadertoy.com/view/NXKSW3
+purefn v128f PerlinDistinct2FBM(Vec2W pos, f32 scale, f32 fineMin, u32 seed)
 {
     v128f fine, coarse, absence, blend;
     v128u s4 = HashKey(VeciAdd(VeciSet1(seed), VeciSetR(87, 65, 43, 21)));
 
-    fine    = Perlin2FBM(Vec2WMulf(pos, scale * 1.2f), 2, 0.5f, 2.0f, VeciGetX(s4));
-    coarse  = Perlin2FBM(Vec2WMulf(pos, scale * 0.8f), 2, 0.5f, 2.0f, VeciGetY(s4));
+    fine    = Perlin2FBM(Vec2WMulf(pos, scale * 1.25f), 2, 0.5f, 2.0f, VeciGetX(s4));
+    coarse  = Perlin2FBM(Vec2WMulf(pos, scale * 0.75f), 2, 0.5f, 2.0f, VeciGetY(s4));
     absence = Perlin2(Vec2WMulf(pos, scale * 0.15f), VeciSplatZ(s4));
     blend   = Perlin2(Vec2WMulf(pos, scale * 0.07f), VeciSplatW(s4));
-    
+
     blend   = SmoothstepV(blend, -0.25f, 0.0f); // %60 coarse
+    absence = SmoothstepV(absence, -0.65f, -0.25f);
     coarse  = Remap01V(VecLerpV(fine, coarse, blend));
-    return VecMul(coarse, SmoothstepV(absence, -0.65f, -0.25f));// %20 absence
+    fine    = VecFmadd(fine, VecSet1(fineMin), VecSet1(fineMin));
+    return VecLerpV(fine, coarse, absence); // %20 absence
 }
 
-purefn v128f PerlinDistinct2(Vec2W pos, f32 scale, u32 seed)
+purefn v128f PerlinDistinct2(Vec2W pos, f32 scale, f32 fineMin, u32 seed)
 {
     v128f fine, coarse, absence, blend;
     v128u s4 = HashKey(VeciAdd(VeciSet1(seed), VeciSetR(12, 34, 56, 78)));
     
-    fine    = Perlin2(Vec2WMulf(pos, scale * 1.20f), VeciSplatX(s4));
-    coarse  = Perlin2(Vec2WMulf(pos, scale * 0.80f), VeciSplatY(s4));
+    fine    = Perlin2(Vec2WMulf(pos, scale * 1.25f), VeciSplatX(s4));
+    coarse  = Perlin2(Vec2WMulf(pos, scale * 0.75f), VeciSplatY(s4));
     absence = Perlin2(Vec2WMulf(pos, scale * 0.15f), VeciSplatZ(s4));
     blend   = Perlin2(Vec2WMulf(pos, scale * 0.07f), VeciSplatW(s4));
 
-    blend   = SmoothstepV(blend, -0.25f, 0.0f); // %65 coarse
+    blend   = SmoothstepV(blend, -0.25f, -0.10f); // %65 coarse
+    absence = SmoothstepV(absence, -0.65f, -0.25f);
     coarse  = Remap01V(VecLerpV(fine, coarse, blend));
-    return VecMul(coarse, SmoothstepV(absence, -0.65f, -0.25f)); // %20 absence
+    fine    = VecFmadd(fine, VecSet1(fineMin), VecSet1(fineMin));
+    return VecLerpV(fine, coarse, absence); // %20 absence
 }
 
 #endif
