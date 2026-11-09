@@ -507,7 +507,7 @@ void UpdateGPUBufferCycle(SDL_GPUBuffer* buffer, const void* data, size_t buffer
     {
         SDL_GPUFence* fence = SDL_SubmitGPUCommandBufferAndAcquireFence(uploadCmdBuf);
         if (!PTR_VALID(fence)) {
-            AX_LOG("omassey %s", SDL_GetError());
+            AX_LOG("sdl gpu fence invalid UpdateGPUBufferCycle %s", SDL_GetError());
             return;
         }
         // same buffer generation, in place: wait so a GPU read in flight can't race it

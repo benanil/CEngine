@@ -40,13 +40,6 @@ static f32 tMesherGeneratorAt(const tMarchingMesher* mesher, float3 pos)
     return -pos.y + heightMap + noise3D;
 }
 
-static s32 tMarchingMesherSign(f32 value)
-{
-    if (value > 0.0f) return 1;
-    if (value < 0.0f) return -1;
-    return 0;
-}
-
 static float3 tMesherWorldFromLocal(const tMarchingMesher* mesher, float3 localPosition)
 {
     return F3Add(ToFloat3(mesher->chunkMin), localPosition);
@@ -63,12 +56,6 @@ static float3 tMesherNormalAtSample(const tMarchingMesher* mesher, s32 x, s32 y,
     return normal;
 }
 
-static void tMesherFillS32(s32* values, size_t count, s32 value)
-{
-    for (size_t i = 0; i < count; i++)
-        values[i] = value;
-}
-
 static u32 tMarchingPointIndex(int3 p)
 {
     s32 axis = T_CHUNK_CELLS + 1;
@@ -81,7 +68,7 @@ static u32 tMarchingEdgeCacheOffset(u32 edge, int3 cellPos)
     u32 corner1 = tMCEdgeCorners[edge][1];
     int3 p0 = I3Add(cellPos, tMCCornerOffset[corner0]);
     int3 p1 = I3Add(cellPos, tMCCornerOffset[corner1]);
-	int3 mn = I3Min(p0, p1);
+    int3 mn = I3Min(p0, p1);
 
     u32 axis = 0;
     if (p0.y != p1.y) axis = 1;
@@ -107,8 +94,8 @@ static bool tMarchingCachedVertexMatchesEdge(const tMarchingMesher* mesher, cons
         return false;
 
     float3 vertex = Vec3Get(UnpackXY11Z10UnormFixed(meshData->vertices[vertexIndex].position, T_CHUNK_CELLS));
-	int3 mn = I3Min(p0i, p1i);
-	int3 mx = I3Max(p0i, p1i);
+    int3 mn = I3Min(p0i, p1i);
+    int3 mx = I3Max(p0i, p1i);
     const f32 epsilon = 0.01f;
 
     if (vertex.x < mn.x - epsilon || vertex.x > mx.x + epsilon ||
@@ -147,7 +134,7 @@ static bool tMarchingVertexForEdge(tMarchingMesher* mesher, tMeshData* meshData,
     float3 midLocal = F3MulF(F3Add(p0, p1), 0.5f);
     float3 midWorld = tMesherWorldFromLocal(mesher, midLocal);
     f32 midDensity = tMesherGeneratorAt(mesher, midWorld);
-    if (tMarchingMesherSign(midDensity) == tMarchingMesherSign(density0)) {
+    if (Signf(midDensity) == Signf(density0)) {
         p0 = midLocal;
         density0 = midDensity;
     }
@@ -191,35 +178,29 @@ static bool tMesherMarchingCubes(tMarchingMesher* mesher)
                 caseCode |= 1 << i;
         }
 
-        if (caseCode == 0 || caseCode == 255)
+        if (caseCode <= 0 || caseCode >= 255)
             continue;
 
         const s8* triangles = tMCTriTable[caseCode];
         for (u32 i = 0; i < 16u && triangles[i] >= 0; i += 3u)
         {
             u32 vertexIndex[3];
-            for (u32 k = 0; k < 3u; k++)
-            {
-                if (!tMarchingVertexForEdge(mesher, meshData, cellPos, cellValues,
-                                            (u32)triangles[i + k], mesher->edgeCache, &vertexIndex[k]))
-                {
-                    result = false;
-                    break;
-                }
-            }
-            if (!result)
-                break;
+            result &= tMarchingVertexForEdge(mesher, meshData, cellPos, cellValues,
+                                             (u32)triangles[i + 0], mesher->edgeCache, &vertexIndex[0]);
+            result &= tMarchingVertexForEdge(mesher, meshData, cellPos, cellValues,
+                                             (u32)triangles[i + 1], mesher->edgeCache, &vertexIndex[1]);
+            result &= tMarchingVertexForEdge(mesher, meshData, cellPos, cellValues,
+                                             (u32)triangles[i + 2], mesher->edgeCache, &vertexIndex[2]);
+            if (!result) break;
 
-            if (!tMeshDataPushIndex(meshData, vertexIndex[0]) ||
-                !tMeshDataPushIndex(meshData, vertexIndex[1]) ||
-                !tMeshDataPushIndex(meshData, vertexIndex[2]))
-            {
-                result = false;
-                break;
-            }
+            result &= tMeshDataPushIndex(meshData, vertexIndex[0]) &&
+                      tMeshDataPushIndex(meshData, vertexIndex[1]) &&
+                      tMeshDataPushIndex(meshData, vertexIndex[2]);
         }
     }
 
+    // if (meshData->numIndices < 3 || meshData->numVertices < 3)
+    //     AX_ERROR("mesh massey");
     return result;
 }
 
@@ -244,7 +225,9 @@ bool tMesherMesh(const tDensityGenerator* generator, const s8* density, tBuildJo
         AX_WARN("marching cubes edge cache allocation failed");
         return false;
     }
-    tMesherFillS32(mesher.edgeCache, pointCount * 3u, -1);
+    for (u32 i = 0; i < pointCount * 3u; i++)
+        mesher.edgeCache[i] = -1;
+
     tMeshDataClear(meshData);
     return tMesherMarchingCubes(&mesher);
 }

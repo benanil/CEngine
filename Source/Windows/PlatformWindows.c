@@ -1,5 +1,6 @@
 #include <DbgHelp.h>
 #include <dwmapi.h>
+
 #pragma comment(lib, "dwmapi.lib")
 #define WINDOW_CORNER_RADIUS 28
 
@@ -11,7 +12,8 @@ static void PlatformCrashLog(const char* format, ...)
     SDL_vsnprintf(message, sizeof(message), format, args);
     va_end(args);
 
-    SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, AX_ANSI_RED "crash: %s" AX_ANSI_RESET, message);
+    //SDL_LOG_CATEGORY_APPLICATION;
+    SDL_LogError(0, AX_ANSI_RED "crash: %s" AX_ANSI_RESET, message);
 
     HANDLE file = CreateFileA("crash.txt", FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
                               NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);

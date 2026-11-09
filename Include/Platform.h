@@ -6,18 +6,18 @@
 #include <SDL3/SDL_events.h>
 
 // enables logging no matter what
-#define AX_ENABLE_LOGGING
+// #define AX_ENABLE_LOGGING
 #define APPLICATION_NAME "Engine"
+
+#define AX_ANSI_RESET  "\033[0m"
+#define AX_ANSI_GREEN  "\033[32m"
+#define AX_ANSI_YELLOW "\033[33m"
+#define AX_ANSI_RED    "\033[31m"
 
 #if defined(AX_ENABLE_LOGGING) || defined(_DEBUG) || defined(DEBUG) || defined(Debug)
     #include <SDL3/SDL_log.h>
     #include <SDL3/SDL_messagebox.h>
     #include <SDL3/SDL_stdinc.h>
-
-    #define AX_ANSI_RESET  "\033[0m"
-    #define AX_ANSI_GREEN  "\033[32m"
-    #define AX_ANSI_YELLOW "\033[33m"
-    #define AX_ANSI_RED    "\033[31m"
 
     #define AX_LOG(format, ...)  SDL_Log(AX_ANSI_GREEN  "axInfo: %s -line:%i " format AX_ANSI_RESET, GetFileName(__FILE__), __LINE__, ##__VA_ARGS__)
     #define AX_WARN(format, ...) SDL_LogWarn(SDL_LOG_PRIORITY_WARN,  AX_ANSI_YELLOW "%s -line:%i " format AX_ANSI_RESET, GetFileName(__FILE__), __LINE__, ##__VA_ARGS__)

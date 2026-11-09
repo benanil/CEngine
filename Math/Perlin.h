@@ -1,6 +1,6 @@
 #ifndef PERLIN_NOISE
 #define PERLIN_NOISE
-// adopted from shadertoy, s32eger hash for better uniformity and no fp32 problems
+// adopted from shadertoy, integer hash for better uniformity and no fp32 problems
 // https://www.shadertoy.com/view/slB3z3
 // https://www.shadertoy.com/view/NlSGDz
 #include "Vec2Wide.h"

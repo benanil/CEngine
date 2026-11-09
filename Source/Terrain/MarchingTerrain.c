@@ -115,19 +115,22 @@ static v128f tUnpackNormal(u32 packed)
 // thread safe density/edit/params reads inside tTerrainMaterial. emits an indexed mesh
 // (shared source vertices materialized once, triangles reference them) so shared verts
 // are shaded once instead of once per triangle, and the GPU draws indexed
-static void tAppendMeshSlotTriangles(tBuildJob* job)
+static bool tAppendMeshSlotTriangles(tBuildJob* job)
 {
     const tMeshData* mesh = &job->scratchMesh;
     if (!mesh || !mesh->vertices || !mesh->indices || !job->buildVertices || !job->buildIndices)
-        return;
+        return true;
 
     size_t vertexCount = (size_t)mesh->numVertices;
     size_t indexCount = (size_t)mesh->numIndices;
-    if (vertexCount == 0 || indexCount < 3)
-        return;
+    if (vertexCount < 3 || indexCount < 3)
+        return true;
 
     if (job->buildVertexCount + vertexCount > T_MARCHING_VERTEX_CAP)
-        return;
+    {
+        AX_ERROR("-- tAppendMeshSlotTriangles");
+        return false;
+    }
     u32 base = job->buildVertexCount;
 
     v128f offset = VecI32ToF32(VeciLoad((const u32*)&job->min.x));
@@ -168,13 +171,19 @@ static void tAppendMeshSlotTriangles(tBuildJob* job)
     for (size_t i = 0; i + 2 < indexCount; i += 3)
     {
         if (job->buildIndexCount + 3u > T_CHUNK_INDEX_CAP)
-            return;
+        {
+            AX_ERROR("terrain index capacity reached!");
+            return false;
+        }
 
         u32 ia = mesh->indices[i + 0];
         u32 ib = mesh->indices[i + 1];
         u32 ic = mesh->indices[i + 2];
         if ((size_t)ia >= vertexCount || (size_t)ib >= vertexCount || (size_t)ic >= vertexCount)
+        {
+            AX_ERROR("terrain index out of range!");
             continue;
+        }
 
         v128f pa = UnpackXY11Z10UnormFixed(mesh->vertices[ia].position, chunkSize);
         v128f pb = UnpackXY11Z10UnormFixed(mesh->vertices[ib].position, chunkSize);
@@ -191,6 +200,7 @@ static void tAppendMeshSlotTriangles(tBuildJob* job)
         job->buildIndices[job->buildIndexCount++] = (u16)(base + ib);
         job->buildIndices[job->buildIndexCount++] = (u16)(base + ic);
     }
+    return true;
 }
 
 static void tFreeMeshHandle(tMeshHandle* mesh)
@@ -245,6 +255,7 @@ static void tSetChunkState(tChunk* chunk, ChunkBuildState newState)
     if (!chunk) return;
     ChunkBuildState oldState = chunk->buildState;
     if (oldState == newState) return;
+    // queued -> ready
     if (!tChunkStateTransitionAllowed(oldState, newState)) {
         AX_WARN("invalid marching terrain chunk state transition: %s -> %s", tChunkStateName(oldState), tChunkStateName(newState));
     }
@@ -347,8 +358,7 @@ static bool GenerateChunkMesh(tBuildJob* job)
         AX_WARN("marching cubes chunk mesh build failed");
         return false;
     }
-    tAppendMeshSlotTriangles(job);
-    return true;
+    return tAppendMeshSlotTriangles(job);
 }
 
 static bool BuildPhysicsMesh(tBuildJob* job, u32 vertexCount, u32 indexCount)
@@ -451,6 +461,7 @@ static bool ScheduleChunkBuild(u32 chunkIndex, tChunk* chunk)
     if (gMarchingTerrain.builtThisFrame >= T_MAX_BUILDS_PER_FRAME) {
         if (chunk->buildState == CHUNK_UNBUILT || chunk->buildState == CHUNK_FAILED)
             tSetChunkState(chunk, CHUNK_QUEUED);
+        AX_WARN("schedule chunk build capacity reached!");
         return false;
     }
     tBuildJob* job = NULL;
@@ -482,6 +493,7 @@ static bool ScheduleChunkBuild(u32 chunkIndex, tChunk* chunk)
         chunk->dirty = true;
         if (chunk->buildState == CHUNK_BUILDING)
             tSetChunkState(chunk, CHUNK_QUEUED);
+        AX_ERROR("couldn't execute abbari");
         return false;
     }
     gMarchingTerrain.builtThisFrame++;
@@ -502,13 +514,18 @@ static void IntegrateFinishedBuilds(void)
         job->busy = false;
 
         if (job->failed) {
-            // dropped (mesher failure / heap full); a later invalidation re-dirties it
             tFreeMeshHandle(&job->mesh);
+            if (chunk->failCount < 512) {
+                chunk->failCount++;
+                chunk->dirty = true;
+            }
             if (!chunk->mesh.vertices.heapPtr && chunk->pendingState == PENDING_NONE)
                 tSetChunkState(chunk, CHUNK_FAILED);
+            AX_WARN("terrain job failed!");
             continue;
         }
-
+        
+        chunk->failCount = 0;
         tFreePendingMesh(chunk);
         if (job->mesh.vertices.count == 0)
         {
@@ -604,16 +621,15 @@ static void tFreeChunkSlot(u32 index)
 static void tRemoveOutOfRangeChunks(void)
 {
     u32 totalRemoved = 0;
-    IterateSetBits(gMarchingTerrain.occupiedChunksBitset, T_MAX_CHUNKS,
-        tChunk* chunk = &gMarchingTerrain.chunks[bitId];
-
-        if (!ChunkBuildInFlight(bitId) &&
-            !tChunkWithinRadius(chunk, T_MARCHING_DRAW_DISTANCE))
+    for (u32 i = gMarchingTerrain.chunkCount; i-- > 0;)
+    {
+        tChunk* chunk = &gMarchingTerrain.chunks[i];
+        if (!ChunkBuildInFlight(i) && !tChunkWithinRadius(chunk, T_MARCHING_DRAW_DISTANCE))
         {
-            tFreeChunkSlot(bitId);
+            tFreeChunkSlot(i);
             totalRemoved++;
         }
-    );
+    }
     if (totalRemoved)
     {
         RenderSet_CompactEntities(&GetFoliageScene()->surfaceSet);
@@ -733,7 +749,10 @@ static tChunk* GetOrCreateChunk(int3 min)
     if (chunk)
     {
         if (chunk->dirty && !ChunkBuildInFlight(*found) && chunk->pendingState == PENDING_NONE)
+        {
             ScheduleChunkBuild(*found, chunk);
+        }
+        
         return chunk;
     }
 
@@ -746,7 +765,7 @@ static tChunk* GetOrCreateChunk(int3 min)
     *chunk = (tChunk){
         .min = min,
         .buildState = CHUNK_UNBUILT,
-        .pendingState = PENDING_NONE,
+        .pendingState = PENDING_NONE
     };
     chunk->aabbMin = ToFloat3(min);
     chunk->aabbMax = F3AddF(chunk->aabbMin, (f32)T_CHUNK_CELLS);
@@ -759,10 +778,15 @@ static tChunk* GetOrCreateChunk(int3 min)
 static bool tDrawChunk(const tChunk* chunk)
 {
     if (!chunk || chunk->mesh.indices.count == 0 || !chunk->mesh.vertices.heapPtr || !chunk->mesh.indices.heapPtr)
+    {
         return true;
+    }
 
     if (gMarchingTerrain.numChunkDraws >= MAX_TERRAIN_CHUNK_DRAWS)
+    {
+        AX_ERROR("max draw chunk");
         return false;
+    }
     s32 chunkX = chunk->min.x / T_CHUNK_CELLS;
     s32 chunkY = chunk->min.y / T_CHUNK_CELLS;
     s32 chunkZ = chunk->min.z / T_CHUNK_CELLS;

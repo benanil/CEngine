@@ -47,7 +47,7 @@
 #define T_MAX_PHYSICS_SYNCS_PER_FRAME 2u
 // max concurrent chunk builds (job system thread pool auto-sizes to core count, but only
 // this many can be in-flight); too small causes bursty main-thread integration -> stutter
-#define T_MAX_BUILD_JOBS 16u
+#define T_MAX_BUILD_JOBS 32u
 #define T_ENABLE_STATS 0
 
 // these back both the CPU mirrors (Graphics.c) and the GPU mirror (Rendering.c) - keep sane.
@@ -231,6 +231,7 @@ typedef struct tChunk_
     // eviction pick the true least-recently-touched chunk without scanning the array
     u32   lruPrev, lruNext;
     u16   foliageCount;
+    u16   failCount;
     // false until Foliage_Update has scheduled at least one job for this chunk (zero
     // placements is a valid outcome and still sets this - it means "decided", not "has
     // foliage"). Lets newly streamed-in chunks get an initial placement pass even on a
@@ -280,7 +281,7 @@ typedef struct tBuildJob_
     tMeshData    scratchMesh;
     ArenaScratch scratchArena;
     // worker-local append state, valid only while the job runs (thread scratch arena)
-    tVertex* buildVertices;
+    tVertex*     buildVertices;
     u32          buildVertexCount;
     u16*         buildIndices;    // chunk-relative, values always < T_MARCHING_VERTEX_CAP
     u32          buildIndexCount;
