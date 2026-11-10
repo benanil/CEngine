@@ -338,32 +338,37 @@ purefn u32 Maxu32(u32 a, u32 b) { return a > b ? a : b; }
 purefn u64 Minu64(u64 a, u64 b) { return a < b ? a : b; }
 purefn u64 Maxu64(u64 a, u64 b) { return a > b ? a : b; }
 
-purefn int64_t Absu64(int64_t x) {
-    int64_t temp = x >> 63;
+purefn s64 Absu64(s64 x) {
+    s64 temp = x >> 63;
     return (x ^ temp) - temp;
 }
 
-purefn int64_t Absi64(int64_t x) {
-    int64_t temp = x >> 63;
+purefn s64 Absi64(s64 x) {
+    s64 temp = x >> 63;
     return (x ^ temp) - temp;
 }
 
-purefn int Abss32(int x) {
-    int temp = x >> 31;
+purefn s32 Abss32(s32 x) {
+    s32 temp = x >> 31;
     return (x ^ temp) - temp;
 }
 
-purefn float Absf32(float x) {
-    int ix = BitCast(int, x) & 0x7FFFFFFF; // every bit except sign mask
-    return BitCast(float, ix);
+purefn s16 Abss16(s16 x) {
+    s16 temp = x >> 15;
+    return (x ^ temp) - temp;
 }
 
-purefn double Absf64(double x) {
-    uint64_t  ix = BitCast(uint64_t, x) & (~(1ull << 63ull));// every bit except sign mask
-    return BitCast(double, ix);
+purefn f32 Absf32(f32 x) {
+    s32 ix = BitCast(s32, x) & 0x7FFFFFFF; // every bit except sign mask
+    return BitCast(f32, ix);
 }
 
-purefn float Roundf32(float f) {
+purefn f64 Absf64(f64 x) {
+    u64  ix = BitCast(u64, x) & (~(1ull << 63ull));// every bit except sign mask
+    return BitCast(f64, ix);
+}
+
+purefn f32 Roundf32(f32 f) {
 	return VecGetX(VecRound(VecSet1(f)));
 }
 
@@ -390,7 +395,7 @@ purefn f64 Fract(f64 a) {
     return a - Floor(a); 
 }
 
-purefn bool InRange(float x, float start, float length) {
+purefn bool InRange(f32 x, f32 start, f32 length) {
     return x > start && x < start + length;
 }
 

@@ -62,7 +62,7 @@ static SDL_AppResult SDLCALL MainAppInit(void** appstate, int argc, char* argv[]
     s32 msaa = 1;
     done = 0;
 
-    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO))
+    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD))
         return SDL_APP_FAILURE;
 
     const SDL_WindowFlags windowFlags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_BORDERLESS;

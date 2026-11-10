@@ -518,6 +518,7 @@ static void IntegrateFinishedBuilds(void)
             if (chunk->failCount < 512) {
                 chunk->failCount++;
                 chunk->dirty = true;
+                AX_ERROR("terrain job failed 512 times!");
             }
             if (!chunk->mesh.vertices.heapPtr && chunk->pendingState == PENDING_NONE)
                 tSetChunkState(chunk, CHUNK_FAILED);

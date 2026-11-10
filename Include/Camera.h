@@ -236,21 +236,20 @@ static inline int2 MoveMouseToCenter(int2 monitorSize)
 
 static inline void CameraUpdateFPS(Camera* camera, f32 dt, float2 mousePos)
 {
-    camera->mouseDiff = (float2){ PlatformCtx.MouseMotionX, PlatformCtx.MouseMotionY };
+    camera->mouseDiff = GetLookAxis();
     CameraHandleYawPitch(camera);
     camera->mouseOld = mousePos;
 }
 
 static inline void CameraUpdateTPS(Camera* camera, f32 dt, float2 mousePos)
 {
-    camera->mouseDiff = (float2){ PlatformCtx.MouseMotionX, PlatformCtx.MouseMotionY };
+    camera->mouseDiff = GetLookAxis();
     CameraHandleYawPitch(camera);
     camera->distance = Clampf32(camera->distance - GetMouseWheelDelta(), 1.5f, 50.0f);
     camera->position = F3Sub(camera->target, F3MulF(camera->front, camera->distance));
     camera->mouseOld = mousePos; // Tof2(MoveMouseToCenter(camera->monitorSize));
     camera->pitch = MCLAMP(camera->pitch, -89.0f, 0.0f);
 }
-
 
 static inline void CameraSwitchMode(Camera* camera, CameraMode mode)
 {

@@ -4,6 +4,7 @@
 #include "Bitset.h"
 #include "Math/Vector.h"
 #include <SDL3/SDL_events.h>
+#include <SDL3/SDL_gamepad.h>
 
 // enables logging no matter what
 // #define AX_ENABLE_LOGGING
@@ -71,9 +72,8 @@ typedef struct PlatformContext_
     u8   DoubleClicked;
     char TextInput[256];
     PlatformTextKeyEvent TextKeyEvents[64];
-    
+    SDL_Gamepad* gamepad;
 } PlatformContext;
-
 
 // Mouse button flags
 typedef enum MouseButton_ {
@@ -113,6 +113,13 @@ void wGetMonitorSize(s32* width, s32* height);
 void wSetCursor(wCursor cursor);
 
 float2 GetMovementAxis();
+float2 GetLookAxis();
+f32 GetGamepadAxis(SDL_GamepadAxis axis);
+
+u8 GetGamepadButtonUp(SDL_GamepadButton button);
+u8 GetGamepadButtonPressed(SDL_GamepadButton button);
+u8 GetGamepadButton(SDL_GamepadButton button);
+
 // Keyboard
 typedef s32 SDLK;
 u8   AnyKeyDown();

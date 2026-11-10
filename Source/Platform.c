@@ -13,6 +13,10 @@
 #include <SDL3/SDL_timer.h>
 #include <SDL3/SDL_video.h>
 #include <SDL3/SDL_filesystem.h>
+#include <SDL3/SDL_gamepad.h>
+
+#define STB_SPRINTF_IMPLEMENTATION
+#include "Extern/stb/stb_sprintf.h"
 
 #if defined(_WIN32) || defined(_WIN64)
 	#define WIN32_LEAN_AND_MEAN
@@ -24,9 +28,6 @@
 	static LONG WINAPI CrashHandler(EXCEPTION_POINTERS* ep);
 #endif
 
-#define STB_SPRINTF_IMPLEMENTATION
-#include "Extern/stb/stb_sprintf.h"
-
 PlatformContext PlatformCtx = {0};
 extern Camera g_Camera;
 extern SDL_Window* g_SDLWindow;
@@ -35,6 +36,8 @@ static ALIGNAS(SIMD_NUM_BYTES) u64 DownKeys[8];
 static ALIGNAS(SIMD_NUM_BYTES) u64 LastKeys[8]; 
 static ALIGNAS(SIMD_NUM_BYTES) u64 PressedKeys[8];
 static ALIGNAS(SIMD_NUM_BYTES) u64 ReleasedKeys[8];
+static u64 GamepadDown, GamepadLast, GamepadPressed, GamepadReleased;
+
 static SDL_Cursor* g_Cursors[wCursor_Count];
 static wCursor g_CurrentCursor = wCursor_Count;
 
@@ -44,6 +47,7 @@ static void PlatformClearInputState(void)
     MemsetZero(LastKeys, sizeof(LastKeys));
     MemsetZero(PressedKeys, sizeof(PressedKeys));
     MemsetZero(ReleasedKeys, sizeof(ReleasedKeys));
+    GamepadDown = GamepadLast = GamepadPressed = GamepadReleased = 0ull;
     PlatformCtx.MouseDown = 0;
     PlatformCtx.MouseLast = 0;
     PlatformCtx.MousePressed = 0;
@@ -171,6 +175,20 @@ void EventCallback(const SDL_Event* event)
             PlatformCtx.WindowPosX = event->window.data1;
             PlatformCtx.WindowPosY = event->window.data2;
             break;
+        case SDL_EVENT_GAMEPAD_ADDED:
+            AX_WARN("Gamepad added");
+            PlatformCtx.gamepad = SDL_OpenGamepad(event->gdevice.which);
+            break;
+        case SDL_EVENT_GAMEPAD_REMOVED:
+            AX_WARN("Gamepad removed");
+            PlatformCtx.gamepad = NULL;
+            break;
+        case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
+            BitsetSet(&GamepadDown, event->gbutton.button);
+            break;
+        case SDL_EVENT_GAMEPAD_BUTTON_UP:
+            BitsetReset(&GamepadDown, event->gbutton.button);
+            break;
         case SDL_EVENT_QUIT:
             
             break;
@@ -192,46 +210,81 @@ const char* ConcatWithTempPath(const char* added, size_t addedLen)
     return path;
 }
 
-void GetMousePos(float* x, float* y) { SDL_GetMouseState(x, y); }
+void GetMousePos(f32* x, f32* y) { SDL_GetMouseState(x, y); }
 
-void SetMousePos(float x, float y) {  SDL_WarpMouseGlobal(x, y); }
+void SetMousePos(f32 x, f32 y) {  SDL_WarpMouseGlobal(x, y); }
 
-void wGetMouseWindowPos(float* x, float* y) {
+void wGetMouseWindowPos(f32* x, f32* y) {
     GetMousePos(x, y);
 }
 
 void wGetMonitorSize(int* width, int* height) 
 {
     const SDL_DisplayMode* DM = SDL_GetCurrentDisplayMode(0);
-    if (DM)
-    {
+    if (DM) {
         *width  = DM->w;
         *height = DM->h;
     }
-    else
-    {
+    else {
         *width = 1920;
         *height = 1090;
     }
 }
 
-void SetMouseWindowPos(float x, float y)
+void SetMouseWindowPos(f32 x, f32 y)
 {
     SDL_WarpMouseInWindow(g_SDLWindow, x, y);
 }
 
-u8 AnyKeyDown()          { return PopCount512(DownKeys) > 0; }
+u8 AnyKeyDown()           { return PopCount512(DownKeys) > 0; }
 u8 GetKeyDown(SDLK c)     { return BitsetGet(DownKeys    , GetRealKey(c) & 511); }
 u8 GetKeyReleased(SDLK c) { return BitsetGet(ReleasedKeys, GetRealKey(c) & 511); }
 u8 GetKeyPressed(SDLK c)  { return BitsetGet(PressedKeys , GetRealKey(c) & 511); }
 
+u8 GetGamepadButtonUp(SDL_GamepadButton button) {
+    return BitsetGet(&GamepadReleased, button);
+}
+
+u8 GetGamepadButtonPressed(SDL_GamepadButton button) {
+    return BitsetGet(&GamepadPressed, button);
+}
+
+u8 GetGamepadButton(SDL_GamepadButton button) {
+    return BitsetGet(&GamepadDown, button);
+}
+
+f32 GetGamepadAxis(SDL_GamepadAxis axis)
+{
+    s32 val = SDL_GetGamepadAxis(PlatformCtx.gamepad, axis);
+    s32 mag = val < 0 ? -val : val;
+    if (mag <= 2400) return 0.0f;
+    f32 result = (f32)val / 32767.0f;
+    return result < -1.0f ? -1.0f : result;
+}
+
 float2 GetMovementAxis()
 {
-    // todo(anil) add joystick etc
-    return (float2){
+    float2 g = F2Zero();
+    if (PlatformCtx.gamepad) {
+        g.x =  GetGamepadAxis(SDL_GAMEPAD_AXIS_LEFTX);
+        g.y = -GetGamepadAxis(SDL_GAMEPAD_AXIS_LEFTY);
+    }
+    float2 k = {
         GetKeyDown(SDLK_D) ? 1.0f : GetKeyDown(SDLK_A) ? -1.0f : 0.0f,
         GetKeyDown(SDLK_W) ? 1.0f : GetKeyDown(SDLK_S) ? -1.0f : 0.0f
     };
+    return F2LenSq(g) > F2LenSq(k) ? g : k;
+}
+
+float2 GetLookAxis()
+{
+    float2 g = F2Zero();
+    if (PlatformCtx.gamepad) {
+        g.x = GetGamepadAxis(SDL_GAMEPAD_AXIS_RIGHTX);
+        g.y = GetGamepadAxis(SDL_GAMEPAD_AXIS_RIGHTY);
+    }
+    float2 m = (float2) { PlatformCtx.MouseMotionX, PlatformCtx.MouseMotionY };
+    return F2LenSq(g) > F2LenSq(m) ? F2MulF(g, 10.0f) : m;
 }
 
 // Mouse
@@ -289,8 +342,10 @@ void SetPressedAndReleasedKeys()
     AndNot512(PressedKeys , DownKeys, LastKeys);
 
     // Mouse
-    PlatformCtx.MouseReleased = PlatformCtx.MouseLast & ~PlatformCtx.MouseDown;
-    PlatformCtx.MousePressed  = ~PlatformCtx.MouseLast & PlatformCtx.MouseDown;
+    PlatformCtx.MouseReleased =  PlatformCtx.MouseLast & ~PlatformCtx.MouseDown;
+    PlatformCtx.MousePressed  = ~PlatformCtx.MouseLast &  PlatformCtx.MouseDown;
+    GamepadReleased =  GamepadLast & ~GamepadDown;
+    GamepadPressed  = ~GamepadLast &  GamepadDown;
 }
 
 void RecordLastKeys()
@@ -298,6 +353,7 @@ void RecordLastKeys()
     MemCopy(LastKeys, DownKeys, sizeof(u64) * 8);
     // PlatformCtx.LastKeys  = PlatformCtx.DownKeys;
     PlatformCtx.MouseLast = PlatformCtx.MouseDown;
+    GamepadLast = GamepadDown;
 }
 
 bool wGetWindowSize(s32* width, s32* height)
@@ -369,6 +425,7 @@ void PlatformInit()
     SetUnhandledExceptionFilter(CrashHandler);
     PlatformSetHighPriority();
     #endif
+   
     EnableConsoleColors();
     SDL_SetLogPriorities(2); //SDL_LOG_PRIORITY_VERBOSE);
     PlatformCtx.SecondsSinceLastClick = 0.0f;

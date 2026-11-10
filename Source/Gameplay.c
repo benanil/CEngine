@@ -15,7 +15,8 @@ static void UpdatePicking()
     v128f direction = VecNorm(Vec3Load(&g_Camera.front));
     hit.hit.t = FLT_MAX;
 
-    if (GetMousePressed(MouseButton_Left) && Physics_PhysicsRaycastPick(origin, direction, 10.0f, &hit, PhysBit_Foliage))
+    if ((GetMousePressed(MouseButton_Left) || GetGamepadButtonPressed(SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER)) 
+        && Physics_PhysicsRaycastPick(origin, direction, 10.0f, &hit, PhysBit_Foliage))
     {
         RenderSet* rs = &Foliage_GetScene()->surfaceSet;
         SparseData* sparse = &rs->sparseData[hit.entityID & 0x00FFFFFFu];

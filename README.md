@@ -79,6 +79,10 @@ Install a C/C++ toolchain and CMake 3.16+.
 - The project builds a single executable target: `CEngine`.
 - Shader helper edits may require a forced rebuild, especially shared shader helper headers.
 
+## Import animation
+Recomended way is using blender:
+we need one mesh with skin and mesh, the other animations don't have to have skin. first import skinned mesh to blender, import first animation to blender rename the animation from mixamo.com to whatever click to main skin armature node then open action editor click 3 dots at the left of the "+ new" then click to newly added animation then "Action" "Push Down Action" you have to see that animation below NLA Tracks export the animation Transform.+yUp : uncheck
+
 ## How to Compile
 python 3.9 and above
 ```bash
