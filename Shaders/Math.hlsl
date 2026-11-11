@@ -44,7 +44,7 @@ f16_3 Orthonormalize(f16_3 tangent, f16_3 normal) {
 
 f16_4 QNlerp(f16_4 q, f16_4 r, f16 t)
 {
-    return normalize(lerp(q, ((dot(q, r) < 0.) ? -r : r), t));
+    return lerp(q, (dot(q, r) < 0.) ? -r : r, t);
 }
 
 f16_4 QMul(f16_4 Q1, f16_4 Q2) {

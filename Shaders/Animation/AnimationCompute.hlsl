@@ -132,9 +132,7 @@ void main(uint3 GlobalInvocationID : SV_DispatchThreadID)
     Pose poses[MAX_BONES];
     f16 animProgress = f16(Fractf(animT));
     for (int i = 0; i < data.numNodes; i++)
-    {
         poses[i] = SampleLocal(i, data, frameABIdx, animProgress);
-    }
 
     f16 blend = UnpackHalf(anim.animIdx2Blend >> 16);
     if (blend > 0.005f)
@@ -153,6 +151,9 @@ void main(uint3 GlobalInvocationID : SV_DispatchThreadID)
             poses[i].rotation    = QNlerp(poses[i].rotation    , pose.rotation, blend);
         }
     }
+    
+    for (int i = 0; i < data.numNodes; i++) // normalize only once
+        poses[i].rotation = normalize(poses[i].rotation);
     
     u32 neckNode  =  data.neckSpineNodes & 0xFFFFu;
     u32 spineNode = (data.neckSpineNodes >> 16u) & 0xFFFFu;

@@ -38,11 +38,12 @@ typedef struct Character_
     f32 acceleration;
     f32 decceleration;
     f32 currentSpeed; // [0, 1]
-    f32 trigerTime;
-    f32 trigerStart;
-    f32 trigerSpeed;
-    f32 transitionTime;
-    f32 transitionSpeed;
+    f32 onceTime;
+    f32 onceStart;
+    f32 onceSpeed;
+    f32 mixInTime;
+    f32 mixSpeed;
+    f32 mixOutTime;
     f32 animSpeed;
     f32 xRotation;
     f32 yRotation;
@@ -166,11 +167,11 @@ static void SpawnCharacter()
     ch.jogLeft      = animOffset + FindAnimIndex(ch.bundle, "JogStrafeLeft");
     ch.jogRight     = animOffset + FindAnimIndex(ch.bundle, "JogStrafeRight");
     
-    ch.trigerAnim      = ch.lastAnimation = ch.idle;
-    ch.transitionTime  = ch.trigerTime    = 0.0f;
-    ch.transitionSpeed = ch.trigerSpeed   = 1.0f;
-    ch.animSpeed       = 1.5f;
-    ch.trigerStart     = TimeSinceStartup();
+    ch.trigerAnim = ch.lastAnimation = ch.idle;
+    ch.mixInTime  = ch.onceTime    = 0.0f;
+    ch.mixSpeed   = ch.onceSpeed   = 1.0f;
+    ch.animSpeed  = 1.5f;
+    ch.onceStart  = TimeSinceStartup();
     MemSet(ch.anim1Joints, 0xFF, sizeof(u32) * 3);
 
     boneTransfer = SDL_CreateGPUTransferBuffer(g_GPUDevice, &(SDL_GPUTransferBufferCreateInfo){
@@ -205,17 +206,7 @@ void BeforeDestroySceneCallback(Scene* scene)
     boneTransfer = NULL;
 }
 
-void TriggerAnim(u16 anim, f32 transitionTime, f32 speed, bool upperLower)
-{
-    ch.trigerAnim      = anim;
-    ch.transitionTime  = 1.0f;
-    ch.trigerStart     = TimeSinceStartup();
-    ch.transitionSpeed = 1.0f / transitionTime;
-    ch.upperLower  = upperLower;
-    ch.trigerSpeed = speed;
-    if (upperLower) MemCopy(ch.anim1Joints, ch.upperJoints, sizeof(u32) * 3);
-    else MemSet(ch.anim1Joints, 0xFF, sizeof(u32) * 3);
-}
+void PlayOnce(u16 anim, f32 mixInTime, f32 speed, bool upperLower);
 
 static b3Capsule MakeMover(void)
 {
@@ -399,7 +390,7 @@ static void CharacterMovement(Scene* scene, Entity* character, f32 dt)
         EntitySetPositionV(mesh, position);
         EntitySetRotation(mesh, mRotation);
     }
-    if (jumpNow) TriggerAnim(ch.jump, 0.05f, 1.0f, false);
+    if (jumpNow) PlayOnce(ch.jump, 0.05f, 1.0f, false);
     g_Camera.position = F3Add(B3VecToFloat3(ch.position), QMulVec3(cameraOffset, mRotation));
     g_Camera.position = F3Add(M44ExtractPosition(boneMat), g_Camera.position);
     g_Camera.target = g_Camera.position;
@@ -423,6 +414,18 @@ static void CharacterUI()
 
         UIEndWindow();
     }
+}
+
+void PlayOnce(u16 anim, f32 mixInTime, f32 speed, bool upperLower)
+{
+    ch.trigerAnim = anim;
+    ch.mixInTime  = 1.0f;
+    ch.onceStart  = TimeSinceStartup();
+    ch.mixSpeed   = 1.0f / mixInTime;
+    ch.upperLower = upperLower;
+    ch.onceSpeed  = speed;
+    if (upperLower) MemCopy(ch.anim1Joints, ch.upperJoints, sizeof(u32) * 3);
+    else MemSet(ch.anim1Joints, 0xFF, sizeof(u32) * 3);
 }
 
 static LocomotionPose EvaluateLocomotion(f32 speed, f32 lateral, bool isBack)
@@ -509,42 +512,52 @@ static void Animate(Scene* scene, f32 dt)
     f32 anim0t = LocomotionClipPhase(anim0);
     f32 anim1t = ch.locoPhase;
 
-    if (ch.transitionTime > 0.0f)
+    u32 baseAnim = DominantClip(&loco);
+    f32 baseTime = LocomotionClipPhase(baseAnim);
+
+    if (ch.mixInTime > 0.0f)
     {
-        ch.lastAnimation = DominantClip(&loco);
-        anim0  = ch.lastAnimation;
-        anim0t = LocomotionClipPhase(anim0);
+        anim0  = baseAnim;
+        anim0t = baseTime;
         anim1  = ch.trigerAnim;
         anim1t = 0.0f;
-        blend  = 1.0f - ch.transitionTime;
 
-        ch.transitionTime -= dt * ch.transitionSpeed;
-        if (ch.transitionTime <= 0.0f)
+        ch.mixInTime = Maxf32(0.0f, ch.mixInTime - dt * ch.mixSpeed);
+        blend = 0.999f - ch.mixInTime;
+
+        if (ch.mixInTime <= 0.0f)
         {
-            ch.trigerStart = now;
-            ch.trigerTime = clips[ch.trigerAnim].duration;
+            ch.onceStart = now;
+            ch.onceTime = clips[ch.trigerAnim].duration;
         }
     }
-    else if (ch.trigerTime > 0.0f)
+    else if (ch.onceTime > 0.0f)
     {
-        f32 trigerT = Fractf32(((now - ch.trigerStart) * ch.trigerSpeed) / clips[ch.trigerAnim].duration);
-        if (ch.upperLower)
-        {
-            anim0  = DominantClip(&loco);
-            anim0t = LocomotionClipPhase(anim0);
-            anim1  = ch.trigerAnim;
-            anim1t = trigerT;
-            blend  = 1.0f;
-        }
-        else
-        {
-            anim0  = ch.trigerAnim;
-            anim0t = trigerT;
-            blend  = 0.0f;
-        }
+        f32 duration = clips[ch.trigerAnim].duration;
+        f32 t = Clampf32(((now - ch.onceStart) * ch.onceSpeed) / duration, 0.0f, 0.999f);
 
-        ch.trigerTime -= dt * ch.trigerSpeed;
-        if (ch.trigerTime <= 0.0f) MemSet(ch.anim1Joints, 0xFF, sizeof(u32) * 3);
+        anim0  = baseAnim;
+        anim0t = baseTime;
+        anim1  = ch.trigerAnim;
+        anim1t = t;
+        blend  = 0.999f;
+
+        ch.onceTime -= dt * ch.onceSpeed;
+        if (ch.onceTime <= 0.0f)
+            ch.mixOutTime = 1.0f;
+    }
+    else if (ch.mixOutTime > 0.0f)
+    {
+        anim0  = baseAnim;
+        anim0t = baseTime;
+        anim1  = ch.trigerAnim;
+        anim1t = 0.999f;
+
+        ch.mixOutTime = Maxf32(0.0f, ch.mixOutTime - (dt * ch.mixSpeed));
+        blend = ch.mixOutTime;
+
+        if (ch.mixOutTime <= 0.0f)
+            MemSet(ch.anim1Joints, 0xFF, sizeof(u32) * 3);
     }
 
     instance.blend = FloatToHalf(Clampf32(blend, 0.0f, 1.0f));
@@ -566,7 +579,7 @@ static void HandleInputs()
         ch.jumpRequested = true;
 
     if (GetMouseDown(MouseButton_Left) || GetGamepadButton(SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER))
-        TriggerAnim(ch.atack, 0.5f, 1.0f, true);
+        PlayOnce(ch.atack, 0.5f, 1.0f, true);
 
     if (GetKeyPressed(SDLK_J) || GetKeyPressed(SDLK_K))
     {
