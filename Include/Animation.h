@@ -27,17 +27,20 @@ typedef struct AnimNode_
     uint8_t childrenStartIndex;
 } AnimNode;
 
+// stores 4x animation information and blending data of them
 typedef struct GPUAnimationInstance_
 {
-    u32 anim1Joints[3]; // bitset 96 joint
-    u32 animRatio2;
-    u16 animIdx2;
-    u16 blend;
+    // first animation's all bones are considered active
+    // active bit means that bone will influance animation
+    u32 activeBoneBitset[9]; // bitset 96 joint * 3x animation  
+    u32 ratioUnorm16x4[2];  // unorm16x4
+    u32 weightsUnorm8x4;   // unorm8x4
+    u32 Idx8x4;           // u8x4
     s16 neckAngle;
     s16 spineAngle;
 } GPUAnimationInstance;
 
-STATIC_ASSERT(sizeof(GPUAnimationInstance) == 24, "gpu animation instance should be 16 byte");
+STATIC_ASSERT(sizeof(GPUAnimationInstance) == (sizeof(u32) * 14), "gpu animation instance should be 16 byte");
 
 typedef struct GPUAnimationData_
 {

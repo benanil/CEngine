@@ -25,11 +25,11 @@ static void RandomizeAnimInstances(void)
         u32 ordinal = hash % anims->numAnimations;
         if (ordinal == 0 && anims->numAnimations > 1) ordinal = 1; // skip the bind pose
         u32 animIdx = AnimationSystem_GetNthUsedAnim(anims, ordinal);
-        instances[i] = (GPUAnimationInstance){
-            .animIdx2   = animIdx,
-            .animRatio2 = PackUnorm16(hash & 0xFFFF),
-            .blend      = ZeroFP16
-        };
+        
+        instances[i].animIdx4     = animIdx * 0x01010101U;
+        instances[i].animRatio[0] = PackUnorm16(hash & 0xFFFF);
+        instances[i].animWeights  = 255;
+        instances[i].neckAngle    = instances[i].spineAngle = 0;
     }
     AnimationSystem_UpdateInstances(anims, instances, MAX_ANIM_INSTANCES);
 }

@@ -382,13 +382,16 @@ void SceneInspectorUI(Scene* scene)
     if (changed)
     {
         sceneObjectSelection.animIdx = animLocal;
-        GPUAnimationInstance instance = {
-            .animIdx2   = ref->animAlloc.animOffset + animLocal, 
-            .animRatio2 = PackUnorm16(sceneObjectSelection.animTime), 
-            .blend      = ZeroFP16
-        };
-        instance.animIdx2   |= instance.animIdx2   << 8; 
-        instance.animRatio2 |= instance.animRatio2 << 16;
+        GPUAnimationInstance instance;
+        instance.animIdx4     = ref->animAlloc.animOffset + animLocal; 
+        instance.animRatio[0] = PackUnorm16(sceneObjectSelection.animTime);
+        instance.neckAngle    = instance.spineAngle = 0;
+
+        instance.animWeights   = 255;
+        instance.animIdx4     *= 0x01010101U; // set all anim indices to animIdx0
+        instance.animRatio[0] |= instance.animRatio[0] << 16;
+        MemSet(&instance.animJoints, 0xFF, sizeof(u32) * 9);
+
         AnimationSystem_SetInstance(&scene->animSystem, EntityGetSparseID(entity), instance);
     }
 }

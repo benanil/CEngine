@@ -819,12 +819,12 @@ s32 SceneSerializer_Load(Scene* scene, const char* path, SceneFileData* data)
                 u32 bundleIdx = Scene_FindBundleForRenderGroup(scene, true, groupIdx);
                 if (bundleIdx != INVALID_BUNDLE)
                 {
-                    GPUAnimationInstance instance = {
-                        .animIdx2   = Scene_DefaultAnimation(scene, bundleIdx),
-                        .animRatio2 = 0,
-                        .blend      = ZeroFP16
-                    };
-
+                    GPUAnimationInstance instance;
+                    instance.animIdx4     = Scene_DefaultAnimation(scene, bundleIdx);
+                    instance.animRatio[0] = 0;
+                    instance.animWeights  = 255;
+                    instance.neckAngle = instance.spineAngle = 0;
+                    MemSet(instance.animJoints, 0, sizeof(u32) * 9);
                     AnimationSystem_SetInstance(&scene->animSystem, record->sparseIdx, instance);
                 }
             }

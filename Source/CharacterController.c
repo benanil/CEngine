@@ -495,13 +495,13 @@ static f32 AnimY(f32 dt)
     return animY = MoveTowards(animY, targetSpeed, acceleration * dt);
 }
 
-static void Animate(Scene* scene, f32 dt)
+static void Animate(const Scene* scene, f32 dt)
 {
     f32 now = TimeSinceStartup();
     const GPUAnimationData* clips = scene->animSystem.animData;
 
     GPUAnimationInstance instance = { 0 };
-    MemCopy(instance.anim1Joints, ch.anim1Joints, sizeof(u32) * 3);
+    MemCopy(instance.animJoints, ch.anim1Joints, sizeof(u32) * 3);
     float2 moveDir = GetMovementAxis();
     LocomotionPose loco = EvaluateLocomotion(AnimY(dt), moveDir.x, moveDir.y < -0.02f);
     AdvanceLocomotionPhases(clips, &loco, dt);
@@ -560,9 +560,12 @@ static void Animate(Scene* scene, f32 dt)
             MemSet(ch.anim1Joints, 0xFF, sizeof(u32) * 3);
     }
 
-    instance.blend = FloatToHalf(Clampf32(blend, 0.0f, 1.0f));
-    instance.animRatio2 = (u32)PackUnorm16(anim0t) | ((u32)PackUnorm16(anim1t) << 16);
-    instance.animIdx2 = anim0 | (anim1 << 8);
+    u32 w = (u32)(Clampf32(blend, 0.0f, 1.0f) * 255.0f);
+    instance.weightsUnorm8x4  = 255 - w; 
+    instance.weightsUnorm8x4 |= w << 8; // anim1 weight
+    
+    instance.ratioUnorm16x4[0] = (u32)PackUnorm16(anim0t) | ((u32)PackUnorm16(anim1t) << 16);
+    instance.Idx8x4            = anim0 | (anim1 << 8);
 
     u32 charSparse = SparseIDFromSparseData(&scene->skinnedSet, ch.sparse);
     for (s32 i = 0; i < ch.numCharacterEntities; i++)

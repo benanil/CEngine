@@ -18,10 +18,11 @@ struct AnimNode {
 };
 
 struct AnimationInstance {
-    uint  anim1Joints[3];
-    uint  animRatio2; // unorm16x2
-    uint  animIdx2Blend;   // u16x2
-    uint  neckSpineAngle;
+    uint animJoints[9];
+    uint animRatio[2];  // unorm16x4
+    uint animWeights;   // unorm8x4
+    uint animIdx4;      // u8x4
+    uint neckSpineAngle;
 };
 
 struct AnimationData {
@@ -69,9 +70,12 @@ f16_4 GetHalf4(StructuredBuffer<uint> buffer, uint idx)
     return VecCombine(UnpackHalf2(buffer[idx]), UnpackHalf2(buffer[idx + 1]));
 }
 
-bool IsJointActive(in AnimationInstance instance, u32 i)
+bool IsJointActive(in uint animJoints[9], uint animSlot, uint joint)
 {
-    return (instance.anim1Joints[i >> 5] >> (i & 31)) & 1u;
+    if (animSlot == 0) return true;
+    if (joint >= 96u) return false;
+    uint idx = (animSlot - 1u) * 3u + (joint >> 5u);
+    return (animJoints[idx] >> (joint & 31u)) & 1u;
 }
 
 mat4x4 LoadInvBind(uint idx, uint invBindOffset)
@@ -123,40 +127,48 @@ void main(uint3 GlobalInvocationID : SV_DispatchThreadID)
 { 
     uint instanceIdx = GlobalInvocationID.x;
     if (instanceIdx >= numInstances) return;
+    
     AnimationInstance anim = animInstances[instanceIdx];
-    AnimationData     data = animData[anim.animIdx2Blend & 0xFFu];
-
-    f32 animT = UnpackUnorm16(anim.animRatio2) * float(data.numFrames);
-    uint2 frameABIdx = uint2(uint(Floorf(animT)), uint(Ceilf(animT)) % uint(data.numFrames));
     
     Pose poses[MAX_BONES];
-    f16 animProgress = f16(Fractf(animT));
-    for (int i = 0; i < data.numNodes; i++)
-        poses[i] = SampleLocal(i, data, frameABIdx, animProgress);
+    AnimationData data = animData[anim.animIdx4 & 0xFFu];
 
-    f16 blend = UnpackHalf(anim.animIdx2Blend >> 16);
-    if (blend > 0.005f)
+    uint ratio = anim.animRatio[0] & 0xFFFFu;
+    f32 animT = UnpackUnorm16(ratio) * float(data.numFrames);
+    uint2 frameABIdx = uint2(uint(Floorf(animT)), uint(Ceilf(animT)) % uint(data.numFrames));
+    f16 progress = f16(Fractf(animT));
+
+    // Base pose
+    for (uint i = 0; i < data.numNodes; i++)
+        poses[i] = SampleLocal(i, data, frameABIdx, progress);
+
+    // Overlay animations
+    for (uint a = 1; a < 4; a++)
     {
-        data  = animData[(anim.animIdx2Blend >> 8u) & 0xFFu];
-        animT = UnpackUnorm16(anim.animRatio2 >> 16) * float(data.numFrames);
-        frameABIdx = uint2(uint(Floorf(animT)), uint(Ceilf(animT)) % uint(data.numFrames));
-        
-        animProgress = f16(Fractf(animT));
-        // merge animations
-        for (uint i = 0; i < data.numNodes; i++)
+        f32 weight = f32((anim.animWeights >> (a * 8u)) & 0xFFu) / 255.0f;
+        if (weight < 0.005f) continue;
+
+        AnimationData layer = animData[(anim.animIdx4 >> (a * 8u)) & 0xFFu];
+        uint packed = (anim.animRatio[a >> 1u] >> ((a & 1u) * 16u)) & 0xFFFFu;
+        animT = UnpackUnorm16(packed) * float(layer.numFrames);
+
+        frameABIdx = uint2(uint(Floorf(animT)), uint(Ceilf(animT)) % uint(layer.numFrames));
+        progress = f16(Fractf(animT));
+
+        for (uint i = 0; i < min(data.numNodes, layer.numNodes); i++)
         {
-            if (!IsJointActive(anim, i)) continue;
-            Pose pose = SampleLocal(i, data, frameABIdx, animProgress);
-            poses[i].translation = VecLerp(poses[i].translation, pose.translation, blend);
-            poses[i].rotation    = QNlerp(poses[i].rotation    , pose.rotation, blend);
+            if (!IsJointActive(anim.animJoints, a, i)) continue;
+            Pose pose = SampleLocal(i, layer, frameABIdx, progress);
+            poses[i].translation = VecLerp(poses[i].translation, pose.translation, weight);
+            poses[i].rotation = QNlerp(poses[i].rotation, pose.rotation, weight);
         }
     }
     
     for (int i = 0; i < data.numNodes; i++) // normalize only once
         poses[i].rotation = normalize(poses[i].rotation);
     
-    u32 neckNode  =  data.neckSpineNodes & 0xFFFFu;
-    u32 spineNode = (data.neckSpineNodes >> 16u) & 0xFFFFu;
+    u32 neckNode   =  data.neckSpineNodes & 0xFFFFu;
+    u32 spineNode  = (data.neckSpineNodes >> 16u) & 0xFFFFu;
     f16 neckAngle  = Unpack16Snorm(anim.neckSpineAngle & 0xFFFFu);
     f16 spineAngle = Unpack16Snorm(anim.neckSpineAngle >> 16u);
     

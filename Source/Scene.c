@@ -652,9 +652,11 @@ SparseData* Scene_Spawn(Scene* scene, u32 bundleIdx, v128f position, v128f rotat
     if (skinned && added != NULL && oldCounts)
     {
         GPUAnimationInstance instance;
-        instance.animIdx2   = Scene_DefaultAnimation(scene, bundleIdx);
-        instance.animRatio2 = 0.0f;
-        instance.blend      = ZeroFP16;
+        instance.animIdx4      = Scene_DefaultAnimation(scene, bundleIdx) * 0x01010101U; // set all anim indices to animIdx0
+        instance.animRatio[0]  = 0;
+        instance.animWeights   = 255;
+        instance.neckAngle = instance.spineAngle = 0;
+        MemSet(&instance.animJoints, 0xFF, sizeof(u32) * 9);
 
         for (u32 i = 0; i < range.count; i++)
         {
