@@ -26,9 +26,9 @@ static void RandomizeAnimInstances(void)
         if (ordinal == 0 && anims->numAnimations > 1) ordinal = 1; // skip the bind pose
         u32 animIdx = AnimationSystem_GetNthUsedAnim(anims, ordinal);
         
-        instances[i].animIdx4     = animIdx * 0x01010101U;
-        instances[i].animRatio[0] = PackUnorm16(hash & 0xFFFF);
-        instances[i].animWeights  = 255;
+        instances[i].Idx8x4     = animIdx * 0x01010101U;
+        instances[i].ratioUnorm16x4[0] = PackUnorm16(hash & 0xFFFF);
+        instances[i].weightsUnorm8x4  = 255;
         instances[i].neckAngle    = instances[i].spineAngle = 0;
     }
     AnimationSystem_UpdateInstances(anims, instances, MAX_ANIM_INSTANCES);

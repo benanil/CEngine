@@ -129,7 +129,6 @@ void main(uint3 GlobalInvocationID : SV_DispatchThreadID)
     if (instanceIdx >= numInstances) return;
     
     AnimationInstance anim = animInstances[instanceIdx];
-    
     Pose poses[MAX_BONES];
     AnimationData data = animData[anim.animIdx4 & 0xFFu];
 
@@ -138,11 +137,9 @@ void main(uint3 GlobalInvocationID : SV_DispatchThreadID)
     uint2 frameABIdx = uint2(uint(Floorf(animT)), uint(Ceilf(animT)) % uint(data.numFrames));
     f16 progress = f16(Fractf(animT));
 
-    // Base pose
     for (uint i = 0; i < data.numNodes; i++)
         poses[i] = SampleLocal(i, data, frameABIdx, progress);
 
-    // Overlay animations
     for (uint a = 1; a < 4; a++)
     {
         f32 weight = f32((anim.animWeights >> (a * 8u)) & 0xFFu) / 255.0f;

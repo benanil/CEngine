@@ -501,7 +501,7 @@ static void Animate(const Scene* scene, f32 dt)
     const GPUAnimationData* clips = scene->animSystem.animData;
 
     GPUAnimationInstance instance = { 0 };
-    MemCopy(instance.animJoints, ch.anim1Joints, sizeof(u32) * 3);
+    MemCopy(instance.activeBoneBitset, ch.anim1Joints, sizeof(u32) * 3);
     float2 moveDir = GetMovementAxis();
     LocomotionPose loco = EvaluateLocomotion(AnimY(dt), moveDir.x, moveDir.y < -0.02f);
     AdvanceLocomotionPhases(clips, &loco, dt);

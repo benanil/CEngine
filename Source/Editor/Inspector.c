@@ -383,14 +383,14 @@ void SceneInspectorUI(Scene* scene)
     {
         sceneObjectSelection.animIdx = animLocal;
         GPUAnimationInstance instance;
-        instance.animIdx4     = ref->animAlloc.animOffset + animLocal; 
-        instance.animRatio[0] = PackUnorm16(sceneObjectSelection.animTime);
+        instance.Idx8x4     = ref->animAlloc.animOffset + animLocal; 
+        instance.ratioUnorm16x4[0] = PackUnorm16(sceneObjectSelection.animTime);
         instance.neckAngle    = instance.spineAngle = 0;
 
-        instance.animWeights   = 255;
-        instance.animIdx4     *= 0x01010101U; // set all anim indices to animIdx0
-        instance.animRatio[0] |= instance.animRatio[0] << 16;
-        MemSet(&instance.animJoints, 0xFF, sizeof(u32) * 9);
+        instance.weightsUnorm8x4   = 255;
+        instance.Idx8x4     *= 0x01010101U; // set all anim indices to animIdx0
+        instance.ratioUnorm16x4[0] |= instance.ratioUnorm16x4[0] << 16;
+        MemSet(&instance.activeBoneBitset, 0xFF, sizeof(u32) * 9);
 
         AnimationSystem_SetInstance(&scene->animSystem, EntityGetSparseID(entity), instance);
     }
