@@ -84,6 +84,7 @@ purefn float2 F2Zero()                    { return (float2){ 0.0f,  0.0f }; }
 purefn float2 F2One()                     { return (float2){ 1.0f,  1.0f }; }
 
 purefn float3 VCALL Vec3Get(f4 v)                   { return (float3) { VecGetX(v), VecGetY(v), VecGetZ(v) }; }
+purefn v128f VCALL F3toV128(float3 v)              { return VecLoad(&v.x); }
 purefn f32    F3Dot     (float3 a, float3 b)        { return VecDotf(Vec3Load(&a.x), Vec3Load(&b.x));  }
 purefn float3 F3NormSafe(float3 a)                  { return F3DivF(a, MATH_Epsilon + Sqrtf(a.x * a.x + a.y * a.y + a.z * a.z)); }
 purefn f32    F3DistSqr (cf3 a, cf3 b)              { return Vec3DistSqrfV(Vec3Load(&a->x), Vec3Load(&b->x));         }

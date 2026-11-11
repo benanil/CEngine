@@ -29,7 +29,7 @@
 #define SPOT_SHADOW_MAX_LIGHTS     16u
 #define SPOT_SHADOW_NEAR_PLANE     0.05f
 
-#define MatrixNumInt32          8 /* fp16_3x3 rotation:5 + fp32 pos: 3 = 8 */
+#define AnimMtxNumF32           8 /* fp16_3x3 rotation:5 + fp32 pos: 3 = 8 */
 #define MAX_BONES               96u
 #define MaxBoneDepth            32
 // 1024 animation is 512mb memory on gpu

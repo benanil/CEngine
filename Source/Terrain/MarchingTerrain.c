@@ -461,7 +461,6 @@ static bool ScheduleChunkBuild(u32 chunkIndex, tChunk* chunk)
     if (gMarchingTerrain.builtThisFrame >= T_MAX_BUILDS_PER_FRAME) {
         if (chunk->buildState == CHUNK_UNBUILT || chunk->buildState == CHUNK_FAILED)
             tSetChunkState(chunk, CHUNK_QUEUED);
-        AX_WARN("schedule chunk build capacity reached!");
         return false;
     }
     tBuildJob* job = NULL;

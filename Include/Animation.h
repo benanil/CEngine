@@ -121,7 +121,7 @@ void SampleSkinnedAnimationPose(const SceneBundle* bundle, Pose pose[MAX_BONES],
 
 u16 FindAnimIndex(const SceneBundle* prefab, const char* name);
 
-mat4x4 UnpackGPUBone(u32 buffer[8]);
+mat4x4 UnpackGPUBone(u32 buffer[AnimMtxNumF32]);
 
 #if defined(__cplusplus)
 }

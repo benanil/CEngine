@@ -1,5 +1,5 @@
 #define INT16_SUPPORTED   0
-#define FLOAT16_SUPPORTED 1
+#define FLOAT16_SUPPORTED 0
 #pragma pack_matrix(row_major)
 
 #include "../../Include/RenderLimits.h"
@@ -53,7 +53,7 @@ cbuffer params : register(b0, space2)
 
 void WriteBone(mat4x4 bone, uint idx)
 {
-    uint base = MatrixNumInt32 * idx;
+    uint base = AnimMtxNumF32 * idx;
     outBoneMtx[base + 0] = PackHalf2(f16_2(bone[0][0], bone[0][1]));
     outBoneMtx[base + 1] = PackHalf2(f16_2(bone[0][2], bone[1][0]));
     outBoneMtx[base + 2] = PackHalf2(f16_2(bone[1][1], bone[1][2]));
@@ -87,6 +87,16 @@ f16_2x4 LoadPose(uint i, uint frameOffset, uint frame)
     result[0] = GetHalf4(animPoses, pose + 0);
     result[1] = GetHalf4(animPoses, pose + 2);
     return result;
+}
+
+Pose SampleLocal(uint i, AnimationData d, uint2 ab, f16 t)
+{
+    f16_2x4 a = LoadPose(i, d.frameOffset, ab.x);
+    f16_2x4 b = LoadPose(i, d.frameOffset, ab.y);
+    Pose res;
+    res.translation = VecLerp(a[0], b[0], t);
+    res.rotation    = QNlerp(a[1], b[1], t);
+    return res;
 }
 
 u16 GetParentIndex(u16 idx, uint hierarchyOffset) { 
@@ -123,10 +133,7 @@ void main(uint3 GlobalInvocationID : SV_DispatchThreadID)
     f16 animProgress = f16(Fractf(animT));
     for (int i = 0; i < data.numNodes; i++)
     {
-        f16_2x4 a = LoadPose(i, int(data.frameOffset), frameABIdx.x);
-        f16_2x4 b = LoadPose(i, int(data.frameOffset), frameABIdx.y);
-        poses[i].translation = VecLerp(a[0], b[0], animProgress);
-        poses[i].rotation    = QNlerp(a[1], b[1], animProgress);
+        poses[i] = SampleLocal(i, data, frameABIdx, animProgress);
     }
 
     f16 blend = UnpackHalf(anim.animIdx2Blend >> 16);
@@ -141,10 +148,9 @@ void main(uint3 GlobalInvocationID : SV_DispatchThreadID)
         for (uint i = 0; i < data.numNodes; i++)
         {
             if (!IsJointActive(anim, i)) continue;
-            f16_2x4 a = LoadPose(i, data.frameOffset, frameABIdx.x);
-            f16_2x4 b = LoadPose(i, data.frameOffset, frameABIdx.y);
-            poses[i].translation = VecLerp(poses[i].translation,  VecLerp(a[0], b[0], animProgress), blend);
-            poses[i].rotation    = QNlerp(poses[i].rotation    ,  QNlerp(a[1], b[1], animProgress), blend);
+            Pose pose = SampleLocal(i, data, frameABIdx, animProgress);
+            poses[i].translation = VecLerp(poses[i].translation, pose.translation, blend);
+            poses[i].rotation    = QNlerp(poses[i].rotation    , pose.rotation, blend);
         }
     }
     

@@ -63,8 +63,8 @@ void AnimationSystem_Destroy(AnimationSystem* anims)
 static void AnimationSystem_EnsureBuffers(AnimationSystem* anims)
 {
     if (anims->poseBuffer) return;
-    // bone matrices are fp16 (MatrixNumInt32 u32 each) -> ~2.4 MB
-    const size_t maxBoneMatrices = (size_t)MatrixNumInt32 * sizeof(u32) * MAX_BONES * MAX_ANIM_INSTANCES;
+    // bone matrices are fp16 (AnimMtxNumF32 u32 each) -> ~2.4 MB
+    const size_t maxBoneMatrices = (size_t)AnimMtxNumF32 * sizeof(u32) * MAX_BONES * MAX_ANIM_INSTANCES;
     const size_t poseBytes       = (size_t)MAX_BONES * MAX_GPU_ANIM_FRAMES * ANIM_POSE_NUM_INT32 * sizeof(u32);
     const size_t hierarchyBytes  = (size_t)MAX_SKIN_COUNT * ANIM_NODE_COUNT * sizeof(u32);
     const size_t jointBytes      = (size_t)MAX_BONES * MAX_SKIN_COUNT * sizeof(u32);

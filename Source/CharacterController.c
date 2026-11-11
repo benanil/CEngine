@@ -44,6 +44,8 @@ typedef struct Character_
     f32 transitionTime;
     f32 transitionSpeed;
     f32 animSpeed;
+    f32 xRotation;
+    f32 yRotation;
     u32 upperJoints[3];
     u32 anim1Joints[3];
     f32 locoPhase, idlePhase;
@@ -148,15 +150,16 @@ static void SpawnCharacter()
     ch.decceleration   = 10.0f;
     ch.characterSpeed  = 8.0f;
     ch.verticalSpeed   = 0.0f;
+    ch.yRotation       = ch.xRotation = 0.0f;
     ch.jumpRequested = ch.grounded = ch.characterActive = ch.jumped = false;
     
     // also these anims exist: "StrafeLeft", "StrafeRight"
     u16 animOffset = ch.animAlloc->animOffset;
-    ch.idle         = animOffset + FindAnimIndex(ch.bundle, "Idle2");
+    ch.idle         = animOffset + FindAnimIndex(ch.bundle, "BreathingIdle0");
     ch.walk         = animOffset + FindAnimIndex(ch.bundle, "Walk");
     ch.jogRun       = animOffset + FindAnimIndex(ch.bundle, "Run");
     ch.atack        = animOffset + FindAnimIndex(ch.bundle, "Shash");
-    ch.lookAround        = animOffset + FindAnimIndex(ch.bundle, "Idle");
+    ch.lookAround   = animOffset + FindAnimIndex(ch.bundle, "Idle");
     ch.jump         = animOffset + FindAnimIndex(ch.bundle, "Jump");
     ch.strafeLeft   = animOffset + FindAnimIndex(ch.bundle, "StrafeLeft");
     ch.strafeRight  = animOffset + FindAnimIndex(ch.bundle, "StrafeRight");
@@ -166,13 +169,13 @@ static void SpawnCharacter()
     ch.trigerAnim      = ch.lastAnimation = ch.idle;
     ch.transitionTime  = ch.trigerTime    = 0.0f;
     ch.transitionSpeed = ch.trigerSpeed   = 1.0f;
-    ch.animSpeed       = 2.0f;
+    ch.animSpeed       = 1.5f;
     ch.trigerStart     = TimeSinceStartup();
     MemSet(ch.anim1Joints, 0xFF, sizeof(u32) * 3);
 
     boneTransfer = SDL_CreateGPUTransferBuffer(g_GPUDevice, &(SDL_GPUTransferBufferCreateInfo){
         .usage = SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD,
-        .size  = sizeof(u32) * MatrixNumInt32
+        .size  = sizeof(u32) * AnimMtxNumF32
     });
 }
 
@@ -372,12 +375,15 @@ static void CharacterMovement(Scene* scene, Entity* character, f32 dt)
         if (movementValue < 0.001f) inputAngle = 0.0f;
         x += -inputAngle;
     
-        mRotation = EntityGetRotation(character);
         if (movementValue > 0.1f)
         {
-            const f32 rotationSpeed = 12.0f;
-            mRotation = QSlerp(mRotation, QFromYAngle(x + MATH_PI), GetDeltaTime() * rotationSpeed);
+            const f32 smoothingRate = 8.0f;
+            f32 interp = 1.0f - Expf(-smoothingRate * dt);
+            ch.yRotation = LerpAngle(ch.yRotation, x + MATH_PI, interp);
         }
+        ch.xRotation = MoveTowards(ch.xRotation, axis.x * 0.1f, dt);
+        mRotation = QFromYAngle(ch.yRotation);
+        mRotation = QMul(mRotation, QFromAxisAngleV(B3VecTov128f(forward), ch.xRotation));
     }
     else
     {
@@ -478,12 +484,12 @@ static f32 LocomotionClipPhase(u32 clip)
 
 static f32 AnimY(f32 dt)
 {
-    static f32 speed = 0.0f;
+    static f32 animY = 0.0f;
     f32 lenSq = (ch.velocity.x * ch.velocity.x) + (ch.velocity.z * ch.velocity.z);
     f32 targetSpeed = (lenSq > MATH_Epsilon ? Sqrtf(lenSq) : 0.0f) / (ch.characterSpeed * dt);
-    f32 acceleration = targetSpeed < speed ? 8.0f : 32.0f;
+    f32 acceleration = targetSpeed < animY ? 8.0f : 32.0f;
     if (!ch.grounded) acceleration *= 0.4f;
-    return speed = MoveTowards(speed, targetSpeed, acceleration * dt);
+    return animY = MoveTowards(animY, targetSpeed, acceleration * dt);
 }
 
 static void Animate(Scene* scene, f32 dt)
@@ -560,7 +566,7 @@ static void HandleInputs()
         ch.jumpRequested = true;
 
     if (GetMouseDown(MouseButton_Left) || GetGamepadButton(SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER))
-        TriggerAnim(ch.atack, 0.05f, 1.5f, true);
+        TriggerAnim(ch.atack, 0.5f, 1.0f, true);
 
     if (GetKeyPressed(SDLK_J) || GetKeyPressed(SDLK_K))
     {
@@ -593,7 +599,7 @@ static void GetHeadBone(Scene* scene, Entity* character)
         void* mapped = SDL_MapGPUTransferBuffer(g_GPUDevice, boneTransfer, false);
         if (mapped)
         {
-            ALIGNSIMD u32 buffer[8];
+            ALIGNSIMD u32 buffer[AnimMtxNumF32];
             MemCopy(buffer, mapped, sizeof(buffer));
             boneMat = UnpackGPUBone(buffer);
             mat4x4 bindMatrix = M44Inverse(ch.invBind[ch.headJoint - ch.jointOffset]);
@@ -607,11 +613,11 @@ static void GetHeadBone(Scene* scene, Entity* character)
     SDL_GPUCommandBuffer* cmd = SDL_AcquireGPUCommandBuffer(g_GPUDevice);
     SDL_GPUCopyPass* copyPass = SDL_BeginGPUCopyPass(cmd);
     u32 dense = ch.sparse->id;
-    u32 base = sizeof(u32) * dense * MAX_BONES * MatrixNumInt32;
+    u32 base = sizeof(u32) * dense * MAX_BONES * AnimMtxNumF32;
     SDL_DownloadFromGPUBuffer(copyPass,
                               &(SDL_GPUBufferRegion){ .buffer = scene->animSystem.boneBuffer, 
-                              .offset = base + (sizeof(u32) * MatrixNumInt32 * headNode), 
-                                                      .size   = sizeof(u32) * MatrixNumInt32 },
+                              .offset = base + (sizeof(u32) * AnimMtxNumF32 * headNode), 
+                                                      .size   = sizeof(u32) * AnimMtxNumF32 },
                               &(SDL_GPUTransferBufferLocation){ .transfer_buffer = boneTransfer, .offset = 0 });
     SDL_EndGPUCopyPass(copyPass);
     boneFence = SDL_SubmitGPUCommandBufferAndAcquireFence(cmd);

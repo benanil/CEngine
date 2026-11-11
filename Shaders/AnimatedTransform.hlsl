@@ -12,7 +12,7 @@ float3 AnimatedWorldPos(float3 modelPos, float4 insRot, float3 insScale, float3 
 
 float4x3 SkinPosition(StructuredBuffer<uint> sBoneMtx, uint boneIdx)
 {
-    uint base = boneIdx * MatrixNumInt32;
+    uint base = boneIdx * AnimMtxNumF32;
     float2 a0 = UnpackHalf2_f32(sBoneMtx[base + 0]);
     float2 a1 = UnpackHalf2_f32(sBoneMtx[base + 1]);
     float2 a2 = UnpackHalf2_f32(sBoneMtx[base + 2]);
@@ -47,7 +47,7 @@ float4x3 VertexAnimate(StructuredBuffer<uint> sBoneMtx, uint boneStart, uint4 aJ
 
 f16_4x3 SkinPositionf16(StructuredBuffer<uint> sBoneMtx, uint boneIdx)
 {
-    uint base = boneIdx * MatrixNumInt32;
+    uint base = boneIdx * AnimMtxNumF32;
     f16_2 a0 = UnpackHalf2(sBoneMtx[base + 0]);
     f16_2 a1 = UnpackHalf2(sBoneMtx[base + 1]);
     f16_2 a2 = UnpackHalf2(sBoneMtx[base + 2]);

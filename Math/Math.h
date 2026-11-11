@@ -1071,6 +1071,14 @@ purefn f32 Repeat(f32 t, f32 length)
     return Clampf32(t - Floorf32(t / length) * length, 0.0f, length);
 }
 
+purefn f32 LerpAngle(f32 a, f32 b, f32 t)
+{
+    float delta = Repeat((b - a), MATH_TwoPI);
+    if (delta > MATH_PI)
+        delta -= MATH_TwoPI;
+    return a + delta * Saturatef32(t);
+}
+
 purefn f32 Step(f32 edge, f32 x)
 {
     return (f32)(x > edge);
