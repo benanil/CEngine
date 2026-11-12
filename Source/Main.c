@@ -66,7 +66,11 @@ static SDL_AppResult SDLCALL MainAppInit(void** appstate, int argc, char* argv[]
         return SDL_APP_FAILURE;
 
     const SDL_WindowFlags windowFlags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_BORDERLESS;
-    SDL_Window* window = SDL_CreateWindow("C Engine", 1920, 1080, windowFlags);
+    s32 width, height;
+    wGetMonitorSize(&width, &height);
+    width -= width >> 1;
+    height -= height >> 1;
+    SDL_Window* window = SDL_CreateWindow("C Engine", width, height, windowFlags);
     g_SDLWindow = window;
     if (!window) {
         AX_ERROR("creating window failed!");
@@ -91,7 +95,7 @@ static SDL_AppResult SDLCALL MainAppInit(void** appstate, int argc, char* argv[]
     if (!Scene_NewActive()) return SDL_APP_FAILURE;
     
     // Keep the runnable Transvoxel example in the demo scene instead of reopening the last editor scene.
-    CameraInit(&g_Camera, 1920, 1080);
+    CameraInit(&g_Camera, width, height);
     return SDL_APP_CONTINUE;
 }
 

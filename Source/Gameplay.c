@@ -3,10 +3,10 @@
 #include "Include/Terrain.h"
 #include "Include/Camera.h"
 #include "Include/BVH.h"
+#include "Gameplay.h"
 #include <box3d/box3d.h>
 
 extern Camera g_Camera;
-extern void UpdateCharacter();
 
 static void UpdatePicking()
 {

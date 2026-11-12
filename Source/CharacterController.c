@@ -2,13 +2,11 @@
 #include <box3d/box3d.h>
 #include <SDL3/SDL_gpu.h>
 
+#include "Gameplay.h"
 #include "Math/Bitpack.h"
-#include "Math/Half.h"
-#include "Math/Noise.h"
 #include "Include/Scene.h"
 #include "Include/UIWindow.h"
 #include "Include/AssetManager.h"
-#include "Include/Animation.h"
 #include "Include/UIRenderer.h"
 #include "Include/Camera.h"
 #include "Include/Rendering.h"
@@ -18,65 +16,7 @@ typedef struct PlaneCapture
     b3CollisionPlane planes[16];
     b3ShapeId shape;
     int count;
-} PlaneCapture;
-
-typedef struct Character_
-{
-    v128f center;
-    SceneBundle* bundle;
-    SparseData*  sparse;
-    AnimationBundleAlloc* animAlloc;
-    const mat4x4* invBind;
-
-    b3Vec3 groundNormal;
-    b3Vec3 position;
-    b3Vec3 velocity;
-        
-    f32 verticalSpeed;
-    f32 characterSpeed;
-    f32 jumpSpeed;
-    f32 acceleration;
-    f32 decceleration;
-    f32 currentSpeed; // [0, 1]
-    f32 onceTime;
-    f32 onceStart;
-    f32 onceSpeed;
-    f32 mixInTime;
-    f32 mixSpeed;
-    f32 mixOutTime;
-    f32 animSpeed;
-    f32 xRotation;
-    f32 yRotation;
-    u32 upperJoints[3];
-    u32 anim1Joints[3];
-    f32 locoPhase, idlePhase;
-    EntityID characterEntity;
-    u32 numCharacterEntities;
-    
-    s16 atack, jump;
-    u16 idle, lookAround, walk, jogRun;
-    u16 strafeRight, jogLeft;
-    u16 strafeLeft, jogRight;
-    
-    u16 lastAnimation;
-    u16 trigerAnim;
-    u16 headJoint;
-    u16 jointOffset;
-    u16 rightHandJoint;
-
-    bool grounded;
-    bool characterActive;
-    bool jumped;
-    bool upperLower;
-    bool jumpRequested;
-} Character;
-
-typedef struct LocomotionPose
-{
-    u32 anim0;
-    u32 anim1;
-    f32 blend;
-} LocomotionPose;
+} PlaneCapture; 
 
 static const float gravity = -25.0f;
 static const float groundMinNormalY = 0.7f;
@@ -97,24 +37,6 @@ extern SDL_GPUDevice* g_GPUDevice;
 static EntityID sphereID = INVALID_ENTITY;
 static const float characterScale = 1.8f;
 
-static void GetUpperJoints(u32 joints[3], const SceneBundle* characterBundle)
-{
-    s32 numNodes = Mins32(characterBundle->numNodes, 96);
-    joints[0] = joints[1] = joints[2] = 0u;
-
-    for (s32 i = 1; i < numNodes; i++) // 0 is root node skip it
-    {
-        const ANode* node = &characterBundle->nodes[i];
-        bool upper = StringContains(node->name, "Head")
-        || (StringContains(node->name, "Arm") && !StringContains(node->name, "Armature"))
-        || StringContains(node->name, "Shoulder")
-        || StringContains(node->name, "Hand")
-        || StringContains(node->name, "Neck")
-        || StringContains(node->name, "Spine");
-        BitsetSet32Val(joints, i, (u32)upper);
-    }
-}
-
 static void SpawnCharacter()
 {
     Scene* scene = GetActiveScene();
@@ -133,17 +55,6 @@ static void SpawnCharacter()
     ch.center = VecMulf(RenderSet_GroupLocalCenter(rs->primitiveGroups + EntityGetPrimitiveID(entity)), characterScale);
     VecSetY(ch.center, 0.0f);
 
-    ch.invBind = (const mat4x4 *)scene->bundleRefs[EntityGetBundleId(&scene->skinnedSet, entity)].bundle->skins[0].inverseBindMatrices;
-    ch.animAlloc = &scene->bundleRefs[characterId].animAlloc;
-    ch.jointOffset = ch.animAlloc->skinSlot * MAX_BONES;
-
-    const SceneBundle* characterBundle = scene->bundleRefs[characterId].bundle;
-    const u16* nodeToJoint = characterBundle->skins[0].nodeToJoint;
-
-    ch.headJoint      = ch.jointOffset + nodeToJoint[Maxs32(FindANodeFromName(characterBundle, "Head"), 0)];
-    ch.rightHandJoint = ch.jointOffset + nodeToJoint[Maxs32(FindANodeFromName(characterBundle, "RightHand"), 0)];
-    GetUpperJoints(ch.upperJoints, characterBundle);
-
     ch.groundNormal    = (b3Vec3){ 0.0f,  1.0f, 0.0f };
     ch.position        = (b3Vec3){ 0.0f, 10.0f, 0.0f }; 
     ch.jumpSpeed       = 15.0f;
@@ -152,28 +63,9 @@ static void SpawnCharacter()
     ch.characterSpeed  = 8.0f;
     ch.verticalSpeed   = 0.0f;
     ch.yRotation       = ch.xRotation = 0.0f;
-    ch.jumpRequested = ch.grounded = ch.characterActive = ch.jumped = false;
+    ch.grounded = ch.characterActive = ch.jumped = false;
     
-    // also these anims exist: "StrafeLeft", "StrafeRight"
-    u16 animOffset = ch.animAlloc->animOffset;
-    ch.idle         = animOffset + FindAnimIndex(ch.bundle, "BreathingIdle0");
-    ch.walk         = animOffset + FindAnimIndex(ch.bundle, "Walk");
-    ch.jogRun       = animOffset + FindAnimIndex(ch.bundle, "Run");
-    ch.atack        = animOffset + FindAnimIndex(ch.bundle, "Shash");
-    ch.lookAround   = animOffset + FindAnimIndex(ch.bundle, "Idle");
-    ch.jump         = animOffset + FindAnimIndex(ch.bundle, "Jump");
-    ch.strafeLeft   = animOffset + FindAnimIndex(ch.bundle, "StrafeLeft");
-    ch.strafeRight  = animOffset + FindAnimIndex(ch.bundle, "StrafeRight");
-    ch.jogLeft      = animOffset + FindAnimIndex(ch.bundle, "JogStrafeLeft");
-    ch.jogRight     = animOffset + FindAnimIndex(ch.bundle, "JogStrafeRight");
-    
-    ch.trigerAnim = ch.lastAnimation = ch.idle;
-    ch.mixInTime  = ch.onceTime    = 0.0f;
-    ch.mixSpeed   = ch.onceSpeed   = 1.0f;
-    ch.animSpeed  = 1.5f;
-    ch.onceStart  = TimeSinceStartup();
-    MemSet(ch.anim1Joints, 0xFF, sizeof(u32) * 3);
-
+    cAnimInit(&ch.anim, scene, characterId);
     boneTransfer = SDL_CreateGPUTransferBuffer(g_GPUDevice, &(SDL_GPUTransferBufferCreateInfo){
         .usage = SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD,
         .size  = sizeof(u32) * AnimMtxNumF32
@@ -205,8 +97,6 @@ void BeforeDestroySceneCallback(Scene* scene)
     ch.characterEntity = INVALID_ENTITY;
     boneTransfer = NULL;
 }
-
-void PlayOnce(u16 anim, f32 mixInTime, f32 speed, bool upperLower);
 
 static b3Capsule MakeMover(void)
 {
@@ -296,13 +186,13 @@ static void CharacterMovement(Scene* scene, Entity* character, f32 dt)
     else ch.verticalSpeed += gravity * dt;
 
     bool jumpNow = false;
-    if (ch.grounded && ch.jumpRequested)
+    if (ch.grounded && ch.anim.jumpRequested)
     {
         ch.verticalSpeed = ch.jumpSpeed;
         ch.grounded = false;
         jumpNow = true;
     }
-    ch.jumpRequested = false;
+    ch.anim.jumpRequested = false;
     f32 speedTarget = Absf32(F2Len(axis) - MATH_Epsilon);
     f32 runSpeed = Maxf32((f32)GetKeyDown(SDLK_LSHIFT), GetGamepadAxis(SDL_GAMEPAD_AXIS_LEFT_TRIGGER));
     if (runSpeed > 0.1f) speedTarget *= 1.0f + runSpeed;
@@ -390,7 +280,7 @@ static void CharacterMovement(Scene* scene, Entity* character, f32 dt)
         EntitySetPositionV(mesh, position);
         EntitySetRotation(mesh, mRotation);
     }
-    if (jumpNow) PlayOnce(ch.jump, 0.05f, 1.0f, false);
+    if (jumpNow) cPlayOnce(&ch.anim, ch.anim.jump, 0.05f, 1.0f, false);
     g_Camera.position = F3Add(B3VecToFloat3(ch.position), QMulVec3(cameraOffset, mRotation));
     g_Camera.position = F3Add(M44ExtractPosition(boneMat), g_Camera.position);
     g_Camera.target = g_Camera.position;
@@ -416,173 +306,15 @@ static void CharacterUI()
     }
 }
 
-void PlayOnce(u16 anim, f32 mixInTime, f32 speed, bool upperLower)
-{
-    ch.trigerAnim = anim;
-    ch.mixInTime  = 1.0f;
-    ch.onceStart  = TimeSinceStartup();
-    ch.mixSpeed   = 1.0f / mixInTime;
-    ch.upperLower = upperLower;
-    ch.onceSpeed  = speed;
-    if (upperLower) MemCopy(ch.anim1Joints, ch.upperJoints, sizeof(u32) * 3);
-    else MemSet(ch.anim1Joints, 0xFF, sizeof(u32) * 3);
-}
-
-static LocomotionPose EvaluateLocomotion(f32 speed, f32 lateral, bool isBack)
-{
-    f32 s = Clampf32(speed, 0.0f, 2.0f);
-    bool running = s > 1.0f;
-    f32 t = running ? s - 1.0f : s;
-    LocomotionPose pose;
-    pose.anim0 = running ? ch.walk : ch.idle;
-    pose.anim1 = running ? ch.jogRun : ch.walk;
-    pose.blend = t;
-
-    if (g_Camera.mode != CameraMode_FPS) return pose;
-
-    u32 forward = pose.anim1;
-    u16 jog[2]  = { ch.jogLeft   , ch.jogRight };
-    u16 walk[2] = { ch.strafeLeft, ch.strafeRight };
-    
-    u32 left  = running ? jog[isBack] : walk[isBack];
-    u32 right = running ? jog[1-isBack] : walk[1-isBack];
-
-    if (t > 0.85f)
-    {
-        pose.anim0 = forward;
-        pose.anim1 = lateral < 0.0f ? left : right;
-        pose.blend = Minf32(Absf32(lateral * 2.0f), 1.0f);
-    }
-    else if (lateral < -0.15f) pose.anim1 = left;
-    else if (lateral > 0.15f) pose.anim1 = right;
-    
-    static f32 horizontalLook = 0.0f;
-    horizontalLook = MoveTowards(horizontalLook, GetLookAxis().x, GetDeltaTime() * 32.0f);
-    if (speed < Absf32(horizontalLook * 0.05f))
-    {
-        pose.anim1 = horizontalLook < 0.0f ? left : right;
-        pose.blend = Minf32(Absf32(horizontalLook * 0.1f), 1.0f);
-    }
-    return pose;
-}
-
-static u32 DominantClip(const LocomotionPose* pose)
-{
-    return pose->blend < 0.5f ? pose->anim0 : pose->anim1;
-}
-
-static void AdvanceLocomotionPhases(const GPUAnimationData* clips, const LocomotionPose* pose, f32 dt)
-{
-    f32 d0 = clips[pose->anim0].duration;
-    f32 d1 = clips[pose->anim1].duration;
-    f32 duration = pose->anim0 == ch.idle ? d1 : d0 + (d1 - d0) * pose->blend;
-    ch.locoPhase = Fractf32(ch.locoPhase + dt * ch.animSpeed / duration);
-    ch.idlePhase = Fractf32(ch.idlePhase + dt * ch.animSpeed / clips[ch.idle].duration);
-}
-
-static f32 LocomotionClipPhase(u32 clip)
-{
-    return clip == ch.idle ? ch.idlePhase : ch.locoPhase;
-}
-
-static f32 AnimY(f32 dt)
-{
-    static f32 animY = 0.0f;
-    f32 lenSq = (ch.velocity.x * ch.velocity.x) + (ch.velocity.z * ch.velocity.z);
-    f32 targetSpeed = (lenSq > MATH_Epsilon ? Sqrtf(lenSq) : 0.0f) / (ch.characterSpeed * dt);
-    f32 acceleration = targetSpeed < animY ? 8.0f : 32.0f;
-    if (!ch.grounded) acceleration *= 0.4f;
-    return animY = MoveTowards(animY, targetSpeed, acceleration * dt);
-}
-
-static void Animate(const Scene* scene, f32 dt)
-{
-    f32 now = TimeSinceStartup();
-    const GPUAnimationData* clips = scene->animSystem.animData;
-
-    GPUAnimationInstance instance = { 0 };
-    MemCopy(instance.activeBoneBitset, ch.anim1Joints, sizeof(u32) * 3);
-    float2 moveDir = GetMovementAxis();
-    LocomotionPose loco = EvaluateLocomotion(AnimY(dt), moveDir.x, moveDir.y < -0.02f);
-    AdvanceLocomotionPhases(clips, &loco, dt);
-
-    u32 anim0 = loco.anim0;
-    u32 anim1 = loco.anim1;
-    f32 blend = loco.blend;
-    f32 anim0t = LocomotionClipPhase(anim0);
-    f32 anim1t = ch.locoPhase;
-
-    u32 baseAnim = DominantClip(&loco);
-    f32 baseTime = LocomotionClipPhase(baseAnim);
-
-    if (ch.mixInTime > 0.0f)
-    {
-        anim0  = baseAnim;
-        anim0t = baseTime;
-        anim1  = ch.trigerAnim;
-        anim1t = 0.0f;
-
-        ch.mixInTime = Maxf32(0.0f, ch.mixInTime - dt * ch.mixSpeed);
-        blend = 0.999f - ch.mixInTime;
-
-        if (ch.mixInTime <= 0.0f)
-        {
-            ch.onceStart = now;
-            ch.onceTime = clips[ch.trigerAnim].duration;
-        }
-    }
-    else if (ch.onceTime > 0.0f)
-    {
-        f32 duration = clips[ch.trigerAnim].duration;
-        f32 t = Clampf32(((now - ch.onceStart) * ch.onceSpeed) / duration, 0.0f, 0.999f);
-
-        anim0  = baseAnim;
-        anim0t = baseTime;
-        anim1  = ch.trigerAnim;
-        anim1t = t;
-        blend  = 0.999f;
-
-        ch.onceTime -= dt * ch.onceSpeed;
-        if (ch.onceTime <= 0.0f)
-            ch.mixOutTime = 1.0f;
-    }
-    else if (ch.mixOutTime > 0.0f)
-    {
-        anim0  = baseAnim;
-        anim0t = baseTime;
-        anim1  = ch.trigerAnim;
-        anim1t = 0.999f;
-
-        ch.mixOutTime = Maxf32(0.0f, ch.mixOutTime - (dt * ch.mixSpeed));
-        blend = ch.mixOutTime;
-
-        if (ch.mixOutTime <= 0.0f)
-            MemSet(ch.anim1Joints, 0xFF, sizeof(u32) * 3);
-    }
-
-    u32 w = (u32)(Clampf32(blend, 0.0f, 1.0f) * 255.0f);
-    instance.weightsUnorm8x4  = 255 - w; 
-    instance.weightsUnorm8x4 |= w << 8; // anim1 weight
-    
-    instance.ratioUnorm16x4[0] = (u32)PackUnorm16(anim0t) | ((u32)PackUnorm16(anim1t) << 16);
-    instance.Idx8x4            = anim0 | (anim1 << 8);
-
-    u32 charSparse = SparseIDFromSparseData(&scene->skinnedSet, ch.sparse);
-    for (s32 i = 0; i < ch.numCharacterEntities; i++)
-    {
-        AnimationSystem_SetInstance(&scene->animSystem, charSparse + i, instance);
-    }
-}
-
 static void HandleInputs()
 {
-    u16 numNodes = ch.animAlloc->numNodes;
+    u16 numNodes = ch.anim.animAlloc->numNodes;
     // if (GetKeyDown(SDLK_L))     TriggerAnim(ch.kick, 0.05f, 0, numNodes); 
     if (GetKeyPressed(SDLK_SPACE) || GetGamepadButtonPressed(SDL_GAMEPAD_BUTTON_SOUTH)) 
-        ch.jumpRequested = true;
+        ch.anim.jumpRequested = true;
 
     if (GetMouseDown(MouseButton_Left) || GetGamepadButton(SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER))
-        PlayOnce(ch.atack, 0.5f, 1.0f, true);
+        cPlayOnce(&ch.anim, ch.anim.atack, 0.5f, 1.0f, true);
 
     if (GetKeyPressed(SDLK_J) || GetKeyPressed(SDLK_K))
     {
@@ -608,7 +340,7 @@ static void HandleInputs()
 
 static void GetHeadBone(Scene* scene, Entity* character)
 {
-    u32 headNode = ch.headJoint;
+    u32 headNode = ch.anim.headJoint;
 
     if (boneTransfer && boneFence && SDL_QueryGPUFence(g_GPUDevice, boneFence))
     {
@@ -618,7 +350,7 @@ static void GetHeadBone(Scene* scene, Entity* character)
             ALIGNSIMD u32 buffer[AnimMtxNumF32];
             MemCopy(buffer, mapped, sizeof(buffer));
             boneMat = UnpackGPUBone(buffer);
-            mat4x4 bindMatrix = M44Inverse(ch.invBind[ch.headJoint - ch.jointOffset]);
+            mat4x4 bindMatrix = M44Inverse(ch.anim.invBind[ch.anim.headJoint - ch.anim.jointOffset]);
             boneMat = M44Multiply(bindMatrix, boneMat);
             boneMat = M44Multiply(boneMat, M44PositionRotationScaleVec(VecZero(), EntityGetRotation(character), VecSet1(characterScale)));
             SDL_UnmapGPUTransferBuffer(g_GPUDevice, boneTransfer);
@@ -648,7 +380,7 @@ void UpdateCharacter()
     GetHeadBone(scene, character);
     HandleInputs();
     CharacterMovement(scene, character, dt);
-    Animate(scene, dt);
+    cAnimate(scene, &ch, dt);
     CharacterUI();
 
     Entity* sphereEntity = Scene_GetEntity(scene, sphereID);

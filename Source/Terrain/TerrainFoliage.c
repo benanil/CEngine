@@ -783,7 +783,10 @@ static void NoiseUI()
         
         u8 result[TexSize * TexSize];
         for (s32 i = 0; i < TexSize * TexSize; i++)
-            result[i] = (u8)((noise[i] > (rarity[i] * 0.2f + 0.5f)) * 128.0f);
+        {
+            f32 r = rarity[i] * 0.2f + 0.5f;
+            result[i] = (u8)(SmoothStep(r-0.05f, r+0.05, noise[i]) * 128.0f);
+        }
         UploadTextureRegion(texture, 0, 0, 0, TexSize, TexSize, TexSize, TexSize, result);
         #undef TexSize
     }

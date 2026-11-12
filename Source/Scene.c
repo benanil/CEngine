@@ -462,7 +462,7 @@ u32 Scene_AddBundle(Scene* scene, SceneBundle* bundle, const char* name)
     return Scene_AddBundleBakedFinalize(scene, &stage);
 }
 
-u32 Scene_BundleIdx(Scene* scene, SceneBundle* bundle)
+u32 Scene_BundleIdx(const Scene* scene, SceneBundle* bundle)
 {
     IterateSetBits(scene->usedBundleBits, MAX_SCENE_BUNDLES,
         if (scene->bundleRefs[bitId].bundle == bundle)
@@ -471,7 +471,7 @@ u32 Scene_BundleIdx(Scene* scene, SceneBundle* bundle)
     return ~0u;
 }
 
-u32 Scene_BundleFindFromPath(Scene* scene, const char* path)
+u32 Scene_BundleFindFromPath(const Scene* scene, const char* path)
 {
     IterateSetBits(scene->usedBundleBits, MAX_SCENE_BUNDLES,
         const char* bundlePath = scene->bundleRefs[bitId].path;
