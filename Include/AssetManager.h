@@ -11,7 +11,7 @@
 #else
     #define AX_GAME_BUILD 0 /* make zero for editor build */
 #endif
-
+#define ROCK_MAX_PIECES 64u
 
 #include "Graphics.h"
 #include "Async.h"
@@ -20,6 +20,55 @@
 #if defined(__cplusplus)
 extern "C" {
 #endif
+
+// MeshBuilder.c
+typedef struct MeshBuilder_
+{
+    float3* positions;
+    float2* texCoords;
+    float3* normals;
+    v128f*  tangents;
+    u32*    indices;
+    const char* name;
+
+    SceneBundle*   bundle;
+    APrimitive*    primitive;
+    Pow2Allocator* alloc;
+} MeshBuilder;
+
+typedef struct RockDesc_
+{
+    f32 radius;
+    f32 roughness;
+    f32 frequency;
+    f32 fractureWarp;
+    f32 persistence;
+    f32 lacunarity;
+    s32 octaves;
+    u32 resolution;
+    u32 pieceCount;
+    u32 seed;
+} RockDesc;
+
+typedef struct RockMeshes_
+{
+    MeshBuilder visual;
+    MeshBuilder pieces[ROCK_MAX_PIECES];
+    u32         pieceCount;
+} RockMeshes;
+
+typedef enum MeshType_
+{
+    MeshType_Default   , // imported from fbx, gltf, obj and saved with abm
+    MeshType_Runtime   , // generated runtime
+    // unit meshes
+    MeshType_Sphere    ,
+    MeshType_Cylinder  ,
+    MeshType_Cone      ,
+    MeshType_Grid      ,
+    MeshType_Cube      ,
+    MeshType_Capsule
+} MeshType;
 
 s32  LoadFBX(const char* path, SceneBundle* fbxScene, f32 scale);
 s32  LoadOBJ(const char* path, SceneBundle* objScene, f32 scale);
@@ -54,33 +103,7 @@ void SaveSceneImages(SceneBundle* scene, const char* savePath, bool deleteRemain
 
 void SaveSceneImagesAsync(SceneBundle* scene, const char* savePath, bool deleteRemaining, AsyncCallback callback);
 
-// MeshBuilder.c
-typedef struct MeshBuilder_
-{
-    float3* positions;
-    float2* texCoords;
-    float3* normals;
-    v128f*  tangents;
-    u32*    indices;
-    const char* name;
 
-    SceneBundle*   bundle;
-    APrimitive*    primitive;
-    Pow2Allocator* alloc;
-} MeshBuilder;
-
-typedef enum MeshType_
-{
-    MeshType_Default   , // imported from fbx, gltf, obj and saved with abm
-    MeshType_Runtime   , // generated runtime
-    // unit meshes
-    MeshType_Sphere    ,
-    MeshType_Cylinder  ,
-    MeshType_Cone      ,
-    MeshType_Grid      ,
-    MeshType_Cube      ,
-    MeshType_Capsule
-} MeshType;
 
 // MeshBuilder b = MeshBuilder_Create(numVertex, numIndex);
 // set vertices, set indices -> Scene_AddBundle -> Scene_Spawn
@@ -104,6 +127,25 @@ MeshType IsBundlePrimitive(SceneBundle* bundle);
 SceneBundle* GetUnitPrimitive(MeshType type);
 const char* GetPrimitiveName(MeshType type);
 
+purefn RockDesc RockDescDefault(void)
+{
+    return (RockDesc) {
+        .radius       = 12.0f,
+        .roughness    = 0.35f,
+        .frequency    = 1.0f,
+        .fractureWarp = 0.25f,
+        .persistence  = 0.5f,
+        .lacunarity   = 2.0f,
+        .octaves      = 3,
+        .resolution   = 16u,
+        .pieceCount   = 8u,
+        .seed         = 47952u
+    };
+}
+
+RockMeshes GenerateRock(const RockDesc* desc);
+
+SceneBundle* GetUnitRock();
 
 #if defined(__cplusplus)
 }

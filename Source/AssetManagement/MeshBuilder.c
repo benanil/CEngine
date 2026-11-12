@@ -409,6 +409,12 @@ static SceneBundle* unitGrid     = NULL;
 static SceneBundle* unitCylinder = NULL;
 static SceneBundle* unitCone     = NULL;
 static SceneBundle* unitSphere   = NULL;
+static SceneBundle* unitRock     = NULL;
+
+SceneBundle* GetUnitRock() {
+    RockDesc desc = RockDescDefault();
+    return unitRock ? unitRock : (unitRock = GenerateRock(&desc).visual.bundle);
+}
 
 SceneBundle* GetUnitCapsule() {
     return unitCapsule ? unitCapsule : (unitCapsule = GenerateCapsule(1.0f, 1.8f, 16));

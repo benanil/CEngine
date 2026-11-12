@@ -63,14 +63,17 @@ purefn u32 PackColor3PtrToUint(const f32* c) {
     return (u32)(*c * 255.0f) | ((u32)(c[1] * 255.0f) << 8) | ((u32)(c[2] * 255.0f) << 16);
 }
 
-purefn u32 PackColor4PtrToUint(const f32* c) {
-    v128f v = VecLoad(c);
+purefn u32 PackColor4PtrToUintV(v128f v) {
     v = VecClamp(VecMulf(v, 255.0f), VecZero(), VecSet1(255.0f));
     v128u i = VecF32ToU32(v);
     i = VeciSll(i, VeciSetR(0, 8, 16, 24));
     i = VeciOr(i, VecSwapHalvesU(i));
     i = VeciOr(i, VecSwapPairsU(i));
     return VeciGetX(i);
+}
+
+purefn u32 PackColor4PtrToUint(const f32* c) {
+    return PackColor4PtrToUintV(VecLoad(c));
 }
 
 forceinline void UnpackColor3Uint(u32 color, f32* colorf) {

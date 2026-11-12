@@ -68,8 +68,8 @@ static SDL_AppResult SDLCALL MainAppInit(void** appstate, int argc, char* argv[]
     const SDL_WindowFlags windowFlags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_BORDERLESS;
     s32 width, height;
     wGetMonitorSize(&width, &height);
-    width -= width >> 1;
-    height -= height >> 1;
+    width -= width >> 3;
+    height -= height >> 3;
     SDL_Window* window = SDL_CreateWindow("C Engine", width, height, windowFlags);
     g_SDLWindow = window;
     if (!window) {

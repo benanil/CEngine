@@ -220,7 +220,7 @@ void wGetMouseWindowPos(f32* x, f32* y) {
 
 void wGetMonitorSize(int* width, int* height) 
 {
-    const SDL_DisplayMode* DM = SDL_GetCurrentDisplayMode(0);
+    const SDL_DisplayMode* DM = SDL_GetCurrentDisplayMode(SDL_GetPrimaryDisplay());
     if (DM) {
         *width  = DM->w;
         *height = DM->h;
