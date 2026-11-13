@@ -108,7 +108,7 @@ static int AnimationGetGPUData(AnimationSystem* anims, const SceneBundle* bundle
         UpdateGPUBuffer(anims->poseBuffer, bakedPoses, bakeBytes,
                         (size_t)frameOffset * MAX_BONES * ANIM_POSE_NUM_INT32 * sizeof(u32));
     ArenaRestore(&GlobalArena, mark);
-    anims->animData[animSlot] = (GPUAnimationData){
+    anims->animData[animSlot] = (GPUAnimClip){
         .frameOffset     = frameOffset,
         .numFrames       = (u32)numFrames,
         .rootNode        = (u32)bundle->rootNode,
@@ -284,8 +284,8 @@ s32 AnimationSystem_AppendBundle(AnimationSystem* anims, const SceneBundle* bund
 
     if (animCount > 0u)
         UpdateGPUBuffer(anims->dataBuffer, anims->animData + animOffset,
-                        animCount * sizeof(GPUAnimationData),
-                        (u32)animOffset * sizeof(GPUAnimationData));
+                        animCount * sizeof(GPUAnimClip),
+                        (u32)animOffset * sizeof(GPUAnimClip));
 
 
     anims->numAnimations += animCount;
@@ -327,11 +327,11 @@ void AnimationSystem_RemoveBundle(AnimationSystem* anims, AnimationBundleAlloc a
     RangeAlloc_Free(&anims->frameAllocator, alloc.frameOffset, alloc.frameCount);
     if (alloc.animCount > 0u)
     {
-        MemsetZero(anims->animData + alloc.animOffset, alloc.animCount * sizeof(GPUAnimationData));
+        MemsetZero(anims->animData + alloc.animOffset, alloc.animCount * sizeof(GPUAnimClip));
         if (anims->dataBuffer)
             UpdateGPUBuffer(anims->dataBuffer, anims->animData + alloc.animOffset,
-                            sizeof(GPUAnimationData) * (size_t)alloc.animCount ,
-                            sizeof(GPUAnimationData) * (size_t)alloc.animOffset);
+                            sizeof(GPUAnimClip) * (size_t)alloc.animCount ,
+                            sizeof(GPUAnimClip) * (size_t)alloc.animOffset);
         anims->numAnimations = anims->numAnimations >= alloc.animCount ? anims->numAnimations - alloc.animCount : 0u;
     }
 }

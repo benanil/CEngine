@@ -25,7 +25,7 @@ struct AnimationInstance {
     uint neckSpineAngle;
 };
 
-struct AnimationData {
+struct AnimationClip {
     uint  frameOffset;
     uint  numFrames;
     float invRotScale; // u16
@@ -40,7 +40,7 @@ struct AnimationData {
 
 StructuredBuffer<uint>               animPoses             : register(t0); // per bone * frame
 StructuredBuffer<uint>               animHierarchy         : register(t1); // per skin * bone
-StructuredBuffer<AnimationData>      animData              : register(t2); // per animation
+StructuredBuffer<AnimationClip>      animData              : register(t2); // per animation
 StructuredBuffer<uint>               joints                : register(t3); // per instance * bone
 StructuredBuffer<mat4x4>             inverseBindMatrices   : register(t4); // per skin * bone
 StructuredBuffer<AnimationInstance>  animInstances         : register(t5); // per instance 
@@ -93,7 +93,7 @@ f16_2x4 LoadPose(uint i, uint frameOffset, uint frame)
     return result;
 }
 
-Pose SampleLocal(uint i, AnimationData d, uint2 ab, f16 t)
+Pose SampleLocal(uint i, AnimationClip d, uint2 ab, f16 t)
 {
     f16_2x4 a = LoadPose(i, d.frameOffset, ab.x);
     f16_2x4 b = LoadPose(i, d.frameOffset, ab.y);
@@ -130,7 +130,7 @@ void main(uint3 GlobalInvocationID : SV_DispatchThreadID)
     
     AnimationInstance anim = animInstances[instanceIdx];
     Pose poses[MAX_BONES];
-    AnimationData data = animData[anim.animIdx4 & 0xFFu];
+    AnimationClip data = animData[anim.animIdx4 & 0xFFu];
 
     uint ratio = anim.animRatio[0] & 0xFFFFu;
     f32 animT = UnpackUnorm16(ratio) * float(data.numFrames);
@@ -145,7 +145,7 @@ void main(uint3 GlobalInvocationID : SV_DispatchThreadID)
         f32 weight = f32((anim.animWeights >> (a * 8u)) & 0xFFu) / 255.0f;
         if (weight < 0.005f) continue;
 
-        AnimationData layer = animData[(anim.animIdx4 >> (a * 8u)) & 0xFFu];
+        AnimationClip layer = animData[(anim.animIdx4 >> (a * 8u)) & 0xFFu];
         uint packed = (anim.animRatio[a >> 1u] >> ((a & 1u) * 16u)) & 0xFFFFu;
         animT = UnpackUnorm16(packed) * float(layer.numFrames);
 

@@ -55,7 +55,7 @@ typedef struct GPUAnimationData_
     u32 hierarchyOffset;
     u16 neckNode;
     u16 spineNode;
-} GPUAnimationData;
+} GPUAnimClip;
 
 typedef struct AnimationBundleAlloc_
 {
@@ -73,7 +73,7 @@ typedef struct AnimationBundleAlloc_
 // first skinned bundle append so surface only scenes don't pay for them
 typedef struct AnimationSystem_
 {
-    GPUAnimationData animData[MAX_ANIM_COUNT];
+    GPUAnimClip animData[MAX_ANIM_COUNT];
     u64 usedAnimSlots[(MAX_ANIM_COUNT + 63u) >> 6];
     u64 usedSkinSlots[(MAX_SKIN_COUNT + 63u) >> 6];
     RangeU32 freeFrameRanges[MAX_ANIM_COUNT];

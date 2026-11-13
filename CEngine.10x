@@ -876,6 +876,12 @@
 					<File>
 						<Path>Source/CharacterController.c</Path>
 					</File>
+					<File>
+						<Path>Source/CharacterAnimation.c</Path>
+					</File>
+					<File>
+						<Path>Source/Gameplay.h</Path>
+					</File>
 				</Children>
 			</Folder>
 			<Folder>

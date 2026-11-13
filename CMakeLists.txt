@@ -107,6 +107,7 @@ target_sources(${EXECUTABLE_NAME} PRIVATE
     Source/Animation.c
     Source/Gameplay.c
     Source/CharacterController.c
+    Source/CharacterAnimation.c
     Source/Algorithm.c
     Source/Async.c
     Source/JobSystem.c
@@ -166,6 +167,7 @@ target_sources(${EXECUTABLE_NAME} PRIVATE
     Source/AssetManagement/MeshBake.c
     Source/AssetManagement/ImageBake.c
     Source/AssetManagement/MeshBuilder.c
+    Source/AssetManagement/Rock.c
     Source/AssetManagement/AssetManager.c
     Source/AssetManagement/BasisBinding.cpp
     Source/AssetManagement/TextureSystem.c

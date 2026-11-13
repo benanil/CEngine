@@ -45,7 +45,7 @@ static void SpawnCharacter()
     ch.sparse = Scene_Spawn(scene, characterId, VecSetR(0.0f, 0.0f, 0.0f, 0.f), QIdentity(), VecSet1(characterScale), EntityFlags_None);
     ch.numCharacterEntities = scene->skinnedSet.numEntities - numEntity;
     ch.characterEntity = EntityIDFromSparseData(scene, ch.sparse);
-    u32 bundleID = Scene_AddBundleCached(scene, GetUnitSphere(), "head bone");
+    u32 bundleID = Scene_AddBundleCached(scene, GetUnitRock(), "head bone");
     sphereID = EntityIDFromSparseData(scene,
                                       Scene_Spawn(scene, bundleID, VecZero(), QIdentity(), VecOne(), EntityFlags_None));
 
@@ -68,7 +68,7 @@ static void SpawnCharacter()
     cAnimInit(&ch.anim, scene, characterId);
     boneTransfer = SDL_CreateGPUTransferBuffer(g_GPUDevice, &(SDL_GPUTransferBufferCreateInfo){
         .usage = SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD,
-        .size  = sizeof(u32) * AnimMtxNumF32
+        .size  = sizeof(u32) * AnimMtxNumF32 * MAX_BONES
     });
 }
 
@@ -314,7 +314,7 @@ static void HandleInputs()
         ch.anim.jumpRequested = true;
 
     if (GetMouseDown(MouseButton_Left) || GetGamepadButton(SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER))
-        cPlayOnce(&ch.anim, ch.anim.atack, 0.5f, 1.0f, true);
+        cPlayOnce(&ch.anim, ch.anim.atack, 0.35f, 1.5f, true);
 
     if (GetKeyPressed(SDLK_J) || GetKeyPressed(SDLK_K))
     {
@@ -341,6 +341,8 @@ static void HandleInputs()
 static void GetHeadBone(Scene* scene, Entity* character)
 {
     u32 headNode = ch.anim.headJoint;
+    u32 dense = ch.sparse->id;
+    u32 base = dense * MAX_BONES * AnimMtxNumF32;
 
     if (boneTransfer && boneFence && SDL_QueryGPUFence(g_GPUDevice, boneFence))
     {
@@ -348,7 +350,7 @@ static void GetHeadBone(Scene* scene, Entity* character)
         if (mapped)
         {
             ALIGNSIMD u32 buffer[AnimMtxNumF32];
-            MemCopy(buffer, mapped, sizeof(buffer));
+            MemCopy(buffer, (u32*)mapped + (headNode * AnimMtxNumF32), sizeof(buffer));
             boneMat = UnpackGPUBone(buffer);
             mat4x4 bindMatrix = M44Inverse(ch.anim.invBind[ch.anim.headJoint - ch.anim.jointOffset]);
             boneMat = M44Multiply(bindMatrix, boneMat);
@@ -360,12 +362,10 @@ static void GetHeadBone(Scene* scene, Entity* character)
 
     SDL_GPUCommandBuffer* cmd = SDL_AcquireGPUCommandBuffer(g_GPUDevice);
     SDL_GPUCopyPass* copyPass = SDL_BeginGPUCopyPass(cmd);
-    u32 dense = ch.sparse->id;
-    u32 base = sizeof(u32) * dense * MAX_BONES * AnimMtxNumF32;
     SDL_DownloadFromGPUBuffer(copyPass,
                               &(SDL_GPUBufferRegion){ .buffer = scene->animSystem.boneBuffer, 
-                              .offset = base + (sizeof(u32) * AnimMtxNumF32 * headNode), 
-                                                      .size   = sizeof(u32) * AnimMtxNumF32 },
+                              .offset = base * sizeof(u32), 
+                              .size   = sizeof(u32) * AnimMtxNumF32 * MAX_BONES },
                               &(SDL_GPUTransferBufferLocation){ .transfer_buffer = boneTransfer, .offset = 0 });
     SDL_EndGPUCopyPass(copyPass);
     boneFence = SDL_SubmitGPUCommandBufferAndAcquireFence(cmd);

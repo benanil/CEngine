@@ -1008,6 +1008,19 @@ purefn f32 MoveTowards(f32 current, f32 target, f32 maxDelta)
     return current + Signf(diff) * maxDelta;
 }
 
+purefn f32 MoveTowardsS(f32 current, f32 target, f32 maxDelta)
+{
+    if (current * target < 0.0f)
+    {
+        f32 brake = maxDelta * 3.0f; // faster move if sign is different
+        if (Absf32(current) > brake) return current - Signf(current) * brake;
+        current = 0.0f;
+    }
+    f32 diff = target - current;
+    if (Absf32(diff) <= maxDelta) return target;
+    return current + Signf(diff) * maxDelta;
+}
+
 purefn f32 EaseInSine(f32 x) {
     return 1.0f - Cos((x * MATH_PI) * 0.5f);
 }
@@ -1077,6 +1090,20 @@ purefn f32 LerpAngle(f32 a, f32 b, f32 t)
     if (delta > MATH_PI)
         delta -= MATH_TwoPI;
     return a + delta * Saturatef32(t);
+}
+
+purefn f32 WrapAngle(f32 a)
+{
+    while (a > MATH_PI) a -= MATH_TwoPI;
+    while (a < -MATH_PI) a += MATH_TwoPI;
+    return a;
+}
+
+purefn f32 MoveTowardsAngle(f32 current, f32 target, f32 maxDelta)
+{
+    f32 diff = WrapAngle(target - current);
+    if (Absf32(diff) <= maxDelta) return target;
+    return WrapAngle(current + Signf(diff) * maxDelta);
 }
 
 purefn f32 Step(f32 edge, f32 x)

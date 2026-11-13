@@ -64,7 +64,7 @@ purefn u32 PackColor3PtrToUint(const f32* c) {
 }
 
 purefn u32 PackColor4PtrToUintV(v128f v) {
-    v = VecClamp(VecMulf(v, 255.0f), VecZero(), VecSet1(255.0f));
+    v = VecClamp(VecFmadd(v, VecSet1(255.0f), VecSet1(0.5f)), VecZero(), VecSet1(255.0f));
     v128u i = VecF32ToU32(v);
     i = VeciSll(i, VeciSetR(0, 8, 16, 24));
     i = VeciOr(i, VecSwapHalvesU(i));
