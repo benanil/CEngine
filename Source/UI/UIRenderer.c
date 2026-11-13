@@ -1235,6 +1235,13 @@ bool UISliderFloatID(const char* labelS, s32 index, f32* value, f32 minValue, f3
             .layout = { .sizing = { CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(1.0f) } }
         }) {}
 
+        Clay_String valStr = { .isStaticallyAllocated = false, .chars = UIFmtF(*value, 3) };
+        valStr.length = StringLength(valStr.chars);
+        CLAY_TEXT(valStr, CLAY_TEXT_CONFIG({
+            .fontSize = (u16)Maxu32((u32)(15.0f * UIGetFloat(UIFloat_TextScale)), 1u),
+            .textColor = UIGetClayColor(UIColor_Text)
+        }));
+
         f32 knobOffset = value01 * Maxf32(trackData.found ? trackData.boundingBox.width : 0.0f, 0.0f);
         CLAY(trackId, {
             .layout = {
