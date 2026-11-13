@@ -431,7 +431,7 @@ static void DrawGraphicsWindow()
                 UISliderFloatValue("Split near"     , &settings->shadowSplitNearDistance,  1.0f,   80.0f, 1);
                 UISliderFloatValue("PSSM lambda"    , &settings->shadowPSSMLambda       ,  0.0f,    1.0f, 2);
                 UISliderFloatValue("Contact thickness", &settings->SSSThickness, 0.001f, 0.04f, 3);
-                UISliderFloatValue("Contact edge threshold", &settings->SSSBilinearThreshold, 0.001f, 0.08f, 3);
+                UISliderFloatValue("Contact edge threshold", &settings->SSSBilinearThreshold, 0.001f, 0.2f, 3);
                 UISliderFloatValue("Contact contrast", &settings->SSSContrast, 1.0f, 8.0f, 2);
                 UISliderFloatValue("Contact intensity", &settings->SSSIntensity, 0.0f, 1.0f, 2);
             }
@@ -488,11 +488,11 @@ static void DrawGraphicsWindow()
                     .enableLightFrustumCulling = true,
                     .enableLightOcclusionCulling = true,
                     .showLightRects = false,
-                    .hbaoRadius = 1.3f,
-                    .hbaoBias = 0.5f,
-                    .hbaoIntensity = 2.0f,
+                    .hbaoRadius = 4.0f,
+                    .hbaoBias = 0.333f,
+                    .hbaoIntensity = 1.5f,
                     .hbaoPower = 2.0f,
-                    .SSSBilinearThreshold = 0.025f,
+                    .SSSBilinearThreshold = 0.08f,
                     .SSSThickness = 0.005f,
                     .SSSIntensity = 0.25f,
                     .SSSContrast  = 4.0f,
