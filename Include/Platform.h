@@ -5,6 +5,7 @@
 #include "Math/Vector.h"
 #include <SDL3/SDL_events.h>
 #include <SDL3/SDL_gamepad.h>
+#include <SDL3/SDL_log.h>
 
 // enables logging no matter what
 // #define AX_ENABLE_LOGGING
@@ -16,7 +17,6 @@
 #define AX_ANSI_RED    "\033[31m"
 
 #if defined(AX_ENABLE_LOGGING) || defined(_DEBUG) || defined(DEBUG) || defined(Debug)
-    #include <SDL3/SDL_log.h>
     #include <SDL3/SDL_messagebox.h>
     #include <SDL3/SDL_stdinc.h>
 

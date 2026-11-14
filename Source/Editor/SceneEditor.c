@@ -99,7 +99,7 @@ void SceneSelectObject(EntityID entityHandle)
 
 void EditorOpenScene(const char* path)
 {
-    SceneAsyncBegin(SceneAsyncOp_OpenScene, path, "EditorOpenScene", OpenSceneFinish);
+    SceneAsyncBegin(SceneAsyncOp_OpenScene, path, "EditorOpenScene", OpenSceneFinish, NULL);
 }
 
 // click picking: ray casts the scene through the bundle blas data, logs the hit and
@@ -360,12 +360,12 @@ void DrawSceneWindow(bool* open)
             UIPopFloat(UIFloat_TextScale);
         }
 
-        extern SceneAsyncRequest* sceneAsyncRequest;
-        if (sceneAsyncRequest)
+        SceneAsyncRequest* asyncRequest = GetSceneManager()->asyncRequest;
+        if (asyncRequest)
         {
             const char* asyncText = "Spawning bundle...";
-            if (sceneAsyncRequest->op == SceneAsyncOp_OpenScene) asyncText = "Opening scene...";
-            else if (sceneAsyncRequest->op == SceneAsyncOp_ImportMesh) asyncText = "Importing mesh...";
+            if (asyncRequest->op == SceneAsyncOp_OpenScene) asyncText = "Opening scene...";
+            else if (asyncRequest->op == SceneAsyncOp_ImportMesh) asyncText = "Importing mesh...";
             CLAY_TEXT(UIStr(asyncText), CLAY_TEXT_CONFIG({
                 .fontSize = 13,
                 .textColor = UIGetClayColor(UIColor_SubText)

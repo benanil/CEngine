@@ -316,8 +316,8 @@ void Foliage_Load(const char* filePath)
         p = ParseFloat(p, &params->groupIndex);
         p = ParseFloat(p, &params->frequency );
         p = ParsePositiveNumber(p, &params->enabled);
-        p = ParsePositiveNumber(p, &params->colliderType);
-        p = ParsePositiveNumber(p, &params->sizeVariance);
+        p = ParsePositiveNumber(p, (s32*)&params->colliderType);
+        p = ParsePositiveNumber(p, (s32*)&params->sizeVariance);
         if (version == '1') p = ParseFloat(p, &params->colliderEntity);
         if (version == '1') p = ParseFloat(p, &params->colliderRadius);
     }

@@ -61,7 +61,7 @@ void RenderDepth(SDL_GPUCommandBuffer* cmd, const DepthPassContext* ctx)
     if (ctx->viewport) SDL_SetGPUViewport(pass, ctx->viewport);
     if (ctx->scissor) SDL_SetGPUScissor(pass, ctx->scissor);
 
-    Scene* scene = g_ActiveScene;
+    Scene* scene = GetActiveScene();
     SDL_GPUTextureSamplerBinding albedoSampler = { .texture = scene->textureSystem.classes[TextureClass_Albedo].pages.handle, .sampler = g_RenderState.sampler };
     SDL_GPUBuffer* fragmentBuffers[2] = {
         scene->textureSystem.materialBuffer,
@@ -139,7 +139,7 @@ static void DrawRenderBufferForward(SDL_GPUCommandBuffer* cmd, SDL_GPURenderPass
 
 void RenderSceneForward(SDL_GPUCommandBuffer* cmd, const ScenePassContext* ctx, u32 width, u32 height, u32 tilesX, bool localLightsEnabled)
 {   
-    Scene* scene = g_ActiveScene;
+    Scene* scene = GetActiveScene();
     u32 totalGroups = scene->skinnedSet.numGroups + scene->surfaceSet.numGroups;
     if (totalGroups == 0 && g_NumTerrainChunkDraws == 0)
         return;

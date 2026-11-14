@@ -18,8 +18,9 @@
 #include "Gameplay.h"
 #include "Include/Camera.h"
 #include "Include/Platform.h"
-#include "Math/Color.h"
 #include "Include/Random.h"
+#include "Include/Algorithm.h" // string contains
+#include "Math/Color.h"
 
 #define BLEND_SLOTS          4
 #define BLEND_CAPACITY       8
@@ -30,7 +31,6 @@
 #define LOOK_TURN_RATE       32.0f
 #define LOOK_TURN_GAIN       0.1f
 #define LOOK_TURN_STILL      0.5f
-#define WEIGHT_EPSILON       0.0001f
 #define FIDGET_SPEED_LIMIT   0.02f
 #define FIDGET_FADE_TIME     0.35f
 #define FIDGET_GATE_RATE     6.0f
@@ -157,11 +157,11 @@ void cAnimInit(cAnim* an, const Scene* scene, u32 characterId)
     MemSet(an->actionJoints, 0xFF, sizeof(u32) * 3);
 }
 
-void cPlayOnce(cAnim* an, u16 anim, f32 mixInTime, f32 speed, bool upperLower)
+void cPlayOnce(cAnim* an, u16 anim, f32 mixTime, f32 speed, bool upperLower)
 {
     an->actionClip    = anim;
     an->actionSpeed   = speed;
-    an->actionFade    = 1.0f / Maxf32(mixInTime, 0.001f);
+    an->actionFade    = 1.0f / Maxf32(mixTime, 0.001f);
     an->actionElapsed = 0.0f;
     an->actionPhase   = 0.0f;
 
@@ -213,7 +213,7 @@ static u32 CountSignificant(const BlendSet* set)
 {
     u32 n = 0;
     for (u32 i = 0; i < set->count; i++)
-        n += set->samples[i].weight > WEIGHT_EPSILON;
+        n += set->samples[i].weight > MATH_Epsilon;
     return n;
 }
 
@@ -336,7 +336,7 @@ static void AdvanceLocomotionPhases(cAnim* an, const BlendSet* set, f32 dt)
         durationSum += sample->weight * clips[sample->clip].duration;
     }
 
-    if (weightSum > WEIGHT_EPSILON)
+    if (weightSum > MATH_Epsilon)
         an->locoPhase = Fractf32(an->locoPhase + dt * an->animSpeed * weightSum / durationSum);
     an->idlePhase = Fractf32(an->idlePhase + dt * an->animSpeed / clips[an->idle].duration);
 }
@@ -488,7 +488,7 @@ void cAnimate(Scene* scene, Character* ch, f32 dt)
 
     GPUAnimationInstance instance = ComposeInstance(an, &set);
     u32 charSparse = SparseIDFromSparseData(&scene->skinnedSet, ch->sparse);
-    for (u32 i = 0; i < ch->numCharacterEntities; i++)
+    for (u32 i = 0; i < ch->numEntities; i++)
     {
         AnimationSystem_SetInstance(&scene->animSystem, charSparse + i, instance);
     }

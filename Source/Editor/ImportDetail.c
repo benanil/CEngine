@@ -414,5 +414,5 @@ void EditorImportMeshToScene(const char* path)
         return;
     }
 
-    SceneAsyncBegin(SceneAsyncOp_ImportMesh, path, "EditorImportMesh", ImportMeshToSceneFinish);
+    SceneAsyncBegin(SceneAsyncOp_ImportMesh, path, "EditorImportMesh", ImportMeshToSceneFinish, NULL);
 }

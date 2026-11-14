@@ -20,6 +20,16 @@
 #include <SDL3/SDL_stdinc.h>
 
 extern Graphics gGFX;
+extern SceneManager g_SceneManager;
+
+// Persists a freshly baked bundle's .abm mesh cache to disk on a worker thread. data is the cache
+// key: the bundle is re-found by key and a reference is held for the duration, so its resident
+// geometry stays alive while SaveGLTFBinary reads it (the save never mutates it).
+typedef struct BundleSaveTask_
+{
+    u64  cacheKey;
+    char abmPath[1024 - sizeof(u64)];
+} BundleSaveTask;
 
 // returns the bundle's vertex/index ranges to the geometry heaps. safe to call
 // twice, the pointers are nulled after the free. bundles whose geometry lives
@@ -46,8 +56,6 @@ static void Scene_FreeBundleGeometry(SceneBundle* bundle, BundleCacheEntry* cach
 /*//////////////////////////////////////////////////////////////////////////*/
 /*                              Async                                       */
 /*//////////////////////////////////////////////////////////////////////////*/
-
-SceneAsyncRequest* sceneAsyncRequest;
 
 static s32 PreloadAllBundlesOfScene(SceneAsyncRequest* request)
 {
@@ -81,34 +89,35 @@ static void SceneAsyncDone(void* userData, s32 result)
     SDL_SetAtomicInt(&request->done, 1);
 }
 
-bool SceneAsyncBegin(SceneAsyncOp op, const char* path, const char* taskName, SceneAsyncRequestCallback callback)
+bool SceneAsyncBegin(SceneAsyncOp op, const char* path, const char* taskName, SceneAsyncRequestCallback callback, void* context)
 {
     if (!path || path[0] == '\0') {
         AX_WARN("scene async request invalid path");
         return false;
     }
 
-    if (sceneAsyncRequest) {
-        AX_WARN("scene async request already running: %s", sceneAsyncRequest->path);
+    if (g_SceneManager.asyncRequest) {
+        AX_WARN("scene async request already running: %s", g_SceneManager.asyncRequest->path);
         return false;
     }
 
     SceneAsyncRequest* request = (SceneAsyncRequest*)SDL_calloc(1, sizeof(SceneAsyncRequest));
     request->callback = callback;
     request->op = op;
+    request->context = context;
 
     NormalizePath(path, request->path, StringLength(path)+1);
     AsyncRun(taskName, SceneAsyncProbe, SceneAsyncDone, request);
-    sceneAsyncRequest = request;
+    g_SceneManager.asyncRequest = request;
     return true;
 }
 
 // only one async task is not good design
 void Scene_AsyncUpdate(void)
 {
-    SceneAsyncRequest* request = sceneAsyncRequest;
+    SceneAsyncRequest* request = g_SceneManager.asyncRequest;
     if (!request || !SDL_GetAtomicInt(&request->done)) return;
-    sceneAsyncRequest = NULL;
+    g_SceneManager.asyncRequest = NULL;
 
     if (!request->result) {
         AX_ERROR("scene async request failed: %s", request->path);
@@ -129,29 +138,18 @@ void Scene_AsyncUpdate(void)
 // async scene/mesh import touches this from worker threads, so every map operation (and every
 // access to an entry) is serialized through g_BundleCacheLock. Entries are addressed by key, never
 // by stored pointer, because HashMap relocates values on grow and on swap-with-last erase.
-static HashMap gBundleCache;
-static SDL_SpinLock g_BundleCacheLock;
 
 // Look up a cached bundle by key under the cache lock. The returned SceneBundle* is stable (each
 // bundle is allocated separately and never moves in the map), so it stays valid after the lock is
 // released. out: NULL when no entry has that key.
 static SceneBundle* BundleCacheFindBundle(u64 key)
 {
-    SDL_LockSpinlock(&g_BundleCacheLock);
-    BundleCacheEntry* entry = (BundleCacheEntry*)HMFind(&gBundleCache, key);
+    SDL_LockSpinlock(&g_SceneManager.BundleCacheLock);
+    BundleCacheEntry* entry = (BundleCacheEntry*)HMFind(&g_SceneManager.BundleCache, key);
     SceneBundle* bundle = entry ? entry->bundle : NULL;
-    SDL_UnlockSpinlock(&g_BundleCacheLock);
+    SDL_UnlockSpinlock(&g_SceneManager.BundleCacheLock);
     return bundle;
 }
-
-// Persists a freshly baked bundle's .abm mesh cache to disk on a worker thread. data is the cache
-// key: the bundle is re-found by key and a reference is held for the duration, so its resident
-// geometry stays alive while SaveGLTFBinary reads it (the save never mutates it).
-typedef struct BundleSaveTask_
-{
-    u64  cacheKey;
-    char abmPath[1024 - sizeof(u64)];
-} BundleSaveTask;
 
 static s32 SaveBundleCacheTask(void* data)
 {
@@ -209,19 +207,19 @@ static s32 CreateBVH(void* data)
     if (!BVH_BuildBundleCached(bundle, &built, bundle->numSkins > 0))
         return 0;
 
-    SDL_LockSpinlock(&g_BundleCacheLock);
-    BundleCacheEntry* entry = (BundleCacheEntry*)HMFind(&gBundleCache, key);
+    SDL_LockSpinlock(&g_SceneManager.BundleCacheLock);
+    BundleCacheEntry* entry = (BundleCacheEntry*)HMFind(&g_SceneManager.BundleCache, key);
     if (entry && !entry->bvhNodes)
     {
         entry->bvhNodes    = built.bvhNodes;
         entry->bvhTris     = built.bvhTris;
         entry->numBvhNodes = built.numBvhNodes;
         entry->numBvhTris  = built.numBvhTris;
-        SDL_UnlockSpinlock(&g_BundleCacheLock);
+        SDL_UnlockSpinlock(&g_SceneManager.BundleCacheLock);
         return 1;
     }
     // entry was released while we built (or another build won the race): drop our copy
-    SDL_UnlockSpinlock(&g_BundleCacheLock);
+    SDL_UnlockSpinlock(&g_SceneManager.BundleCacheLock);
     BVH_FreeBundle(&built);
     return 0;
 }
@@ -231,10 +229,10 @@ static BundleCacheEntry* AddBundleCacheEntry(SceneBundle* bundle, void* vertexHe
     BundleCacheEntry value = { bundle, 1u };
     value.vertexHeapPtr = vertexHeapPtr;
     value.indexHeapPtr = indexHeapPtr;
-    SDL_LockSpinlock(&g_BundleCacheLock);
-    BundleCacheEntry* entry = (BundleCacheEntry*)HMInsert(&gBundleCache, key, &value);
+    SDL_LockSpinlock(&g_SceneManager.BundleCacheLock);
+    BundleCacheEntry* entry = (BundleCacheEntry*)HMInsert(&g_SceneManager.BundleCache, key, &value);
     if (entry && baked) entry->refCount++; // hold a reference for the async cache save
-    SDL_UnlockSpinlock(&g_BundleCacheLock);
+    SDL_UnlockSpinlock(&g_SceneManager.BundleCacheLock);
     return entry;
 }
 
@@ -242,18 +240,16 @@ static BundleCacheEntry* AddBundleCacheEntry(SceneBundle* bundle, void* vertexHe
 // valid until the next map mutation; callers use it transiently and store the key, not the pointer.
 BundleCacheEntry* BundleCacheAcquire(SceneBundleStage* stage)
 {
-    SDL_LockSpinlock(&g_BundleCacheLock);
-    if (gBundleCache.valueSize == 0)
-        gBundleCache = HMCreate(64u, sizeof(BundleCacheEntry));
-    BundleCacheEntry* entry = (BundleCacheEntry*)HMFind(&gBundleCache, stage->cacheKey);
+    SDL_LockSpinlock(&g_SceneManager.BundleCacheLock);
+    BundleCacheEntry* entry = (BundleCacheEntry*)HMFind(&g_SceneManager.BundleCache, stage->cacheKey);
     if (entry)
     {
         entry->refCount++;
         AX_LOG("bundle cache hit: %s refs=%d", stage->path, entry->refCount);
-        SDL_UnlockSpinlock(&g_BundleCacheLock);
+        SDL_UnlockSpinlock(&g_SceneManager.BundleCacheLock);
         return entry;
     }
-    SDL_UnlockSpinlock(&g_BundleCacheLock);
+    SDL_UnlockSpinlock(&g_SceneManager.BundleCacheLock);
 
     bool isRuntime = PTR_VALID(stage->bundle);
     // Load/bake outside the lock (slow). Only one importer touches a given path at a time
@@ -288,16 +284,16 @@ BundleCacheEntry* BundleCacheAcquire(SceneBundleStage* stage)
 
 void BundleCacheReleaseKey(u64 key)
 {
-    SDL_LockSpinlock(&g_BundleCacheLock);
-    BundleCacheEntry* entry = (BundleCacheEntry*)HMFind(&gBundleCache, key);
-    if (!entry || entry->refCount == 0) { SDL_UnlockSpinlock(&g_BundleCacheLock); return; }
-    if (--entry->refCount > 0) { SDL_UnlockSpinlock(&g_BundleCacheLock); return; }
+    SDL_LockSpinlock(&g_SceneManager.BundleCacheLock);
+    BundleCacheEntry* entry = (BundleCacheEntry*)HMFind(&g_SceneManager.BundleCache, key);
+    if (!entry || entry->refCount == 0) { SDL_UnlockSpinlock(&g_SceneManager.BundleCacheLock); return; }
+    if (--entry->refCount > 0) { SDL_UnlockSpinlock(&g_SceneManager.BundleCacheLock); return; }
 
     // Snapshot what we need to free, erase the entry, then free outside the lock. Freeing through the
     // snapshot is safe: bvh arrays and geometry heap blocks are stable heap allocations, not in the map.
     BundleCacheEntry freed = *entry;
-    HMErase(&gBundleCache, key);
-    SDL_UnlockSpinlock(&g_BundleCacheLock);
+    HMErase(&g_SceneManager.BundleCache, key);
+    SDL_UnlockSpinlock(&g_SceneManager.BundleCacheLock);
 
     // geometry returns to the mega buffers. the rest of the bundle cpu data stays
     // allocated, consistent with the engine teardown ownership model
@@ -318,9 +314,9 @@ bool FindCacheForSceneBundle(const Scene* scene, u32 bundleIdx, BundleCacheEntry
     // Copy the entry out under the lock, addressed by key: gBundleCache relocates entries on grow
     // and on swap-with-last erase, so a stored/returned pointer could dangle. The copied
     // bvhNodes/bvhTris are stable heap allocations that live while the bundle is referenced.
-    SDL_LockSpinlock(&g_BundleCacheLock);
-    const BundleCacheEntry* entry = (const BundleCacheEntry*)HMFind(&gBundleCache, ref->cacheKey);
+    SDL_LockSpinlock(&g_SceneManager.BundleCacheLock);
+    const BundleCacheEntry* entry = (const BundleCacheEntry*)HMFind(&g_SceneManager.BundleCache, ref->cacheKey);
     if (entry) *out = *entry;
-    SDL_UnlockSpinlock(&g_BundleCacheLock);
+    SDL_UnlockSpinlock(&g_SceneManager.BundleCacheLock);
     return entry != NULL;
 }

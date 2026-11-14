@@ -254,7 +254,7 @@ static inline void Float8ToHalf8(f16* result, const f32* float8)
 
 static forceinline void RandomHalf4(u64* result, u64 hash, float mn, float mx, float scale)
 {
-    v128f u16MaxHalf = VecSet1((1.0f / f32_(UINT16_MAX)) * scale);
+    v128f u16MaxHalf = VecSet1((1.0f / (f32)UINT16_MAX) * scale);
     v128u vhash    = VecBitcastU32(VecLoadLo64(&hash, VecZero()));
     v128f unpacked = VecI32ToF32(VeciUnpackLo32(vhash));
     unpacked = VecFmsub(unpacked, u16MaxHalf , VecOne());
@@ -264,7 +264,7 @@ static forceinline void RandomHalf4(u64* result, u64 hash, float mn, float mx, f
 
 static forceinline void RandomHalf4Positive(u64* result, u64 hash, float mn, float mx, float scale)
 {
-    v128f u16MaxHalf = VecSet1((1.0f / f32_(UINT16_MAX)) * scale);
+    v128f u16MaxHalf = VecSet1((1.0f / (f32)(UINT16_MAX)) * scale);
     v128u vhash    = VecBitcastU32(VecLoadLo64(&hash, VecZero()));
     v128f unpacked = VecI32ToF32(VeciUnpackLo32(vhash));
     unpacked = VecMul(unpacked, u16MaxHalf);

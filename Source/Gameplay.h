@@ -77,6 +77,7 @@ typedef struct Character_
     b3Vec3 position;
     b3Vec3 velocity;
 
+    f32 scale;   // 1.8f;
     f32 verticalSpeed;
     f32 characterSpeed;
     f32 jumpSpeed;
@@ -84,24 +85,49 @@ typedef struct Character_
     f32 decceleration;
     f32 currentSpeed;
 
-    EntityID characterEntity;
+    EntityID sphereID;
+    EntityID entity;
     f32  xRotation;
     f32  yRotation;
-    u32  numCharacterEntities;
+    u32  numEntities;
     bool grounded;
-    bool characterActive;
+    bool active;
     bool jumped;
 } Character;
 
+typedef struct Gameplay_
+{
+    float3 cameraOffset;     // { 0.0f, -1.33, 0.3f };
+    float  gravity;          // -25.0f;
+    float  groundMinNormalY; // 0.7f;
+    float  snapDistance;     // 0.3f;
+    float  moveTolerance;    // 0.001f;
+    float  cameraXRotation;  // MATH_HalfPI;
+    
+    struct SDL_GPUTransferBuffer* boneTransfer;
+    struct SDL_GPUFence* boneFence;
+    Scene* scene;
+
+    mat4x4 boneMat;
+    
+    Character character;
+} Gameplay;
+
+void Gameplay_Init();
+
+void Gameplay_Destroy();
+
 void Gameplay_Update();
 
-void UpdateCharacter();
+void SpawnCharacter(Character* ch);
+
+void UpdateCharacter(Gameplay* gp, Entity* character);
 
 void cAnimInit(cAnim* an, const Scene* scene, u32 characterId);
 
 void cAnimate(Scene* scene, Character* ch, f32 dt);
 
-void cPlayOnce(cAnim* an, u16 anim, f32 mixInTime, f32 speed, bool upperLower);
+void cPlayOnce(cAnim* an, u16 anim, f32 mixTime, f32 speed, bool upperLower);
 
 bool cAnimActionActive(const cAnim* an);
 

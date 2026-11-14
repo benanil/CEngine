@@ -222,7 +222,7 @@ static inline void CameraUpdateFly(Camera* camera, f32 dt, float2 mousePos)
 
     if (GetKeyReleased(SDLK_R))
     {
-        SDL_Log("cam pos: %f, %f, %f", camera->position.x, camera->position.y, camera->position.z);
+        AX_LOG("cam pos: %f, %f, %f", camera->position.x, camera->position.y, camera->position.z);
     }
     camera->mouseOld = InfiniteMouse(mousePos);
 }

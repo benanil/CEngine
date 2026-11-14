@@ -18,84 +18,37 @@ typedef struct PlaneCapture
     int count;
 } PlaneCapture; 
 
-static const float gravity = -25.0f;
-static const float groundMinNormalY = 0.7f;
-static const float snapDistance = 0.3f;
-static const float moveTolerance = 0.001f;
-
-static Character ch;
-static float3 cameraOffset = { 0.0f, -1.33, 0.3f };
-static float cameraXRotation = MATH_HalfPI;
-
-static SDL_GPUTransferBuffer* boneTransfer = NULL;
-static SDL_GPUFence* boneFence = NULL;
-static mat4x4 boneMat;
-
 extern Camera g_Camera;
-extern SDL_GPUDevice* g_GPUDevice;
 
-static EntityID sphereID = INVALID_ENTITY;
-static const float characterScale = 1.8f;
-
-static void SpawnCharacter()
+void SpawnCharacter(Character* ch)
 {
     Scene* scene = GetActiveScene();
-    u32 characterId = Scene_BundleIdx(scene, ch.bundle);
+    u32 characterId = Scene_BundleIdx(scene, ch->bundle);
     u32 numEntity = scene->skinnedSet.numEntities;
-    ch.sparse = Scene_Spawn(scene, characterId, VecSetR(0.0f, 0.0f, 0.0f, 0.f), QIdentity(), VecSet1(characterScale), EntityFlags_None);
-    ch.numCharacterEntities = scene->skinnedSet.numEntities - numEntity;
-    ch.characterEntity = EntityIDFromSparseData(scene, ch.sparse);
+    ch->sparse = Scene_Spawn(scene, characterId, VecSetR(0.0f, 0.0f, 0.0f, 0.f), QIdentity(), VecSet1(ch->scale), EntityFlags_None);
+    ch->numEntities = scene->skinnedSet.numEntities - numEntity;
+    ch->entity = EntityIDFromSparseData(scene, ch->sparse);
     u32 bundleID = Scene_AddBundleCached(scene, GetUnitRock(), "head bone");
-    sphereID = EntityIDFromSparseData(scene,
-                                      Scene_Spawn(scene, bundleID, VecZero(), QIdentity(), VecOne(), EntityFlags_None));
+    ch->sphereID = EntityIDFromSparseData(scene,
+                    Scene_Spawn(scene, bundleID, VecZero(), QIdentity(), VecOne(), EntityFlags_None));
 
-    EntityID entityID = EntityIDFromSparseData(scene, ch.sparse + 1);
+    EntityID entityID = EntityIDFromSparseData(scene, ch->sparse + 1);
     Entity* entity = Scene_GetEntity(scene, entityID);
     RenderSet* rs = Scene_GetEntityRenderSet(scene, entityID);
-    ch.center = VecMulf(RenderSet_GroupLocalCenter(rs->primitiveGroups + EntityGetPrimitiveID(entity)), characterScale);
-    VecSetY(ch.center, 0.0f);
+    ch->center = VecMulf(RenderSet_GroupLocalCenter(rs->primitiveGroups + EntityGetPrimitiveID(entity)), ch->scale);
+    VecSetY(ch->center, 0.0f);
 
-    ch.groundNormal    = (b3Vec3){ 0.0f,  1.0f, 0.0f };
-    ch.position        = (b3Vec3){ 0.0f, 10.0f, 0.0f }; 
-    ch.jumpSpeed       = 15.0f;
-    ch.acceleration    = 20.0f;
-    ch.decceleration   = 10.0f;
-    ch.characterSpeed  = 8.0f;
-    ch.verticalSpeed   = 0.0f;
-    ch.yRotation       = ch.xRotation = 0.0f;
-    ch.grounded = ch.characterActive = ch.jumped = false;
+    ch->groundNormal    = (b3Vec3){ 0.0f,  1.0f, 0.0f };
+    ch->position        = (b3Vec3){ 0.0f, 10.0f, 0.0f }; 
+    ch->jumpSpeed       = 15.0f;
+    ch->acceleration    = 20.0f;
+    ch->decceleration   = 10.0f;
+    ch->characterSpeed  = 8.0f;
+    ch->verticalSpeed   = 0.0f;
+    ch->yRotation       = ch->xRotation = 0.0f;
+    ch->grounded = ch->active = ch->jumped = false;
     
-    cAnimInit(&ch.anim, scene, characterId);
-    boneTransfer = SDL_CreateGPUTransferBuffer(g_GPUDevice, &(SDL_GPUTransferBufferCreateInfo){
-        .usage = SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD,
-        .size  = sizeof(u32) * AnimMtxNumF32 * MAX_BONES
-    });
-}
-
-static void CharacterLoaded(SceneAsyncRequest* request)
-{
-    Scene* scene = GetActiveScene();
-    u32 bundleIdx = Scene_AddBundleFinalize(scene, request->sceneBundleStage);
-    if (bundleIdx == INVALID_BUNDLE) {
-        AX_ERROR("import to scene failed: %s", request->path);
-        return;
-    }
-    ch.bundle = scene->bundleRefs[bundleIdx].bundle;
-    SpawnCharacter();
-}
-
-void OpenSceneCallback(const char* path)
-{
-    SceneAsyncBegin(SceneAsyncOp_ImportMesh, "Assets/Meshes/Character/Character.gltf", "LoadCharacter", CharacterLoaded);
-}
-
-void BeforeDestroySceneCallback(Scene* scene)
-{
-    if (ch.characterEntity != INVALID_ENTITY) Scene_RemoveEntity(GetActiveScene(), ch.characterEntity);
-    if (sphereID != INVALID_ENTITY) Scene_RemoveEntity(GetActiveScene(), sphereID);
-    if (boneTransfer) SDL_ReleaseGPUTransferBuffer(g_GPUDevice, boneTransfer);
-    ch.characterEntity = INVALID_ENTITY;
-    boneTransfer = NULL;
+    cAnimInit(&ch->anim, scene, characterId);
 }
 
 static b3Capsule MakeMover(void)
@@ -133,16 +86,13 @@ static bool CapturePlaneFcn( b3ShapeId shapeId, const b3PlaneResult* planes, int
     return true;
 }
 
-static bool FindGround(b3WorldId worldId, b3Pos origin, b3Capsule* mover, b3QueryFilter filter, b3Vec3* normal)
+static bool FindGround(const PlaneCapture* capture, const Gameplay* gp, b3Vec3* normal)
 {
-    PlaneCapture capture = { 0 };
-    b3World_CollideMover(worldId, origin, mover, filter, CapturePlaneFcn, &capture);
-
     bool found = false;
-    f32 best = groundMinNormalY;
-    for (s32 i = 0; i < capture.count; ++i)
+    f32 best = gp->groundMinNormalY;
+    for (s32 i = 0; i < capture->count; ++i)
     {
-        b3Vec3 n = capture.planes[i].plane.normal;
+        b3Vec3 n = capture->planes[i].plane.normal;
         if (n.y >= best)
         {
             best = n.y;
@@ -153,9 +103,9 @@ static bool FindGround(b3WorldId worldId, b3Pos origin, b3Capsule* mover, b3Quer
     return found;
 }
 
-static void CharacterMovement(Scene* scene, Entity* character, f32 dt)
+static void CharacterMovement(Scene* scene, const Gameplay* gp, Character* ch, Entity* character, f32 dt)
 {
-    if (!ch.characterActive) return;
+    if (!ch->active) return;
     b3WorldId worldId = Physics_GetWorld();
     b3Capsule mover = MakeMover();
     b3QueryFilter filter = MakeFilter();
@@ -177,75 +127,80 @@ static void CharacterMovement(Scene* scene, Entity* character, f32 dt)
         wish = b3MulSV(1.0f / wishLength, wish);
         wishLength = 1.0f;
     }
-    if (ch.grounded && wishLength > 0.0f)
+    if (ch->grounded && wishLength > 0.0f)
     {
-        wish = b3MulSV(wishLength, b3Normalize(b3ProjectOnPlane(wish, ch.groundNormal)));
+        wish = b3MulSV(wishLength, b3Normalize(b3ProjectOnPlane(wish, ch->groundNormal)));
     }
 
-    if (ch.grounded) ch.verticalSpeed = 0.0f;
-    else ch.verticalSpeed += gravity * dt;
+    if (ch->grounded) ch->verticalSpeed = 0.0f;
+    else ch->verticalSpeed += gp->gravity * dt;
 
     bool jumpNow = false;
-    if (ch.grounded && ch.anim.jumpRequested)
+    if (ch->grounded && ch->anim.jumpRequested)
     {
-        ch.verticalSpeed = ch.jumpSpeed;
-        ch.grounded = false;
+        ch->verticalSpeed = ch->jumpSpeed;
+        ch->grounded = false;
         jumpNow = true;
     }
-    ch.anim.jumpRequested = false;
+    ch->anim.jumpRequested = false;
     f32 speedTarget = Absf32(F2Len(axis) - MATH_Epsilon);
     f32 runSpeed = Maxf32((f32)GetKeyDown(SDLK_LSHIFT), GetGamepadAxis(SDL_GAMEPAD_AXIS_LEFT_TRIGGER));
     if (runSpeed > 0.1f) speedTarget *= 1.0f + runSpeed;
-    ch.currentSpeed = MoveTowards(ch.currentSpeed, speedTarget, dt * 5.0f); // SmoothDamp(ch.currentSpeed, axis.y, &ch.smoothVel, smoothTime, 2.0f, dt);
+    ch->currentSpeed = MoveTowards(ch->currentSpeed, speedTarget, dt * 5.0f); // SmoothDamp(ch->currentSpeed, axis.y, &ch->smoothVel, smoothTime, 2.0f, dt);
     
-    b3Vec3 velocity = b3MulSV(ch.currentSpeed * ch.characterSpeed, wish);
-    velocity.y += ch.verticalSpeed;
+    b3Vec3 velocity = b3MulSV(ch->currentSpeed * ch->characterSpeed, wish);
+    velocity.y += ch->verticalSpeed;
 
-    b3Vec3 target = b3Add(ch.position, b3MulSV(dt, velocity));
-    b3Vec3 start = ch.position;
+    b3Vec3 target = b3Add(ch->position, b3MulSV(dt, velocity));
+    b3Vec3 start = ch->position;
 
     for (s32 iteration = 0; iteration < 5; ++iteration)
     {
-        b3Pos origin = ch.position;
+        b3Pos origin = ch->position;
 
         PlaneCapture capture = { 0 };
         b3World_CollideMover(worldId, origin, &mover, filter, CapturePlaneFcn, &capture);
 
-        b3Vec3 remaining = b3Sub(target, ch.position);
+        b3Vec3 remaining = b3Sub(target, ch->position);
         b3PlaneSolverResult result = b3SolvePlanes(remaining, capture.planes, capture.count);
 
         f32 fraction = b3World_CastMover(worldId, origin, &mover, result.delta, filter, NULL, NULL);
         b3Vec3 delta = b3MulSV(fraction, result.delta);
-        ch.position = b3Add(ch.position, delta);
-
-        if (b3LengthSquared(delta) < moveTolerance * moveTolerance) break;
+        ch->position = b3Add(ch->position, delta);
+        if (b3LengthSquared(delta) < Sqrf(gp->moveTolerance)) break;
     }
 
-    ch.velocity = b3Sub(ch.position, start);
-    if (!jumpNow && ch.verticalSpeed > 0.0f)
+    ch->velocity = b3Sub(ch->position, start);
+    if (!jumpNow && ch->verticalSpeed > 0.0f)
     {
-        f32 intended = ch.verticalSpeed * dt;
-        f32 actual = ch.position.y - start.y;
-        if (actual < intended * 0.5f) ch.verticalSpeed = 0.0f;
+        f32 intended = ch->verticalSpeed * dt;
+        f32 actual = ch->position.y - start.y;
+        if (actual < intended * 0.5f) ch->verticalSpeed = 0.0f;
     }
 
-    bool wasGrounded = ch.grounded;
+    bool wasGrounded = ch->grounded;
     b3Vec3 normal = { 0.0f, 1.0f, 0.0f };
-    ch.grounded = ch.verticalSpeed <= 0.5f && FindGround(worldId, ch.position, &mover, filter, &normal);
-
-    if (!ch.grounded && wasGrounded && ch.verticalSpeed <= 0.0f)
+    ch->grounded = ch->verticalSpeed <= 0.5f;
+    PlaneCapture capture = { 0 };
+    if (ch->grounded)
     {
-        b3Pos origin = ch.position;
-        b3Vec3 down = { 0.0f, -snapDistance, 0.0f };
+        b3World_CollideMover(worldId, ch->position, &mover, filter, CapturePlaneFcn, &capture);
+        ch->grounded = FindGround(&capture, gp, &normal);
+    }
+
+    if (!ch->grounded && wasGrounded && ch->verticalSpeed <= 0.0f)
+    {
+        b3Pos origin = ch->position;
+        b3Vec3 down = { 0.0f, -gp->snapDistance, 0.0f };
         f32 fraction = b3World_CastMover(worldId, origin, &mover, down, filter, NULL, NULL);
         if (fraction < 1.0f)
         {
-            b3Vec3 newPos = b3Add(ch.position, b3MulSV(fraction, down));
-            ch.grounded = FindGround(worldId, ch.position, &mover, filter, &normal);
+            b3Vec3 newPos = b3Add(ch->position, b3MulSV(fraction, down));
+            ch->grounded = FindGround(&capture, gp, &normal);
         }
     }
     
-    ch.groundNormal = ch.grounded ? normal : (b3Vec3){ 0.0f, 1.0f, 0.0f };
+    ch->groundNormal = ch->grounded ? normal : (b3Vec3){ 0.0f, 1.0f, 0.0f };
 
     Quaternion mRotation;
     if (g_Camera.mode == CameraMode_TPS)
@@ -260,33 +215,33 @@ static void CharacterMovement(Scene* scene, Entity* character, f32 dt)
         {
             const f32 smoothingRate = 8.0f;
             f32 interp = 1.0f - Expf(-smoothingRate * dt);
-            ch.yRotation = LerpAngle(ch.yRotation, x + MATH_PI, interp);
+            ch->yRotation = LerpAngle(ch->yRotation, x + MATH_PI, interp);
         }
-        ch.xRotation = MoveTowards(ch.xRotation, axis.x * 0.1f, dt);
-        mRotation = QFromYAngle(ch.yRotation);
-        mRotation = QMul(mRotation, QFromAxisAngleV(B3VecTov128f(forward), ch.xRotation));
+        ch->xRotation = MoveTowards(ch->xRotation, axis.x * 0.1f, dt);
+        mRotation = QFromYAngle(ch->yRotation);
+        mRotation = QMul(mRotation, QFromAxisAngleV(B3VecTov128f(forward), ch->xRotation));
     }
     else
     {
-        mRotation = QFromYAngle(g_Camera.yaw * -MATH_DegToRad + cameraXRotation);
+        mRotation = QFromYAngle(g_Camera.yaw * -MATH_DegToRad + gp->cameraXRotation);
     }
 
-    v128f position = VecAdd(Vec3Load(&ch.position.x), VecSetR(0.0f, -1.3f, 0.0f, 0.0f));
-    position = VecSub(position, QMulVec3V(ch.center, mRotation));
+    v128f position = VecAdd(Vec3Load(&ch->position.x), VecSetR(0.0f, -1.3f, 0.0f, 0.0f));
+    position = VecSub(position, QMulVec3V(ch->center, mRotation));
 
-    for (s32 i = 0; i < ch.numCharacterEntities; i++)
+    for (s32 i = 0; i < ch->numEntities; i++)
     {
-        Entity* mesh = &scene->skinnedSet.entities[ch.sparse[i].id];
+        Entity* mesh = &scene->skinnedSet.entities[ch->sparse[i].id];
         EntitySetPositionV(mesh, position);
         EntitySetRotation(mesh, mRotation);
     }
-    if (jumpNow) cPlayOnce(&ch.anim, ch.anim.jump, 0.05f, 1.0f, false);
-    g_Camera.position = F3Add(B3VecToFloat3(ch.position), QMulVec3(cameraOffset, mRotation));
-    g_Camera.position = F3Add(M44ExtractPosition(boneMat), g_Camera.position);
+    if (jumpNow) cPlayOnce(&ch->anim, ch->anim.jump, 0.05f, 1.0f, false);
+    g_Camera.position = F3Add(B3VecToFloat3(ch->position), QMulVec3(gp->cameraOffset, mRotation));
+    g_Camera.position = F3Add(M44ExtractPosition(gp->boneMat), g_Camera.position);
     g_Camera.target = g_Camera.position;
 }
 
-static void CharacterUI()
+static void CharacterUI(Character* ch, Gameplay* gp)
 {
     static bool open = true;
     if (UIBeginWindowId(CLAY_ID("Character"), "Character",
@@ -294,99 +249,30 @@ static void CharacterUI()
                         &open, UIWindowFlags_NoClose))
     {
         UIText("Character Settings");
-        UIEditFloat("speed", &ch.characterSpeed, 0.0f, 100.0f, 0.2f, 2);
-        UIEditFloat("jump force", &ch.jumpSpeed, 0.0f, 100.0f, 0.2f, 2);
-        UIEditFloatN("cameraOffset", &cameraOffset.x, 3, -4.0f, 4.0f, 3);
-        UIEditFloat("cameraXRot", &cameraXRotation, 0.0f, 100.0f, 0.1f, 3);
-        UIReadonlyRow(CLAY_ID("CharVelocityR"), "velocity", UIFmtV3(&ch.velocity.x, 3));
-        f32 sqr = b3LengthSquared(ch.velocity);
+        UIEditFloat("speed", &ch->characterSpeed, 0.0f, 100.0f, 0.2f, 2);
+        UIEditFloat("jump force", &ch->jumpSpeed, 0.0f, 100.0f, 0.2f, 2);
+        UIEditFloatN("cameraOffset", &gp->cameraOffset.x, 3, -4.0f, 4.0f, 3);
+        UIEditFloat("cameraXRot", &gp->cameraXRotation, 0.0f, 100.0f, 0.1f, 3);
+        UIReadonlyRow(CLAY_ID("CharVelocityR"), "velocity", UIFmtV3(&ch->velocity.x, 3));
+        f32 sqr = b3LengthSquared(ch->velocity);
         UIReadonlyRow(CLAY_ID("CharSpeedR"), "speed", UIFmtF(Sqrtf(sqr + 0.001f), 3));
 
         UIEndWindow();
     }
 }
 
-static void HandleInputs()
+void UpdateCharacter(Gameplay* gp, Entity* character)
 {
-    u16 numNodes = ch.anim.animAlloc->numNodes;
-    // if (GetKeyDown(SDLK_L))     TriggerAnim(ch.kick, 0.05f, 0, numNodes); 
-    if (GetKeyPressed(SDLK_SPACE) || GetGamepadButtonPressed(SDL_GAMEPAD_BUTTON_SOUTH)) 
-        ch.anim.jumpRequested = true;
-
-    if (GetMouseDown(MouseButton_Left) || GetGamepadButton(SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER))
-        cPlayOnce(&ch.anim, ch.anim.atack, 0.35f, 1.5f, true);
-
-    if (GetKeyPressed(SDLK_J) || GetKeyPressed(SDLK_K))
-    {
-        ch.characterActive = !ch.characterActive;
-        ch.position = (b3Vec3){ 0.0f, 10.0f, 0.0f };
-        ch.verticalSpeed = 0.0f;
-        ch.grounded = false;
-        CameraMode wantedMode = GetKeyPressed(SDLK_K) ? CameraMode_FPS : CameraMode_TPS;
-        wantedMode = ch.characterActive ? wantedMode : CameraMode_Fly;
-        CameraSwitchMode(&g_Camera, wantedMode);
-
-        if (ch.characterActive == false)
-            g_Camera.position = F3Sub(g_Camera.position, F3MulF(g_Camera.front, 6.0f));
-    }
-
-    f32 shift = GetKeyDown(SDLK_LSHIFT) ? -1.0f : 1.0f;
-    const f32 delta = 0.01f;
-    if (GetKeyDown(SDLK_KP_1)) cameraOffset.x  += delta * shift;
-    if (GetKeyDown(SDLK_KP_2)) cameraOffset.y  += delta * shift;
-    if (GetKeyDown(SDLK_KP_3)) cameraOffset.z  += delta * shift;
-    if (GetKeyDown(SDLK_KP_4)) cameraXRotation += delta * shift * MATH_PI;
-}
-
-static void GetHeadBone(Scene* scene, Entity* character)
-{
-    u32 headNode = ch.anim.headJoint;
-    u32 dense = ch.sparse->id;
-    u32 base = dense * MAX_BONES * AnimMtxNumF32;
-
-    if (boneTransfer && boneFence && SDL_QueryGPUFence(g_GPUDevice, boneFence))
-    {
-        void* mapped = SDL_MapGPUTransferBuffer(g_GPUDevice, boneTransfer, false);
-        if (mapped)
-        {
-            ALIGNSIMD u32 buffer[AnimMtxNumF32];
-            MemCopy(buffer, (u32*)mapped + (headNode * AnimMtxNumF32), sizeof(buffer));
-            boneMat = UnpackGPUBone(buffer);
-            mat4x4 bindMatrix = M44Inverse(ch.anim.invBind[ch.anim.headJoint - ch.anim.jointOffset]);
-            boneMat = M44Multiply(bindMatrix, boneMat);
-            boneMat = M44Multiply(boneMat, M44PositionRotationScaleVec(VecZero(), EntityGetRotation(character), VecSet1(characterScale)));
-            SDL_UnmapGPUTransferBuffer(g_GPUDevice, boneTransfer);
-        }
-        SDL_ReleaseGPUFence(g_GPUDevice, boneFence);
-    }
-
-    SDL_GPUCommandBuffer* cmd = SDL_AcquireGPUCommandBuffer(g_GPUDevice);
-    SDL_GPUCopyPass* copyPass = SDL_BeginGPUCopyPass(cmd);
-    SDL_DownloadFromGPUBuffer(copyPass,
-                              &(SDL_GPUBufferRegion){ .buffer = scene->animSystem.boneBuffer, 
-                              .offset = base * sizeof(u32), 
-                              .size   = sizeof(u32) * AnimMtxNumF32 * MAX_BONES },
-                              &(SDL_GPUTransferBufferLocation){ .transfer_buffer = boneTransfer, .offset = 0 });
-    SDL_EndGPUCopyPass(copyPass);
-    boneFence = SDL_SubmitGPUCommandBufferAndAcquireFence(cmd);
-}
-
-void UpdateCharacter()
-{
-    Scene* scene = GetActiveScene();
-    Entity* character = RenderSet_GetEntity(&scene->skinnedSet, ch.characterEntity);
-    if (character == NULL) return;
+    Character* ch = &gp->character;
     f32 dt = GetDeltaTime();
-    GetHeadBone(scene, character);
-    HandleInputs();
-    CharacterMovement(scene, character, dt);
-    cAnimate(scene, &ch, dt);
-    CharacterUI();
+    CharacterMovement(gp->scene, gp, ch, character, dt);
+    cAnimate(gp->scene, ch, dt);
+    CharacterUI(ch, gp);
 
-    Entity* sphereEntity = Scene_GetEntity(scene, sphereID);
+    Entity* sphereEntity = Scene_GetEntity(gp->scene, ch->sphereID);
     if (sphereEntity)
     {
-        v128f neckPos = VecAdd(EntityGetPosV(character), M44ExtractPositionV(boneMat));
+        v128f neckPos = VecAdd(EntityGetPosV(character), M44ExtractPositionV(gp->boneMat));
         // EntitySetPositionV(sphereEntity, neckPos);
         EntitySetScaleV(sphereEntity, VecSet1(0.07f));
         LightGPU light;

@@ -67,7 +67,11 @@ extern "C" {
         #endif
     #endif
     
-    #include <intrin.h>
+    #if defined(_MSC_VER)
+        #include <intrin.h>
+    #else
+        #include <x86intrin.h>
+    #endif
 
     /* If at this point we still haven't determined compiler support for the intrinsics just fall back to __has_include. */
     #if !defined(__GNUC__) && !defined(__clang__) && defined(__has_include)

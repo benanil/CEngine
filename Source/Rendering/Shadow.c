@@ -161,10 +161,11 @@ static void PointLightShadowMaps(SDL_GPUCommandBuffer* cmd)
         LightGPU* light = &g_RenderLights[pointShadows.lightIndices[shadow]];
         u32 baseLayer = light->shadowIndex * POINT_SHADOW_FACE_COUNT;
         f32 cullSphere[4] = { light->positionRadius[0], light->positionRadius[1], light->positionRadius[2], light->positionRadius[3] };
-        DispatchCullDrawArgsCompute(cmd, &g_ActiveScene->skinnedSet, &g_ActiveScene->skinnedBuffers, &g_ActiveScene->skinnedBuffers.draw,
+        Scene* scene = GetActiveScene();
+        DispatchCullDrawArgsCompute(cmd, &scene->skinnedSet, &scene->skinnedBuffers, &scene->skinnedBuffers.draw,
                                     (FrustumPlanes){0}, pointShadows.lightViewProj[baseLayer], CullDrawFlag_CullSphere,
                                     POINT_SHADOW_FACE_COUNT, cullSphere);
-        DispatchCullDrawArgsCompute(cmd, &g_ActiveScene->surfaceSet, &g_ActiveScene->surfaceBuffers, &g_ActiveScene->surfaceBuffers.draw,
+        DispatchCullDrawArgsCompute(cmd, &scene->surfaceSet, &scene->surfaceBuffers, &scene->surfaceBuffers.draw,
                                     (FrustumPlanes){0}, pointShadows.lightViewProj[baseLayer], CullDrawFlag_CullSphere,
                                     POINT_SHADOW_FACE_COUNT, cullSphere);
         CullFoliageShadowCasters(cmd, (FrustumPlanes){0}, pointShadows.lightViewProj[baseLayer],

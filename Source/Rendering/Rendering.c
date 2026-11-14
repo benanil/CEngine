@@ -312,7 +312,7 @@ static void UploadRenderSetStatics(const RenderSet* set, RenderSetBuffers* buffe
     ArenaMark mark = ArenaSave(&GlobalArena);
     PrimitiveGroupGPU* gpuGroups = (PrimitiveGroupGPU*)ArenaAllocAlign(&GlobalArena, set->numGroups * sizeof(PrimitiveGroupGPU), 16u);
     PrimitiveGroupLOD* lodGroups = (PrimitiveGroupLOD*)ArenaAllocAlign(&GlobalArena, set->numGroups * sizeof(PrimitiveGroupLOD), 16u);
-    if (!gpuGroups || !lodGroups) {ArenaRestore(&GlobalArena, mark); return;} 
+    if (!gpuGroups || !lodGroups) { ArenaRestore(&GlobalArena, mark); return;} 
     MemsetZero(gpuGroups, set->numGroups * sizeof(PrimitiveGroupGPU));
     MemsetZero(lodGroups, set->numGroups * sizeof(PrimitiveGroupLOD));
 
@@ -558,7 +558,7 @@ static void UploadRenderSetEntities(RenderSet* set, RenderSetBuffers* buffers) {
 
 void CullScene(SDL_GPUCommandBuffer* cmd, FrustumPlanes planes, mat4x4 viewProj, CullDrawFlags flags)
 {
-    Scene* scene = g_ActiveScene;
+    Scene* scene = GetActiveScene();
     DispatchCullDrawArgsCompute(cmd, &scene->skinnedSet, &scene->skinnedBuffers, &scene->skinnedBuffers.draw, planes, viewProj, flags, 1u, NULL);
     if ((flags & CullDrawFlag_ExcludeTransparent) == 0) 
         DispatchCullDrawArgsCompute(cmd, &scene->surfaceSet, &scene->surfaceBuffers, &scene->transparentDrawBuffers, planes, viewProj, flags | CullDrawFlag_Transparent, 1u, NULL);
@@ -662,10 +662,9 @@ void Render(void)
     bool submitLightVisReadback = false;
     u32 tonemapTilesX = 0u;
     bool tonemapTileHeat = false;
-    
-    if (g_ActiveScene)
+    Scene* scene = GetActiveScene();
+    if (scene)
     {
-        Scene* scene = g_ActiveScene;
         if (scene->renderDataDirty)
         {
             UploadRenderSetStatics(&scene->skinnedSet, &scene->skinnedBuffers);
@@ -717,7 +716,7 @@ void Render(void)
         CullScene(cmd, cameraFrustum, hiZViewProj, cullFlags);
 
         // foliage lives in its own scene (separate render sets/textures), not merged into
-        // g_ActiveScene, so it needs the same per-frame upload+cull step done by hand here.
+        // SceneManager::ActiveScene, so it needs the same per-frame upload+cull step done by hand here.
         // RenderDepth/RenderSceneForward draw it as an extra pass alongside the main scene.
         Scene* foliageScene = Foliage_GetScene();
         if (foliageScene && foliageScene->surfaceSet.numGroups > 0)
@@ -787,7 +786,6 @@ void Render(void)
 
         winstate->hiz_view_proj = viewProj;
         winstate->hiz_valid = true;
-
     }
 
     RenderLines(cmd, &color_load_target, &main_depth_target, viewProj);
@@ -801,7 +799,7 @@ void Render(void)
         final_load_target = MakeLoadedTextureTarget(finalTexture);
     }
 
-    if (g_ActiveScene)
+    if (scene)
         RenderOutline(cmd, &final_load_target, &main_depth_target, viewProj);
 
     RenderGizmo(cmd, &final_load_target, viewProj);
@@ -897,7 +895,7 @@ void DestroyPipeline(void)
     if (g_RenderState.sampler)                  SDL_ReleaseGPUSampler(g_GPUDevice, g_RenderState.sampler);
     if (g_RenderState.hiZSampler)               SDL_ReleaseGPUSampler(g_GPUDevice, g_RenderState.hiZSampler);
     if (g_RenderState.shadowSampler)            SDL_ReleaseGPUSampler(g_GPUDevice, g_RenderState.shadowSampler);
-    if (g_ActiveScene) Scene_Destroy(g_ActiveScene);
+    if (GetActiveScene()) Scene_Destroy(GetActiveScene());
     TextureSystem_DestroyDevice();
     UIDestroy();
     SlugDestroyDemo();

@@ -24,17 +24,19 @@
 #include <box3d/box3d.h>
 #include <SDL3/SDL_stdinc.h>
 
-Scene* g_ActiveScene = NULL;
 extern Camera g_Camera;
 extern SDL_GPUDevice* g_GPUDevice;
 
-static Scene g_OwnedActiveScene;
-static bool  g_OwnedActiveSceneInit;
-static char  g_ActiveScenePath[512];
+SceneManager g_SceneManager;
+
+SceneManager* GetSceneManager()
+{
+    return &g_SceneManager;
+}
 
 const char* GetActiveScenePath()
 {
-    return g_ActiveScenePath;
+    return g_SceneManager.ActiveScenePath;
 }
 
 void SceneTerrainPath(const char* scenePath, char* out, u32 outSize)
@@ -88,6 +90,12 @@ static void Scene_StampGroupBundle(RenderSet* set, u32 renderIdx, u32 sceneIdx)
         set->primitiveGroups[range.start + g].bundleIdx = (u16)sceneIdx;
 }
 
+void SceneManager_Init()
+{
+    MemsetZero(&g_SceneManager, sizeof(SceneManager));
+    g_SceneManager.BundleCache = HMCreate(128, sizeof(BundleCacheEntry));
+}
+
 void Scene_Init(Scene* scene)
 {
     MemsetZero(scene, sizeof(*scene));
@@ -109,11 +117,9 @@ void Scene_Init(Scene* scene)
     scene->bundleRefs     = (SceneBundleRef*)AllocZeroTLSF(MAX_SCENE_BUNDLES, sizeof(SceneBundleRef));
 }
 
-extern void BeforeDestroySceneCallback(Scene* scene);
-
 void Scene_Destroy(Scene* scene)
 {
-    BeforeDestroySceneCallback(scene);
+    EventInvoke(&g_SceneManager.BeforeDestroyEvent, scene);
     if (scene->physics.buildTask) AsyncWait(scene->physics.buildTask);
     Scene_DestroyPhysics(scene);
     Scene_Deactivate(scene);
@@ -132,10 +138,10 @@ void Scene_Destroy(Scene* scene)
     if (scene->materialSlots) DeAllocTLSF(scene->materialSlots);
     if (scene->usedBundleBits)   DeAllocTLSF(scene->usedBundleBits);
 
-    if (scene == &g_OwnedActiveScene)
+    if (scene == &g_SceneManager.OwnedActiveScene)
     {
-        g_OwnedActiveSceneInit = false;
-        g_ActiveScenePath[0] = '\0';
+        g_SceneManager.OwnedActiveSceneInit = false;
+        g_SceneManager.ActiveScenePath[0] = '\0';
     }
     MemsetZero(scene, sizeof(Scene));
     // render set cpu allocations stay, consistent with the rest of the engine teardown
@@ -143,18 +149,18 @@ void Scene_Destroy(Scene* scene)
 
 Scene* Scene_NewActive(void)
 {
-    if (g_OwnedActiveSceneInit)
+    if (g_SceneManager.OwnedActiveSceneInit)
     {
         if (g_GPUDevice) SDL_WaitForGPUIdle(g_GPUDevice);
-        Scene_Destroy(&g_OwnedActiveScene);
+        Scene_Destroy(&g_SceneManager.OwnedActiveScene);
     }
-    Scene_Init(&g_OwnedActiveScene);
-    g_OwnedActiveSceneInit = true;
-    g_ActiveScenePath[0] = '\0';
-    Scene_MakeActive(&g_OwnedActiveScene);
+    Scene_Init(&g_SceneManager.OwnedActiveScene);
+    g_SceneManager.OwnedActiveSceneInit = true;
+    g_SceneManager.ActiveScenePath[0] = '\0';
+    Scene_MakeActive(&g_SceneManager.OwnedActiveScene);
     RendererSetLights(NULL, 0u);
     Terrain_DeleteWorld();
-    return &g_OwnedActiveScene;
+    return &g_SceneManager.OwnedActiveScene;
 }
 
 void Scene_Update(float deltaTime)
@@ -166,8 +172,6 @@ void Scene_Update(float deltaTime)
     
     Physics_Update(activeScene, deltaTime);
 }
-
-extern void OpenSceneCallback(const char* path);
 
 Scene* Scene_OpenActive(const char* path, SceneFileData* data)
 {
@@ -186,22 +190,23 @@ Scene* Scene_OpenActive(const char* path, SceneFileData* data)
         AX_ERROR("scene load failed: %s", pathCopy);
         return NULL;
     }
-    MemCopy(g_ActiveScenePath, pathCopy, StringLength(pathCopy) + 1);
-    OpenSceneCallback(path);
+    MemCopy(g_SceneManager.ActiveScenePath, pathCopy, StringLength(pathCopy) + 1);
 
     Terrain_DeleteWorld();
     char terrainPath[512];
     SceneTerrainPath(pathCopy, terrainPath, sizeof(terrainPath));
     Terrain_LoadWorld(terrainPath);
+
+    EventInvoke(&g_SceneManager.OpenEvent, scene);
     return scene;
 }
 
 s32 Scene_SaveActive(void)
 {
     Scene* scene = GetActiveScene();
-    if (!scene || g_ActiveScenePath[0] == '\0') return 0;
-    if (!SceneSerializer_Save(scene, g_ActiveScenePath)) return 0;
-    SceneSaveTerrainSidecar(g_ActiveScenePath);
+    if (!scene || g_SceneManager.ActiveScenePath[0] == '\0') return 0;
+    if (!SceneSerializer_Save(scene, g_SceneManager.ActiveScenePath)) return 0;
+    SceneSaveTerrainSidecar(g_SceneManager.ActiveScenePath);
     return 1;
 }
 
@@ -214,28 +219,28 @@ s32 Scene_SaveActiveAs(const char* path)
     NormalizePath(path, normalized, sizeof(normalized));
     EnsurePath(normalized);
     if (!SceneSerializer_Save(scene, normalized)) return 0;
-    MemCopy(g_ActiveScenePath, normalized, StringLength(normalized) + 1);
-    SceneSaveTerrainSidecar(g_ActiveScenePath);
+    MemCopy(g_SceneManager.ActiveScenePath, normalized, StringLength(normalized) + 1);
+    SceneSaveTerrainSidecar(g_SceneManager.ActiveScenePath);
     return 1;
 }
 
 const char* Scene_GetActivePath(void)
 {
-    return g_ActiveScenePath;
+    return g_SceneManager.ActiveScenePath;
 }
 
 s32 Scene_Activate(Scene* scene)
 {
-    if (g_ActiveScene == scene) return 1;
-    g_ActiveScene = scene;
+    if (g_SceneManager.ActiveScene == scene) return 1;
+    g_SceneManager.ActiveScene = scene;
     scene->renderDataDirty = 1;
     return 1;
 }
 
 void Scene_Deactivate(Scene* scene)
 {
-    if (g_ActiveScene != scene) return;
-    g_ActiveScene = NULL;
+    if (g_SceneManager.ActiveScene != scene) return;
+    g_SceneManager.ActiveScene = NULL;
 }
 
 bool Entity_IsTransparent(const Entity* entity)
@@ -690,11 +695,11 @@ void Scene_SubmitLights(void)
 
 s32 Scene_MakeActive(Scene* scene)
 {
-    if (g_ActiveScene) Scene_Deactivate(g_ActiveScene);
+    if (g_SceneManager.ActiveScene) Scene_Deactivate(g_SceneManager.ActiveScene);
     return Scene_Activate(scene);
 }
 
 Scene* GetActiveScene(void)
 {
-    return g_ActiveScene;
+    return g_SceneManager.ActiveScene;
 }

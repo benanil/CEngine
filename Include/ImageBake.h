@@ -13,4 +13,4 @@ int LoadSceneImages(const char* texturePath, struct Texture_* textures, int numI
 // loads the cached basis images of a gltf into a bundle local staging array
 int LoadBundleImagesFromCache(const char* gltfPath, struct SceneBundle_* bundle, struct Texture_* staging);
 
-#endif IMAGE_BAKE_H
+#endif

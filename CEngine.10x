@@ -375,6 +375,9 @@
 					<File>
 						<Path>Include/ImageBake.h</Path>
 					</File>
+					<File>
+						<Path>Include/Event.h</Path>
+					</File>
 				</Children>
 			</Folder>
 			<Folder>

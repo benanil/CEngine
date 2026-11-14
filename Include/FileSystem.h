@@ -68,7 +68,7 @@ void  AFileRead         (      void* dst , u64 size  , AFile file, s32 alignment
 void  AFileSeek         (      long  offs, AFile file);
 void  AFileWriteF32     (      f32   val , AFile file);
 void  AFileWriteI32     (      s32   val , AFile file);
-void  AFileWrites32     (      AFile file, s64 w, bool newLine); 
+void  AFileWriteInt     (      AFile file, s64 val, bool newLine);
 void  AFileSeekBegin    (      AFile file);
 void  AFileClose        (      AFile file);
 bool  AFileExist        (      AFile file);

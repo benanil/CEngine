@@ -73,8 +73,8 @@ static void WriteProceduralBundle(const SceneBundleRef* ref, AFile file)
     size_t maxRawBytes = Maxu64(sizeof(v128f) * p->numVertices, sizeof(u32) * p->numIndices);
     size_t maxBase64Bytes = 4 * ((maxRawBytes + 2) / 3) + 1;
     char* buffer = AllocTLSF(maxBase64Bytes);
-    AFileWriteInt(file, (u64)p->numVertices, true);
-    AFileWriteInt(file, (u64)p->numIndices , true);
+    AFileWriteInt(file, (s64)p->numVertices, true);
+    AFileWriteInt(file, (s64)p->numIndices , true);
     s32 pathLen = StringLength(ref->path);
     ref->path[pathLen] = '\n';
     AFileWrite(ref->path, pathLen + 1, file, 1);

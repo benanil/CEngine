@@ -26,6 +26,7 @@
 #include "Include/Editor.h"
 #include "Include/JobSystem.h"
 #include "Include/AssetManager.h"
+#include "Source/Gameplay.h"
 #include "Math/Quaternion.h"
 
 static s32 done = 0;
@@ -35,7 +36,6 @@ Camera       g_Camera;
 SDL_Window*  g_SDLWindow;
 
 extern WindowState g_WindowState;
-extern void Gameplay_Update();
 
 static void MainSyncWindowSize(void)
 {
@@ -83,7 +83,8 @@ static SDL_AppResult SDLCALL MainAppInit(void** appstate, int argc, char* argv[]
     EditorConsoleInit();
 
     BasisuSetup();
-
+    SceneManager_Init();
+    Gameplay_Init();
     GraphicsInit(msaa);
     TextureSystem_InitDevice();
     RendererInit();
@@ -158,6 +159,7 @@ static void SDLCALL MainAppQuit(void* appstate, SDL_AppResult result)
 {
     (void)appstate;
     (void)result;
+    Gameplay_Destroy();
     Foliage_Destroy();
     tDestroy();
     Physics_Destroy();

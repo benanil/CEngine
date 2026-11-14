@@ -1,14 +1,25 @@
 #ifndef SCENE_H
 #define SCENE_H
 
+#include <SDL3/SDL_atomic.h>
+
 #include "RenderSet.h"
 #include "TextureSystem.h"
 #include "Animation.h"
 #include "Physics.h"
+#include "Event.h"
+#include "DataStructures/HashMap.h"
 
 #define MAX_SCENE_BUNDLES  1024u
 #define MAX_SCENE_LIGHTS   256u
 #define MAX_THROWN_SPHERES 512u
+
+typedef enum SceneAsyncOp_
+{
+    SceneAsyncOp_None = 0,
+    SceneAsyncOp_ImportMesh,
+    SceneAsyncOp_OpenScene
+} SceneAsyncOp;
 
 // one bundle registered in a scene
 typedef struct SceneBundleRef_
@@ -40,38 +51,6 @@ typedef struct BundleCacheEntry
     int          numBvhNodes;
     int          numBvhTris;
 } BundleCacheEntry;
-
-// a scene owns one render set for skinned meshes, one for static geometry, their gpu
-// buffers, its own texture system and animation system. all gpu resources stay resident,
-// activating and deactivating scenes only changes the active list
-typedef struct Scene_
-{
-    RenderSet        skinnedSet;
-    RenderSet        surfaceSet;
-    RenderSetBuffers skinnedBuffers;
-    RenderSetBuffers surfaceBuffers;
-    DrawBuffers      transparentDrawBuffers;
-
-    TextureSystem    textureSystem;
-    AnimationSystem  animSystem;
-    PhysicsSystem    physics;
-
-    bool isFoliageScene;
-    f32  ambientBoost; // default 1.0f, max 4.0f
-
-    SceneBundleRef*  bundleRefs;   // fixed MAX_SCENE_BUNDLES allocation. bundle indices are stable
-                                   // handles, removing one never shifts the others
-    u64*             usedBundleBits;  // MAX_SCENE_BUNDLES bits, 1 means occupied
-    u64*             materialSlots;// MAX_GPU_MATERIALS bits, 1 means occupied
-
-    LightGPU*        lights;    // tlsf, MAX_SCENE_LIGHTS, authored lights pushed by Scene_SubmitLights
-    u32              numLights;
-
-    u32 numBundles;      // watermark: highest used bundle slot + 1, slots below may be empty
-    u32 numMaterials;    // material slot watermark, offsets stay stable while occupied
-    u32 renderDataDirty; // static render set buffers need re-upload, consumed by Render
-    u32 texturesBaked;   // pages came from a baked atlas, packer state is unusable until a repack
-} Scene;
 
 // One staged bundle load: mesh acquire (BundleCacheAcquire) plus cached-texture decode/GPU
 // upload (LoadBundleImagesFromCache). Touches only the bundle cache and this stage's own
@@ -138,25 +117,18 @@ typedef struct SceneFileData_
     u16* subNodes[2];
 } SceneFileData;
 
-typedef enum SceneAsyncOp_
-{
-    SceneAsyncOp_None = 0,
-    SceneAsyncOp_ImportMesh,
-    SceneAsyncOp_OpenScene
-} SceneAsyncOp;
 
 typedef struct SceneAsyncRequest_ SceneAsyncRequest;
-
-typedef void (*SceneAsyncRequestCallback)(SceneAsyncRequest* request);
+typedef void (*SceneAsyncRequestCallback)( SceneAsyncRequest* request);
 
 struct SceneAsyncRequest_
 {
     SceneAsyncOp op;
     SDL_AtomicInt done;
-    Scene* scene;
     SceneFileData* sceneFileData;
     SceneBundleStage* sceneBundleStage;
     SceneAsyncRequestCallback callback;
+    void*  context; // caller's data, nullable
     s32    result;
     u32    bundleIdx;
     v128f  position;
@@ -164,15 +136,61 @@ struct SceneAsyncRequest_
     v128f  scale;
     char   path[512];
 };
+
+// a scene owns one render set for skinned meshes, one for static geometry, their gpu
+// buffers, its own texture system and animation system. all gpu resources stay resident,
+// activating and deactivating scenes only changes the active list
+typedef struct Scene_
+{
+    RenderSet        skinnedSet;
+    RenderSet        surfaceSet;
+    RenderSetBuffers skinnedBuffers;
+    RenderSetBuffers surfaceBuffers;
+    DrawBuffers      transparentDrawBuffers;
+
+    TextureSystem    textureSystem;
+    AnimationSystem  animSystem;
+    PhysicsSystem    physics;
+
+    bool isFoliageScene;
+    f32  ambientBoost; // default 1.0f, max 4.0f
+
+    SceneBundleRef*  bundleRefs;   // fixed MAX_SCENE_BUNDLES allocation. bundle indices are stable
+                                   // handles, removing one never shifts the others
+    u64*             usedBundleBits;  // MAX_SCENE_BUNDLES bits, 1 means occupied
+    u64*             materialSlots;// MAX_GPU_MATERIALS bits, 1 means occupied
+
+    LightGPU*        lights;    // tlsf, MAX_SCENE_LIGHTS, authored lights pushed by Scene_SubmitLights
+    u32              numLights;
+
+    u32 numBundles;      // watermark: highest used bundle slot + 1, slots below may be empty
+    u32 numMaterials;    // material slot watermark, offsets stay stable while occupied
+    u32 renderDataDirty; // static render set buffers need re-upload, consumed by Render
+    u32 texturesBaked;   // pages came from a baked atlas, packer state is unusable until a repack
+} Scene;
+
+typedef struct SceneManager_
+{
+    Event  OpenEvent;
+    Event  BeforeDestroyEvent;
+    
+    HashMap      BundleCache;
+    SDL_SpinLock BundleCacheLock;
+    
+    SceneAsyncRequest* asyncRequest;
+    Scene* ActiveScene;
+    Scene  OwnedActiveScene;
+    bool   OwnedActiveSceneInit;
+    char   ActiveScenePath[512];
+} SceneManager;
+
 typedef struct SceneStageRangeCtx_
 {
     SceneBundleStage* stages;
     bool baked;
 } SceneStageRangeCtx;
 
-// scenes the renderer draws each frame, in activation order
-extern Scene* g_ActiveScene;
-
+void SceneManager_Init();
 void Scene_Init(Scene* scene);
 void Scene_Destroy(Scene* scene);
 
@@ -199,6 +217,8 @@ s32 Scene_MakeActive(Scene* scene);
 Scene* GetActiveScene(void);
 
 const char* GetActiveScenePath();
+
+SceneManager* GetSceneManager();
 
 void SceneTerrainPath(const char* scenePath, char* out, u32 outSize);
 
@@ -282,7 +302,7 @@ void Scene_ClearEntities(Scene* scene);
 // valid while the bundle is referenced; never hold the entry pointer itself, the map relocates it.
 bool FindCacheForSceneBundle(const Scene* scene, u32 bundleIdx, BundleCacheEntry* out);
 
-bool SceneAsyncBegin(SceneAsyncOp op, const char* path, const char* taskName, SceneAsyncRequestCallback callback);
+bool SceneAsyncBegin(SceneAsyncOp op, const char* path, const char* taskName, SceneAsyncRequestCallback callback, void* context);
 
 static inline bool Scene_SparseDataIsSkinned(const Scene* scene, const SparseData* sparse)
 {
@@ -319,6 +339,7 @@ static inline Entity* Scene_GetEntity(const Scene* scene, EntityID id)
 static inline void Scene_RemoveEntityRec(Scene* scene, RenderSet* set, EntityID id)
 {
     u32 sparseId = EntityIDSparse(id);
+    ASSERT(sparseId < set->maxEntities);
     const SparseData* sparse = set->sparseData + sparseId;
     for (s32 c = 0; c < sparse->subNodeCount; c++)
     {
@@ -340,6 +361,7 @@ static inline void Scene_AddPosRec(Scene* scene, Entity* entity, v128f offset)
     bool skinned = Scene_EntityIsSkinned(scene, entity);
     RenderSet* set = skinned ? &scene->skinnedSet : &scene->surfaceSet;
     u32 sparseId = EntityGetSparseID(entity);
+    ASSERT(sparseId < set->maxEntities);
     const SparseData* sparse = set->sparseData + sparseId;
     EntityAddPositionV(&set->entities[sparse->id], offset);
     if (!skinned) Entity_SyncPhysicsBody(scene, entity);
@@ -356,6 +378,7 @@ static inline void Scene_RotateRec(Scene* scene, Entity* entity, Quaternion rota
 {
     bool skinned = Scene_EntityIsSkinned(scene, entity);
     u32 sparseId = EntityGetSparseID(entity);
+    ASSERT(sparseId < set->maxEntities);
     RenderSet* set = skinned ? &scene->skinnedSet : &scene->surfaceSet;
     EntityAddRotation(entity, rotation);
     if (!skinned) Entity_SyncPhysicsBody(scene, entity);
@@ -374,6 +397,7 @@ static inline void Scene_ScaleRec(Scene* scene, Entity* entity, v128f scale, boo
     bool skinned = Scene_EntityIsSkinned(scene, entity);
     u32 sparseId = EntityGetSparseID(entity);
     RenderSet* set = skinned ? &scene->skinnedSet : &scene->surfaceSet;
+    ASSERT(sparseId < set->maxEntities);
     if (!root) EntityMulScaleV(entity, scale);
     if (!skinned) Entity_SyncPhysicsBody(scene, entity);
     
