@@ -49,30 +49,31 @@ purefn u64 MurmurHashInverse(u64 x) {
 // todo: find way of random seed generation
 #if !defined(_MSCVER) && !defined(__ANDROID__) && (defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86))
 #include <immintrin.h> // intrin.h is included defaultly with msvc
-#else
-#include <time.h>
 #endif
 
+static inline u64 RandomReadCounter(void)
+{
+    #if defined(_M_ARM64)
+    return _ReadStatusReg(ARM64_CNTVCT);
+    #elif defined(__aarch64__)
+    u64 r;
+    __asm__ volatile("mrs %0, cntvct_el0" : "=r"(r));
+    return r;
+    #elif defined(_M_X64) || defined(__x86_64__) || defined(_M_IX86) || defined(__i386__)
+    return __rdtsc();
+    #endif
+}
 // these random seeds waay more slower than PCG and MTwister but good choice for random seed
 // also seeds are cryptographic 
-purefn u32 Seed32() {
-    u32 result;
-    #if !defined(__ANDROID__) && (defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86))
-    _rdseed32_step(&result); // or faster __rdtsc
-    #else
-    result = WangHash((u32)time(NULL));
-    #endif
-    return result;
+static inline u32 Seed32(void)
+{
+    u64 t = RandomReadCounter();
+    return WangHash((u32)(t ^ (t >> 32)));
 }
 
-purefn u64 Seed64() {
-    u64 result;
-    #if !defined(__ANDROID__) && (defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86))
-    _rdseed64_step(&result);// or faster __rdtsc
-    #else
-    result = MurmurHash((u64)time(NULL));
-    #endif
-    return result;
+static inline u64 Seed64(void)
+{
+    return MurmurHash(RandomReadCounter());
 }
 
 purefn f32 NextFloat01(u32 next) {
