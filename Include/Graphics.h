@@ -242,6 +242,7 @@ typedef struct WindowState
     SDL_GPUTexture* tex_shadow_depth, *tex_shadow_color;
     SDL_GPUTexture* tex_point_shadow_depth, *tex_point_shadow_color;
     SDL_GPUTexture* tex_spot_shadow_depth, *tex_spot_shadow_color;
+    SDL_Window* window;
     u32 prev_width, prev_height;     // swapchain size, the ui renders at this resolution
     u32 render_width, render_height; // scene texture size, prev_* scaled by renderScale
     u32 bloom_width, bloom_height, bloom_mip_count;
@@ -359,7 +360,7 @@ void GeometryHeapFree(GeometryBufferKind kind, void* raw);
 // gpu buffers exist are kept). implemented in Rendering.c
 void Rendering_QueueGeometryUpload(GeometryBufferKind kind, u32 begin, u32 end);
 
-void GraphicsInit(bool msaa);
+void GraphicsInit(bool msaa, SDL_Window* window, s32 width, s32 height);
 
 // Applies g_RenderSettings.msaaSamples to the scene raster targets. Returns true when
 // the active sample count changed and scene pipelines/textures must be recreated.

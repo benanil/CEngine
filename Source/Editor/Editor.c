@@ -288,74 +288,6 @@ static void WindowTestUI(void)
 
 static u32 editorQualityIndex = 2u; // High matches the startup defaults
 
-// performance presets, artistic settings (sun, exposure, gamma) stay untouched.
-// the lod modifier scales the projected screen size, higher keeps detailed lods longer
-static void EditorApplyQualityPreset(RenderSettings* settings, u32 quality)
-{
-    settings->enableOcclusion           = true;
-    settings->enableLightFrustumCulling = true;
-    settings->enableLightOcclusionCulling = true;
-    switch (quality)
-    {
-    case 0: // Low
-        settings->enableHBAO            = false;
-        settings->enableContactShadows  = false;
-        settings->enableMLAA            = false;
-        settings->enableBloom           = false;
-        settings->msaaSamples           = 1u;
-        settings->enableLocalLights     = false;
-        settings->lodDistanceModifier   = 0.5f;
-        settings->godRaySamples         = 16.0f;
-        settings->hbaoDirections        = 4.0f;
-        settings->shadowMaxDistance     = SHADOW_MAX_DISTANCE * 0.35f;
-        settings->maxVisiblePointShadows = 0.0f;
-        settings->maxVisibleSpotShadows  = 0.0f;
-        break;
-    case 1: // Medium
-        settings->enableHBAO            = true;
-        settings->enableContactShadows  = true;
-        settings->enableMLAA            = true;
-        settings->enableBloom           = true;
-        settings->msaaSamples           = 2u;
-        settings->enableLocalLights     = true;
-        settings->lodDistanceModifier   = 0.75f;
-        settings->godRaySamples         = 32.0f;
-        settings->hbaoDirections        = 4.0f;
-        settings->shadowMaxDistance     = SHADOW_MAX_DISTANCE * 0.6f;
-        settings->maxVisiblePointShadows = 4.0f;
-        settings->maxVisibleSpotShadows  = 4.0f;
-        break;
-    case 2: // High, matches the startup defaults
-        settings->enableHBAO            = true;
-        settings->enableContactShadows  = true;
-        settings->enableMLAA            = true;
-        settings->enableBloom           = true;
-        settings->msaaSamples           = 4u;
-        settings->enableLocalLights     = true;
-        settings->lodDistanceModifier   = 1.0f;
-        settings->godRaySamples         = 48.0f;
-        settings->hbaoDirections        = 8.0f;
-        settings->shadowMaxDistance     = SHADOW_MAX_DISTANCE;
-        settings->maxVisiblePointShadows = 8.0f;
-        settings->maxVisibleSpotShadows  = 8.0f;
-        break;
-    case 3: // Ultra
-        settings->enableHBAO            = true;
-        settings->enableContactShadows  = true;
-        settings->enableMLAA            = true;
-        settings->enableBloom           = true;
-        settings->msaaSamples           = 4u;
-        settings->enableLocalLights     = true;
-        settings->lodDistanceModifier   = 1.5f;
-        settings->godRaySamples         = 64.0f;
-        settings->hbaoDirections        = 12.0f;
-        settings->shadowMaxDistance     = SHADOW_MAX_DISTANCE;
-        settings->maxVisiblePointShadows = (f32)POINT_SHADOW_MAX_LIGHTS;
-        settings->maxVisibleSpotShadows  = (f32)SPOT_SHADOW_MAX_LIGHTS;
-        break;
-    }
-}
-
 static void DrawGraphicsWindow()
 {
     RenderSettings* settings = &g_RenderSettings;
@@ -384,7 +316,7 @@ static void DrawGraphicsWindow()
                 UISectionHeader("Features");
                 static const char* qualityOptions[] = { "Low", "Medium", "High", "Ultra" };
                 if (UIDropdown("Quality", qualityOptions, 4u, &editorQualityIndex))
-                    EditorApplyQualityPreset(settings, editorQualityIndex);
+                    ApplyQualityPreset(editorQualityIndex);
                 UICheckbox("Hi-Z occlusion culling", &settings->enableOcclusion);
                 UICheckbox("HBAO ambient occlusion", &settings->enableHBAO);
                 UICheckbox("Contact shadows", &settings->enableContactShadows);
@@ -476,56 +408,7 @@ static void DrawGraphicsWindow()
             if (UIButton("Reset", (Clay_Dimensions){ 100.0f, 34.0f }, false))
             {
                 editorQualityIndex = 2u; // defaults are the High preset
-                *settings = (RenderSettings){
-                    .enableOcclusion = true,
-                    .enableHBAO = true,
-                    .enableContactShadows = true,
-                    .enableMLAA = true,
-                    .enableBloom = true,
-                    .msaaSamples = 4u,
-                    .showMLAAEdges = false,
-                    .enableLocalLights = true,
-                    .enableLightFrustumCulling = true,
-                    .enableLightOcclusionCulling = true,
-                    .showLightRects = false,
-                    .hbaoRadius = 4.0f,
-                    .hbaoBias = 0.333f,
-                    .hbaoIntensity = 1.5f,
-                    .hbaoPower = 2.0f,
-                    .SSSBilinearThreshold = 0.08f,
-                    .SSSThickness = 0.005f,
-                    .SSSIntensity = 0.25f,
-                    .SSSContrast  = 4.0f,
-                    .mlaaThreshold = 0.08f,
-                    .bloomThreshold = 1.0f,
-                    .bloomKnee = 0.5f,
-                    .bloomClamp = 64.0f,
-                    .bloomIntensity = 0.08f,
-                    .bloomRadius = 1.0f,
-                    .exposure = 1.0f,
-                    .gamma = 2.2f,
-                    .godRayIntensity = 2.5f,
-                    .godRaySamples = 64.0f,
-                    .enableHeightFog = true,
-                    .fogColor = { 0.62f, 0.70f, 0.80f },
-                    .fogDensity = 0.05f,
-                    .fogHeight = -20.0f,
-                    .fogFalloff = 0.01f,
-                    .fogSunScatter = 0.6f,
-                    .hbaoDirections = 8.0f,
-                    .lodDistanceModifier = 1.0f,
-                    .renderScale = 1.0f,
-                    .sunYaw = 116.565f,
-                    .sunPitch = 63.435f,
-                    .shadowMaxDistance       = 90.0,
-                    .shadowCameraDistance    = SHADOW_CAMERA_DISTANCE,
-                    .shadowCasterDepthMargin = SHADOW_CASTER_DEPTH_MARGIN,
-                    .shadowCascadeOverlap    = SHADOW_CASCADE_OVERLAP,
-                    .shadowSplitNearDistance = SHADOW_SPLIT_NEAR_DISTANCE,
-                    .shadowPSSMLambda        = SHADOW_PSSM_LAMBDA,
-                    .maxVisiblePointShadows  = (f32)POINT_SHADOW_MAX_LIGHTS,
-                    .maxVisibleSpotShadows   = (f32)SPOT_SHADOW_MAX_LIGHTS
-                };
+                *settings = RenderSettingsDefaults();
             }
         }
         UIEndWindow();

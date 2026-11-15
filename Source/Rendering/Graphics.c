@@ -238,7 +238,7 @@ u32 GraphicsGetActiveMSAASamples(void)
     return SampleCountValue(g_RenderState.sceneSampleCount);
 }
 
-void GraphicsInit(bool msaa)
+void GraphicsInit(bool msaa, SDL_Window* window, s32 width, s32 height)
 {
 #if defined(PLATFORM_MACOSX)
     SDL_PropertiesID props = SDL_CreateProperties();
@@ -296,7 +296,10 @@ void GraphicsInit(bool msaa)
     winstate->tex_spot_shadow_depth  = CreateTexture2D(SPOT_SHADOW_SIZE , SPOT_SHADOW_SIZE , TEX_FMT_D32_FLT, TEX_DEPTH_STENCIL, TEX_SMP_CNT1, 1, "Spot Shadow Depth Texture");
     winstate->tex_point_shadow_color = CreateTexture2DArray(POINT_SHADOW_ATLAS_WIDTH, POINT_SHADOW_SIZE, POINT_SHADOW_MAX_LIGHTS, TEX_FMT_R32_FLT, TEX_COLOR_TARGET | TEX_SAMPLER, "Point Shadow Depth Texture");
     winstate->tex_spot_shadow_color  = CreateTexture2DArray(SPOT_SHADOW_SIZE , SPOT_SHADOW_SIZE , POINT_SHADOW_LAYER_COUNT, TEX_FMT_R32_FLT, TEX_COLOR_TARGET | TEX_SAMPLER, "Spot Shadow Depth Texture");
+    winstate->window = window;
     wGetWindowSize((s32*)&winstate->prev_width, (s32*)&winstate->prev_height);
+    // try this for half refresh rate SDL_SimulateRenderVSync
+    SDL_SetGPUSwapchainParameters(g_GPUDevice, window, SDL_GPU_SWAPCHAINCOMPOSITION_SDR, SDL_GPU_PRESENTMODE_VSYNC);
 
     g_RenderState.skyNoise3D = CreateNoise3DTexture(64u);
     // 64-byte base alignment keeps every power-of-two element stride aligned in the

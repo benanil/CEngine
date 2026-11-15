@@ -76,7 +76,6 @@ static SDL_AppResult SDLCALL MainAppInit(void** appstate, int argc, char* argv[]
         AX_ERROR("creating window failed!");
         return SDL_APP_FAILURE;
     }
-
     InitGlobalArena();
     PlatformInit();
 
@@ -84,8 +83,8 @@ static SDL_AppResult SDLCALL MainAppInit(void** appstate, int argc, char* argv[]
 
     BasisuSetup();
     SceneManager_Init();
+    GraphicsInit(msaa, window, width, height);
     Gameplay_Init();
-    GraphicsInit(msaa);
     TextureSystem_InitDevice();
     RendererInit();
     EditorInit();
@@ -118,7 +117,7 @@ static void MainLoopTick(void)
         EditorPickingUpdate(&g_Camera);
 
     tUpdate();
-    Gameplay_Update();
+    Gameplay_Update(PlatformCtx.DeltaTime);
     GraphicsEditorUI();
     DemoScene_Update(PlatformCtx.DeltaTime);
     Scene_Update(PlatformCtx.DeltaTime);

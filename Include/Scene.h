@@ -378,8 +378,8 @@ static inline void Scene_RotateRec(Scene* scene, Entity* entity, Quaternion rota
 {
     bool skinned = Scene_EntityIsSkinned(scene, entity);
     u32 sparseId = EntityGetSparseID(entity);
-    ASSERT(sparseId < set->maxEntities);
     RenderSet* set = skinned ? &scene->skinnedSet : &scene->surfaceSet;
+    ASSERT(sparseId < set->maxEntities);
     EntityAddRotation(entity, rotation);
     if (!skinned) Entity_SyncPhysicsBody(scene, entity);
     

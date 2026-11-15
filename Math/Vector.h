@@ -58,6 +58,7 @@ purefn f32 F3Len  (float3 a)              { return Vec3LenfV(Vec3Load(&a.x)); }
 purefn f32 I2Len  (int2 a)                { return Sqrtf(a.x * a.x + a.y * a.y); }
 purefn f32 I3Len  (int3 a)                { return Sqrtf(a.x * a.x + a.y * a.y + a.z * a.z); }
 purefn f32 I2LenSq(int2 a)                { return (a.x * a.x + a.y * a.y); }
+purefn f32 F3LenSq(float3 a)              { return (a.x * a.x + a.y * a.y + a.z * a.z); }
 purefn float2 F2Norm (float2 a)           { return F2DivF(a, F2Len(a)); }
 purefn float2 F2NormSafe(float2 a)        { return F2DivF(a, F2Len(a) + MATH_Epsilon); }
 purefn float2 F2Frac (float2 a)           { return (float2){ Fractf32(a.x)   , Fractf32(a.y)    }; }

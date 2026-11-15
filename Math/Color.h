@@ -76,37 +76,38 @@ purefn u32 PackColor4PtrToUint(const f32* c) {
     return PackColor4PtrToUintV(VecLoad(c));
 }
 
-forceinline void UnpackColor3Uint(u32 color, f32* colorf) {
-    const f32 tof1 = 1.0f / 255.0f;
-    colorf[0] = (f32)(color >> 0  & 0xFF) * tof1;
-    colorf[1] = (f32)(color >> 8  & 0xFF) * tof1;
-    colorf[2] = (f32)(color >> 16 & 0xFF) * tof1;
-}
-
-forceinline void UnpackColor4Uint(u32 color, f32* colorf) {
-    const f32 tof1 = 1.0f / 255.0f;
-    colorf[0] = (f32)(color >> 0  & 0xFF) * tof1;
-    colorf[1] = (f32)(color >> 8  & 0xFF) * tof1;
-    colorf[2] = (f32)(color >> 16 & 0xFF) * tof1;
-    colorf[3] = (f32)(color >> 24) * tof1;
+forceinline v128f UnpackColor4Uint(u32 color) {
+    v128u i = VeciSrl(VeciSet1(color), VeciSetR(0, 8, 16, 24));
+    v128f f = VecU32ToF32(VeciAnd(i, VeciSet1(0xFF)));
+    return VecMulf(f, 1.0f / 255.0f);
 }
 
 purefn u32 MultiplyU32Colors(u32 a, u32 b)
 {
-    u32 result = 0u;
-    result |= ((a & 0xffu) * (b & 0xffu)) >> 8u;
-    result |= ((((a >> 8u) & 0xffu) * ((b >> 8u) & 0xffu)) >> 8u) << 8u;
-    result |= ((((a >> 16u) & 0xffu) * ((b >> 16u) & 0xffu)) >> 8u) << 16u;
-    return result;
+    const v128u sv = VeciSetR(0, 8, 16, 24);
+    const v128u m = VeciSet1(0xFF);
+    v128u av = VeciSrl(VeciSet1(a), sv);
+    v128u bv = VeciSrl(VeciSet1(b), sv);
+    v128u rv = VeciMul(VeciAnd(av, m), VeciAnd(bv, m));
+    rv = VeciSrl32(rv, 8u);
+    rv = VeciSll(rv, VeciSetR(0, 8, 16, 24));
+    rv = VeciOr(rv, VecSwapHalvesU(rv));
+    rv = VeciOr(rv, VecSwapPairsU(rv));
+    return VeciGetX(rv);
 }
 
 purefn u32 MixU32Colors(u32 a, u32 b)
 {
-    u32 result = 0u;
-    result |= ((a & 0xffu) + (b & 0xffu)) >> 1u;
-    result |= ((((a >> 8u) & 0xffu) + ((b >> 8u) & 0xffu)) >> 1u) << 8u;
-    result |= ((((a >> 16u) & 0xffu) + ((b >> 16u) & 0xffu)) >> 1u) << 16u;
-    return result;
+    const v128u sv = VeciSetR(0, 8, 16, 24);
+    const v128u mv = VeciSet1(0xFF);
+    v128u av = VeciSrl(VeciSet1(a), sv);
+    v128u bv = VeciSrl(VeciSet1(b), sv);
+    v128u rv = VeciAdd(VeciAnd(av, mv), VeciAnd(bv, mv));
+    rv = VeciSll(VeciSrl32(rv, 1u), sv);
+    rv = VeciSll(rv, VeciSetR(0, 8, 16, 24));
+    rv = VeciOr(rv, VecSwapHalvesU(rv));
+    rv = VeciOr(rv, VecSwapPairsU(rv));
+    return VeciGetX(rv);
 }
 
 purefn float3 HUEToRGB(f32 h) {

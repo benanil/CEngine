@@ -2,11 +2,16 @@
 #include "Gameplay.h"
 
 #include <box3d/box3d.h>
+#include <SDL3/SDL_gpu.h>
 
 #include "Include/Scene.h"
 #include "Include/Terrain.h"
 #include "Include/Camera.h"
 #include "Include/BVH.h"
+#include "Include/AssetManager.h"
+
+#include "Include/UIWindow.h"
+#include "Include/UIRenderer.h"
 
 extern Camera g_Camera;
 extern SDL_GPUDevice* g_GPUDevice;
@@ -25,18 +30,23 @@ static void OnCharacterLoaded(SceneAsyncRequest* request)
     SpawnCharacter(ch);
 }
 
-static void OnBeforeDestroyScene(void* sc, void* scene)
+static void OnBeforeDestroyScene(void* ctx, void* scene)
 {
-    Character* ch = (Character*)sc;
-    if (ch->entity != INVALID_ENTITY) Scene_RemoveEntity(GetActiveScene(), ch->entity);
-    if (ch->sphereID != INVALID_ENTITY) Scene_RemoveEntity(GetActiveScene(), ch->sphereID);
-    ch->entity = ch->sphereID = INVALID_ENTITY;
+    Gameplay* gp = (Gameplay*)ctx;
+    if (gp->character.entity != INVALID_ENTITY) Scene_RemoveEntity((Scene*)scene, gp->character.entity);
+    if (gp->sphereID != INVALID_ENTITY) Scene_RemoveEntity((Scene*)scene, gp->sphereID);
+    gp->character.entity = INVALID_ENTITY; 
+    gp->sphereID = INVALID_ENTITY;
 }
 
 static void OnOpenScene(void* g, void* sc)
 {
     Gameplay* gp = (Gameplay*)g;
     gp->scene = (Scene*)sc;
+    u32 sphereBundle = Scene_AddBundleCached(gp->scene, GetUnitRock(), "Rock");
+    gp->sphereID = EntityIDFromSparseData(gp->scene,
+                        Scene_Spawn(gp->scene, sphereBundle, VecZero(), QIdentity(), VecOne(), EntityFlags_None));
+
     SceneAsyncBegin(SceneAsyncOp_ImportMesh, "Assets/Meshes/Character/Character.gltf",
                     "LoadCharacter", OnCharacterLoaded, gp);
 }
@@ -104,11 +114,11 @@ static void GetBones(Scene* scene, Character* ch, Entity* character)
 
 static void HandleInputs(Character* ch, Gameplay* gp)
 {
-    if (GetKeyPressed(SDLK_SPACE) || GetGamepadButtonPressed(SDL_GAMEPAD_BUTTON_SOUTH)) 
+    if (GetKeyPressed(SDLK_SPACE) || GetGamepadButtonPressed(SDL_GAMEPAD_BUTTON_SOUTH))
         ch->anim.jumpRequested = true;
 
     if (GetMouseDown(MouseButton_Left) || GetGamepadButton(SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER))
-        cPlayOnce(&ch->anim, ch->anim.atack, 0.35f, 1.5f, true);
+        cPlayOnce(&ch->anim, ch->anim.atack, 0.35f, 2.0f, true);
 
     if (GetKeyPressed(SDLK_J) || GetKeyPressed(SDLK_K))
     {
@@ -132,6 +142,51 @@ static void HandleInputs(Character* ch, Gameplay* gp)
     if (GetKeyDown(SDLK_KP_4)) gp->cameraXRotation += delta * shift * MATH_PI;
 }
 
+static void CharacterUI(Character* ch, Gameplay* gp)
+{
+    static bool open = true;
+    if (UIBeginWindowId(CLAY_ID("Character"), "Character",
+                        (float2) { 1400.0f, 40.0f }, (float2) { 500.0f, 260.0f }, 
+                        &open, UIWindowFlags_NoClose))
+    {
+        UIText("Character Settings");
+        UIEditFloat("speed", &ch->speed, 0.0f, 100.0f, 0.2f, 2);
+        UIEditFloat("jump force", &ch->jumpSpeed, 0.0f, 100.0f, 0.2f, 2);
+        UIEditFloatN("cameraOffset", &gp->cameraOffset.x, 3, -4.0f, 4.0f, 3);
+        UIEditFloat("cameraXRot", &gp->cameraXRotation, 0.0f, 100.0f, 0.1f, 3);
+        UIReadonlyRow(CLAY_ID("CharVelocityR"), "velocity", UIFmtV3(&ch->velocity.x, 3));
+        f32 sqr = b3LengthSquared(ch->velocity);
+        UIReadonlyRow(CLAY_ID("CharSpeedR"), "speed", UIFmtF(Sqrtf(sqr + 0.001f), 3));
+
+        UIEndWindow();
+    }
+}
+
+static void DebugSphere(Gameplay* gp, Entity* character)
+{
+    Entity* sphereEntity = Scene_GetEntity(gp->scene, gp->sphereID);
+    if (sphereEntity)
+    {
+        v128f neckPos = VecAdd(EntityGetPosV(character), M44ExtractPositionV(gp->boneMat));
+        // EntitySetPositionV(sphereEntity, neckPos);
+        EntitySetScaleV(sphereEntity, VecSet1(0.07f));
+        LightGPU light;
+        MemsetZero(&light, sizeof(LightGPU));
+        neckPos = VecAddf(neckPos, 3.4f);
+        Vec3Store(light.positionRadius, neckPos);
+        light.positionRadius[3] = 7.0f;
+        f32 directionCone[4] = { 0.0f, -1.0f, 0.0f, 0.0f };
+        f32 color[3] = { 1.0f, 0.9f, 0.75f };
+        LightGPU_SetDirectionCone(&light, directionCone);
+        LightGPU_SetColor3(&light, color);
+        LightGPU_SetIntensity(&light, 16.5f);
+        light.type = LightType_Point;
+        light.flags = LIGHT_FLAG_SHADOWED;
+        light.shadowIndex = 0;
+        RendererSetLights(&light, 1);
+    }
+}
+
 void Gameplay_Init()
 {
     g_Gameplay.gravity            = -25.0f;
@@ -142,12 +197,13 @@ void Gameplay_Init()
     g_Gameplay.cameraXRotation    = MATH_HalfPI;
     g_Gameplay.boneTransfer       = NULL;
     g_Gameplay.boneFence          = NULL;
+    g_Gameplay.groundTolerance    = 0.25f;
+    g_Gameplay.sphereID           = INVALID_ENTITY;
     g_Gameplay.character.scale    = 1.8f;
-    g_Gameplay.character.sphereID = INVALID_ENTITY;
     g_Gameplay.character.entity   = INVALID_ENTITY;
     SceneManager* sm = GetSceneManager();
     EventAdd(&sm->OpenEvent, OnOpenScene, &g_Gameplay);
-    EventAdd(&sm->BeforeDestroyEvent, OnBeforeDestroyScene, &g_Gameplay.character);
+    EventAdd(&sm->BeforeDestroyEvent, OnBeforeDestroyScene, &g_Gameplay);
     
     g_Gameplay.boneTransfer = SDL_CreateGPUTransferBuffer(g_GPUDevice, &(SDL_GPUTransferBufferCreateInfo){
         .usage = SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD,
@@ -155,13 +211,21 @@ void Gameplay_Init()
     });
 }
 
-void Gameplay_Update()
+void Gameplay_Update(f32 dt)
 {
     UpdatePicking();
     Entity* character = RenderSet_GetEntity(&g_Gameplay.scene->skinnedSet, g_Gameplay.character.entity);
     if (character == NULL) return;
-    HandleInputs(&g_Gameplay.character, &g_Gameplay);
-    UpdateCharacter(&g_Gameplay, character);
+    Character* ch = &g_Gameplay.character;
+    
+    CharacterUI(ch, &g_Gameplay);
+    GetBones(g_Gameplay.scene, ch, character);
+    HandleInputs(ch, &g_Gameplay);
+    
+    CharacterMovement(&g_Gameplay, character, dt);
+    cAnimate(g_Gameplay.scene, ch, dt);
+
+    DebugSphere(&g_Gameplay, character);
 }
 
 void Gameplay_Destroy()

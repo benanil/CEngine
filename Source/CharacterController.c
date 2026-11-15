@@ -25,12 +25,9 @@ void SpawnCharacter(Character* ch)
     Scene* scene = GetActiveScene();
     u32 characterId = Scene_BundleIdx(scene, ch->bundle);
     u32 numEntity = scene->skinnedSet.numEntities;
-    ch->sparse = Scene_Spawn(scene, characterId, VecSetR(0.0f, 0.0f, 0.0f, 0.f), QIdentity(), VecSet1(ch->scale), EntityFlags_None);
+    ch->sparse = Scene_Spawn(scene, characterId, VecZero(), QIdentity(), VecSet1(ch->scale), EntityFlags_None);
     ch->numEntities = scene->skinnedSet.numEntities - numEntity;
     ch->entity = EntityIDFromSparseData(scene, ch->sparse);
-    u32 bundleID = Scene_AddBundleCached(scene, GetUnitRock(), "head bone");
-    ch->sphereID = EntityIDFromSparseData(scene,
-                    Scene_Spawn(scene, bundleID, VecZero(), QIdentity(), VecOne(), EntityFlags_None));
 
     EntityID entityID = EntityIDFromSparseData(scene, ch->sparse + 1);
     Entity* entity = Scene_GetEntity(scene, entityID);
@@ -43,7 +40,7 @@ void SpawnCharacter(Character* ch)
     ch->jumpSpeed       = 15.0f;
     ch->acceleration    = 20.0f;
     ch->decceleration   = 10.0f;
-    ch->characterSpeed  = 8.0f;
+    ch->speed  = 8.0f;
     ch->verticalSpeed   = 0.0f;
     ch->yRotation       = ch->xRotation = 0.0f;
     ch->grounded = ch->active = ch->jumped = false;
@@ -70,7 +67,7 @@ static b3QueryFilter MakeFilter(void)
     return filter;
 }
 
-static bool CapturePlaneFcn( b3ShapeId shapeId, const b3PlaneResult* planes, int planeCount, void* context )
+static bool CapturePlaneFcn(b3ShapeId shapeId, const b3PlaneResult* planes, int planeCount, void* context)
 {
     PlaneCapture* capture = context;
     capture->shape = shapeId;
@@ -86,13 +83,16 @@ static bool CapturePlaneFcn( b3ShapeId shapeId, const b3PlaneResult* planes, int
     return true;
 }
 
-static bool FindGround(const PlaneCapture* capture, const Gameplay* gp, b3Vec3* normal)
+static bool FindGround(Gameplay* gp, b3WorldId worldId, b3Pos origin, b3Capsule* mover, b3QueryFilter filter, b3Vec3* normal)
 {
+    PlaneCapture capture = { 0 };
+    b3World_CollideMover(worldId, origin, mover, filter, CapturePlaneFcn, &capture);
+
     bool found = false;
     f32 best = gp->groundMinNormalY;
-    for (s32 i = 0; i < capture->count; ++i)
+    for (s32 i = 0; i < capture.count; ++i)
     {
-        b3Vec3 n = capture->planes[i].plane.normal;
+        b3Vec3 n = capture.planes[i].plane.normal;
         if (n.y >= best)
         {
             best = n.y;
@@ -103,8 +103,10 @@ static bool FindGround(const PlaneCapture* capture, const Gameplay* gp, b3Vec3* 
     return found;
 }
 
-static void CharacterMovement(Scene* scene, const Gameplay* gp, Character* ch, Entity* character, f32 dt)
+void CharacterMovement(Gameplay* gp, Entity* character, f32 dt)
 {
+    Scene* scene = gp->scene; 
+    Character* ch = &gp->character;
     if (!ch->active) return;
     b3WorldId worldId = Physics_GetWorld();
     b3Capsule mover = MakeMover();
@@ -148,7 +150,7 @@ static void CharacterMovement(Scene* scene, const Gameplay* gp, Character* ch, E
     if (runSpeed > 0.1f) speedTarget *= 1.0f + runSpeed;
     ch->currentSpeed = MoveTowards(ch->currentSpeed, speedTarget, dt * 5.0f); // SmoothDamp(ch->currentSpeed, axis.y, &ch->smoothVel, smoothTime, 2.0f, dt);
     
-    b3Vec3 velocity = b3MulSV(ch->currentSpeed * ch->characterSpeed, wish);
+    b3Vec3 velocity = b3MulSV(ch->currentSpeed * ch->speed, wish);
     velocity.y += ch->verticalSpeed;
 
     b3Vec3 target = b3Add(ch->position, b3MulSV(dt, velocity));
@@ -167,7 +169,8 @@ static void CharacterMovement(Scene* scene, const Gameplay* gp, Character* ch, E
         f32 fraction = b3World_CastMover(worldId, origin, &mover, result.delta, filter, NULL, NULL);
         b3Vec3 delta = b3MulSV(fraction, result.delta);
         ch->position = b3Add(ch->position, delta);
-        if (b3LengthSquared(delta) < Sqrf(gp->moveTolerance)) break;
+
+        if (b3LengthSquared(delta) < gp->moveTolerance * gp->moveTolerance) break;
     }
 
     ch->velocity = b3Sub(ch->position, start);
@@ -180,23 +183,25 @@ static void CharacterMovement(Scene* scene, const Gameplay* gp, Character* ch, E
 
     bool wasGrounded = ch->grounded;
     b3Vec3 normal = { 0.0f, 1.0f, 0.0f };
-    ch->grounded = ch->verticalSpeed <= 0.5f;
-    PlaneCapture capture = { 0 };
-    if (ch->grounded)
+    ch->grounded = false;
+    if (ch->verticalSpeed <= 0.5f)
     {
-        b3World_CollideMover(worldId, ch->position, &mover, filter, CapturePlaneFcn, &capture);
-        ch->grounded = FindGround(&capture, gp, &normal);
-    }
-
-    if (!ch->grounded && wasGrounded && ch->verticalSpeed <= 0.0f)
-    {
-        b3Pos origin = ch->position;
-        b3Vec3 down = { 0.0f, -gp->snapDistance, 0.0f };
-        f32 fraction = b3World_CastMover(worldId, origin, &mover, down, filter, NULL, NULL);
-        if (fraction < 1.0f)
+        ch->grounded = FindGround(gp, worldId, ch->position, &mover, filter, &normal);
+        if (!ch->grounded)
         {
-            b3Vec3 newPos = b3Add(ch->position, b3MulSV(fraction, down));
-            ch->grounded = FindGround(&capture, gp, &normal);
+            b3Pos origin = ch->position;
+            f32 reach = wasGrounded ? gp->snapDistance : gp->groundTolerance;
+            b3Vec3 down = { 0.0f, -reach, 0.0f };
+            f32 fraction = b3World_CastMover(worldId, origin, &mover, down, filter, NULL, NULL);
+            if (fraction < 1.0f)
+            {
+                b3Vec3 newPos = b3Add(ch->position, b3MulSV(fraction, down));
+                if (FindGround(gp, worldId, newPos, &mover, filter, &normal))
+                {
+                    ch->position = newPos;
+                    ch->grounded = true;
+                }
+            }
         }
     }
     
@@ -235,59 +240,7 @@ static void CharacterMovement(Scene* scene, const Gameplay* gp, Character* ch, E
         EntitySetPositionV(mesh, position);
         EntitySetRotation(mesh, mRotation);
     }
-    if (jumpNow) cPlayOnce(&ch->anim, ch->anim.jump, 0.05f, 1.0f, false);
     g_Camera.position = F3Add(B3VecToFloat3(ch->position), QMulVec3(gp->cameraOffset, mRotation));
     g_Camera.position = F3Add(M44ExtractPosition(gp->boneMat), g_Camera.position);
     g_Camera.target = g_Camera.position;
-}
-
-static void CharacterUI(Character* ch, Gameplay* gp)
-{
-    static bool open = true;
-    if (UIBeginWindowId(CLAY_ID("Character"), "Character",
-                        (float2) { 1400.0f, 40.0f }, (float2) { 500.0f, 260.0f }, 
-                        &open, UIWindowFlags_NoClose))
-    {
-        UIText("Character Settings");
-        UIEditFloat("speed", &ch->characterSpeed, 0.0f, 100.0f, 0.2f, 2);
-        UIEditFloat("jump force", &ch->jumpSpeed, 0.0f, 100.0f, 0.2f, 2);
-        UIEditFloatN("cameraOffset", &gp->cameraOffset.x, 3, -4.0f, 4.0f, 3);
-        UIEditFloat("cameraXRot", &gp->cameraXRotation, 0.0f, 100.0f, 0.1f, 3);
-        UIReadonlyRow(CLAY_ID("CharVelocityR"), "velocity", UIFmtV3(&ch->velocity.x, 3));
-        f32 sqr = b3LengthSquared(ch->velocity);
-        UIReadonlyRow(CLAY_ID("CharSpeedR"), "speed", UIFmtF(Sqrtf(sqr + 0.001f), 3));
-
-        UIEndWindow();
-    }
-}
-
-void UpdateCharacter(Gameplay* gp, Entity* character)
-{
-    Character* ch = &gp->character;
-    f32 dt = GetDeltaTime();
-    CharacterMovement(gp->scene, gp, ch, character, dt);
-    cAnimate(gp->scene, ch, dt);
-    CharacterUI(ch, gp);
-
-    Entity* sphereEntity = Scene_GetEntity(gp->scene, ch->sphereID);
-    if (sphereEntity)
-    {
-        v128f neckPos = VecAdd(EntityGetPosV(character), M44ExtractPositionV(gp->boneMat));
-        // EntitySetPositionV(sphereEntity, neckPos);
-        EntitySetScaleV(sphereEntity, VecSet1(0.07f));
-        LightGPU light;
-        MemsetZero(&light, sizeof(LightGPU));
-        neckPos = VecAddf(neckPos, 3.4f); 
-        Vec3Store(light.positionRadius, neckPos);
-        light.positionRadius[3] = 7.0f;
-        f32 directionCone[4] = { 0.0f, -1.0f, 0.0f, 0.0f };
-        f32 color[3] = { 1.0f, 0.9f, 0.75f };
-        LightGPU_SetDirectionCone(&light, directionCone);
-        LightGPU_SetColor3(&light, color);
-        LightGPU_SetIntensity(&light, 16.5f);
-        light.type = LightType_Point;
-        light.flags = LIGHT_FLAG_SHADOWED;
-        light.shadowIndex = 0;
-        RendererSetLights(&light, 1);
-    }
 }

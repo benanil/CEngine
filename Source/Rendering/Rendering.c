@@ -12,7 +12,6 @@
 #include "Include/Terrain.h"
 #include "Source/Terrain/TerrainInternal.h"
 
-
 #define RESIZE_RELEASE_DELAY 4u
 // geometry ranges loaders queued for upload, flushed once the gpu buffers exist.
 // element units, bundles can land anywhere in the mega buffers now
@@ -53,58 +52,7 @@ static SDL_GPUFence*          g_LightVisFence    = NULL;
 static bool                   g_LightVisPending  = false;
 static bool                   g_LightVisHasData  = false;
 
-RenderSettings g_RenderSettings = {
-    .enableOcclusion             = true,
-    .enableHBAO                  = true,
-    .enableContactShadows        = true,
-    .enableMLAA                  = true,
-    .enableBloom                 = true,
-    .msaaSamples                 = 4u,
-    .showMLAAEdges               = false,
-    .enableLocalLights           = true,
-    .enableLightFrustumCulling   = true,
-    .enableLightOcclusionCulling = true,
-    .showLightRects              = false,
-    .terrainWireframe            = false,
-    .terrainLodFactor            = 1.0f,
-    .hbaoRadius                  = 4.0f,
-    .hbaoBias                    = 0.333f,
-    .hbaoIntensity               = 1.5f,
-    .hbaoPower                   = 2.0f,
-    .SSSBilinearThreshold        = 0.08f,
-    .SSSThickness                = 0.005f,
-    .SSSIntensity                = 0.25f,
-    .SSSContrast                 = 4.0f,
-    .mlaaThreshold               = 0.08f,
-    .bloomThreshold              = 0.9f,
-    .bloomKnee                   = 0.5f,
-    .bloomClamp                  = 64.0f,
-    .bloomIntensity              = 0.2f,
-    .bloomRadius                 = 2.0f,
-    .exposure                    = 1.0f,
-    .gamma                       = 2.2f,
-    .godRayIntensity             = 2.5f,
-    .godRaySamples               = 64.0f,
-    .enableHeightFog             = true,
-    .fogColor                    = { 0.62f, 0.70f, 0.80f },
-    .fogDensity                  = 0.05f,
-    .fogHeight                   = -20.0f,
-    .fogFalloff                  = 0.10f,
-    .fogSunScatter               = 0.6f,
-    .hbaoDirections              = 8.0f,
-    .lodDistanceModifier         = 1.0f,
-    .renderScale                 = 1.0f,
-    .sunYaw                      = 116.565f,
-    .sunPitch                    = 43.435f,
-    .shadowMaxDistance           = SHADOW_MAX_DISTANCE,
-    .shadowCameraDistance        = SHADOW_CAMERA_DISTANCE,
-    .shadowCasterDepthMargin     = SHADOW_CASTER_DEPTH_MARGIN,
-    .shadowCascadeOverlap        = 0.0f,
-    .shadowSplitNearDistance     = SHADOW_SPLIT_NEAR_DISTANCE,
-    .shadowPSSMLambda            = SHADOW_PSSM_LAMBDA,
-    .maxVisiblePointShadows      = 8.0f,
-    .maxVisibleSpotShadows       = 8.0f
-};
+RenderSettings g_RenderSettings;
 
 static u64 g_RenderFrameIndex;
 static SDL_GPUTexture* g_RenderFinalTexture;
@@ -127,6 +75,132 @@ static u32 g_NumGeometryDirty[GeometryBuffer_Count];
 // shared with the main thread's per-frame drain. The critical sections are tiny (push a range /
 // snapshot+clear the queue), so a spinlock is enough.
 static SDL_SpinLock g_GeometryUploadLock;
+
+RenderSettings RenderSettingsDefaults()
+{ 
+    return (RenderSettings){
+        .enableOcclusion             = true,
+        .enableHBAO                  = true,
+        .enableContactShadows        = true,
+        .enableMLAA                  = true,
+        .enableBloom                 = true,
+        .msaaSamples                 = 4u,
+        .showMLAAEdges               = false,
+        .enableLocalLights           = true,
+        .enableLightFrustumCulling   = true,
+        .enableLightOcclusionCulling = true,
+        .showLightRects              = false,
+        .terrainWireframe            = false,
+        .terrainLodFactor            = 1.0f,
+        .hbaoRadius                  = 4.0f,
+        .hbaoBias                    = 0.333f,
+        .hbaoIntensity               = 1.5f,
+        .hbaoPower                   = 2.0f,
+        .SSSBilinearThreshold        = 0.08f,
+        .SSSThickness                = 0.005f,
+        .SSSIntensity                = 0.25f,
+        .SSSContrast                 = 4.0f,
+        .mlaaThreshold               = 0.08f,
+        .bloomThreshold              = 0.9f,
+        .bloomKnee                   = 0.5f,
+        .bloomClamp                  = 64.0f,
+        .bloomIntensity              = 0.2f,
+        .bloomRadius                 = 2.0f,
+        .exposure                    = 1.0f,
+        .gamma                       = 2.2f,
+        .godRayIntensity             = 2.5f,
+        .godRaySamples               = 64.0f,
+        .enableHeightFog             = true,
+        .fogColor                    = { 0.62f, 0.70f, 0.80f },
+        .fogDensity                  = 0.05f,
+        .fogHeight                   = -20.0f,
+        .fogFalloff                  = 0.10f,
+        .fogSunScatter               = 0.6f,
+        .hbaoDirections              = 8.0f,
+        .lodDistanceModifier         = 1.0f,
+        .renderScale                 = 1.0f,
+        .sunYaw                      = 116.565f,
+        .sunPitch                    = 43.435f,
+        .shadowMaxDistance           = SHADOW_MAX_DISTANCE,
+        .shadowCameraDistance        = SHADOW_CAMERA_DISTANCE,
+        .shadowCasterDepthMargin     = SHADOW_CASTER_DEPTH_MARGIN,
+        .shadowCascadeOverlap        = 0.0f,
+        .shadowSplitNearDistance     = SHADOW_SPLIT_NEAR_DISTANCE,
+        .shadowPSSMLambda            = SHADOW_PSSM_LAMBDA,
+        .maxVisiblePointShadows      = 8.0f,
+        .maxVisibleSpotShadows       = 8.0f
+    };
+}
+
+// performance presets, artistic settings (sun, exposure, gamma) stay untouched.
+// the lod modifier scales the projected screen size, higher keeps detailed lods longer
+void ApplyQualityPreset(u32 quality)
+{
+    RenderSettings* settings = &g_RenderSettings;
+    settings->enableOcclusion           = true;
+    settings->enableLightFrustumCulling = true;
+    settings->enableLightOcclusionCulling = true;
+    settings->renderScale = quality == 0 ? 0.75f : 1.0f;
+    switch (quality)
+    {
+        case 0: // Low
+            settings->enableHBAO            = false;
+            settings->enableContactShadows  = false;
+            settings->enableMLAA            = false;
+            settings->enableBloom           = false;
+            settings->msaaSamples           = 1u;
+            settings->enableLocalLights     = false;
+            settings->lodDistanceModifier   = 0.5f;
+            settings->godRaySamples         = 0.0f;
+            settings->hbaoDirections        = 4.0f;
+            settings->shadowMaxDistance     = SHADOW_MAX_DISTANCE * 0.35f;
+            settings->maxVisiblePointShadows = 0.0f;
+            settings->maxVisibleSpotShadows  = 0.0f;
+            break;
+        case 1: // Medium
+            settings->enableHBAO            = true;
+            settings->enableContactShadows  = true;
+            settings->enableMLAA            = true;
+            settings->enableBloom           = true;
+            settings->msaaSamples           = 2u;
+            settings->enableLocalLights     = true;
+            settings->lodDistanceModifier   = 0.75f;
+            settings->godRaySamples         = 32.0f;
+            settings->hbaoDirections        = 4.0f;
+            settings->shadowMaxDistance     = SHADOW_MAX_DISTANCE * 0.6f;
+            settings->maxVisiblePointShadows = 4.0f;
+            settings->maxVisibleSpotShadows  = 4.0f;
+            break;
+        case 2: // High, matches the startup defaults
+            settings->enableHBAO            = true;
+            settings->enableContactShadows  = true;
+            settings->enableMLAA            = true;
+            settings->enableBloom           = true;
+            settings->msaaSamples           = 4u;
+            settings->enableLocalLights     = true;
+            settings->lodDistanceModifier   = 1.0f;
+            settings->godRaySamples         = 48.0f;
+            settings->hbaoDirections        = 8.0f;
+            settings->shadowMaxDistance     = SHADOW_MAX_DISTANCE;
+            settings->maxVisiblePointShadows = 8.0f;
+            settings->maxVisibleSpotShadows  = 8.0f;
+            break;
+        case 3: // Ultra
+            settings->enableHBAO            = true;
+            settings->enableContactShadows  = true;
+            settings->enableMLAA            = true;
+            settings->enableBloom           = true;
+            settings->msaaSamples           = 4u;
+            settings->enableLocalLights     = true;
+            settings->lodDistanceModifier   = 1.5f;
+            settings->godRaySamples         = 64.0f;
+            settings->hbaoDirections        = 12.0f;
+            settings->shadowMaxDistance     = SHADOW_MAX_DISTANCE;
+            settings->maxVisiblePointShadows = (f32)POINT_SHADOW_MAX_LIGHTS;
+            settings->maxVisibleSpotShadows  = (f32)SPOT_SHADOW_MAX_LIGHTS;
+            break;
+    }
+}
 
 SDL_GPUTexture* RenderGetFinalTexture(void)
 {
@@ -850,6 +924,7 @@ void Render(void)
 
 void RendererInit(void)
 {
+    g_RenderSettings = RenderSettingsDefaults();
     InitRenderPipelines();
     SlugInitDemo();
 }
