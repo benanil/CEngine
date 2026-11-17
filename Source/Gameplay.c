@@ -3,6 +3,7 @@
 
 #include <box3d/box3d.h>
 #include <SDL3/SDL_gpu.h>
+#include <SDL3/SDL_log.h>
 
 #include "Include/Scene.h"
 #include "Include/Terrain.h"
@@ -17,17 +18,68 @@ extern Camera g_Camera;
 extern SDL_GPUDevice* g_GPUDevice;
 Gameplay g_Gameplay;
 
-static void OnCharacterLoaded(SceneAsyncRequest* request)
+enum
 {
-    Scene* scene = GetActiveScene();
-    u32 bundleIdx = Scene_AddBundleFinalize(scene, request->sceneBundleStage);
+    ModelCharacter,
+    ModelPickaxe,
+    ModelAxe,
+    NumModels
+};
+typedef u32 ModelID;
+
+static const char* modelPaths[NumModels] = {
+    "Assets/Meshes/Character/Character.gltf",
+    "Assets/Meshes/Pickaxe/scene.gltf",
+    "Assets/Meshes/Axe/scene.gltf"
+};
+
+static SceneBundleStage* loadedModels[NumModels] = { 0, 0, 0 };
+
+static void OnObjectLoaded(ModelID modelId)
+{
+    SceneBundleStage* stage = loadedModels[modelId];
+    loadedModels[modelId] = NULL;
+    Gameplay* gp = (Gameplay*)&g_Gameplay;
+    Character* ch = &gp->character;
+    Scene* scene = gp->scene;
+    u32 bundleIdx = Scene_AddBundleFinalize(scene, stage);
     if (bundleIdx == INVALID_BUNDLE) {
-        AX_ERROR("import to scene failed: %s", request->path);
+        SDL_Log("import to scene failed: %s", stage->path);
         return;
     }
-    Character* ch = &((Gameplay*)request->context)->character;
-    ch->bundle = scene->bundleRefs[bundleIdx].bundle;
-    SpawnCharacter(ch);
+
+    u32 numEntity = scene->skinnedSet.numEntities + scene->surfaceSet.numEntities;
+    SparseData* sparse = Scene_Spawn(scene, bundleIdx, VecZero(), QIdentity(), VecOne(), EntityFlags_None);
+    u32 numEntityAdded = (scene->skinnedSet.numEntities + scene->surfaceSet.numEntities) - numEntity;
+    
+    EntityID id = EntityIDFromSparseData(scene, sparse);
+    Entity* entity = Scene_GetEntity(scene, id);
+    switch (modelId)
+    {
+        case ModelCharacter:
+        { 
+            EntityScaleRec(scene, entity, VecSet1(ch->scale), true);
+            ch->bundle = scene->bundleRefs[bundleIdx].bundle;
+            ch->sparse = sparse;
+            ch->numEntities = numEntityAdded;
+            ch->entity = id;
+            SpawnCharacter(ch, scene, entity, bundleIdx);
+        } break;
+        case ModelAxe:
+        {
+            EntityScaleRec(scene, entity, VecSet1(0.25f), true);
+            gp->axeID = id;
+        } break;
+        case ModelPickaxe:
+        {
+            EntityScaleRec(scene, entity, VecSet1(0.5f), true);
+            gp->pickAxeID = id;
+            
+        } break;
+        default: {
+            SDL_Log("unknown object loaded gameplay!");
+        }
+    }
 }
 
 static void OnBeforeDestroyScene(void* ctx, void* scene)
@@ -35,8 +87,16 @@ static void OnBeforeDestroyScene(void* ctx, void* scene)
     Gameplay* gp = (Gameplay*)ctx;
     if (gp->character.entity != INVALID_ENTITY) Scene_RemoveEntity((Scene*)scene, gp->character.entity);
     if (gp->sphereID != INVALID_ENTITY) Scene_RemoveEntity((Scene*)scene, gp->sphereID);
-    gp->character.entity = INVALID_ENTITY; 
-    gp->sphereID = INVALID_ENTITY;
+    if (gp->axeID != INVALID_ENTITY) Scene_RemoveEntity((Scene*)scene, gp->axeID);
+    if (gp->pickAxeID != INVALID_ENTITY) Scene_RemoveEntity((Scene*)scene, gp->pickAxeID);
+    gp->character.entity = gp->sphereID = gp->axeID = gp->pickAxeID = INVALID_ENTITY;
+}
+
+static s32 LoadObjectAsync(void* userData)
+{
+    u64 idx = (u64)userData;
+    loadedModels[idx] = Scene_AddBundleFromPathStage(GetActiveScene(), modelPaths[idx]);
+    return 1;
 }
 
 static void OnOpenScene(void* g, void* sc)
@@ -47,8 +107,11 @@ static void OnOpenScene(void* g, void* sc)
     gp->sphereID = EntityIDFromSparseData(gp->scene,
                         Scene_Spawn(gp->scene, sphereBundle, VecZero(), QIdentity(), VecOne(), EntityFlags_None));
 
-    SceneAsyncBegin(SceneAsyncOp_ImportMesh, "Assets/Meshes/Character/Character.gltf",
-                    "LoadCharacter", OnCharacterLoaded, gp);
+    AsyncRun("LoadCharacter", LoadObjectAsync, NULL, (void*)ModelCharacter);
+    AsyncRun("LoadPickaxe", LoadObjectAsync, NULL, (void*)ModelPickaxe);
+    AsyncRun("LoadAxe", LoadObjectAsync, NULL, (void*)ModelAxe);
+    // LoadObjectAsync((void*)(u64)ModelAxe);
+    // LoadObjectAsync((void*)(u64)ModelPickaxe);
 }
 
 static void UpdatePicking()
@@ -197,7 +260,7 @@ void Gameplay_Init()
     g_Gameplay.cameraXRotation    = MATH_HalfPI;
     g_Gameplay.boneTransfer       = NULL;
     g_Gameplay.boneFence          = NULL;
-    g_Gameplay.groundTolerance    = 0.25f;
+    g_Gameplay.groundTolerance    = 1.25f;
     g_Gameplay.sphereID           = INVALID_ENTITY;
     g_Gameplay.character.scale    = 1.8f;
     g_Gameplay.character.entity   = INVALID_ENTITY;
@@ -214,6 +277,10 @@ void Gameplay_Init()
 void Gameplay_Update(f32 dt)
 {
     UpdatePicking();
+    if (loadedModels[ModelCharacter]) OnObjectLoaded(ModelCharacter);
+    if (loadedModels[ModelPickaxe]) OnObjectLoaded(ModelPickaxe);
+    if (loadedModels[ModelAxe]) OnObjectLoaded(ModelAxe);
+
     Entity* character = RenderSet_GetEntity(&g_Gameplay.scene->skinnedSet, g_Gameplay.character.entity);
     if (character == NULL) return;
     Character* ch = &g_Gameplay.character;

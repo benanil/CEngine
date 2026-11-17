@@ -24,14 +24,6 @@ typedef struct PrimitiveGroupLOD_ PrimitiveGroupLOD;
 
 struct Scene_;
 
-// scene tree consists of entities and hierarchy info stored in sparseData
-// each prim below is an entity
-//          Mesh = ANode
-//     [*prim, prim, prim]
-//    *   Mesh        Mesh
-//  [*prim, prim] [prim, prim]
-//       P, 0         P, 0       
-// P: hasPrim
 // each prim in same mesh has same transformation data we might use that for optimization
 // instead of transforming all primitives only one is enough
 typedef struct SparseData_
@@ -53,6 +45,7 @@ typedef struct RenderSet_
     SparseData*         sparseData; // sparse to dense
     u64*                sparseSlots; // bitset for used sparse id's
     u16*                subNodes; // sparseID relative offsets 
+    u16*                sparseBundle;
 
     PrimitiveGroup*     primitiveGroups;
     Range*              bundlePrimRange;
@@ -111,7 +104,7 @@ static inline void PrimitiveGroup_SetAABB(PrimitiveGroup* group, v128f aabbMin, 
 
 static inline bool EntityIDIsSkinned(EntityID id) { return (id >> 31u); }
 
-static inline u32 EntityIDGen(EntityID id) { return (id >> 24) & 0x7u; }
+static inline u32 EntityIDGen(EntityID id) { return (id >> 24) & 0x7Fu; }
 
 static inline u32 EntityIDSparse(EntityID id) { return id & 0x00FFFFFFu; }
 
@@ -148,11 +141,11 @@ u32   RenderSet_AllocateSparseIDRange(RenderSet* set, int count);
 void  RenderSet_FreeSparseIDPtr(RenderSet* set, SparseData* sparse);
 void  RenderSet_FreeSparseIDRangePtr(RenderSet* set, SparseData* sparse, u32 count);
 
-inline void RenderSet_FreeSparseIDRange(RenderSet* set, u32 sparseIdx, u32 count) {
+static inline void RenderSet_FreeSparseIDRange(RenderSet* set, u32 sparseIdx, u32 count) {
     RenderSet_FreeSparseIDRangePtr(set, set->sparseData + sparseIdx, count);
 }
 
-inline void RenderSet_FreeSparseID(RenderSet* set, u32 sparseIdx) {
+static inline void RenderSet_FreeSparseID(RenderSet* set, u32 sparseIdx) {
     RenderSet_FreeSparseIDPtr(set, set->sparseData + sparseIdx);
 }
 

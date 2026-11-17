@@ -356,7 +356,7 @@ static inline void Scene_RemoveEntity(Scene* scene, EntityID id)
     RenderSet_CompactEntities(set);
 }
 
-static inline void Scene_AddPosRec(Scene* scene, Entity* entity, v128f offset)
+static inline void EntityAddPosRec(Scene* scene, Entity* entity, v128f offset)
 {
     bool skinned = Scene_EntityIsSkinned(scene, entity);
     RenderSet* set = skinned ? &scene->skinnedSet : &scene->surfaceSet;
@@ -370,11 +370,11 @@ static inline void Scene_AddPosRec(Scene* scene, Entity* entity, v128f offset)
     {
         s32 child = sparseId + set->subNodes[sparse->subNodeOffset + c];
         Entity* entity = &set->entities[set->sparseData[child].id];
-        Scene_AddPosRec(scene, entity, offset);
+        EntityAddPosRec(scene, entity, offset);
     }
 }
 
-static inline void Scene_RotateRec(Scene* scene, Entity* entity, Quaternion rotation)
+static inline void EntityRotateRec(Scene* scene, Entity* entity, Quaternion rotation)
 {
     bool skinned = Scene_EntityIsSkinned(scene, entity);
     u32 sparseId = EntityGetSparseID(entity);
@@ -388,11 +388,11 @@ static inline void Scene_RotateRec(Scene* scene, Entity* entity, Quaternion rota
     {
         s32 child = sparseId + set->subNodes[sparse->subNodeOffset + c];
         Entity* entity = &set->entities[set->sparseData[child].id];
-        Scene_RotateRec(scene, entity, rotation);
+        EntityRotateRec(scene, entity, rotation);
     }
 }
 
-static inline void Scene_ScaleRec(Scene* scene, Entity* entity, v128f scale, bool root)
+static inline void EntityScaleRec(Scene* scene, Entity* entity, v128f scale, bool root)
 {
     bool skinned = Scene_EntityIsSkinned(scene, entity);
     u32 sparseId = EntityGetSparseID(entity);
@@ -406,7 +406,7 @@ static inline void Scene_ScaleRec(Scene* scene, Entity* entity, v128f scale, boo
     {
         s32 child = sparseId + set->subNodes[sparse->subNodeOffset + c];
         Entity* entity = &set->entities[set->sparseData[child].id];
-        Scene_ScaleRec(scene, entity, scale, false);
+        EntityScaleRec(scene, entity, scale, false);
     }
 }
 

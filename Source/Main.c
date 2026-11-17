@@ -33,7 +33,7 @@ static s32 done = 0;
 static bool g_MainLoopTicking;
 
 Camera       g_Camera;
-SDL_Window*  g_SDLWindow;
+extern SDL_Window*  g_SDLWindow;
 
 extern WindowState g_WindowState;
 

@@ -324,7 +324,7 @@ void SceneInspectorUI(Scene* scene)
     {
         v128f oldPos = EntityGetPosV(entity);
         v128f diff = VecSub(Vec3Load(sceneInspectorCache.positionUi), oldPos);
-        Scene_AddPosRec(scene, entity, diff);
+        EntityAddPosRec(scene, entity, diff);
 
         sceneInspectorCache.position = entity->position;
         scene->renderDataDirty = 1;
@@ -339,7 +339,7 @@ void SceneInspectorUI(Scene* scene)
                                      (f32)sceneInspectorCache.rotationUi[1] * MATH_DegToRad,
                                      (f32)sceneInspectorCache.rotationUi[2] * MATH_DegToRad));
        
-        Scene_RotateRec(scene, entity, QMul(QInverse(oldRot), q));
+        EntityRotateRec(scene, entity, QMul(QInverse(oldRot), q));
         
         EntitySetPositionV(entity, VecSub(center, QMulVec3V(VecMul(RenderSet_GroupLocalCenter(group), oldScale), q)));
         sceneInspectorCache.position = entity->position;
@@ -355,7 +355,7 @@ void SceneInspectorUI(Scene* scene)
         v128f oldScale = EntityGetScaleV(entity);
         v128f newScale = VecMax(Vec3Load(sceneInspectorCache.scaleUi), VecSet1(0.001f));
         EntitySetScaleV(entity, newScale);
-        Scene_ScaleRec(scene, entity, VecDiv(newScale, oldScale), true);
+        EntityScaleRec(scene, entity, VecDiv(newScale, oldScale), true);
 
         sceneInspectorCache.scalePacked = entity->scale;
         scene->renderDataDirty = 1;

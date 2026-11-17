@@ -619,6 +619,11 @@ void ACopyFile(const char* source, const char* dst, char* buffer)
     if (!bufferProvided) DeAllocTLSF(sourceFile);
 }
 
+void WEnd(AFile file, char* base, char* p) {
+    *p++ = '\n'; 
+    AFileWrite(base, (u64)(p - base), file, 1); 
+}
+
 #ifndef _WIN32
 int GetCurrentDirectory(int size, char* outPath) {
     return getcwd(outPath, size) != NULL;

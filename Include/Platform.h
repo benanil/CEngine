@@ -150,7 +150,7 @@ s64   TimeNow();
 f32   TimeSinceStartup();
 
 // time is nanoseconds
-f32   TimeToSeconds(s64 time);
+f32  TimeToSeconds(s64 time);
 s64  TimeToMilliseconds(s64 time);
 s64  TimeToMicroseconds(s64 time);
 

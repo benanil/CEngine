@@ -20,32 +20,24 @@ typedef struct PlaneCapture
 
 extern Camera g_Camera;
 
-void SpawnCharacter(Character* ch)
+void SpawnCharacter(Character* ch, Scene* scene, Entity* entity, u32 bundleId)
 {
-    Scene* scene = GetActiveScene();
-    u32 characterId = Scene_BundleIdx(scene, ch->bundle);
-    u32 numEntity = scene->skinnedSet.numEntities;
-    ch->sparse = Scene_Spawn(scene, characterId, VecZero(), QIdentity(), VecSet1(ch->scale), EntityFlags_None);
-    ch->numEntities = scene->skinnedSet.numEntities - numEntity;
-    ch->entity = EntityIDFromSparseData(scene, ch->sparse);
-
     EntityID entityID = EntityIDFromSparseData(scene, ch->sparse + 1);
-    Entity* entity = Scene_GetEntity(scene, entityID);
     RenderSet* rs = Scene_GetEntityRenderSet(scene, entityID);
     ch->center = VecMulf(RenderSet_GroupLocalCenter(rs->primitiveGroups + EntityGetPrimitiveID(entity)), ch->scale);
     VecSetY(ch->center, 0.0f);
-
-    ch->groundNormal    = (b3Vec3){ 0.0f,  1.0f, 0.0f };
-    ch->position        = (b3Vec3){ 0.0f, 10.0f, 0.0f }; 
-    ch->jumpSpeed       = 15.0f;
-    ch->acceleration    = 20.0f;
-    ch->decceleration   = 10.0f;
-    ch->speed  = 8.0f;
-    ch->verticalSpeed   = 0.0f;
-    ch->yRotation       = ch->xRotation = 0.0f;
+    
+    ch->groundNormal  = (b3Vec3){ 0.0f,  1.0f, 0.0f };
+    ch->position      = (b3Vec3){ 0.0f, 10.0f, 0.0f }; 
+    ch->jumpSpeed     = 15.0f;
+    ch->acceleration  = 20.0f;
+    ch->decceleration = 10.0f;
+    ch->speed         = 8.0f;
+    ch->verticalSpeed = 0.0f;
+    ch->yRotation     = ch->xRotation = 0.0f;
     ch->grounded = ch->active = ch->jumped = false;
     
-    cAnimInit(&ch->anim, scene, characterId);
+    cAnimInit(&ch->anim, scene, bundleId);
 }
 
 static b3Capsule MakeMover(void)

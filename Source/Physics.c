@@ -267,8 +267,8 @@ void Physics_Update(Scene* scene, float deltaTime)
         v128f pos = B3VecTov128f(move->transform.p);
         v128f oldRot = EntityGetRotation(entity);
         v128f rot = B3ToQuat(move->transform.q);
-        Scene_AddPosRec(opScene, entity, VecSub(pos, entity->position));
-        Scene_RotateRec(opScene, entity, QMul(QInverse(oldRot), rot));
+        EntityAddPosRec(opScene, entity, VecSub(pos, entity->position));
+        EntityRotateRec(opScene, entity, QMul(QInverse(oldRot), rot));
         opScene->renderDataDirty |= 1;
     }
 }

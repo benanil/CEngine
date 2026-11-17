@@ -13,6 +13,47 @@ set(CMAKE_MSVC_PARALLEL_COMPILE OFF)
 # Declare the project
 project(CEngine)
 
+option(CENGINE_TESTS "Build unit tests only" OFF)
+
+if(CENGINE_TESTS)
+    set(SDL_SHARED ON)
+    add_subdirectory(Extern/SDL3 EXCLUDE_FROM_ALL)
+    add_subdirectory(Extern/box3d)
+
+    add_executable(RenderSetTests
+        Tests/RenderSetTests.c
+        Source/Rendering/RenderSet.c
+        Source/Memory.c
+        Source/Algorithm.c
+        Source/Platform.c
+        Source/DataStructures/Array.c
+        Source/FileSystem.c
+        Extern/tlsf.c
+    )
+
+    target_include_directories(RenderSetTests PRIVATE
+        ${CMAKE_SOURCE_DIR}
+        ${CMAKE_SOURCE_DIR}/Source
+    )
+
+    if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
+        target_compile_options(RenderSetTests PRIVATE -mavx2 -mf16c -mfma -g)
+    elseif(MSVC)
+        target_compile_options(RenderSetTests PRIVATE /arch:AVX2)
+    endif()
+
+    target_link_libraries(RenderSetTests PRIVATE SDL3::SDL3 box3d::box3d)
+    if(WIN32)
+        target_link_libraries(RenderSetTests PRIVATE Dbghelp dwmapi)
+    endif()
+
+    set_property(TARGET RenderSetTests PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+
+    enable_testing()
+    add_test(NAME RenderSet COMMAND RenderSetTests)
+    return()
+endif()
+
 if ((APPLE AND NOT CMAKE_SYSTEM_NAME MATCHES "Darwin") OR EMSCRIPTEN)
     set(BUILD_SHARED_LIBS OFF CACHE INTERNAL "")    # Disable shared builds on platforms where it does not make sense to use them
     set(SDL_SHARED OFF)
@@ -248,3 +289,7 @@ set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT "
 
 # cmake -S . -B Build/GCC -G Ninja -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DCMAKE_BUILD_TYPE=Release
 # cmake --build Build/GCC --parallel
+
+# tests only:
+# cmake -S . -B Build/Tests -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_BUILD_TYPE=Debug -DCENGINE_TESTS=ON
+# cmake --build Build/Tests --parallel

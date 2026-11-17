@@ -322,11 +322,6 @@ char* WFlt(char* p, float v) {
     return p + FloatToString(p, v, 6);
 }
 
-void WEnd(AFile file, char* base, char* p) {
-    *p++ = '\n'; 
-    AFileWrite(base, (u64)(p - base), file, 1); 
-}
-
 const char* RU16(const char* p, u16* v) {
     s64 value = 0;
     p = ParseNumberI64(p, &value);

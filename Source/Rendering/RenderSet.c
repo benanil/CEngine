@@ -28,14 +28,18 @@ void RenderSet_InitSet(RenderSet* set, u32 maxEntities, u32 maxGroups, u32 maxBu
     set->entities         = AllocAligned(sizeof(Entity) * maxEntities, sizeof(v128f));
     set->sparseData       = CAllocTLSFArray(SparseData, maxEntities);
     set->subNodes         = CAllocTLSFArray(u16, maxEntities);
+    set->sparseBundle     = CAllocTLSFArray(u16, maxEntities);
     set->primitiveGroups  = CAllocTLSFArray(PrimitiveGroup, maxGroups);
     set->bundlePrimRange  = CAllocTLSFArray(Range, maxBundles);
     set->sparseSlots      = CAllocTLSFArray(u64, (maxEntities + 63u) >> 6);
     set->bundles          = CAllocTLSFArray(const SceneBundle*, maxBundles);
     set->bundleSlots      = CAllocTLSFArray(u64, (maxBundles + 63u) >> 6);
     
-    for (s32 i = 0; i < maxEntities; i++)
+    for (u32 i = 0; i < maxEntities; i++)
+    {
         set->sparseData[i].id = INVALID_ENTITY;
+        set->sparseBundle[i] = 0xFFFFu;
+    }
 }
 
 void RenderSet_Destroy(RenderSet* set)
@@ -43,6 +47,8 @@ void RenderSet_Destroy(RenderSet* set)
     FreeAligned(set->entities);
     DeAllocTLSF(set->sparseData); 
     DeAllocTLSF(set->sparseSlots);
+    DeAllocTLSF(set->subNodes);
+    DeAllocTLSF(set->sparseBundle);
     DeAllocTLSF(set->primitiveGroups);
     DeAllocTLSF(set->bundlePrimRange);
     DeAllocTLSF(set->bundles);
@@ -89,8 +95,7 @@ u32 RenderSet_AllocateSparseID(RenderSet* set)
 
 u32 RenderSet_AllocateSparseIDRange(RenderSet* set, int count)
 {
-    bool notEnoughID = (count + set->numEntities) >= set->maxEntities;
-    if (notEnoughID || count <= 0) return INVALID_ENTITY;
+    if (count <= 0 || (u32)count + set->numEntities > set->maxEntities) return INVALID_ENTITY;
 
     s32 sparseIdx = BitsetFindEmptyRange(set->sparseSlots, set->maxEntities, (u32)count);
     if (sparseIdx < 0) {
@@ -108,25 +113,23 @@ void RenderSet_FreeSparseIDRangePtr(RenderSet* set, SparseData* sparse, u32 coun
     if (sparseIdx + count > set->maxEntities) { AX_WARN("freeing sparse id range failed!"); return; }
 
     BitsetSetRange(set->sparseSlots, sparseIdx, count, false);
-    for (s32 i = 0; i < count; i++)
+    for (u32 i = 0; i < count; i++)
     {
-        SparseData* sparseData = &set->sparseData[sparseIdx + i];
-        U16SetSetRange(set->subNodes, sparseData->subNodeOffset, sparseData->subNodeCount, 0);
-        sparseData->subNodeOffset = 0;
-        sparseData->subNodeCount = 0;
-        sparseData->id = INVALID_ENTITY;
-        sparseData->gen++;
+        SparseData* sd = &set->sparseData[sparseIdx + i];
+        if (sd->subNodeCount) U16SetSetRange(set->subNodes, sd->subNodeOffset, sd->subNodeCount, 0);
+        sd->subNodeOffset = 0;
+        sd->subNodeCount  = 0;
+        sd->parent        = 0;
+        sd->hasPrim       = 0;
+        sd->id            = INVALID_ENTITY;
+        sd->gen++;
+        set->sparseBundle[sparseIdx + i] = 0xFFFFu;
     }
 }
 
 void RenderSet_FreeSparseIDPtr(RenderSet* set, SparseData* sparseData)
 {
-    u32 sparseIdx = (u32)(sparseData - set->sparseData);
-    if (sparseIdx >= set->maxEntities) { AX_WARN("freeing sparse id range failed!"); return; }
-
-    BitsetReset(set->sparseSlots, (s32)sparseIdx);
-    sparseData->id = INVALID_ENTITY;
-    sparseData->gen++;
+    RenderSet_FreeSparseIDRangePtr(set, sparseData, 1);
 }
 
 static s32 GetNumPrimitivesOfSceneBundle(const SceneBundle* sceneBundle)
@@ -203,7 +206,7 @@ u32 RenderSet_AddSceneBundle(RenderSet* set, const SceneBundle* sceneBundle, u32
             group->materialIndex  = (u16)(materialOffset + (u32)primitive->material);
             group->bundleIdx      = (u16)INVALID_BUNDLE; // owner-assigned bundle handle, stamped by the caller
             group->entityOffset   = set->numEntities;
-            
+
             v128f aabbMin = set->skinned ? skinnedMin : VecLoad(primitive->min);
             v128f aabbMax = set->skinned ? skinnedMax : VecLoad(primitive->max);
             PrimitiveGroup_SetAABB(group, aabbMin, aabbMax);
@@ -462,10 +465,15 @@ u32 AddBundleAsScene(RenderSet* set, u32 bundleIdx, u32 sparseStart, const Entit
         const ANode* node = nodes + n;
         SparseData* sparseData = &set->sparseData[sparseStart + sparseCursor2];
         sparseData->subNodeCount  = node->numChildren; 
-        sparseData->subNodeOffset = U16SetGetEmptyRange(set->subNodes, set->numEntities, sparseData->subNodeCount);
+        sparseData->subNodeOffset = U16SetGetEmptyRange(set->subNodes, set->maxEntities, sparseData->subNodeCount);
         sparseData->parent = node->parent == -1 ? 0 : sparseCursor2 - nodeSparseMapper[node->parent];
         
-        if (sparseData->subNodeCount != 0 && sparseData->subNodeOffset == UINT32_MAX) { AX_ERROR("subnode allocation failed!"); }
+        if (sparseData->subNodeCount != 0 && sparseData->subNodeOffset == UINT32_MAX)
+        {
+            AX_ERROR("subnode allocation failed!");
+            sparseData->subNodeCount  = 0;
+            sparseData->subNodeOffset = 0;
+        }
         else for (s32 s = 0; s < sparseData->subNodeCount; s++)
         {
             set->subNodes[sparseData->subNodeOffset + s] = (u16)(nodeSparseMapper[node->children[s]] - sparseCursor2);
@@ -505,25 +513,39 @@ SparseData* RenderSet_AddSceneArray(RenderSet* set, u32 bundleIdx, const Entity*
         AX_WARN("no nodes in bundle to add!");
         return NULL;
     }
- 
-    u32* primitiveCounts = ArenaAllocGlobal(set->numGroups * sizeof(u32));
-    MemSet(primitiveCounts, 0, set->numGroups * sizeof(u32));
+
+    u32 countsBytes = set->numGroups * sizeof(u32);
+    u32* primitiveCounts = ArenaAllocGlobal(countsBytes);
+    MemSet(primitiveCounts, 0, countsBytes);
 
     u32 sparseCount = CountNumEntities(set, bundleIdx, numScenes, primitiveCounts, wantSkinned);
-    u32 sparseStart = RenderSet_AllocateSparseIDRange(set, sparseCount);
-    if (sparseStart == INVALID_ENTITY || sparseCount == 0u)
+    u32 denseCount = 0;
+    for (u32 g = 0; g < set->numGroups; g++) denseCount += primitiveCounts[g];
+
+    if (sparseCount == 0u || set->numEntities + denseCount > set->maxEntities)
     {
         AX_WARN("maximum entity reached: %d", set->maxEntities);
-        ArenaPopGlobal(set->numGroups * sizeof(u32));
+        ArenaPopGlobal(countsBytes);
         return NULL;
     }
 
-    BatchLeaveSpacePrimitives(set, primRange.start, primRange.count, primitiveCounts, sparseCount);
+    u32 sparseStart = RenderSet_AllocateSparseIDRange(set, (int)sparseCount);
+    if (sparseStart == INVALID_ENTITY)
+    {
+        ArenaPopGlobal(countsBytes);
+        return NULL;
+    }
 
-    for (s32 i = 0; i < numScenes; i++)
-        AddBundleAsScene(set, bundleIdx, sparseStart, transforms + i, wantSkinned);
-    
-    ArenaPopGlobal(set->numGroups * sizeof(u32));
+    BatchLeaveSpacePrimitives(set, 0u, set->numGroups, primitiveCounts, denseCount);
+
+    u32 cursor = sparseStart;
+    for (u32 i = 0; i < numScenes; i++)
+        cursor += AddBundleAsScene(set, bundleIdx, cursor, transforms + i, wantSkinned);
+
+    for (u32 i = 0; i < sparseCount; i++)
+        set->sparseBundle[sparseStart + i] = (u16)bundleIdx;
+
+    ArenaPopGlobal(countsBytes);
     return set->sparseData + sparseStart;
 }
 
@@ -558,13 +580,13 @@ void SparseDataRemoveFromParent(RenderSet* set, SparseData* sparseData)
     SparseData* parent = sparseData - sparseData->parent;
     bool found = false;
     u16* subNodes = set->subNodes + parent->subNodeOffset;
-    // remove this node from its parent
     for (s32 i = 0; i < parent->subNodeCount; i++)
     {
         SparseData* child = parent + subNodes[i];
         if (child == sparseData)
         {
-            subNodes[i] = subNodes[--parent->subNodeCount]; // unordered remove
+            subNodes[i] = subNodes[parent->subNodeCount - 1];
+            subNodes[--parent->subNodeCount] = 0;
             found = true;
             break;
         }
@@ -575,27 +597,32 @@ void SparseDataRemoveFromParent(RenderSet* set, SparseData* sparseData)
 
 void RenderSet_RemoveEntityStaged(RenderSet* set, u32 sparseId)
 {
+    if (sparseId >= set->maxEntities) return;
     SparseData* sparseData = &set->sparseData[sparseId];
+    if (sparseData->id == INVALID_ENTITY) return;
     Entity* entity = &set->entities[sparseData->id];
     Physics_DestroyEntityBody(set->hookScene, entity);
     EntitySetSparseID(entity, INVALID_ENTITY);
-    RenderSet_FreeSparseIDPtr(set, sparseData);
     SparseDataRemoveFromParent(set, sparseData);
+    RenderSet_FreeSparseIDPtr(set, sparseData);
 }
 
 void RenderSet_RemoveEntityRangeStaged(RenderSet* set, Range range)
 {
+    if (range.start + range.count > set->maxEntities) return;
+
     for (u32 i = 0; i < range.count; i++)
     {
         SparseData* sparseData = &set->sparseData[range.start + i];
+        if (sparseData->id == INVALID_ENTITY) continue;
         Physics_DestroyEntityBody(set->hookScene, &set->entities[sparseData->id]);
     }
 
     for (u32 i = 0; i < range.count; i++)
     {
         SparseData* sparseData = &set->sparseData[range.start + i];
-        Entity* entity = &set->entities[sparseData->id];
-        EntitySetSparseID(entity, INVALID_ENTITY);
+        if (sparseData->id == INVALID_ENTITY) continue;
+        EntitySetSparseID(&set->entities[sparseData->id], INVALID_ENTITY);
         SparseDataRemoveFromParent(set, sparseData);
     }
     RenderSet_FreeSparseIDRangePtr(set, set->sparseData + range.start, range.count);
@@ -607,18 +634,23 @@ static void ShiftEntitiesLeft(RenderSet* set, u32 firstRemoved, u32 count)
 
     u32 oldNumEntities = set->numEntities;
     u32 endRemoved = firstRemoved + count;
+
     for (u32 i = firstRemoved; i < endRemoved && i < oldNumEntities; i++)
     {
         u32 sparseIdx = EntityGetSparseID(&set->entities[i]);
-        bool validSparse = sparseIdx != INVALID_ENTITY && sparseIdx < set->maxEntities;
-        bool sparseMapsToRemoved = validSparse &&
-                                   set->sparseData[sparseIdx].id >= firstRemoved &&
-                                   set->sparseData[sparseIdx].id < endRemoved;
-        if (sparseMapsToRemoved)
-        {
-            set->sparseData[sparseIdx].id = INVALID_ENTITY;
-            BitsetReset(set->sparseSlots, (s32)sparseIdx);
-        }
+        if (sparseIdx >= set->maxEntities) continue;
+        SparseData* sd = &set->sparseData[sparseIdx];
+        if (sd->id < firstRemoved || sd->id >= endRemoved) continue;
+        SparseDataRemoveFromParent(set, sd);
+    }
+
+    for (u32 i = firstRemoved; i < endRemoved && i < oldNumEntities; i++)
+    {
+        u32 sparseIdx = EntityGetSparseID(&set->entities[i]);
+        if (sparseIdx >= set->maxEntities) continue;
+        SparseData* sd = &set->sparseData[sparseIdx];
+        if (sd->id < firstRemoved || sd->id >= endRemoved) continue;
+        RenderSet_FreeSparseIDPtr(set, sd);
     }
 
     for (u32 i = endRemoved; i < oldNumEntities; i++)
@@ -651,12 +683,6 @@ u32 RenderSet_RemoveEntities(RenderSet* set, u32 groupIdx, u32 localStartIdx, u3
         count = group->numEntities - localStartIdx;
 
     RenderSet_RemoveRangeCallback(set, groupIdx, localStartIdx, count);
-    u32 cnt = group->numEntities - localStartIdx;
-    for (u32 i = 0; i < cnt; i++)
-    {
-        Entity* entity = &set->entities[group->entityOffset + localStartIdx + i];
-        set->sparseData[EntityGetSparseID(entity)].gen++;
-    }
 
     u32 firstRemoved = group->entityOffset + localStartIdx;
     ShiftEntitiesLeft(set, firstRemoved, count);
@@ -676,37 +702,38 @@ u32 RenderSet_RemoveEntity(RenderSet* set, u32 groupIdx, u32 localEntityIdx)
 
 u32 RenderSet_RemoveSceneBundle(RenderSet* set, u32 bundleIdx)
 {
-    if (bundleIdx >= set->numBundles) return 0;
+    if (bundleIdx >= set->numBundles || set->bundles[bundleIdx] == NULL) return 0;
 
     Range range = set->bundlePrimRange[bundleIdx];
     if (range.count == 0) return 0;
 
     u32 firstGroup = range.start;
-    u32 lastGroup = firstGroup + range.count - 1;
+    u32 groupCount = range.count;
+    u32 lastGroup = firstGroup + groupCount - 1;
     if (firstGroup >= set->numGroups || lastGroup >= set->numGroups) return 0;
 
-    RenderSet_RemoveGroupsCallback(set, firstGroup, range.count);
+    RenderSet_RemoveGroupsCallback(set, firstGroup, groupCount);
+
+    u32 removed = 0;
+    for (u32 i = 0; i < set->maxEntities; i++)
+    {
+        if (set->sparseBundle[i] != (u16)bundleIdx || !BitsetGet(set->sparseSlots, (s32)i)) continue;
+        SparseData* sd = &set->sparseData[i];
+        if (sd->id != INVALID_ENTITY && sd->id < set->numEntities)
+        {
+            EntitySetSparseID(&set->entities[sd->id], INVALID_ENTITY);
+            removed++;
+        }
+        RenderSet_FreeSparseIDPtr(set, sd);
+    }
+    if (removed) RenderSet_CompactEntities(set);
 
     u32 firstEntity = set->primitiveGroups[firstGroup].entityOffset;
-    PrimitiveGroup* last = &set->primitiveGroups[lastGroup];
+    const PrimitiveGroup* last = &set->primitiveGroups[lastGroup];
     u32 entityCount = (last->entityOffset + last->numEntities) - firstEntity;
-
     ShiftEntitiesLeft(set, firstEntity, entityCount);
+    removed += entityCount;
 
-    u32 noMeshRemoved = 0;
-    for (s32 e = (s32)set->numEntities - 1; e >= 0; e--)
-    {
-        Entity* entity = &set->entities[e];
-        bool noMesh = (EntityGetFlags(entity) & EntityFlags_NoMesh) != 0u;
-        u32 primitiveID = EntityGetPrimitiveID(entity);
-        if (noMesh && primitiveID >= firstGroup && primitiveID <= lastGroup)
-        {
-            ShiftEntitiesLeft(set, (u32)e, 1u);
-            noMeshRemoved++;
-        }
-    }
-
-    u32 groupCount = range.count;
     for (u32 i = firstGroup + groupCount; i < set->numGroups; i++)
     {
         PrimitiveGroup moved = set->primitiveGroups[i];
@@ -716,19 +743,15 @@ u32 RenderSet_RemoveSceneBundle(RenderSet* set, u32 bundleIdx)
             EntitySetPrimitiveID(&set->entities[moved.entityOffset + e], i - groupCount);
     }
     set->numGroups -= groupCount;
+    MemSet(&set->primitiveGroups[set->numGroups], 0, groupCount * sizeof(PrimitiveGroup));
 
-    u32 zeroedGroups = Minu32(groupCount, set->maxGroups - groupCount);
-    MemSet(&set->primitiveGroups[set->numGroups], 0, zeroedGroups * sizeof(PrimitiveGroup));
-
-    // free the slot without shifting the others; the primitive groups compacted above, so any
-    // live bundle whose range started after the removed one slides down by groupCount.
     BitsetReset(set->bundleSlots, (s32)bundleIdx);
     set->bundles[bundleIdx] = NULL;
     set->bundlePrimRange[bundleIdx] = (Range){0};
 
     for (u32 i = 0; i < set->numBundles; i++)
     {
-        if (i == bundleIdx || set->bundles[i] == NULL) continue;
+        if (set->bundles[i] == NULL) continue;
         if (set->bundlePrimRange[i].start > firstGroup)
             set->bundlePrimRange[i].start -= groupCount;
     }
@@ -736,19 +759,29 @@ u32 RenderSet_RemoveSceneBundle(RenderSet* set, u32 bundleIdx)
     while (set->numBundles > 0 && !BitsetGet(set->bundleSlots, (s32)(set->numBundles - 1u)))
         set->numBundles--;
 
-    return entityCount + noMeshRemoved;
+    return removed;
+}
+
+static void ResetSparseData(RenderSet* set)
+{
+    for (u32 i = 0; i < set->maxEntities; i++)
+    {
+        SparseData* sd = &set->sparseData[i];
+        u32 gen = (sd->gen + 1u) & 0x7Fu;
+        MemsetZero(sd, sizeof(*sd));
+        sd->gen = gen;
+        sd->id = INVALID_ENTITY;
+        set->sparseBundle[i] = 0xFFFFu;
+    }
 }
 
 void RenderSet_ClearEntities(RenderSet* set)
 {
     RenderSet_ClearEntitiesCallback(set);
     MemsetZero(set->entities, set->maxEntities * sizeof(Entity));
-    MemSet(set->sparseData, 0, set->maxEntities * sizeof(SparseData));
+    ResetSparseData(set);
     MemSet64(set->sparseSlots, 0, ((set->maxEntities + 63u) >> 6));
     MemSet(set->subNodes, 0, set->maxEntities * sizeof(u16));
-
-    for (s32 i = 0; i < set->maxEntities; i++)
-        set->sparseData[i].id = INVALID_ENTITY;
 
     for (u32 g = 0; g < set->numGroups; g++)
     {
@@ -764,13 +797,10 @@ void RenderSet_Clear(RenderSet* set)
 {
     RenderSet_RemoveGroupsCallback(set, 0u, set->numGroups);
     set->numEntities = 0;
-    set->numGroups   = 0;
+    set->numGroups   = 1;
     set->numBundles  = 0;
-    
-    MemSet(set->sparseData, 0, set->maxEntities * sizeof(SparseData));
-    for (s32 i = 0; i < set->maxEntities; i++)
-        set->sparseData[i].id = INVALID_ENTITY;
 
+    ResetSparseData(set);
     MemSet64(set->sparseSlots, 0, ((set->maxEntities + 63u) >> 6));
     MemSet(set->entities, 0, set->maxEntities * sizeof(Entity));
     MemSet(set->subNodes, 0, set->maxEntities * sizeof(u16));
@@ -819,7 +849,7 @@ bool RenderSet_Validate(const RenderSet* set, const char* label)
         }
     }
 
-    if (countedEntities > set->numEntities) {
+    if (countedEntities != set->numEntities) {
         AX_WARN("RenderSet invalid %s: counted drawable entities=%d set entities=%d groups=%d bundles=%d",
                 label ? label : "", countedEntities, set->numEntities, set->numGroups, set->numBundles);
         ok = false;
@@ -851,7 +881,7 @@ bool RenderSet_Validate(const RenderSet* set, const char* label)
         }
 
         if (sparseIdx >= set->maxEntities || set->sparseData[sparseIdx].id == INVALID_ENTITY 
-            || set->sparseData[sparseIdx].id >= set->maxEntities) {
+            || set->sparseData[sparseIdx].id >= set->numEntities) {
             AX_WARN("RenderSet invalid %s: dense %d sparse %d missing sparseToDense", label ? label : "", e, sparseIdx);
             ok = false;
         }

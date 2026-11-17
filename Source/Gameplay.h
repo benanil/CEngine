@@ -73,6 +73,8 @@ typedef struct Gameplay_
     float  moveTolerance;    // 0.001f;
     float  cameraXRotation;  // MATH_HalfPI;
     EntityID sphereID;
+    EntityID axeID;
+    EntityID pickAxeID;
 
     struct SDL_GPUTransferBuffer* boneTransfer;
     struct SDL_GPUFence* boneFence;
@@ -84,7 +86,7 @@ typedef struct Gameplay_
 
 void Gameplay_Update(f32 dt);
 
-void SpawnCharacter(Character* ch);
+void SpawnCharacter(Character* ch, Scene* scene, Entity* entity, u32 bundleId);
 
 void CharacterMovement(Gameplay* gp, Entity* character, f32 dt);
 

@@ -29,9 +29,8 @@
 #endif
 
 PlatformContext PlatformCtx = {0};
+SDL_Window* g_SDLWindow;
 extern Camera g_Camera;
-extern SDL_Window* g_SDLWindow;
-
 static ALIGNAS(SIMD_NUM_BYTES) u64 DownKeys[8];
 static ALIGNAS(SIMD_NUM_BYTES) u64 LastKeys[8]; 
 static ALIGNAS(SIMD_NUM_BYTES) u64 PressedKeys[8];
@@ -149,8 +148,8 @@ void EventCallback(const SDL_Event* event)
             break;
         }
         case  SDL_EVENT_WINDOW_RESIZED: {
-            if ((event->window.data1 + event->window.data2) != 0)
-                Camera_RecalculateProjection(&g_Camera, event->window.data1, event->window.data2);
+            // if ((event->window.data1 + event->window.data2) != 0)
+            //     Camera_RecalculateProjection(&g_Camera, event->window.data1, event->window.data2);
             PlatformCtx.WindowWidth = event->window.data1;
             PlatformCtx.WindowHeight = event->window.data2;
             wApplyWindowShape();
