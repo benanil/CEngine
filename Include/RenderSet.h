@@ -130,9 +130,10 @@ static inline u32 SparseIDFromSparseData(const RenderSet* rs, const SparseData* 
 
 static inline u32 EntityGetBundleId(const RenderSet* rs, const Entity* entity)
 {
-    return rs->primitiveGroups[EntityGetPrimitiveID(entity)].bundleIdx;
+    return rs->sparseBundle[EntityGetSparseID(entity)]; // rs->primitiveGroups[EntityGetPrimitiveID(entity)].bundleIdx;
 }
 
+v128f RenderSet_GroupLocalPivot(const PrimitiveGroup* group);
 v128f RenderSet_GroupLocalCenter(const PrimitiveGroup* group);
 v128f RenderSet_EntityBoundsCenter(const PrimitiveGroup* group, const Entity* entity, v128f rotation, v128f worldScale);
 

@@ -16,4 +16,11 @@ void  EditorSceneHotkeys(void);
 
 void GraphicsEditorUI(void);
 
+void SetGizmoLines();
+void GizmoSetLineWidth(f32 width);
+void GizmoLine(v128f a, v128f b, u32 color);
+void GizmoQuad(v128f a, v128f b, v128f c, v128f d, u32 color);
+void GizmoDrawRing(v128f center, v128f axis, f32 radius, u32 color);
+void GizmoDrawArrow(v128f center, v128f axisDir, f32 size, u32 color);
+
 #endif 

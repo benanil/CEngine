@@ -148,7 +148,7 @@ bool EditorGizmoDuplicateSelected(void)
         SparseData* sparse;
         if (GetKeyDown(SDLK_LSHIFT)) {
             sparse = Scene_Spawn(scene, EntityGetBundleId(set, target), pos, EntityGetRotation(target), 
-                                 EntityGetScaleV(target), EntityGetFlags(target));
+                                 EntityGetScaleV(target), EntityGetFlags(target)).sparse;
         }
         else {
             Entity copy = *target;
@@ -318,7 +318,12 @@ static void GizmoVertex(v128f p, u32 color)
     gizmoVerts[gizmoNumVerts++] = (ALineVertex){ VecGetX(p), VecGetY(p), VecGetZ(p), color };
 }
 
-static void GizmoQuad(v128f a, v128f b, v128f c, v128f d, u32 color)
+void GizmoSetLineWidth(f32 width)
+{
+    gizmoLineWidth = width;
+}
+
+void GizmoQuad(v128f a, v128f b, v128f c, v128f d, u32 color)
 {
     if (gizmoNumVerts + 6u > MAX_GIZMO_VERTICES) return;
     GizmoVertex(a, color); GizmoVertex(b, color); GizmoVertex(c, color);
@@ -326,7 +331,7 @@ static void GizmoQuad(v128f a, v128f b, v128f c, v128f d, u32 color)
 }
 
 // camera facing thick line, two triangles
-static void GizmoLine(v128f a, v128f b, u32 color)
+void GizmoLine(v128f a, v128f b, u32 color)
 {
     v128f dir = VecSub(b, a);
     f32 len = Sqrtf(Vec3DotfV(dir, dir));
@@ -342,7 +347,7 @@ static void GizmoLine(v128f a, v128f b, u32 color)
     GizmoQuad(VecAdd(a, side), VecAdd(b, side), VecSub(b, side), VecSub(a, side), color);
 }
 
-static void GizmoDrawArrow(v128f center, v128f axisDir, f32 size, u32 color)
+void GizmoDrawArrow(v128f center, v128f axisDir, f32 size, u32 color)
 {
     v128f tip = VecAdd(center, VecMulf(axisDir, size));
     GizmoLine(center, tip, color);
@@ -380,7 +385,7 @@ static void GizmoDrawScaleHandle(v128f center, v128f axisDir, f32 size, u32 colo
               VecAdd(tip, VecAdd(VecMulf(u, -s), VecMulf(v,  s))), color);
 }
 
-static void GizmoDrawRing(v128f center, v128f axis, f32 radius, u32 color)
+void GizmoDrawRing(v128f center, v128f axis, f32 radius, u32 color)
 {
     enum { Segments = 32 };
     v128f u, v;
@@ -488,10 +493,17 @@ static void GizmoApplyMembers(Scene* scene, const v128f axes[3], f32 mouseY)
     }
 }
 
+void SetGizmoLines()
+{
+    RendererSetGizmoLines(gizmoVerts, gizmoNumVerts);
+}
+
 // out: true while the gizmo owns the mouse, the caller skips picking then
 bool EditorGizmoUpdate(Camera* camera)
 {
     Scene* scene = GetActiveScene();
+    gizmoNumVerts = 0;
+    gizmoLineWidth = 0.1f;
     if (gizmoNumTargets == 0 || !scene)
         return false;
 
@@ -561,7 +573,7 @@ bool EditorGizmoUpdate(Camera* camera)
     v128f pickedRotation = gizmoMembers[0].startRot;
     v128f camPos = VecLoad(&camera->position.x);
     v128f toCenter = VecSub(center, camPos);
-    f32 size = Maxf32(Sqrtf(Vec3DotfV(toCenter, toCenter)) * 0.15f, 0.05f);
+    f32 size = Maxf32(Vec3LenfV(toCenter) * 0.15f, 0.05f);
 
     v128f axes[3];
     GizmoHandleAxes(pickedRotation, axes);
@@ -712,7 +724,6 @@ bool EditorGizmoUpdate(Camera* camera)
     }
 
     // draw, the active or hovered handle highlights
-    gizmoNumVerts = 0;
     gizmoCamPos = camPos;
     gizmoLineWidth = size * 0.02f;
     v128f gizmoCenter = GizmoGetMembersCenter(scene);
@@ -737,6 +748,6 @@ bool EditorGizmoUpdate(Camera* camera)
         GizmoDrawRing(gizmoCenter, camForward, size * 0.15f,
                       gizmo.hotAxis == GizmoAxis_Uniform ? GIZMO_HOT_COLOR : GIZMO_CENTER_COLOR);
     }
-    RendererSetGizmoLines(gizmoVerts, gizmoNumVerts);
     return consumed;
 }
+

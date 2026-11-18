@@ -7,22 +7,22 @@
 
 v128f QMul(v128f Q1, v128f Q2); 
 // Angle should be between -twopi, twopi
-v128f QFromAxisAngle(float3 axis, float angle);
-v128f QFromAxisAngleV(v128f axis, float angle);
+v128f QFromAxisAngle(float3 axis, f32 angle);
+v128f QFromAxisAngleV(v128f axis, f32 angle);
 // below 3 function are same as QFromAxisAngle but with single axis, 
 // faster because no normalization and less multipication
-v128f  QFromXAngle(float angle);
-v128f  QFromYAngle(float angle);
-v128f  QFromZAngle(float angle);
+v128f  QFromXAngle(f32 angle);
+v128f  QFromYAngle(f32 angle);
+v128f  QFromZAngle(f32 angle);
 v128f  QMulVec3V(v128f vec, v128f quat);
 float3 QMulVec3(float3 vec, Quaternion quat);
 // Common code for computing the scalar coefficients of SLERP
 v128f QCalculateCoefficient(v128f vT, v128f xm1);
-Quaternion QSlerp(Quaternion q0, Quaternion q1, float t);
+Quaternion QSlerp(Quaternion q0, Quaternion q1, f32 t);
 // faster but less precise, more error prone version of slerp
-Quaternion QNLerp(Quaternion a, Quaternion b, float t);
-Quaternion QFromEuler(float x, float y, float z);
-Quaternion QFromPitchYawRoll(float pitch, float yaw, float roll);
+Quaternion QNLerp(Quaternion a, Quaternion b, f32 t);
+Quaternion QFromEuler(f32 x, f32 y, f32 z);
+Quaternion QFromPitchYawRoll(f32 pitch, f32 yaw, f32 roll);
 Quaternion QFromEulerVec3(float3 euler);
 float3 QToEulerAngles(Quaternion qu);
 // number of columns of matrix, 3 or 4
@@ -41,7 +41,7 @@ float3 QGetUp(Quaternion vec);
 v128f  DQGetTranslation(DualQuaternion dq);
 DualQuaternion DQMultiply(DualQuaternion a, DualQuaternion b);
 DualQuaternion DQFromRotationTranslation(v128f rotation, v128f translation);
-DualQuaternion DQBlend(DualQuaternion x, DualQuaternion y, float a);
+DualQuaternion DQBlend(DualQuaternion x, DualQuaternion y, f32 a);
 
 #endif // Quaternion_H
 
@@ -51,7 +51,7 @@ DualQuaternion DQBlend(DualQuaternion x, DualQuaternion y, float a);
 #include "Vector.h"
 
 typedef struct xyzw_ { 
-    float x, y, z, w; 
+    f32 x, y, z, w; 
 } xyzw;
 
 typedef v128f Quaternion;
@@ -89,14 +89,14 @@ static inline v128f VCALL QMul(v128f Q1, v128f Q2)
 }
 
 // Angle should be between -twopi, twopi
-static inline v128f QFromAxisAngle(float3 axis, float angle)
+static inline v128f QFromAxisAngle(float3 axis, f32 angle)
 {
-    float SinV = Sin(0.5f * angle);
-    float CosV = Cos(0.5f * angle);
+    f32 SinV = Sin(0.5f * angle);
+    f32 CosV = Cos(0.5f * angle);
     return VecSetR(axis.x * SinV, axis.y * SinV, axis.z * SinV, CosV);
 }
 
-static inline v128f QFromAxisAngleV(v128f axis, float angle)
+static inline v128f QFromAxisAngleV(v128f axis, f32 angle)
 {
     f32 s = Sin(0.5f * angle);
     f32 c = Cos(0.5f * angle);
@@ -107,15 +107,15 @@ static inline v128f QFromAxisAngleV(v128f axis, float angle)
 
 // below 3 function are same as QFromAxisAngle but with single axis, 
 // faster because no normalization and less multipication
-static inline v128f QFromXAngle(float angle) {
+static inline v128f QFromXAngle(f32 angle) {
     return VecSetR(Sin(0.5f * angle), 0.0f, 0.0f, Cos(0.5f * angle));
 }
 
-static inline v128f QFromYAngle(float angle) {
+static inline v128f QFromYAngle(f32 angle) {
     return VecSetR(0.0f, Sin(0.5f * angle), 0.0f, Cos(0.5f * angle));
 }
 
-static inline v128f QFromZAngle(float angle) {
+static inline v128f QFromZAngle(f32 angle) {
     return VecSetR(0.0f, 0.0f, Sin(0.5f * angle), Cos(0.5f * angle));
 }
 
@@ -138,7 +138,7 @@ static inline float3 VCALL QMulVec3(float3 vec, Quaternion quat)
 // Common code for computing the scalar coefficients of SLERP
 purefn v128f QCalculateCoefficient(v128f vT, v128f xm1)
 {
-    const float mu = 1.85298109240830f;
+    const f32 mu = 1.85298109240830f;
     v128f one = VecSet1(1.0f);
     // Precomputed constants
     const v128f u0123 = VecSetR( 1.f / ( 1 * 3 ), 1.f / ( 2 * 5 ), 1.f / ( 3 * 7 ), 1.f / ( 4 * 9 ) );
@@ -164,7 +164,7 @@ purefn v128f QCalculateCoefficient(v128f vT, v128f xm1)
     return VecMul(c, vT);
 }
 
-static inline Quaternion VCALL QSlerp(Quaternion q0, Quaternion q1, float t)
+static inline Quaternion VCALL QSlerp(Quaternion q0, Quaternion q1, f32 t)
 {
     const v128f one = VecSet1(1.0f);
     // from paper: "A Fast and Accurate Estimate for SLERP" by David Eberly
@@ -181,7 +181,7 @@ static inline Quaternion VCALL QSlerp(Quaternion q0, Quaternion q1, float t)
 }
 
 // faster but less precise, more error prone version of slerp
-purefn Quaternion VCALL QNLerp(Quaternion a, Quaternion b, float t)
+purefn Quaternion VCALL QNLerp(Quaternion a, Quaternion b, f32 t)
 {
     v128f lz = VecCmpLt(VecDot(a, b), VecZero());
     a = VecSelect(a, VecNeg(a), lz);
@@ -189,10 +189,10 @@ purefn Quaternion VCALL QNLerp(Quaternion a, Quaternion b, float t)
     return VecNormEst(a);
 }
 
-purefn Quaternion QFromEuler(float x, float y, float z)
+purefn Quaternion QFromEuler(f32 x, f32 y, f32 z)
 {
     x *= 0.5f; y *= 0.5f; z *= 0.5f;
-    float c[4], s[4];
+    f32 c[4], s[4];
     v128f cv, sv;
     VecSinCos(VecSetR(x, y, z, 1.0f), &sv, &cv);
     VecStore(c, cv);
@@ -204,10 +204,10 @@ purefn Quaternion QFromEuler(float x, float y, float z)
         c[0] * c[1] * c[2] + s[0] * s[1] * s[2]);
 }
 
-purefn Quaternion QFromPitchYawRoll(float pitch, float yaw, float roll)
+purefn Quaternion QFromPitchYawRoll(f32 pitch, f32 yaw, f32 roll)
 {
     pitch *= 0.5f; yaw *= 0.5f; roll *= 0.5f;
-    float c[4], s[4];
+    f32 c[4], s[4];
     v128f cv, sv;
     VecSinCos(VecSetR(pitch, yaw, roll, 1.0f), &sv, &cv);
     VecStore(c, cv);
@@ -237,9 +237,9 @@ purefn float3 QToEulerAngles(Quaternion qu)
 }
 
 // number of columns of matrix, 3 or 4
-static inline void QuaternionFromMatrix(float* Orientation, const float* m, int numCol) {
+static inline void QuaternionFromMatrix(f32* Orientation, const f32* m, int numCol) {
     int i, j, k = 0;
-    float root, trace = m[0*numCol+0] + m[1 * numCol + 1] + m[2 * numCol + 2];
+    f32 root, trace = m[0*numCol+0] + m[1 * numCol + 1] + m[2 * numCol + 2];
     
     if (trace > 0.0f)
     {
@@ -411,11 +411,11 @@ inline v128f VCALL QuaternionFromM33Vec(v128f r0, v128f r1, v128f r2)
     #endif
 }
 
-static inline void M33FromQuaternion(float* mat, Quaternion quat)
+static inline void M33FromQuaternion(f32* mat, Quaternion quat)
 {
     xyzw q;
     VecStore(&q.x, quat);
-    const float num9 = q.x * q.x, num8 = q.y * q.y,
+    const f32 num9 = q.x * q.x, num8 = q.y * q.y,
     num7 = q.z * q.z, num6 = q.x * q.y,
     num5 = q.z * q.w, num4 = q.z * q.x,
     num3 = q.y * q.w, num2 = q.y * q.z,
@@ -434,11 +434,11 @@ static inline void M33FromQuaternion(float* mat, Quaternion quat)
     mat[3 * 2 + 2] = 1.0f - (2.0f * (num8 + num9));
 }
 
-static inline void M44FromQuaternion(float* mat, Quaternion quat)
+static inline void M44FromQuaternion(f32* mat, Quaternion quat)
 {
     xyzw q;
     VecStore(&q.x, quat);
-    const float num9 = q.x * q.x, num8 = q.y * q.y,
+    const f32 num9 = q.x * q.x, num8 = q.y * q.y,
     num7 = q.z * q.z, num6 = q.x * q.y,
     num5 = q.z * q.w, num4 = q.z * q.x,
     num3 = q.y * q.w, num2 = q.y * q.z,
@@ -473,7 +473,7 @@ purefn Quaternion VCALL QConjugate(Quaternion vec)
 
 purefn Quaternion VCALL QInverse(Quaternion q)
 {
-    const float lengthSq = VecDotf(q, q);
+    const f32 lengthSq = VecDotf(q, q);
     if (AlmostEqualf(lengthSq, 1.0f))
     {
         q = QConjugate(q);
@@ -546,12 +546,12 @@ static inline DualQuaternion DQFromRotationTranslation(v128f rotation, v128f tra
     dq.real = rotation;
     dq.dual = VecMulf(QMul(translation, rotation), 0.5f);
     // // enforce q*d = 0
-    // float dotRD = VecDotf(dq.real, dq.dual);
+    // f32 dotRD = VecDotf(dq.real, dq.dual);
     // dq.dual = VecSub(dq.dual, VecMulf(dq.real, dotRD));
     return dq;
 }
 
-static inline DualQuaternion DQBlend(DualQuaternion x, DualQuaternion y, float a)
+static inline DualQuaternion DQBlend(DualQuaternion x, DualQuaternion y, f32 a)
 {
     // Check dot product to handle antipodality
     v128f k = VecDot(x.real, y.real);

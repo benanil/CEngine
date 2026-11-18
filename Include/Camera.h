@@ -144,7 +144,7 @@ static inline void CameraInit(Camera* camera, int width, int height)
     camera->pitch       = 0.0f;
     camera->yaw         = 0.0f;
     camera->sensitivity = 15.0f;
-    camera->verticalFOV = 65.0f;
+    camera->verticalFOV = 90.0f;
     camera->nearClip    = .25f;
     camera->farClip     = 2500.0f; // minimum = (sum(cascadeSizes))
     camera->speed       = 3.0f;
@@ -253,7 +253,7 @@ static inline void CameraUpdateTPS(Camera* camera, f32 dt, float2 mousePos)
 
 static inline void CameraSwitchMode(Camera* camera, CameraMode mode)
 {
-    SDL_SetWindowRelativeMouseMode(g_SDLWindow, mode != CameraMode_Fly);
+    // SDL_SetWindowRelativeMouseMode(g_SDLWindow, mode != CameraMode_Fly);
     camera->mode = mode;
 }
 

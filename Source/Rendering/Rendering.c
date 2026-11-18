@@ -674,6 +674,38 @@ static void GatherSkinnedAnimationVisibility(SDL_GPUCommandBuffer* cmd, RenderSe
     }
 }
 
+SDL_GPUFence* RendererUploadAnimations(Scene* scene, SparseData* readEntitySparse, SDL_GPUTransferBuffer* boneTransfer)
+{
+    if (!scene || !readEntitySparse || !scene->animSystem.boneBuffer) return NULL;
+    SDL_GPUCommandBuffer* cmd = SDL_AcquireGPUCommandBuffer(g_GPUDevice);
+    AnimationSystem_FlushInstances(&scene->animSystem);
+    f32 sphere[4];
+    MemCopy(sphere, &g_Camera.position, sizeof(float3));
+    sphere[3] = 300.0f; // skinned objects that are 300mt distance to camera is visible
+    const u32 flags = CullDrawFlag_VisibilityOutput | CullDrawFlag_CullSphere | CullDrawFlag_ResetVisibility;
+    DispatchCullDrawArgsCompute(cmd, &scene->skinnedSet, &scene->skinnedBuffers, &scene->skinnedBuffers.draw, 
+                                (FrustumPlanes){0}, M44Identity(), flags,  1u, sphere);
+
+    DispatchAnimationCompute(cmd, &scene->skinnedSet, &scene->skinnedBuffers, &scene->animSystem);
+    if (!cmd) {
+        AX_WARN("Failed to acquire command buffer :%s", SDL_GetError());
+        Quit(2);
+    }
+
+    u32 base = readEntitySparse->id * MAX_BONES * AnimMtxNumF32;
+    SDL_GPUCopyPass* copyPass = SDL_BeginGPUCopyPass(cmd);
+    SDL_DownloadFromGPUBuffer(copyPass,
+                              &(SDL_GPUBufferRegion){ 
+                              .buffer = scene->animSystem.boneBuffer, 
+                              .offset = base * sizeof(u32), 
+                              .size   = sizeof(u32) * AnimMtxNumF32 * MAX_BONES },
+                              &(SDL_GPUTransferBufferLocation){
+                              .transfer_buffer = boneTransfer,
+                              .offset = 0});
+    SDL_EndGPUCopyPass(copyPass);
+    return SDL_SubmitGPUCommandBufferAndAcquireFence(cmd);
+}
+
 void Render(void)
 {
     g_RenderFrameIndex++;
@@ -769,11 +801,11 @@ void Render(void)
 
         UpdateLightShadows();
         UploadLightBuffer();
-        AnimationSystem_FlushInstances(&scene->animSystem);
-        GatherSkinnedAnimationVisibility(cmd, &scene->skinnedSet, &scene->skinnedBuffers,
-                                         cameraFrustum, hiZViewProj, enableHiZ, &pointShadows, &spotShadows);
+        // AnimationSystem_FlushInstances(&scene->animSystem);
+        // GatherSkinnedAnimationVisibility(cmd, &scene->skinnedSet, &scene->skinnedBuffers,
+        //                                  cameraFrustum, hiZViewProj, enableHiZ, &pointShadows, &spotShadows);
+        // DispatchAnimationCompute(cmd, &scene->skinnedSet, &scene->skinnedBuffers, &scene->animSystem);
         
-        DispatchAnimationCompute(cmd, &scene->skinnedSet, &scene->skinnedBuffers, &scene->animSystem);
 
         if (g_RenderSettings.enableLocalLights) {
             RenderShadows(cmd);

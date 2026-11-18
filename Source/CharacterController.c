@@ -99,7 +99,7 @@ void CharacterMovement(Gameplay* gp, Entity* character, f32 dt)
 {
     Scene* scene = gp->scene; 
     Character* ch = &gp->character;
-    if (!ch->active) return;
+    if (!ch->active) goto initCamera;
     b3WorldId worldId = Physics_GetWorld();
     b3Capsule mover = MakeMover();
     b3QueryFilter filter = MakeFilter();
@@ -222,8 +222,12 @@ void CharacterMovement(Gameplay* gp, Entity* character, f32 dt)
     {
         mRotation = QFromYAngle(g_Camera.yaw * -MATH_DegToRad + gp->cameraXRotation);
     }
-
-    v128f position = VecAdd(Vec3Load(&ch->position.x), VecSetR(0.0f, -1.3f, 0.0f, 0.0f));
+    
+    const RenderSet* rs = &gp->scene->skinnedSet;
+    const PrimitiveGroup* pg = &rs->primitiveGroups[EntityGetPrimitiveID(character)];
+    f32 dist = VecGetY(RenderSet_GroupLocalPivot(pg));
+    
+    v128f position = VecAdd(Vec3Load(&ch->position.x), VecSetR(0.0f, ch->scale * -dist * 0.5f - 0.05f, 0.0f, 0.0f));
     position = VecSub(position, QMulVec3V(ch->center, mRotation));
 
     for (s32 i = 0; i < ch->numEntities; i++)
@@ -231,8 +235,11 @@ void CharacterMovement(Gameplay* gp, Entity* character, f32 dt)
         Entity* mesh = &scene->skinnedSet.entities[ch->sparse[i].id];
         EntitySetPositionV(mesh, position);
         EntitySetRotation(mesh, mRotation);
+        EntitySetScaleV(mesh, VecSet1(ch->scale));
     }
+
+    ch->rotation = mRotation;
     g_Camera.position = F3Add(B3VecToFloat3(ch->position), QMulVec3(gp->cameraOffset, mRotation));
-    g_Camera.position = F3Add(M44ExtractPosition(gp->boneMat), g_Camera.position);
+    initCamera:{}
     g_Camera.target = g_Camera.position;
 }

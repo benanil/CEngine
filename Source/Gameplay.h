@@ -38,6 +38,7 @@ typedef struct ChrAnim_
 typedef struct Character_
 {
     v128f         center;
+    v128f         rotation;
     SceneBundle*  bundle;
     SparseData*   sparse;
     cAnim anim;
@@ -75,16 +76,21 @@ typedef struct Gameplay_
     EntityID sphereID;
     EntityID axeID;
     EntityID pickAxeID;
+    u32  axeNumEntity;
+    bool handJointValid;
 
     struct SDL_GPUTransferBuffer* boneTransfer;
-    struct SDL_GPUFence* boneFence;
     Scene* scene;
 
-    mat4x4 boneMat;
+    mat4x4 headBoneMat;
+    mat4x4 handBoneMat;
+    
     Character character;
 } Gameplay;
 
 void Gameplay_Update(f32 dt);
+
+void Gameplay_UseBones(SDL_GPUFence* fence);
 
 void SpawnCharacter(Character* ch, Scene* scene, Entity* entity, u32 bundleId);
 

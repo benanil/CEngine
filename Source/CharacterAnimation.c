@@ -63,7 +63,7 @@ void cAnimInit(cAnim* an, const Scene* scene, u32 characterId)
     an->trigerAnim = an->lastAnimation = an->idle;
     an->mixInTime  = an->onceTime    = 0.0f;
     an->mixSpeed   = an->onceSpeed   = 1.0f;
-    an->animSpeed  = 1.5f;
+    an->animSpeed  = 1.0f;
     an->onceStart  = TimeSinceStartup();
     MemSet(an->anim1Joints, 0xFF, sizeof(u32) * 3);   
 }

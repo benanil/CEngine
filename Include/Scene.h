@@ -292,8 +292,13 @@ u32 Scene_RemoveBundle(Scene* scene, u32 bundleIdx);
 // and transcode, do not call mid frame. out: 0 on failure
 s32 Scene_RepackTextures(Scene* scene);
 
+typedef struct SpawnResult_
+{
+    SparseData* sparse;
+    u32 numEntityAdded;
+} SpawnResult;
 // instances the bundle node hierarchy with the given transform. out: number of entities added
-SparseData* Scene_Spawn(Scene* scene, u32 bundleIdx, v128f position, v128f rotation, v128f scale, EntityFlags flags);
+SpawnResult Scene_Spawn(Scene* scene, u32 bundleIdx, v128f position, v128f rotation, v128f scale, EntityFlags flags);
 
 void Scene_ClearEntities(Scene* scene);
 

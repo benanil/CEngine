@@ -61,6 +61,10 @@ void RenderSet_SetHookScene(RenderSet* set, struct Scene_* scene)
     set->hookScene = scene;
 }
 
+v128f RenderSet_GroupLocalPivot(const PrimitiveGroup* group) {
+    return VecMulf(VecSub(group->aabbMin, group->aabbMax), 0.5f);
+}
+
 v128f RenderSet_GroupLocalCenter(const PrimitiveGroup* group) {
     return VecMulf(VecAdd(group->aabbMin, group->aabbMax), 0.5f);
 }
@@ -161,36 +165,6 @@ u32 RenderSet_AddSceneBundle(RenderSet* set, const SceneBundle* sceneBundle, u32
     if (bundleIdx + 1u > set->numBundles) set->numBundles = bundleIdx + 1u;
     set->bundles[bundleIdx] = sceneBundle;
     u32 primitiveStart = set->numGroups;
-    // Skinned primitives deform far outside their bind-pose AABB when they are rigidly bound
-    // to a moving bone (a sword in the hand, a helmet on the head, ...). The animation shaders
-    // normalize each vertex against PrimitiveGroup.aabbMin/aabbMax, so a per-primitive bind AABB
-    // collapses such accessories to a blob once the bone leaves bind pose. Share one skin-wide
-    // bound (the union of every primitive) across all groups so accessories normalize against the
-    // whole-character reach, matching how the old absolute ANIMATION_MAX_METERS range behaved.
-    v128f skinnedMin = VecSet1(FLT_MAX);
-    v128f skinnedMax = VecSet1(-FLT_MAX);
-    if (set->skinned)
-    {
-        for (u32 m = 0; m < (u32)sceneBundle->numMeshes; m++)
-        {
-            const AMesh* mesh = sceneBundle->meshes + m;
-            for (u32 p = 0; p < (u32)mesh->numPrimitives; p++)
-            {
-                const APrimitive* primitive = mesh->primitives + p;
-                skinnedMin = VecMin(skinnedMin, VecLoad(primitive->min));
-                skinnedMax = VecMax(skinnedMax, VecLoad(primitive->max));
-            }
-        }
-
-        // Bind-pose bounds do not cover poses that reach past the bind silhouette (an overhead
-        // swing, a kick). Inflate symmetrically so those poses stay inside [-1, 1] and avoid
-        // clamping; the 13-bit per-axis precision has ample headroom for the slack.
-        v128f boundsMargin = VecSetR(2.5f, 1.5f, 2.5f, 0.0f);
-        v128f center = VecMulf(VecAdd(skinnedMin, skinnedMax), 0.5f);
-        v128f extent = VecMul(VecSub(skinnedMax, skinnedMin), boundsMargin);
-        skinnedMin = VecSub(center, extent);
-        skinnedMax = VecAdd(center, extent);
-    }
 
     s32 totalPrimitives = 0;
     for (u32 m = 0; m < (u32)sceneBundle->numMeshes; m++)
@@ -207,8 +181,8 @@ u32 RenderSet_AddSceneBundle(RenderSet* set, const SceneBundle* sceneBundle, u32
             group->bundleIdx      = (u16)INVALID_BUNDLE; // owner-assigned bundle handle, stamped by the caller
             group->entityOffset   = set->numEntities;
 
-            v128f aabbMin = set->skinned ? skinnedMin : VecLoad(primitive->min);
-            v128f aabbMax = set->skinned ? skinnedMax : VecLoad(primitive->max);
+            v128f aabbMin = VecLoad(primitive->min);
+            v128f aabbMax = VecLoad(primitive->max);
             PrimitiveGroup_SetAABB(group, aabbMin, aabbMax);
             
             for (u32 lod = 0; lod < MESH_LOD_COUNT; lod++)
@@ -771,8 +745,8 @@ static void ResetSparseData(RenderSet* set)
         MemsetZero(sd, sizeof(*sd));
         sd->gen = gen;
         sd->id = INVALID_ENTITY;
-        set->sparseBundle[i] = 0xFFFFu;
     }
+    MemSet(set->sparseBundle, 0xFF, sizeof(u16) * set->maxEntities);
 }
 
 void RenderSet_ClearEntities(RenderSet* set)

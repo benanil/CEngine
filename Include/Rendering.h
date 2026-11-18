@@ -131,4 +131,6 @@ u32 RendererGetLightCount(void);
 
 RenderLightDebugInfo RendererGetLightDebugInfo(void);
 
+SDL_GPUFence* RendererUploadAnimations(struct Scene_* scene, struct SparseData_* readEntitySparse, SDL_GPUTransferBuffer* boneTransfer);
+
 #endif

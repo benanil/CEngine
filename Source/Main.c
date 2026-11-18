@@ -33,8 +33,8 @@ static s32 done = 0;
 static bool g_MainLoopTicking;
 
 Camera       g_Camera;
+extern Gameplay g_Gameplay;
 extern SDL_Window*  g_SDLWindow;
-
 extern WindowState g_WindowState;
 
 static void MainSyncWindowSize(void)
@@ -76,13 +76,9 @@ static SDL_AppResult SDLCALL MainAppInit(void** appstate, int argc, char* argv[]
         AX_ERROR("creating window failed!");
         return SDL_APP_FAILURE;
     }
-    InitGlobalArena();
-    PlatformInit();
 
     EditorConsoleInit();
 
-    BasisuSetup();
-    SceneManager_Init();
     GraphicsInit(msaa, window, width, height);
     Gameplay_Init();
     TextureSystem_InitDevice();
@@ -90,11 +86,9 @@ static SDL_AppResult SDLCALL MainAppInit(void** appstate, int argc, char* argv[]
     EditorInit();
 
     InitBuffers();
-
     // if (DemoScene_Create()) if (!Scene_MakeActive(DemoScene_Get())) return SDL_APP_FAILURE;
     if (!Scene_NewActive()) return SDL_APP_FAILURE;
     
-    // Keep the runnable Transvoxel example in the demo scene instead of reopening the last editor scene.
     CameraInit(&g_Camera, width, height);
     return SDL_APP_CONTINUE;
 }
@@ -108,21 +102,26 @@ static void MainLoopTick(void)
 
     SetPressedAndReleasedKeys();
     PlatformUpdate();
-
-    EditorSceneHotkeys();
     
+    Gameplay_Update(PlatformCtx.DeltaTime);
+    SDL_GPUFence* animFence = RendererUploadAnimations(GetActiveScene(), g_Gameplay.character.sparse, g_Gameplay.boneTransfer);
+    EditorSceneHotkeys();
+   
     UIBeginFrame();
 
     if (!TerrainEditorUpdate(&g_Camera) && !EditorGizmoUpdate(&g_Camera) && !EditorLightGizmoUpdate(&g_Camera))
         EditorPickingUpdate(&g_Camera);
 
     tUpdate();
-    Gameplay_Update(PlatformCtx.DeltaTime);
     GraphicsEditorUI();
     DemoScene_Update(PlatformCtx.DeltaTime);
     Scene_Update(PlatformCtx.DeltaTime);
     
+    Gameplay_UseBones(animFence);
+    
     CameraUpdate(&g_Camera, PlatformCtx.DeltaTime);
+    
+    SetGizmoLines();
 
     Scene_SubmitLights();
     if (!done) Render();
@@ -166,5 +165,10 @@ static void SDLCALL MainAppQuit(void* appstate, SDL_AppResult result)
 
 s32 main(s32 argc, char* argv[])
 {
+    InitGlobalArena();
+    PlatformInit();
+    BasisuSetup();
+    SceneManager_Init();
+    ApplyQualityPreset(0);
     return SDL_EnterAppMainCallbacks(argc, argv, MainAppInit, MainAppIterate, MainAppEvent, MainAppQuit);
 }

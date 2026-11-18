@@ -10,6 +10,7 @@
 #include "Include/Camera.h"
 #include "Include/BVH.h"
 #include "Include/AssetManager.h"
+#include "Include/Editor.h"
 
 #include "Include/UIWindow.h"
 #include "Include/UIRenderer.h"
@@ -48,11 +49,9 @@ static void OnObjectLoaded(ModelID modelId)
         return;
     }
 
-    u32 numEntity = scene->skinnedSet.numEntities + scene->surfaceSet.numEntities;
-    SparseData* sparse = Scene_Spawn(scene, bundleIdx, VecZero(), QIdentity(), VecOne(), EntityFlags_None);
-    u32 numEntityAdded = (scene->skinnedSet.numEntities + scene->surfaceSet.numEntities) - numEntity;
-    
-    EntityID id = EntityIDFromSparseData(scene, sparse);
+    SpawnResult sparseResult = Scene_Spawn(scene, bundleIdx, VecZero(), QIdentity(), VecOne(), EntityFlags_None);
+
+    EntityID id = EntityIDFromSparseData(scene, sparseResult.sparse);
     Entity* entity = Scene_GetEntity(scene, id);
     switch (modelId)
     {
@@ -60,14 +59,15 @@ static void OnObjectLoaded(ModelID modelId)
         { 
             EntityScaleRec(scene, entity, VecSet1(ch->scale), true);
             ch->bundle = scene->bundleRefs[bundleIdx].bundle;
-            ch->sparse = sparse;
-            ch->numEntities = numEntityAdded;
+            ch->sparse = sparseResult.sparse;
+            ch->numEntities = sparseResult.numEntityAdded;
             ch->entity = id;
             SpawnCharacter(ch, scene, entity, bundleIdx);
         } break;
         case ModelAxe:
         {
             EntityScaleRec(scene, entity, VecSet1(0.25f), true);
+            gp->axeNumEntity = sparseResult.numEntityAdded;
             gp->axeID = id;
         } break;
         case ModelPickaxe:
@@ -105,8 +105,11 @@ static void OnOpenScene(void* g, void* sc)
     gp->scene = (Scene*)sc;
     u32 sphereBundle = Scene_AddBundleCached(gp->scene, GetUnitRock(), "Rock");
     gp->sphereID = EntityIDFromSparseData(gp->scene,
-                        Scene_Spawn(gp->scene, sphereBundle, VecZero(), QIdentity(), VecOne(), EntityFlags_None));
-
+                        Scene_Spawn(gp->scene, sphereBundle, VecZero(), QIdentity(), VecOne(), EntityFlags_None).sparse);
+    Entity* sphereEntity = Scene_GetEntity(gp->scene, gp->sphereID);
+    EntitySetScaleV(sphereEntity, VecSet1(0.07f));
+    EntitySetPositionV(sphereEntity, VecSetR(-0.05, 0.4f, -0.176f, 0.0f));
+    EntitySetRotation(sphereEntity, QFromEuler(-142.0f * MATH_DegToRad, 91.0f * MATH_DegToRad, 140.0f * MATH_DegToRad));
     AsyncRun("LoadCharacter", LoadObjectAsync, NULL, (void*)ModelCharacter);
     AsyncRun("LoadPickaxe", LoadObjectAsync, NULL, (void*)ModelPickaxe);
     AsyncRun("LoadAxe", LoadObjectAsync, NULL, (void*)ModelAxe);
@@ -138,41 +141,15 @@ static void UpdatePicking()
     }
 }
 
-static void GetBones(Scene* scene, Character* ch, Entity* character)
+static mat4x4 GetBone(void* mapped, u32 joint, Character* ch, Entity* character)
 {
-    u32 headNode = ch->anim.headJoint;
-    u32 dense = ch->sparse->id;
-    u32 base = dense * MAX_BONES * AnimMtxNumF32;
-
-    if (g_Gameplay.boneTransfer && g_Gameplay.boneFence && SDL_QueryGPUFence(g_GPUDevice, g_Gameplay.boneFence))
-    {
-        void* mapped = SDL_MapGPUTransferBuffer(g_GPUDevice, g_Gameplay.boneTransfer, false);
-        if (mapped)
-        {
-            ALIGNSIMD u32 buffer[AnimMtxNumF32];
-            MemCopy(buffer, (u32*)mapped + (headNode * AnimMtxNumF32), sizeof(buffer));
-            mat4x4 boneMat = UnpackGPUBone(buffer);
-            mat4x4 bindMatrix = M44Inverse(ch->anim.invBind[ch->anim.headJoint - ch->anim.jointOffset]);
-            boneMat = M44Multiply(bindMatrix, boneMat);
-            boneMat = M44Multiply(boneMat, M44PositionRotationScaleVec(VecZero(), EntityGetRotation(character), VecSet1(ch->scale)));
-            g_Gameplay.boneMat = boneMat;
-            SDL_UnmapGPUTransferBuffer(g_GPUDevice, g_Gameplay.boneTransfer);
-        }
-        SDL_ReleaseGPUFence(g_GPUDevice, g_Gameplay.boneFence);
-    }
-
-    SDL_GPUCommandBuffer* cmd = SDL_AcquireGPUCommandBuffer(g_GPUDevice);
-    SDL_GPUCopyPass* copyPass = SDL_BeginGPUCopyPass(cmd);
-    SDL_DownloadFromGPUBuffer(copyPass,
-                              &(SDL_GPUBufferRegion){ 
-                              .buffer = scene->animSystem.boneBuffer, 
-                              .offset = base * sizeof(u32), 
-                              .size   = sizeof(u32) * AnimMtxNumF32 * MAX_BONES },
-                              &(SDL_GPUTransferBufferLocation){
-                              .transfer_buffer = g_Gameplay.boneTransfer,
-                              .offset = 0});
-    SDL_EndGPUCopyPass(copyPass);
-    g_Gameplay.boneFence = SDL_SubmitGPUCommandBufferAndAcquireFence(cmd);
+    ALIGNSIMD u32 buffer[AnimMtxNumF32];
+    MemCopy(buffer, (u32*)mapped + (joint * AnimMtxNumF32), sizeof(buffer));
+    mat4x4 boneMat = UnpackGPUBone(buffer);
+    mat4x4 bindMatrix = M44Inverse(ch->anim.invBind[joint - ch->anim.jointOffset]);
+    bindMatrix = M44Multiply(bindMatrix, boneMat);
+    return M44Multiply(bindMatrix,
+                M44PositionRotationScaleVec(VecZero(), QNorm(EntityGetRotation(character)), VecSet1(ch->scale)));
 }
 
 static void HandleInputs(Character* ch, Gameplay* gp)
@@ -180,8 +157,8 @@ static void HandleInputs(Character* ch, Gameplay* gp)
     if (GetKeyPressed(SDLK_SPACE) || GetGamepadButtonPressed(SDL_GAMEPAD_BUTTON_SOUTH))
         ch->anim.jumpRequested = true;
 
-    if (GetMouseDown(MouseButton_Left) || GetGamepadButton(SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER))
-        cPlayOnce(&ch->anim, ch->anim.atack, 0.35f, 2.0f, true);
+    if (GetKeyPressed(SDLK_L) || GetGamepadButton(SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER))
+        cPlayOnce(&ch->anim, ch->anim.atack, 0.35f, 1.0f, true);
 
     if (GetKeyPressed(SDLK_J) || GetKeyPressed(SDLK_K))
     {
@@ -230,7 +207,7 @@ static void DebugSphere(Gameplay* gp, Entity* character)
     Entity* sphereEntity = Scene_GetEntity(gp->scene, gp->sphereID);
     if (sphereEntity)
     {
-        v128f neckPos = VecAdd(EntityGetPosV(character), M44ExtractPositionV(gp->boneMat));
+        v128f neckPos = VecAdd(EntityGetPosV(character), M44ExtractPositionV(gp->headBoneMat));
         // EntitySetPositionV(sphereEntity, neckPos);
         EntitySetScaleV(sphereEntity, VecSet1(0.07f));
         LightGPU light;
@@ -250,6 +227,64 @@ static void DebugSphere(Gameplay* gp, Entity* character)
     }
 }
 
+void Gameplay_UseBones(SDL_GPUFence* fence)
+{
+    Gameplay* gp = &g_Gameplay;
+    Character* ch = &gp->character;
+    Entity* character = RenderSet_GetEntity(&gp->scene->skinnedSet, gp->character.entity);
+    if (!character || !fence) return;
+
+    if (gp->boneTransfer && SDL_WaitForGPUFences(g_GPUDevice, true, &fence, 1))
+    {
+        void* mapped = SDL_MapGPUTransferBuffer(g_GPUDevice, gp->boneTransfer, false);
+        if (mapped)
+        {
+            gp->headBoneMat = GetBone(mapped, ch->anim.headJoint, ch, character);
+            gp->handBoneMat = GetBone(mapped, ch->anim.rightHandJoint, ch, character);
+            gp->handJointValid = true;
+            SDL_UnmapGPUTransferBuffer(g_GPUDevice, gp->boneTransfer);
+        }
+        SDL_ReleaseGPUFence(g_GPUDevice, gp->boneFence);
+    }
+
+    if (ch->active)
+        g_Camera.position = F3Add(M44ExtractPosition(gp->headBoneMat), g_Camera.position);
+
+    Entity* axe = RenderSet_GetEntity(&gp->scene->surfaceSet, gp->axeID);
+    if (axe && gp->handJointValid)
+    {
+        Entity* sphereEntity = Scene_GetEntity(gp->scene, gp->sphereID);
+        RenderSet* surfaceSet = &gp->scene->surfaceSet;
+        SparseData* axeSparse = surfaceSet->sparseData + EntityGetSparseID(axe);
+        mat4x4 hand = gp->handBoneMat;
+        hand.r[0] = VecNorm(hand.r[0]);
+        hand.r[1] = VecNorm(hand.r[1]);
+        hand.r[2] = VecNorm(hand.r[2]);
+        
+        const RenderSet* rs = &gp->scene->skinnedSet;
+        const PrimitiveGroup* pg = &rs->primitiveGroups[EntityGetPrimitiveID(character)];
+        f32 dist = VecGetY(RenderSet_GroupLocalPivot(pg));
+        v128f position = VecAdd(Vec3Load(&ch->position.x), VecSetR(0.0f, ch->scale * -dist * 0.5f - 0.05f, 0.0f, 0.0f)); // -1.46f
+        position = VecAdd(M44ExtractPositionV(hand), position);
+        v128f rotation = QMul(EntityGetRotation(sphereEntity), M44ExtractRotation(hand));
+        float3 spherePos = EntityGetPos(sphereEntity);
+        GizmoSetLineWidth(0.006f);
+        hand = M44FromQuaternionV(rotation);
+        GizmoDrawRing(position, hand.r[1], 0.05f, 32404531u | 0xFF000000u);
+        position = VecAdd(position, VecMulf(hand.r[0], spherePos.x));
+        position = VecAdd(position, VecMulf(hand.r[1], spherePos.y));
+        position = VecAdd(position, VecMulf(hand.r[2], spherePos.z));
+        
+        for (u32 i = 0; i < gp->axeNumEntity; i++)
+        {
+            Entity* obj = &surfaceSet->entities[axeSparse[i].id];
+            EntitySetPositionV(obj, position);
+            EntitySetRotation(obj, rotation);
+            EntitySetScaleV(obj, VecSet1(0.0025f));
+        }
+    }
+}
+
 void Gameplay_Init()
 {
     g_Gameplay.gravity            = -25.0f;
@@ -264,6 +299,10 @@ void Gameplay_Init()
     g_Gameplay.sphereID           = INVALID_ENTITY;
     g_Gameplay.character.scale    = 1.8f;
     g_Gameplay.character.entity   = INVALID_ENTITY;
+    g_Gameplay.character.rotation = QIdentity();
+    g_Gameplay.axeID              = INVALID_ENTITY;
+    g_Gameplay.pickAxeID          = INVALID_ENTITY;
+    g_Gameplay.handJointValid     = false;
     SceneManager* sm = GetSceneManager();
     EventAdd(&sm->OpenEvent, OnOpenScene, &g_Gameplay);
     EventAdd(&sm->BeforeDestroyEvent, OnBeforeDestroyScene, &g_Gameplay);
@@ -280,23 +319,28 @@ void Gameplay_Update(f32 dt)
     if (loadedModels[ModelCharacter]) OnObjectLoaded(ModelCharacter);
     if (loadedModels[ModelPickaxe]) OnObjectLoaded(ModelPickaxe);
     if (loadedModels[ModelAxe]) OnObjectLoaded(ModelAxe);
-
-    Entity* character = RenderSet_GetEntity(&g_Gameplay.scene->skinnedSet, g_Gameplay.character.entity);
+    Gameplay* gp = &g_Gameplay;
+    Entity* character = RenderSet_GetEntity(&gp->scene->skinnedSet, gp->character.entity);
     if (character == NULL) return;
-    Character* ch = &g_Gameplay.character;
+    Character* ch = &gp->character;
     
     CharacterUI(ch, &g_Gameplay);
-    GetBones(g_Gameplay.scene, ch, character);
     HandleInputs(ch, &g_Gameplay);
     
     CharacterMovement(&g_Gameplay, character, dt);
-    cAnimate(g_Gameplay.scene, ch, dt);
+    cAnimate(gp->scene, ch, dt);
 
-    DebugSphere(&g_Gameplay, character);
+    // DebugSphere(&g_Gameplay, character);
 }
 
 void Gameplay_Destroy()
 {
+    SceneManager* sm = GetSceneManager();
+    sm->OpenEvent.numAction = sm->BeforeDestroyEvent.numAction = 0;
+
     if (g_Gameplay.boneTransfer) SDL_ReleaseGPUTransferBuffer(g_GPUDevice, g_Gameplay.boneTransfer);
     g_Gameplay.boneTransfer = NULL;
 }
+
+
+
