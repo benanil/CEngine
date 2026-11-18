@@ -50,7 +50,6 @@ static void OnObjectLoaded(ModelID modelId)
     }
 
     SpawnResult sparseResult = Scene_Spawn(scene, bundleIdx, VecZero(), QIdentity(), VecOne(), EntityFlags_None);
-
     EntityID id = EntityIDFromSparseData(scene, sparseResult.sparse);
     Entity* entity = Scene_GetEntity(scene, id);
     switch (modelId)
@@ -113,8 +112,6 @@ static void OnOpenScene(void* g, void* sc)
     AsyncRun("LoadCharacter", LoadObjectAsync, NULL, (void*)ModelCharacter);
     AsyncRun("LoadPickaxe", LoadObjectAsync, NULL, (void*)ModelPickaxe);
     AsyncRun("LoadAxe", LoadObjectAsync, NULL, (void*)ModelAxe);
-    // LoadObjectAsync((void*)(u64)ModelAxe);
-    // LoadObjectAsync((void*)(u64)ModelPickaxe);
 }
 
 static void UpdatePicking()
@@ -241,17 +238,16 @@ void Gameplay_UseBones(SDL_GPUFence* fence)
         {
             gp->headBoneMat = GetBone(mapped, ch->anim.headJoint, ch, character);
             gp->handBoneMat = GetBone(mapped, ch->anim.rightHandJoint, ch, character);
-            gp->handJointValid = true;
             SDL_UnmapGPUTransferBuffer(g_GPUDevice, gp->boneTransfer);
         }
-        SDL_ReleaseGPUFence(g_GPUDevice, gp->boneFence);
+        SDL_ReleaseGPUFence(g_GPUDevice, fence);
     }
 
     if (ch->active)
         g_Camera.position = F3Add(M44ExtractPosition(gp->headBoneMat), g_Camera.position);
 
-    Entity* axe = RenderSet_GetEntity(&gp->scene->surfaceSet, gp->axeID);
-    if (axe && gp->handJointValid)
+    Entity* axe = RenderSet_GetEntity(&gp->scene->surfaceSet, gp->pickAxeID);
+    if (axe != NULL)
     {
         Entity* sphereEntity = Scene_GetEntity(gp->scene, gp->sphereID);
         RenderSet* surfaceSet = &gp->scene->surfaceSet;
@@ -280,7 +276,7 @@ void Gameplay_UseBones(SDL_GPUFence* fence)
             Entity* obj = &surfaceSet->entities[axeSparse[i].id];
             EntitySetPositionV(obj, position);
             EntitySetRotation(obj, rotation);
-            EntitySetScaleV(obj, VecSet1(0.0025f));
+            EntitySetScaleV(obj, VecSet1(0.0015f));
         }
     }
 }
@@ -294,7 +290,6 @@ void Gameplay_Init()
     g_Gameplay.cameraOffset       = (float3){ 0.0f, -1.33, 0.3f };
     g_Gameplay.cameraXRotation    = MATH_HalfPI;
     g_Gameplay.boneTransfer       = NULL;
-    g_Gameplay.boneFence          = NULL;
     g_Gameplay.groundTolerance    = 1.25f;
     g_Gameplay.sphereID           = INVALID_ENTITY;
     g_Gameplay.character.scale    = 1.8f;
@@ -302,7 +297,6 @@ void Gameplay_Init()
     g_Gameplay.character.rotation = QIdentity();
     g_Gameplay.axeID              = INVALID_ENTITY;
     g_Gameplay.pickAxeID          = INVALID_ENTITY;
-    g_Gameplay.handJointValid     = false;
     SceneManager* sm = GetSceneManager();
     EventAdd(&sm->OpenEvent, OnOpenScene, &g_Gameplay);
     EventAdd(&sm->BeforeDestroyEvent, OnBeforeDestroyScene, &g_Gameplay);

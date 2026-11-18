@@ -77,7 +77,6 @@ typedef struct Gameplay_
     EntityID axeID;
     EntityID pickAxeID;
     u32  axeNumEntity;
-    bool handJointValid;
 
     struct SDL_GPUTransferBuffer* boneTransfer;
     Scene* scene;
