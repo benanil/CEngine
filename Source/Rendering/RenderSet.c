@@ -61,8 +61,8 @@ void RenderSet_SetHookScene(RenderSet* set, struct Scene_* scene)
     set->hookScene = scene;
 }
 
-v128f RenderSet_GroupLocalPivot(const PrimitiveGroup* group) {
-    return VecMulf(VecSub(group->aabbMin, group->aabbMax), 0.5f);
+v128f RenderSet_GroupLocalSize(const PrimitiveGroup* group) {
+    return VecFabs(VecSub(group->aabbMin, group->aabbMax));
 }
 
 v128f RenderSet_GroupLocalCenter(const PrimitiveGroup* group) {

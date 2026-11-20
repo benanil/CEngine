@@ -78,16 +78,17 @@ static SDL_AppResult SDLCALL MainAppInit(void** appstate, int argc, char* argv[]
     }
 
     EditorConsoleInit();
-
     GraphicsInit(msaa, window, width, height);
-    Gameplay_Init();
     TextureSystem_InitDevice();
     RendererInit();
-    EditorInit();
 
     InitBuffers();
+
+    Gameplay_InitEvents();
     // if (DemoScene_Create()) if (!Scene_MakeActive(DemoScene_Get())) return SDL_APP_FAILURE;
-    if (!Scene_NewActive()) return SDL_APP_FAILURE;
+    // editor scene loaded or empty scene created
+    bool lastSceneLoaded = EditorInit();
+    if (!lastSceneLoaded && !Scene_NewActive()) return SDL_APP_FAILURE;
     
     CameraInit(&g_Camera, width, height);
     return SDL_APP_CONTINUE;
@@ -102,20 +103,19 @@ static void MainLoopTick(void)
 
     SetPressedAndReleasedKeys();
     PlatformUpdate();
-    
-    Gameplay_Update(PlatformCtx.DeltaTime);
-    SDL_GPUFence* animFence = RendererUploadAnimations(GetActiveScene(), g_Gameplay.character.sparse, g_Gameplay.boneTransfer);
-    EditorSceneHotkeys();
-   
     UIBeginFrame();
 
     if (!TerrainEditorUpdate(&g_Camera) && !EditorGizmoUpdate(&g_Camera) && !EditorLightGizmoUpdate(&g_Camera))
         EditorPickingUpdate(&g_Camera);
 
+    Gameplay_Update(PlatformCtx.DeltaTime);
     tUpdate();
     GraphicsEditorUI();
     DemoScene_Update(PlatformCtx.DeltaTime);
     Scene_Update(PlatformCtx.DeltaTime);
+    
+    SDL_GPUFence* animFence = RendererUploadAnimations(GetActiveScene(), g_Gameplay.character.sparse, g_Gameplay.boneTransfer);
+    EditorSceneHotkeys();
     
     Gameplay_UseBones(animFence);
     
@@ -170,5 +170,6 @@ s32 main(s32 argc, char* argv[])
     BasisuSetup();
     SceneManager_Init();
     ApplyQualityPreset(0);
+    Gameplay_Init();
     return SDL_EnterAppMainCallbacks(argc, argv, MainAppInit, MainAppIterate, MainAppEvent, MainAppQuit);
 }

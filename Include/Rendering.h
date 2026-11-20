@@ -4,7 +4,7 @@
 #include "Graphics.h"
 
 #define MAX_OUTLINE_TARGETS 2048u
-#define MAX_GIZMO_VERTICES 2048u
+#define MAX_GIZMO_VERTICES (8192u*2)
 #define MAX_TERRAIN_CHUNK_DRAWS 8192u
 
 typedef struct RenderSettings_
@@ -130,7 +130,8 @@ void RendererSetTerrainBrush(float3 position, f32 radius);
 u32 RendererGetLightCount(void);
 
 RenderLightDebugInfo RendererGetLightDebugInfo(void);
-
+struct Scene_;
+struct SparseData_;
 SDL_GPUFence* RendererUploadAnimations(struct Scene_* scene, struct SparseData_* readEntitySparse, SDL_GPUTransferBuffer* boneTransfer);
 
 #endif

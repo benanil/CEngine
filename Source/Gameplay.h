@@ -37,6 +37,7 @@ typedef struct ChrAnim_
 
 typedef struct Character_
 {
+    v128f         size;
     v128f         center;
     v128f         rotation;
     SceneBundle*  bundle;
@@ -87,9 +88,17 @@ typedef struct Gameplay_
     Character character;
 } Gameplay;
 
+void Gameplay_Init();
+
+void Gameplay_InitEvents();
+
 void Gameplay_Update(f32 dt);
 
+void Gameplay_Destroy();
+
 void Gameplay_UseBones(SDL_GPUFence* fence);
+
+v128f Gameplay_GetCharacterPivot(Entity* character);
 
 void SpawnCharacter(Character* ch, Scene* scene, Entity* entity, u32 bundleId);
 

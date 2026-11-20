@@ -235,14 +235,6 @@ static void SceneEventDeleteFile(void* unused)
     sceneDeletePopupOpen = true;
 }
 
-void EditorSceneStartup(void)
-{
-    if (!EditorSettingsOpenLastScene()) return;
-
-    const char* path = EditorSettingsLastScene();
-    if (path && path[0] && FileExist(path)) EditorOpenScene(path);
-}
-
 static void SceneFilesUI(void)
 {
     if (sceneFilesDirty || TimeSinceStartup() - sceneFilesLastScan > 2.0f) SceneFilesRefresh();

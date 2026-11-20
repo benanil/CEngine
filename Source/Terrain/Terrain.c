@@ -76,6 +76,7 @@ TerrainAuthoring* Terrain_GetAuthoring(void){
 
 void tInit(void)
 {
+    return;
     if (tp.initialized) return;
     Foliage_Init();
     tp.genParams = Terrain_DefaultGenParams();

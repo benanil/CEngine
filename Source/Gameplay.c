@@ -11,6 +11,7 @@
 #include "Include/BVH.h"
 #include "Include/AssetManager.h"
 #include "Include/Editor.h"
+#include "Include/Rendering.h" // light
 
 #include "Include/UIWindow.h"
 #include "Include/UIRenderer.h"
@@ -242,14 +243,16 @@ void Gameplay_UseBones(SDL_GPUFence* fence)
         }
         SDL_ReleaseGPUFence(g_GPUDevice, fence);
     }
+    else
+        SDL_ReleaseGPUFence(g_GPUDevice, fence);
 
     if (ch->active)
         g_Camera.position = F3Add(M44ExtractPosition(gp->headBoneMat), g_Camera.position);
 
     Entity* axe = RenderSet_GetEntity(&gp->scene->surfaceSet, gp->pickAxeID);
-    if (axe != NULL)
+    Entity* sphereEntity = Scene_GetEntity(gp->scene, gp->sphereID);
+    if (axe && sphereEntity)
     {
-        Entity* sphereEntity = Scene_GetEntity(gp->scene, gp->sphereID);
         RenderSet* surfaceSet = &gp->scene->surfaceSet;
         SparseData* axeSparse = surfaceSet->sparseData + EntityGetSparseID(axe);
         mat4x4 hand = gp->handBoneMat;
@@ -257,10 +260,7 @@ void Gameplay_UseBones(SDL_GPUFence* fence)
         hand.r[1] = VecNorm(hand.r[1]);
         hand.r[2] = VecNorm(hand.r[2]);
         
-        const RenderSet* rs = &gp->scene->skinnedSet;
-        const PrimitiveGroup* pg = &rs->primitiveGroups[EntityGetPrimitiveID(character)];
-        f32 dist = VecGetY(RenderSet_GroupLocalPivot(pg));
-        v128f position = VecAdd(Vec3Load(&ch->position.x), VecSetR(0.0f, ch->scale * -dist * 0.5f - 0.05f, 0.0f, 0.0f)); // -1.46f
+        v128f position = Vec3Load(&ch->position.x); 
         position = VecAdd(M44ExtractPositionV(hand), position);
         v128f rotation = QMul(EntityGetRotation(sphereEntity), M44ExtractRotation(hand));
         float3 spherePos = EntityGetPos(sphereEntity);
@@ -276,9 +276,20 @@ void Gameplay_UseBones(SDL_GPUFence* fence)
             Entity* obj = &surfaceSet->entities[axeSparse[i].id];
             EntitySetPositionV(obj, position);
             EntitySetRotation(obj, rotation);
-            EntitySetScaleV(obj, VecSet1(0.0015f));
+            EntitySetScaleV(obj, VecSet1(0.0025f));
         }
     }
+}
+
+void Gameplay_InitEvents()
+{
+    SceneManager* sm = GetSceneManager();
+    EventAdd(&sm->OpenEvent, OnOpenScene, &g_Gameplay);
+    EventAdd(&sm->BeforeDestroyEvent, OnBeforeDestroyScene, &g_Gameplay);
+    g_Gameplay.boneTransfer = SDL_CreateGPUTransferBuffer(g_GPUDevice, &(SDL_GPUTransferBufferCreateInfo){
+        .usage = SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD,
+        .size  = sizeof(u32) * AnimMtxNumF32 * MAX_BONES
+    });
 }
 
 void Gameplay_Init()
@@ -287,7 +298,7 @@ void Gameplay_Init()
     g_Gameplay.groundMinNormalY   = 0.7f;
     g_Gameplay.snapDistance       = 0.3f;
     g_Gameplay.moveTolerance      = 0.001f;
-    g_Gameplay.cameraOffset       = (float3){ 0.0f, -1.33, 0.3f };
+    g_Gameplay.cameraOffset       = (float3){ 0.0f, -0.0, 0.3f };
     g_Gameplay.cameraXRotation    = MATH_HalfPI;
     g_Gameplay.boneTransfer       = NULL;
     g_Gameplay.groundTolerance    = 1.25f;
@@ -297,14 +308,7 @@ void Gameplay_Init()
     g_Gameplay.character.rotation = QIdentity();
     g_Gameplay.axeID              = INVALID_ENTITY;
     g_Gameplay.pickAxeID          = INVALID_ENTITY;
-    SceneManager* sm = GetSceneManager();
-    EventAdd(&sm->OpenEvent, OnOpenScene, &g_Gameplay);
-    EventAdd(&sm->BeforeDestroyEvent, OnBeforeDestroyScene, &g_Gameplay);
-    
-    g_Gameplay.boneTransfer = SDL_CreateGPUTransferBuffer(g_GPUDevice, &(SDL_GPUTransferBufferCreateInfo){
-        .usage = SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD,
-        .size  = sizeof(u32) * AnimMtxNumF32 * MAX_BONES
-    });
+    g_Gameplay.boneTransfer = NULL;
 }
 
 void Gameplay_Update(f32 dt)

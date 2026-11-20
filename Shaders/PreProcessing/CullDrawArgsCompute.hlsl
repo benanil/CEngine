@@ -150,10 +150,7 @@ float FrustumClosestPlaneDistance(float3 p, float4 planes[6])
     float dst = 9999.0f;
     [unroll]
     for (uint i = 0; i < 6; i++)
-    {
         dst = min(dst, dot(planes[i].xyz, p) + planes[i].w);
-    }
-    
     return dst;
 }
 

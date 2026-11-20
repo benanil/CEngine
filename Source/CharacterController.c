@@ -10,6 +10,7 @@
 #include "Include/UIRenderer.h"
 #include "Include/Camera.h"
 #include "Include/Rendering.h"
+#include "Include/Editor.h"
 
 typedef struct PlaneCapture
 {
@@ -20,13 +21,23 @@ typedef struct PlaneCapture
 
 extern Camera g_Camera;
 
-void SpawnCharacter(Character* ch, Scene* scene, Entity* entity, u32 bundleId)
+static void GetCharacterSizeInfo(Character* ch, Scene* scene, Entity* entity)
 {
-    EntityID entityID = EntityIDFromSparseData(scene, ch->sparse + 1);
-    RenderSet* rs = Scene_GetEntityRenderSet(scene, entityID);
-    ch->center = VecMulf(RenderSet_GroupLocalCenter(rs->primitiveGroups + EntityGetPrimitiveID(entity)), ch->scale);
-    VecSetY(ch->center, 0.0f);
-    
+    RenderSet* rs = &scene->skinnedSet;
+    u32 bundleId = EntityGetBundleId(rs, entity);
+    Range range = rs->bundlePrimRange[bundleId];
+    const SceneBundle* bundle = rs->bundles[bundleId];
+    const ANode* rootNode = &bundle->nodes[1]; // body node
+    const AMesh* mesh = &bundle->meshes[rootNode->index];
+    u32 localId = rootNode->index + range.start;
+    const PrimitiveGroup* pg = &rs->primitiveGroups[localId];
+    ch->size = VecMulf(RenderSet_GroupLocalSize(pg), ch->scale);
+    ch->center = VecMulf(RenderSet_GroupLocalCenter(pg), ch->scale);
+}
+
+void SpawnCharacter(Character* ch, Scene* scene, Entity* entity, u32 bundleId)
+{   
+    GetCharacterSizeInfo(ch, scene, entity);
     ch->groundNormal  = (b3Vec3){ 0.0f,  1.0f, 0.0f };
     ch->position      = (b3Vec3){ 0.0f, 10.0f, 0.0f }; 
     ch->jumpSpeed     = 15.0f;
@@ -36,16 +47,17 @@ void SpawnCharacter(Character* ch, Scene* scene, Entity* entity, u32 bundleId)
     ch->verticalSpeed = 0.0f;
     ch->yRotation     = ch->xRotation = 0.0f;
     ch->grounded = ch->active = ch->jumped = false;
-    
     cAnimInit(&ch->anim, scene, bundleId);
 }
 
-static b3Capsule MakeMover(void)
+static b3Capsule MakeMover(v128f size, f32 radius)
 {
+    v128f up = VecSetR(0.0f, 1.0f, 0.0f, 0.0f);
+    radius = Minf32(radius, VecGetY(size) * 0.5f);
     return (b3Capsule){
-        .center1 = (b3Vec3){ 0.0f, -0.85f, 0.0f },
-        .center2 = (b3Vec3){ 0.0f,  0.55f, 0.0f },
-        .radius = 0.5f
+        .center1 = v128fToB3Vec3(VecMulf(up, radius)),
+        .center2 = v128fToB3Vec3(VecMulf(up, VecGetY(size) - radius)),
+        .radius  = radius 
     };
 }
 
@@ -100,9 +112,13 @@ void CharacterMovement(Gameplay* gp, Entity* character, f32 dt)
     Scene* scene = gp->scene; 
     Character* ch = &gp->character;
     if (!ch->active) goto initCamera;
+    f32 radius = VecGetZ(ch->size);
     b3WorldId worldId = Physics_GetWorld();
-    b3Capsule mover = MakeMover();
+    b3Capsule mover = MakeMover(ch->size, radius);
     b3QueryFilter filter = MakeFilter();
+
+    GizmoSetLineWidth(0.02f);
+    GizmoDrawCapsuleAt(B3VecTov128f(ch->position), VecGetY(ch->size), radius, 0xFF0000FFu);
 
     float2 axis = GetMovementAxis();
     f32 axisLen = F2Len(axis);
@@ -223,12 +239,7 @@ void CharacterMovement(Gameplay* gp, Entity* character, f32 dt)
         mRotation = QFromYAngle(g_Camera.yaw * -MATH_DegToRad + gp->cameraXRotation);
     }
     
-    const RenderSet* rs = &gp->scene->skinnedSet;
-    const PrimitiveGroup* pg = &rs->primitiveGroups[EntityGetPrimitiveID(character)];
-    f32 dist = VecGetY(RenderSet_GroupLocalPivot(pg));
-    
-    v128f position = VecAdd(Vec3Load(&ch->position.x), VecSetR(0.0f, ch->scale * -dist * 0.5f - 0.05f, 0.0f, 0.0f));
-    position = VecSub(position, QMulVec3V(ch->center, mRotation));
+    v128f position = Vec3Load(&ch->position.x); 
 
     for (s32 i = 0; i < ch->numEntities; i++)
     {
@@ -239,7 +250,8 @@ void CharacterMovement(Gameplay* gp, Entity* character, f32 dt)
     }
 
     ch->rotation = mRotation;
-    g_Camera.position = F3Add(B3VecToFloat3(ch->position), QMulVec3(gp->cameraOffset, mRotation));
+    float3 camPosAdd = g_Camera.mode == CameraMode_FPS ? QMulVec3(gp->cameraOffset, mRotation) : F3Zero();
+    g_Camera.position = F3Add(B3VecToFloat3(ch->position), camPosAdd);
     initCamera:{}
     g_Camera.target = g_Camera.position;
 }

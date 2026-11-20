@@ -362,7 +362,7 @@ void GizmoDrawArrow(v128f center, v128f axisDir, f32 size, u32 color)
 }
 
 // filled quad between [start, end] on the two axes spanning the plane
-static void GizmoDrawPlane(v128f center, v128f spanA, v128f spanB, f32 start, f32 end, u32 color)
+void GizmoDrawPlane(v128f center, v128f spanA, v128f spanB, f32 start, f32 end, u32 color)
 {
     v128f a = VecAdd(center, VecAdd(VecMulf(spanA, start), VecMulf(spanB, start)));
     v128f b = VecAdd(center, VecAdd(VecMulf(spanA, end),   VecMulf(spanB, start)));
@@ -371,7 +371,7 @@ static void GizmoDrawPlane(v128f center, v128f spanA, v128f spanB, f32 start, f3
     GizmoQuad(a, b, c, d, color);
 }
 
-static void GizmoDrawScaleHandle(v128f center, v128f axisDir, f32 size, u32 color)
+void GizmoDrawScaleHandle(v128f center, v128f axisDir, f32 size, u32 color)
 {
     v128f tip = VecAdd(center, VecMulf(axisDir, size));
     GizmoLine(center, tip, color);
@@ -400,6 +400,125 @@ void GizmoDrawRing(v128f center, v128f axis, f32 radius, u32 color)
     }
 }
 
+void GizmoDrawCapsule(v128f a, v128f b, f32 radius, u32 color)
+{
+    if (radius <= 0.0f) return;
+
+    enum { RingSegments = 8, CapSegments = 4 };
+
+    v128f axis = VecSub(b, a);
+    f32 length = Sqrtf(Vec3DotfV(axis, axis));
+
+    // Degenerate capsule: draw a sphere.
+    if (length < 1.0e-6f)
+    {
+        v128f x = VecSetR(1.0f, 0.0f, 0.0f, 0.0f);
+        v128f y = VecSetR(0.0f, 1.0f, 0.0f, 0.0f);
+        v128f z = VecSetR(0.0f, 0.0f, 1.0f, 0.0f);
+        GizmoDrawRing(a, x, radius, color);
+        GizmoDrawRing(a, y, radius, color);
+        GizmoDrawRing(a, z, radius, color);
+        return;
+    }
+
+    axis = VecMulf(axis, 1.0f / length);
+
+    v128f u, v;
+    GizmoRingBasis(axis, &u, &v);
+
+    // Draw cylinder boundary rings.
+    GizmoDrawRing(a, axis, radius, color);
+    GizmoDrawRing(b, axis, radius, color);
+
+    for (int i = 0; i < RingSegments; ++i)
+    {
+        f32 angle = (f32)i * (MATH_TwoPI / (f32)RingSegments);
+        f32 cs = Cos(angle);
+        f32 sn = Sin(angle);
+
+        v128f radial = VecAdd(VecMulf(u, cs), VecMulf(v, sn));
+        v128f p1 = VecAdd(a, VecMulf(radial, radius));
+        v128f p2 = VecAdd(b, VecMulf(radial, radius));
+
+        // Cylinder side.
+        GizmoLine(p1, p2, color);
+
+        // Bottom hemisphere.
+        v128f prev = p1;
+        for (int j = 1; j <= CapSegments; ++j)
+        {
+            f32 t = (f32)j * (MATH_PI * 0.5f / (f32)CapSegments);
+
+            v128f point = VecAdd(a, VecSub(
+                VecMulf(radial, radius * Cos(t)),
+                VecMulf(axis, radius * Sin(t))
+            ));
+
+            GizmoLine(prev, point, color);
+            prev = point;
+        }
+
+        // Top hemisphere.
+        prev = p2;
+        for (int j = 1; j <= CapSegments; ++j)
+        {
+            f32 t = (f32)j * (MATH_PI * 0.5f / (f32)CapSegments);
+
+            v128f point = VecAdd(b, VecAdd(
+                VecMulf(radial, radius * Cos(t)),
+                VecMulf(axis, radius * Sin(t))
+            ));
+
+            GizmoLine(prev, point, color);
+            prev = point;
+        }
+    }
+}
+
+void GizmoDrawCapsuleAt(v128f position, f32 height, f32 radius, u32 color)
+{
+    if (height <= 0.0f || radius <= 0.0f) return;
+    radius = Minf32(radius, height * 0.5f);
+    v128f up = VecSetR(0.0f, 1.0f, 0.0f, 0.0f);
+    v128f a = VecAdd(position, VecMulf(up, radius));
+    v128f b = VecAdd(position, VecMulf(up, height - radius));
+    GizmoDrawCapsule(a, b, radius, color);
+}
+
+void GizmoDrawAABB(v128f worldMin, v128f worldMax, u32 color)
+{
+    if (gizmoNumVerts + (24 * 3) > MAX_GIZMO_VERTICES)
+        return;
+    v128f p000 = VecSetR(VecGetX(worldMin), VecGetY(worldMin), VecGetZ(worldMin), 0.0f);
+    v128f p100 = VecSetR(VecGetX(worldMax), VecGetY(worldMin), VecGetZ(worldMin), 0.0f);
+    v128f p010 = VecSetR(VecGetX(worldMin), VecGetY(worldMax), VecGetZ(worldMin), 0.0f);
+    v128f p110 = VecSetR(VecGetX(worldMax), VecGetY(worldMax), VecGetZ(worldMin), 0.0f);
+
+    v128f p001 = VecSetR(VecGetX(worldMin), VecGetY(worldMin), VecGetZ(worldMax), 0.0f);
+    v128f p101 = VecSetR(VecGetX(worldMax), VecGetY(worldMin), VecGetZ(worldMax), 0.0f);
+    v128f p011 = VecSetR(VecGetX(worldMin), VecGetY(worldMax), VecGetZ(worldMax), 0.0f);
+    v128f p111 = VecSetR(VecGetX(worldMax), VecGetY(worldMax), VecGetZ(worldMax), 0.0f);
+
+    GizmoLine(p000, p100, color);
+    GizmoLine(p100, p110, color);
+    GizmoLine(p110, p010, color);
+    GizmoLine(p010, p000, color);
+                          
+    GizmoLine(p001, p101, color);
+    GizmoLine(p101, p111, color);
+    GizmoLine(p111, p011, color);
+    GizmoLine(p011, p001, color);
+                          
+    GizmoLine(p000, p001, color);
+    GizmoLine(p100, p101, color);
+    GizmoLine(p110, p111, color);
+    GizmoLine(p010, p011, color);
+}
+
+void GizmoDrawCube(v128f position, v128f halfExtend, u32 color)
+{
+    GizmoDrawAABB(VecSub(position, halfExtend), VecAdd(position, halfExtend), color);
+}
 /*//////////////////////////////////////////////////////////////////////////*/
 /*                                 Update                                   */
 /*//////////////////////////////////////////////////////////////////////////*/
@@ -573,7 +692,7 @@ bool EditorGizmoUpdate(Camera* camera)
     v128f pickedRotation = gizmoMembers[0].startRot;
     v128f camPos = VecLoad(&camera->position.x);
     v128f toCenter = VecSub(center, camPos);
-    f32 size = Maxf32(Vec3LenfV(toCenter) * 0.15f, 0.05f);
+    f32 size = Maxf32(Vec3LenfV(toCenter) * 0.2, 0.05f);
 
     v128f axes[3];
     GizmoHandleAxes(pickedRotation, axes);

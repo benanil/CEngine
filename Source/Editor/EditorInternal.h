@@ -37,8 +37,6 @@ bool EditorLightGizmoUpdate(struct Camera_* camera);
 void DrawSceneLightGizmos(struct Camera_* camera);
 
 // implemented in Editor.c
-bool EditorSettingsOpenLastScene(void);
-const char* EditorSettingsLastScene(void);
 void EditorSettingsSetLastScene(const char* path);
 
 // scene view window (Editor.c). while it is open the 3d scene renders at the window

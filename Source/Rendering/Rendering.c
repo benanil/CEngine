@@ -676,8 +676,9 @@ static void GatherSkinnedAnimationVisibility(SDL_GPUCommandBuffer* cmd, RenderSe
 
 SDL_GPUFence* RendererUploadAnimations(Scene* scene, SparseData* readEntitySparse, SDL_GPUTransferBuffer* boneTransfer)
 {
-    if (!scene || !readEntitySparse || !scene->animSystem.boneBuffer) return NULL;
+    if (!scene || !readEntitySparse || !scene->animSystem.boneBuffer || !boneTransfer) return NULL;
     SDL_GPUCommandBuffer* cmd = SDL_AcquireGPUCommandBuffer(g_GPUDevice);
+    if (!cmd) return NULL;
     AnimationSystem_FlushInstances(&scene->animSystem);
     f32 sphere[4];
     MemCopy(sphere, &g_Camera.position, sizeof(float3));
@@ -687,10 +688,6 @@ SDL_GPUFence* RendererUploadAnimations(Scene* scene, SparseData* readEntitySpars
                                 (FrustumPlanes){0}, M44Identity(), flags,  1u, sphere);
 
     DispatchAnimationCompute(cmd, &scene->skinnedSet, &scene->skinnedBuffers, &scene->animSystem);
-    if (!cmd) {
-        AX_WARN("Failed to acquire command buffer :%s", SDL_GetError());
-        Quit(2);
-    }
 
     u32 base = readEntitySparse->id * MAX_BONES * AnimMtxNumF32;
     SDL_GPUCopyPass* copyPass = SDL_BeginGPUCopyPass(cmd);

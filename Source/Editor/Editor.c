@@ -59,14 +59,12 @@ static u32 editorClosePixels[64 * 64];
 static bool editorSettingsLoaded;
 static bool editorOpenLastScene;
 static bool editorContinueLastUI = true;
-static char editorLastScene[512];
+static char editorLastScene[512] = { 0 };
 
 static bool EditorLineStartsWith(const char* line, const char* prefix)
 {
     while (*prefix)
-    {
         if (*line++ != *prefix++) return false;
-    }
     return true;
 }
 
@@ -130,18 +128,6 @@ static void EditorSettingsLoad(void)
         while (*line == '\n' || *line == '\r') line++;
     }
     FreeAllText(text);
-}
-
-bool EditorSettingsOpenLastScene(void)
-{
-    EditorSettingsLoad();
-    return editorOpenLastScene;
-}
-
-const char* EditorSettingsLastScene(void)
-{
-    EditorSettingsLoad();
-    return editorLastScene;
 }
 
 void EditorSettingsSetLastScene(const char* path)
@@ -685,7 +671,7 @@ static SDL_HitTestResult SDLCALL EditorWindowHitTest(SDL_Window* window, const S
     return SDL_HITTEST_NORMAL;
 }
 
-void EditorInit(void)
+bool EditorInit()
 {
     editorTabBarHitTestHeight = EDITOR_TAB_BAR_HEIGHT;
     if (!SDL_SetWindowHitTest(g_SDLWindow, EditorWindowHitTest, NULL))
@@ -702,6 +688,19 @@ void EditorInit(void)
     editorMaximizeImage = UIImageFromTexture(&editorMaximizeTexture);
     editorRestoreImage  = UIImageFromTexture(&editorRestoreTexture);
     editorCloseImage    = UIImageFromTexture(&editorCloseTexture);
+    EditorSettingsLoad();
+    if (editorContinueLastUI)
+    {
+        const char* layoutPath = ConcatWithTempPath(EDITOR_UI_LAYOUT_PATH, sizeof(EDITOR_UI_LAYOUT_PATH));
+        if (layoutPath)
+        {
+            UIWindowLoadLayout(layoutPath);
+            ArenaPopGlobal(4096);
+        }
+    }
+    if (editorOpenLastScene && editorLastScene[0])
+        return Scene_OpenActive(editorLastScene, NULL) != NULL;
+    return false;
 }
 
 void GraphicsEditorUI(void)
@@ -718,26 +717,6 @@ void GraphicsEditorUI(void)
     u16 borderWidth = (u16)UIGetFloat(UIFloat_BorderWidth);
 
     UIWindowSetTopInset(tabBarHeight);
-
-    static bool uiLayoutLoadAttempted;
-    if (!uiLayoutLoadAttempted)
-    {
-        uiLayoutLoadAttempted = true;
-        EditorSettingsLoad();
-        if (editorContinueLastUI)
-        {
-            const char* layoutPath = ConcatWithTempPath(EDITOR_UI_LAYOUT_PATH, sizeof(EDITOR_UI_LAYOUT_PATH));
-            if (layoutPath)
-            {
-                UIWindowLoadLayout(layoutPath);
-                ArenaPopGlobal(4096);
-            }
-        }
-        if (editorOpenLastScene)
-        {
-            Scene_OpenActive(editorLastScene, NULL);
-        }
-    }
 
     u32 openMaskBefore = EditorOpenWindowMask();
     UIPushFloat(UIFloat_BorderWidth, 0.0f);

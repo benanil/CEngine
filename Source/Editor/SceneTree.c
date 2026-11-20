@@ -63,10 +63,11 @@ static const char* GetEntityMeshName(const RenderSet* set, EntityID id)
     if (!PTR_VALID(set->bundles[bundleId])) return "Custom"; // runtime
     Range range = set->bundlePrimRange[bundleId];
     u32 localId = EntityGetPrimitiveID(entity) - range.start;
+    const SceneBundle* bundle = set->bundles[bundleId];
 
-    for (s32 i = 0, j = 0; i < set->bundles[bundleId]->numMeshes; i++)
+    for (s32 i = 0, j = 0; i < bundle->numMeshes; i++)
     {
-        const AMesh* mesh = &set->bundles[bundleId]->meshes[i];
+        const AMesh* mesh = &bundle->meshes[i];
         for (s32 k = 0; k < mesh->numPrimitives; k++, j++)
             if (j == localId) 
                 return mesh->name ? mesh->name : "--";
