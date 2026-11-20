@@ -100,9 +100,8 @@ void Physics_ApplyWorldSettings(void)
 // task is queued as-is. Returns the job handle as an opaque userTask that box3d hands back to the
 // finish callback. On a full/failed queue we run the task inline and return NULL so box3d skips finish.
 static void* PhysicsEnqueueTask(b3TaskCallback* task, void* taskContext,
-                         void* userContext, const char* taskName)
+                                void* userContext, b3TaskType taskType)
 {
-    (void)taskName;
     JobSystem* jobSystem = (JobSystem*)userContext;
     JobHandle handle = JobSystem_Execute(jobSystem, (JobSystemFn)task, taskContext);
     if (handle == 0) {

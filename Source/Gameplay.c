@@ -22,13 +22,13 @@ Gameplay g_Gameplay;
 
 static const char* modelPaths[NumTools] = {
     "Assets/Meshes/Character/Character.gltf",
-    "Assets/Meshes/Pickaxe/scene.gltf",
     "Assets/Meshes/Axe/scene.gltf",
+    "Assets/Meshes/Pickaxe/scene.gltf",
     "Assets/Meshes/Shovel/scene.gltf"
 };
 
 static const char* toolNames[NumTools] = {
-    "Character", "Pickaxe", "Axe", "Shovel"
+    "Character", "Axe", "Pickaxe", "Shovel"
 };
 
 static SceneBundleStage* loadedModels[NumTools] = { 0, 0, 0, 0 };
@@ -60,7 +60,7 @@ static void OnObjectLoaded(ModelID modelId)
     }
     else
     {
-        Tool* tool = gp->tools + modelId -1;
+        Tool* tool = gp->tools + modelId - 1;
         tool->numEntity = sparseResult.numEntityAdded;
         tool->id = id;
     }
@@ -70,8 +70,8 @@ static void OnBeforeDestroyScene(void* ctx, void* scene)
 {
     Gameplay* gp = (Gameplay*)ctx;
     Scene_RemoveEntity((Scene*)scene, gp->character.entity);
-    for (s32 i = 0; i < NumTools; i++)
-        Scene_RemoveEntity((Scene*)scene, gp->tools[i].id);
+    for (s32 i = 1; i < NumTools; i++)
+        Scene_RemoveEntity((Scene*)scene, gp->tools[i-1].id);
     gp->character.entity = gp->sphereID = gp->axe.id = gp->pickAxe.id = INVALID_ENTITY;
 }
 
@@ -180,10 +180,10 @@ static void CharacterUI(Character* ch, Gameplay* gp)
         f32 sqr = b3LengthSquared(ch->velocity);
         UIReadonlyRow(CLAY_ID("CharSpeedR"), "speed", UIFmtF(Sqrtf(sqr + 0.001f), 3));
         u32 toolIdx = gp->currentTool;
-        if (toolIdx != ToolNone && gp->tools[toolIdx].id != INVALID_ENTITY) 
+        if (toolIdx != ToolNone && gp->tools[toolIdx-1].id != INVALID_ENTITY) 
         {
-            const Tool* tool = gp->tools + toolIdx - 1;
-            UIEditFloatN("tool offset", (f32*)&tool->offset, 3, -1.0f, 1.0f, 3);
+            const Tool* tool = &gp->tools[toolIdx - 1];
+            UIEditFloatN("tool offset", (f32*)&tool->offset, 3, -1.5f, 1.5f, 3);
             UIEditFloatN("tool euler", (f32*)&tool->euler, 3, -180.0f, 180.0f, 3);
             UIEditFloat("tool scale", (f32*)&tool->scale, -1.0f, 1.0f, 0.01f, 3);
         }
@@ -313,7 +313,7 @@ void Gameplay_Init()
     g_Gameplay.pickAxe.euler  = (float3){ 0.0f, 0.0f, -90.0f };
 
     g_Gameplay.shovel.scale  = 1.5f;
-    g_Gameplay.shovel.offset = VecSetR(0.18f, 1.5f, 0.05f, 0.0f);
+    g_Gameplay.shovel.offset = VecSetR(0.18f, -1.0f, 0.05f, 0.0f);
     g_Gameplay.shovel.euler  = (float3){ 10.0f, 0.0f, 90.0f };
 }
 

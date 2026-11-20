@@ -6,8 +6,8 @@
 enum
 {
     ToolNone,
-    ToolPickaxe,
     ToolAxe,
+    ToolPickaxe,
     ToolShovel,
     NumTools
 };
@@ -80,25 +80,23 @@ typedef struct Tool_
     float3 euler; // -142.0f, 91, 140
     EntityID id;
     f32 scale;
-    u32 numEntity;
+    u32 numEntity, pad0, pad1;
 } Tool;
 
 typedef struct Gameplay_
 {
-    struct SDL_GPUTransferBuffer* boneTransfer;
-    Scene* scene;
-    mat4x4 headBoneMat;
-    mat4x4 handBoneMat;
-    Character character;
-
     union {
         struct {
             Tool axe;
             Tool pickAxe;
             Tool shovel;
         };
-        Tool tools[NumTools];
+        Tool tools[NumTools-1];
     };
+    struct SDL_GPUTransferBuffer* boneTransfer;
+    Scene* scene;
+    mat4x4 headBoneMat;
+    mat4x4 handBoneMat;
 
     float3 cameraOffset;     // { 0.0f, -1.33, 0.3f };
     float  gravity;          // -25.0f;
@@ -106,8 +104,11 @@ typedef struct Gameplay_
     float  moveTolerance;    // 0.001f;
     float  cameraXRotation;  // MATH_HalfPI;
     
-    ModelID currentTool;
+    ModelID  currentTool;
     EntityID sphereID;
+    float    padd[3];
+
+    Character character;
 } Gameplay;
 
 void Gameplay_Init();

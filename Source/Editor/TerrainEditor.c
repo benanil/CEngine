@@ -76,7 +76,7 @@ static void TerrainEditorInit(void)
     terrainUI.seed           = 1.0f;
     terrainUI.seaLevel       = -45.0f;
     terrainUI.baseHeight     = -60.0f;
-    terrainUI.lowlandScale   = 0.3f;
+    terrainUI.lowlandScale   = 1.3f;
     terrainUI.caveAmplitude  = 0.3f;
     terrainUI.caveFrequency  = 0.045f;
     terrainUI.islandRadius   = 260.0f;

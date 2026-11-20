@@ -943,7 +943,6 @@ bool tMarchingInit(void)
 
 void tUpdate(void)
 {
-    return;
     if (!tMarchingInit() || !tGetEnabled()) {
         RendererSetTerrainChunkDraws(NULL, 0);
         return;
