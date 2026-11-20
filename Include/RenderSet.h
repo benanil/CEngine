@@ -42,10 +42,16 @@ STATIC_ASSERT(sizeof(SparseData) == 12, "SparseData size missmatch");
 typedef struct RenderSet_
 {
     Entity*             entities;
-    SparseData*         sparseData; // sparse to dense
-    u64*                sparseSlots; // bitset for used sparse id's
-    u16*                subNodes; // sparseID relative offsets 
-    u16*                sparseBundle;
+    SparseData*         sparseData;   // sparse to dense
+    u64*                sparseSlots;  // bitset for used sparse id's
+    u16*                subNodes;     // sparseID relative offsets 
+    u16*                sparseBundle; // kind of wastefull memory and access cost
+    // we can remove sparseBundle with Per-bundle no-mesh group. 
+    // Give each bundle its own no-mesh group inside its primitive range, 
+    // instead of the shared group 0. Then every entity maps to its bundle through its group, 
+    // and I’d also stamp group->bundleIdx = bundleIdx in AddSceneBundle. 
+    // This removes the array and the full scan, and EntityGetBundleId becomes correct for every entity.
+    // It changes the “group 0 is no-mesh” convention, so the renderer and anything that assumes it would need checking.
 
     PrimitiveGroup*     primitiveGroups;
     Range*              bundlePrimRange;

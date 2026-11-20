@@ -289,7 +289,7 @@ float2 GetLookAxis()
 // Mouse
 f32 GetMouseWheelDelta()  { return PlatformCtx.MouseWheelDelta; }
 u8 GetDoubleClicked()     { return PlatformCtx.DoubleClicked; }
-u8 AnyMouseKeyDown()            { return PlatformCtx.MouseDown > 0; }
+u8 AnyMouseKeyDown()      { return PlatformCtx.MouseDown > 0; }
 u8 GetMouseDown(MouseButton button)     { return !!(PlatformCtx.MouseDown     & button); }
 u8 GetMouseReleased(MouseButton button) { return !!(PlatformCtx.MouseReleased & button); }
 u8 GetMousePressed(MouseButton button)  { return !!(PlatformCtx.MousePressed  & button); }

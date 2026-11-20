@@ -475,7 +475,7 @@ static inline void VCALL VecSinCos(v128f V, v128f* pSin, v128f* pCos)
 
 purefn v128f VCALL VecAtan(v128f x)
 {
-    const f32 sa1 =  0.99997726f, sa3 = -0.33262347f, sa5  = 0.19354346f,
+    const f32 sa1 = 0.99997726f, sa3 = -0.33262347f, sa5  = 0.19354346f,
     sa7 = -0.11643287f, sa9 =  0.05265332f, sa11 = -0.01172120f;
       
     const v128f xx = VecMul(x, x);

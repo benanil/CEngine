@@ -64,7 +64,7 @@ void cAnimInit(cAnim* an, const Scene* scene, u32 characterId)
     an->trigerAnim = an->lastAnimation = an->idle;
     an->mixInTime  = an->onceTime    = 0.0f;
     an->mixSpeed   = an->onceSpeed   = 1.0f;
-    an->animSpeed  = 1.0f;
+    an->speed  = 1.0f;
     an->onceStart  = TimeSinceStartup();
     MemSet(an->anim1Joints, 0xFF, sizeof(u32) * 3);   
 }
@@ -132,8 +132,8 @@ static void AdvanceLocomotionPhases(cAnim* an, const LocomotionPose* pose, f32 d
     f32 d0 = clips[pose->anim0].duration;
     f32 d1 = clips[pose->anim1].duration;
     f32 duration = pose->anim0 == an->idle ? d1 : d0 + (d1 - d0) * pose->blend;
-    an->locoPhase = Fractf32(an->locoPhase + dt * an->animSpeed / duration);
-    an->idlePhase = Fractf32(an->idlePhase + dt * an->animSpeed / clips[an->idle].duration);
+    an->locoPhase = Fractf32(an->locoPhase + dt * an->speed / duration);
+    an->idlePhase = Fractf32(an->idlePhase + dt * an->speed / clips[an->idle].duration);
 }
 
 static f32 LocomotionClipPhase(const cAnim* an, u32 clip)

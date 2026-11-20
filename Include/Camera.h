@@ -177,7 +177,7 @@ static inline void CameraHandleYawPitch(Camera* camera)
         camera->pitch -= camera->mouseDiff.y * 0.01f * camera->sensitivity;
         camera->yaw   += camera->mouseDiff.x * 0.01f * camera->sensitivity;
         camera->yaw   = FModf(camera->yaw + 180.0f, 360.0f) - 180.0f;
-        camera->pitch = MCLAMP(camera->pitch, -89.0f, 89.0f);
+        camera->pitch = MCLAMP(camera->pitch, -85.0f, 85.0f);
     }
 }
 

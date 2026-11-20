@@ -130,7 +130,7 @@ const char* GetPrimitiveName(MeshType type);
 purefn RockDesc RockDescDefault(void)
 {
     return (RockDesc) {
-        .radius       = 12.0f,
+        .radius       = 2.0f,
         .roughness    = 0.35f,
         .frequency    = 1.0f,
         .fractureWarp = 0.25f,

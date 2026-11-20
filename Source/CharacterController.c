@@ -250,8 +250,9 @@ void CharacterMovement(Gameplay* gp, Entity* character, f32 dt)
     }
 
     ch->rotation = mRotation;
-    float3 camPosAdd = g_Camera.mode == CameraMode_FPS ? QMulVec3(gp->cameraOffset, mRotation) : F3Zero();
-    g_Camera.position = F3Add(B3VecToFloat3(ch->position), camPosAdd);
+    float3 cameraOffset = gp->cameraOffset;
+    if (g_Camera.mode != CameraMode_FPS) cameraOffset.y += VecGetY(ch->size) * 0.7f;
+    g_Camera.position = F3Add(B3VecToFloat3(ch->position), QMulVec3(cameraOffset, mRotation));
     initCamera:{}
     g_Camera.target = g_Camera.position;
 }

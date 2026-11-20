@@ -3,6 +3,16 @@
 
 #include "Include/Scene.h"
 
+enum
+{
+    ToolNone,
+    ToolPickaxe,
+    ToolAxe,
+    ToolShovel,
+    NumTools
+};
+typedef u32 ModelID;
+
 typedef struct ChrAnim_
 {
     AnimationBundleAlloc* animAlloc;
@@ -14,7 +24,7 @@ typedef struct ChrAnim_
     f32  mixInTime;
     f32  mixSpeed;
     f32  mixOutTime;
-    f32  animSpeed;
+    f32  speed;
     u32  upperJoints[3];
     u32  anim1Joints[3];
     f32  x, y, horizontalLook;
@@ -65,8 +75,32 @@ typedef struct Character_
     bool jumped;
 } Character;
 
+typedef struct Tool_
+{
+    v128f offset; // VecSetR(-0.05, 0.4f, -0.176f, 0.0f)
+    float3 euler; // -142.0f, 91, 140
+    EntityID id;
+    f32 scale;
+    u32 numEntity;
+} Tool;
+
 typedef struct Gameplay_
 {
+    struct SDL_GPUTransferBuffer* boneTransfer;
+    Scene* scene;
+    mat4x4 headBoneMat;
+    mat4x4 handBoneMat;
+    Character character;
+
+    union {
+        struct {
+            Tool axe;
+            Tool pickAxe;
+            Tool shovel;
+        };
+        Tool tools[NumTools];
+    };
+
     float3 cameraOffset;     // { 0.0f, -1.33, 0.3f };
     float  gravity;          // -25.0f;
     float  groundMinNormalY; // 0.7f;
@@ -74,18 +108,9 @@ typedef struct Gameplay_
     float  groundTolerance;  // 0.1f;
     float  moveTolerance;    // 0.001f;
     float  cameraXRotation;  // MATH_HalfPI;
-    EntityID sphereID;
-    EntityID axeID;
-    EntityID pickAxeID;
-    u32  axeNumEntity;
-
-    struct SDL_GPUTransferBuffer* boneTransfer;
-    Scene* scene;
-
-    mat4x4 headBoneMat;
-    mat4x4 handBoneMat;
     
-    Character character;
+    ModelID currentTool;
+    EntityID sphereID;
 } Gameplay;
 
 void Gameplay_Init();

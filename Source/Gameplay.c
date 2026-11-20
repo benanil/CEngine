@@ -20,22 +20,18 @@ extern Camera g_Camera;
 extern SDL_GPUDevice* g_GPUDevice;
 Gameplay g_Gameplay;
 
-enum
-{
-    ModelCharacter,
-    ModelPickaxe,
-    ModelAxe,
-    NumModels
-};
-typedef u32 ModelID;
-
-static const char* modelPaths[NumModels] = {
+static const char* modelPaths[NumTools] = {
     "Assets/Meshes/Character/Character.gltf",
     "Assets/Meshes/Pickaxe/scene.gltf",
-    "Assets/Meshes/Axe/scene.gltf"
+    "Assets/Meshes/Axe/scene.gltf",
+    "Assets/Meshes/Shovel/scene.gltf"
 };
 
-static SceneBundleStage* loadedModels[NumModels] = { 0, 0, 0 };
+static const char* toolNames[NumTools] = {
+    "Character", "Pickaxe", "Axe", "Shovel"
+};
+
+static SceneBundleStage* loadedModels[NumTools] = { 0, 0, 0, 0 };
 
 static void OnObjectLoaded(ModelID modelId)
 {
@@ -53,43 +49,30 @@ static void OnObjectLoaded(ModelID modelId)
     SpawnResult sparseResult = Scene_Spawn(scene, bundleIdx, VecZero(), QIdentity(), VecOne(), EntityFlags_None);
     EntityID id = EntityIDFromSparseData(scene, sparseResult.sparse);
     Entity* entity = Scene_GetEntity(scene, id);
-    switch (modelId)
+    if (modelId == ToolNone)
+    { 
+        EntityScaleRec(scene, entity, VecSet1(ch->scale), true);
+        ch->bundle = scene->bundleRefs[bundleIdx].bundle;
+        ch->sparse = sparseResult.sparse;
+        ch->numEntities = sparseResult.numEntityAdded;
+        ch->entity = id;
+        SpawnCharacter(ch, scene, entity, bundleIdx);
+    }
+    else
     {
-        case ModelCharacter:
-        { 
-            EntityScaleRec(scene, entity, VecSet1(ch->scale), true);
-            ch->bundle = scene->bundleRefs[bundleIdx].bundle;
-            ch->sparse = sparseResult.sparse;
-            ch->numEntities = sparseResult.numEntityAdded;
-            ch->entity = id;
-            SpawnCharacter(ch, scene, entity, bundleIdx);
-        } break;
-        case ModelAxe:
-        {
-            EntityScaleRec(scene, entity, VecSet1(0.25f), true);
-            gp->axeNumEntity = sparseResult.numEntityAdded;
-            gp->axeID = id;
-        } break;
-        case ModelPickaxe:
-        {
-            EntityScaleRec(scene, entity, VecSet1(0.5f), true);
-            gp->pickAxeID = id;
-            
-        } break;
-        default: {
-            SDL_Log("unknown object loaded gameplay!");
-        }
+        Tool* tool = gp->tools + modelId -1;
+        tool->numEntity = sparseResult.numEntityAdded;
+        tool->id = id;
     }
 }
 
 static void OnBeforeDestroyScene(void* ctx, void* scene)
 {
     Gameplay* gp = (Gameplay*)ctx;
-    if (gp->character.entity != INVALID_ENTITY) Scene_RemoveEntity((Scene*)scene, gp->character.entity);
-    if (gp->sphereID != INVALID_ENTITY) Scene_RemoveEntity((Scene*)scene, gp->sphereID);
-    if (gp->axeID != INVALID_ENTITY) Scene_RemoveEntity((Scene*)scene, gp->axeID);
-    if (gp->pickAxeID != INVALID_ENTITY) Scene_RemoveEntity((Scene*)scene, gp->pickAxeID);
-    gp->character.entity = gp->sphereID = gp->axeID = gp->pickAxeID = INVALID_ENTITY;
+    Scene_RemoveEntity((Scene*)scene, gp->character.entity);
+    for (s32 i = 0; i < NumTools; i++)
+        Scene_RemoveEntity((Scene*)scene, gp->tools[i].id);
+    gp->character.entity = gp->sphereID = gp->axe.id = gp->pickAxe.id = INVALID_ENTITY;
 }
 
 static s32 LoadObjectAsync(void* userData)
@@ -105,17 +88,13 @@ static void OnOpenScene(void* g, void* sc)
     gp->scene = (Scene*)sc;
     u32 sphereBundle = Scene_AddBundleCached(gp->scene, GetUnitRock(), "Rock");
     gp->sphereID = EntityIDFromSparseData(gp->scene,
-                        Scene_Spawn(gp->scene, sphereBundle, VecZero(), QIdentity(), VecOne(), EntityFlags_None).sparse);
-    Entity* sphereEntity = Scene_GetEntity(gp->scene, gp->sphereID);
-    EntitySetScaleV(sphereEntity, VecSet1(0.07f));
-    EntitySetPositionV(sphereEntity, VecSetR(-0.05, 0.4f, -0.176f, 0.0f));
-    EntitySetRotation(sphereEntity, QFromEuler(-142.0f * MATH_DegToRad, 91.0f * MATH_DegToRad, 140.0f * MATH_DegToRad));
-    AsyncRun("LoadCharacter", LoadObjectAsync, NULL, (void*)ModelCharacter);
-    AsyncRun("LoadPickaxe", LoadObjectAsync, NULL, (void*)ModelPickaxe);
-    AsyncRun("LoadAxe", LoadObjectAsync, NULL, (void*)ModelAxe);
+        Scene_Spawn(gp->scene, sphereBundle, VecZero(), QIdentity(), VecOne(), EntityFlags_None).sparse);
+    
+    for (u64 i = 0; i < NumTools; i++)
+        AsyncRun(toolNames[i], LoadObjectAsync, NULL, (void*)i);
 }
 
-static void UpdatePicking()
+static void AxeHitTest()
 {
     BVHHit hit = {};
     v128f origin = Vec3Load(&g_Camera.position.x);
@@ -173,6 +152,11 @@ static void HandleInputs(Character* ch, Gameplay* gp)
     }
 
     f32 shift = GetKeyDown(SDLK_LSHIFT) ? -1.0f : 1.0f;
+    if (GetKeyDown(SDLK_0) && shift == -1.0f) gp->currentTool = ToolNone;
+    if (GetKeyDown(SDLK_1) && shift == -1.0f) gp->currentTool = ToolAxe;
+    if (GetKeyDown(SDLK_2) && shift == -1.0f) gp->currentTool = ToolPickaxe;
+    if (GetKeyDown(SDLK_3) && shift == -1.0f) gp->currentTool = ToolShovel;
+
     const f32 delta = 0.01f;
     if (GetKeyDown(SDLK_KP_1)) gp->cameraOffset.x  += delta * shift;
     if (GetKeyDown(SDLK_KP_2)) gp->cameraOffset.y  += delta * shift;
@@ -195,7 +179,14 @@ static void CharacterUI(Character* ch, Gameplay* gp)
         UIReadonlyRow(CLAY_ID("CharVelocityR"), "velocity", UIFmtV3(&ch->velocity.x, 3));
         f32 sqr = b3LengthSquared(ch->velocity);
         UIReadonlyRow(CLAY_ID("CharSpeedR"), "speed", UIFmtF(Sqrtf(sqr + 0.001f), 3));
-
+        u32 toolIdx = gp->currentTool;
+        if (toolIdx != ToolNone && gp->tools[toolIdx].id != INVALID_ENTITY) 
+        {
+            const Tool* tool = gp->tools + toolIdx - 1;
+            UIEditFloatN("tool offset", (f32*)&tool->offset, 3, -1.0f, 1.0f, 3);
+            UIEditFloatN("tool euler", (f32*)&tool->euler, 3, -180.0f, 180.0f, 3);
+            UIEditFloat("tool scale", (f32*)&tool->scale, -1.0f, 1.0f, 0.01f, 3);
+        }
         UIEndWindow();
     }
 }
@@ -225,6 +216,32 @@ static void DebugSphere(Gameplay* gp, Entity* character)
     }
 }
 
+void HoldTool(mat4x4 hand, Gameplay* gp, const Tool* tool)
+{
+    Entity* entity = RenderSet_GetEntity(&gp->scene->surfaceSet, tool->id);
+    if (!entity) return;
+    
+    RenderSet* surfaceSet = &gp->scene->surfaceSet;
+    SparseData* axeSparse = surfaceSet->sparseData + EntityGetSparseID(entity);
+    v128f position = Vec3Load(&gp->character.position.x); 
+    position = VecAdd(M44ExtractPositionV(hand), position);
+    v128f rotation = QMul(QFromEulerVec3(F3MulF(tool->euler, MATH_DegToRad)), M44ExtractRotation(hand));
+    GizmoSetLineWidth(0.006f);
+    hand = M44FromQuaternionV(rotation);
+    GizmoDrawRing(position, hand.r[1], 0.05f, 314159265u | 0xFF000000u);
+    position = VecAdd(position, VecMulf(hand.r[0], VecGetX(tool->offset)));
+    position = VecAdd(position, VecMulf(hand.r[1], VecGetY(tool->offset)));
+    position = VecAdd(position, VecMulf(hand.r[2], VecGetZ(tool->offset)));
+    
+    for (u32 i = 0; i < tool->numEntity; i++)
+    {
+        Entity* obj = &surfaceSet->entities[axeSparse[i].id];
+        EntitySetPositionV(obj, position);
+        EntitySetRotation(obj, rotation);
+        EntitySetScaleV(obj, VecSet1(tool->scale));
+    }
+}
+
 void Gameplay_UseBones(SDL_GPUFence* fence)
 {
     Gameplay* gp = &g_Gameplay;
@@ -249,35 +266,13 @@ void Gameplay_UseBones(SDL_GPUFence* fence)
     if (ch->active)
         g_Camera.position = F3Add(M44ExtractPosition(gp->headBoneMat), g_Camera.position);
 
-    Entity* axe = RenderSet_GetEntity(&gp->scene->surfaceSet, gp->pickAxeID);
-    Entity* sphereEntity = Scene_GetEntity(gp->scene, gp->sphereID);
-    if (axe && sphereEntity)
+    if (gp->currentTool != ToolNone)
     {
-        RenderSet* surfaceSet = &gp->scene->surfaceSet;
-        SparseData* axeSparse = surfaceSet->sparseData + EntityGetSparseID(axe);
         mat4x4 hand = gp->handBoneMat;
         hand.r[0] = VecNorm(hand.r[0]);
         hand.r[1] = VecNorm(hand.r[1]);
         hand.r[2] = VecNorm(hand.r[2]);
-        
-        v128f position = Vec3Load(&ch->position.x); 
-        position = VecAdd(M44ExtractPositionV(hand), position);
-        v128f rotation = QMul(EntityGetRotation(sphereEntity), M44ExtractRotation(hand));
-        float3 spherePos = EntityGetPos(sphereEntity);
-        GizmoSetLineWidth(0.006f);
-        hand = M44FromQuaternionV(rotation);
-        GizmoDrawRing(position, hand.r[1], 0.05f, 32404531u | 0xFF000000u);
-        position = VecAdd(position, VecMulf(hand.r[0], spherePos.x));
-        position = VecAdd(position, VecMulf(hand.r[1], spherePos.y));
-        position = VecAdd(position, VecMulf(hand.r[2], spherePos.z));
-        
-        for (u32 i = 0; i < gp->axeNumEntity; i++)
-        {
-            Entity* obj = &surfaceSet->entities[axeSparse[i].id];
-            EntitySetPositionV(obj, position);
-            EntitySetRotation(obj, rotation);
-            EntitySetScaleV(obj, VecSet1(0.0025f));
-        }
+        HoldTool(hand, gp, gp->tools + gp->currentTool - 1);
     }
 }
 
@@ -302,21 +297,34 @@ void Gameplay_Init()
     g_Gameplay.cameraXRotation    = MATH_HalfPI;
     g_Gameplay.boneTransfer       = NULL;
     g_Gameplay.groundTolerance    = 1.25f;
-    g_Gameplay.sphereID           = INVALID_ENTITY;
     g_Gameplay.character.scale    = 1.8f;
-    g_Gameplay.character.entity   = INVALID_ENTITY;
     g_Gameplay.character.rotation = QIdentity();
-    g_Gameplay.axeID              = INVALID_ENTITY;
-    g_Gameplay.pickAxeID          = INVALID_ENTITY;
+    g_Gameplay.character.entity   = INVALID_ENTITY;
+    g_Gameplay.sphereID           = INVALID_ENTITY;
+    g_Gameplay.axe.id             = INVALID_ENTITY;
+    g_Gameplay.pickAxe.id         = INVALID_ENTITY;
     g_Gameplay.boneTransfer = NULL;
+    g_Gameplay.currentTool  = ToolNone;
+    
+    g_Gameplay.axe.scale    = 0.0025f;
+    g_Gameplay.axe.offset   = VecSetR(-0.05, 0.4f, -0.176f, 0.0f);
+    g_Gameplay.axe.euler    = (float3){-142.0f , 91.0f , 140.0f };
+    
+    g_Gameplay.pickAxe.scale  = 0.5f;
+    g_Gameplay.pickAxe.offset = VecSetR(-0.15f, 0.4f, 0.05f, 0.0f);
+    g_Gameplay.pickAxe.euler  = (float3){ 0.0f, 0.0f, -90.0f };
+
+    g_Gameplay.shovel.scale  = 0.5f;
+    g_Gameplay.shovel.offset = VecSetR(-0.15f, 0.4f, 0.05f, 0.0f);
+    g_Gameplay.shovel.euler  = (float3){ 0.0f, 0.0f, -90.0f };
 }
 
 void Gameplay_Update(f32 dt)
 {
-    UpdatePicking();
-    if (loadedModels[ModelCharacter]) OnObjectLoaded(ModelCharacter);
-    if (loadedModels[ModelPickaxe]) OnObjectLoaded(ModelPickaxe);
-    if (loadedModels[ModelAxe]) OnObjectLoaded(ModelAxe);
+    AxeHitTest();
+    for (s32 i = 0; i < NumTools; i++)
+        if (loadedModels[i]) OnObjectLoaded(i);
+    
     Gameplay* gp = &g_Gameplay;
     Entity* character = RenderSet_GetEntity(&gp->scene->skinnedSet, gp->character.entity);
     if (character == NULL) return;

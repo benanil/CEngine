@@ -356,6 +356,7 @@ static inline void Scene_RemoveEntityRec(Scene* scene, RenderSet* set, EntityID 
 
 static inline void Scene_RemoveEntity(Scene* scene, EntityID id)
 {
+    if (id == INVALID_ENTITY) return;
     RenderSet* set = Scene_GetEntityRenderSet(scene, id);
     Scene_RemoveEntityRec(scene, set, id);
     RenderSet_CompactEntities(set);
