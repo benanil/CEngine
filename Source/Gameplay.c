@@ -291,12 +291,10 @@ void Gameplay_Init()
 {
     g_Gameplay.gravity            = -25.0f;
     g_Gameplay.groundMinNormalY   = 0.7f;
-    g_Gameplay.snapDistance       = 0.3f;
     g_Gameplay.moveTolerance      = 0.001f;
     g_Gameplay.cameraOffset       = (float3){ 0.0f, -0.0, 0.3f };
     g_Gameplay.cameraXRotation    = MATH_HalfPI;
     g_Gameplay.boneTransfer       = NULL;
-    g_Gameplay.groundTolerance    = 1.25f;
     g_Gameplay.character.scale    = 1.8f;
     g_Gameplay.character.rotation = QIdentity();
     g_Gameplay.character.entity   = INVALID_ENTITY;
@@ -314,9 +312,9 @@ void Gameplay_Init()
     g_Gameplay.pickAxe.offset = VecSetR(-0.15f, 0.4f, 0.05f, 0.0f);
     g_Gameplay.pickAxe.euler  = (float3){ 0.0f, 0.0f, -90.0f };
 
-    g_Gameplay.shovel.scale  = 0.5f;
-    g_Gameplay.shovel.offset = VecSetR(-0.15f, 0.4f, 0.05f, 0.0f);
-    g_Gameplay.shovel.euler  = (float3){ 0.0f, 0.0f, -90.0f };
+    g_Gameplay.shovel.scale  = 1.5f;
+    g_Gameplay.shovel.offset = VecSetR(0.18f, 1.5f, 0.05f, 0.0f);
+    g_Gameplay.shovel.euler  = (float3){ 10.0f, 0.0f, 90.0f };
 }
 
 void Gameplay_Update(f32 dt)
@@ -336,6 +334,17 @@ void Gameplay_Update(f32 dt)
     CharacterMovement(&g_Gameplay, character, dt);
     cAnimate(gp->scene, ch, dt);
 
+    // must come after character movement because ch->rotation
+    if (ch->active)
+    {
+        float3 cameraOffset = gp->cameraOffset;
+        if (g_Camera.mode != CameraMode_FPS) cameraOffset.y += VecGetY(ch->size) * 0.7f;
+        g_Camera.position = F3Add(B3VecToFloat3(ch->position), QMulVec3(cameraOffset, ch->rotation));
+    }
+    g_Camera.target = g_Camera.position;
+
+    GizmoSetLineWidth(0.02f);
+    GizmoDrawCapsuleAt(B3VecTov128f(ch->position), VecGetY(ch->size), VecGetZ(ch->size), 0xFF0000FFu);
     // DebugSphere(&g_Gameplay, character);
 }
 

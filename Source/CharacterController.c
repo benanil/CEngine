@@ -3,14 +3,8 @@
 #include <SDL3/SDL_gpu.h>
 
 #include "Gameplay.h"
-#include "Math/Bitpack.h"
 #include "Include/Scene.h"
-#include "Include/UIWindow.h"
-#include "Include/AssetManager.h"
-#include "Include/UIRenderer.h"
 #include "Include/Camera.h"
-#include "Include/Rendering.h"
-#include "Include/Editor.h"
 
 typedef struct PlaneCapture
 {
@@ -32,7 +26,6 @@ static void GetCharacterSizeInfo(Character* ch, Scene* scene, Entity* entity)
     u32 localId = rootNode->index + range.start;
     const PrimitiveGroup* pg = &rs->primitiveGroups[localId];
     ch->size = VecMulf(RenderSet_GroupLocalSize(pg), ch->scale);
-    ch->center = VecMulf(RenderSet_GroupLocalCenter(pg), ch->scale);
 }
 
 void SpawnCharacter(Character* ch, Scene* scene, Entity* entity, u32 bundleId)
@@ -111,14 +104,10 @@ void CharacterMovement(Gameplay* gp, Entity* character, f32 dt)
 {
     Scene* scene = gp->scene; 
     Character* ch = &gp->character;
-    if (!ch->active) goto initCamera;
-    f32 radius = VecGetZ(ch->size);
+    if (!ch->active) return;
     b3WorldId worldId = Physics_GetWorld();
-    b3Capsule mover = MakeMover(ch->size, radius);
+    b3Capsule mover = MakeMover(ch->size, VecGetZ(ch->size));
     b3QueryFilter filter = MakeFilter();
-
-    GizmoSetLineWidth(0.02f);
-    GizmoDrawCapsuleAt(B3VecTov128f(ch->position), VecGetY(ch->size), radius, 0xFF0000FFu);
 
     float2 axis = GetMovementAxis();
     f32 axisLen = F2Len(axis);
@@ -156,7 +145,7 @@ void CharacterMovement(Gameplay* gp, Entity* character, f32 dt)
     f32 speedTarget = Absf32(F2Len(axis) - MATH_Epsilon);
     f32 runSpeed = Maxf32((f32)GetKeyDown(SDLK_LSHIFT), GetGamepadAxis(SDL_GAMEPAD_AXIS_LEFT_TRIGGER));
     if (runSpeed > 0.1f) speedTarget *= 1.0f + runSpeed;
-    ch->currentSpeed = MoveTowards(ch->currentSpeed, speedTarget, dt * 5.0f); // SmoothDamp(ch->currentSpeed, axis.y, &ch->smoothVel, smoothTime, 2.0f, dt);
+    ch->currentSpeed = MoveTowards(ch->currentSpeed, speedTarget, dt * 5.0f); // SmoothDamp maybe
     
     b3Vec3 velocity = b3MulSV(ch->currentSpeed * ch->speed, wish);
     velocity.y += ch->verticalSpeed;
@@ -191,28 +180,7 @@ void CharacterMovement(Gameplay* gp, Entity* character, f32 dt)
 
     bool wasGrounded = ch->grounded;
     b3Vec3 normal = { 0.0f, 1.0f, 0.0f };
-    ch->grounded = false;
-    if (ch->verticalSpeed <= 0.5f)
-    {
-        ch->grounded = FindGround(gp, worldId, ch->position, &mover, filter, &normal);
-        if (!ch->grounded)
-        {
-            b3Pos origin = ch->position;
-            f32 reach = wasGrounded ? gp->snapDistance : gp->groundTolerance;
-            b3Vec3 down = { 0.0f, -reach, 0.0f };
-            f32 fraction = b3World_CastMover(worldId, origin, &mover, down, filter, NULL, NULL);
-            if (fraction < 1.0f)
-            {
-                b3Vec3 newPos = b3Add(ch->position, b3MulSV(fraction, down));
-                if (FindGround(gp, worldId, newPos, &mover, filter, &normal))
-                {
-                    ch->position = newPos;
-                    ch->grounded = true;
-                }
-            }
-        }
-    }
-    
+    ch->grounded = FindGround(gp, worldId, ch->position, &mover, filter, &normal);
     ch->groundNormal = ch->grounded ? normal : (b3Vec3){ 0.0f, 1.0f, 0.0f };
 
     Quaternion mRotation;
@@ -240,7 +208,6 @@ void CharacterMovement(Gameplay* gp, Entity* character, f32 dt)
     }
     
     v128f position = Vec3Load(&ch->position.x); 
-
     for (s32 i = 0; i < ch->numEntities; i++)
     {
         Entity* mesh = &scene->skinnedSet.entities[ch->sparse[i].id];
@@ -250,9 +217,4 @@ void CharacterMovement(Gameplay* gp, Entity* character, f32 dt)
     }
 
     ch->rotation = mRotation;
-    float3 cameraOffset = gp->cameraOffset;
-    if (g_Camera.mode != CameraMode_FPS) cameraOffset.y += VecGetY(ch->size) * 0.7f;
-    g_Camera.position = F3Add(B3VecToFloat3(ch->position), QMulVec3(cameraOffset, mRotation));
-    initCamera:{}
-    g_Camera.target = g_Camera.position;
 }

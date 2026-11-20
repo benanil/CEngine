@@ -2,6 +2,8 @@
 #include "Include/Camera.h"
 #include "Include/Platform.h"
 #include "Include/Algorithm.h"
+#include "Include/Rendering.h"
+#include "Math/Bitpack.h"
 #include "Math/Color.h"
 
 typedef struct LocomotionPose_

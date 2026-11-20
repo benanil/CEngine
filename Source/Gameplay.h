@@ -48,7 +48,6 @@ typedef struct ChrAnim_
 typedef struct Character_
 {
     v128f         size;
-    v128f         center;
     v128f         rotation;
     SceneBundle*  bundle;
     SparseData*   sparse;
@@ -104,8 +103,6 @@ typedef struct Gameplay_
     float3 cameraOffset;     // { 0.0f, -1.33, 0.3f };
     float  gravity;          // -25.0f;
     float  groundMinNormalY; // 0.7f;
-    float  snapDistance;     // 0.3f;
-    float  groundTolerance;  // 0.1f;
     float  moveTolerance;    // 0.001f;
     float  cameraXRotation;  // MATH_HalfPI;
     
