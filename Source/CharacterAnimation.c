@@ -233,8 +233,8 @@ static void UpdateMotion(Character* ch, f32 dt)
 {
     cAnim* an = &ch->anim;
     b3Vec3 velocity = ch->velocity;
-    f32 lenSq = (velocity.x * velocity.x) + (velocity.z * velocity.z);
-    f32 targetSpeed = (lenSq > MATH_Epsilon ? Sqrtf(lenSq) : 0.0f) / (ch->speed * dt);
+    f32 horizontal = Sqrtf((velocity.x * velocity.x) + (velocity.z * velocity.z));
+    f32 targetSpeed = horizontal > ch->speed * 0.05f ? horizontal / ch->speed : 0.0f;
     f32 acceleration = targetSpeed < an->speed ? 8.0f : 32.0f;
     if (!ch->grounded) acceleration *= 0.4f;
     an->speed = MoveTowardsS(an->speed, targetSpeed, acceleration * dt);

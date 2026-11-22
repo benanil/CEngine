@@ -885,6 +885,15 @@
 					<File>
 						<Path>Source/Gameplay.h</Path>
 					</File>
+					<File>
+						<Path>Source/DynamicMover.c</Path>
+					</File>
+					<File>
+						<Path>Source/DynamicMover.h</Path>
+					</File>
+					<File>
+						<Path>Source/CharacterAnim.h</Path>
+					</File>
 				</Children>
 			</Folder>
 			<Folder>

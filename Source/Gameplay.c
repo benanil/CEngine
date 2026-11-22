@@ -228,7 +228,7 @@ void HoldTool(mat4x4 hand, Gameplay* gp, const Tool* tool)
     v128f rotation = QMul(QFromEulerVec3(F3MulF(tool->euler, MATH_DegToRad)), M44ExtractRotation(hand));
     GizmoSetLineWidth(0.006f);
     hand = M44FromQuaternionV(rotation);
-    GizmoDrawRing(position, hand.r[1], 0.05f, 314159265u | 0xFF000000u);
+    GizmoRing(position, hand.r[1], 0.05f, 314159265u | 0xFF000000u);
     position = VecAdd(position, VecMulf(hand.r[0], VecGetX(tool->offset)));
     position = VecAdd(position, VecMulf(hand.r[1], VecGetY(tool->offset)));
     position = VecAdd(position, VecMulf(hand.r[2], VecGetZ(tool->offset)));
@@ -276,11 +276,18 @@ void Gameplay_UseBones(SDL_GPUFence* fence)
     }
 }
 
+static void OnAfterPhysicsUpdate(void* ctx, void* unused)
+{
+    (void)unused;
+    CharacterApplyTransform((Gameplay*)ctx);
+}
+
 void Gameplay_InitEvents()
 {
     SceneManager* sm = GetSceneManager();
     EventAdd(&sm->OpenEvent, OnOpenScene, &g_Gameplay);
     EventAdd(&sm->BeforeDestroyEvent, OnBeforeDestroyScene, &g_Gameplay);
+    Physics_AddOnAfterUpdateEvent(OnAfterPhysicsUpdate, &g_Gameplay);
     g_Gameplay.boneTransfer = SDL_CreateGPUTransferBuffer(g_GPUDevice, &(SDL_GPUTransferBufferCreateInfo){
         .usage = SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD,
         .size  = sizeof(u32) * AnimMtxNumF32 * MAX_BONES
@@ -332,7 +339,6 @@ void Gameplay_Update(f32 dt)
     HandleInputs(ch, &g_Gameplay);
     
     CharacterMovement(&g_Gameplay, character, dt);
-    cAnimate(gp->scene, ch, dt);
 
     // must come after character movement because ch->rotation
     if (ch->active)
@@ -343,6 +349,7 @@ void Gameplay_Update(f32 dt)
     }
     g_Camera.target = g_Camera.position;
 
+    DynamicMover_Draw(&ch->mover);
     // GizmoSetLineWidth(0.02f);
     // GizmoDrawCapsuleAt(B3VecTov128f(ch->position), VecGetY(ch->size), VecGetZ(ch->size), 0xFF0000FFu);
     // DebugSphere(&g_Gameplay, character);

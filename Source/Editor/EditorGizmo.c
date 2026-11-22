@@ -347,7 +347,7 @@ void GizmoLine(v128f a, v128f b, u32 color)
     GizmoQuad(VecAdd(a, side), VecAdd(b, side), VecSub(b, side), VecSub(a, side), color);
 }
 
-void GizmoDrawArrow(v128f center, v128f axisDir, f32 size, u32 color)
+void GizmoArrow(v128f center, v128f axisDir, f32 size, u32 color)
 {
     v128f tip = VecAdd(center, VecMulf(axisDir, size));
     GizmoLine(center, tip, color);
@@ -362,7 +362,7 @@ void GizmoDrawArrow(v128f center, v128f axisDir, f32 size, u32 color)
 }
 
 // filled quad between [start, end] on the two axes spanning the plane
-void GizmoDrawPlane(v128f center, v128f spanA, v128f spanB, f32 start, f32 end, u32 color)
+void GizmoPlane(v128f center, v128f spanA, v128f spanB, f32 start, f32 end, u32 color)
 {
     v128f a = VecAdd(center, VecAdd(VecMulf(spanA, start), VecMulf(spanB, start)));
     v128f b = VecAdd(center, VecAdd(VecMulf(spanA, end),   VecMulf(spanB, start)));
@@ -385,7 +385,7 @@ void GizmoDrawScaleHandle(v128f center, v128f axisDir, f32 size, u32 color)
               VecAdd(tip, VecAdd(VecMulf(u, -s), VecMulf(v,  s))), color);
 }
 
-void GizmoDrawRing(v128f center, v128f axis, f32 radius, u32 color)
+void GizmoRing(v128f center, v128f axis, f32 radius, u32 color)
 {
     enum { Segments = 32 };
     v128f u, v;
@@ -400,7 +400,7 @@ void GizmoDrawRing(v128f center, v128f axis, f32 radius, u32 color)
     }
 }
 
-void GizmoDrawCapsule(v128f a, v128f b, f32 radius, u32 color)
+void GizmoCapsule(v128f a, v128f b, f32 radius, u32 color)
 {
     if (radius <= 0.0f) return;
 
@@ -415,9 +415,9 @@ void GizmoDrawCapsule(v128f a, v128f b, f32 radius, u32 color)
         v128f x = VecSetR(1.0f, 0.0f, 0.0f, 0.0f);
         v128f y = VecSetR(0.0f, 1.0f, 0.0f, 0.0f);
         v128f z = VecSetR(0.0f, 0.0f, 1.0f, 0.0f);
-        GizmoDrawRing(a, x, radius, color);
-        GizmoDrawRing(a, y, radius, color);
-        GizmoDrawRing(a, z, radius, color);
+        GizmoRing(a, x, radius, color);
+        GizmoRing(a, y, radius, color);
+        GizmoRing(a, z, radius, color);
         return;
     }
 
@@ -427,8 +427,8 @@ void GizmoDrawCapsule(v128f a, v128f b, f32 radius, u32 color)
     GizmoRingBasis(axis, &u, &v);
 
     // Draw cylinder boundary rings.
-    GizmoDrawRing(a, axis, radius, color);
-    GizmoDrawRing(b, axis, radius, color);
+    GizmoRing(a, axis, radius, color);
+    GizmoRing(b, axis, radius, color);
 
     for (int i = 0; i < RingSegments; ++i)
     {
@@ -475,17 +475,17 @@ void GizmoDrawCapsule(v128f a, v128f b, f32 radius, u32 color)
     }
 }
 
-void GizmoDrawCapsuleAt(v128f position, f32 height, f32 radius, u32 color)
+void GizmoCapsuleAt(v128f position, f32 height, f32 radius, u32 color)
 {
     if (height <= 0.0f || radius <= 0.0f) return;
     radius = Minf32(radius, height * 0.5f);
     v128f up = VecSetR(0.0f, 1.0f, 0.0f, 0.0f);
     v128f a = VecAdd(position, VecMulf(up, radius));
     v128f b = VecAdd(position, VecMulf(up, height - radius));
-    GizmoDrawCapsule(a, b, radius, color);
+    GizmoCapsule(a, b, radius, color);
 }
 
-void GizmoDrawAABB(v128f worldMin, v128f worldMax, u32 color)
+void GizmoAABB(v128f worldMin, v128f worldMax, u32 color)
 {
     if (gizmoNumVerts + (24 * 3) > MAX_GIZMO_VERTICES)
         return;
@@ -515,9 +515,9 @@ void GizmoDrawAABB(v128f worldMin, v128f worldMax, u32 color)
     GizmoLine(p010, p011, color);
 }
 
-void GizmoDrawCube(v128f position, v128f halfExtend, u32 color)
+void GizmoCube(v128f position, v128f halfExtend, u32 color)
 {
-    GizmoDrawAABB(VecSub(position, halfExtend), VecAdd(position, halfExtend), color);
+    GizmoAABB(VecSub(position, halfExtend), VecAdd(position, halfExtend), color);
 }
 /*//////////////////////////////////////////////////////////////////////////*/
 /*                                 Update                                   */
@@ -849,8 +849,8 @@ bool EditorGizmoUpdate(Camera* camera)
     for (int i = 0; i < 3; i++)
     {
         u32 color = gizmo.hotAxis == i ? GIZMO_HOT_COLOR : kGizmoAxisColors[i];
-        if (gizmo.mode == GizmoMode_Translate)   GizmoDrawArrow(gizmoCenter, axes[i], size, color);
-        else if (gizmo.mode == GizmoMode_Rotate) GizmoDrawRing(gizmoCenter, axes[i], size, color);
+        if (gizmo.mode == GizmoMode_Translate)   GizmoArrow(gizmoCenter, axes[i], size, color);
+        else if (gizmo.mode == GizmoMode_Rotate) GizmoRing(gizmoCenter, axes[i], size, color);
         else                                     GizmoDrawScaleHandle(gizmoCenter, axes[i], size, color);
     }
     if (gizmo.mode == GizmoMode_Translate)
@@ -858,13 +858,13 @@ bool EditorGizmoUpdate(Camera* camera)
         for (int i = 0; i < 3; i++)
         {
             u32 color = gizmo.hotAxis == GizmoAxis_PlaneX + i ? GIZMO_HOT_COLOR : kGizmoAxisColors[i];
-            GizmoDrawPlane(gizmoCenter, axes[(i + 1) % 3], axes[(i + 2) % 3], size * 0.3f, size * 0.6f, color);
+            GizmoPlane(gizmoCenter, axes[(i + 1) % 3], axes[(i + 2) % 3], size * 0.3f, size * 0.6f, color);
         }
     }
     if (gizmo.mode == GizmoMode_Scale)
     {
         v128f camForward = Vec3NormV(VecSub(gizmoCenter, camPos));
-        GizmoDrawRing(gizmoCenter, camForward, size * 0.15f,
+        GizmoRing(gizmoCenter, camForward, size * 0.15f,
                       gizmo.hotAxis == GizmoAxis_Uniform ? GIZMO_HOT_COLOR : GIZMO_CENTER_COLOR);
     }
     return consumed;

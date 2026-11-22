@@ -1,17 +1,9 @@
-
 #include <box3d/box3d.h>
 #include <SDL3/SDL_gpu.h>
 
 #include "Gameplay.h"
 #include "Include/Scene.h"
 #include "Include/Camera.h"
-
-typedef struct PlaneCapture
-{
-    b3CollisionPlane planes[16];
-    b3ShapeId shape;
-    int count;
-} PlaneCapture; 
 
 extern Camera g_Camera;
 
@@ -21,26 +13,11 @@ static void GetCharacterSizeInfo(Character* ch, Scene* scene, Entity* entity)
     u32 bundleId = EntityGetBundleId(rs, entity);
     Range range = rs->bundlePrimRange[bundleId];
     const SceneBundle* bundle = rs->bundles[bundleId];
-    const ANode* rootNode = &bundle->nodes[1]; // body node
+    const ANode* rootNode = &bundle->nodes[1];
     const AMesh* mesh = &bundle->meshes[rootNode->index];
     u32 localId = rootNode->index + range.start;
     const PrimitiveGroup* pg = &rs->primitiveGroups[localId];
     ch->size = VecMulf(RenderSet_GroupLocalSize(pg), ch->scale);
-}
-
-void SpawnCharacter(Character* ch, Scene* scene, Entity* entity, u32 bundleId)
-{   
-    GetCharacterSizeInfo(ch, scene, entity);
-    ch->groundNormal  = (b3Vec3){ 0.0f,  1.0f, 0.0f };
-    ch->position      = (b3Vec3){ 0.0f, 10.0f, 0.0f }; 
-    ch->jumpSpeed     = 15.0f;
-    ch->acceleration  = 20.0f;
-    ch->decceleration = 10.0f;
-    ch->speed         = 8.0f;
-    ch->verticalSpeed = 0.0f;
-    ch->yRotation     = ch->xRotation = 0.0f;
-    ch->grounded = ch->active = ch->jumped = false;
-    cAnimInit(&ch->anim, scene, bundleId);
 }
 
 static b3Capsule MakeMover(v128f size, f32 radius)
@@ -50,68 +27,54 @@ static b3Capsule MakeMover(v128f size, f32 radius)
     return (b3Capsule){
         .center1 = v128fToB3Vec3(VecMulf(up, radius)),
         .center2 = v128fToB3Vec3(VecMulf(up, VecGetY(size) - radius)),
-        .radius  = radius 
+        .radius  = radius
     };
 }
 
-static b3QueryFilter MakeFilter(void)
+void SpawnCharacter(Character* ch, Scene* scene, Entity* entity, u32 bundleId)
 {
-    b3QueryFilter filter;
-    filter.categoryBits = ~PhysBit_Player;
-    filter.maskBits = ~0;
-    filter.id = 0;
-    filter.name = NULL;
-    return filter;
+    GetCharacterSizeInfo(ch, scene, entity);
+    ch->groundNormal  = (b3Vec3){ 0.0f,  1.0f, 0.0f };
+    ch->position      = (b3Vec3){ 0.0f, 10.0f, 0.0f };
+    ch->velocity      = (b3Vec3){ 0.0f,  0.0f, 0.0f };
+    ch->jumpSpeed     = 15.0f;
+    ch->acceleration  = 20.0f;
+    ch->decceleration = 10.0f;
+    ch->speed         = 8.0f;
+    ch->verticalSpeed = 0.0f;
+    ch->currentSpeed  = 0.0f;
+    ch->yRotation     = ch->xRotation = 0.0f;
+    ch->grounded = ch->active = ch->jumped = false;
+    cAnimInit(&ch->anim, scene, bundleId);
+
+    DynamicMoverDef def = DefaultDynamicMoverDef();
+    def.position = ch->position;
+    def.capsule  = MakeMover(ch->size, VecGetZ(ch->size));
+    def.filter.categoryBits = PhysBit_Player;
+    def.filter.maskBits     = ~0ull;
+    def.jumpSpeed  = ch->jumpSpeed;
+    def.maxSpeed   = ch->speed;
+    def.accelerate = ch->acceleration;
+    def.friction   = ch->decceleration;
+
+    DynamicMover_Init(&ch->mover);
+    DynamicMover_Create(&ch->mover, Physics_GetWorld(), &def);
 }
 
-static bool CapturePlaneFcn(b3ShapeId shapeId, const b3PlaneResult* planes, int planeCount, void* context)
+void Character_Destroy(Character* ch)
 {
-    PlaneCapture* capture = context;
-    capture->shape = shapeId;
-    for (s32 i = 0; i < planeCount && capture->count < 16; ++i )
-    {
-        capture->planes[capture->count++] = (b3CollisionPlane){
-            .plane        = planes[i].plane,
-            .pushLimit    = 0.1f,
-            .push         = 0.0f,
-            .clipVelocity = true
-        };
-    }
-    return true;
-}
-
-static bool FindGround(Gameplay* gp, b3WorldId worldId, b3Pos origin, b3Capsule* mover, b3QueryFilter filter, b3Vec3* normal)
-{
-    PlaneCapture capture = { 0 };
-    b3World_CollideMover(worldId, origin, mover, filter, CapturePlaneFcn, &capture);
-
-    bool found = false;
-    f32 best = gp->groundMinNormalY;
-    for (s32 i = 0; i < capture.count; ++i)
-    {
-        b3Vec3 n = capture.planes[i].plane.normal;
-        if (n.y >= best)
-        {
-            best = n.y;
-            *normal = n;
-            found = true;
-        }
-    }
-    return found;
+    DynamicMover_Destroy(&ch->mover);
 }
 
 void CharacterMovement(Gameplay* gp, Entity* character, f32 dt)
 {
-    Scene* scene = gp->scene; 
     Character* ch = &gp->character;
     if (!ch->active) return;
-    b3WorldId worldId = Physics_GetWorld();
-    b3Capsule mover = MakeMover(ch->size, VecGetZ(ch->size));
-    b3QueryFilter filter = MakeFilter();
 
     float2 axis = GetMovementAxis();
     f32 axisLen = F2Len(axis);
     if (axisLen > 1.0f) axis = F2MulF(axis, 1.0f / axisLen);
+
     b3Vec3 forward = Float3ToB3Vec3(g_Camera.front);
     forward.y = 0.0f;
     forward = b3Normalize(forward);
@@ -119,70 +82,26 @@ void CharacterMovement(Gameplay* gp, Entity* character, f32 dt)
     right.y = 0.0f;
     right = b3Normalize(right);
 
-    b3Vec3 wish = b3Add(b3MulSV(axis.y, forward), b3MulSV(axis.x, right));
-    f32 wishLength = b3Length(wish);
-    if (wishLength > 1.0f)
+    f32 speedTarget = Absf32(axisLen - MATH_Epsilon);
+    f32 runSpeed = Maxf32((f32)GetKeyDown(SDLK_LSHIFT), GetGamepadAxis(SDL_GAMEPAD_AXIS_LEFT_TRIGGER));
+    f32 speedScale = 1.0f;
+    if (runSpeed > 0.1f)
     {
-        wish = b3MulSV(1.0f / wishLength, wish);
-        wishLength = 1.0f;
+        speedScale = 1.0f + runSpeed;
+        speedTarget *= speedScale;
     }
-    if (ch->grounded && wishLength > 0.0f)
-    {
-        wish = b3MulSV(wishLength, b3Normalize(b3ProjectOnPlane(wish, ch->groundNormal)));
-    }
-
-    if (ch->grounded) ch->verticalSpeed = 0.0f;
-    else ch->verticalSpeed += gp->gravity * dt;
+    ch->currentSpeed = MoveTowards(ch->currentSpeed, speedTarget, dt * 5.0f);
 
     bool jumpNow = false;
     if (ch->grounded && ch->anim.jumpRequested)
     {
-        ch->verticalSpeed = ch->jumpSpeed;
-        ch->grounded = false;
-        jumpNow = true;
-        cPlayOnce(&ch->anim, ch->anim.jump, 0.1f, 1.0f, false);
+        jumpNow = DynamicMover_Jump(&ch->mover);
+        if (jumpNow) cPlayOnce(&ch->anim, ch->anim.jump, 0.1f, 1.0f, false);
     }
     ch->anim.jumpRequested = false;
-    f32 speedTarget = Absf32(F2Len(axis) - MATH_Epsilon);
-    f32 runSpeed = Maxf32((f32)GetKeyDown(SDLK_LSHIFT), GetGamepadAxis(SDL_GAMEPAD_AXIS_LEFT_TRIGGER));
-    if (runSpeed > 0.1f) speedTarget *= 1.0f + runSpeed;
-    ch->currentSpeed = MoveTowards(ch->currentSpeed, speedTarget, dt * 5.0f); // SmoothDamp maybe
-    
-    b3Vec3 velocity = b3MulSV(ch->currentSpeed * ch->speed, wish);
-    velocity.y += ch->verticalSpeed;
+    ch->jumped = jumpNow;
 
-    b3Vec3 target = b3Add(ch->position, b3MulSV(dt, velocity));
-    b3Vec3 start = ch->position;
-
-    for (s32 iteration = 0; iteration < 5; ++iteration)
-    {
-        b3Pos origin = ch->position;
-
-        PlaneCapture capture = { 0 };
-        b3World_CollideMover(worldId, origin, &mover, filter, CapturePlaneFcn, &capture);
-
-        b3Vec3 remaining = b3Sub(target, ch->position);
-        b3PlaneSolverResult result = b3SolvePlanes(remaining, capture.planes, capture.count);
-
-        f32 fraction = b3World_CastMover(worldId, origin, &mover, result.delta, filter, NULL, NULL);
-        b3Vec3 delta = b3MulSV(fraction, result.delta);
-        ch->position = b3Add(ch->position, delta);
-
-        if (b3LengthSquared(delta) < gp->moveTolerance * gp->moveTolerance) break;
-    }
-
-    ch->velocity = b3Sub(ch->position, start);
-    if (!jumpNow && ch->verticalSpeed > 0.0f)
-    {
-        f32 intended = ch->verticalSpeed * dt;
-        f32 actual = ch->position.y - start.y;
-        if (actual < intended * 0.5f) ch->verticalSpeed = 0.0f;
-    }
-
-    bool wasGrounded = ch->grounded;
-    b3Vec3 normal = { 0.0f, 1.0f, 0.0f };
-    ch->grounded = FindGround(gp, worldId, ch->position, &mover, filter, &normal);
-    ch->groundNormal = ch->grounded ? normal : (b3Vec3){ 0.0f, 1.0f, 0.0f };
+    DynamicMover_Update(&ch->mover, dt, forward, right, (b3Vec2){ axis.y, axis.x }, speedScale);
 
     Quaternion mRotation;
     if (g_Camera.mode == CameraMode_TPS)
@@ -193,7 +112,7 @@ void CharacterMovement(Gameplay* gp, Entity* character, f32 dt)
         f32 movementValue = F2LenSq(axis);
         if (movementValue < 0.001f) inputAngle = 0.0f;
         x += -inputAngle;
-    
+
         if (movementValue > 0.1f)
         {
             const f32 smoothingRate = 8.0f;
@@ -208,15 +127,30 @@ void CharacterMovement(Gameplay* gp, Entity* character, f32 dt)
     {
         mRotation = QFromYAngle(g_Camera.yaw * -MATH_DegToRad + gp->cameraXRotation);
     }
-    
-    v128f position = Vec3Load(&ch->position.x); 
+
+    ch->rotation = mRotation;
+}
+
+void CharacterApplyTransform(Gameplay* gp)
+{
+    Scene* scene = gp->scene;
+    Character* ch = &gp->character;
+    if (!ch->active) return;
+
+    b3Vec3 previous = ch->position;
+    ch->position = b3Body_GetPosition(DynamicMover_GetBodyId(&ch->mover));
+    ch->velocity = b3Body_GetLinearVelocity(ch->mover.moverId); //b3Sub(ch->position, previous);
+    ch->verticalSpeed = ch->mover.velocity.y;
+    ch->grounded = ch->mover.onGround;
+    ch->groundNormal = (ch->grounded && ch->mover.castResult.hit) ? ch->mover.castResult.normal : (b3Vec3){ 0.0f, 1.0f, 0.0f };
+    cAnimate(gp->scene, ch, GetDeltaTime());
+
+    v128f position = Vec3Load(&ch->position.x);
     for (s32 i = 0; i < ch->numEntities; i++)
     {
         Entity* mesh = &scene->skinnedSet.entities[ch->sparse[i].id];
         EntitySetPositionV(mesh, position);
-        EntitySetRotation(mesh, mRotation);
+        EntitySetRotation(mesh, ch->rotation);
         EntitySetScaleV(mesh, VecSet1(ch->scale));
     }
-
-    ch->rotation = mRotation;
 }

@@ -114,7 +114,6 @@ static void MainLoopTick(void)
     GraphicsEditorUI();
     DemoScene_Update(PlatformCtx.DeltaTime);
     Scene_Update(PlatformCtx.DeltaTime);
-    
     SDL_GPUFence* animFence = RendererUploadAnimations(GetActiveScene(), g_Gameplay.character.sparse, g_Gameplay.boneTransfer);
     EditorSceneHotkeys();
     

@@ -87,6 +87,8 @@ void Physics_Settings_Load(void);
 void Physics_Settings_Save(void);
 // pushes g_PhysicsSettings (gravity/sleep/continuous) onto the shared physics world.
 void Physics_ApplyWorldSettings(void);
+// runs after physics step
+void Physics_AddOnAfterUpdateEvent(void(*callback)(void*, void*), void* ctx);
 
 const char** Physics_ShapeNames(); // b3ShapeType
 

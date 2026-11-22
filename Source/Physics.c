@@ -1,3 +1,4 @@
+#include "Include/Physics.h"
 #include "Include/Scene.h"
 #include "Include/Platform.h"
 #include "Include/Terrain.h"
@@ -20,15 +21,17 @@ extern Graphics gGFX; // cpu mega buffers, declared per translation unit as else
 
 #define PHYSICS_TERRAIN_USERDATA (1ull << 32ull)
 #define PHYSICS_FOLIAGE_USERDATA (((u64)PhysBit_Foliage) << 32ull)
+#define PHYSICS_PLAYER_USERDATA (((u64)PhysBit_Player) << 32ull)
 
 // single global box3d world, independent of any Scene's lifetime. bodies from every
 // scene (including gFoliage's private one) live here so they can physically interact.
 static b3WorldId gPhysicsWorld = { 0 };
 static JobSystem* gPhysicsJobSystem = NULL;
+static Event gPhysicsOnAfterUpdate = { .numAction = 0 };
 
 static void PhysicsDestroyMeshStorage(Scene* scene);
 static void PhysicsDestroyLiveStaticColliders(Scene* scene);
-static u32 PhysicsCountMeshes(Scene* scene);
+static u32  PhysicsCountMeshes(Scene* scene);
 static void BuildCollidersForScene(Scene* scene);
 
 extern bool b3IsValidMesh(const b3MeshData* meshData);
@@ -45,6 +48,11 @@ PhysicsSettings g_PhysicsSettings = {
 static const char* shapeNames[] = { "Capsule", "Compound", "Height", "Hull", "Mesh", "Sphere", "None" };
 
 const char** Physics_ShapeNames() { return shapeNames; }
+
+void Physics_AddOnAfterUpdateEvent(void(*callback)(void*, void*), void* ctx)
+{
+    EventAdd(&gPhysicsOnAfterUpdate, callback, ctx);
+}
 
 void Physics_Settings_Save(void)
 {
@@ -85,7 +93,6 @@ void Physics_Settings_Load(void)
     s->substepCount = Minu32(Maxu32(s->substepCount, 1u), 32u);
     FreeAllText(text);
 }
-
 
 void Physics_ApplyWorldSettings(void)
 {
@@ -153,7 +160,6 @@ void Physics_Init(void)
     worldDef.enqueueTask     = PhysicsEnqueueTask;
     worldDef.finishTask      = PhysicsFinishTask;
     worldDef.userTaskContext = gPhysicsJobSystem;
-
     gPhysicsWorld = b3CreateWorld(&worldDef);
     Physics_ApplyWorldSettings();
 }
@@ -205,30 +211,29 @@ void Scene_DestroyPhysics(Scene* scene)
 
 // Resolves the body slot for an entity, or NULL when the entity/slot is out of
 // range. The slot's body may still be null (no body created yet).
-static b3BodyId* PhysicsEntitySlot(Scene* scene, const Entity* entity)
-{
+static b3BodyId* PhysicsEntitySlot(Scene* scene, const Entity* entity) {
     if (!scene || !entity || EntityGetSparseID(entity) == INVALID_ENTITY) return NULL;
     return &scene->physics.bodies[EntityGetSparseID(entity)];
 }
 
-static uintptr_t PhysicsBodyUserData(EntityID entityID, bool isFoliage)
-{
+static uintptr_t PhysicsBodyUserData(EntityID entityID, bool isFoliage) {
     return (uintptr_t)entityID | (((uintptr_t)isFoliage) * PHYSICS_FOLIAGE_USERDATA);
 }
 
-static bool PhysicsUserDataIsTerrain(void* userData)
-{
+static bool PhysicsUserDataIsTerrain(void* userData) {
     return (((uintptr_t)userData) & PHYSICS_TERRAIN_USERDATA) != 0u;
 }
 
-static EntityID PhysicsUserDataEntity(void* userData)
-{
+static EntityID PhysicsUserDataEntity(void* userData) {
     return (EntityID)((uintptr_t)userData & 0xFFFFFFFFull);
 }
 
-static bool PhysicsUserDataIsFoliage(void* userData)
-{
+static bool PhysicsUserDataIsFoliage(void* userData) {
     return ((uintptr_t)userData & PHYSICS_FOLIAGE_USERDATA) != 0;
+}
+
+static bool PhysicsUserDataIsPlayer(void* userData) {
+    return ((uintptr_t)userData & PHYSICS_PLAYER_USERDATA) != 0;
 }
 
 void Physics_Update(Scene* scene, float deltaTime)
@@ -258,6 +263,7 @@ void Physics_Update(Scene* scene, float deltaTime)
     for (int i = 0; i < events.moveCount; i++)
     {
         const b3BodyMoveEvent* move = &events.moveEvents[i];
+        if (PhysicsUserDataIsPlayer(move->userData)) continue;
         Scene* opScene = PhysicsUserDataIsFoliage(move->userData) ? GetFoliageScene() : scene;
         RenderSet* set = &opScene->surfaceSet;
         u32 sparseIdx = PhysicsUserDataEntity(move->userData);
@@ -270,6 +276,7 @@ void Physics_Update(Scene* scene, float deltaTime)
         EntityRotateRec(opScene, entity, QMul(QInverse(oldRot), rot));
         opScene->renderDataDirty |= 1;
     }
+    EventInvoke(&gPhysicsOnAfterUpdate, NULL);
 }
 
 static void PhysicsDestroyBodies(b3BodyId* bodies, u32 maxEntities)

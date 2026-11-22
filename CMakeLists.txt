@@ -149,7 +149,7 @@ target_sources(${EXECUTABLE_NAME} PRIVATE
     Source/Gameplay.c
     Source/CharacterController.c
     Source/CharacterAnimation.c
-    # Source/CharacterMover.c
+    Source/DynamicMover.c
     Source/Algorithm.c
     Source/Async.c
     Source/JobSystem.c
