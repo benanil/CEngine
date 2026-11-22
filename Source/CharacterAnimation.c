@@ -232,14 +232,26 @@ static u32 CountSignificant(const BlendSet* set)
 static void UpdateMotion(Character* ch, f32 dt)
 {
     cAnim* an = &ch->anim;
-    b3Vec3 velocity = ch->velocity;
+    float3 velocity = B3VecToFloat3(ch->velocity);
     f32 horizontal = Sqrtf((velocity.x * velocity.x) + (velocity.z * velocity.z));
     f32 targetSpeed = horizontal > ch->speed * 0.05f ? horizontal / ch->speed : 0.0f;
     f32 acceleration = targetSpeed < an->speed ? 8.0f : 32.0f;
     if (!ch->grounded) acceleration *= 0.4f;
     an->speed = MoveTowardsS(an->speed, targetSpeed, acceleration * dt);
-
+    // don't walk while going diagonal in tps
     bool fps = g_Camera.mode == CameraMode_FPS;
+    velocity.y = 0.0f;
+    f32 velLenSq = F3LenSq(velocity);
+    if (!fps && velLenSq > 0.1f)
+    {
+        float3 velNorm = F3Norm(velocity);
+        velNorm.x = -velNorm.x;
+        float3 charFwd = QGetForward(ch->rotation);
+        f32 forwardVel = Maxf32(F3Dot(velNorm, charFwd), 0.0f);
+        velocity   = F3MulF(velocity, forwardVel);
+        an->speed *= forwardVel;
+    }
+
     float2 move = GetMovementAxis();
     an->wantsMove = F2LenSq(move) > MOVE_INPUT_DEADZONE * MOVE_INPUT_DEADZONE;
     f32 inputX = fps ? move.x : 0.0f;
