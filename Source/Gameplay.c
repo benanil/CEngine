@@ -343,8 +343,8 @@ void Gameplay_Update(f32 dt)
     }
     g_Camera.target = g_Camera.position;
 
-    GizmoSetLineWidth(0.02f);
-    GizmoDrawCapsuleAt(B3VecTov128f(ch->position), VecGetY(ch->size), VecGetZ(ch->size), 0xFF0000FFu);
+    // GizmoSetLineWidth(0.02f);
+    // GizmoDrawCapsuleAt(B3VecTov128f(ch->position), VecGetY(ch->size), VecGetZ(ch->size), 0xFF0000FFu);
     // DebugSphere(&g_Gameplay, character);
 }
 

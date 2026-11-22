@@ -140,6 +140,7 @@ void CharacterMovement(Gameplay* gp, Entity* character, f32 dt)
         ch->verticalSpeed = ch->jumpSpeed;
         ch->grounded = false;
         jumpNow = true;
+        cPlayOnce(&ch->anim, ch->anim.jump, 0.1f, 1.0f, false);
     }
     ch->anim.jumpRequested = false;
     f32 speedTarget = Absf32(F2Len(axis) - MATH_Epsilon);
@@ -188,6 +189,7 @@ void CharacterMovement(Gameplay* gp, Entity* character, f32 dt)
     {
         f32 x = g_Camera.yaw * -MATH_DegToRad;
         f32 inputAngle = ATan2(axis.y, -axis.x);
+        if (IsNanF32(inputAngle)) inputAngle = 0.0f;
         f32 movementValue = F2LenSq(axis);
         if (movementValue < 0.001f) inputAngle = 0.0f;
         x += -inputAngle;

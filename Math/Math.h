@@ -488,6 +488,7 @@ purefn v128f VCALL VecAtan(v128f x)
     return VecMul(x, res);
 }
 
+// be aware of 0/0 nan
 purefn v128f VCALL VecAtan2(v128f y, v128f x)
 {
     v128f ay = VecFabs(y), ax = VecFabs(x);

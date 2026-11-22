@@ -79,6 +79,7 @@ static SDL_AppResult SDLCALL MainAppInit(void** appstate, int argc, char* argv[]
 
     EditorConsoleInit();
     GraphicsInit(msaa, window, width, height);
+    ApplyQualityPreset(0);
     TextureSystem_InitDevice();
     RendererInit();
 
@@ -169,7 +170,6 @@ s32 main(s32 argc, char* argv[])
     PlatformInit();
     BasisuSetup();
     SceneManager_Init();
-    ApplyQualityPreset(0);
     Gameplay_Init();
     return SDL_EnterAppMainCallbacks(argc, argv, MainAppInit, MainAppIterate, MainAppEvent, MainAppQuit);
 }

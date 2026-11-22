@@ -2,7 +2,19 @@
 #define GAMEPLAY_H
 
 #include "Include/Scene.h"
+#define LOCO_DIRECTIONS 8
+#define LOCO_SPEED_ROWS 3
+#define MAX_FIDGETS     4
 
+typedef enum ActionState_
+{
+    ActionState_None,
+    ActionState_Squeeze,
+    ActionState_MixIn,
+    ActionState_Play,
+    ActionState_MixOut,
+    ActionState_Release
+} ActionState;
 enum
 {
     ToolNone,
@@ -12,39 +24,61 @@ enum
     NumTools
 };
 typedef u32 ModelID;
-
 typedef struct ChrAnim_
 {
     AnimationBundleAlloc* animAlloc;
     const GPUAnimClip* clips;
     const mat4x4* invBind;
-    f32  onceTime;
-    f32  onceStart;
-    f32  onceSpeed;
-    f32  mixInTime;
-    f32  mixSpeed;
-    f32  mixOutTime;
-    f32  speed;
+
+    u16  locomotion[LOCO_SPEED_ROWS][LOCO_DIRECTIONS];
+    u16  fidgets[MAX_FIDGETS];
     u32  upperJoints[3];
-    u32  anim1Joints[3];
-    f32  x, y, horizontalLook;
-    f32  locoPhase, idlePhase;
-    f32  flyWeight;
-    s16  atack, jump, fallingIdle;
+    u32  actionJoints[3];
+    u32  rng;
+    u32  numFidgets;
+
+    f32  animSpeed;
+    f32  speed;
+    f32  dirAngle;
+    f32  moveX;
+    f32  moveY;
+    f32  lookTurn;
+    f32  locoPhase;
+    f32  idlePhase;
+
+    f32  fidgetTimer;
+    f32  fidgetPhase;
+    f32  fidgetGate;
+    f32  fidgetWeight;
+    u16  fidgetClip;
+    bool fidgetPlaying;
+
+    ActionState actionState;
+    f32  actionWeight;
+    f32  actionPhase;
+    f32  actionElapsed;
+    f32  actionSpeed;
+    f32  actionFade;
+    f32  squeeze;
+    u16  actionClip;
+
+    f32  airTime;
+    f32  airWeight;
+    f32  fallPhase;
+    bool airborne;
+    u16  fall, fallToIdle;
+
+    s16  atack, jump;
     u16  idle, lookAround, walk, jogRun;
     u16  strafeRight, jogLeft;
     u16  strafeLeft, jogRight;
-         
-    u16  lastAnimation;
-    u16  trigerAnim;
+
     u16  headJoint;
     u16  jointOffset;
     u16  rightHandJoint;
-    bool jumpRequested;    
-    bool upperLower;
-    bool backward;
+    bool jumpRequested;
+    bool wantsMove;
 } cAnim;
-
 typedef struct Character_
 {
     v128f         size;
