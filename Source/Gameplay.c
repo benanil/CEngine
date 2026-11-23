@@ -187,6 +187,25 @@ static void CharacterUI(Character* ch, Gameplay* gp)
             UIEditFloatN("tool euler", (f32*)&tool->euler, 3, -180.0f, 180.0f, 3);
             UIEditFloat("tool scale", (f32*)&tool->scale, -1.0f, 1.0f, 0.01f, 3);
         }
+        UISpacing(CLAY_ID("CharacterMovementDevider"), 10);
+        
+        // UIEditFloat("density"              , ch->mover.density             , 0.0f, 200.0f  * 4.0f, 200.0f  / 15.0f, 3);
+        UIEditFloat("jumpSpeed"            , &ch->mover.jumpSpeed           , 0.0f, 7.0f    * 8.0f, 7.0f    / 15.0f, 3);
+        UIEditFloat("maxSpeed"             , &ch->mover.maxSpeed            , 0.0f, 6.0f    * 8.0f, 6.0f    / 15.0f, 3);
+        UIEditFloat("minSpeed"             , &ch->mover.minSpeed            , 0.0f, 0.1f    * 8.0f, 0.1f    / 15.0f, 3);
+        UIEditFloat("stopSpeed"            , &ch->mover.stopSpeed           , 0.0f, 3.0f    * 8.0f, 3.0f    / 15.0f, 3);
+        UIEditFloat("accelerate"           , &ch->mover.accelerate          , 0.0f, 20.0f   * 8.0f, 20.0f   / 15.0f, 3);
+        UIEditFloat("airSteer"             , &ch->mover.airSteer            , 0.0f, 0.25f   * 8.0f, 0.25f   / 15.0f, 3);
+        UIEditFloat("friction"             , &ch->mover.friction            , 0.0f, 8.0f    * 8.0f, 8.0f    / 15.0f, 3);
+        UIEditFloat("gravityScale"         , &ch->mover.gravityScale        , 0.0f, 1.5f    * 8.0f, 1.5f    / 15.0f, 3);
+        UIEditFloat("maxGroundForce"       , &ch->mover.maxGroundForce      , 0.0f, 6000.0f * 8.0f, 6000.0f / 15.0f, 3);
+        UIEditFloat("maxAirForce"          , &ch->mover.maxAirForce         , 0.0f, 1500.0f * 8.0f, 1500.0f / 15.0f, 3);
+        UIEditFloat("pogoRestLength"       , &ch->mover.pogoRestLength      , 0.0f, 0.9f    * 8.0f, 0.9f    / 15.0f, 3);
+        UIEditFloat("pogoHertz"            , &ch->mover.pogoHertz           , 0.0f, 3.0f    * 8.0f, 3.0f    / 15.0f, 3);
+        UIEditFloat("pogoDampingRatio"     , &ch->mover.pogoDampingRatio    , 0.0f, 0.8f    * 8.0f, 0.8f    / 15.0f, 3);
+        UIEditFloat("pogoCompressionScale" , &ch->mover.pogoCompressionScale, 0.0f, 100.0f  * 8.0f, 100.0f  / 15.0f, 3);
+        UIEditFloat("pogoTensionScale"     , &ch->mover.pogoTensionScale    , 0.0f, 100.0f  * 8.0f, 100.0f  / 15.0f, 3);
+
         UIEndWindow();
     }
 }

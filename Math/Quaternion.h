@@ -276,10 +276,10 @@ inline v128f VCALL QuaternionFromM33Vec(v128f r0, v128f r1, v128f r2)
     static const v128f XMMPMP = { -1.0f, +1.0f, -1.0f, +1.0f };
     static const v128f XMMMPP = { -1.0f, -1.0f, +1.0f, +1.0f };
     #if defined(AX_ARM)
-   static const v128u Select0110 = { 0u, ~0u, ~0u, 0u } ;
-   static const v128u Select0010 = { 0u,  0u, ~0u, 0u } ;
-   static const v128u g_XMSelect1110 = { ~0u, ~0u, ~0u, 0u } ;
-   static const v128u g_XMSelect1011 = { ~0u, 0u, ~0u, ~0u } ;
+    static const v128u Select0110 = { 0u, ~0u, ~0u, 0u } ;
+    static const v128u Select0010 = { 0u,  0u, ~0u, 0u } ;
+    static const v128u g_XMSelect1110 = { ~0u, ~0u, ~0u, 0u } ;
+    static const v128u g_XMSelect1011 = { ~0u, 0u, ~0u, ~0u } ;
 
     float32x4_t r00 = vdupq_lane_f32(vget_low_f32(r0), 0);
     float32x4_t r11 = vdupq_lane_f32(vget_low_f32(r1), 1);
@@ -514,6 +514,28 @@ static inline float3 VCALL QGetUp(Quaternion vec) {
     return res; 
 }
 
+// from box3d
+static inline Quaternion QuatBetweenUnitVectors(float3 v1, float3 v2)
+{
+	Quaternion out;
+	float3 m = F3Lerp(v1, v2, 0.5f);
+	float tolerance = 100.0f * FLT_EPSILON;
+	if (F3LenSq(m) > tolerance * tolerance)
+	{
+        out = F3toV128(F3Cross(v1, m));
+		VecSetW(out, F3Dot(v1, m));
+	}
+	else
+	{
+		// Anti-parallel: Use a perpendicular vector
+		if (Absf32(v1.x) > 0.5f)
+            out = VecSetR(v1.y, -v1.x, 0.0f, 0.0f);
+		else
+            out = VecSetR(0.0f, v1.z, -v1.y, 0.0f);
+	}
+	// The algorithm is simplified and made more accurate by normalizing at the end
+	return QNorm(out);
+}
 
 // Dual Quaternion structure
 typedef struct DualQuaternion_ {

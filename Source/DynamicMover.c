@@ -42,16 +42,16 @@ DynamicMoverDef DefaultDynamicMoverDef( void )
 	def.capsule = ( b3Capsule ){ { 0.0f, -0.5f, 0.0f }, { 0.0f, 0.5f, 0.0f }, 0.3f };
 	def.density = 200.0f;
 	def.filter = b3DefaultFilter();
-	def.jumpSpeed = 7.0f;
+	def.jumpSpeed = 10.0f;
 	def.maxSpeed = 6.0f;
 	def.minSpeed = 0.1f;
 	def.stopSpeed = 3.0f;
 	def.accelerate = 20.0f;
 	def.airSteer = 0.25f;
-	def.friction = 8.0f;
-	def.gravityScale = 1.5f;
-	def.maxGroundForce = 6000.0f;
-	def.maxAirForce = 1500.0f;
+	def.friction = 12.0f;
+	def.gravityScale = 1.7f;
+	def.maxGroundForce = 8000.0f;
+	def.maxAirForce = 1000.0f;
 	def.pogoRestLength = 0.9f;
 	def.pogoHertz = 3.0f;
 	def.pogoDampingRatio = 0.8f;
@@ -95,7 +95,7 @@ void DynamicMover_Init( DynamicMover* mover )
 	mover->pogoTensionScale = def.pogoTensionScale;
 	mover->enableSkirtPogo = def.enableSkirtPogo;
 	mover->platformMaterialId = def.platformMaterialId;
-	mover->minGroundNormalY = 0.7f;
+	mover->minGroundNormalY = 0.6f;
 
 	mover->capsule = def.capsule;
 	mover->filter = def.filter;
@@ -111,7 +111,7 @@ void DynamicMover_Init( DynamicMover* mover )
 
 	mover->velocity = b3Vec3_zero;
 	mover->timeSliding = 0.0f;
-	mover->slideDuration = 0.2f;
+	mover->slideDuration = 0.4f;
 	mover->onGround = false;
 	mover->walkable = false;
 	mover->jumping = false;
@@ -174,7 +174,7 @@ void DynamicMover_Create( DynamicMover* mover, b3WorldId worldId, const DynamicM
 	bodyDef.motionLocks.angularZ = true;
 	bodyDef.enableSleep = false;
 	bodyDef.name = "mover";
-    bodyDef.userData = (void*)(((u64)4) << 32ull); // PhysBit_Player
+    bodyDef.userData = (void*)(((u64)PhysBit_Player) << 32ull); // PhysBit_Player
 
 	mover->moverId = b3CreateBody( worldId, &bodyDef );
 
